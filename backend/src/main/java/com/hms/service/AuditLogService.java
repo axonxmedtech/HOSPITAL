@@ -1,0 +1,55 @@
+package com.hms.service;
+
+import com.hms.entity.AuditLog;
+import com.hms.repository.AuditLogRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+
+/**
+ * Service for managing Audit Logs.
+ */
+@Service
+@RequiredArgsConstructor
+public class AuditLogService {
+
+    private final AuditLogRepository auditLogRepository;
+
+    /**
+     * Logs a system action.
+     *
+     * @param action      The action performed (e.g., PATIENT_DELETED)
+     * @param details     Details about the action
+     * @param performedBy Who performed the action (username/email)
+     * @param hospitalId  ID of the hospital (optional, can be null)
+     * @param entityType  Type of entity affected (e.g., PATIENT)
+     * @param entityId    ID of the entity affected
+     * @param reason      Reason provided by the user (optional)
+     */
+    @Transactional
+    public void logAction(String action, String details, String performedBy, Long hospitalId, String entityType,
+            String entityId, String reason) {
+        AuditLog log = new AuditLog();
+        log.setAction(action);
+        log.setDetails(details);
+        log.setPerformedBy(performedBy);
+        log.setHospitalId(hospitalId);
+        log.setEntityType(entityType);
+        log.setEntityId(entityId);
+        log.setReason(reason);
+        auditLogRepository.save(log);
+    }
+
+    public List<AuditLog> getLogsByHospitalId(Long hospitalId) {
+        // We'll need to add this method to repository or use a custom query
+        // For now assuming the repository will handle it or we'll filter (not ideal for
+        // large data, but okay for start)
+        return auditLogRepository.findByHospitalIdOrderByTimestampDesc(hospitalId);
+    }
+
+    public List<AuditLog> getLogsByEntity(String entityType, String entityId) {
+        return auditLogRepository.findByEntityTypeAndEntityIdOrderByTimestampDesc(entityType, entityId);
+    }
+}

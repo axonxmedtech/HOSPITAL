@@ -1,0 +1,109 @@
+package com.hms.service.platform;
+
+import com.hms.dto.LoginRequest;
+import com.hms.dto.LoginResponse;
+import com.hms.entity.User;
+import com.hms.repository.UserRepository;
+import com.hms.security.JwtUtil;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * PlatformAuthService - Authentication service for Super Admin
+ * 
+ * This service handles Super Admin login.
+ * Super Admin users have:
+ * - role = SUPER_ADMIN
+ * - hospital_id = NULL
+ * 
+ * @author HMS Team
+ * @version Phase-1
+ */
+@Service
+public class PlatformAuthService {
+
+    private static final Logger logger = LoggerFactory.getLogger(PlatformAuthService.class);
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private JwtUtil jwtUtil;
+
+    /**
+     * Authenticate Super Admin and generate JWT token
+     * 
+     * @param request LoginRequest containing email and password
+     * @return LoginResponse with JWT token and user details
+     * @throws RuntimeException if credentials are invalid or user is not Super
+     *                          Admin
+     */
+    public LoginResponse login(LoginRequest request) {
+        logger.info("Platform login attempt for email: {}", request.getEmail());
+
+        // Find user by email
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> {
+                    logger.warn("Login failed - user not found: {}", request.getEmail());
+                    return new RuntimeException("Invalid credentials");
+                });
+
+        // Verify password
+        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            logger.warn("Login failed - invalid password for user: {}", request.getEmail());
+            throw new RuntimeException("Invalid credentials");
+        }
+
+        logger.debug("Password verified for user: {}", request.getEmail());
+
+        // Verify user is Super Admin
+        if (!"SUPER_ADMIN".equals(user.getRole())) {
+            logger.warn("Login failed - non-Super Admin tried to login via platform endpoint: {} (role: {})",
+                    request.getEmail(), user.getRole());
+            throw new RuntimeException("Access denied. Super Admin only.");
+        }
+
+        // Verify hospital_id is null (Super Admin should not belong to any hospital)
+        if (user.getHospitalId() != null) {
+            logger.error("Login failed - Super Admin has non-null hospital_id: {} (hospital_id: {})",
+                    request.getEmail(), user.getHospitalId());
+            throw new RuntimeException("Invalid Super Admin account");
+        }
+
+        // Verify user account is active (handle null as active for backward
+        // compatibility)
+        if (user.getIsActive() != null && !user.getIsActive()) {
+            logger.warn("Login failed - Super Admin account is inactive: {}", request.getEmail());
+            throw new RuntimeException("User account is inactive. Please contact administrator.");
+        }
+
+        logger.info("Login successful for Super Admin: {}", request.getEmail());
+
+        // Generate JWT token (no hospital_id for super admin)
+        String token = jwtUtil.generateToken(
+                user.getId(),
+                user.getEmail(),
+                user.getRole(),
+                null, // No hospitalId for super admin
+                null // No modules for super admin
+        );
+
+        // Create response
+        LoginResponse response = new LoginResponse();
+        response.setToken(token);
+        response.setUserId(user.getId());
+        response.setName(user.getName());
+        response.setEmail(user.getEmail());
+        response.setRole(user.getRole());
+        response.setHospitalId(null);
+        response.setHospitalName(null);
+
+        return response;
+    }
+}

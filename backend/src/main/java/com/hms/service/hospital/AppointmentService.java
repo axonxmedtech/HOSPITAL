@@ -1,0 +1,702 @@
+package com.hms.service.hospital;
+
+import com.hms.entity.Appointment;
+import com.hms.repository.AppointmentRepository;
+import com.hms.repository.DoctorRepository;
+import com.hms.repository.PatientRepository;
+import com.hms.security.SecurityContextHelper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * AppointmentService - Service for managing appointments
+ * 
+ * This service handles appointment-related operations:
+ * - Creating new appointments
+ * - Listing appointments for a hospital
+ * - Listing appointments for a specific doctor
+ * - Getting appointment details
+ * 
+ * All operations are automatically filtered by hospital_id for multi-tenant
+ * isolation.
+ * 
+ * @author HMS Team
+ * @version Phase-1
+ */
+@Service
+public class AppointmentService {
+
+    private static final Logger logger = LoggerFactory.getLogger(AppointmentService.class);
+
+    @Autowired
+    private AppointmentRepository appointmentRepository;
+
+    @Autowired
+    private PatientRepository patientRepository;
+
+    @Autowired
+    private DoctorRepository doctorRepository;
+
+    @Autowired
+    private com.hms.repository.HospitalRepository hospitalRepository;
+
+    @Autowired
+    private SecurityContextHelper securityHelper;
+
+    @Autowired
+    private com.hms.service.hospital.BillingService billingService;
+
+    @Autowired
+    private com.hms.service.AuditLogService auditLogService;
+
+    /**
+     * Create a new appointment
+     * Validates that patient and doctor belong to the same hospital
+     * Automatically sets hospital_id from the authenticated user's context
+     * If patientId is null but patient details are provided, creates a new patient
+     * 
+     * @param appointment Appointment entity to create
+     * @return Created Appointment entity
+     */
+    public Appointment createAppointment(Appointment appointment) {
+        // Get hospital_id from security context (multi-tenant isolation)
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+
+        // Enforce OPD Module Access (Real-time)
+        validateOpdAccess(hospitalId);
+
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital ID not found in context");
+        }
+
+        // Handle patient - either find existing or create new
+        Long patientId = appointment.getPatientId();
+
+        // If patientId is null, check if we have patient details to create a new
+        // patient
+        if (patientId == null) {
+            // Check if patient details are provided (name, phone)
+            String patientName = appointment.getPatientName();
+            String patientPhone = appointment.getPatientPhone();
+            String patientEmail = appointment.getPatientEmail();
+            Integer patientAge = appointment.getPatientAge();
+            String patientGender = appointment.getPatientGender();
+
+            if (patientName == null || patientPhone == null) {
+                throw new RuntimeException("Either patientId or patient details (name, phone) must be provided");
+            }
+
+            // Check if patient already exists by phone
+            List<com.hms.entity.Patient> existingPatients = patientRepository
+                    .findByPhoneAndHospitalIdAndIsActiveTrue(patientPhone, hospitalId);
+
+            if (!existingPatients.isEmpty()) {
+                // Use existing patient (first one found if duplicates exist)
+                com.hms.entity.Patient existingPatient = existingPatients.get(0);
+                patientId = existingPatient.getId();
+                logger.info("Found existing patient with phone {}, using patient ID {}", patientPhone, patientId);
+            } else {
+                // Create new patient
+                com.hms.entity.Patient newPatient = new com.hms.entity.Patient();
+                newPatient.setName(patientName);
+                newPatient.setPhone(patientPhone);
+                newPatient.setEmail(patientEmail != null ? patientEmail : "");
+                // Set default age if not provided to avoid DB error, though frontend should
+                // require it
+                newPatient.setAge(patientAge != null ? patientAge : 0);
+                newPatient.setGender(patientGender != null ? patientGender : "Unknown");
+                newPatient.setAddress("Walk-in"); // Default address for quick appointments
+                newPatient.setHospitalId(hospitalId);
+                newPatient.setIsActive(true);
+
+                // Log patient creation audit
+                try {
+                    auditLogService.logAction(
+                            "PATIENT_CREATED",
+                            "Patient " + newPatient.getName() + " was created during appointment booking.",
+                            securityHelper.getCurrentUserEmail(),
+                            hospitalId,
+                            "PATIENT",
+                            null, // ID not yet available pre-save? No, save first.
+                            "Auto-created");
+                } catch (Exception e) {
+                }
+
+                com.hms.entity.Patient savedPatient = patientRepository.save(newPatient);
+                patientId = savedPatient.getId();
+                logger.info("Created new patient {} with ID {} for hospital {}", patientName, patientId, hospitalId);
+            }
+
+            // Set the patientId in the appointment
+            appointment.setPatientId(patientId);
+        } else {
+            // Verify patient belongs to this hospital and is active
+            com.hms.entity.Patient patient = patientRepository
+                    .findByIdAndHospitalIdAndIsActiveTrue(patientId, hospitalId)
+                    .orElseThrow(() -> new RuntimeException("Patient not found in your hospital or is inactive"));
+        }
+
+        // Verify doctor belongs to this hospital and is active
+        com.hms.entity.Doctor doctor = doctorRepository
+                .findByIdAndHospitalIdAndIsActiveTrue(appointment.getDoctorId(), hospitalId)
+                .orElseThrow(() -> new RuntimeException("Doctor not found in your hospital or is inactive"));
+
+        // -----------------------------------------------------------
+        // Time Slot Validation (New Feature)
+        // -----------------------------------------------------------
+        if (appointment.getAppointmentTime() == null) {
+            throw new RuntimeException("Appointment time is required");
+        }
+
+        // Strict 30-minute slot enforcement logic
+        // Fetches all active appointments for this doctor on this date
+        List<Appointment> existingAppointments = appointmentRepository
+                .findByDoctorIdAndAppointmentDateAndIsActiveTrue(appointment.getDoctorId(),
+                        appointment.getAppointmentDate());
+
+        for (Appointment existing : existingAppointments) {
+            // Check for exact time match (assuming strict 30 min slots)
+            if (existing.getAppointmentTime().equals(appointment.getAppointmentTime())) {
+                throw new RuntimeException("Slot " + appointment.getAppointmentTime() + " is already booked.");
+            }
+
+            // Optional: Advanced overlap check if we allowed flexible durations later
+            // LocalTime start = existing.getAppointmentTime();
+            // LocalTime end = start.plusMinutes(30);
+            // ... check for overlap ...
+        }
+        // -----------------------------------------------------------
+
+        // Set hospital_id to ensure multi-tenant isolation
+        appointment.setHospitalId(hospitalId);
+        appointment.setStatus("SCHEDULED"); // Default status
+
+        logger.info("Hospital {} scheduling appointment for patient {} with doctor {} at {}", hospitalId,
+                appointment.getPatientId(), appointment.getDoctorId(), appointment.getAppointmentTime());
+
+        Appointment savedAppointment = appointmentRepository.save(appointment);
+
+        return savedAppointment;
+
+        // Log Appointment Creation Audit
+        // (Logging moved to after save to have ID)
+        // Note: The original code returned before logging, which was a bug. Fixed order
+        // here.
+    }
+
+    /**
+     * Helper method to populate transient name fields (Patient Name, Doctor Name)
+     * Avoids N+1 problem by fetching in bulk
+     */
+    private List<Appointment> populateNames(List<Appointment> appointments) {
+        if (appointments.isEmpty())
+            return appointments;
+
+        // Collect IDs
+        java.util.Set<Long> patientIds = appointments.stream().map(Appointment::getPatientId)
+                .collect(java.util.stream.Collectors.toSet());
+        java.util.Set<Long> doctorIds = appointments.stream().map(Appointment::getDoctorId)
+                .collect(java.util.stream.Collectors.toSet());
+
+        // Fetch Maps
+        Map<Long, com.hms.entity.Patient> patientsMap = patientRepository.findAllById(patientIds).stream()
+                .collect(java.util.stream.Collectors.toMap(com.hms.entity.Patient::getId, p -> p));
+
+        Map<Long, com.hms.entity.Doctor> doctorsMap = doctorRepository.findAllById(doctorIds).stream()
+                .collect(java.util.stream.Collectors.toMap(com.hms.entity.Doctor::getId, d -> d));
+
+        // Populate Names and Self-Heal missing Public IDs
+        appointments.forEach(appt -> {
+            // Self-heal: Check if public ID is missing
+            if (appt.getPublicId() == null || appt.getPublicId().trim().isEmpty()) {
+                appt.setPublicId(java.util.UUID.randomUUID().toString()); // Force set UUID
+                if (appt.getCustomId() == null)
+                    appt.generateIds(); // Handle customId via generateIds or manually
+                appointmentRepository.save(appt);
+                logger.info("Self-healed missing Public ID for appointment ID: {}", appt.getId());
+            }
+
+            com.hms.entity.Patient p = patientsMap.get(appt.getPatientId());
+            if (p != null)
+                appt.setPatientName(p.getName());
+
+            com.hms.entity.Doctor d = doctorsMap.get(appt.getDoctorId());
+            if (d != null)
+                appt.setDoctorName(d.getName());
+        });
+
+        return appointments;
+    }
+
+    /**
+     * Get all active appointments for the current hospital
+     * Automatically filters by hospital_id from security context
+     * 
+     * @return List of active appointments for the hospital
+     */
+    /**
+     * Get all active appointments for the current hospital with pagination
+     * Automatically filters by hospital_id from security context
+     * 
+     * @return Page of active appointments for the hospital
+     */
+    public org.springframework.data.domain.Page<Appointment> getAllAppointments(
+            org.springframework.data.domain.Pageable pageable) {
+        // Enforce OPD Module Access
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId != null)
+            validateOpdAccess(hospitalId);
+
+        return getAllAppointments(pageable, null);
+    }
+
+    /**
+     * Get all active appointments for the current hospital with pagination and
+     * optional view filter
+     */
+    public org.springframework.data.domain.Page<Appointment> getAllAppointments(
+            org.springframework.data.domain.Pageable pageable, String view) {
+        // Get hospital_id from security context (multi-tenant isolation)
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital ID not found in context");
+        }
+
+        org.springframework.data.domain.Page<Appointment> page;
+        java.time.LocalDate today = java.time.LocalDate.now();
+
+        if (view == null || view.isEmpty()) {
+            page = appointmentRepository
+                    .findByHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(hospitalId, pageable);
+        } else {
+            switch (view.toLowerCase()) {
+                case "today":
+                    page = appointmentRepository
+                            .findByHospitalIdAndAppointmentDateAndIsActiveTrueOrderByAppointmentTimeAsc(hospitalId,
+                                    today, pageable);
+                    break;
+                case "upcoming":
+                    page = appointmentRepository
+                            .findByHospitalIdAndAppointmentDateAfterAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
+                                    hospitalId, today, pageable);
+                    break;
+                case "history":
+                    page = appointmentRepository
+                            .findByHospitalIdAndIsActiveTrueAndAppointmentDateBeforeOrHospitalIdAndIsActiveTrueAndStatusInOrderByAppointmentDateDescAppointmentTimeDesc(
+                                    hospitalId, today, hospitalId, java.util.Arrays.asList("COMPLETED", "CANCELLED"),
+                                    pageable);
+                    break;
+                default:
+                    page = appointmentRepository
+                            .findByHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(hospitalId, pageable);
+            }
+        }
+
+        // Populate names (using list from page)
+        populateNames(page.getContent());
+
+        return page;
+    }
+
+    public List<Appointment> getAllAppointments() {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null)
+            throw new RuntimeException("Hospital ID not found in context");
+        List<Appointment> list = appointmentRepository
+                .findByHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(hospitalId);
+        return populateNames(list);
+    }
+
+    /**
+     * Get active appointments for a specific doctor
+     * 
+     * @param doctorId Doctor ID
+     * @return List of active appointments for the doctor
+     */
+    public List<Appointment> getAppointmentsByDoctor(Long doctorId) {
+        return getAppointmentsByDoctor(doctorId, null);
+    }
+
+    /**
+     * Get active appointments for a specific doctor with optional view filter
+     */
+    public List<Appointment> getAppointmentsByDoctor(Long doctorId, String view) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital ID not found in context");
+        }
+
+        // Verify doctor belongs to this hospital and is active
+        doctorRepository.findByIdAndHospitalIdAndIsActiveTrue(doctorId, hospitalId)
+                .orElseThrow(() -> new RuntimeException("Doctor not found in your hospital or is inactive"));
+
+        List<Appointment> appointments;
+        java.time.LocalDate today = java.time.LocalDate.now();
+
+        if (view == null || view.isEmpty()) {
+            // Default: All active appointments sorted by date desc
+            appointments = appointmentRepository
+                    .findByDoctorIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(doctorId, hospitalId);
+        } else {
+            switch (view.toLowerCase()) {
+                case "today":
+                    appointments = appointmentRepository
+                            .findByDoctorIdAndAppointmentDateAndIsActiveTrueOrderByAppointmentTimeAsc(doctorId, today);
+                    break;
+                case "upcoming":
+                    appointments = appointmentRepository
+                            .findByDoctorIdAndAppointmentDateAfterAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
+                                    doctorId, today);
+                    break;
+                case "history":
+                    appointments = appointmentRepository
+                            .findByDoctorIdAndIsActiveTrueAndAppointmentDateBeforeOrDoctorIdAndIsActiveTrueAndStatusInOrderByAppointmentDateDescAppointmentTimeDesc(
+                                    doctorId, today, doctorId, java.util.Arrays.asList("COMPLETED", "CANCELLED"));
+                    break;
+                default:
+                    appointments = appointmentRepository
+                            .findByDoctorIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(doctorId, hospitalId);
+            }
+        }
+
+        return populateNames(appointments);
+    }
+
+    /**
+     * Get active appointments for a specific patient (Patient History)
+     */
+    public List<Appointment> getAppointmentsByPatient(String patientPublicId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital ID not found in context");
+        }
+
+        // Resolve Patient Public ID to Long ID
+        Optional<com.hms.entity.Patient> patientOpt = patientRepository
+                .findByPublicIdAndHospitalIdAndIsActiveTrue(patientPublicId, hospitalId);
+
+        if (patientOpt.isEmpty()) {
+            try {
+                Long id = Long.parseLong(patientPublicId);
+                patientOpt = patientRepository.findByIdAndHospitalIdAndIsActiveTrue(id, hospitalId);
+            } catch (NumberFormatException e) {
+                // ignore
+            }
+        }
+
+        com.hms.entity.Patient patient = patientOpt.orElseThrow(() -> new RuntimeException("Patient not found"));
+        System.out.println("DEBUG: Resolved Patient ID: " + patient.getId() + " from PublicID: " + patientPublicId);
+
+        List<Appointment> appointments = appointmentRepository
+                .findByPatientIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(patient.getId(), hospitalId);
+        System.out.println("DEBUG: Found " + appointments.size() + " appointments for patientId: " + patient.getId());
+
+        return populateNames(appointments);
+    }
+
+    /**
+     * Get an active appointment by ID
+     * Ensures the appointment belongs to the current hospital (multi-tenant
+     * isolation)
+     * 
+     * @param id Appointment ID
+     * @return Appointment entity
+     * @throws RuntimeException if appointment not found, inactive, or doesn't
+     *                          belong to the hospital
+     */
+    public Appointment getAppointmentByPublicId(String publicId) {
+        // Get hospital_id from security context (multi-tenant isolation)
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital ID not found in context");
+        }
+
+        // Find appointment only if it belongs to this hospital and is active
+        Optional<Appointment> apptOpt = appointmentRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(publicId,
+                hospitalId);
+
+        if (apptOpt.isEmpty()) {
+            try {
+                Long id = Long.parseLong(publicId);
+                apptOpt = appointmentRepository.findByIdAndHospitalIdAndIsActiveTrue(id, hospitalId);
+            } catch (NumberFormatException e) {
+                // ignore
+            }
+        }
+
+        Appointment appointment = apptOpt.orElseThrow(() -> new RuntimeException("Appointment not found"));
+
+        // Populate names for single appointment
+        populateNames(java.util.Collections.singletonList(appointment));
+
+        return appointment;
+    }
+
+    /**
+     * Get today's appointments for the current hospital
+     * Used for Overview dashboard - shows only today's appointments
+     * 
+     * @return List of today's appointments
+     */
+    public List<Appointment> getTodaysAppointments() {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital ID not found in context");
+        }
+
+        LocalDate today = LocalDate.now();
+        List<Appointment> appointments = appointmentRepository
+                .findByHospitalIdAndAppointmentDateAndIsActiveTrue(hospitalId, today);
+
+        logger.info("Found {} appointments for today for hospital {}", appointments.size(), hospitalId);
+        return populateNames(appointments);
+    }
+
+    // ... keeping the rest (delete, update, stats, myAppointments)
+
+    /**
+     * Soft delete an appointment
+     * 
+     * @param id Appointment ID
+     */
+    public void deleteAppointment(String publicId, String reason) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null)
+            throw new RuntimeException("Hospital ID not found in context");
+
+        Optional<Appointment> apptOpt = appointmentRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(publicId,
+                hospitalId);
+
+        if (apptOpt.isEmpty()) {
+            try {
+                Long id = Long.parseLong(publicId);
+                apptOpt = appointmentRepository.findByIdAndHospitalIdAndIsActiveTrue(id, hospitalId);
+            } catch (NumberFormatException e) {
+                // ignore
+            }
+        }
+
+        Appointment appointment = apptOpt.orElseThrow(() -> new RuntimeException("Appointment not found"));
+
+        logger.info("Hospital {} soft deleting appointment ID: {}. Reason: {}", hospitalId, publicId, reason);
+
+        appointment.setIsActive(false);
+        appointmentRepository.save(appointment);
+
+        auditLogService.logAction(
+                "APPOINTMENT_DELETED",
+                "Appointment for " + appointment.getPatientName() + " with " + appointment.getDoctorName()
+                        + " was deleted. Reason: " + (reason != null ? reason : "No reason provided"),
+                securityHelper.getCurrentUserEmail(),
+                hospitalId,
+                "APPOINTMENT",
+                publicId,
+                reason);
+    }
+
+    /**
+     * Update appointment status (SCHEDULED -> COMPLETED / CANCELLED)
+     * 
+     * @param id     Appointment ID
+     * @param status New Status
+     * @return Updated Appointment
+     */
+    public Appointment updateStatus(String publicId, String status, String reason) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null)
+            throw new RuntimeException("Hospital ID not found");
+
+        Optional<Appointment> apptOpt = appointmentRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(publicId,
+                hospitalId);
+
+        if (apptOpt.isEmpty()) {
+            // Fallback: Try to find by ID if the publicId string is numeric (legacy
+            // support)
+            try {
+                Long id = Long.parseLong(publicId);
+                apptOpt = appointmentRepository.findByIdAndHospitalIdAndIsActiveTrue(id, hospitalId);
+            } catch (NumberFormatException e) {
+                // Not a number, ignore
+            }
+        }
+
+        Appointment appointment = apptOpt.orElseThrow(() -> new RuntimeException("Appointment not found"));
+
+        // Basic validation
+        if (!status.equals("SCHEDULED") && !status.equals("COMPLETED") && !status.equals("CANCELLED")) {
+            throw new RuntimeException("Invalid status. Allowed: SCHEDULED, COMPLETED, CANCELLED");
+        }
+
+        String oldStatus = appointment.getStatus();
+        appointment.setStatus(status);
+        Appointment saved = appointmentRepository.save(appointment);
+
+        // Trigger Billing if Completed
+        if ("COMPLETED".equals(status) && !oldStatus.equals("COMPLETED")) {
+            System.out.println("DEBUG: Triggering auto-billing for appointment " + saved.getPublicId());
+            try {
+                billingService.autoGenerateOpdBill(saved);
+            } catch (Exception e) {
+                logger.error("Failed to auto-generate bill for appointment {}", publicId, e);
+                System.out.println("DEBUG: Billing generation failed: " + e.getMessage());
+            }
+        }
+
+        // Log status change if significant
+        // Log status change if significant
+        if (!oldStatus.equals(status)) {
+            try {
+                auditLogService.logAction(
+                        "APPOINTMENT_STATUS_CHANGED",
+                        "Status changed from " + oldStatus + " to " + status + ". Reason: "
+                                + (reason != null ? reason : "No reason provided"),
+                        securityHelper.getCurrentUserEmail(),
+                        hospitalId,
+                        "APPOINTMENT",
+                        publicId,
+                        reason);
+            } catch (Exception e) {
+                logger.warn("Failed to log audit for status change", e);
+            }
+        }
+
+        return saved;
+    }
+
+    /**
+     * Update appointment details (Status & Notes)
+     * 
+     * @param id     Appointment ID
+     * @param status New Status
+     * @param notes  New Notes
+     * @return Updated Appointment
+     */
+    public Appointment updateDetails(String publicId, String status, String notes) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null)
+            throw new RuntimeException("Hospital ID not found");
+
+        Optional<Appointment> apptOpt = appointmentRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(publicId,
+                hospitalId);
+
+        if (apptOpt.isEmpty()) {
+            try {
+                Long id = Long.parseLong(publicId);
+                apptOpt = appointmentRepository.findByIdAndHospitalIdAndIsActiveTrue(id, hospitalId);
+            } catch (NumberFormatException e) {
+                // ignore
+            }
+        }
+
+        Appointment appointment = apptOpt.orElseThrow(() -> new RuntimeException("Appointment not found"));
+
+        if (status != null && !status.isEmpty()) {
+            // Basic validation
+            if (!status.equals("SCHEDULED") && !status.equals("COMPLETED") && !status.equals("CANCELLED")) {
+                throw new RuntimeException("Invalid status. Allowed: SCHEDULED, COMPLETED, CANCELLED");
+            }
+            appointment.setStatus(status);
+        }
+
+        if (notes != null) {
+            appointment.setNotes(notes);
+        }
+
+        Appointment saved = appointmentRepository.save(appointment);
+        if (saved == null) {
+            throw new RuntimeException("Failed to save appointment");
+        }
+
+        // Trigger Billing if Completed and previously wasn't (or just check if current
+        // is completed and no bill exists? Simplified for now)
+        if ("COMPLETED".equals(status)) {
+            try {
+                billingService.autoGenerateOpdBill(saved);
+            } catch (Exception e) {
+                logger.error("Failed to auto-generate bill for appointment {}", publicId, e);
+            }
+        }
+
+        // Log Update
+        try {
+            auditLogService.logAction(
+                    "APPOINTMENT_UPDATED",
+                    "Appointment updated. Status: " + (status != null ? status : appointment.getStatus())
+                            + (notes != null ? ". Notes updated." : ""),
+                    securityHelper.getCurrentUserEmail(),
+                    hospitalId,
+                    "APPOINTMENT",
+                    publicId,
+                    null);
+        } catch (Exception e) {
+            logger.warn("Failed to log appointment update", e);
+        }
+
+        return saved;
+    }
+
+    /**
+     * Get dashboard stats (Today, Pending, Total)
+     */
+    public Map<String, Long> getDashboardStats() {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null)
+            throw new RuntimeException("Hospital ID not found");
+        LocalDate today = LocalDate.now();
+
+        long todayCount = appointmentRepository.countByHospitalIdAndIsActiveTrueAndAppointmentDate(hospitalId, today);
+        long pendingCount = appointmentRepository.countByHospitalIdAndIsActiveTrueAndStatus(hospitalId, "SCHEDULED");
+        long totalCount = appointmentRepository.countByHospitalIdAndIsActiveTrue(hospitalId);
+
+        Map<String, Long> stats = new HashMap<>();
+        stats.put("today", todayCount);
+        stats.put("pending", pendingCount);
+        stats.put("total", totalCount);
+
+        return stats;
+    }
+
+    /**
+     * Get appointments for the currently logged-in doctor
+     */
+    public List<Appointment> getMyAppointments() {
+        return getMyAppointments(null);
+    }
+
+    /**
+     * Get appointments for the currently logged-in doctor with optional view filter
+     */
+    public List<Appointment> getMyAppointments(String view) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital ID not found in context");
+        }
+        String email = securityHelper.getCurrentUserEmail();
+
+        com.hms.entity.Doctor doctor = doctorRepository.findByEmailAndHospitalId(email, hospitalId)
+                .orElseThrow(() -> new RuntimeException("Doctor profile not found for current user"));
+
+        return getAppointmentsByDoctor(doctor.getId(), view);
+    }
+
+    private void validateOpdAccess(Long hospitalId) {
+        if (hospitalId == null)
+            return;
+        com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
+                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+        if (hospital.getModules() == null || !hospital.getModules().contains("OPD")) {
+            throw new RuntimeException("OPD module is disabled for your hospital.");
+        }
+    }
+}

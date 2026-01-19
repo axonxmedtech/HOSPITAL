@@ -1,0 +1,119 @@
+package com.hms.entity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+/**
+ * Billing - Entity representing a billing record for consultation
+ * 
+ * This entity stores simple billing information for OPD consultations.
+ * Phase-1: Only consultation fees, no GST, no PDF generation.
+ * Each billing record belongs to exactly one hospital (multi-tenant isolation
+ * via hospital_id).
+ * 
+ * @author HMS Team
+ * @version Phase-1
+ */
+@Entity
+@Table(name = "billing")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class Billing {
+
+    /**
+     * Unique identifier for the billing record
+     */
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    /**
+     * Public unique identifier (UUID) for security
+     */
+    /**
+     * Public unique identifier (UUID) for security
+     */
+    @Column(nullable = false, unique = true)
+    private String publicId;
+
+    /**
+     * Custom readable ID for UI display (e.g., BIL1234)
+     */
+    @Column(name = "custom_id")
+    private String customId;
+
+    @PrePersist
+    public void generateIds() {
+        if (this.publicId == null) {
+            this.publicId = java.util.UUID.randomUUID().toString();
+        }
+        if (this.customId == null) {
+            // Generate simple random readable ID: BIL + 4 random digits
+            this.customId = "BIL" + (1000 + new java.util.Random().nextInt(9000));
+        }
+    }
+
+    /**
+     * Hospital ID for multi-tenant isolation
+     * Every billing record belongs to exactly one hospital
+     */
+    @Column(name = "hospital_id", nullable = false)
+    private Long hospitalId;
+
+    /**
+     * Patient ID for this billing record
+     */
+    @Column(name = "patient_id", nullable = false)
+    private Long patientId;
+
+    /**
+     * Doctor ID for this billing record
+     */
+    @Column(name = "doctor_id", nullable = false)
+    private Long doctorId;
+
+    /**
+     * Appointment ID for this billing record (optional)
+     */
+    @Column(name = "appointment_id")
+    private Long appointmentId;
+
+    /**
+     * Consultation fee amount
+     * No GST or additional charges in Phase-1
+     */
+    @Column(nullable = false, precision = 10, scale = 2)
+    private BigDecimal amount;
+
+    /**
+     * Payment status (PAID, PENDING)
+     */
+    @Column(nullable = false, length = 20)
+    private String paymentStatus = "PAID";
+
+    /**
+     * Payment Method (Cash, Online, Card, etc.)
+     */
+    @Column(name = "payment_method", length = 50)
+    private String paymentMethod;
+
+    /**
+     * Additional notes or description
+     */
+    @Column(length = 500)
+    private String description;
+
+    /**
+     * Timestamp when the billing record was created
+     */
+    @CreationTimestamp
+    @Column(nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+}
