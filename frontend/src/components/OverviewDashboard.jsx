@@ -60,17 +60,17 @@ const OverviewDashboard = ({ stats, todaysAppointments, loading }) => {
                         <div className="relative p-6">
                             <div className="flex items-center justify-between">
                                 <div className="flex-1">
-                                    <p className="text-sm font-semibold text-neutral-600 uppercase tracking-wider mb-2">
+                                    <p className="text-sm font-semibold text-slate-600 uppercase tracking-wider mb-2">
                                         {card.title}
                                     </p>
                                     <div className="flex items-baseline gap-2">
-                                        <p className="text-3xl font-bold text-neutral-900 group-hover:scale-105 transition-transform duration-300">
+                                        <p className="text-3xl font-bold text-slate-900 group-hover:scale-105 transition-transform duration-300">
                                             {card.value.toLocaleString()}
                                         </p>
                                         <span className={`text-xs font-medium px-2 py-1 rounded-full ${
                                             card.changeType === 'positive' 
                                                 ? 'text-success-700 bg-success-100' 
-                                                : 'text-error-700 bg-error-100'
+                                                : 'text-alert-700 bg-alert-100'
                                         }`}>
                                             {card.change}
                                         </span>
@@ -96,18 +96,18 @@ const OverviewDashboard = ({ stats, todaysAppointments, loading }) => {
 
             {/* Enhanced Today's Appointments Table */}
             <div className="card overflow-hidden">
-                <div className="bg-gradient-to-r from-neutral-50 to-neutral-100/50 px-8 py-6 border-b border-neutral-100">
+                <div className="bg-gradient-to-r from-neutral-50 to-neutral-100/50 px-8 py-6 border-b border-neutral-200">
                     <div className="flex items-center justify-between">
                         <div>
-                            <h3 className="text-xl font-bold text-neutral-900 flex items-center gap-3">
+                            <h3 className="text-xl font-bold text-slate-900 flex items-center gap-3">
                                 <span className="w-2 h-2 bg-primary-500 rounded-full animate-pulse"></span>
                                 Today's Appointments
                             </h3>
-                            <p className="text-sm text-neutral-600 mt-1">
+                            <p className="text-sm text-slate-600 mt-1">
                                 Quick overview of all scheduled appointments for today
                             </p>
                         </div>
-                        <div className="flex items-center gap-2 text-sm text-neutral-500">
+                        <div className="flex items-center gap-2 text-sm text-slate-500">
                             <span className="w-2 h-2 bg-success-400 rounded-full"></span>
                             Live updates
                         </div>
@@ -119,16 +119,16 @@ const OverviewDashboard = ({ stats, todaysAppointments, loading }) => {
                         <table className="min-w-full">
                             <thead className="bg-neutral-50/50">
                                 <tr>
-                                    <th className="px-8 py-4 text-left text-xs font-semibold text-neutral-500 uppercase tracking-wider">
+                                    <th className="px-8 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
                                         Patient
                                     </th>
-                                    <th className="px-6 py-4 text-left text-xs font-semibold text-neutral-500 uppercase tracking-wider">
+                                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
                                         Doctor
                                     </th>
-                                    <th className="px-6 py-4 text-left text-xs font-semibold text-neutral-500 uppercase tracking-wider">
+                                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
                                         Time
                                     </th>
-                                    <th className="px-6 py-4 text-left text-xs font-semibold text-neutral-500 uppercase tracking-wider">
+                                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
                                         Status
                                     </th>
                                 </tr>
@@ -146,10 +146,10 @@ const OverviewDashboard = ({ stats, todaysAppointments, loading }) => {
                                                     {appointment.patientName?.charAt(0)?.toUpperCase()}
                                                 </div>
                                                 <div>
-                                                    <p className="text-sm font-semibold text-neutral-900 group-hover:text-primary-600 transition-colors">
+                                                    <p className="text-sm font-semibold text-slate-900 group-hover:text-primary-600 transition-colors">
                                                         {appointment.patientName}
                                                     </p>
-                                                    <p className="text-xs text-neutral-500">
+                                                    <p className="text-xs text-slate-500">
                                                         ID: {appointment.patientId}
                                                     </p>
                                                 </div>
@@ -158,7 +158,7 @@ const OverviewDashboard = ({ stats, todaysAppointments, loading }) => {
                                         <td className="px-6 py-5 whitespace-nowrap">
                                             <div className="flex items-center gap-2">
                                                 <span className="text-lg">👨‍⚕️</span>
-                                                <span className="text-sm font-medium text-neutral-700">
+                                                <span className="text-sm font-medium text-slate-700">
                                                     {appointment.doctorName}
                                                 </span>
                                             </div>
@@ -166,7 +166,7 @@ const OverviewDashboard = ({ stats, todaysAppointments, loading }) => {
                                         <td className="px-6 py-5 whitespace-nowrap">
                                             <div className="flex items-center gap-2">
                                                 <span className="text-lg">🕐</span>
-                                                <span className="text-sm text-neutral-600">
+                                                <span className="text-sm text-slate-600">
                                                     {new Date(appointment.appointmentDate).toLocaleDateString()}
                                                 </span>
                                             </div>
@@ -184,8 +184,8 @@ const OverviewDashboard = ({ stats, todaysAppointments, loading }) => {
                         <div className="w-20 h-20 bg-neutral-100 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-inner-soft">
                             <span className="text-4xl text-neutral-400">📅</span>
                         </div>
-                        <h4 className="text-lg font-semibold text-neutral-900 mb-2">No appointments today</h4>
-                        <p className="text-neutral-500 max-w-sm mx-auto">
+                        <h4 className="text-lg font-semibold text-slate-900 mb-2">No appointments today</h4>
+                        <p className="text-slate-500 max-w-sm mx-auto">
                             It looks like there are no appointments scheduled for today. Enjoy the quiet day!
                         </p>
                     </div>

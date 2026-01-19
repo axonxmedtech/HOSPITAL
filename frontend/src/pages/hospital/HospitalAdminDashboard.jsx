@@ -504,7 +504,7 @@ const HospitalAdminDashboard = () => {
     };
 
     return (
-        <div className="flex h-screen bg-gray-50">
+        <div className="flex h-screen bg-neutral-50">
             {/* Sidebar */}
             <Sidebar
                 title="HMS Portal"
@@ -526,36 +526,36 @@ const HospitalAdminDashboard = () => {
                 />
 
                 {/* Main Content Area */}
-                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-8">
+                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-neutral-50 p-8">
 
                     {/* Stats Cards (Bucket 1: Better Dashboard Numbers) */}
                     {activeTab !== 'dashboard' && (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                            <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-blue-500">
+                            <div className="bg-white rounded-xl shadow-soft p-6 border-l-4 border-primary-500">
                                 <div className="flex justify-between items-center">
                                     <div>
-                                        <p className="text-gray-500 text-sm font-medium uppercase tracking-wider">Today's Appointments</p>
-                                        <h3 className="text-3xl font-bold text-gray-800 mt-1">{stats.today}</h3>
+                                        <p className="text-slate-500 text-sm font-medium uppercase tracking-wider">Today's Appointments</p>
+                                        <h3 className="text-3xl font-bold text-slate-800 mt-1">{stats.today}</h3>
                                     </div>
-                                    <div className="bg-blue-100 p-3 rounded-full text-blue-600 text-xl">📅</div>
+                                    <div className="bg-primary-100 p-3 rounded-full text-primary-600 text-xl">📅</div>
                                 </div>
                             </div>
-                            <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-orange-500">
+                            <div className="bg-white rounded-xl shadow-soft p-6 border-l-4 border-secondary-500">
                                 <div className="flex justify-between items-center">
                                     <div>
-                                        <p className="text-gray-500 text-sm font-medium uppercase tracking-wider">Pending Action</p>
-                                        <h3 className="text-3xl font-bold text-gray-800 mt-1">{stats.pending}</h3>
+                                        <p className="text-slate-500 text-sm font-medium uppercase tracking-wider">Pending Action</p>
+                                        <h3 className="text-3xl font-bold text-slate-800 mt-1">{stats.pending}</h3>
                                     </div>
-                                    <div className="bg-orange-100 p-3 rounded-full text-orange-600 text-xl">⏳</div>
+                                    <div className="bg-secondary-100 p-3 rounded-full text-secondary-600 text-xl">⏳</div>
                                 </div>
                             </div>
-                            <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-gray-500">
+                            <div className="bg-white rounded-xl shadow-soft p-6 border-l-4 border-neutral-500">
                                 <div className="flex justify-between items-center">
                                     <div>
-                                        <p className="text-gray-500 text-sm font-medium uppercase tracking-wider">Total Active Records</p>
-                                        <h3 className="text-3xl font-bold text-gray-800 mt-1">{stats.total}</h3>
+                                        <p className="text-slate-500 text-sm font-medium uppercase tracking-wider">Total Active Records</p>
+                                        <h3 className="text-3xl font-bold text-slate-800 mt-1">{stats.total}</h3>
                                     </div>
-                                    <div className="bg-gray-100 p-3 rounded-full text-gray-600 text-xl">📈</div>
+                                    <div className="bg-neutral-100 p-3 rounded-full text-neutral-600 text-xl">📈</div>
                                 </div>
                             </div>
                         </div>

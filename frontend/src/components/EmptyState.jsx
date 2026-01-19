@@ -5,27 +5,27 @@ const EmptyState = ({ icon, title, message, actionLabel, onAction, variant = 'de
         default: {
             iconBg: 'bg-neutral-100',
             iconText: 'text-neutral-400',
-            titleText: 'text-neutral-900',
-            messageText: 'text-neutral-500'
+            titleText: 'text-slate-900',
+            messageText: 'text-slate-500'
         },
         primary: {
             iconBg: 'bg-primary-100',
             iconText: 'text-primary-400',
-            titleText: 'text-neutral-900',
-            messageText: 'text-neutral-500'
+            titleText: 'text-slate-900',
+            messageText: 'text-slate-500'
         },
         success: {
             iconBg: 'bg-success-100',
             iconText: 'text-success-400',
-            titleText: 'text-neutral-900',
-            messageText: 'text-neutral-500'
+            titleText: 'text-slate-900',
+            messageText: 'text-slate-500'
         }
     };
 
     const theme = variants[variant] || variants.default;
 
     return (
-        <div className="flex flex-col items-center justify-center py-16 px-6 text-center bg-white rounded-2xl shadow-soft border border-neutral-100 animate-fade-in-up">
+        <div className="flex flex-col items-center justify-center py-16 px-6 text-center bg-white rounded-2xl shadow-soft border border-neutral-200 animate-fade-in">
             {/* Icon container with organic styling */}
             <div className={`w-24 h-24 ${theme.iconBg} rounded-3xl flex items-center justify-center mb-6 shadow-inner-soft`}>
                 <span className={`text-4xl ${theme.iconText}`}>{icon}</span>

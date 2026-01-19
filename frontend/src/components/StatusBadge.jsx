@@ -37,10 +37,10 @@ const getStatusConfig = (status) => {
             icon: '📅'
         },
         'PENDING': { 
-            bg: 'bg-warning-100', 
-            text: 'text-warning-800', 
-            border: 'border-warning-200',
-            dot: 'bg-warning-500',
+            bg: 'bg-secondary-100', 
+            text: 'text-secondary-800', 
+            border: 'border-secondary-200',
+            dot: 'bg-secondary-500',
             icon: '⏳'
         },
         'IN_PROGRESS': { 
@@ -48,6 +48,47 @@ const getStatusConfig = (status) => {
             text: 'text-primary-800', 
             border: 'border-primary-200',
             dot: 'bg-primary-500',
+            icon: '🔄'
+        },
+        
+        // Alert/Warning states
+        'CANCELLED': { 
+            bg: 'bg-alert-100', 
+            text: 'text-alert-800', 
+            border: 'border-alert-200',
+            dot: 'bg-alert-500',
+            icon: '✕'
+        },
+        'UNPAID': { 
+            bg: 'bg-alert-100', 
+            text: 'text-alert-800', 
+            border: 'border-alert-200',
+            dot: 'bg-alert-500',
+            icon: '⚠️'
+        },
+        'OVERDUE': { 
+            bg: 'bg-alert-100', 
+            text: 'text-alert-800', 
+            border: 'border-alert-200',
+            dot: 'bg-alert-500',
+            icon: '🚨'
+        },
+        
+        // Neutral states
+        'INACTIVE': { 
+            bg: 'bg-neutral-100', 
+            text: 'text-neutral-800', 
+            border: 'border-neutral-200',
+            dot: 'bg-neutral-500',
+            icon: '○'
+        },
+        'DRAFT': { 
+            bg: 'bg-neutral-100', 
+            text: 'text-neutral-800', 
+            border: 'border-neutral-200',
+            dot: 'bg-neutral-500',
+            icon: '📝'
+        }
             icon: '🔄'
         },
         'CONSULTING': { 
