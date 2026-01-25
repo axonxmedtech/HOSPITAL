@@ -56,11 +56,12 @@ public class AppointmentController {
     @GetMapping
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
     public ResponseEntity<?> getAllAppointments(
+            @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String view) {
         Pageable pageable = PageRequest.of(page, size);
-        return ResponseEntity.ok(appointmentService.getAllAppointments(pageable, view));
+        return ResponseEntity.ok(appointmentService.getAllAppointments(search, pageable, view));
     }
 
     /**
@@ -75,13 +76,19 @@ public class AppointmentController {
     }
 
     /**
-     * Get appointments for the current logged-in doctor
+     * Get appointments for the current logged-in doctor with pagination, search,
+     * and view filter
      */
     @GetMapping("/my-appointments")
     @PreAuthorize("hasRole('DOCTOR')")
-    public ResponseEntity<?> getMyAppointments(@RequestParam(required = false) String view) {
+    public ResponseEntity<?> getMyAppointments(@RequestParam(required = false) String view,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
         try {
-            List<Appointment> appointments = appointmentService.getMyAppointments(view);
+            Pageable pageable = PageRequest.of(page, size);
+            org.springframework.data.domain.Page<Appointment> appointments = appointmentService.getMyAppointments(view,
+                    search, pageable);
             return ResponseEntity.ok(appointments);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());

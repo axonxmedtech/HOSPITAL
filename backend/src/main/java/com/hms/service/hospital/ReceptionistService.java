@@ -83,12 +83,15 @@ public class ReceptionistService {
     /**
      * Get all active receptionists for the current hospital
      */
-    public org.springframework.data.domain.Page<User> getAllReceptionists(
+    public org.springframework.data.domain.Page<User> getAllReceptionists(String search,
             org.springframework.data.domain.Pageable pageable) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
             logger.error("getAllReceptionists: Hospital ID not found in context");
             throw new RuntimeException("Hospital ID not found in context");
+        }
+        if (org.springframework.util.StringUtils.hasText(search)) {
+            return userRepository.searchReceptionists(hospitalId, "RECEPTIONIST", search, pageable);
         }
         return userRepository.findByHospitalIdAndRoleAndIsActiveTrue(hospitalId, "RECEPTIONIST", pageable);
     }

@@ -28,10 +28,11 @@ public class BillingController {
     @GetMapping
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
     public ResponseEntity<?> getAllBills(
+            @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         Pageable pageable = PageRequest.of(page, size);
-        return ResponseEntity.ok(billingService.getAllBills(pageable));
+        return ResponseEntity.ok(billingService.getAllBills(search, pageable));
     }
 
     @PutMapping("/{id}/status")

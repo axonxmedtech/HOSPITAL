@@ -65,11 +65,14 @@ public class PharmacistService {
         return saved;
     }
 
-    public org.springframework.data.domain.Page<User> getAllPharmacists(
+    public org.springframework.data.domain.Page<User> getAllPharmacists(String search,
             org.springframework.data.domain.Pageable pageable) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
             throw new RuntimeException("Hospital ID not found in context");
+        }
+        if (org.springframework.util.StringUtils.hasText(search)) {
+            return userRepository.searchPharmacists(hospitalId, "PHARMACIST", search, pageable);
         }
         return userRepository.findByHospitalIdAndRoleAndIsActiveTrue(hospitalId, "PHARMACIST", pageable);
     }

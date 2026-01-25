@@ -1,3 +1,5 @@
+import StatusBadge from "./StatusBadge";
+
 // Overview Dashboard Component for Hospital Admin
 const OverviewDashboard = ({ stats, todaysAppointments, loading }) => {
     if (loading) {

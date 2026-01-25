@@ -187,7 +187,7 @@ const HospitalAdminDashboard = () => {
                         setTotalElements(data.length);
                     }
                 } else if (activeTab === 'receptionists') {
-                    const data = await hospitalService.getReceptionists(page, pageSize);
+                    const data = await hospitalService.getReceptionists(searchTerm,page, pageSize);
                     if (data.content) {
                         setReceptionists(data.content);
                         setTotalPages(data.totalPages);
@@ -198,7 +198,7 @@ const HospitalAdminDashboard = () => {
                         setTotalElements(data.length);
                     }
                 } else if (activeTab === 'pharmacists') {
-                    const data = await hospitalService.getPharmacists(page, pageSize);
+                    const data = await hospitalService.getPharmacists(searchTerm,page, pageSize);
                     if (data.content) {
                         setPharmacists(data.content);
                         setTotalPages(data.totalPages);
@@ -213,7 +213,7 @@ const HospitalAdminDashboard = () => {
                     // Note: getAppointments now supports page/size, getDoctors might not return all if paginated
                     // For now, we fetch paginated appointments and maybe "all" doctors for lookup if possible or handle missing names
                     const [apptData, docData, patData] = await Promise.all([
-                        hospitalService.getAppointments(page, pageSize),
+                        hospitalService.getAppointments(searchTerm,page, pageSize),
                         hospitalService.getDoctors('', 0, 100), // Attempt to get more doctors for lookup
                         hospitalService.getPatients('', 0, 1000) // Fetch ALL patients for lookup
                     ]);
@@ -241,7 +241,7 @@ const HospitalAdminDashboard = () => {
                     }
 
                 } else if (activeTab === 'billing') {
-                    const data = await hospitalService.getBills(page, pageSize);
+                    const data = await hospitalService.getBills(searchTerm,page, pageSize);
                     if (data.content) {
                         setBilling(data.content);
                         setTotalPages(data.totalPages);
@@ -252,7 +252,7 @@ const HospitalAdminDashboard = () => {
                         setTotalElements(data.length);
                     }
                 } else if (activeTab === 'audit-logs') {
-                    const data = await hospitalService.getAuditLogs();
+                    const data = await hospitalService.getAuditLogs(searchTerm);
                     setAuditLogs(data);
                     setTotalPages(1); // Audit logs don't have pagination yet
                 }
@@ -562,14 +562,14 @@ const HospitalAdminDashboard = () => {
                     )}
 
                     {/* Standardized Header */}
-                    {activeTab !== 'dashboard' && (
+                    {activeTab !== 'dashboard' && activeTab !== 'pharmacy' &&  activeTab !== 'ipd' &&  activeTab !== 'pathology' && (
                         <PageHeader
                             title={tabs.find(t => t.id === activeTab)?.label}
                             subtitle={`Manage hospital ${activeTab} records`}
                             onSearch={(e) => setSearchTerm(e.target.value)}
                             searchValue={searchTerm}
                             searchPlaceholder={`Search ${activeTab}...`}
-                            onAdd={user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
+                            onAdd={activeTab !== 'billing' &&  activeTab !== 'audit-logs' && user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
                             addLabel={`Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'appointments' ? 'Appointment' : 'Billing'}`}
                             filter={activeTab === 'patients' ? (
                                 <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
@@ -653,18 +653,25 @@ const HospitalAdminDashboard = () => {
                                     )
                                 )}
                                 {activeTab === 'receptionists' && (
-                                    receptionists.length > 0 ? (
-                                        <ReceptionistsTable receptionists={receptionists} isAdmin={user?.role === 'HOSPITAL_ADMIN'} onDelete={handleDeleteReceptionist} startIndex={page * pageSize} pagination={pagination} />
-                                    ) : (
-                                        <EmptyState
-                                            icon="💁"
-                                            title="No Receptionists Found"
-                                            message="Add receptionists to help manage your hospital operations."
-                                            actionLabel="Add Receptionist"
-                                            onAction={user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
-                                        />
-                                    )
-                                )}
+    receptionists.length > 0 ? (
+        <ReceptionistsTable 
+            receptionists={receptionists} 
+            isAdmin={user?.role === 'HOSPITAL_ADMIN'} 
+            onDelete={handleDeleteReceptionist} 
+            onHistory={(r) => handleHistory('RECEPTIONIST', r.publicId || r.id, r.name)}
+            startIndex={page * pageSize} 
+            pagination={pagination} 
+        />
+    ) : (
+        <EmptyState
+            icon="💁"
+            title="No Receptionists Found"
+            message="Add receptionists to help manage your hospital operations."
+            actionLabel="Add Receptionist"
+            onAction={user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
+        />
+    )
+)}
                                 {activeTab === 'appointments' && (
                                     appointments.length > 0 ? (
                                         <AppointmentsTable appointments={appointments} doctors={doctors} isAdmin={user?.role === 'HOSPITAL_ADMIN'} onDelete={handleDeleteAppointment} onStatusUpdate={onAppointmentStatusUpdate} onHistory={(item) => handleHistory('APPOINTMENT', item.publicId || item.id, "Appointment")} startIndex={page * pageSize} pagination={pagination} />
@@ -979,23 +986,30 @@ const AppointmentsTable = ({ appointments, doctors, isAdmin, onDelete, onStatusU
             columnHelper.display({
                 id: 'actions',
                 header: () => <div className="text-right">Actions</div>,
-                cell: info => (
-                    <div className="text-right">
-                        <ActionMenu actions={[
-                            {
-                                label: 'History',
-                                onClick: () => onHistory(info.row.original),
-                                icon: <span role="img" aria-label="history">📜</span>
-                            },
-                            {
-                                label: 'Delete',
-                                onClick: () => onDelete(info.row.original.publicId || info.row.original.id),
-                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>,
-                                danger: true
-                            }
-                        ]} />
-                    </div>
-                ),
+                cell: info => {
+                    const status = info.row.original.status;
+                    const isFinal = ['CANCELLED', 'COMPLETED'].includes(status);
+                    
+                    return (
+                        <div className="text-right">
+                            <ActionMenu actions={[
+                                {
+                                    label: 'History',
+                                    onClick: () => onHistory(info.row.original),
+                                    icon: <span role="img" aria-label="history">📜</span>
+                                },
+                                ...(isFinal ? [] : [
+                                    {
+                                        label: 'Delete',
+                                        onClick: () => onDelete(info.row.original.publicId || info.row.original.id),
+                                        icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>,
+                                        danger: true
+                                    }
+                                ])
+                            ]} />
+                        </div>
+                    );
+                },
             })
         ] : []),
     ];

@@ -88,8 +88,6 @@ const getStatusConfig = (status) => {
             border: 'border-neutral-200',
             dot: 'bg-neutral-500',
             icon: '📝'
-        }
-            icon: '🔄'
         },
         'CONSULTING': { 
             bg: 'bg-primary-100', 

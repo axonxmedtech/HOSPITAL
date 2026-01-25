@@ -237,34 +237,11 @@ public class AppointmentService {
     }
 
     /**
-     * Get all active appointments for the current hospital
-     * Automatically filters by hospital_id from security context
-     * 
-     * @return List of active appointments for the hospital
+     * Get all active appointments for the current hospital with pagination,
+     * search, and optional view filter
      */
-    /**
-     * Get all active appointments for the current hospital with pagination
-     * Automatically filters by hospital_id from security context
-     * 
-     * @return Page of active appointments for the hospital
-     */
-    public org.springframework.data.domain.Page<Appointment> getAllAppointments(
-            org.springframework.data.domain.Pageable pageable) {
-        // Enforce OPD Module Access
-        Long hospitalId = securityHelper.getCurrentHospitalId();
-        if (hospitalId != null)
-            validateOpdAccess(hospitalId);
-
-        return getAllAppointments(pageable, null);
-    }
-
-    /**
-     * Get all active appointments for the current hospital with pagination and
-     * optional view filter
-     */
-    public org.springframework.data.domain.Page<Appointment> getAllAppointments(
+    public org.springframework.data.domain.Page<Appointment> getAllAppointments(String search,
             org.springframework.data.domain.Pageable pageable, String view) {
-        // Get hospital_id from security context (multi-tenant isolation)
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
         if (hospitalId == null) {
@@ -275,29 +252,54 @@ public class AppointmentService {
         java.time.LocalDate today = java.time.LocalDate.now();
 
         if (view == null || view.isEmpty()) {
-            page = appointmentRepository
-                    .findByHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(hospitalId, pageable);
+            if (search != null && !search.isEmpty()) {
+                page = appointmentRepository.searchAppointments(hospitalId, search, pageable);
+            } else {
+                page = appointmentRepository
+                        .findByHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(hospitalId, pageable);
+            }
         } else {
             switch (view.toLowerCase()) {
                 case "today":
-                    page = appointmentRepository
-                            .findByHospitalIdAndAppointmentDateAndIsActiveTrueOrderByAppointmentTimeAsc(hospitalId,
-                                    today, pageable);
+                    if (search != null && !search.isEmpty()) {
+                        page = appointmentRepository
+                                .searchAppointmentsByDate(hospitalId, search, today, pageable);
+                    } else {
+                        page = appointmentRepository
+                                .findByHospitalIdAndAppointmentDateAndIsActiveTrueOrderByAppointmentTimeAsc(hospitalId,
+                                        today, pageable);
+                    }
                     break;
                 case "upcoming":
-                    page = appointmentRepository
-                            .findByHospitalIdAndAppointmentDateAfterAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
-                                    hospitalId, today, pageable);
+                    if (search != null && !search.isEmpty()) {
+                        page = appointmentRepository
+                                .searchAppointmentsByDateAfter(hospitalId, search, today, pageable);
+                    } else {
+                        page = appointmentRepository
+                                .findByHospitalIdAndAppointmentDateAfterAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
+                                        hospitalId, today, pageable);
+                    }
                     break;
                 case "history":
-                    page = appointmentRepository
-                            .findByHospitalIdAndIsActiveTrueAndAppointmentDateBeforeOrHospitalIdAndIsActiveTrueAndStatusInOrderByAppointmentDateDescAppointmentTimeDesc(
-                                    hospitalId, today, hospitalId, java.util.Arrays.asList("COMPLETED", "CANCELLED"),
-                                    pageable);
+                    if (search != null && !search.isEmpty()) {
+                        page = appointmentRepository
+                                .searchAppointmentsHistory(hospitalId, search, today, pageable);
+                    } else {
+                        page = appointmentRepository
+                                .findByHospitalIdAndIsActiveTrueAndAppointmentDateBeforeOrHospitalIdAndIsActiveTrueAndStatusInOrderByAppointmentDateDescAppointmentTimeDesc(
+                                        hospitalId, today, hospitalId,
+                                        java.util.Arrays.asList("COMPLETED", "CANCELLED"),
+                                        pageable);
+                    }
                     break;
                 default:
-                    page = appointmentRepository
-                            .findByHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(hospitalId, pageable);
+                    if (search != null && !search.isEmpty()) {
+                        page = appointmentRepository
+                                .searchAppointments(hospitalId, search, pageable);
+                    } else {
+                        page = appointmentRepository
+                                .findByHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(hospitalId, pageable);
+                    }
             }
         }
 
@@ -314,16 +316,6 @@ public class AppointmentService {
         List<Appointment> list = appointmentRepository
                 .findByHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(hospitalId);
         return populateNames(list);
-    }
-
-    /**
-     * Get active appointments for a specific doctor
-     * 
-     * @param doctorId Doctor ID
-     * @return List of active appointments for the doctor
-     */
-    public List<Appointment> getAppointmentsByDoctor(Long doctorId) {
-        return getAppointmentsByDoctor(doctorId, null);
     }
 
     /**
@@ -564,7 +556,7 @@ public class AppointmentService {
                         securityHelper.getCurrentUserEmail(),
                         hospitalId,
                         "APPOINTMENT",
-                        publicId,
+                        saved.getPublicId(),
                         reason);
             } catch (Exception e) {
                 logger.warn("Failed to log audit for status change", e);
@@ -637,7 +629,7 @@ public class AppointmentService {
                     securityHelper.getCurrentUserEmail(),
                     hospitalId,
                     "APPOINTMENT",
-                    publicId,
+                    saved.getPublicId(),
                     null);
         } catch (Exception e) {
             logger.warn("Failed to log appointment update", e);
@@ -668,16 +660,11 @@ public class AppointmentService {
     }
 
     /**
-     * Get appointments for the currently logged-in doctor
+     * Get appointments for the currently logged-in doctor with pagination, search,
+     * and optional view filter
      */
-    public List<Appointment> getMyAppointments() {
-        return getMyAppointments(null);
-    }
-
-    /**
-     * Get appointments for the currently logged-in doctor with optional view filter
-     */
-    public List<Appointment> getMyAppointments(String view) {
+    public org.springframework.data.domain.Page<Appointment> getMyAppointments(String view, String search,
+            org.springframework.data.domain.Pageable pageable) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
             throw new RuntimeException("Hospital ID not found in context");
@@ -687,7 +674,84 @@ public class AppointmentService {
         com.hms.entity.Doctor doctor = doctorRepository.findByEmailAndHospitalId(email, hospitalId)
                 .orElseThrow(() -> new RuntimeException("Doctor profile not found for current user"));
 
-        return getAppointmentsByDoctor(doctor.getId(), view);
+        return getAppointmentsByDoctorPaginated(doctor.getId(), view, search, pageable);
+    }
+
+    /**
+     * Get paginated appointments for a specific doctor with search and view filter
+     */
+    public org.springframework.data.domain.Page<Appointment> getAppointmentsByDoctorPaginated(Long doctorId,
+            String view, String search, org.springframework.data.domain.Pageable pageable) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital ID not found in context");
+        }
+
+        // Verify doctor belongs to this hospital and is active
+        doctorRepository.findByIdAndHospitalIdAndIsActiveTrue(doctorId, hospitalId)
+                .orElseThrow(() -> new RuntimeException("Doctor not found in your hospital or is inactive"));
+
+        org.springframework.data.domain.Page<Appointment> page;
+        java.time.LocalDate today = java.time.LocalDate.now();
+
+        if (view == null || view.isEmpty()) {
+            // Default: All active appointments
+            if (search != null && !search.isEmpty()) {
+                page = appointmentRepository.searchAppointmentsByDoctor(doctorId, hospitalId, search, pageable);
+            } else {
+                page = appointmentRepository
+                        .findByDoctorIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(doctorId, hospitalId,
+                                pageable);
+            }
+        } else {
+            switch (view.toLowerCase()) {
+                case "today":
+                    if (search != null && !search.isEmpty()) {
+                        page = appointmentRepository
+                                .searchAppointmentsByDoctorAndDate(doctorId, hospitalId, search, today, pageable);
+                    } else {
+                        page = appointmentRepository
+                                .findByDoctorIdAndAppointmentDateAndIsActiveTrueOrderByAppointmentTimeAsc(doctorId,
+                                        today, pageable);
+                    }
+                    break;
+                case "upcoming":
+                    if (search != null && !search.isEmpty()) {
+                        page = appointmentRepository
+                                .searchAppointmentsByDoctorAndDateAfter(doctorId, hospitalId, search, today, pageable);
+                    } else {
+                        page = appointmentRepository
+                                .findByDoctorIdAndAppointmentDateAfterAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
+                                        doctorId, today, pageable);
+                    }
+                    break;
+                case "history":
+                    if (search != null && !search.isEmpty()) {
+                        page = appointmentRepository
+                                .searchAppointmentsHistoryByDoctor(doctorId, hospitalId, search, today, pageable);
+                    } else {
+                        page = appointmentRepository
+                                .findByDoctorIdAndIsActiveTrueAndAppointmentDateBeforeOrDoctorIdAndIsActiveTrueAndStatusInOrderByAppointmentDateDescAppointmentTimeDesc(
+                                        doctorId, today, doctorId, java.util.Arrays.asList("COMPLETED", "CANCELLED"),
+                                        pageable);
+                    }
+                    break;
+                default:
+                    if (search != null && !search.isEmpty()) {
+                        page = appointmentRepository.searchAppointmentsByDoctor(doctorId, hospitalId, search, pageable);
+                    } else {
+                        page = appointmentRepository
+                                .findByDoctorIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(doctorId,
+                                        hospitalId, pageable);
+                    }
+            }
+        }
+
+        // Populate names (using list from page)
+        populateNames(page.getContent());
+
+        return page;
     }
 
     private void validateOpdAccess(Long hospitalId) {

@@ -7,7 +7,7 @@ import java.util.List;
 @Data
 public class ConsultationRequest {
     private Long appointmentId; // Optional - for appointment-based consultations
-    private String patientId; // Required - patient public ID
+    private Long patientId; // Required - patient public ID
     private String symptoms;
     private String diagnosis;
     private String treatmentNotes;

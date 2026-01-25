@@ -60,9 +60,6 @@ const ConfirmationModal = ({ isOpen, title, message, onConfirm, onCancel, showRe
                                 rows="3"
                                 required
                             />
-                            <p className="text-xs text-red-500 mt-1">
-                                Note: This action cannot be reverted.
-                            </p>
                         </div>
                     )}
 

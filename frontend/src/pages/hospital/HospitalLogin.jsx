@@ -101,7 +101,7 @@ const HospitalLogin = () => {
     };
 
     return (
-        <div className="min-h-screen bg-neutral-50 flex items-center justify-center px-6 py-12">
+        <div className="min-h-screen bg-neutral-50 flex items-center justify-center px-6">
             {/* Background Pattern */}
             <div className="absolute inset-0 bg-gradient-to-br from-neutral-50 via-white to-neutral-100"></div>
             

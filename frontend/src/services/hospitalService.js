@@ -146,8 +146,9 @@ const hospitalService = {
     /**
      * Get all receptionists for the current hospital
      */
-    getReceptionists: async (page = 0, size = 10) => {
-        const response = await apiClient.get(`/hospital/receptionists?page=${page}&size=${size}`);
+    getReceptionists: async (search, page = 0, size = 10) => {
+        const query = search ? `?search=${search}&page=${page}&size=${size}` : `?page=${page}&size=${size}`;
+        const response = await apiClient.get(`/hospital/receptionists${query}`);
         return response.data; // Now returns { content: [...], totalElements: ..., totalPages: ... }
     },
 
@@ -173,8 +174,9 @@ const hospitalService = {
     /**
      * Get all pharmacists
      */
-    getPharmacists: async (page = 0, size = 10) => {
-        const response = await apiClient.get(`/hospital/pharmacists?page=${page}&size=${size}`);
+    getPharmacists: async (search, page = 0, size = 10) => {
+        const query = search ? `?search=${search}&page=${page}&size=${size}` : `?page=${page}&size=${size}`;
+        const response = await apiClient.get(`/hospital/pharmacists${query}`);
         return response.data;
     },
 
@@ -253,9 +255,11 @@ const hospitalService = {
     },
 
     // --- Billing ---
-    getBills: async (page = 0, size = 10) => {
-        const response = await apiClient.get(`/hospital/billing?page=${page}&size=${size}`);
-        return response.data;
+    getBills: async (search = '', page = 0, size = 10) => {
+        let url = `/hospital/billing?page=${page}&size=${size}`;
+        if (search) url += `&search=${encodeURIComponent(search)}`;
+        const response = await apiClient.get(url);
+        return response.data; // Returns Page object with { content: [...], totalElements: ..., totalPages: ... }
     },
 
     updateBillStatus: async (id, status, paymentMethod) => {
@@ -277,8 +281,9 @@ const hospitalService = {
     /**
      * Get all appointments for the current hospital
      */
-    getAppointments: async (page = 0, size = 10, view) => {
+    getAppointments: async (searchTerm = '', page = 0, size = 10, view) => {
         let url = `/hospital/appointments?page=${page}&size=${size}`;
+        if (searchTerm) url += `&search=${encodeURIComponent(searchTerm)}`;
         if (view) url += `&view=${view}`;
         const response = await apiClient.get(url);
         return response.data; // Now returns { content: [...], totalElements: ..., totalPages: ... }
@@ -337,8 +342,10 @@ const hospitalService = {
     /**
      * Get appointments for the logged-in doctor
      */
-    getMyAppointments: async (view) => {
-        const query = view ? `?view=${view}` : '';
+    getMyAppointments: async (view, search, page = 0, size = 10) => {
+        let query = `?page=${page}&size=${size}`;
+        if (view) query += `&view=${view}`;
+        if (search) query += `&search=${encodeURIComponent(search)}`;
         const response = await apiClient.get(`/hospital/appointments/my-appointments${query}`);
         return response.data;
     },
@@ -416,8 +423,8 @@ const hospitalService = {
     /**
      * Get recent activity for dashboard
      */
-    getAuditLogs: async () => {
-        const response = await apiClient.get('/hospital/audit-logs');
+    getAuditLogs: async (searchTerm) => {
+        const response = await apiClient.get(`/hospital/audit-logs${searchTerm ? `?search=${encodeURIComponent(searchTerm)}` : ''}`);
         return response.data;
     },
 

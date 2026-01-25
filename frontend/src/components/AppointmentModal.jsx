@@ -27,6 +27,27 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
         "15:00", "15:30", "16:00", "16:30", "17:00"
     ];
 
+    // Get today's date and current time
+    const today = new Date();
+    const todayString = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+    const currentTime = today.getHours().toString().padStart(2, '0') + ':' + 
+                       today.getMinutes().toString().padStart(2, '0'); // HH:mm format
+
+    // Filter available time slots based on selected date
+    const getAvailableSlots = () => {
+        if (!formData.appointmentDate) return TIME_SLOTS;
+
+        // If selected date is today, filter out past times
+        if (formData.appointmentDate === todayString) {
+            return TIME_SLOTS.filter(slot => slot > currentTime);
+        }
+
+        // If selected date is in future, show all slots
+        return TIME_SLOTS;
+    };
+
+    const availableSlots = getAvailableSlots();
+
     // Reset when modal opens
     useEffect(() => {
         if (isOpen) {
@@ -344,6 +365,7 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
                             type="date"
                             value={formData.appointmentDate || ''}
                             onChange={(e) => handleChange('appointmentDate', e.target.value)}
+                            min={todayString}
                             className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.appointmentDate ? 'border-red-500' : 'border-gray-300'}`}
                         />
                         {errors.appointmentDate && <p className="text-red-500 text-xs mt-1">{errors.appointmentDate}</p>}
@@ -355,9 +377,13 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
                             <label className="block text-sm font-medium text-gray-700 mb-2">Available Slots *</label>
                             {loadingSlots ? (
                                 <div className="text-sm text-gray-500">Checking availability...</div>
+                            ) : availableSlots.length === 0 ? (
+                                <div className="text-sm text-gray-500 text-center py-4">
+                                    No available slots for today. Please select a future date.
+                                </div>
                             ) : (
                                 <div className="grid grid-cols-4 gap-2">
-                                    {TIME_SLOTS.map(time => {
+                                    {availableSlots.map(time => {
                                         const isBooked = bookedSlots.includes(time);
                                         const isSelected = selectedSlot === time;
                                         return (

@@ -24,9 +24,9 @@ const Sidebar = ({ title, tabs, activeTab, onTabChange, footerTitle, footerData,
     const theme = variants[variant] || variants.primary;
 
     return (
-        <aside className="w-72 bg-white shadow-soft z-20 hidden md:flex flex-col h-full border-r border-neutral-200 font-sans">
+        <aside className="w-72 bg-white shadow-soft z-20 hidden md:flex flex-col h-full border-r border-neutral-200 font-sans overflow-hidden">
             {/* Header Section */}
-            <div className="p-8 border-b border-neutral-100">
+            <div className="p-8 border-b border-neutral-100 pb-0">
                 <div className="flex items-center gap-4 mb-8">
                     <div className={`${theme.bgIcon} p-3 rounded-2xl ${theme.textIcon} shadow-soft hover:shadow-soft-lg transition-all duration-300 hover:scale-105`}>
                         <span className="text-2xl">
@@ -40,7 +40,7 @@ const Sidebar = ({ title, tabs, activeTab, onTabChange, footerTitle, footerData,
                 </div>
 
                 {/* Navigation */}
-                <nav className="space-y-2">
+                <nav className="space-y-2 max-h-[calc(100vh-230px)] overflow-y-auto scrollbar-hide">
                     {tabs.map((tab, index) => (
                         <button
                             key={tab.id}

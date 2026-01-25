@@ -81,15 +81,16 @@ public class PatientService {
      * @param updatedData New patient data
      * @return Updated Patient entity
      */
-    public Patient updatePatient(String publicId, Patient updatedData) {
+    public Patient updatePatient(Long publicId, Patient updatedData) {
         // Ensure patient exists and belongs to this hospital
-        Patient existingPatient = getPatientByPublicId(publicId);
+        Patient existingPatient = getPatientById(publicId);
 
         existingPatient.setName(updatedData.getName());
         existingPatient.setAge(updatedData.getAge());
         existingPatient.setGender(updatedData.getGender());
         existingPatient.setPhone(updatedData.getPhone());
         existingPatient.setAddress(updatedData.getAddress());
+        existingPatient.setMedicalHistory(updatedData.getMedicalHistory());
 
         return patientRepository.save(existingPatient);
     }
@@ -287,14 +288,14 @@ public class PatientService {
      * @param publicId Patient public ID
      * @return Map containing patient details and medical history
      */
-    public java.util.Map<String, Object> getPatientConsultationDetails(String publicId) {
+    public java.util.Map<String, Object> getPatientConsultationDetails(Long publicId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
             throw new RuntimeException("Hospital ID not found in context");
         }
 
         // Get patient
-        Patient patient = getPatientByPublicId(publicId);
+        Patient patient = getPatientById(publicId);
 
         // Get medical history (last 5 consultations)
         List<com.hms.entity.MedicalRecord> medicalHistory = medicalRecordRepository

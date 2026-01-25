@@ -63,10 +63,13 @@ public class BillingService {
     }
 
     /**
-     * Get all bills for current hospital
+     * Get all bills for current hospital with optional search
      */
-    public Page<Billing> getAllBills(Pageable pageable) {
+    public Page<Billing> getAllBills(String search, Pageable pageable) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (search != null && !search.isEmpty()) {
+            return billingRepository.searchBillings(hospitalId, search, pageable);
+        }
         return billingRepository.findByHospitalId(hospitalId, pageable);
     }
 

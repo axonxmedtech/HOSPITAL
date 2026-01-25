@@ -26,7 +26,8 @@ public class HospitalAuditController {
      * Get all recent activity for the current hospital.
      */
     @GetMapping
-    public ResponseEntity<List<AuditLog>> getRecentActivity() {
+    public ResponseEntity<List<AuditLog>> getRecentActivity(
+            @RequestParam(required = false) String search) {
         try {
             Long hospitalId = securityHelper.getCurrentHospitalId();
 
@@ -35,7 +36,7 @@ public class HospitalAuditController {
                 return ResponseEntity.ok(java.util.Collections.emptyList());
             }
 
-            List<AuditLog> logs = auditLogService.getLogsByHospitalId(hospitalId);
+            List<AuditLog> logs = auditLogService.getLogsByHospitalId(hospitalId, search);
             // Return only the last 20 for the Dashboard feed
             if (logs.size() > 20) {
                 logs = logs.subList(0, 20);

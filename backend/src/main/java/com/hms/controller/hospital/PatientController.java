@@ -52,7 +52,7 @@ public class PatientController {
      */
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
-    public ResponseEntity<?> updatePatient(@PathVariable String id, @Valid @RequestBody Patient patient) {
+    public ResponseEntity<?> updatePatient(@PathVariable Long id, @Valid @RequestBody Patient patient) {
         try {
             Patient updatedPatient = patientService.updatePatient(id, patient);
             return ResponseEntity.ok(updatedPatient);
@@ -162,7 +162,7 @@ public class PatientController {
      */
     @GetMapping("/{publicId}/consultation-details")
     @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> getPatientConsultationDetails(@PathVariable String publicId) {
+    public ResponseEntity<?> getPatientConsultationDetails(@PathVariable Long publicId) {
         java.util.Map<String, Object> details = patientService.getPatientConsultationDetails(publicId);
         return ResponseEntity.ok(details);
     }

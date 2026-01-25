@@ -48,10 +48,11 @@ public class ReceptionistController {
 
     @GetMapping
     public ResponseEntity<?> getAllReceptionists(
+            @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         Pageable pageable = PageRequest.of(page, size);
-        return ResponseEntity.ok(receptionistService.getAllReceptionists(pageable));
+        return ResponseEntity.ok(receptionistService.getAllReceptionists(search, pageable));
     }
 
     @DeleteMapping("/{id}")

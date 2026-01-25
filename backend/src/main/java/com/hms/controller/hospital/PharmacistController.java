@@ -40,10 +40,11 @@ public class PharmacistController {
 
     @GetMapping
     public ResponseEntity<?> getAllPharmacists(
+            @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         Pageable pageable = PageRequest.of(page, size);
-        return ResponseEntity.ok(pharmacistService.getAllPharmacists(pageable));
+        return ResponseEntity.ok(pharmacistService.getAllPharmacists(search, pageable));
     }
 
     @DeleteMapping("/{id}")
