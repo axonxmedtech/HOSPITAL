@@ -6,6 +6,8 @@ const ActionMenu = ({ actions }) => {
     const [position, setPosition] = useState({ top: 0, left: 0 });
     const buttonRef = useRef(null);
 
+    const visibleActions = actions.filter(action => !action.hidden);
+
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (buttonRef.current && !buttonRef.current.contains(event.target) && !event.target.closest('.action-menu-dropdown')) {
@@ -49,7 +51,7 @@ const ActionMenu = ({ actions }) => {
             style={{ top: position.top, left: position.left }}
         >
             <div className="py-1" role="menu" aria-orientation="vertical">
-                {actions.map((action, index) => (
+                {visibleActions.map((action, index) => (
                     <button
                         key={index}
                         onClick={(e) => {

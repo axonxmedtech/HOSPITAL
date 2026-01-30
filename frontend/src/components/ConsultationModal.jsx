@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import hospitalService from '../services/hospitalService';
 import { useToast } from '../context/ToastContext';
 import MedicineAutocomplete from './MedicineAutocomplete';
@@ -9,18 +9,17 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient })
     const [patientDetails, setPatientDetails] = useState(null);
     const [loadingDetails, setLoadingDetails] = useState(false);
 
-    // Determine patient info from either appointment or direct patient
-    const patientInfo = appointment ? {
-        id: appointment.patientId,
-        name: appointment.patientName,
-        publicId: appointment.patientId // Assuming this is publicId
-    } : patient;
-
-    console.log("ConsultationModal derived patientInfo:", patientInfo);
+    useEffect(() => {
+        patient = {
+            id : appointment?.patientId,
+            name : appointment?.patientName,
+            publicId : appointment?.patientId
+        }
+    }, [isOpen]);
 
     const [formData, setFormData] = useState({
         appointmentId: appointment?.id || null,
-        patientId: patientInfo?.publicId || patientInfo?.id,
+        patientId: patient?.publicId || patient?.id,
         symptoms: '',
         diagnosis: '',
         treatmentNotes: '',
@@ -29,21 +28,21 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient })
     });
 
     // Update form data when modal opens or patient changes
+    // Update form data when modal opens or patient changes
     useEffect(() => {
-        if (isOpen && patientInfo) {
+        if (isOpen && patient) {
             setFormData(prev => ({
                 ...prev,
                 appointmentId: appointment?.id || null,
-                patientId: patientInfo?.publicId || patientInfo?.id,
-                // Preserve user input if switching tabs, but reset if new patient
-                symptoms: prev.patientId === (patientInfo?.publicId || patientInfo?.id) ? prev.symptoms : '',
-                diagnosis: prev.patientId === (patientInfo?.publicId || patientInfo?.id) ? prev.diagnosis : '',
-                treatmentNotes: prev.patientId === (patientInfo?.publicId || patientInfo?.id) ? prev.treatmentNotes : '',
-                followUpDate: prev.patientId === (patientInfo?.publicId || patientInfo?.id) ? prev.followUpDate : '',
-                prescription: prev.patientId === (patientInfo?.publicId || patientInfo?.id) ? prev.prescription : []
+                patientId: patient?.publicId || patient?.id,
+                symptoms: prev.patientId === (patient?.publicId || patient?.id) ? prev.symptoms : '',
+                diagnosis: prev.patientId === (patient?.publicId || patient?.id) ? prev.diagnosis : '',
+                treatmentNotes: prev.patientId === (patient?.publicId || patient?.id) ? prev.treatmentNotes : '',
+                followUpDate: prev.patientId === (patient?.publicId || patient?.id) ? prev.followUpDate : '',
+                prescription: prev.patientId === (patient?.publicId || patient?.id) ? prev.prescription : []
             }));
         }
-    }, [isOpen, patientInfo, appointment]);
+    }, [isOpen, patient?.id, patient?.publicId, appointment?.id]);
 
     // Default medicine added row
     const [newMedicine, setNewMedicine] = useState({
@@ -59,10 +58,10 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient })
     // Fetch patient details when modal opens
     useEffect(() => {
         const fetchPatientDetails = async () => {
-            if (isOpen && patientInfo?.publicId) {
+            if (isOpen && patient?.publicId) {
                 setLoadingDetails(true);
                 try {
-                    const details = await hospitalService.getPatientConsultationDetails(patientInfo.publicId);
+                    const details = await hospitalService.getPatientConsultationDetails(patient.publicId);
                     setPatientDetails(details);
                 } catch (err) {
                     console.error('Failed to fetch patient details:', err);
@@ -72,7 +71,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient })
             }
         };
         fetchPatientDetails();
-    }, [isOpen, patientInfo?.publicId]);
+    }, [isOpen, patient?.publicId]);
 
     if (!isOpen || (!appointment && !patient)) return null;
 
@@ -131,9 +130,9 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient })
                     <div>
                         <h3 className="text-xl font-bold text-gray-800">Patient Consultation</h3>
                         <p className="text-sm text-gray-600 mt-1">
-                            <span className="font-semibold text-gray-800">{patientInfo?.name || 'Unknown'}</span>
+                            <span className="font-semibold text-gray-800">{patientDetails?.patient?.name || 'Unknown'}</span>
                             <span className="mx-2">•</span>
-                            <span className="text-gray-500">ID: {patientInfo?.customId || patientInfo?.publicId || patientInfo?.id}</span>
+                            <span className="text-gray-500">ID: {patientDetails?.patient?.customId || patientDetails?.patient?.publicId || patientDetails?.patient?.id}</span>
                         </p>
                     </div>
                     <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition text-2xl">×</button>

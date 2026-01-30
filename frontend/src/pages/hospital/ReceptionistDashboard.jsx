@@ -131,7 +131,7 @@ const ReceptionistDashboard = () => {
             if (activeTab === 'appointments') {
                 // Fetch appointments (Server-side) + Doctors + Patients for lookup
                 const [apptData, docData, patData] = await Promise.all([
-                    hospitalService.getAppointments(page, pageSize, viewFilter),
+                    hospitalService.getAppointments(searchTerm, page, pageSize, viewFilter),
                     hospitalService.getDoctors('', 0, 100), // Fetch doctors for lookup
                     hospitalService.getPatients('', 0, 1000) // Fetch ALL patients (up to 1000) for lookup dropdown
                 ]);
@@ -166,7 +166,7 @@ const ReceptionistDashboard = () => {
                     setTotalElements(data.length);
                 }
             } else if (activeTab === 'billing') {
-                const data = await hospitalService.getBills(page, pageSize);
+                const data = await hospitalService.getBills(searchTerm, page, pageSize);
                 if (data.content) {
                     setBilling(data.content);
                     setTotalPages(data.totalPages);
@@ -373,7 +373,7 @@ const ReceptionistDashboard = () => {
     };
 
     return (
-        <div className="flex h-screen bg-gray-50">
+        <div className="flex h-screen bg-neutral-50">
             {/* Sidebar */}
             <Sidebar
                 title="HMS Portal"
@@ -393,7 +393,7 @@ const ReceptionistDashboard = () => {
                     onProfile={() => console.log('Profile clicked')}
                 />
 
-                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-8">
+                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-neutral-50 p-8">
                     {/* Stats for Receptionist */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                         <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-blue-500">
@@ -432,7 +432,7 @@ const ReceptionistDashboard = () => {
                         onSearch={(e) => setSearchTerm(e.target.value)}
                         searchValue={searchTerm}
                         searchPlaceholder={`Search ${activeTab}...`}
-                        onAdd={() => setIsAddModalOpen(true)}
+                        onAdd={activeTab !== 'billing' ? () => setIsAddModalOpen(true) : null}
                         addLabel={`Add ${activeTab.slice(0, -1)}`}
                         filter={activeTab === 'appointments' ? (
                             <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
@@ -827,6 +827,12 @@ const PatientsTable = ({ patients, onStatusUpdate, onViewPrescription, onViewDet
             header: 'NAME',
             cell: info => <span className="font-medium text-gray-900">{info.getValue()}</span>,
         }),
+        columnHelper.accessor('age', {
+            header: 'AGE',
+        }),
+        columnHelper.accessor('gender', {
+            header: 'GENDER',
+        }),
         columnHelper.accessor('phone', {
             header: 'PHONE',
         }),
@@ -834,86 +840,20 @@ const PatientsTable = ({ patients, onStatusUpdate, onViewPrescription, onViewDet
             header: 'ADDRESS',
             cell: info => <span className="truncate max-w-xs block">{info.getValue()}</span>
         }),
-        columnHelper.accessor('status', {
-            header: 'STATUS',
-            cell: info => {
-                const status = info.getValue() || 'REGISTERED';
-                const patient = info.row.original;
-                return (
-                    <StatusBadge
-                        status={status}
-                        options={['REGISTERED', 'CONSULTING', 'COMPLETED']}
-                        onUpdate={(newStatus) => onStatusUpdate(patient.publicId, newStatus)}
-                        type="dropdown"
-                    />
-                );
-            }
-        }),
-        columnHelper.display({
-            id: 'payment',
-            header: 'PAYMENT',
-            cell: info => {
-                const bill = info.row.original.latestBill;
-                if (!bill) return <span className="text-xs text-gray-400"></span>;
-
-                return (
-                    <div className="flex flex-col">
-                        <span className="font-semibold text-gray-900">₹{bill.amount}</span>
-                        {bill.paymentStatus === 'PAID' ? (
-                            <span className="text-xs text-green-600 font-medium flex items-center gap-1">
-                                ✅ Paid ({bill.paymentMethod || 'Cash'})
-                            </span>
-                        ) : (
-                            <span className="text-xs text-orange-600 font-medium">⏳ Pending</span>
-                        )}
-                    </div>
-                );
-            }
-        }),
         columnHelper.display({
             id: 'actions',
             header: () => <div className="text-right">ACTIONS</div>,
             cell: info => {
                 const patient = info.row.original;
-                const status = patient.status || 'REGISTERED';
 
-                const actions = [];
-
-                // Receptionist can view prescription for completed patients
-                if (status === 'COMPLETED') {
-                    actions.push({
-                        label: 'View Prescription',
-                        icon: '💊',
-                        onClick: () => onViewPrescription(patient)
-                    });
-                }
-
-                actions.push({
-                    label: 'View Details',
-                    icon: '👁️',
-                    onClick: () => onViewDetails(patient)
-                });
-
-                // Add Payment Action
-                if (patient.latestBill && patient.latestBill.paymentStatus === 'PENDING') {
-                    actions.unshift({
-                        label: 'Collect Payment',
-                        icon: '💰',
-                        onClick: () => onOpenPayment(patient),
-                        variant: 'primary'
-                    });
-                }
-
-                // Add Print Receipt Action for Paid Bills
-                if (patient.latestBill && patient.latestBill.paymentStatus === 'PAID') {
-                    actions.unshift({
-                        label: 'Print Receipt',
-                        icon: '🖨️',
-                        onClick: () => onDownloadReceipt(patient.latestBill.id),
-                        variant: 'secondary'
-                    });
-                }
-
+                const actions = [
+                    {
+                        label: 'View Details',
+                        icon: '👁️',
+                        onClick: () => onViewDetails(patient)
+                    }
+                ];
+                
                 return (
                     <div className="text-right">
                         <ActionMenu actions={actions} />

@@ -292,7 +292,7 @@ public class DoctorService {
         // Get patient (required)
         com.hms.entity.Patient patient;
         if (request.getPatientId() != null) {
-            patient = patientRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(request.getPatientId(), hospitalId)
+            patient = patientRepository.findByIdAndHospitalIdAndIsActiveTrue(request.getPatientId(), hospitalId)
                     .orElseThrow(() -> new RuntimeException("Patient not found"));
         } else {
             throw new RuntimeException("Patient ID is required");
@@ -388,8 +388,8 @@ public class DoctorService {
                     description,
                     securityHelper.getCurrentUserEmail(),
                     hospitalId,
-                    "MEDICAL_RECORD",
-                    savedRecord.getId().toString(),
+                    "APPOINTMENT",
+                    appointment != null ? appointment.getPublicId() : "N/A",
                     null);
         } catch (Exception e) {
             logger.warn("Failed to create audit log", e);

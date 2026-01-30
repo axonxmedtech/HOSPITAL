@@ -3,18 +3,18 @@ import UserMenu from './UserMenu';
 
 const Navbar = ({ title, user, onLogout, onProfile, actions }) => {
     return (
-        <header className="bg-white/95 backdrop-blur-sm border-b border-neutral-100 shadow-soft z-10 w-full sticky top-0">
+        <header className="bg-white/95 backdrop-blur-sm border-b border-neutral-200 shadow-soft z-10 w-full sticky top-0">
             <div className="flex justify-between items-center px-8 py-6">
                 <div className="flex items-center gap-6">
                     {/* Breadcrumb-style title */}
                     <div className="flex items-center gap-3">
                         <div className="w-2 h-2 bg-primary-500 rounded-full animate-pulse"></div>
                         <div>
-                            <h2 className="text-2xl font-bold text-neutral-800 tracking-tight capitalize flex items-center gap-2">
+                            <h2 className="text-2xl font-bold text-slate-800 tracking-tight capitalize flex items-center gap-2">
                                 {title}
                                 <span className="text-primary-500 text-lg">•</span>
                             </h2>
-                            <p className="text-sm text-neutral-500 mt-0.5 font-medium">
+                            <p className="text-sm text-slate-500 mt-0.5 font-medium">
                                 {getSubtitleForTab(title)}
                             </p>
                         </div>

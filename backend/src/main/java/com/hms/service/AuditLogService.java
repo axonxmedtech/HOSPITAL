@@ -42,10 +42,11 @@ public class AuditLogService {
         auditLogRepository.save(log);
     }
 
-    public List<AuditLog> getLogsByHospitalId(Long hospitalId) {
-        // We'll need to add this method to repository or use a custom query
-        // For now assuming the repository will handle it or we'll filter (not ideal for
-        // large data, but okay for start)
+    public List<AuditLog> getLogsByHospitalId(Long hospitalId, String search) {
+        if (search != null && !search.isBlank()) {
+            return auditLogRepository.findByHospitalIdAndActionContainingIgnoreCaseOrderByTimestampDesc(hospitalId,
+                    search);
+        }
         return auditLogRepository.findByHospitalIdOrderByTimestampDesc(hospitalId);
     }
 

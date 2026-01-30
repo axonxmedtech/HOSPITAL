@@ -52,7 +52,6 @@ const DoctorDashboard = () => {
         setSearchParams({ tab: activeTab, patientFilter: filter });
     };
 
-    const [selectedDate, setSelectedDate] = useState(''); // Empty = All, Date String = Specific Date
     const [appointments, setAppointments] = useState([]);
     const [patients, setPatients] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -160,68 +159,44 @@ const DoctorDashboard = () => {
     }, [activeTab, searchTerm, viewFilter, patientViewFilter]);
 
     useEffect(() => {
-        const todayStr = new Date().toISOString().split('T')[0];
+        // Use local date instead of UTC
+        const today = new Date();
+        const todayStr = today.getFullYear() + '-' + 
+                        String(today.getMonth() + 1).padStart(2, '0') + '-' + 
+                        String(today.getDate()).padStart(2, '0');
+        
         const todayCount = appointments.filter(a => a.appointmentDate === todayStr).length;
         const pendingCount = appointments.filter(a => a.status === 'SCHEDULED').length;
-
+        
         setStats({
             today: todayCount,
             pending: pendingCount,
-            total: appointments.length
+            total: totalElements // Use totalElements from server instead of local array length
         });
-    }, [appointments]);
+    }, [appointments, totalElements]);
 
-    useEffect(() => {
-        const applyPagination = () => {
-            let allData = [];
-
-            if (activeTab === 'appointments') {
-                allData = appointments;
-                // Filter by Date if selected
-                if (selectedDate) {
-                    allData = allData.filter(a => a.appointmentDate === selectedDate);
-                }
-            }
-            else if (activeTab === 'patients') allData = patients;
-
-            // Client-side search filtering
-            if (searchTerm) {
-                const term = searchTerm.toLowerCase();
-                if (activeTab === 'appointments') {
-                    allData = allData.filter(a =>
-                        a.patientId.toString().includes(term) ||
-                        (a.notes && a.notes.toLowerCase().includes(term))
-                    );
-                }
-            }
-
-            // Ensure allData is an array before using array methods
-            if (!Array.isArray(allData)) {
-                console.error('allData is not an array:', allData);
-                allData = [];
-            }
-
-            setTotalPages(Math.ceil(allData.length / ITEMS_PER_PAGE));
-            setTotalElements(allData.length);
-            const start = (page - 1) * ITEMS_PER_PAGE;
-            setPaginatedData(allData.slice(start, start + ITEMS_PER_PAGE));
-        };
-        applyPagination();
-    }, [appointments, patients, page, activeTab, searchTerm, selectedDate]);
-
+    
     const loadData = async () => {
         setLoading(true);
         try {
             if (activeTab === 'appointments') {
-                const data = await hospitalService.getMyAppointments(viewFilter);
+                const localPage = page - 1;
+                const data = await hospitalService.getMyAppointments(viewFilter, searchTerm, localPage, ITEMS_PER_PAGE,);
                 // Handle both array and paginated response
                 const appointmentsArray = Array.isArray(data) ? data : (data.content || []);
                 setAppointments(appointmentsArray);
+                setTotalElements(data.totalElements || 0);
+                setTotalPages(data.totalPages || 1);
             } else if (activeTab === 'patients') {
-                const data = await hospitalService.getPatients(searchTerm, 0, 1000, patientViewFilter);
-                // Handle both array and paginated response
+                const data = await hospitalService.getPatients(
+                    searchTerm, 
+                    page - 1, 
+                    ITEMS_PER_PAGE
+                );
                 const patientsArray = Array.isArray(data) ? data : (data.content || []);
                 setPatients(patientsArray);
+                setTotalElements(data.totalElements || 0);
+                setTotalPages(data.totalPages || 1);
             }
         } catch (err) {
             toastError('Failed to load data');
@@ -312,7 +287,25 @@ const DoctorDashboard = () => {
             link.click();
             link.remove();
         } catch (err) {
-            toastError("Failed to download prescription");
+            // Check if error response is a blob
+            if (err.response?.data instanceof Blob) {
+                // Read blob as text to extract error message
+                err.response.data.text().then(text => {
+                    if (text.toLowerCase().includes('consultation not found')) {
+                        toastError("Prescription not found");
+                    } else {
+                        toastError("Failed to download prescription");
+                    }
+                });
+            } else {
+                // Handle regular JSON error response
+                const errorMessage = err.response?.data?.message || err.message || '';
+                if (errorMessage.toLowerCase().includes('consultation not found')) {
+                    toastError("Prescription not found");
+                } else {
+                    toastError("Failed to download prescription");
+                }
+            }
             console.error(err);
         }
     };
@@ -363,7 +356,7 @@ const DoctorDashboard = () => {
     };
 
     return (
-        <div className="flex h-screen bg-gray-50">
+        <div className="flex h-screen bg-neutral-50">
             {/* Sidebar */}
             <Sidebar
                 title="HMS Portal"
@@ -377,7 +370,7 @@ const DoctorDashboard = () => {
             {/* Main Content Wrapper */}
             <div className="flex-1 flex flex-col overflow-hidden">
                 {/* Navbar */}
-                <Navbar
+                 <Navbar
                     title={tabs.find(t => t.id === activeTab)?.label}
                     user={user}
                     onLogout={handleLogout}
@@ -385,7 +378,7 @@ const DoctorDashboard = () => {
                 />
 
                 {/* Main Content Area */}
-                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-8">
+                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-neutral-50 p-8">
 
                     {/* Stats Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -442,27 +435,6 @@ const DoctorDashboard = () => {
                                         </button>
                                     ))}
                                 </div>
-                                <div className="h-6 w-px bg-gray-300 mx-2"></div>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-sm text-gray-600 hidden sm:inline">Filter Date:</span>
-                                    <div className="relative">
-                                        <input
-                                            type="date"
-                                            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none shadow-sm"
-                                            value={selectedDate}
-                                            onChange={(e) => setSelectedDate(e.target.value)}
-                                        />
-                                        {selectedDate && (
-                                            <button
-                                                onClick={() => setSelectedDate('')}
-                                                className="absolute -right-2 -top-2 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs hover:bg-red-600 shadow-sm"
-                                                title="Clear date"
-                                            >
-                                                ×
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
                             </div>
                         ) : activeTab === 'patients' ? (
                             <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
@@ -490,14 +462,14 @@ const DoctorDashboard = () => {
                         <>
                             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-4">
                                 {activeTab === 'appointments' ? (
-                                    paginatedData.length > 0 ? (
+                                    appointments.length > 0 ? (
                                         <DoctorAppointmentsTable
-                                            appointments={paginatedData}
+                                            appointments={appointments}
                                             onStatusUpdate={handleStatusUpdate}
                                             onEdit={handleEditClick}
                                             onConsult={handleConsultClick}
                                             onPrint={handlePrintPrescription}
-                                            onAuditHistory={(item) => handleAuditHistory('APPOINTMENT', item.customId || item.id, "Appointment")}
+                                            onAuditHistory={(item) => handleAuditHistory('APPOINTMENT', item.publicId || item.id, "Appointment")}
                                             startIndex={(page - 1) * ITEMS_PER_PAGE}
                                             pagination={pagination}
                                         />
@@ -505,13 +477,13 @@ const DoctorDashboard = () => {
                                         <EmptyState
                                             icon="📅"
                                             title="No Appointments"
-                                            message={selectedDate ? `No appointments scheduled for ${selectedDate}.` : "You have no appointments scheduled."}
+                                            message="No appointments found for the selected filter."
                                         />
                                     )
                                 ) : (
-                                    paginatedData.length > 0 ? (
+                                    patients.length > 0 ? (
                                         <DoctorPatientsTable
-                                            patients={paginatedData}
+                                            patients={patients}
                                             onViewHistory={handleViewHistory}
                                             onStartConsultation={handleStartConsultation}
                                             onCompleteConsultation={handleCompleteConsultation}
@@ -524,7 +496,7 @@ const DoctorDashboard = () => {
                                         <EmptyState
                                             icon="👥"
                                             title="No Patients"
-                                            message="No patients found in the hospital."
+                                            message="No patients found."
                                         />
                                     )
                                 )}
@@ -541,19 +513,6 @@ const DoctorDashboard = () => {
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                     <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 m-4">
                         <h3 className="text-xl font-bold text-gray-800 mb-4">Edit Appointment Details</h3>
-
-                        <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                            <select
-                                value={editModal.status}
-                                onChange={(e) => setEditModal({ ...editModal, status: e.target.value })}
-                                className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500"
-                            >
-                                <option value="SCHEDULED">Scheduled</option>
-                                <option value="COMPLETED">Completed</option>
-                                <option value="CANCELLED">Cancelled</option>
-                            </select>
-                        </div>
 
                         <div className="mb-6">
                             <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
@@ -684,32 +643,27 @@ const DoctorAppointmentsTable = ({ appointments, onStatusUpdate, onEdit, onConsu
                             icon: '📜',
                             onClick: () => onAuditHistory(info.row.original)
                         },
-                        {
-                            label: 'Edit Details',
-                            icon: '✏️',
-                            onClick: () => onEdit(info.row.original)
-                        },
                         // Only show status actions if not final
                         ...(info.row.original.status === 'SCHEDULED' ? [{
                             label: 'Start Consultation',
                             icon: '🩺',
                             onClick: () => onConsult(info.row.original)
-                        }, {
-                            label: 'Mark Completed',
-                            icon: '✅',
-                            onClick: () => onStatusUpdate(info.row.original.id, 'COMPLETED')
+                        },{
+                            label: 'Cancel Appointment',
+                            icon: '❌',
+                            onClick: () => onStatusUpdate(info.row.original.id, 'CANCELLED'),
+                            variant: 'danger'
+                        },{
+                            label: 'Edit Details',
+                            icon: '✏️',
+                            onClick: () => onEdit(info.row.original)
                         }] : []),
                         ...(info.row.original.status === 'COMPLETED' ? [{
                             label: 'Print Prescription',
                             icon: '🖨️',
                             onClick: () => onPrint(info.row.original.id)
                         }] : []),
-                        {
-                            label: 'Cancel Appointment',
-                            icon: '❌',
-                            onClick: () => onStatusUpdate(info.row.original.id, 'CANCELLED'),
-                            variant: 'danger'
-                        }
+                        
                     ]} />
                 </div>
             ),
@@ -746,20 +700,9 @@ const DoctorPatientsTable = ({ patients, onViewHistory, onStartConsultation, onC
         columnHelper.accessor('phone', {
             header: 'PHONE',
         }),
-        columnHelper.accessor('status', {
-            header: 'STATUS',
-            cell: info => {
-                const status = info.getValue() || 'REGISTERED';
-                const patient = info.row.original;
-                return (
-                    <StatusBadge
-                        status={status}
-                        options={['REGISTERED', 'CONSULTING', 'COMPLETED']}
-                        onUpdate={(newStatus) => onStatusUpdate(patient.publicId, newStatus)}
-                        type="dropdown"
-                    />
-                );
-            }
+        columnHelper.accessor('address', {
+            header: 'ADDRESS',
+            cell: info => <span className="truncate max-w-xs block">{info.getValue()}</span>
         }),
         columnHelper.display({
             id: 'actions',
@@ -767,55 +710,6 @@ const DoctorPatientsTable = ({ patients, onViewHistory, onStartConsultation, onC
             cell: info => {
                 const patient = info.row.original;
                 const status = patient.status || 'REGISTERED';
-
-                // Primary action based on status
-                let primaryButton = null;
-                if (status === 'REGISTERED') {
-                    primaryButton = (
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                console.log("Start button clicked for:", patient);
-                                onStartConsultation(patient);
-                            }}
-                            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-semibold text-xs flex items-center gap-1 z-10 relative"
-                            title="Start Consultation"
-                        >
-                            <span>🩺</span>
-                            <span>Start</span>
-                        </button>
-                    );
-                } else if (status === 'CONSULTING') {
-                    primaryButton = (
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                console.log("Complete button clicked for:", patient);
-                                onCompleteConsultation(patient);
-                            }}
-                            className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-semibold text-xs flex items-center gap-1 z-10 relative"
-                            title="Complete Consultation"
-                        >
-                            <span>✅</span>
-                            <span>Finish</span>
-                        </button>
-                    );
-                } else if (status === 'COMPLETED') {
-                    primaryButton = (
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                console.log("View Rx button clicked for:", patient);
-                                onViewPrescription(patient);
-                            }}
-                            className="px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-semibold text-xs flex items-center gap-1 z-10 relative"
-                            title="View Prescription"
-                        >
-                            <span>💊</span>
-                            <span>View Rx</span>
-                        </button>
-                    );
-                }
 
                 // Secondary actions for three-dot menu
                 const secondaryActions = [
@@ -828,7 +722,6 @@ const DoctorPatientsTable = ({ patients, onViewHistory, onStartConsultation, onC
 
                 return (
                     <div className="flex items-center justify-end gap-2">
-                        {primaryButton}
                         <ActionMenu actions={secondaryActions} />
                     </div>
                 );

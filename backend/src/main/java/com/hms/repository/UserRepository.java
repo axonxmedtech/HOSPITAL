@@ -2,6 +2,7 @@ package com.hms.repository;
 
 import com.hms.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -54,10 +55,33 @@ public interface UserRepository extends JpaRepository<User, Long> {
         org.springframework.data.domain.Page<User> findByHospitalIdAndRoleAndIsActiveTrue(Long hospitalId, String role,
                         org.springframework.data.domain.Pageable pageable);
 
+        @Query("""
+                            SELECT u FROM User u
+                            WHERE u.hospitalId = :hospitalId
+                              AND u.role = :role
+                              AND u.isActive = true
+                              AND (LOWER(u.name) LIKE LOWER(CONCAT('%', :search, '%'))
+                                   OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')))
+                        """)
+        org.springframework.data.domain.Page<User> searchPharmacists(Long hospitalId, String role, String search,
+                        org.springframework.data.domain.Pageable pageable);
+        // ...existing code...
+
         /**
          * Find users by hospital ID and role (Active or Inactive)
          */
         java.util.List<User> findByHospitalIdAndRole(Long hospitalId, String role);
+
+        @Query("""
+                            SELECT u FROM User u
+                            WHERE u.hospitalId = :hospitalId
+                              AND u.role = :role
+                              AND u.isActive = true
+                              AND (LOWER(u.name) LIKE LOWER(CONCAT('%', :search, '%'))
+                                   OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')))
+                        """)
+        org.springframework.data.domain.Page<User> searchReceptionists(Long hospitalId, String role, String search,
+                        org.springframework.data.domain.Pageable pageable);
 
         @org.springframework.data.jpa.repository.Query("SELECT new com.hms.dto.UserSummaryDTO(u, h.name) FROM User u LEFT JOIN Hospital h ON u.hospitalId = h.id "
                         +
