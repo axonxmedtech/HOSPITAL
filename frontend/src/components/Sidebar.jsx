@@ -4,20 +4,20 @@ const Sidebar = ({ title, tabs, activeTab, onTabChange, footerTitle, footerData,
     // Color variants mapping with more organic colors
     const variants = {
         primary: {
-            bgIcon: 'bg-primary-100',
-            textIcon: 'text-primary-600',
-            activeBg: 'bg-gradient-to-r from-primary-50 to-primary-100/50',
-            activeText: 'text-primary-700',
-            activeIcon: 'text-primary-600',
-            activeBorder: 'border-l-4 border-primary-500'
+            bgIcon: 'bg-neutral-100',
+            textIcon: 'text-slate-700',
+            activeBg: 'bg-neutral-50',
+            activeText: 'text-slate-900',
+            activeIcon: 'text-slate-800',
+            activeBorder: 'border-l-4 border-sky-600'
         },
         purple: {
-            bgIcon: 'bg-secondary-100',
-            textIcon: 'text-secondary-600',
-            activeBg: 'bg-gradient-to-r from-secondary-50 to-secondary-100/50',
-            activeText: 'text-secondary-700',
-            activeIcon: 'text-secondary-600',
-            activeBorder: 'border-l-4 border-secondary-500'
+            bgIcon: 'bg-neutral-100',
+            textIcon: 'text-slate-700',
+            activeBg: 'bg-neutral-50',
+            activeText: 'text-slate-900',
+            activeIcon: 'text-slate-800',
+            activeBorder: 'border-l-4 border-sky-600'
         }
     };
 
@@ -28,10 +28,10 @@ const Sidebar = ({ title, tabs, activeTab, onTabChange, footerTitle, footerData,
             {/* Header Section */}
             <div className="p-8 border-b border-neutral-100 pb-0">
                 <div className="flex items-center gap-4 mb-8">
-                    <div className={`${theme.bgIcon} p-3 rounded-2xl ${theme.textIcon} shadow-soft hover:shadow-soft-lg transition-all duration-300 hover:scale-105`}>
-                        <span className="text-2xl">
-                            {variant === 'purple' ? '🏢' : '🏥'}
-                        </span>
+                    <div className={`${theme.bgIcon} p-3 rounded-2xl ${theme.textIcon} shadow-soft transition-all duration-300`}>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10l9-6 9 6v7a2 2 0 01-2 2H5a2 2 0 01-2-2v-7z" />
+                        </svg>
                     </div>
                     <div>
                         <h1 className="text-xl font-bold text-slate-800 tracking-tight leading-tight">{title}</h1>
@@ -56,7 +56,7 @@ const Sidebar = ({ title, tabs, activeTab, onTabChange, footerTitle, footerData,
                         >
                             {/* Active indicator */}
                             {activeTab === tab.id && (
-                                <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary-500 rounded-r-full"></div>
+                                <div className="absolute left-0 top-0 bottom-0 w-1 bg-sky-600 rounded-r-full"></div>
                             )}
                             
                             <span className={`mr-4 text-lg transition-all duration-300 ${
@@ -71,7 +71,7 @@ const Sidebar = ({ title, tabs, activeTab, onTabChange, footerTitle, footerData,
                             
                             {/* Subtle arrow for active tab */}
                             {activeTab === tab.id && (
-                                <svg className="w-4 h-4 text-primary-500 animate-bounce-subtle" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                                 </svg>
                             )}
@@ -82,9 +82,9 @@ const Sidebar = ({ title, tabs, activeTab, onTabChange, footerTitle, footerData,
 
             {/* Footer Section */}
             <div className="mt-auto p-6 bg-gradient-to-t from-neutral-50/50 to-transparent">
-                <div className="bg-white rounded-2xl p-4 shadow-soft border border-neutral-200">
+                        <div className="bg-white rounded-2xl p-4 shadow-soft border border-neutral-200">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-secondary-500 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-soft">
+                        <div className="w-10 h-10 bg-slate-700 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-soft">
                             {footerData?.charAt(0)?.toUpperCase() || 'H'}
                         </div>
                         <div className="flex-1 min-w-0">

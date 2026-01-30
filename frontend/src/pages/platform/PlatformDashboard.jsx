@@ -332,9 +332,21 @@ const PlatformDashboard = () => {
     const user = authService.getCurrentUser();
 
     const tabs = [
-        { id: 'dashboard', label: 'Dashboard', icon: '📊' },
-        { id: 'hospitals', label: 'Hospitals', icon: '🏥' },
-        { id: 'audit_logs', label: 'Audit Logs', icon: '📋' },
+        { id: 'dashboard', label: 'Dashboard', icon: (
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3v18h18" />
+            </svg>
+        ) },
+        { id: 'hospitals', label: 'Hospitals', icon: (
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-8a2 2 0 012-2h14a2 2 0 012 2v8" />
+            </svg>
+        ) },
+        { id: 'audit_logs', label: 'Audit Logs', icon: (
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+            </svg>
+        ) },
     ];
 
     return (
@@ -383,8 +395,10 @@ const PlatformDashboard = () => {
                                             <p className="text-sm font-medium text-gray-600">Total Hospitals</p>
                                             <p className="text-3xl font-bold text-gray-900 mt-2">{hospitalStats.total || 0}</p>
                                         </div>
-                                        <div className="bg-blue-100 p-3 rounded-lg">
-                                            <span className="text-2xl">🏥</span>
+                                        <div className="bg-neutral-100 p-3 rounded-lg">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10l9-6 9 6v7a2 2 0 01-2 2H5a2 2 0 01-2-2v-7z" />
+                                            </svg>
                                         </div>
                                     </div>
                                 </div>
@@ -395,8 +409,10 @@ const PlatformDashboard = () => {
                                             <p className="text-sm font-medium text-gray-600">Active Hospitals</p>
                                             <p className="text-3xl font-bold text-green-600 mt-2">{hospitalStats.active || 0}</p>
                                         </div>
-                                        <div className="bg-green-100 p-3 rounded-lg">
-                                            <span className="text-2xl">✅</span>
+                                        <div className="bg-neutral-100 p-3 rounded-lg">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                            </svg>
                                         </div>
                                     </div>
                                 </div>
@@ -407,8 +423,10 @@ const PlatformDashboard = () => {
                                             <p className="text-sm font-medium text-gray-600">Inactive Hospitals</p>
                                             <p className="text-3xl font-bold text-red-600 mt-2">{hospitalStats.inactive || 0}</p>
                                         </div>
-                                        <div className="bg-red-100 p-3 rounded-lg">
-                                            <span className="text-2xl">❌</span>
+                                        <div className="bg-neutral-100 p-3 rounded-lg">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
                                         </div>
                                     </div>
                                 </div>
@@ -422,7 +440,7 @@ const PlatformDashboard = () => {
                                 </div>
                                 {loading ? (
                                     <div className="flex justify-center items-center h-64">
-                                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
+                                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-300"></div>
                                     </div>
                                 ) : hospitals.length > 0 ? (
                                     <div className="overflow-x-auto">
@@ -448,7 +466,7 @@ const PlatformDashboard = () => {
                                                             </span>
                                                         </td>
                                                         <td className="px-6 py-4 whitespace-nowrap">
-                                                            <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">
+                                                            <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-neutral-100 text-slate-800">
                                                                 {hospital.plan || 'FREE'}
                                                             </span>
                                                         </td>
@@ -470,7 +488,9 @@ const PlatformDashboard = () => {
                                     </div>
                                 ) : (
                                     <div className="p-12 text-center">
-                                        <span className="text-4xl mb-4 block">🏥</span>
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mb-4 text-slate-400 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10l9-6 9 6v7a2 2 0 01-2 2H5a2 2 0 01-2-2v-7z" />
+                                        </svg>
                                         <p className="text-gray-500">No hospitals registered yet</p>
                                     </div>
                                 )}
@@ -488,7 +508,7 @@ const PlatformDashboard = () => {
 
                     {loading ? (
                         <div className="flex justify-center items-center h-64">
-                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-300"></div>
                         </div>
                     ) : activeTab === 'hospitals' ? (
                         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -508,7 +528,11 @@ const PlatformDashboard = () => {
                                 <AuditLogsTable auditLogs={auditLogs} />
                             ) : (
                                 <EmptyState
-                                    icon="📜"
+                                    icon={(
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v10l4-2 4 2V7" />
+                                        </svg>
+                                    )}
                                     title="No Audit Logs"
                                     message="No activity has been logged yet."
                                 />
@@ -545,7 +569,7 @@ const PlatformDashboard = () => {
                                             setFormData({ ...formData, hospitalName: e.target.value });
                                             if (errors.hospitalName) setErrors({ ...errors, hospitalName: null });
                                         }}
-                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${errors.hospitalName ? 'border-red-500' : 'border-gray-300'}`}
+                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent ${errors.hospitalName ? 'border-red-500' : 'border-gray-300'}`}
                                     />
                                     {errors.hospitalName && <p className="text-red-500 text-xs mt-1">{errors.hospitalName}</p>}
                                 </div>
@@ -558,7 +582,7 @@ const PlatformDashboard = () => {
                                             setFormData({ ...formData, adminName: e.target.value });
                                             if (errors.adminName) setErrors({ ...errors, adminName: null });
                                         }}
-                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${errors.adminName ? 'border-red-500' : 'border-gray-300'}`}
+                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent ${errors.adminName ? 'border-red-500' : 'border-gray-300'}`}
                                     />
                                     {errors.adminName && <p className="text-red-500 text-xs mt-1">{errors.adminName}</p>}
                                 </div>
@@ -571,7 +595,7 @@ const PlatformDashboard = () => {
                                             setFormData({ ...formData, adminEmail: e.target.value });
                                             if (errors.adminEmail) setErrors({ ...errors, adminEmail: null });
                                         }}
-                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${errors.adminEmail ? 'border-red-500' : 'border-gray-300'}`}
+                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent ${errors.adminEmail ? 'border-red-500' : 'border-gray-300'}`}
                                     />
                                     {errors.adminEmail && <p className="text-red-500 text-xs mt-1">{errors.adminEmail}</p>}
                                     {/* Admin Password */}
@@ -581,7 +605,7 @@ const PlatformDashboard = () => {
                                             type="password"
                                             value={formData.adminPassword}
                                             onChange={(e) => setFormData({ ...formData, adminPassword: e.target.value })}
-                                            className={`mt-1 block w-full rounded-md border ${errors.adminPassword ? 'border-red-500' : 'border-gray-300'} px-3 py-2 shadow-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500`}
+                                            className={`mt-1 block w-full rounded-md border ${errors.adminPassword ? 'border-red-500' : 'border-gray-300'} px-3 py-2 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500`}
                                         />
                                         {errors.adminPassword && <p className="mt-1 text-xs text-red-500">{errors.adminPassword}</p>}
                                     </div>
@@ -604,7 +628,7 @@ const PlatformDashboard = () => {
                                                                     : prev.modules.filter(m => m !== module)
                                                             }));
                                                         }}
-                                                        className="rounded text-purple-600 focus:ring-purple-500"
+                                                        className="rounded text-sky-600 focus:ring-sky-500"
                                                     />
                                                     <span className="text-sm text-gray-700">{module}</span>
                                                 </label>
@@ -624,7 +648,7 @@ const PlatformDashboard = () => {
                                     </button>
                                     <button
                                         type="submit"
-                                        className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:shadow-lg transition"
+                                        className="flex-1 bg-sky-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-sky-700 transition"
                                     >
                                         Create
                                     </button>
@@ -653,7 +677,7 @@ const PlatformDashboard = () => {
                                         type="text"
                                         value={editHospitalModal.name}
                                         onChange={(e) => setEditHospitalModal({ ...editHospitalModal, name: e.target.value })}
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                                     />
                                 </div>
 
@@ -664,7 +688,7 @@ const PlatformDashboard = () => {
                                         type="text"
                                         value={editHospitalModal.adminName}
                                         onChange={(e) => setEditHospitalModal({ ...editHospitalModal, adminName: e.target.value })}
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                                     />
                                 </div>
 
@@ -675,7 +699,7 @@ const PlatformDashboard = () => {
                                         type="email"
                                         value={editHospitalModal.adminEmail}
                                         onChange={(e) => setEditHospitalModal({ ...editHospitalModal, adminEmail: e.target.value })}
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                                     />
                                 </div>
 
@@ -685,7 +709,7 @@ const PlatformDashboard = () => {
                                     <select
                                         value={editHospitalModal.plan}
                                         onChange={(e) => setEditHospitalModal({ ...editHospitalModal, plan: e.target.value })}
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                                     >
                                         <option value="FREE">FREE</option>
                                         <option value="BASIC">BASIC</option>
@@ -712,7 +736,7 @@ const PlatformDashboard = () => {
                                                                 : prev.modules.filter(m => m !== module)
                                                         }));
                                                     }}
-                                                    className="rounded text-purple-600 focus:ring-purple-500"
+                                                    className="rounded text-sky-600 focus:ring-sky-500"
                                                 />
                                                 <span className="text-sm text-gray-700">{module}</span>
                                             </label>
@@ -730,7 +754,7 @@ const PlatformDashboard = () => {
                                     </button>
                                     <button
                                         onClick={handleHospitalUpdate}
-                                        className="flex-1 bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition"
+                                        className="flex-1 bg-sky-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-sky-700 transition"
                                     >
                                         Save Changes
                                     </button>
@@ -748,8 +772,11 @@ const PlatformDashboard = () => {
                     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setPasswordModal({ ...passwordModal, isOpen: false })}>
                         <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm text-center" onClick={(e) => e.stopPropagation()}>
                             <div className="p-8">
-                                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                    <span className="text-3xl">🔑</span>
+                                <div className="w-16 h-16 bg-neutral-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-2a4 4 0 014-4h10a4 4 0 014 4v2" />
+                                    </svg>
                                 </div>
                                 <h3 className="text-xl font-bold text-gray-800 mb-2">Password Reset Successful</h3>
                                 <p className="text-gray-600 text-sm mb-6">
@@ -764,7 +791,7 @@ const PlatformDashboard = () => {
                                     <div>
                                         <span className="text-xs font-semibold text-gray-500 uppercase">New Password</span>
                                         <div className="flex items-center justify-between mt-1">
-                                            <code className="bg-white px-2 py-1 rounded border border-gray-300 font-mono text-lg text-purple-700 font-bold">
+                                            <code className="bg-white px-2 py-1 rounded border border-gray-300 font-mono text-lg text-slate-800 font-bold">
                                                 {passwordModal.password}
                                             </code>
                                             <button
@@ -772,7 +799,7 @@ const PlatformDashboard = () => {
                                                     navigator.clipboard.writeText(passwordModal.password);
                                                     success('Password copied to clipboard');
                                                 }}
-                                                className="text-gray-400 hover:text-purple-600 text-sm font-medium"
+                                                className="text-gray-400 hover:text-sky-600 text-sm font-medium"
                                             >
                                                 Copy
                                             </button>
@@ -824,8 +851,11 @@ const HospitalsTable = ({ hospitals, hospitalPage, handleToggleStatus, openEditH
                     <button
                         onClick={() => openEditHospitalModal(info.row.original)}
                         className="text-gray-400 hover:text-blue-600"
+                        aria-label="Edit"
                     >
-                        ✎
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                        </svg>
                     </button>
                 </div>
             )
@@ -891,7 +921,9 @@ const HospitalsTable = ({ hospitals, hospitalPage, handleToggleStatus, openEditH
             pagination={pagination}
             emptyState={
                 <div className="p-12 text-center">
-                    <span className="text-4xl mb-4 block">🏥</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mb-4 text-slate-400 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10l9-6 9 6v7a2 2 0 01-2 2H5a2 2 0 01-2-2v-7z" />
+                    </svg>
                     <p className="text-gray-500">No hospitals registered yet</p>
                 </div>
             }
@@ -1017,10 +1049,10 @@ const UsersTable = ({ users, userPage, onResetPassword, loadUsers }) => {
             header: 'Email',
             cell: info => info.getValue(),
         }),
-        columnHelper.accessor('role', {
+                columnHelper.accessor('role', {
             header: 'Role',
             cell: info => (
-                <span className={`px-2 py-1 rounded text-xs font-semibold ${info.getValue() === 'HOSPITAL_ADMIN' ? 'bg-purple-100 text-purple-800' :
+                        <span className={`px-2 py-1 rounded text-xs font-semibold ${info.getValue() === 'HOSPITAL_ADMIN' ? 'bg-neutral-100 text-slate-800' :
                     info.getValue() === 'DOCTOR' ? 'bg-blue-100 text-blue-800' :
                         'bg-green-100 text-green-800'
                     }`}>
@@ -1085,7 +1117,9 @@ const UsersTable = ({ users, userPage, onResetPassword, loadUsers }) => {
             isLoading={false}
             emptyState={
                 <div className="p-12 text-center">
-                    <span className="text-4xl mb-4 block">👥</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mb-4 text-slate-400 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m6-4a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
                     <p className="text-gray-500">No users found</p>
                 </div>
             }

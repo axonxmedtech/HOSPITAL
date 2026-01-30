@@ -87,7 +87,7 @@ USE hospital_management;
 -- Create Super Admin user
 -- Password: admin123 (BCrypt encoded)
 INSERT INTO users (email, password, name, role, hospital_id, created_at)
-VALUES ('admin@hms.com', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhCy', 'Super Admin', 'SUPER_ADMIN', NULL, NOW());
+VALUES ('admin@hms.com', '$2a$10$qMUbT7gyNjvCsRS//Gf7g.1vFwZAq9RVSn3qpLuPjUzoB8fz0AxWy', 'Super Admin', 'SUPER_ADMIN', NULL, NOW());
 ```
 
 ### Backend Setup
