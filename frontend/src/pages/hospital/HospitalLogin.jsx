@@ -101,125 +101,151 @@ const HospitalLogin = () => {
     };
 
     return (
-        <div className="min-h-screen bg-neutral-50 flex items-center justify-center px-6">
-            {/* Background Pattern */}
-            <div className="absolute inset-0 bg-gradient-to-br from-neutral-50 via-white to-neutral-100"></div>
-            
-            {/* Login Container */}
-            <div className="relative w-full max-w-lg">
-                <div className="bg-white rounded-2xl shadow-soft-lg border border-neutral-200 overflow-hidden">
-                    
-                    {/* Header Section */}
-                    <div className="px-12 pt-12 pb-8 text-center bg-gradient-to-b from-white to-neutral-50">
-                        <div className="inline-flex items-center justify-center w-20 h-20 bg-primary-50 rounded-2xl mb-6 shadow-inner-soft border border-primary-100">
-                            <svg className="w-10 h-10 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        <div className="min-h-screen bg-white flex">
+            {/* Left Side - Background Image */}
+            <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
+                {/* Background Image */}
+                <div 
+                    className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+                    style={{ backgroundImage: 'url(/main-login-page.png)' }}
+                ></div>
+                
+                {/* Overlay for better text readability */}
+                <div className="absolute inset-0 bg-black bg-opacity-40"></div>
+
+                {/* Content */}
+                <div className="relative z-10 flex flex-col justify-center items-center w-full px-16">
+                    {/* Logo/Icon */}
+                    <div className="mb-12">
+                        <div className="w-24 h-24 bg-white rounded-2xl shadow-lg flex items-center justify-center mb-8">
+                            <svg className="w-12 h-12 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                             </svg>
                         </div>
-                        <h1 className="text-2xl font-semibold text-slate-800 mb-2">Hospital Staff Portal</h1>
-                        <p className="text-slate-600 text-sm leading-relaxed">
-                            Secure access to patient care systems
+                        <h1 className="text-4xl font-bold text-white text-center mb-4">Hospital Management System</h1>
+                        <p className="text-xl text-white text-center leading-relaxed opacity-90">
+                            Comprehensive Patient Care Platform
                         </p>
                     </div>
+                </div>
+            </div>
 
-                    {/* Form Section */}
-                    <div className="px-12 pb-12">
-                        {errors.submit && (
-                            <div className="mb-8 p-4 bg-alert-50 border border-alert-200 rounded-xl">
-                                <div className="flex items-start">
-                                    <svg className="w-5 h-5 text-alert-500 mt-0.5 mr-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                                    </svg>
-                                    <p className="text-alert-700 text-sm">{errors.submit}</p>
+            {/* Right Side - Login Form */}
+            <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-gray-50">
+                <div className="w-full max-w-md">
+                    {/* Mobile Logo (visible only on small screens) */}
+                    <div className="lg:hidden text-center mb-8">
+                        <div className="inline-flex items-center justify-center w-16 h-16 bg-white border border-gray-200 mb-4">
+                            <svg className="w-8 h-8 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                            </svg>
+                        </div>
+                        <h1 className="text-2xl font-bold text-gray-900 mb-2">Hospital Staff Portal</h1>
+                        <p className="text-gray-600 text-sm">Secure access to patient care systems</p>
+                    </div>
+
+                    {/* Login Card */}
+                    <div className="bg-white border border-gray-200 overflow-hidden">
+                        {/* Header */}
+                        <div className="p-6 border-b border-gray-200 text-center">
+                            <h2 className="text-xl font-bold text-gray-900 mb-2">Staff Login</h2>
+                            <p className="text-gray-600">Access your department portal</p>
+                        </div>
+
+                        {/* Form Section */}
+                        <div className="p-6">
+                            {errors.submit && (
+                                <div className="mb-6 bg-white border border-gray-200 p-4">
+                                    <div className="flex items-start">
+                                        <span className="text-gray-900 font-medium mr-3">Error:</span>
+                                        <p className="text-sm text-gray-900">{errors.submit}</p>
+                                    </div>
                                 </div>
-                            </div>
-                        )}
+                            )}
 
-                        <form onSubmit={handleSubmit} className="space-y-8">
-                            {/* Role Selection */}
-                            <div className="space-y-3">
-                                <label htmlFor="role" className="block text-sm font-medium text-slate-700">
-                                    Department Access
-                                </label>
-                                <select
-                                    id="role"
-                                    value={selectedRole}
-                                    onChange={handleRoleChange}
-                                    className="w-full px-4 py-4 bg-neutral-50 border border-neutral-300 rounded-xl text-slate-800 focus:bg-white focus:border-primary-400 focus:ring-4 focus:ring-primary-100 transition-all duration-200"
-                                >
-                                    <option value="HOSPITAL_ADMIN">Hospital Administration</option>
-                                    <option value="DOCTOR">Medical Staff</option>
-                                    <option value="RECEPTIONIST">Reception & Registration</option>
-                                    <option value="PHARMACIST">Pharmacy Services</option>
-                                </select>
-                            </div>
+                            <form onSubmit={handleSubmit} className="space-y-4">
+                                {/* Role Selection */}
+                                <div className="space-y-2">
+                                    <label htmlFor="role" className="block text-sm font-medium text-gray-900">
+                                        Department Access
+                                    </label>
+                                    <select
+                                        id="role"
+                                        value={selectedRole}
+                                        onChange={handleRoleChange}
+                                        className="w-full px-3 py-2 bg-white border border-gray-200 text-gray-900 focus:border-gray-900"
+                                    >
+                                        <option value="HOSPITAL_ADMIN">Hospital Administration</option>
+                                        <option value="DOCTOR">Medical Staff</option>
+                                        <option value="RECEPTIONIST">Reception & Registration</option>
+                                        <option value="PHARMACIST">Pharmacy Services</option>
+                                    </select>
+                                </div>
 
-                            {/* Email Field */}
-                            <div className="space-y-3">
-                                <label htmlFor="email" className="block text-sm font-medium text-slate-700">
-                                    Email Address
-                                </label>
-                                <input
-                                    type="email"
-                                    id="email"
-                                    value={email}
-                                    onChange={handleEmailChange}
-                                    placeholder="your.name@hospital.com"
-                                    disabled={loading}
-                                    className={`w-full px-4 py-4 bg-neutral-50 border rounded-xl text-slate-800 placeholder-slate-400 focus:bg-white focus:border-primary-400 focus:ring-4 focus:ring-primary-100 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed ${errors.email ? 'border-alert-300 bg-alert-50' : 'border-neutral-300'}`}
-                                />
-                                {errors.email && <p className="text-alert-600 text-sm mt-2">{errors.email}</p>}
-                            </div>
+                                {/* Email Field */}
+                                <div className="space-y-2">
+                                    <label htmlFor="email" className="block text-sm font-medium text-gray-900">
+                                        Email Address
+                                    </label>
+                                    <input
+                                        type="email"
+                                        id="email"
+                                        value={email}
+                                        onChange={handleEmailChange}
+                                        placeholder="your.name@hospital.com"
+                                        disabled={loading}
+                                        className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 disabled:opacity-60 disabled:cursor-not-allowed ${errors.email ? 'border-gray-900' : 'border-gray-200'}`}
+                                    />
+                                    {errors.email && <p className="text-gray-900 text-sm mt-1">{errors.email}</p>}
+                                </div>
 
-                            {/* Password Field */}
-                            <div className="space-y-3">
-                                <label htmlFor="password" className="block text-sm font-medium text-slate-700">
-                                    Password
-                                </label>
-                                <input
-                                    type="password"
-                                    id="password"
-                                    value={password}
-                                    onChange={handlePasswordChange}
-                                    placeholder="Enter your secure password"
-                                    disabled={loading}
-                                    className={`w-full px-4 py-4 bg-neutral-50 border rounded-xl text-slate-800 placeholder-slate-400 focus:bg-white focus:border-primary-400 focus:ring-4 focus:ring-primary-100 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed ${errors.password ? 'border-alert-300 bg-alert-50' : 'border-neutral-300'}`}
-                                />
-                                {errors.password && <p className="text-alert-600 text-sm mt-2">{errors.password}</p>}
-                            </div>
+                                {/* Password Field */}
+                                <div className="space-y-2">
+                                    <label htmlFor="password" className="block text-sm font-medium text-gray-900">
+                                        Password
+                                    </label>
+                                    <input
+                                        type="password"
+                                        id="password"
+                                        value={password}
+                                        onChange={handlePasswordChange}
+                                        placeholder="Enter your secure password"
+                                        disabled={loading}
+                                        className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 disabled:opacity-60 disabled:cursor-not-allowed ${errors.password ? 'border-gray-900' : 'border-gray-200'}`}
+                                    />
+                                    {errors.password && <p className="text-gray-900 text-sm mt-1">{errors.password}</p>}
+                                </div>
 
-                            {/* Submit Button */}
-                            <div className="pt-4">
-                                <button
-                                    type="submit"
-                                    disabled={loading}
-                                    className="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium py-4 px-6 rounded-xl transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed focus:ring-4 focus:ring-primary-200 shadow-soft"
-                                >
-                                    {loading ? (
-                                        <span className="flex items-center justify-center">
-                                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                            </svg>
-                                            Authenticating...
-                                        </span>
-                                    ) : (
-                                        'Access Portal'
-                                    )}
-                                </button>
-                            </div>
-                        </form>
+                                {/* Submit Button */}
+                                <div className="pt-4">
+                                    <button
+                                        type="submit"
+                                        disabled={loading}
+                                        className="w-full bg-gray-900 hover:bg-gray-700 text-white font-medium py-3 px-4 transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                                    >
+                                        {loading ? (
+                                            <span className="flex items-center justify-center">
+                                                <div className="w-4 h-4 border-2 border-white border-t-transparent animate-spin mr-2"></div>
+                                                Authenticating...
+                                            </span>
+                                        ) : (
+                                            'Access Portal'
+                                        )}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
 
-                        {/* Footer Link */}
-                        <div className="mt-10 pt-8 border-t border-neutral-200 text-center">
-                            <p className="text-slate-500 text-sm">
-                                System Administrator?{' '}
-                                <a href="/platform/login" className="text-primary-600 font-medium hover:text-primary-700 transition-colors">
-                                    Platform Access
-                                </a>
-                            </p>
+                        {/* Footer */}
+                        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
+                            <div className="text-center">
+                                <p className="text-gray-600 text-sm">
+                                    System Administrator?{' '}
+                                    <a href="/platform/login" className="text-gray-900 font-medium hover:underline">
+                                        Platform Access
+                                    </a>
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -453,17 +453,17 @@ const HospitalAdminDashboard = () => {
     const modules = user?.modules || ['OPD', 'BILLING']; // Default to CMS core if no modules found
 
     const allTabs = [
-        { id: 'dashboard', label: 'Dashboard', icon: '📊', requiredModule: null },
-        { id: 'patients', label: 'Patients', icon: '👥', requiredModule: 'OPD' },
-        { id: 'doctors', label: 'Doctors', icon: '👨‍⚕️', requiredModule: 'OPD' },
-        { id: 'receptionists', label: 'Receptionists', icon: '💁', requiredModule: 'OPD' },
-        { id: 'appointments', label: 'Appointments', icon: '📅', requiredModule: 'OPD' },
-        { id: 'billing', label: 'Billing', icon: '💰', requiredModule: 'BILLING' },
-        { id: 'pharmacy', label: 'Pharmacy', icon: '💊', requiredModule: 'PHARMACY' },
-        { id: 'pharmacists', label: 'Pharmacists', icon: '🧑‍⚕️', requiredModule: 'PHARMACY' },
-        { id: 'pathology', label: 'Pathology', icon: '🔬', requiredModule: 'PATHOLOGY' },
-        { id: 'ipd', label: 'IPD', icon: '🏥', requiredModule: 'IPD' },
-        { id: 'audit-logs', label: 'Audit Logs', icon: '📜', requiredModule: null },
+        { id: 'dashboard', label: 'Dashboard', icon: null, requiredModule: null },
+        { id: 'patients', label: 'Patients', icon: null, requiredModule: 'OPD' },
+        { id: 'doctors', label: 'Doctors', icon: null, requiredModule: 'OPD' },
+        { id: 'receptionists', label: 'Receptionists', icon: null, requiredModule: 'OPD' },
+        { id: 'appointments', label: 'Appointments', icon: null, requiredModule: 'OPD' },
+        { id: 'billing', label: 'Billing', icon: null, requiredModule: 'BILLING' },
+        { id: 'pharmacy', label: 'Pharmacy', icon: null, requiredModule: 'PHARMACY' },
+        { id: 'pharmacists', label: 'Pharmacists', icon: null, requiredModule: 'PHARMACY' },
+        { id: 'pathology', label: 'Pathology', icon: null, requiredModule: 'PATHOLOGY' },
+        { id: 'ipd', label: 'IPD', icon: null, requiredModule: 'IPD' },
+        { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
     ];
 
     const tabs = allTabs.filter(tab =>
@@ -504,7 +504,7 @@ const HospitalAdminDashboard = () => {
     };
 
     return (
-        <div className="flex h-screen bg-neutral-50">
+        <div className="flex h-screen bg-white">
             {/* Sidebar */}
             <Sidebar
                 title="HMS Portal"
@@ -513,6 +513,7 @@ const HospitalAdminDashboard = () => {
                 onTabChange={setActiveTab}
                 footerTitle="Hospital"
                 footerData={user?.hospitalName}
+                variant="plain"
             />
 
             {/* Main Content Wrapper */}
@@ -526,36 +527,33 @@ const HospitalAdminDashboard = () => {
                 />
 
                 {/* Main Content Area */}
-                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-neutral-50 p-8">
+                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
 
                     {/* Stats Cards (Bucket 1: Better Dashboard Numbers) */}
                     {activeTab !== 'dashboard' && (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                            <div className="bg-white rounded-xl shadow-soft p-6 border-l-4 border-primary-500">
+                            <div className="bg-white rounded-lg border border-gray-200 p-6">
                                 <div className="flex justify-between items-center">
                                     <div>
-                                        <p className="text-slate-500 text-sm font-medium uppercase tracking-wider">Today's Appointments</p>
-                                        <h3 className="text-3xl font-bold text-slate-800 mt-1">{stats.today}</h3>
+                                        <p className="text-gray-600 text-sm font-medium">Today's Appointments</p>
+                                        <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.today}</h3>
                                     </div>
-                                    <div className="bg-primary-100 p-3 rounded-full text-primary-600 text-xl">📅</div>
                                 </div>
                             </div>
-                            <div className="bg-white rounded-xl shadow-soft p-6 border-l-4 border-secondary-500">
+                            <div className="bg-white rounded-lg border border-gray-200 p-6">
                                 <div className="flex justify-between items-center">
                                     <div>
-                                        <p className="text-slate-500 text-sm font-medium uppercase tracking-wider">Pending Action</p>
-                                        <h3 className="text-3xl font-bold text-slate-800 mt-1">{stats.pending}</h3>
+                                        <p className="text-gray-600 text-sm font-medium">Pending Action</p>
+                                        <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.pending}</h3>
                                     </div>
-                                    <div className="bg-secondary-100 p-3 rounded-full text-secondary-600 text-xl">⏳</div>
                                 </div>
                             </div>
-                            <div className="bg-white rounded-xl shadow-soft p-6 border-l-4 border-neutral-500">
+                            <div className="bg-white rounded-lg border border-gray-200 p-6">
                                 <div className="flex justify-between items-center">
                                     <div>
-                                        <p className="text-slate-500 text-sm font-medium uppercase tracking-wider">Total Active Records</p>
-                                        <h3 className="text-3xl font-bold text-slate-800 mt-1">{stats.total}</h3>
+                                        <p className="text-gray-600 text-sm font-medium">Total Active Records</p>
+                                        <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.total}</h3>
                                     </div>
-                                    <div className="bg-neutral-100 p-3 rounded-full text-neutral-600 text-xl">📈</div>
                                 </div>
                             </div>
                         </div>
@@ -611,13 +609,13 @@ const HospitalAdminDashboard = () => {
                                 </div>
                             )}
 
-                            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-4">
+                            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
                                 {activeTab === 'patients' && (
                                     patients.length > 0 ? (
                                         <PatientsTable patients={patients} onEdit={handleEdit} onDelete={handleDeletePatient} onHistory={(p) => handleHistory('PATIENT', p.publicId || p.id, p.name)} startIndex={page * pageSize} pagination={pagination} />
                                     ) : (
                                         <EmptyState
-                                            icon="👥"
+                                            icon={null}
                                             title="No Patients Found"
                                             message="There are no patients registered in the system yet."
                                             actionLabel="Add Patient"
@@ -630,7 +628,7 @@ const HospitalAdminDashboard = () => {
                                         <DoctorsTable doctors={doctors} onEdit={handleEdit} onDelete={handleDeleteDoctor} startIndex={page * pageSize} pagination={pagination} />
                                     ) : (
                                         <EmptyState
-                                            icon="👨‍⚕️"
+                                            icon={null}
                                             title="No Doctors Found"
                                             message="Add doctors to start scheduling appointments."
                                             actionLabel="Add Doctor"
@@ -644,7 +642,7 @@ const HospitalAdminDashboard = () => {
                                         <PharmacistsTable pharmacists={pharmacists} isAdmin={user?.role === 'HOSPITAL_ADMIN'} onDelete={handleDeletePharmacist} startIndex={page * pageSize} pagination={pagination} />
                                     ) : (
                                         <EmptyState
-                                            icon="🧑‍⚕️"
+                                            icon={null}
                                             title="No Pharmacists Found"
                                             message="Add pharmacists to manage inventory and dispensing."
                                             actionLabel="Add Pharmacist"
@@ -664,7 +662,7 @@ const HospitalAdminDashboard = () => {
         />
     ) : (
         <EmptyState
-            icon="💁"
+            icon={null}
             title="No Receptionists Found"
             message="Add receptionists to help manage your hospital operations."
             actionLabel="Add Receptionist"
@@ -677,7 +675,7 @@ const HospitalAdminDashboard = () => {
                                         <AppointmentsTable appointments={appointments} doctors={doctors} isAdmin={user?.role === 'HOSPITAL_ADMIN'} onDelete={handleDeleteAppointment} onStatusUpdate={onAppointmentStatusUpdate} onHistory={(item) => handleHistory('APPOINTMENT', item.publicId || item.id, "Appointment")} startIndex={page * pageSize} pagination={pagination} />
                                     ) : (
                                         <EmptyState
-                                            icon="📅"
+                                            icon={null}
                                             title="No Appointments"
                                             message="Schedule appointments for your patients."
                                             actionLabel="Schedule Appointment"
@@ -687,7 +685,7 @@ const HospitalAdminDashboard = () => {
                                 )}
                                 {activeTab === 'billing' && billing.length === 0 && (
                                     <EmptyState
-                                        icon="💰"
+                                        icon={null}
                                         title="No Billing Records"
                                         message="Billing module is active. Records will appear here."
                                     />
@@ -703,23 +701,20 @@ const HospitalAdminDashboard = () => {
                                 )}
                                 {activeTab === 'pharmacy' && (
                                     <div className="flex flex-col items-center justify-center p-12 text-center h-96">
-                                        <div className="text-6xl mb-4 bg-purple-100 rounded-full p-6">💊</div>
-                                        <h2 className="text-2xl font-bold text-gray-800">Pharmacy</h2>
-                                        <p className="text-gray-500 mt-2">Pharmacy Module is currently under development.</p>
+                                        <h2 className="text-2xl font-bold text-gray-900">Pharmacy</h2>
+                                        <p className="text-gray-600 mt-2">Pharmacy Module is currently under development.</p>
                                     </div>
                                 )}
                                 {activeTab === 'pathology' && (
                                     <div className="flex flex-col items-center justify-center p-12 text-center h-96">
-                                        <div className="text-6xl mb-4 bg-blue-100 rounded-full p-6">🔬</div>
-                                        <h2 className="text-2xl font-bold text-gray-800">Pathology</h2>
-                                        <p className="text-gray-500 mt-2">Pathology Module is currently under development.</p>
+                                        <h2 className="text-2xl font-bold text-gray-900">Pathology</h2>
+                                        <p className="text-gray-600 mt-2">Pathology Module is currently under development.</p>
                                     </div>
                                 )}
                                 {activeTab === 'ipd' && (
                                     <div className="flex flex-col items-center justify-center p-12 text-center h-96">
-                                        <div className="text-6xl mb-4 bg-green-100 rounded-full p-6">🏥</div>
-                                        <h2 className="text-2xl font-bold text-gray-800">IPD (In-Patient Department)</h2>
-                                        <p className="text-gray-500 mt-2">IPD Module is currently under development.</p>
+                                        <h2 className="text-2xl font-bold text-gray-900">IPD (In-Patient Department)</h2>
+                                        <p className="text-gray-600 mt-2">IPD Module is currently under development.</p>
                                     </div>
                                 )}
                                 {activeTab === 'audit-logs' && (
@@ -727,7 +722,7 @@ const HospitalAdminDashboard = () => {
                                         <AuditLogsTable auditLogs={auditLogs} />
                                     ) : (
                                         <EmptyState
-                                            icon="📜"
+                                            icon={null}
                                             title="No Audit Logs"
                                             message="No activity has been logged yet for your hospital."
                                         />
@@ -860,7 +855,7 @@ const PatientsTable = ({ patients, isAdmin, onDelete, onEdit, onHistory, startIn
                             {
                                 label: 'History',
                                 onClick: () => onHistory(info.row.original),
-                                icon: <span role="img" aria-label="history">📜</span>
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" /></svg>
                             },
                             {
                                 label: 'Delete',
@@ -996,7 +991,7 @@ const AppointmentsTable = ({ appointments, doctors, isAdmin, onDelete, onStatusU
                                 {
                                     label: 'History',
                                     onClick: () => onHistory(info.row.original),
-                                    icon: <span role="img" aria-label="history">📜</span>
+                                    icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" /></svg>
                                 },
                                 ...(isFinal ? [] : [
                                     {
@@ -1141,9 +1136,9 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto scrollbar-thin" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-white rounded-lg border border-gray-200 w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                 <div className="p-6">
-                    <h2 className="text-2xl font-bold text-gray-800 mb-6 capitalize">{isEdit ? 'Edit' : 'Add'} {type.slice(0, -1)}</h2>
+                    <h2 className="text-2xl font-bold text-gray-900 mb-6 capitalize">{isEdit ? 'Edit' : 'Add'} {type.slice(0, -1)}</h2>
 
                     <form onSubmit={handleSubmit} className="space-y-4">
 
@@ -1557,7 +1552,7 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
                             <button type="button" onClick={onClose} className="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-300 transition">
                                 Cancel
                             </button>
-                            <button type="submit" className="flex-1 bg-gradient-to-r from-primary-500 to-secondary-500 text-white px-4 py-2 rounded-lg font-medium hover:shadow-lg transition">
+                            <button type="submit" className="flex-1 bg-gray-900 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-800 transition">
                                 Add
                             </button>
                         </div>
@@ -1602,7 +1597,7 @@ const ReceptionistsTable = ({ receptionists, isAdmin, onDelete, onHistory, start
                             {
                                 label: 'History',
                                 onClick: () => onHistory(info.row.original),
-                                icon: <span role="img" aria-label="history">📜</span>
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" /></svg>
                             },
                             {
                                 label: 'Delete',

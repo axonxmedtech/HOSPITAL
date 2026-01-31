@@ -45,7 +45,7 @@ const UserMenu = ({ user, onLogout, onProfile }) => {
             {/* Trigger Button - Enhanced Avatar */}
             <button
                 onClick={toggleMenu}
-                className="group relative h-11 w-11 rounded-2xl bg-gradient-to-br from-primary-500 to-secondary-500 flex items-center justify-center text-white font-semibold text-sm border-2 border-white shadow-soft hover:shadow-soft-lg transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 hover:scale-105"
+                className="group relative h-11 w-11 rounded-lg bg-gray-900 flex items-center justify-center text-white font-semibold text-sm border-2 border-white hover:bg-gray-800 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
                 aria-label="User menu"
             >
                 {getInitials(user?.name)}
@@ -59,11 +59,11 @@ const UserMenu = ({ user, onLogout, onProfile }) => {
 
             {/* Dropdown Menu */}
             {isOpen && (
-                <div className="absolute right-0 mt-3 w-64 bg-white rounded-2xl shadow-organic border border-neutral-100 py-2 z-50 animate-slide-down overflow-hidden">
+                <div className="absolute right-0 mt-3 w-64 bg-white rounded-lg border border-gray-200 py-2 z-50 overflow-hidden">
                     {/* Header Section with User Info */}
-                    <div className="px-5 py-4 border-b border-neutral-50 bg-gradient-to-r from-primary-50/50 to-secondary-50/50">
+                    <div className="px-5 py-4 border-b border-gray-200 bg-white">
                         <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-secondary-500 flex items-center justify-center text-white font-bold text-sm shadow-soft">
+                            <div className="w-12 h-12 rounded-lg bg-gray-900 flex items-center justify-center text-white font-bold text-sm">
                                 {getInitials(user?.name)}
                             </div>
                             <div className="flex-1 min-w-0">

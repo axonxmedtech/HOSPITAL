@@ -359,9 +359,9 @@ const ReceptionistDashboard = () => {
     };
 
     const tabs = [
-        { id: 'appointments', label: 'Appointments', icon: '📅' },
-        { id: 'patients', label: 'Patients', icon: '👥' },
-        { id: 'billing', label: 'Billing', icon: '💰' },
+        { id: 'appointments', label: 'Appointments', icon: null },
+        { id: 'patients', label: 'Patients', icon: null },
+        { id: 'billing', label: 'Billing', icon: null },
     ];
 
     const pagination = {
@@ -373,7 +373,7 @@ const ReceptionistDashboard = () => {
     };
 
     return (
-        <div className="flex h-screen bg-neutral-50">
+        <div className="flex h-screen bg-white">
             {/* Sidebar */}
             <Sidebar
                 title="HMS Portal"
@@ -382,6 +382,7 @@ const ReceptionistDashboard = () => {
                 onTabChange={setActiveTab}
                 footerTitle="Hospital"
                 footerData={user?.hospitalName}
+                variant="plain"
             />
 
             {/* Main Content */}
@@ -393,34 +394,31 @@ const ReceptionistDashboard = () => {
                     onProfile={() => console.log('Profile clicked')}
                 />
 
-                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-neutral-50 p-8">
+                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
                     {/* Stats for Receptionist */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                        <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-blue-500">
+                        <div className="bg-white rounded-lg border border-gray-200 p-6">
                             <div className="flex justify-between items-center">
                                 <div>
-                                    <p className="text-gray-500 text-sm font-medium uppercase tracking-wider">Today's Appointments</p>
-                                    <h3 className="text-3xl font-bold text-gray-800 mt-1">{stats.today}</h3>
+                                    <p className="text-gray-600 text-sm font-medium">Today's Appointments</p>
+                                    <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.today}</h3>
                                 </div>
-                                <div className="bg-blue-100 p-3 rounded-full text-blue-600 text-xl">📅</div>
                             </div>
                         </div>
-                        <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-orange-500">
+                        <div className="bg-white rounded-lg border border-gray-200 p-6">
                             <div className="flex justify-between items-center">
                                 <div>
-                                    <p className="text-gray-500 text-sm font-medium uppercase tracking-wider">Pending</p>
-                                    <h3 className="text-3xl font-bold text-gray-800 mt-1">{stats.pending}</h3>
+                                    <p className="text-gray-600 text-sm font-medium">Pending</p>
+                                    <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.pending}</h3>
                                 </div>
-                                <div className="bg-orange-100 p-3 rounded-full text-orange-600 text-xl">⏳</div>
                             </div>
                         </div>
-                        <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-gray-500">
+                        <div className="bg-white rounded-lg border border-gray-200 p-6">
                             <div className="flex justify-between items-center">
                                 <div>
-                                    <p className="text-gray-500 text-sm font-medium uppercase tracking-wider">Total Appointments</p>
-                                    <h3 className="text-3xl font-bold text-gray-800 mt-1">{stats.total}</h3>
+                                    <p className="text-gray-600 text-sm font-medium">Total Appointments</p>
+                                    <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.total}</h3>
                                 </div>
-                                <div className="bg-gray-100 p-3 rounded-full text-gray-600 text-xl">📈</div>
                             </div>
                         </div>
                     </div>
@@ -472,7 +470,7 @@ const ReceptionistDashboard = () => {
                             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500"></div>
                         </div>
                     ) : (
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-4">
+                        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
                             {activeTab === 'appointments' && (
                                 appointments.length > 0 ? (
                                     <AppointmentsTable
@@ -486,7 +484,7 @@ const ReceptionistDashboard = () => {
                                     />
                                 ) : (
                                     <EmptyState
-                                        icon="📅"
+                                        icon={null}
                                         title="No Appointments Found"
                                         message="Schedule appointments for your patients."
                                         actionLabel="Schedule Appointment"
@@ -508,7 +506,7 @@ const ReceptionistDashboard = () => {
                                     />
                                 ) : (
                                     <EmptyState
-                                        icon="👥"
+                                        icon={null}
                                         title="No Patients Found"
                                         message="There are no patients registered in the system yet."
                                         actionLabel="Add Patient"
@@ -518,7 +516,7 @@ const ReceptionistDashboard = () => {
                             )}
                             {activeTab === 'billing' && billing.length === 0 && (
                                 <EmptyState
-                                    icon="💰"
+                                    icon={null}
                                     title="No Billing Records"
                                     message="No bills found."
                                 />
@@ -612,8 +610,7 @@ const ReceptionistDashboard = () => {
                         <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
                             <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                                 <div className="sm:flex sm:items-start">
-                                    <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 sm:mx-0 sm:h-10 sm:w-10">
-                                        <span className="text-blue-600 text-xl">💰</span>
+                                    <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-gray-100 sm:mx-0 sm:h-10 sm:w-10">
                                     </div>
                                     <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
                                         <h3 className="text-lg leading-6 font-medium text-gray-900">
@@ -631,17 +628,15 @@ const ReceptionistDashboard = () => {
                                             <div className="grid grid-cols-2 gap-3">
                                                 <button
                                                     onClick={() => handleProcessPayment('Cash')}
-                                                    className="flex items-center justify-center gap-2 p-3 border rounded-lg hover:bg-green-50 hover:border-green-200 transition-colors group"
+                                                    className="flex items-center justify-center gap-2 p-3 border rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors group"
                                                 >
-                                                    <span className="text-xl">💵</span>
-                                                    <span className="font-medium text-gray-700 group-hover:text-green-700">Cash</span>
+                                                    <span className="font-medium text-gray-700">Cash</span>
                                                 </button>
                                                 <button
                                                     onClick={() => handleProcessPayment('Online')}
-                                                    className="flex items-center justify-center gap-2 p-3 border rounded-lg hover:bg-blue-50 hover:border-blue-200 transition-colors group"
+                                                    className="flex items-center justify-center gap-2 p-3 border rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors group"
                                                 >
-                                                    <span className="text-xl">💳</span>
-                                                    <span className="font-medium text-gray-700 group-hover:text-blue-700">Online/UPI</span>
+                                                    <span className="font-medium text-gray-700">Online/UPI</span>
                                                 </button>
                                             </div>
                                         </div>
@@ -673,8 +668,7 @@ const ReceptionistDashboard = () => {
                         <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-sm sm:w-full">
                             <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                                 <div className="sm:flex sm:items-start">
-                                    <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-green-100 sm:mx-0 sm:h-10 sm:w-10">
-                                        <span className="text-green-600 text-xl">✅</span>
+                                    <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-gray-100 sm:mx-0 sm:h-10 sm:w-10">
                                     </div>
                                     <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
                                         <h3 className="text-lg leading-6 font-medium text-gray-900">
@@ -690,9 +684,8 @@ const ReceptionistDashboard = () => {
                                             </div>
                                             <button
                                                 onClick={() => handleDownloadReceipt(paymentSuccessModal.billId)}
-                                                className="w-full flex items-center justify-center gap-2 p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm mb-2"
+                                                className="w-full flex items-center justify-center gap-2 p-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors mb-2"
                                             >
-                                                <span className="text-xl">🖨️</span>
                                                 <span className="font-medium">Print Receipt</span>
                                             </button>
                                             <button
@@ -771,18 +764,18 @@ const AppointmentsTable = ({ appointments, doctors, onStatusUpdate, onHistory, o
                     <ActionMenu actions={[
                         {
                             label: 'View Prescription',
-                            icon: '💊',
+                            icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" /></svg>,
                             onClick: () => onViewPrescription(info.row.original.publicId || info.row.original.id),
                             hidden: info.row.original.status !== 'COMPLETED'
                         },
                         {
                             label: 'History',
                             onClick: () => onHistory(info.row.original),
-                            icon: <span role="img" aria-label="history">📜</span>
+                            icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" /></svg>
                         },
                         {
                             label: 'Cancel',
-                            icon: '❌',
+                            icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>,
                             onClick: () => onStatusUpdate(info.row.original.publicId || info.row.original.id, 'CANCELLED'),
                             variant: 'danger',
                             // Only show cancel if not already cancelled/completed
@@ -849,7 +842,7 @@ const PatientsTable = ({ patients, onStatusUpdate, onViewPrescription, onViewDet
                 const actions = [
                     {
                         label: 'View Details',
-                        icon: '👁️',
+                        icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" /></svg>,
                         onClick: () => onViewDetails(patient)
                     }
                 ];

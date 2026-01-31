@@ -77,7 +77,7 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-3xl shadow-organic w-full max-w-lg animate-scale-in overflow-hidden">
                 {/* Header */}
-                <div className="bg-gradient-to-r from-primary-50 to-secondary-50 px-8 py-6 border-b border-neutral-100">
+                <div className="bg-white px-8 py-6 border-b border-gray-200">
                     <div className="flex justify-between items-center">
                         <div>
                             <h3 className="text-2xl font-bold text-neutral-800">

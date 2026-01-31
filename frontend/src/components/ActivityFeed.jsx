@@ -27,11 +27,11 @@ const ActivityFeed = () => {
     };
 
     const getIcon = (action) => {
-        if (action.includes('DELETED')) return '🗑️';
-        if (action.includes('CREATED')) return '✨';
-        if (action.includes('UPDATED')) return '📝';
-        if (action.includes('STATUS')) return '🔄';
-        return '📋';
+        if (action.includes('DELETED')) return null;
+        if (action.includes('CREATED')) return null;
+        if (action.includes('UPDATED')) return null;
+        if (action.includes('STATUS')) return null;
+        return null;
     };
 
     const formatTime = (timestamp) => {
@@ -45,33 +45,30 @@ const ActivityFeed = () => {
     if (logs.length === 0) return <div className="text-gray-400 text-sm p-4">No recent activity</div>;
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
-                <h3 className="font-semibold text-gray-800">Recent Activity</h3>
-                <button onClick={fetchLogs} className="text-sm text-blue-600 hover:text-blue-700">Refresh</button>
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                <h3 className="font-medium text-gray-900">Recent Activity</h3>
+                <button onClick={fetchLogs} className="text-sm text-gray-600 hover:text-gray-900">Refresh</button>
             </div>
             <div className="max-h-[400px] overflow-y-auto">
-                <ul className="divide-y divide-gray-50">
+                <ul className="divide-y divide-gray-200">
                     {logs.map((log) => (
                         <li key={log.id} className="px-6 py-4 hover:bg-gray-50 transition-colors">
                             <div className="flex items-start gap-3">
-                                <span className="text-lg mt-0.5" role="img" aria-label="icon">
-                                    {getIcon(log.action)}
-                                </span>
                                 <div className="flex-1">
-                                    <p className="text-sm text-gray-800 font-medium">
+                                    <p className="text-sm text-gray-900 font-medium">
                                         {log.details.split('. Reason:')[0]}
                                     </p>
                                     {log.reason && (
-                                        <p className="text-xs text-gray-500 mt-1 italic">
+                                        <p className="text-xs text-gray-600 mt-1 italic">
                                             "{log.reason}"
                                         </p>
                                     )}
                                     <div className="flex justify-between items-center mt-2">
-                                        <span className="text-xs text-gray-400">
+                                        <span className="text-xs text-gray-500">
                                             {formatTime(log.timestamp)}
                                         </span>
-                                        <span className="text-xs text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full">
+                                        <span className="text-xs text-gray-700 bg-gray-100 px-2 py-0.5 rounded-full">
                                             {log.performedBy}
                                         </span>
                                     </div>

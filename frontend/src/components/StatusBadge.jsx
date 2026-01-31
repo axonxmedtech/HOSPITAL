@@ -18,7 +18,7 @@ const getStatusConfig = (status) => {
             text: 'text-success-800', 
             border: 'border-success-200',
             dot: 'bg-success-500',
-            icon: '💰'
+            icon: null
         },
         'ACTIVE': { 
             bg: 'bg-success-100', 
@@ -34,21 +34,21 @@ const getStatusConfig = (status) => {
             text: 'text-primary-800', 
             border: 'border-primary-200',
             dot: 'bg-primary-500',
-            icon: '📅'
+            icon: null
         },
         'PENDING': { 
             bg: 'bg-secondary-100', 
             text: 'text-secondary-800', 
             border: 'border-secondary-200',
             dot: 'bg-secondary-500',
-            icon: '⏳'
+            icon: null
         },
         'IN_PROGRESS': { 
             bg: 'bg-primary-100', 
             text: 'text-primary-800', 
             border: 'border-primary-200',
             dot: 'bg-primary-500',
-            icon: '🔄'
+            icon: null
         },
         
         // Alert/Warning states
@@ -64,14 +64,14 @@ const getStatusConfig = (status) => {
             text: 'text-alert-800', 
             border: 'border-alert-200',
             dot: 'bg-alert-500',
-            icon: '⚠️'
+            icon: null
         },
         'OVERDUE': { 
             bg: 'bg-alert-100', 
             text: 'text-alert-800', 
             border: 'border-alert-200',
             dot: 'bg-alert-500',
-            icon: '🚨'
+            icon: null
         },
         
         // Neutral states
@@ -87,14 +87,14 @@ const getStatusConfig = (status) => {
             text: 'text-neutral-800', 
             border: 'border-neutral-200',
             dot: 'bg-neutral-500',
-            icon: '📝'
+            icon: null
         },
         'CONSULTING': { 
             bg: 'bg-primary-100', 
             text: 'text-primary-800', 
             border: 'border-primary-200',
             dot: 'bg-primary-500',
-            icon: '👨‍⚕️'
+            icon: null
         },
         
         // Error/inactive states
@@ -110,14 +110,14 @@ const getStatusConfig = (status) => {
             text: 'text-error-800', 
             border: 'border-error-200',
             dot: 'bg-error-500',
-            icon: '💳'
+            icon: null
         },
         'INACTIVE': { 
             bg: 'bg-neutral-100', 
             text: 'text-neutral-800', 
             border: 'border-neutral-200',
             dot: 'bg-neutral-500',
-            icon: '⏸'
+            icon: null
         }
     };
     
@@ -126,7 +126,7 @@ const getStatusConfig = (status) => {
         text: 'text-neutral-800',
         border: 'border-neutral-200',
         dot: 'bg-neutral-500',
-        icon: '•'
+        icon: null
     };
 };
 
@@ -197,7 +197,7 @@ const StatusBadge = ({ status, options = [], onUpdate, type = 'default', showIco
                         >
                             <div className={`w-2 h-2 rounded-full ${optionConfig.dot}`}></div>
                             <span className="flex-1">{option}</span>
-                            {showIcon && (
+                            {showIcon && config.icon && (
                                 <span className="text-xs opacity-60">{optionConfig.icon}</span>
                             )}
                         </button>
@@ -210,7 +210,7 @@ const StatusBadge = ({ status, options = [], onUpdate, type = 'default', showIco
     if (!isInteractive) {
         return (
             <span className={badgeClasses}>
-                {showIcon && (
+                {showIcon && config.icon && (
                     <span className="mr-1.5 text-xs opacity-80">{config.icon}</span>
                 )}
                 <span className="font-medium">{status}</span>
@@ -226,7 +226,7 @@ const StatusBadge = ({ status, options = [], onUpdate, type = 'default', showIco
                 onClick={toggleMenu}
                 className={`${badgeClasses} flex items-center gap-1.5 select-none group`}
             >
-                {showIcon && (
+                {showIcon && config.icon && (
                     <span className="text-xs opacity-80 group-hover:scale-110 transition-transform duration-200">
                         {config.icon}
                     </span>

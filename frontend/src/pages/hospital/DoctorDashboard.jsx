@@ -257,8 +257,8 @@ const DoctorDashboard = () => {
     };
 
     const tabs = [
-        { id: 'appointments', label: 'My Appointments', icon: '📅' },
-        { id: 'patients', label: 'Patients', icon: '👥' },
+        { id: 'appointments', label: 'My Appointments', icon: null },
+        { id: 'patients', label: 'Patients', icon: null },
     ];
 
     const pagination = {
@@ -356,7 +356,7 @@ const DoctorDashboard = () => {
     };
 
     return (
-        <div className="flex h-screen bg-neutral-50">
+        <div className="flex h-screen bg-white">
             {/* Sidebar */}
             <Sidebar
                 title="HMS Portal"
@@ -365,6 +365,7 @@ const DoctorDashboard = () => {
                 onTabChange={setActiveTab}
                 footerTitle="My Hospital"
                 footerData={user?.hospitalName}
+                variant="plain"
             />
 
             {/* Main Content Wrapper */}
@@ -378,35 +379,32 @@ const DoctorDashboard = () => {
                 />
 
                 {/* Main Content Area */}
-                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-neutral-50 p-8">
+                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
 
                     {/* Stats Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                        <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-blue-500">
+                        <div className="bg-white rounded-lg border border-gray-200 p-6">
                             <div className="flex justify-between items-center">
                                 <div>
-                                    <p className="text-gray-500 text-sm font-medium uppercase tracking-wider">Today's Appointments</p>
-                                    <h3 className="text-3xl font-bold text-gray-800 mt-1">{stats.today}</h3>
+                                    <p className="text-gray-600 text-sm font-medium">Today's Appointments</p>
+                                    <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.today}</h3>
                                 </div>
-                                <div className="bg-blue-100 p-3 rounded-full text-blue-600 text-xl">📅</div>
                             </div>
                         </div>
-                        <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-orange-500">
+                        <div className="bg-white rounded-lg border border-gray-200 p-6">
                             <div className="flex justify-between items-center">
                                 <div>
-                                    <p className="text-gray-500 text-sm font-medium uppercase tracking-wider">Pending Action</p>
-                                    <h3 className="text-3xl font-bold text-gray-800 mt-1">{stats.pending}</h3>
+                                    <p className="text-gray-600 text-sm font-medium">Pending Action</p>
+                                    <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.pending}</h3>
                                 </div>
-                                <div className="bg-orange-100 p-3 rounded-full text-orange-600 text-xl">⏳</div>
                             </div>
                         </div>
-                        <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-gray-500">
+                        <div className="bg-white rounded-lg border border-gray-200 p-6">
                             <div className="flex justify-between items-center">
                                 <div>
-                                    <p className="text-gray-500 text-sm font-medium uppercase tracking-wider">Total Appointments</p>
-                                    <h3 className="text-3xl font-bold text-gray-800 mt-1">{stats.total}</h3>
+                                    <p className="text-gray-600 text-sm font-medium">Total Appointments</p>
+                                    <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.total}</h3>
                                 </div>
-                                <div className="bg-gray-100 p-3 rounded-full text-gray-600 text-xl">📈</div>
                             </div>
                         </div>
                     </div>
@@ -460,7 +458,7 @@ const DoctorDashboard = () => {
                         </div>
                     ) : (
                         <>
-                            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-4">
+                            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
                                 {activeTab === 'appointments' ? (
                                     appointments.length > 0 ? (
                                         <DoctorAppointmentsTable
@@ -475,7 +473,7 @@ const DoctorDashboard = () => {
                                         />
                                     ) : (
                                         <EmptyState
-                                            icon="📅"
+                                            icon={null}
                                             title="No Appointments"
                                             message="No appointments found for the selected filter."
                                         />
@@ -494,7 +492,7 @@ const DoctorDashboard = () => {
                                         />
                                     ) : (
                                         <EmptyState
-                                            icon="👥"
+                                            icon={null}
                                             title="No Patients"
                                             message="No patients found."
                                         />
@@ -511,8 +509,8 @@ const DoctorDashboard = () => {
             {/* Edit Appointment Modal */}
             {editModal.isOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 m-4">
-                        <h3 className="text-xl font-bold text-gray-800 mb-4">Edit Appointment Details</h3>
+                    <div className="bg-white rounded-lg border border-gray-200 w-full max-w-lg p-6 m-4">
+                        <h3 className="text-xl font-bold text-gray-900 mb-4">Edit Appointment Details</h3>
 
                         <div className="mb-6">
                             <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
@@ -533,7 +531,7 @@ const DoctorDashboard = () => {
                             </button>
                             <button
                                 onClick={handleUpdateAppointment}
-                                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition"
+                                className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition"
                             >
                                 Save Changes
                             </button>
@@ -640,27 +638,27 @@ const DoctorAppointmentsTable = ({ appointments, onStatusUpdate, onEdit, onConsu
                     <ActionMenu actions={[
                         {
                             label: 'View History',
-                            icon: '📜',
+                            icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" /></svg>,
                             onClick: () => onAuditHistory(info.row.original)
                         },
                         // Only show status actions if not final
                         ...(info.row.original.status === 'SCHEDULED' ? [{
                             label: 'Start Consultation',
-                            icon: '🩺',
+                            icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 2a4 4 0 00-4 4v1H5a1 1 0 00-.994.89l-1 9A1 1 0 004 18h12a1 1 0 00.994-1.11l-1-9A1 1 0 0015 7h-1V6a4 4 0 00-4-4zM8 6a2 2 0 114 0v1H8V6zm.707 7.293a1 1 0 00-1.414 1.414L9.586 17a1 1 0 001.414 0l2.293-2.293a1 1 0 00-1.414-1.414L10 15.172l-1.293-1.879z" clipRule="evenodd" /></svg>,
                             onClick: () => onConsult(info.row.original)
                         },{
                             label: 'Cancel Appointment',
-                            icon: '❌',
+                            icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>,
                             onClick: () => onStatusUpdate(info.row.original.id, 'CANCELLED'),
                             variant: 'danger'
                         },{
                             label: 'Edit Details',
-                            icon: '✏️',
+                            icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /></svg>,
                             onClick: () => onEdit(info.row.original)
                         }] : []),
                         ...(info.row.original.status === 'COMPLETED' ? [{
                             label: 'Print Prescription',
-                            icon: '🖨️',
+                            icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v2a2 2 0 002 2h6a2 2 0 002-2v-2h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clipRule="evenodd" /></svg>,
                             onClick: () => onPrint(info.row.original.id)
                         }] : []),
                         
@@ -715,7 +713,7 @@ const DoctorPatientsTable = ({ patients, onViewHistory, onStartConsultation, onC
                 const secondaryActions = [
                     {
                         label: 'View History',
-                        icon: '📜',
+                        icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" /></svg>,
                         onClick: () => onViewHistory(patient)
                     }
                 ];

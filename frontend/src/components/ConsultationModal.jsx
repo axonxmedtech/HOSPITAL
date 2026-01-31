@@ -126,7 +126,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient })
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col m-4 animate-fade-in-up">
 
                 {/* Header */}
-                <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-xl">
+                <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-white rounded-t-lg">
                     <div>
                         <h3 className="text-xl font-bold text-gray-800">Patient Consultation</h3>
                         <p className="text-sm text-gray-600 mt-1">
@@ -248,7 +248,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient })
                                 className={`flex-1 py-4 text-sm font-semibold transition-colors ${activeTab === 'prescription' ? 'text-primary-600 border-b-2 border-primary-600 bg-primary-50' : 'text-gray-500 hover:bg-gray-50'}`}
                                 onClick={() => setActiveTab('prescription')}
                             >
-                                💊 Prescription ({formData.prescription.length})
+                                Prescription ({formData.prescription.length})
                             </button>
                         </div>
 

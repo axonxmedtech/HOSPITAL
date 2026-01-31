@@ -37,7 +37,7 @@ const PrescriptionViewModal = ({ isOpen, onClose, patient }) => {
             <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col m-4 animate-fade-in-up">
 
                 {/* Header */}
-                <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gradient-to-r from-purple-50 to-pink-50 rounded-t-xl">
+                <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-white rounded-t-lg">
                     <div>
                         <h3 className="text-xl font-bold text-gray-800">Prescription Details</h3>
                         <p className="text-sm text-gray-600 mt-1">
@@ -89,7 +89,7 @@ const PrescriptionViewModal = ({ isOpen, onClose, patient }) => {
                             {/* Medicines Table */}
                             <div>
                                 <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-3 flex items-center">
-                                    <span className="mr-2">💊</span> Prescribed Medicines
+                                    Prescribed Medicines
                                 </h4>
                                 <div className="border rounded-lg overflow-hidden">
                                     <table className="min-w-full divide-y divide-gray-200">

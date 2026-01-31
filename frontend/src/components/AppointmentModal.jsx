@@ -435,7 +435,7 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
                         </button>
                         <button
                             type="submit"
-                            className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:shadow-lg transition"
+                            className="flex-1 bg-gray-900 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-800 transition"
                         >
                             Schedule
                         </button>

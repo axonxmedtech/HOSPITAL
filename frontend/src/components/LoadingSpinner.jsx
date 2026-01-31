@@ -45,7 +45,7 @@ const LoadingSpinner = ({ size = 'md', variant = 'primary', text = 'Loading...' 
                 
                 {/* Center dot */}
                 <div className="absolute inset-0 flex items-center justify-center">
-                    <div className={`w-2 h-2 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-full animate-pulse`}></div>
+                    <div className="w-2 h-2 bg-gray-900 rounded-full animate-pulse"></div>
                 </div>
             </div>
             
