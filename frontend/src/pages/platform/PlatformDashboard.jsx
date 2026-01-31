@@ -332,25 +332,13 @@ const PlatformDashboard = () => {
     const user = authService.getCurrentUser();
 
     const tabs = [
-        { id: 'dashboard', label: 'Dashboard', icon: (
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3v18h18" />
-            </svg>
-        ) },
-        { id: 'hospitals', label: 'Hospitals', icon: (
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-8a2 2 0 012-2h14a2 2 0 012 2v8" />
-            </svg>
-        ) },
-        { id: 'audit_logs', label: 'Audit Logs', icon: (
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
-            </svg>
-        ) },
+        { id: 'dashboard', label: 'Dashboard' },
+        { id: 'hospitals', label: 'Hospitals' },
+        { id: 'audit_logs', label: 'Audit Logs' },
     ];
 
     return (
-        <div className="flex h-screen bg-neutral-50">
+        <div className="flex h-screen bg-gray-50">
             {/* Sidebar */}
             <Sidebar
                 title="HMS Platform"
@@ -359,7 +347,7 @@ const PlatformDashboard = () => {
                 onTabChange={setActiveTab}
                 footerTitle="Platform"
                 footerData="Super Admin"
-                variant="purple"
+                variant="plain"
             />
 
             {/* Main Content Wrapper */}
@@ -373,110 +361,120 @@ const PlatformDashboard = () => {
                 />
 
                 {/* Main Content Area */}
-                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-neutral-50 p-8">
+                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-6">
                     {/* Standardized Header */}
                     {activeTab !== 'dashboard' && (
-                        <PageHeader
-                            title={tabs.find(t => t.id === activeTab)?.label}
-                            subtitle={activeTab === 'hospitals' ? 'Manage registered hospitals here.' : 'View system audit logs and activities.'}
-                            onAdd={activeTab === 'hospitals' ? () => setShowCreateModal(true) : null}
-                            addLabel="Create Hospital"
-                        />
+                        <div className="mb-6">
+                            <PageHeader
+                                title={tabs.find(t => t.id === activeTab)?.label}
+                                subtitle={activeTab === 'hospitals' ? 'Manage and monitor all registered hospitals on the platform.' : 'Track system activities and administrative actions across the platform.'}
+                                onAdd={activeTab === 'hospitals' ? () => setShowCreateModal(true) : null}
+                                addLabel="Create Hospital"
+                            />
+                        </div>
                     )}
 
                     {/* Dashboard Tab */}
                     {activeTab === 'dashboard' && (
-                        <>
+                        <div className="space-y-6">
+                            {/* Welcome Section */}
+                            <div className="bg-white border border-gray-200 p-6">
+                                <h1 className="text-2xl font-bold text-gray-900 mb-2">Platform Overview</h1>
+                                <p className="text-gray-600">Monitor and manage all hospitals from your central dashboard</p>
+                            </div>
+
                             {/* Stats Cards */}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                                <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <p className="text-sm font-medium text-gray-600">Total Hospitals</p>
-                                            <p className="text-3xl font-bold text-gray-900 mt-2">{hospitalStats.total || 0}</p>
-                                        </div>
-                                        <div className="bg-neutral-100 p-3 rounded-lg">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10l9-6 9 6v7a2 2 0 01-2 2H5a2 2 0 01-2-2v-7z" />
-                                            </svg>
-                                        </div>
-                                    </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div className="bg-white border border-gray-200 p-6">
+                                    <p className="text-sm font-medium text-gray-600 mb-2">Total Hospitals</p>
+                                    <p className="text-3xl font-bold text-gray-900">{hospitalStats.total || 0}</p>
+                                    <p className="text-sm text-gray-600 mt-2">Registered on platform</p>
                                 </div>
 
-                                <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <p className="text-sm font-medium text-gray-600">Active Hospitals</p>
-                                            <p className="text-3xl font-bold text-green-600 mt-2">{hospitalStats.active || 0}</p>
-                                        </div>
-                                        <div className="bg-neutral-100 p-3 rounded-lg">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                            </svg>
-                                        </div>
-                                    </div>
+                                <div className="bg-white border border-gray-200 p-6">
+                                    <p className="text-sm font-medium text-gray-600 mb-2">Active Hospitals</p>
+                                    <p className="text-3xl font-bold text-gray-900">{hospitalStats.active || 0}</p>
+                                    <p className="text-sm text-gray-600 mt-2">Currently operational</p>
                                 </div>
 
-                                <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <p className="text-sm font-medium text-gray-600">Inactive Hospitals</p>
-                                            <p className="text-3xl font-bold text-red-600 mt-2">{hospitalStats.inactive || 0}</p>
-                                        </div>
-                                        <div className="bg-neutral-100 p-3 rounded-lg">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                            </svg>
-                                        </div>
-                                    </div>
+                                <div className="bg-white border border-gray-200 p-6">
+                                    <p className="text-sm font-medium text-gray-600 mb-2">Inactive Hospitals</p>
+                                    <p className="text-3xl font-bold text-gray-900">{hospitalStats.inactive || 0}</p>
+                                    <p className="text-sm text-gray-600 mt-2">Temporarily disabled</p>
                                 </div>
                             </div>
 
-                            {/* Hospital List on Dashboard */}
-                            <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-                                <div className="p-6 border-b border-gray-100">
-                                    <h3 className="text-lg font-semibold text-gray-900">All Hospitals</h3>
-                                    <p className="text-sm text-gray-500 mt-1">Quick overview of all registered hospitals</p>
+                            {/* Recent Hospitals */}
+                            <div className="bg-white border border-gray-200">
+                                <div className="px-6 py-4 border-b border-gray-200">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <h2 className="text-lg font-bold text-gray-900">Recent Hospitals</h2>
+                                            <p className="text-gray-600 mt-1">Latest registered hospitals on the platform</p>
+                                        </div>
+                                        <button
+                                            onClick={() => setActiveTab('hospitals')}
+                                            className="px-4 py-2 bg-gray-900 text-white font-medium hover:bg-gray-700 transition-colors duration-200"
+                                        >
+                                            View All
+                                        </button>
+                                    </div>
                                 </div>
+                                
                                 {loading ? (
-                                    <div className="flex justify-center items-center h-64">
-                                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-300"></div>
+                                    <div className="flex justify-center items-center h-32">
+                                        <div className="w-8 h-8 border-2 border-gray-200 border-t-gray-900 animate-spin"></div>
                                     </div>
                                 ) : hospitals.length > 0 ? (
                                     <div className="overflow-x-auto">
-                                        <table className="min-w-full divide-y divide-gray-200">
+                                        <table className="min-w-full">
                                             <thead className="bg-gray-50">
                                                 <tr>
-                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hospital Name</th>
-                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Plan</th>
-                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Hospital</th>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Status</th>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Plan</th>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Created</th>
+                                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-600 uppercase">Actions</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="bg-white divide-y divide-gray-200">
-                                                {hospitals.map((hospital) => (
-                                                    <tr key={hospital.id} className="hover:bg-gray-50 transition">
-                                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                                            {hospital.name}
+                                                {hospitals.slice(0, 5).map((hospital) => (
+                                                    <tr key={hospital.id} className="hover:bg-gray-50">
+                                                        <td className="px-6 py-4">
+                                                            <div>
+                                                                <p className="text-sm font-medium text-gray-900">{hospital.name}</p>
+                                                                <p className="text-xs text-gray-600">ID: {hospital.customId || hospital.id}</p>
+                                                            </div>
                                                         </td>
-                                                        <td className="px-6 py-4 whitespace-nowrap">
-                                                            <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${hospital.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                                                                }`}>
+                                                        <td className="px-6 py-4">
+                                                            <span className={`px-2 py-1 text-xs font-medium ${
+                                                                hospital.isActive 
+                                                                    ? 'bg-gray-100 text-gray-900' 
+                                                                    : 'bg-gray-200 text-gray-600'
+                                                            }`}>
                                                                 {hospital.isActive ? 'Active' : 'Inactive'}
                                                             </span>
                                                         </td>
-                                                        <td className="px-6 py-4 whitespace-nowrap">
-                                                            <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-neutral-100 text-slate-800">
+                                                        <td className="px-6 py-4">
+                                                            <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-900">
                                                                 {hospital.plan || 'FREE'}
                                                             </span>
                                                         </td>
-                                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                                                        <td className="px-6 py-4 text-sm text-gray-600">
+                                                            {new Date(hospital.createdAt).toLocaleDateString('en-US', {
+                                                                year: 'numeric',
+                                                                month: 'short',
+                                                                day: 'numeric'
+                                                            })}
+                                                        </td>
+                                                        <td className="px-6 py-4 text-right">
                                                             <button
                                                                 onClick={() => handleToggleStatus(hospital.publicId || hospital.id, hospital.isActive)}
-                                                                className={`px-3 py-1 rounded-lg text-xs font-medium ${hospital.isActive
-                                                                    ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                                                                    : 'bg-green-100 text-green-700 hover:bg-green-200'
-                                                                    }`}
+                                                                className={`px-3 py-1 text-xs font-medium transition-colors duration-200 ${
+                                                                    hospital.isActive
+                                                                        ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                                        : 'bg-gray-900 text-white hover:bg-gray-700'
+                                                                }`}
                                                             >
                                                                 {hospital.isActive ? 'Deactivate' : 'Activate'}
                                                             </button>
@@ -488,54 +486,72 @@ const PlatformDashboard = () => {
                                     </div>
                                 ) : (
                                     <div className="p-12 text-center">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mb-4 text-slate-400 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10l9-6 9 6v7a2 2 0 01-2 2H5a2 2 0 01-2-2v-7z" />
-                                        </svg>
-                                        <p className="text-gray-500">No hospitals registered yet</p>
+                                        <h3 className="text-lg font-medium text-gray-900 mb-2">No hospitals yet</h3>
+                                        <p className="text-gray-600 mb-6">Get started by creating your first hospital</p>
+                                        <button
+                                            onClick={() => setShowCreateModal(true)}
+                                            className="px-6 py-2 bg-gray-900 text-white font-medium hover:bg-gray-700 transition-colors duration-200"
+                                        >
+                                            Create Hospital
+                                        </button>
                                     </div>
                                 )}
                             </div>
-                        </>
-                    )}
-
-
-
-                    {error && (
-                        <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded">
-                            {error}
                         </div>
                     )}
 
+
+
+                    {/* Error Display */}
+                    {error && (
+                        <div className="mb-6 bg-white border border-gray-200 p-4">
+                            <div className="flex items-start">
+                                <div className="flex-shrink-0">
+                                    <span className="text-gray-900 font-medium">Error:</span>
+                                </div>
+                                <div className="ml-3">
+                                    <p className="text-sm text-gray-900">{error}</p>
+                                </div>
+                                <div className="ml-auto pl-3">
+                                    <button
+                                        onClick={() => setError('')}
+                                        className="text-gray-600 hover:text-gray-900"
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Content Sections */}
                     {loading ? (
                         <div className="flex justify-center items-center h-64">
-                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-300"></div>
+                            <div className="text-center">
+                                <div className="w-8 h-8 border-2 border-gray-200 border-t-gray-900 animate-spin mx-auto mb-4"></div>
+                                <p className="text-gray-600">Loading platform data...</p>
+                            </div>
                         </div>
                     ) : activeTab === 'hospitals' ? (
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                        <div className="bg-white border border-gray-200">
                             <HospitalsTable
                                 hospitals={hospitals}
                                 hospitalPage={hospitalPage}
                                 handleToggleStatus={handleToggleStatus}
-
                                 openEditHospitalModal={openEditHospitalModal}
                                 onResetPassword={handleResetPassword}
                                 loadHospitals={loadHospitals}
                             />
                         </div>
                     ) : activeTab === 'audit_logs' ? (
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                        <div className="bg-white border border-gray-200">
                             {auditLogs.length > 0 ? (
                                 <AuditLogsTable auditLogs={auditLogs} />
                             ) : (
-                                <EmptyState
-                                    icon={(
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v10l4-2 4 2V7" />
-                                        </svg>
-                                    )}
-                                    title="No Audit Logs"
-                                    message="No activity has been logged yet."
-                                />
+                                <div className="p-12 text-center">
+                                    <h3 className="text-lg font-medium text-gray-900 mb-2">No audit logs yet</h3>
+                                    <p className="text-gray-600">System activities will appear here once actions are performed</p>
+                                </div>
                             )}
                         </div>
                     ) : null}
@@ -556,12 +572,16 @@ const PlatformDashboard = () => {
             {/* Create Hospital Modal */}
             {showCreateModal && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowCreateModal(false)}>
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                    <div className="bg-white border border-gray-200 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                         <div className="p-6">
-                            <h2 className="text-2xl font-bold text-gray-800 mb-6">Create New Hospital</h2>
+                            <div className="mb-6">
+                                <h2 className="text-xl font-bold text-gray-900 mb-2">Create New Hospital</h2>
+                                <p className="text-gray-600">Add a new hospital to the platform with admin credentials</p>
+                            </div>
+                            
                             <form onSubmit={handleCreateHospital} className="space-y-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Hospital Name</label>
+                                    <label className="block text-sm font-medium text-gray-900 mb-2">Hospital Name</label>
                                     <input
                                         type="text"
                                         value={formData.hospitalName}
@@ -569,12 +589,14 @@ const PlatformDashboard = () => {
                                             setFormData({ ...formData, hospitalName: e.target.value });
                                             if (errors.hospitalName) setErrors({ ...errors, hospitalName: null });
                                         }}
-                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent ${errors.hospitalName ? 'border-red-500' : 'border-gray-300'}`}
+                                        placeholder="Enter hospital name"
+                                        className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 ${errors.hospitalName ? 'border-gray-900' : 'border-gray-200'}`}
                                     />
-                                    {errors.hospitalName && <p className="text-red-500 text-xs mt-1">{errors.hospitalName}</p>}
+                                    {errors.hospitalName && <p className="text-gray-900 text-sm font-medium mt-1">{errors.hospitalName}</p>}
                                 </div>
+                                
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Admin Name</label>
+                                    <label className="block text-sm font-medium text-gray-900 mb-2">Admin Name</label>
                                     <input
                                         type="text"
                                         value={formData.adminName}
@@ -582,12 +604,14 @@ const PlatformDashboard = () => {
                                             setFormData({ ...formData, adminName: e.target.value });
                                             if (errors.adminName) setErrors({ ...errors, adminName: null });
                                         }}
-                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent ${errors.adminName ? 'border-red-500' : 'border-gray-300'}`}
+                                        placeholder="Enter admin full name"
+                                        className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 ${errors.adminName ? 'border-gray-900' : 'border-gray-200'}`}
                                     />
-                                    {errors.adminName && <p className="text-red-500 text-xs mt-1">{errors.adminName}</p>}
+                                    {errors.adminName && <p className="text-gray-900 text-sm font-medium mt-1">{errors.adminName}</p>}
                                 </div>
+                                
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Admin Email</label>
+                                    <label className="block text-sm font-medium text-gray-900 mb-2">Admin Email</label>
                                     <input
                                         type="email"
                                         value={formData.adminEmail}
@@ -595,62 +619,66 @@ const PlatformDashboard = () => {
                                             setFormData({ ...formData, adminEmail: e.target.value });
                                             if (errors.adminEmail) setErrors({ ...errors, adminEmail: null });
                                         }}
-                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent ${errors.adminEmail ? 'border-red-500' : 'border-gray-300'}`}
+                                        placeholder="admin@hospital.com"
+                                        className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 ${errors.adminEmail ? 'border-gray-900' : 'border-gray-200'}`}
                                     />
-                                    {errors.adminEmail && <p className="text-red-500 text-xs mt-1">{errors.adminEmail}</p>}
-                                    {/* Admin Password */}
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700">Admin Password</label>
-                                        <input
-                                            type="password"
-                                            value={formData.adminPassword}
-                                            onChange={(e) => setFormData({ ...formData, adminPassword: e.target.value })}
-                                            className={`mt-1 block w-full rounded-md border ${errors.adminPassword ? 'border-red-500' : 'border-gray-300'} px-3 py-2 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500`}
-                                        />
-                                        {errors.adminPassword && <p className="mt-1 text-xs text-red-500">{errors.adminPassword}</p>}
-                                    </div>
-
-                                    {/* Modules Selection */}
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">Enabled Modules</label>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {AVAILABLE_MODULES.map(module => (
-                                                <label key={module} className="flex items-center space-x-2 p-2 border rounded-md hover:bg-gray-50 cursor-pointer">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={formData.modules.includes(module)}
-                                                        onChange={(e) => {
-                                                            const checked = e.target.checked;
-                                                            setFormData(prev => ({
-                                                                ...prev,
-                                                                modules: checked
-                                                                    ? [...prev.modules, module]
-                                                                    : prev.modules.filter(m => m !== module)
-                                                            }));
-                                                        }}
-                                                        className="rounded text-sky-600 focus:ring-sky-500"
-                                                    />
-                                                    <span className="text-sm text-gray-700">{module}</span>
-                                                </label>
-                                            ))}
-                                        </div>
-                                        {formData.modules.length === 0 && <p className="mt-1 text-xs text-amber-500">At least one module should be enabled.</p>}
-                                    </div>
+                                    {errors.adminEmail && <p className="text-gray-900 text-sm font-medium mt-1">{errors.adminEmail}</p>}
                                 </div>
 
-                                <div className="mt-6 flex justify-end space-x-3">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-900 mb-2">Admin Password</label>
+                                    <input
+                                        type="password"
+                                        value={formData.adminPassword}
+                                        onChange={(e) => {
+                                            setFormData({ ...formData, adminPassword: e.target.value });
+                                            if (errors.adminPassword) setErrors({ ...errors, adminPassword: null });
+                                        }}
+                                        placeholder="Create secure password"
+                                        className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 ${errors.adminPassword ? 'border-gray-900' : 'border-gray-200'}`}
+                                    />
+                                    {errors.adminPassword && <p className="text-gray-900 text-sm font-medium mt-1">{errors.adminPassword}</p>}
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-900 mb-3">Enabled Modules</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {AVAILABLE_MODULES.map(module => (
+                                            <label key={module} className="flex items-center space-x-2 p-2 border border-gray-200 hover:bg-gray-50 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={formData.modules.includes(module)}
+                                                    onChange={(e) => {
+                                                        const checked = e.target.checked;
+                                                        setFormData(prev => ({
+                                                            ...prev,
+                                                            modules: checked
+                                                                ? [...prev.modules, module]
+                                                                : prev.modules.filter(m => m !== module)
+                                                        }));
+                                                    }}
+                                                    className="w-4 h-4"
+                                                />
+                                                <span className="text-sm font-medium text-gray-900">{module}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                    {formData.modules.length === 0 && <p className="mt-2 text-xs text-gray-600 font-medium">At least one module should be enabled.</p>}
+                                </div>
+
+                                <div className="flex gap-3 pt-4 border-t border-gray-200">
                                     <button
                                         type="button"
                                         onClick={() => setShowCreateModal(false)}
-                                        className="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-300 transition"
+                                        className="flex-1 bg-gray-200 text-gray-900 px-4 py-2 font-medium hover:bg-gray-300"
                                     >
                                         Cancel
                                     </button>
                                     <button
                                         type="submit"
-                                        className="flex-1 bg-sky-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-sky-700 transition"
+                                        className="flex-1 bg-gray-900 text-white px-4 py-2 font-medium hover:bg-gray-700"
                                     >
-                                        Create
+                                        Create Hospital
                                     </button>
                                 </div>
                             </form>
@@ -662,54 +690,57 @@ const PlatformDashboard = () => {
             {/* Edit Hospital Modal */}
             {editHospitalModal.isOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setEditHospitalModal({ ...editHospitalModal, isOpen: false })}>
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-                        <div className="p-6">
-                            <h3 className="text-xl font-bold text-gray-800 mb-4">Edit Hospital Details</h3>
-                            <p className="text-sm text-gray-600 mb-6">
-                                Update settings for <span className="font-semibold">{editHospitalModal.hospital?.name}</span>
-                            </p>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                        <div className="p-8">
+                            <div className="text-center mb-8">
+                                <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                    <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                </div>
+                                <h3 className="text-2xl font-bold text-gray-900 mb-2">Edit Hospital</h3>
+                                <p className="text-gray-600">
+                                    Update settings for <span className="font-semibold text-gray-900">{editHospitalModal.hospital?.name}</span>
+                                </p>
+                            </div>
 
                             <div className="space-y-6">
-                                {/* Hospital Name */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Hospital Name</label>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Hospital Name</label>
                                     <input
                                         type="text"
                                         value={editHospitalModal.name}
                                         onChange={(e) => setEditHospitalModal({ ...editHospitalModal, name: e.target.value })}
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                                        className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-900 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200"
                                     />
                                 </div>
 
-                                {/* Admin Name */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Admin Name</label>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Admin Name</label>
                                     <input
                                         type="text"
                                         value={editHospitalModal.adminName}
                                         onChange={(e) => setEditHospitalModal({ ...editHospitalModal, adminName: e.target.value })}
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                                        className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-900 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200"
                                     />
                                 </div>
 
-                                {/* Admin Email */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Admin Email</label>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Admin Email</label>
                                     <input
                                         type="email"
                                         value={editHospitalModal.adminEmail}
                                         onChange={(e) => setEditHospitalModal({ ...editHospitalModal, adminEmail: e.target.value })}
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                                        className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-900 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200"
                                     />
                                 </div>
 
-                                {/* Plan Selection */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Subscription Plan</label>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Subscription Plan</label>
                                     <select
                                         value={editHospitalModal.plan}
                                         onChange={(e) => setEditHospitalModal({ ...editHospitalModal, plan: e.target.value })}
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                                        className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-900 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200"
                                     >
                                         <option value="FREE">FREE</option>
                                         <option value="BASIC">BASIC</option>
@@ -718,12 +749,11 @@ const PlatformDashboard = () => {
                                     </select>
                                 </div>
 
-                                {/* Modules Selection */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Enabled Modules</label>
-                                    <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1">
+                                    <label className="block text-sm font-semibold text-gray-700 mb-3">Enabled Modules</label>
+                                    <div className="grid grid-cols-2 gap-3 max-h-48 overflow-y-auto">
                                         {AVAILABLE_MODULES.map(module => (
-                                            <label key={module} className="flex items-center space-x-2 p-2 border rounded-md hover:bg-gray-50 cursor-pointer">
+                                            <label key={module} className="flex items-center space-x-3 p-3 border-2 border-gray-200 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors duration-200">
                                                 <input
                                                     type="checkbox"
                                                     checked={editHospitalModal.modules.includes(module)}
@@ -736,25 +766,25 @@ const PlatformDashboard = () => {
                                                                 : prev.modules.filter(m => m !== module)
                                                         }));
                                                     }}
-                                                    className="rounded text-sky-600 focus:ring-sky-500"
+                                                    className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
                                                 />
-                                                <span className="text-sm text-gray-700">{module}</span>
+                                                <span className="text-sm font-medium text-gray-700">{module}</span>
                                             </label>
                                         ))}
                                     </div>
-                                    {editHospitalModal.modules.length === 0 && <p className="mt-1 text-xs text-amber-500">Warning: Disabling all modules may restrict access.</p>}
+                                    {editHospitalModal.modules.length === 0 && <p className="mt-2 text-xs text-amber-600 font-medium">Warning: Disabling all modules may restrict access.</p>}
                                 </div>
 
-                                <div className="flex gap-3 pt-4 border-t border-gray-100">
+                                <div className="flex gap-4 pt-6 border-t border-gray-100">
                                     <button
                                         onClick={() => setEditHospitalModal({ ...editHospitalModal, isOpen: false })}
-                                        className="flex-1 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-200 transition"
+                                        className="flex-1 bg-gray-100 text-gray-700 px-6 py-3 rounded-xl font-semibold hover:bg-gray-200 transition-colors duration-200"
                                     >
                                         Cancel
                                     </button>
                                     <button
                                         onClick={handleHospitalUpdate}
-                                        className="flex-1 bg-sky-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-sky-700 transition"
+                                        className="flex-1 bg-blue-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors duration-200"
                                     >
                                         Save Changes
                                     </button>
@@ -765,59 +795,56 @@ const PlatformDashboard = () => {
                 </div>
             )}
 
-
             {/* Password Display Modal */}
-            {
-                passwordModal.isOpen && (
-                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setPasswordModal({ ...passwordModal, isOpen: false })}>
-                        <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm text-center" onClick={(e) => e.stopPropagation()}>
-                            <div className="p-8">
-                                <div className="w-16 h-16 bg-neutral-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-2a4 4 0 014-4h10a4 4 0 014 4v2" />
-                                    </svg>
-                                </div>
-                                <h3 className="text-xl font-bold text-gray-800 mb-2">Password Reset Successful</h3>
-                                <p className="text-gray-600 text-sm mb-6">
-                                    Please copy and share these credentials with the hospital admin immediately.
-                                </p>
-
-                                <div className="bg-gray-50 rounded-lg p-4 mb-6 text-left border border-gray-200">
-                                    <div className="mb-3">
-                                        <span className="text-xs font-semibold text-gray-500 uppercase">Admin Email</span>
-                                        <p className="text-gray-900 font-medium">{passwordModal.email}</p>
-                                    </div>
-                                    <div>
-                                        <span className="text-xs font-semibold text-gray-500 uppercase">New Password</span>
-                                        <div className="flex items-center justify-between mt-1">
-                                            <code className="bg-white px-2 py-1 rounded border border-gray-300 font-mono text-lg text-slate-800 font-bold">
-                                                {passwordModal.password}
-                                            </code>
-                                            <button
-                                                onClick={() => {
-                                                    navigator.clipboard.writeText(passwordModal.password);
-                                                    success('Password copied to clipboard');
-                                                }}
-                                                className="text-gray-400 hover:text-sky-600 text-sm font-medium"
-                                            >
-                                                Copy
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <button
-                                    onClick={() => setPasswordModal({ ...passwordModal, isOpen: false })}
-                                    className="w-full bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition"
-                                >
-                                    Done
-                                </button>
+            {passwordModal.isOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setPasswordModal({ ...passwordModal, isOpen: false })}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+                        <div className="p-8 text-center">
+                            <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                                <svg className="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
                             </div>
+                            
+                            <h3 className="text-2xl font-bold text-gray-900 mb-2">Password Reset Successful</h3>
+                            <p className="text-gray-600 mb-8">
+                                Please copy and share these credentials with the hospital admin immediately.
+                            </p>
+
+                            <div className="bg-gray-50 rounded-2xl p-6 mb-8 text-left border border-gray-200">
+                                <div className="mb-4">
+                                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Admin Email</span>
+                                    <p className="text-gray-900 font-semibold text-lg mt-1">{passwordModal.email}</p>
+                                </div>
+                                <div>
+                                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">New Password</span>
+                                    <div className="flex items-center justify-between mt-2">
+                                        <code className="bg-white px-4 py-2 rounded-xl border border-gray-300 font-mono text-lg text-gray-900 font-bold flex-1 mr-3">
+                                            {passwordModal.password}
+                                        </code>
+                                        <button
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(passwordModal.password);
+                                                success('Password copied to clipboard');
+                                            }}
+                                            className="px-4 py-2 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-100 transition-colors duration-200 font-semibold text-sm"
+                                        >
+                                            Copy
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={() => setPasswordModal({ ...passwordModal, isOpen: false })}
+                                className="w-full bg-blue-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors duration-200"
+                            >
+                                Done
+                            </button>
                         </div>
                     </div>
-                )
-            }
+                </div>
+            )}
         </div >
     );
 };
