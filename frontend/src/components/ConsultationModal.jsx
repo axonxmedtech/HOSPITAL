@@ -3,29 +3,31 @@ import hospitalService from '../services/hospitalService';
 import { useToast } from '../context/ToastContext';
 import MedicineAutocomplete from './MedicineAutocomplete';
 
-const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient }) => {
-    console.log("ConsultationModal render:", { isOpen, appointment, patient });
+const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, opd }) => {
+    console.log("ConsultationModal render:", { isOpen, appointment, patient, opd });
     const [activeTab, setActiveTab] = useState('clinical'); // 'clinical' or 'prescription'
     const [patientDetails, setPatientDetails] = useState(null);
     const [loadingDetails, setLoadingDetails] = useState(false);
 
-    useEffect(() => {
-        patient = {
-            id : appointment?.patientId,
-            name : appointment?.patientName,
-            publicId : appointment?.patientId
-        }
-    }, [isOpen]);
+    // Normalize patient prop when modal opens — don't mutate props
+    // We'll compute a patient identifier (publicId or numeric id) when fetching details
 
     const [formData, setFormData] = useState({
         appointmentId: appointment?.id || null,
         patientId: patient?.publicId || patient?.id,
+        opdId: opd?.id || null,
         symptoms: '',
         diagnosis: '',
         treatmentNotes: '',
         followUpDate: '',
+        followUpRequired: false,
+        labRequired: false,
+        labTests: [],
         prescription: [] // Array of { medicineName, dosage, frequency, duration, instructions }
     });
+
+    // Hardcoded lab test options for now
+    const LAB_OPTIONS = ["CBC", "LFT", "RFT", "RBS", "Lipid Profile", "TSH", "HbA1c", "Urine Routine"];
 
     // Update form data when modal opens or patient changes
     // Update form data when modal opens or patient changes
@@ -35,6 +37,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient })
                 ...prev,
                 appointmentId: appointment?.id || null,
                 patientId: patient?.publicId || patient?.id,
+                opdId: opd?.id || prev.opdId,
                 symptoms: prev.patientId === (patient?.publicId || patient?.id) ? prev.symptoms : '',
                 diagnosis: prev.patientId === (patient?.publicId || patient?.id) ? prev.diagnosis : '',
                 treatmentNotes: prev.patientId === (patient?.publicId || patient?.id) ? prev.treatmentNotes : '',
@@ -42,7 +45,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient })
                 prescription: prev.patientId === (patient?.publicId || patient?.id) ? prev.prescription : []
             }));
         }
-    }, [isOpen, patient?.id, patient?.publicId, appointment?.id]);
+    }, [isOpen, patient?.id, patient?.publicId, appointment?.id, opd?.id]);
 
     // Default medicine added row
     const [newMedicine, setNewMedicine] = useState({
@@ -58,20 +61,26 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient })
     // Fetch patient details when modal opens
     useEffect(() => {
         const fetchPatientDetails = async () => {
-            if (isOpen && patient?.publicId) {
+            // Determine patient identifier: appointment patientId, then patient.publicId, then patient.id
+            const pid = appointment?.patientId || patient?.publicId || patient?.id || (opd && opd.patient && (opd.patient.publicId || opd.patient.id));
+            if (isOpen && pid) {
                 setLoadingDetails(true);
                 try {
-                    const details = await hospitalService.getPatientConsultationDetails(patient.publicId);
+                    const details = await hospitalService.getPatientConsultationDetails(pid);
                     setPatientDetails(details);
                 } catch (err) {
                     console.error('Failed to fetch patient details:', err);
+                    setPatientDetails(null);
                 } finally {
                     setLoadingDetails(false);
                 }
+            } else {
+                // No patient id available yet
+                setPatientDetails(null);
             }
         };
         fetchPatientDetails();
-    }, [isOpen, patient?.publicId]);
+    }, [isOpen, appointment?.patientId, patient?.publicId, patient?.id, opd?.id]);
 
     if (!isOpen || (!appointment && !patient)) return null;
 
@@ -108,10 +117,14 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient })
             return;
         }
 
-        console.log("Submitting Consultation Data:", JSON.stringify(formData, null, 2));
+        // Prepare payload; include selected lab tests if any
+        const payload = { ...formData };
+        if (!payload.labRequired) payload.labTests = [];
+
+        console.log("Submitting Consultation Data:", JSON.stringify(payload, null, 2));
 
         try {
-            await hospitalService.submitConsultation(formData);
+            await hospitalService.submitConsultation(payload);
             success('Consultation submitted successfully');
             onSuccess();
             onClose();
@@ -290,13 +303,62 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient })
                                     </div>
 
                                     <div>
-                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Follow-up Date (Optional)</label>
-                                        <input
-                                            type="date"
-                                            value={formData.followUpDate}
-                                            onChange={(e) => handleChange('followUpDate', e.target.value)}
-                                            className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                                        />
+                                        <div className="flex items-center gap-3">
+                                            <input
+                                                id="followup-checkbox"
+                                                type="checkbox"
+                                                checked={formData.followUpRequired}
+                                                onChange={(e) => setFormData(prev => ({ ...prev, followUpRequired: e.target.checked }))}
+                                                className="h-4 w-4"
+                                            />
+                                            <label htmlFor="followup-checkbox" className="text-sm font-medium text-gray-700">Schedule Follow-up</label>
+                                        </div>
+                                        {formData.followUpRequired && (
+                                            <div className="mt-3">
+                                                <label className="block text-sm font-semibold text-gray-700 mb-2">Follow-up Date</label>
+                                                <input
+                                                    type="date"
+                                                    value={formData.followUpDate}
+                                                    onChange={(e) => handleChange('followUpDate', e.target.value)}
+                                                    className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                                />
+                                            </div>
+                                        )}
+
+                                        <div className="mt-4">
+                                            <div className="flex items-center gap-3">
+                                                <input
+                                                    id="lab-checkbox"
+                                                    type="checkbox"
+                                                    checked={formData.labRequired}
+                                                    onChange={(e) => setFormData(prev => ({ ...prev, labRequired: e.target.checked }))}
+                                                    className="h-4 w-4"
+                                                />
+                                                <label htmlFor="lab-checkbox" className="text-sm font-medium text-gray-700">Order Lab Tests</label>
+                                            </div>
+
+                                            {formData.labRequired && (
+                                                <div className="mt-3 grid grid-cols-2 gap-2">
+                                                    {LAB_OPTIONS.map((opt) => (
+                                                        <label key={opt} className="inline-flex items-center gap-2">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={formData.labTests.includes(opt)}
+                                                                onChange={(e) => {
+                                                                    if (e.target.checked) {
+                                                                        setFormData(prev => ({ ...prev, labTests: [...prev.labTests, opt] }));
+                                                                    } else {
+                                                                        setFormData(prev => ({ ...prev, labTests: prev.labTests.filter(t => t !== opt) }));
+                                                                    }
+                                                                }}
+                                                                className="h-4 w-4"
+                                                            />
+                                                            <span className="text-sm">{opt}</span>
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             ) : (

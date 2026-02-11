@@ -162,9 +162,13 @@ public class PatientController {
      */
     @GetMapping("/{publicId}/consultation-details")
     @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> getPatientConsultationDetails(@PathVariable Long publicId) {
-        java.util.Map<String, Object> details = patientService.getPatientConsultationDetails(publicId);
-        return ResponseEntity.ok(details);
+    public ResponseEntity<?> getPatientConsultationDetails(@PathVariable String publicId) {
+        try {
+            java.util.Map<String, Object> details = patientService.getPatientConsultationDetails(publicId);
+            return ResponseEntity.ok(details);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
     /**

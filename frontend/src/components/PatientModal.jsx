@@ -75,7 +75,7 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-3xl shadow-organic w-full max-w-lg animate-scale-in overflow-hidden">
+            <div className="bg-white rounded-2xl shadow-organic w-full max-w-3xl animate-scale-in overflow-hidden max-h-[90vh]">
                 {/* Header */}
                 <div className="bg-white px-8 py-6 border-b border-gray-200">
                     <div className="flex justify-between items-center">
@@ -97,26 +97,44 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                 </div>
 
                 {/* Form */}
-                <form onSubmit={handleSubmit} className="p-8 space-y-6">
-                    {/* Name Field */}
-                    <div>
-                        <label className="block text-sm font-semibold text-neutral-700 mb-2">
-                            Full Name <span className="text-error-500">*</span>
-                        </label>
-                        <input
-                            type="text"
-                            value={formData.name || ''}
-                            onChange={(e) => handleChange('name', e.target.value)}
-                            className={`input-field ${errors.name ? 'border-error-300 focus:ring-error-500' : ''}`}
-                            placeholder="Enter patient's full name"
-                        />
-                        {errors.name && <p className="text-error-500 text-sm mt-1 flex items-center gap-1">
-                            <span>⚠</span> {errors.name}
-                        </p>}
+                <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[76vh] overflow-auto">
+                    {/* Row: Name + Phone */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-semibold text-neutral-700 mb-2">
+                                Full Name <span className="text-error-500">*</span>
+                            </label>
+                            <input
+                                type="text"
+                                value={formData.name || ''}
+                                onChange={(e) => handleChange('name', e.target.value)}
+                                className={`input-field ${errors.name ? 'border-error-300 focus:ring-error-500' : ''}`}
+                                placeholder="Enter patient's full name"
+                            />
+                            {errors.name && <p className="text-error-500 text-sm mt-1 flex items-center gap-1">
+                                <span>⚠</span> {errors.name}
+                            </p>}
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-semibold text-neutral-700 mb-2">
+                                Phone Number <span className="text-error-500">*</span>
+                            </label>
+                            <input
+                                type="tel"
+                                value={formData.phone || ''}
+                                onChange={(e) => handleChange('phone', e.target.value)}
+                                className={`input-field ${errors.phone ? 'border-error-300 focus:ring-error-500' : ''}`}
+                                placeholder="Enter phone number"
+                            />
+                            {errors.phone && <p className="text-error-500 text-sm mt-1 flex items-center gap-1">
+                                <span>⚠</span> {errors.phone}
+                            </p>}
+                        </div>
                     </div>
 
-                    {/* Age and Gender Row */}
-                    <div className="grid grid-cols-2 gap-4">
+                    {/* Row: Age + Gender */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-semibold text-neutral-700 mb-2">
                                 Age <span className="text-error-500">*</span>
@@ -154,24 +172,8 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                         </div>
                     </div>
 
-                    {/* Contact Information */}
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-semibold text-neutral-700 mb-2">
-                                Phone Number <span className="text-error-500">*</span>
-                            </label>
-                            <input
-                                type="tel"
-                                value={formData.phone || ''}
-                                onChange={(e) => handleChange('phone', e.target.value)}
-                                className={`input-field ${errors.phone ? 'border-error-300 focus:ring-error-500' : ''}`}
-                                placeholder="Enter phone number"
-                            />
-                            {errors.phone && <p className="text-error-500 text-sm mt-1 flex items-center gap-1">
-                                <span>⚠</span> {errors.phone}
-                            </p>}
-                        </div>
-
+                    {/* Row: Email + (Address will be full width) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-semibold text-neutral-700 mb-2">
                                 Email Address <span className="text-neutral-400 text-xs">(Optional)</span>
@@ -187,20 +189,18 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                                 <span>⚠</span> {errors.email}
                             </p>}
                         </div>
-                    </div>
-
-                    {/* Address */}
-                    <div>
-                        <label className="block text-sm font-semibold text-neutral-700 mb-2">
-                            Address <span className="text-neutral-400 text-xs">(Optional)</span>
-                        </label>
-                        <textarea
-                            value={formData.address || ''}
-                            onChange={(e) => handleChange('address', e.target.value)}
-                            className="input-field resize-none"
-                            rows="3"
-                            placeholder="Enter complete address"
-                        />
+                        <div>
+                            <label className="block text-sm font-semibold text-neutral-700 mb-2">
+                                Address <span className="text-neutral-400 text-xs">(Optional)</span>
+                            </label>
+                            <textarea
+                                value={formData.address || ''}
+                                onChange={(e) => handleChange('address', e.target.value)}
+                                className="input-field resize-none"
+                                rows="3"
+                                placeholder="Enter complete address"
+                            />
+                        </div>
                     </div>
 
                     {/* Medical History */}

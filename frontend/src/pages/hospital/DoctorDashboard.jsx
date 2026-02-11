@@ -29,6 +29,8 @@ import PrescriptionViewModal from '../../components/PrescriptionViewModal';
  * @version Phase-1
  */
 const DoctorDashboard = () => {
+    const user = authService.getCurrentUser();
+    console.log(user)
     const [searchParams, setSearchParams] = useSearchParams();
     const activeTab = searchParams.get('tab') || 'appointments';
     const viewFilter = searchParams.get('appointmentFilter') || 'today';
@@ -64,6 +66,11 @@ const DoctorDashboard = () => {
 
     // Stats State
     const [stats, setStats] = useState({ today: 0, pending: 0, total: 0 });
+    // Queue / OPD state (doctor-specific)
+    const [queueEntries, setQueueEntries] = useState([]);
+    const [opds, setOpds] = useState([]);
+    const [currentToken, setCurrentToken] = useState(null);
+    const [nextToken, setNextToken] = useState(null);
 
     // Pagination & Search
     const [page, setPage] = useState(1);
@@ -75,7 +82,6 @@ const DoctorDashboard = () => {
 
     const { success, error: toastError, info } = useToast();
     const navigate = useNavigate();
-    const user = authService.getCurrentUser();
 
     // Patient History Modal State (Removed in favor of HistoryDrawer)
     // const [historyModal, setHistoryModal] = useState({ isOpen: false, patient: null, history: [] });
@@ -198,6 +204,40 @@ const DoctorDashboard = () => {
                 setTotalElements(data.totalElements || 0);
                 setTotalPages(data.totalPages || 1);
             }
+
+            // Doctor-specific queue
+            if (activeTab === 'queue') {
+                try {
+                    // For doctor dashboard use authenticated doctor's queue (backend maps user -> doctor)
+                    const q = await hospitalService.getDoctorQueue();
+                    setQueueEntries(q || []);
+                    if (q && q.length > 0) {
+                        const sorted = [...q].sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
+                        setCurrentToken(sorted[0].tokenNumber ?? null);
+                        setNextToken(sorted[1] ? (sorted[1].tokenNumber ?? null) : null);
+                    } else {
+                        setCurrentToken(null);
+                        setNextToken(null);
+                    }
+                } catch (err) {
+                    console.error('Failed to load doctor queue', err);
+                    setQueueEntries([]);
+                }
+            }
+
+            // OPD list for doctor (read-only)
+            if (activeTab === 'opd') {
+                try {
+                    const opdsData = await hospitalService.getOpds(searchTerm, page - 1, ITEMS_PER_PAGE);
+                    const opdsArray = Array.isArray(opdsData) ? opdsData : (opdsData.content || []);
+                    setOpds(opdsArray);
+                    setTotalElements(opdsData.totalElements || opdsArray.length);
+                    setTotalPages(opdsData.totalPages || 1);
+                } catch (err) {
+                    console.error('Failed to load OPDs', err);
+                    setOpds([]);
+                }
+            }
         } catch (err) {
             toastError('Failed to load data');
         } finally {
@@ -258,6 +298,8 @@ const DoctorDashboard = () => {
 
     const tabs = [
         { id: 'appointments', label: 'My Appointments', icon: null },
+        { id: 'queue', label: 'Queue', icon: null },
+        { id: 'opd', label: 'OPD', icon: null },
         { id: 'patients', label: 'Patients', icon: null },
     ];
 
@@ -270,7 +312,7 @@ const DoctorDashboard = () => {
     };
 
     // Consultation Modal
-    const [consultationModal, setConsultationModal] = useState({ isOpen: false, appointment: null, patient: null });
+    const [consultationModal, setConsultationModal] = useState({ isOpen: false, appointment: null, patient: null, opd: null });
 
     const handleConsultClick = (appointment) => {
         setConsultationModal({ isOpen: true, appointment });
@@ -310,6 +352,44 @@ const DoctorDashboard = () => {
         }
     };
 
+    const handlePrintOpd = async (opd) => {
+        try {
+            const blob = await hospitalService.downloadCasePaper(opd.id);
+            const url = window.URL.createObjectURL(blob);
+            window.open(url, '_blank');
+        } catch (err) {
+            console.error('Failed to download case paper', err);
+            toastError('Failed to download case paper');
+        }
+    };
+
+    const handlePrintPrescriptionOpd = async (opd) => {
+        try {
+            const blob = await hospitalService.downloadPrescriptionByOpd(opd.id);
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `prescription_opd_${opd.id}.pdf`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (err) {
+            console.error('Failed to download prescription', err);
+            toastError('Failed to download prescription');
+        }
+    };
+
+    const handleViewPrescriptionOpd = async (opd) => {
+        try {
+            const blob = await hospitalService.downloadPrescriptionByOpd(opd.id);
+            const url = window.URL.createObjectURL(blob);
+            window.open(url, '_blank');
+        } catch (err) {
+            console.error('Failed to open prescription', err);
+            toastError('Failed to open prescription');
+        }
+    };
+
     // Patient consultation handlers
     const handleStartConsultation = async (patient) => {
         console.log("handleStartConsultation called for:", patient);
@@ -329,6 +409,18 @@ const DoctorDashboard = () => {
             // Still open modal to allow doctor to proceed even if status update fails?
             // Maybe safer to still open it
             setConsultationModal({ isOpen: true, patient });
+        }
+    };
+
+    const handleStartOpdConsultation = async (opd) => {
+        console.log('handleStartOpdConsultation called for OPD:', opd);
+        try {
+            // Open consultation modal with OPD context
+            setConsultationModal({ isOpen: true, appointment: null, patient: opd.patient, opd });
+        } catch (err) {
+            console.error('Failed to open OPD consultation modal', err);
+            toastError('Failed to start OPD consultation');
+            setConsultationModal({ isOpen: true, appointment: null, patient: opd.patient, opd });
         }
     };
 
@@ -382,7 +474,23 @@ const DoctorDashboard = () => {
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
 
                     {/* Stats Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
+                        <div className="bg-white rounded-lg border border-gray-200 p-6">
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <p className="text-gray-600 text-sm font-medium">Current Token</p>
+                                    <h3 className="text-3xl font-bold text-gray-900 mt-1">{currentToken ?? '-'}</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="bg-white rounded-lg border border-gray-200 p-6">
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <p className="text-gray-600 text-sm font-medium">Next Token</p>
+                                    <h3 className="text-3xl font-bold text-gray-900 mt-1">{nextToken ?? '-'}</h3>
+                                </div>
+                            </div>
+                        </div>
                         <div className="bg-white rounded-lg border border-gray-200 p-6">
                             <div className="flex justify-between items-center">
                                 <div>
@@ -459,7 +567,7 @@ const DoctorDashboard = () => {
                     ) : (
                         <>
                             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
-                                {activeTab === 'appointments' ? (
+                                {activeTab === 'appointments' && (
                                     appointments.length > 0 ? (
                                         <DoctorAppointmentsTable
                                             appointments={appointments}
@@ -478,7 +586,101 @@ const DoctorDashboard = () => {
                                             message="No appointments found for the selected filter."
                                         />
                                     )
-                                ) : (
+                                )}
+
+                                {activeTab === 'opd' && (
+                                    opds.length > 0 ? (
+                                        <div className="p-4 overflow-x-auto">
+                                            <table className="w-full text-sm text-left">
+                                                <thead>
+                                                    <tr>
+                                                        <th className="px-4 py-2">S.No.</th>
+                                                        <th className="px-4 py-2">Case ID</th>
+                                                        <th className="px-4 py-2">Patient</th>
+                                                        <th className="px-4 py-2">Doctor</th>
+                                                        <th className="px-4 py-2">Token</th>
+                                                        <th className="px-4 py-2">Visit</th>
+                                                        <th className="px-4 py-2">Created</th>
+                                                        <th className="px-4 py-2">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {opds.map((o, idx) => (
+                                                        <tr key={o.id} className="border-t">
+                                                            <td className="px-4 py-3">{(page - 1) * ITEMS_PER_PAGE + idx + 1}</td>
+                                                            <td className="px-4 py-3">{o.caseId}</td>
+                                                            <td className="px-4 py-3">{o.patient?.name}</td>
+                                                            <td className="px-4 py-3">{o.doctor?.name || '-'}</td>
+                                                            <td className="px-4 py-3">{o.tokenNumber || '-'}</td>
+                                                            <td className="px-4 py-3">{o.visitType}</td>
+                                                            <td className="px-4 py-3">{new Date(o.createdAt).toLocaleString()}</td>
+                                                            <td className="px-4 py-3 flex items-center space-x-2">
+                                                                <button onClick={() => handlePrintOpd(o)} className="px-3 py-1 bg-gray-900 text-white rounded">Print</button>
+                                                                {o.status === 'QUEUED' && (
+                                                                    <button
+                                                                        onClick={() => handleStartOpdConsultation(o)}
+                                                                        disabled={o.tokenNumber && currentToken && o.tokenNumber !== currentToken}
+                                                                        className={`px-3 py-1 rounded ${o.tokenNumber && currentToken && o.tokenNumber !== currentToken ? 'bg-gray-300 text-gray-600 cursor-not-allowed' : 'bg-green-600 text-white'}`}>
+                                                                        Start Consultation
+                                                                    </button>
+                                                                )}
+                                                                {(o.status === 'CONSULTED' || o.status === 'COMPLETED') && (
+                                                                    <>
+                                                                        <button onClick={() => handlePrintPrescriptionOpd(o)} className="px-3 py-1 bg-indigo-600 text-white rounded">Print Prescription</button>
+                                                                        <button onClick={() => handleViewPrescriptionOpd(o)} className="px-3 py-1 bg-blue-600 text-white rounded">View Prescription</button>
+                                                                    </>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    ) : (
+                                        <EmptyState
+                                            icon={null}
+                                            title="No OPD Cases"
+                                            message="No OPD cases for today."
+                                        />
+                                    )
+                                )}
+
+                                {activeTab === 'queue' && (
+                                    queueEntries.length > 0 ? (
+                                        <div className="p-4 overflow-x-auto">
+                                            <table className="w-full text-sm text-left">
+                                                <thead>
+                                                    <tr>
+                                                        <th className="px-4 py-2">S.No.</th>
+                                                        <th className="px-4 py-2">Token</th>
+                                                        <th className="px-4 py-2">Patient</th>
+                                                        <th className="px-4 py-2">Doctor</th>
+                                                        <th className="px-4 py-2">Created</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {queueEntries.map((q, idx) => (
+                                                        <tr key={q.id} className="border-t">
+                                                            <td className="px-4 py-3">{idx + 1}</td>
+                                                            <td className="px-4 py-3">{q.tokenNumber}</td>
+                                                            <td className="px-4 py-3">{q.opd?.patient?.name || q.opd?.patientName || '-'}</td>
+                                                            <td className="px-4 py-3">{q.opd?.doctor?.name || q.opd?.doctorName || '-'}</td>
+                                                            <td className="px-4 py-3">{new Date(q.createdAt).toLocaleString()}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    ) : (
+                                        <EmptyState
+                                            icon={null}
+                                            title="Queue Empty"
+                                            message="No queued OPD cases for today."
+                                        />
+                                    )
+                                )}
+
+                                {activeTab === 'patients' && (
                                     patients.length > 0 ? (
                                         <DoctorPatientsTable
                                             patients={patients}
@@ -557,6 +759,7 @@ const DoctorDashboard = () => {
                     isOpen={consultationModal.isOpen}
                     appointment={consultationModal.appointment}
                     patient={consultationModal.patient}
+                    opd={consultationModal.opd}
                     onClose={() => setConsultationModal({ isOpen: false, appointment: null, patient: null })}
                     onSuccess={() => {
                         setConsultationModal({ isOpen: false, appointment: null, patient: null });

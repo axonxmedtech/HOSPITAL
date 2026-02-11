@@ -24,6 +24,15 @@ public class BillingService {
     private BillingRepository billingRepository;
 
     @Autowired
+    private com.hms.repository.BillingItemRepository billingItemRepository;
+
+    @Autowired
+    private com.hms.repository.OpdRepository opdRepository;
+
+    @Autowired
+    private com.hms.service.AuditLogService auditLogService;
+
+    @Autowired
     private HospitalRepository hospitalRepository;
 
     @Autowired
@@ -76,7 +85,7 @@ public class BillingService {
     /**
      * Update payment status
      */
-    public Billing updateStatus(Long id, String status, String paymentMethod) {
+    public Billing updateStatus(Long id, String status, String paymentMethod, String paymentReference) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         validateBillingAccess(hospitalId);
 
@@ -88,8 +97,36 @@ public class BillingService {
         if (paymentMethod != null && !paymentMethod.isEmpty()) {
             bill.setPaymentMethod(paymentMethod);
         }
+        if (paymentReference != null && !paymentReference.isEmpty()) {
+            bill.setPaymentReference(paymentReference);
+        }
 
         Billing saved = billingRepository.save(bill);
+
+        // If this bill is linked to an OPD and payment marked PAID, mark OPD as COMPLETED
+        try {
+            if (saved.getOpdId() != null && status != null && status.equalsIgnoreCase("PAID")) {
+                java.util.Optional<com.hms.entity.Opd> opdOpt = opdRepository.findById(saved.getOpdId());
+                if (opdOpt.isPresent()) {
+                    com.hms.entity.Opd opd = opdOpt.get();
+                    opd.setStatus(com.hms.entity.Opd.Status.COMPLETED);
+                    opdRepository.save(opd);
+                    // Audit log
+                    try {
+                        auditLogService.logAction(
+                                "OPD_STATUS_CHANGED",
+                                "OPD " + (opd.getCaseId() != null ? opd.getCaseId() : opd.getId()) + " set to COMPLETED",
+                                securityHelper.getCurrentUserEmail(),
+                                hospitalId,
+                                "OPD",
+                                opd.getId().toString(),
+                                null);
+                    } catch (Exception ignored) {}
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to update OPD status after bill payment", e);
+        }
 
         // Audit log?
         return saved;
@@ -111,7 +148,7 @@ public class BillingService {
      * @param doctorId       Doctor ID
      * @param consultationId Medical Record ID
      */
-    public void createConsultationBill(Long patientId, Long doctorId, Long consultationId) {
+    public com.hms.entity.Billing createConsultationBill(Long patientId, Long doctorId, Long consultationId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Hospital hospital = hospitalRepository.findById(hospitalId)
                 .orElseThrow(() -> new RuntimeException("Hospital not found"));
@@ -119,7 +156,7 @@ public class BillingService {
         // Check module access
         if (hospital.getModules() == null || !hospital.getModules().contains("BILLING")) {
             logger.warn("Skipping bill generation for consultation {}. BILLING module disabled.", consultationId);
-            return;
+            return null;
         }
 
         // Use consultation fee from hospital settings or default
@@ -137,7 +174,70 @@ public class BillingService {
         bill.setPaymentStatus("PENDING");
         bill.setAppointmentId(null); // No appointment for direct consultations
 
-        billingRepository.save(bill);
+        Billing saved = billingRepository.save(bill);
+
+        // Create single billing item
+        com.hms.entity.BillingItem item = new com.hms.entity.BillingItem();
+        item.setBillingId(saved.getId());
+        item.setHospitalId(hospitalId);
+        item.setDescription("Consultation Fee");
+        item.setAmount(fee);
+        billingItemRepository.save(item);
+
         logger.info("Consultation bill generated for patient {} with amount {}", patientId, fee);
+        return saved;
+    }
+
+    /**
+     * Create a combined OPD bill (case paper fee + consultation fee) for an OPD case
+     * @param opdId OPD id
+     * @param patientId Patient id
+     * @param doctorId Doctor id
+     */
+    public com.hms.entity.Billing createOpdBill(Long opdId, Long patientId, Long doctorId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        Hospital hospital = hospitalRepository.findById(hospitalId)
+                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+
+        // Check module access
+        if (hospital.getModules() == null || !hospital.getModules().contains("BILLING")) {
+            logger.warn("Skipping OPD bill generation for OPD {}. BILLING module disabled.", opdId);
+            return null;
+        }
+
+        // Fixed fees per requirement: case paper = 100, consultation = 400
+        java.math.BigDecimal caseFee = new java.math.BigDecimal("100.00");
+        java.math.BigDecimal consultFee = new java.math.BigDecimal("400.00");
+        java.math.BigDecimal total = caseFee.add(consultFee);
+
+        Billing bill = new Billing();
+        bill.setHospitalId(hospitalId);
+        bill.setPatientId(patientId);
+        bill.setDoctorId(doctorId != null ? doctorId : 0L);
+        bill.setOpdId(opdId);
+        bill.setAmount(total);
+        bill.setDescription("OPD - Case Paper + Consultation (OPD: " + opdId + ")");
+        bill.setPaymentStatus("PENDING");
+        bill.setAppointmentId(null);
+
+        Billing saved = billingRepository.save(bill);
+
+        // Create billing items for breakdown
+        com.hms.entity.BillingItem item1 = new com.hms.entity.BillingItem();
+        item1.setBillingId(saved.getId());
+        item1.setHospitalId(hospitalId);
+        item1.setDescription("Case Paper Fee");
+        item1.setAmount(caseFee);
+        billingItemRepository.save(item1);
+
+        com.hms.entity.BillingItem item2 = new com.hms.entity.BillingItem();
+        item2.setBillingId(saved.getId());
+        item2.setHospitalId(hospitalId);
+        item2.setDescription("Consultation Fee");
+        item2.setAmount(consultFee);
+        billingItemRepository.save(item2);
+
+        logger.info("OPD bill generated for OPD {} patient {} with amount {}", opdId, patientId, total);
+        return saved;
     }
 }

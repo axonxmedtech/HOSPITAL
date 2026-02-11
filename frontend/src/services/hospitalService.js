@@ -262,9 +262,10 @@ const hospitalService = {
         return response.data; // Returns Page object with { content: [...], totalElements: ..., totalPages: ... }
     },
 
-    updateBillStatus: async (id, status, paymentMethod) => {
+    updateBillStatus: async (id, status, paymentMethod, paymentReference) => {
         let url = `/hospital/billing/${id}/status?status=${status}`;
         if (paymentMethod) url += `&paymentMethod=${encodeURIComponent(paymentMethod)}`;
+        if (paymentReference) url += `&paymentReference=${encodeURIComponent(paymentReference)}`;
         const response = await apiClient.put(url);
         return response.data;
     },
@@ -294,6 +295,58 @@ const hospitalService = {
      */
     createAppointment: async (appointmentData) => {
         const response = await apiClient.post('/hospital/appointments', appointmentData);
+        return response.data;
+    },
+
+    // ========== OPD / Case APIs ==========
+
+    /**
+     * Create an OPD (case) record. Expects CreateOpdRequest payload.
+     */
+    createOpd: async (opdData) => {
+        const response = await apiClient.post('/hospital/opd', opdData);
+        return response.data;
+    },
+
+    /**
+     * Get queue entries for a doctor (today)
+     */
+    getDoctorQueue: async (doctorId) => {
+        // If doctorId is provided, use explicit endpoint (receptionist view)
+        if (doctorId) {
+            const response = await apiClient.get(`/hospital/opd/queue/doctor/${doctorId}`);
+            return response.data;
+        }
+        // Otherwise use authenticated doctor's queue
+        const response = await apiClient.get(`/hospital/opd/queue/my`);
+        return response.data;
+    },
+
+    /**
+     * Get paginated OPD / cases (Receptionist view)
+     */
+    getOpds: async (search = '', page = 0, size = 10) => {
+        let url = `/hospital/opd?page=${page}&size=${size}`;
+        if (search) url += `&search=${encodeURIComponent(search)}`;
+        const response = await apiClient.get(url);
+        return response.data;
+    },
+
+    downloadCasePaper: async (opdId) => {
+        const response = await apiClient.get(`/hospital/opd/${opdId}/pdf`, { responseType: 'blob' });
+        return response.data;
+    },
+
+    downloadPrescriptionByOpd: async (opdId) => {
+        const response = await apiClient.get(`/hospital/doctors/prescription/opd/${opdId}/pdf`, { responseType: 'blob' });
+        return response.data;
+    },
+
+    /**
+     * Get hospital-wide queue for today
+     */
+    getHospitalQueue: async () => {
+        const response = await apiClient.get(`/hospital/opd/queue`);
         return response.data;
     },
 

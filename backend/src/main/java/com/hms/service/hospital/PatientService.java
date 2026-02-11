@@ -288,14 +288,19 @@ public class PatientService {
      * @param publicId Patient public ID
      * @return Map containing patient details and medical history
      */
-    public java.util.Map<String, Object> getPatientConsultationDetails(Long publicId) {
+    public java.util.Map<String, Object> getPatientConsultationDetails(String patientIdentifier) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
             throw new RuntimeException("Hospital ID not found in context");
         }
 
-        // Get patient
-        Patient patient = getPatientById(publicId);
+        // Resolve patient by numeric id or publicId
+        Patient patient;
+        if (patientIdentifier != null && patientIdentifier.matches("^\\d+$")) {
+            patient = getPatientById(Long.parseLong(patientIdentifier));
+        } else {
+            patient = getPatientByPublicId(patientIdentifier);
+        }
 
         // Get medical history (last 5 consultations)
         List<com.hms.entity.MedicalRecord> medicalHistory = medicalRecordRepository

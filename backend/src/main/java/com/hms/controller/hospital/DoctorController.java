@@ -2,6 +2,7 @@ package com.hms.controller.hospital;
 
 import com.hms.dto.AddDoctorRequest;
 import com.hms.entity.Doctor;
+import com.hms.repository.OpdRepository;
 import com.hms.service.hospital.DoctorService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,6 +38,9 @@ public class DoctorController {
 
     @Autowired
     private DoctorService doctorService;
+
+    @Autowired
+    private OpdRepository opdRepository;
 
     @Autowired
     private com.hms.security.SecurityContextHelper securityHelper;
@@ -245,4 +249,42 @@ public class DoctorController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+
+        @GetMapping("/prescription/opd/{opdId}/pdf")
+        public ResponseEntity<?> downloadPrescriptionByOpd(@PathVariable Long opdId) {
+        try {
+            Long hospitalId = securityHelper.getCurrentHospitalId();
+
+            com.hms.entity.Opd opd = opdRepository.findById(opdId)
+                .orElseThrow(() -> new RuntimeException("OPD not found"));
+
+            com.hms.entity.MedicalRecord record = medicalRecordRepository.findByOpdId(opd.getId())
+                .orElseThrow(() -> new RuntimeException("Consultation not found for this OPD"));
+
+            java.util.List<com.hms.entity.Prescription> prescriptions = prescriptionRepository
+                .findByMedicalRecordId(record.getId());
+
+            Doctor doctor = doctorRepository.findById(record.getDoctorId())
+                .orElseThrow(() -> new RuntimeException("Doctor not found"));
+
+            com.hms.entity.Patient patient = patientService.getPatientById(record.getPatientId());
+            com.hms.entity.Hospital hospital = hospitalRepository.findById(record.getHospitalId())
+                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+
+            java.io.ByteArrayInputStream pdf = pdfService.generatePrescriptionPdf(hospital, doctor, patient, record,
+                prescriptions);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.add("Content-Disposition", "inline; filename=prescription_opd_" + opdId + ".pdf");
+
+            return ResponseEntity
+                .ok()
+                .headers(headers)
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(new InputStreamResource(pdf));
+        } catch (Exception e) {
+            logger.error("Error downloading prescription for opd {}: {}", opdId, e.getMessage(), e);
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+        }
 }

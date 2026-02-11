@@ -279,6 +279,15 @@ public class DoctorService {
     @Autowired
     private MedicineService medicineService;
 
+    @Autowired
+    private com.hms.repository.OpdRepository opdRepository;
+
+    @Autowired
+    private com.hms.repository.QueueEntryRepository queueEntryRepository;
+
+    @Autowired
+    private com.hms.repository.LabOrderRepository labOrderRepository;
+
     /**
      * Submit a consultation
      * Creates Medical Record, Prescriptions, Auto-generates Bill, and updates
@@ -289,11 +298,20 @@ public class DoctorService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Long currentDoctorId = securityHelper.getCurrentUserId(); // Get current doctor's user ID
 
-        // Get patient (required)
+        // Get patient (required) - accept numeric id or publicId string
         com.hms.entity.Patient patient;
-        if (request.getPatientId() != null) {
-            patient = patientRepository.findByIdAndHospitalIdAndIsActiveTrue(request.getPatientId(), hospitalId)
-                    .orElseThrow(() -> new RuntimeException("Patient not found"));
+        if (request.getPatientId() != null && !request.getPatientId().isEmpty()) {
+            String pid = request.getPatientId();
+            if (pid.matches("^\\d+$")) {
+                // numeric id
+                Long numericId = Long.parseLong(pid);
+                patient = patientRepository.findByIdAndHospitalIdAndIsActiveTrue(numericId, hospitalId)
+                        .orElseThrow(() -> new RuntimeException("Patient not found"));
+            } else {
+                // treat as publicId
+                patient = patientRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(pid, hospitalId)
+                        .orElseThrow(() -> new RuntimeException("Patient not found"));
+            }
         } else {
             throw new RuntimeException("Patient ID is required");
         }
@@ -313,8 +331,25 @@ public class DoctorService {
         com.hms.entity.MedicalRecord record = new com.hms.entity.MedicalRecord();
         record.setHospitalId(hospitalId);
         record.setPatientId(patient.getId());
-        record.setDoctorId(appointment != null ? appointment.getDoctorId() : currentDoctorId);
+        // Resolve doctor id: prefer appointment.doctorId, otherwise map current user to Doctor entity
+        Long resolvedDoctorId = null;
+        if (appointment != null) {
+            resolvedDoctorId = appointment.getDoctorId();
+        } else {
+            try {
+                java.util.Optional<com.hms.entity.Doctor> dopt = doctorRepository.findByEmailAndHospitalId(securityHelper.getCurrentUserEmail(), hospitalId);
+                if (dopt.isPresent()) {
+                    resolvedDoctorId = dopt.get().getId();
+                } else {
+                    throw new RuntimeException("Doctor Not found");
+                }
+            } catch (Exception e) {
+                throw new RuntimeException("Doctor Not found");
+            }
+        }
+        record.setDoctorId(resolvedDoctorId);
         record.setAppointmentId(appointment != null ? appointment.getId() : null);
+        record.setOpdId(request.getOpdId());
         record.setSymptoms(request.getSymptoms());
         record.setDiagnosis(request.getDiagnosis());
         record.setTreatmentNotes(request.getTreatmentNotes());
@@ -355,10 +390,58 @@ public class DoctorService {
             }
         }
 
+        // 2.b Create Lab Orders if requested
+        try {
+            if (request.getLabTests() != null && !request.getLabTests().isEmpty()) {
+                for (String testName : request.getLabTests()) {
+                    com.hms.entity.LabOrder order = new com.hms.entity.LabOrder();
+                    order.setHospitalId(hospitalId);
+                    order.setMedicalRecordId(savedRecord.getId());
+                    order.setTestName(testName);
+                    order.setStatus("ORDERED");
+                    labOrderRepository.save(order);
+                }
+            }
+        } catch (Exception e) {
+            // don't fail the consultation for lab order persistence errors
+            logger.warn("Failed to create lab orders", e);
+        }
+
         // 3. Update Appointment Status (if appointment-based)
         if (appointment != null) {
             appointment.setStatus("COMPLETED");
             appointmentRepository.save(appointment);
+        }
+
+        // If consultation was for an OPD case, update OPD status to CONSULTED and remove queue entry
+        if (request.getOpdId() != null) {
+            try {
+                java.util.Optional<com.hms.entity.Opd> opdOpt = opdRepository.findById(request.getOpdId());
+                if (opdOpt.isPresent()) {
+                    com.hms.entity.Opd opd = opdOpt.get();
+                    opd.setStatus(com.hms.entity.Opd.Status.CONSULTED);
+                    opdRepository.save(opd);
+
+                    // Audit log for OPD status change
+                    try {
+                        auditLogService.logAction(
+                                "OPD_STATUS_CHANGED",
+                                "OPD " + (opd.getCaseId() != null ? opd.getCaseId() : opd.getId()) + " set to CONSULTED",
+                                securityHelper.getCurrentUserEmail(),
+                                hospitalId,
+                                "OPD",
+                                opd.getId().toString(),
+                                null);
+                    } catch (Exception ignored) {}
+                }
+
+                // Remove queue entries for this OPD so it doesn't appear again
+                try {
+                    queueEntryRepository.deleteByOpdId(request.getOpdId());
+                } catch (Exception ignored) {}
+            } catch (Exception e) {
+                // Don't fail consultation if OPD update fails
+            }
         }
 
         // 4. Update Patient Status to COMPLETED
@@ -369,6 +452,9 @@ public class DoctorService {
         try {
             if (appointment != null) {
                 billingService.autoGenerateOpdBill(appointment);
+            } else if (request.getOpdId() != null) {
+                // Create OPD combined bill (case paper + consultation) and then mark OPD completed
+                com.hms.entity.Billing bill = billingService.createOpdBill(request.getOpdId(), patient.getId(), resolvedDoctorId);
             } else {
                 // For direct patient consultations, create a simple consultation bill
                 billingService.createConsultationBill(patient.getId(), currentDoctorId, savedRecord.getId());

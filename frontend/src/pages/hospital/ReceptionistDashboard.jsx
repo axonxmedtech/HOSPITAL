@@ -20,6 +20,7 @@ import PrescriptionModal from '../../components/PrescriptionModal';
 import PrescriptionViewModal from '../../components/PrescriptionViewModal';
 
 const ReceptionistDashboard = () => {
+    const user = authService.getCurrentUser();
     const [searchParams, setSearchParams] = useSearchParams();
     const activeTab = searchParams.get('tab') || 'appointments';
     const viewFilter = searchParams.get('appointmentFilter') || 'today';
@@ -46,9 +47,28 @@ const ReceptionistDashboard = () => {
     const [appointments, setAppointments] = useState([]);
     const [patients, setPatients] = useState([]);
     const [doctors, setDoctors] = useState([]);
+    const [opds, setOpds] = useState([]);
+    const [queueEntries, setQueueEntries] = useState([]);
+    const [currentToken, setCurrentToken] = useState(null);
+    const [nextToken, setNextToken] = useState(null);
+    const [selectedDoctorForQueue, setSelectedDoctorForQueue] = useState('');
     const [billing, setBilling] = useState([]);
     const [loading, setLoading] = useState(false);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [isOpdModalOpen, setIsOpdModalOpen] = useState(false);
+    const [opdForm, setOpdForm] = useState({
+        patientId: null,
+        receptionistId: user?.id || null,
+        doctorId: null,
+        bp: '',
+        temperature: '',
+        pulse: '',
+        weight: '',
+        spo2: '',
+        problem: '',
+        visitType: 'NEW'
+    });
+    const [createdOpd, setCreatedOpd] = useState(null);
     const [selectedPatient, setSelectedPatient] = useState(null);
 
     // Prescription Modal State
@@ -105,7 +125,6 @@ const ReceptionistDashboard = () => {
 
     const { success, error: toastError, info } = useToast();
     const navigate = useNavigate();
-    const user = authService.getCurrentUser();
 
     // Stats
     const [stats, setStats] = useState({ today: 0, pending: 0, total: 0 });
@@ -119,7 +138,7 @@ const ReceptionistDashboard = () => {
         }, 30000);
 
         return () => clearInterval(intervalId);
-    }, [activeTab, page, searchTerm, viewFilter, patientViewFilter, pageSize]); // Add pageSize to dependencies
+    }, [activeTab, page, searchTerm, viewFilter, patientViewFilter, pageSize, selectedDoctorForQueue]); // Add pageSize & doctor filter to dependencies
 
     const loadData = async (showSpinner = true) => {
         if (showSpinner) setLoading(true);
@@ -128,31 +147,63 @@ const ReceptionistDashboard = () => {
             const statsData = await hospitalService.getAppointmentStats();
             setStats(statsData);
 
-            if (activeTab === 'appointments') {
+            if (activeTab === 'appointments' || activeTab === 'opd' || activeTab === 'queue') {
                 // Fetch appointments (Server-side) + Doctors + Patients for lookup
-                const [apptData, docData, patData] = await Promise.all([
-                    hospitalService.getAppointments(searchTerm, page, pageSize, viewFilter),
+                const promises = [
+                    activeTab === 'appointments' ? hospitalService.getAppointments(searchTerm, page, pageSize, viewFilter) : Promise.resolve({ content: [] }),
                     hospitalService.getDoctors('', 0, 100), // Fetch doctors for lookup
                     hospitalService.getPatients('', 0, 1000) // Fetch ALL patients (up to 1000) for lookup dropdown
-                ]);
+                ];
+                const [apptData, docData, patData] = await Promise.all(promises);
 
-                if (apptData.content) {
-                    setAppointments(apptData.content);
-                    setTotalPages(apptData.totalPages);
-                    setTotalElements(apptData.totalElements);
-                } else {
-                    setAppointments(apptData);
-                    setTotalPages(1);
-                    setTotalElements(apptData.length);
+                if (activeTab === 'appointments') {
+                    if (apptData.content) {
+                        setAppointments(apptData.content);
+                        setTotalPages(apptData.totalPages);
+                        setTotalElements(apptData.totalElements);
+                    } else {
+                        setAppointments(apptData);
+                        setTotalPages(1);
+                        setTotalElements(apptData.length);
+                    }
+                } else if (activeTab === 'opd') {
+                    // OPD tab: fetch opds separately
+                    const opdsData = await hospitalService.getOpds(searchTerm, page, pageSize);
+                    if (opdsData.content) {
+                        setOpds(opdsData.content);
+                        setTotalPages(opdsData.totalPages);
+                        setTotalElements(opdsData.totalElements);
+                    } else {
+                        setOpds(opdsData);
+                        setTotalPages(1);
+                        setTotalElements(opdsData.length);
+                    }
+                } else if (activeTab === 'queue') {
+                    // Fetch hospital queue or doctor's queue based on filter and compute current/next tokens
+                    let q = [];
+                    if (selectedDoctorForQueue) {
+                        q = await hospitalService.getDoctorQueue(selectedDoctorForQueue);
+                    } else {
+                        q = await hospitalService.getHospitalQueue();
+                    }
+                    setQueueEntries(q || []);
+                    if (q && q.length > 0) {
+                        const sorted = [...q].sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
+                        setCurrentToken(sorted[0].tokenNumber ?? null);
+                        setNextToken(sorted[1] ? (sorted[1].tokenNumber ?? null) : null);
+                    } else {
+                        setCurrentToken(null);
+                        setNextToken(null);
+                    }
                 }
 
                 // Set Doctors for lookup/dropdown
-                if (docData.content) setDoctors(docData.content);
-                else setDoctors(docData);
+                if (docData?.content) setDoctors(docData.content);
+                else setDoctors(docData || []);
 
                 // Set Patients for lookup/dropdown in specific modal
-                if (patData.content) setPatients(patData.content);
-                else setPatients(patData);
+                if (patData?.content) setPatients(patData.content);
+                else setPatients(patData || []);
 
             } else if (activeTab === 'patients') {
                 const data = await hospitalService.getPatients(searchTerm, page, pageSize, patientViewFilter);
@@ -238,12 +289,28 @@ const ReceptionistDashboard = () => {
     };
 
     const handleBillStatus = async (id, status) => {
+        // Open payment modal when marking PAID from receptionist
+        if (status === 'PAID') {
+            setPaymentModal({ isOpen: true, billId: id });
+            return;
+        }
         try {
             await hospitalService.updateBillStatus(id, status);
             success('Bill status updated');
             loadData();
         } catch (err) {
             toastError('Failed to update bill status');
+        }
+    };
+
+    const confirmPayment = async (id, method, reference) => {
+        try {
+            await hospitalService.updateBillStatus(id, 'PAID', method, reference);
+            success('Bill marked as PAID');
+            loadData();
+        } catch (err) {
+            console.error(err);
+            toastError('Failed to mark bill as paid');
         }
     };
 
@@ -334,7 +401,16 @@ const ReceptionistDashboard = () => {
 
     const handleProcessPayment = async (method) => {
         try {
-            await hospitalService.updateBillStatus(paymentModal.billId, 'PAID', method);
+            const pm = method === 'Online' ? 'UPI' : 'CASH';
+            let reference = null;
+            if (pm === 'UPI') {
+                reference = window.prompt('Enter UTR / transaction reference (required for UPI):');
+                if (!reference || !reference.trim()) {
+                    toastError('UTR / reference is required for UPI payments');
+                    return;
+                }
+            }
+            await hospitalService.updateBillStatus(paymentModal.billId, 'PAID', pm, reference);
             // Close Payment Modal
             setPaymentModal({ isOpen: false, billId: null, amount: null, patientName: '' });
 
@@ -358,9 +434,22 @@ const ReceptionistDashboard = () => {
         setIsAddModalOpen(true);
     };
 
+    const handlePrintOpd = async (opd) => {
+        try {
+            const blob = await hospitalService.downloadCasePaper(opd.id);
+            const url = window.URL.createObjectURL(blob);
+            window.open(url, '_blank');
+        } catch (err) {
+            console.error('Failed to download case paper', err);
+            toastError('Failed to download case paper');
+        }
+    };
+
     const tabs = [
-        { id: 'appointments', label: 'Appointments', icon: null },
         { id: 'patients', label: 'Patients', icon: null },
+        { id: 'appointments', label: 'Appointments', icon: null },
+        { id: 'opd', label: 'OPD', icon: null },
+        { id: 'queue', label: 'Queue', icon: null },
         { id: 'billing', label: 'Billing', icon: null },
     ];
 
@@ -396,7 +485,7 @@ const ReceptionistDashboard = () => {
 
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
                     {/* Stats for Receptionist */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
                         <div className="bg-white rounded-lg border border-gray-200 p-6">
                             <div className="flex justify-between items-center">
                                 <div>
@@ -421,17 +510,29 @@ const ReceptionistDashboard = () => {
                                 </div>
                             </div>
                         </div>
+                        <div className="bg-white rounded-lg border border-gray-200 p-6">
+                            <div>
+                                <p className="text-gray-600 text-sm font-medium">Current / Next Token</p>
+                                <div className="mt-2 flex items-baseline gap-3">
+                                    <h3 className="text-2xl font-bold text-gray-900">{currentToken ?? '-'}</h3>
+                                    <span className="text-sm text-gray-500">/ {nextToken ?? '-'}</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     {/* Standardized Header */}
                     <PageHeader
                         title={tabs.find(t => t.id === activeTab)?.label}
                         subtitle={`Manage ${activeTab} records`}
-                        onSearch={(e) => setSearchTerm(e.target.value)}
+                        onSearch={activeTab === 'queue' ? null : (e) => setSearchTerm(e.target.value)}
                         searchValue={searchTerm}
-                        searchPlaceholder={`Search ${activeTab}...`}
-                        onAdd={activeTab !== 'billing' ? () => setIsAddModalOpen(true) : null}
-                        addLabel={`Add ${activeTab.slice(0, -1)}`}
+                        searchPlaceholder={activeTab === 'queue' ? '' : `Search ${activeTab}...`}
+                        onAdd={activeTab === 'queue' ? null : () => {
+                            if (activeTab === 'opd') setIsOpdModalOpen(true);
+                            else if (activeTab !== 'billing') setIsAddModalOpen(true);
+                        }}
+                        addLabel={activeTab === 'opd' ? 'New OPD / Case' : `Add ${activeTab.slice(0, -1)}`}
                         filter={activeTab === 'appointments' ? (
                             <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
                                 {['today', 'upcoming', 'history'].map(view => (
@@ -462,15 +563,23 @@ const ReceptionistDashboard = () => {
                                     </button>
                                 ))}
                             </div>
+                        ) : activeTab === 'queue' ? (
+                            <div className="flex items-center gap-3">
+                                <select value={selectedDoctorForQueue} onChange={(e) => { setSelectedDoctorForQueue(e.target.value); setPage(0); }} className="input-field">
+                                    <option value="">All Doctors</option>
+                                    {doctors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                </select>
+                            </div>
                         ) : null}
+                      
                     />
 
                     {loading ? (
                         <div className="flex justify-center items-center h-64">
                             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500"></div>
                         </div>
-                    ) : (
-                        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
+                            ) : (
+                                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
                             {activeTab === 'appointments' && (
                                 appointments.length > 0 ? (
                                     <AppointmentsTable
@@ -489,6 +598,84 @@ const ReceptionistDashboard = () => {
                                         message="Schedule appointments for your patients."
                                         actionLabel="Schedule Appointment"
                                         onAction={() => setIsAddModalOpen(true)}
+                                    />
+                                )
+                            )}
+                            {activeTab === 'opd' && (
+                                opds.length > 0 ? (
+                                    <div className="p-4 overflow-x-auto">
+                                        <table className="w-full text-sm text-left">
+                                            <thead>
+                                                <tr>
+                                                    <th className="px-4 py-2">S.No.</th>
+                                                    <th className="px-4 py-2">Case ID</th>
+                                                    <th className="px-4 py-2">Patient</th>
+                                                    <th className="px-4 py-2">Doctor</th>
+                                                    <th className="px-4 py-2">Token</th>
+                                                    <th className="px-4 py-2">Visit</th>
+                                                    <th className="px-4 py-2">Created</th>
+                                                    <th className="px-4 py-2">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {opds.map((o, idx) => (
+                                                    <tr key={o.id} className="border-t">
+                                                        <td className="px-4 py-3">{page * pageSize + idx + 1}</td>
+                                                        <td className="px-4 py-3">{o.caseId}</td>
+                                                        <td className="px-4 py-3">{o.patient?.name}</td>
+                                                        <td className="px-4 py-3">{o.doctor?.name || '-'}</td>
+                                                        <td className="px-4 py-3">{o.tokenNumber || '-'}</td>
+                                                        <td className="px-4 py-3">{o.visitType}</td>
+                                                        <td className="px-4 py-3">{new Date(o.createdAt).toLocaleString()}</td>
+                                                        <td className="px-4 py-3">
+                                                            <button onClick={() => handlePrintOpd(o)} className="px-3 py-1 bg-gray-900 text-white rounded">Print</button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <EmptyState
+                                        icon={null}
+                                        title="No OPD Cases"
+                                        message="Create OPD cases when patients arrive."
+                                        actionLabel="New OPD / Case"
+                                        onAction={() => setIsOpdModalOpen(true)}
+                                    />
+                                )
+                            )}
+                            {activeTab === 'queue' && (
+                                queueEntries.length > 0 ? (
+                                    <div className="p-4 overflow-x-auto">
+                                        <table className="w-full text-sm text-left">
+                                            <thead>
+                                                <tr>
+                                                    <th className="px-4 py-2">S.No.</th>
+                                                    <th className="px-4 py-2">Token</th>
+                                                    <th className="px-4 py-2">Patient</th>
+                                                    <th className="px-4 py-2">Doctor</th>
+                                                    <th className="px-4 py-2">Created</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {queueEntries.map((q, idx) => (
+                                                    <tr key={q.id} className="border-t">
+                                                        <td className="px-4 py-3">{idx + 1}</td>
+                                                        <td className="px-4 py-3">{q.tokenNumber}</td>
+                                                        <td className="px-4 py-3">{q.opd?.patient?.name || q.opd?.patientName || '-'}</td>
+                                                        <td className="px-4 py-3">{q.opd?.doctor?.name || q.opd?.doctorName || '-'}</td>
+                                                        <td className="px-4 py-3">{new Date(q.createdAt).toLocaleString()}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <EmptyState
+                                        icon={null}
+                                        title="Queue Empty"
+                                        message="No queued OPD cases for today."
                                     />
                                 )
                             )}
@@ -562,6 +749,104 @@ const ReceptionistDashboard = () => {
                         loadData(); // Reload patients list
                     }}
                 />
+            )}
+
+            {/* OPD Modal / Form for Receptionist */}
+            {activeTab === 'opd' && isOpdModalOpen && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-organic w-full max-w-3xl animate-scale-in overflow-hidden max-h-[90vh]">
+                        <div className="bg-white px-8 py-6 border-b border-gray-200">
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <h3 className="text-2xl font-bold text-neutral-800">New OPD / Case</h3>
+                                    <p className="text-sm text-neutral-600 mt-1">Capture vitals and assign doctor</p>
+                                </div>
+                                <button onClick={() => setIsOpdModalOpen(false)} className="w-10 h-10 rounded-xl bg-white/80 hover:bg-white flex items-center justify-center text-neutral-400 hover:text-neutral-600">✕</button>
+                            </div>
+                        </div>
+                        <form onSubmit={async (e) => {
+                            e.preventDefault();
+                            try {
+                                const payload = {
+                                    patientId: opdForm.patientId,
+                                    doctorId: opdForm.doctorId,
+                                    bp: opdForm.bp,
+                                    temperature: opdForm.temperature ? parseFloat(opdForm.temperature) : null,
+                                    pulse: opdForm.pulse ? parseInt(opdForm.pulse) : null,
+                                    weight: opdForm.weight ? parseFloat(opdForm.weight) : null,
+                                    spo2: opdForm.spo2 ? parseInt(opdForm.spo2) : null,
+                                    problem: opdForm.problem,
+                                    visitType: opdForm.visitType
+                                };
+                                const res = await hospitalService.createOpd(payload);
+                                setCreatedOpd(res);
+                                setIsOpdModalOpen(false);
+                                success('OPD created — token: ' + (res.tokenNumber || '-'));
+                            } catch (err) {
+                                console.error('Failed to create OPD', err);
+                                toastError('Failed to create OPD');
+                            }
+                        }} className="p-6 space-y-4 max-h-[76vh] overflow-auto">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-semibold text-neutral-700 mb-2">Patient <span className="text-error-500">*</span></label>
+                                    <select className="input-field" value={opdForm.patientId || ''} onChange={(e) => setOpdForm(prev => ({ ...prev, patientId: e.target.value }))} required>
+                                        <option value="">Select patient</option>
+                                        {patients.map(p => <option key={p.id} value={p.id}>{p.name} {p.phone ? `(${p.phone})` : ''}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-neutral-700 mb-2">Doctor</label>
+                                    <select className="input-field" value={opdForm.doctorId || ''} onChange={(e) => setOpdForm(prev => ({ ...prev, doctorId: e.target.value }))}>
+                                        <option value="">Unassigned</option>
+                                        {doctors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-semibold text-neutral-700 mb-2">BP</label>
+                                    <input className="input-field" value={opdForm.bp} onChange={(e) => setOpdForm(prev => ({ ...prev, bp: e.target.value }))} placeholder="120/80" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-neutral-700 mb-2">Temperature (°C)</label>
+                                    <input type="number" step="0.1" className="input-field" value={opdForm.temperature} onChange={(e) => setOpdForm(prev => ({ ...prev, temperature: e.target.value }))} />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-3 gap-4">
+                                <div>
+                                    <label className="block text-sm font-semibold text-neutral-700 mb-2">Pulse</label>
+                                    <input type="number" className="input-field" value={opdForm.pulse} onChange={(e) => setOpdForm(prev => ({ ...prev, pulse: e.target.value }))} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-neutral-700 mb-2">Weight (kg)</label>
+                                    <input type="number" step="0.1" className="input-field" value={opdForm.weight} onChange={(e) => setOpdForm(prev => ({ ...prev, weight: e.target.value }))} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-neutral-700 mb-2">SpO2 (%)</label>
+                                    <input type="number" className="input-field" value={opdForm.spo2} onChange={(e) => setOpdForm(prev => ({ ...prev, spo2: e.target.value }))} />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-semibold text-neutral-700 mb-2">Problem / Reason</label>
+                                <textarea rows={3} className="input-field resize-none" value={opdForm.problem} onChange={(e) => setOpdForm(prev => ({ ...prev, problem: e.target.value }))} />
+                            </div>
+
+                            <div className="flex items-center gap-4">
+                                <label className="text-sm font-medium">Visit Type:</label>
+                                <label className="inline-flex items-center gap-2"><input type="radio" name="visitType" value="NEW" checked={opdForm.visitType === 'NEW'} onChange={() => setOpdForm(prev => ({ ...prev, visitType: 'NEW' }))} /> New</label>
+                                <label className="inline-flex items-center gap-2"><input type="radio" name="visitType" value="FOLLOWUP" checked={opdForm.visitType === 'FOLLOWUP'} onChange={() => setOpdForm(prev => ({ ...prev, visitType: 'FOLLOWUP' }))} /> Follow-up</label>
+                            </div>
+
+                            <div className="flex gap-4 pt-4">
+                                <button type="button" onClick={() => setIsOpdModalOpen(false)} className="flex-1 py-2 rounded-lg border">Cancel</button>
+                                <button type="submit" className="flex-1 py-2 rounded-lg bg-gray-900 text-white">Create OPD</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
             )}
 
             {/* Confirmation Modal */}

@@ -86,6 +86,12 @@ public class Billing {
     private Long appointmentId;
 
     /**
+     * OPD id (if this bill is for an OPD case)
+     */
+    @Column(name = "opd_id")
+    private Long opdId;
+
+    /**
      * Consultation fee amount
      * No GST or additional charges in Phase-1
      */
@@ -103,6 +109,12 @@ public class Billing {
      */
     @Column(name = "payment_method", length = 50)
     private String paymentMethod;
+
+    /**
+     * Payment reference / UTR number when paid via UPI or online
+     */
+    @Column(name = "payment_reference", length = 100)
+    private String paymentReference;
 
     /**
      * Additional notes or description

@@ -13,6 +13,8 @@ public interface MedicalRecordRepository extends JpaRepository<MedicalRecord, Lo
 
     Optional<MedicalRecord> findByAppointmentId(Long appointmentId);
 
+    Optional<MedicalRecord> findByOpdId(Long opdId);
+
     List<MedicalRecord> findTop5ByPatientIdOrderByCreatedAtDesc(Long patientId);
 
     Optional<MedicalRecord> findTopByPatientIdOrderByCreatedAtDesc(Long patientId);

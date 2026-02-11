@@ -51,6 +51,9 @@ public class MedicalRecord {
     @Column(name = "appointment_id", unique = true)
     private Long appointmentId;
 
+    @Column(name = "opd_id", unique = true)
+    private Long opdId;
+
     @Column(length = 1000)
     private String symptoms;
 

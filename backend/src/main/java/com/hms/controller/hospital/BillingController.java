@@ -40,9 +40,10 @@ public class BillingController {
     public ResponseEntity<?> updateStatus(
             @PathVariable Long id,
             @RequestParam String status,
-            @RequestParam(required = false) String paymentMethod) {
+            @RequestParam(required = false) String paymentMethod,
+            @RequestParam(required = false) String paymentReference) {
         try {
-            Billing updated = billingService.updateStatus(id, status, paymentMethod);
+            Billing updated = billingService.updateStatus(id, status, paymentMethod, paymentReference);
             return ResponseEntity.ok(updated);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());

@@ -480,7 +480,21 @@ const HospitalAdminDashboard = () => {
 
     const handleBillStatus = async (id, status) => {
         try {
-            await hospitalService.updateBillStatus(id, status);
+            if (status === 'PAID') {
+                const isUpi = window.confirm('Was the payment made via UPI? Click OK for UPI, Cancel for Cash.');
+                let method = isUpi ? 'UPI' : 'CASH';
+                let reference = null;
+                if (isUpi) {
+                    reference = window.prompt('Enter UTR / transaction reference (required for UPI):');
+                    if (!reference || !reference.trim()) {
+                        toastError('UTR / reference is required for UPI payments');
+                        return;
+                    }
+                }
+                await hospitalService.updateBillStatus(id, status, method, reference);
+            } else {
+                await hospitalService.updateBillStatus(id, status);
+            }
             success('Bill status updated');
             loadData();
         } catch (err) {
