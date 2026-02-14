@@ -39,8 +39,8 @@ const ConfirmationModal = ({ isOpen, title, message, onConfirm, onCancel, showRe
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4" onClick={!isLoading ? onCancel : undefined}>
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
                 <div className="p-6 text-center">
-                    <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
-                        <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-gray-100 mb-4">
+                        <svg className="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                         </svg>
                     </div>
@@ -56,7 +56,7 @@ const ConfirmationModal = ({ isOpen, title, message, onConfirm, onCancel, showRe
                                 value={reason}
                                 onChange={(e) => setReason(e.target.value)}
                                 placeholder={inputPlaceholder}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 text-sm"
                                 rows="3"
                                 required
                             />
@@ -74,7 +74,7 @@ const ConfirmationModal = ({ isOpen, title, message, onConfirm, onCancel, showRe
                         <button
                             onClick={handleConfirm}
                             disabled={isLoading || (showReasonInput && !reason.trim())}
-                            className={`bg-red-600 text-white px-4 py-2 rounded-lg font-medium transition shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 flex items-center gap-2 ${isLoading || (showReasonInput && !reason.trim()) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-red-700'}`}
+                            className={`bg-gray-900 text-white px-4 py-2 rounded-lg font-medium transition shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 flex items-center gap-2 ${isLoading || (showReasonInput && !reason.trim()) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-800'}`}
                         >
                             {isLoading && (
                                 <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

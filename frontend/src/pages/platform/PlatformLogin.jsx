@@ -171,12 +171,12 @@ const PlatformLogin = () => {
 
                             {/* Error Message */}
                             {errors.submit && (
-                                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+                                <div className="mb-6 p-4 bg-gray-50 border border-gray-300 rounded-xl">
                                     <div className="flex items-start">
-                                        <svg className="w-5 h-5 text-red-500 mt-0.5 mr-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                        <svg className="w-5 h-5 text-gray-700 mt-0.5 mr-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                                             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                                         </svg>
-                                        <p className="text-red-700 text-sm font-medium">{errors.submit}</p>
+                                        <p className="text-gray-900 text-sm font-medium">{errors.submit}</p>
                                     </div>
                                 </div>
                             )}
@@ -200,10 +200,10 @@ const PlatformLogin = () => {
                                             onChange={handleEmailChange}
                                             placeholder="admin@hms.com"
                                             disabled={loading}
-                                            className={`w-full pl-12 pr-4 py-3.5 bg-gray-50 border-2 rounded-xl text-gray-900 placeholder-gray-400 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed ${errors.email ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
+                                            className={`w-full pl-12 pr-4 py-3.5 bg-gray-50 border-2 rounded-xl text-gray-900 placeholder-gray-400 focus:bg-white focus:border-gray-900 focus:ring-4 focus:ring-gray-100 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed ${errors.email ? 'border-gray-400 bg-gray-100' : 'border-gray-200'}`}
                                         />
                                     </div>
-                                    {errors.email && <p className="text-red-600 text-sm font-medium mt-1">{errors.email}</p>}
+                                    {errors.email && <p className="text-gray-900 text-sm font-medium mt-1">{errors.email}</p>}
                                 </div>
 
                                 {/* Password Field */}
@@ -224,13 +224,13 @@ const PlatformLogin = () => {
                                             onChange={handlePasswordChange}
                                             placeholder="Enter your password"
                                             disabled={loading}
-                                            className={`w-full pl-12 pr-12 py-3.5 bg-gray-50 border-2 rounded-xl text-gray-900 placeholder-gray-400 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed ${errors.password ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
+                                            className={`w-full pl-12 pr-12 py-3.5 bg-gray-50 border-2 rounded-xl text-gray-900 placeholder-gray-400 focus:bg-white focus:border-gray-900 focus:ring-4 focus:ring-gray-100 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed ${errors.password ? 'border-gray-400 bg-gray-100' : 'border-gray-200'}`}
                                         />
                                         <button
                                             type="button"
                                             onClick={() => setShowPassword(!showPassword)}
                                             disabled={loading}
-                                            className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 focus:text-blue-600 transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                                            className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 focus:text-gray-900 transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
                                             aria-label={showPassword ? "Hide password" : "Show password"}
                                         >
                                             {showPassword ? (
@@ -245,7 +245,7 @@ const PlatformLogin = () => {
                                             )}
                                         </button>
                                     </div>
-                                    {errors.password && <p className="text-red-600 text-sm font-medium mt-1">{errors.password}</p>}
+                                    {errors.password && <p className="text-gray-900 text-sm font-medium mt-1">{errors.password}</p>}
                                 </div>
 
                                 {/* Submit Button */}
@@ -253,7 +253,7 @@ const PlatformLogin = () => {
                                     <button
                                         type="submit"
                                         disabled={loading}
-                                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 px-6 rounded-xl transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed focus:ring-4 focus:ring-blue-200 shadow-sm hover:shadow-md"
+                                        className="w-full bg-gray-900 hover:bg-gray-800 text-white font-semibold py-3.5 px-6 rounded-xl transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed focus:ring-4 focus:ring-gray-200 shadow-sm hover:shadow-md"
                                     >
                                         {loading ? (
                                             <span className="flex items-center justify-center">

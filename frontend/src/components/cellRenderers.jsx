@@ -18,15 +18,15 @@ export const StatusBadgeRenderer = (params) => {
     if (!value) return null;
 
     const statusColors = {
-        'SCHEDULED': 'bg-yellow-100 text-yellow-800',
-        'COMPLETED': 'bg-green-100 text-green-800',
-        'CANCELLED': 'bg-red-100 text-red-800',
-        'ACTIVE': 'bg-green-100 text-green-800',
+        'SCHEDULED': 'bg-gray-100 text-gray-800',
+        'COMPLETED': 'bg-gray-100 text-gray-800',
+        'CANCELLED': 'bg-gray-100 text-gray-800',
+        'ACTIVE': 'bg-gray-100 text-gray-800',
         'INACTIVE': 'bg-gray-100 text-gray-800',
-        'PAID': 'bg-green-100 text-green-800',
-        'PENDING': 'bg-yellow-100 text-yellow-800',
-        'FREE': 'bg-blue-100 text-blue-800',
-        'PREMIUM': 'bg-purple-100 text-purple-800',
+        'PAID': 'bg-gray-100 text-gray-800',
+        'PENDING': 'bg-gray-100 text-gray-800',
+        'FREE': 'bg-gray-100 text-gray-800',
+        'PREMIUM': 'bg-gray-100 text-gray-800',
     };
 
     const colorClass = statusColors[value.toUpperCase()] || 'bg-gray-100 text-gray-800';
@@ -116,8 +116,16 @@ export const BooleanRenderer = (params) => {
     const { value } = params;
 
     return (
-        <span className={`text-xl ${value ? 'text-green-500' : 'text-red-500'}`}>
-            {value ? '✓' : '✗'}
+        <span className="text-gray-700">
+            {value ? (
+                <svg className="w-5 h-5 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+            ) : (
+                <svg className="w-5 h-5 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            )}
         </span>
     );
 };
@@ -160,7 +168,9 @@ export const IDRenderer = (params) => {
                 className="text-gray-400 hover:text-gray-600 transition"
                 title="Copy ID"
             >
-                📋
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
             </button>
         </div>
     );

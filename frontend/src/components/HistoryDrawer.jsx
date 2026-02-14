@@ -40,10 +40,6 @@ const HistoryDrawer = ({ isOpen, onClose, entityType, entityId, entityName }) =>
     };
 
     const getActionColor = (action) => {
-        if (action.includes('DELETED')) return 'bg-red-100 text-red-700';
-        if (action.includes('CREATED')) return 'bg-green-100 text-green-700';
-        if (action.includes('UPDATED')) return 'bg-blue-100 text-blue-700';
-        if (action.includes('STATUS')) return 'bg-yellow-100 text-yellow-700';
         return 'bg-gray-100 text-gray-700';
     };
 
@@ -76,7 +72,7 @@ const HistoryDrawer = ({ isOpen, onClose, entityType, entityId, entityName }) =>
                             >
                                 <Dialog.Panel className="pointer-events-auto w-screen max-w-md">
                                     <div className="flex h-full flex-col overflow-y-scroll bg-white shadow-xl">
-                                        <div className="bg-blue-600 px-4 py-6 sm:px-6">
+                                        <div className="bg-gray-900 px-4 py-6 sm:px-6">
                                             <div className="flex items-center justify-between">
                                                 <Dialog.Title className="text-base font-semibold leading-6 text-white">
                                                     History: {entityName || entityId}
@@ -84,7 +80,7 @@ const HistoryDrawer = ({ isOpen, onClose, entityType, entityId, entityName }) =>
                                                 <div className="ml-3 flex h-7 items-center">
                                                     <button
                                                         type="button"
-                                                        className="relative rounded-md bg-blue-600 text-blue-200 hover:text-white focus:outline-none focus:ring-2 focus:ring-white"
+                                                        className="relative rounded-md bg-gray-900 text-gray-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-white"
                                                         onClick={onClose}
                                                     >
                                                         <span className="absolute -inset-2.5" />
@@ -96,7 +92,7 @@ const HistoryDrawer = ({ isOpen, onClose, entityType, entityId, entityName }) =>
                                                 </div>
                                             </div>
                                             <div className="mt-1">
-                                                <p className="text-sm text-blue-200">
+                                                <p className="text-sm text-gray-400">
                                                     {entityType === 'PATIENT' ? 'Clinical & System History' : `Audit trail for ${entityType?.toLowerCase()}`}
                                                 </p>
                                             </div>
@@ -104,7 +100,7 @@ const HistoryDrawer = ({ isOpen, onClose, entityType, entityId, entityName }) =>
                                         <div className="relative flex-1 px-4 py-6 sm:px-6">
                                             {loading ? (
                                                 <div className="flex justify-center py-8">
-                                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
                                                 </div>
                                             ) : (entityType === 'PATIENT' && clinicalLogs.length === 0 && auditLogs.length === 0) ? (
                                                 <div className="text-center text-gray-500 py-8">
@@ -134,10 +130,7 @@ const HistoryDrawer = ({ isOpen, onClose, entityType, entityId, entityName }) =>
                                                                                             {appt.appointmentTime?.substring(0, 5)} • Dr. {appt.doctorName}
                                                                                         </p>
                                                                                     </div>
-                                                                                    <span className={`px-2 py-0.5 text-xs font-bold rounded-full ${appt.status === 'COMPLETED' ? 'bg-green-100 text-green-700' :
-                                                                                        appt.status === 'CANCELLED' ? 'bg-red-100 text-red-700' :
-                                                                                            'bg-blue-100 text-blue-700'
-                                                                                        }`}>
+                                                                                    <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-gray-100 text-gray-700">
                                                                                         {appt.status}
                                                                                     </span>
                                                                                 </div>

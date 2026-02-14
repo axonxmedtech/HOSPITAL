@@ -72,7 +72,6 @@ const DataGrid = ({
         // No rows overlay
         overlayNoRowsTemplate: `
             <div class="ag-overlay-no-rows-center">
-                <div class="empty-icon">📋</div>
                 <div class="empty-message">${emptyMessage}</div>
             </div>
         `,

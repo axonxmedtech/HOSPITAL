@@ -91,7 +91,9 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                             onClick={onClose} 
                             className="w-10 h-10 rounded-xl bg-white/80 hover:bg-white flex items-center justify-center text-neutral-400 hover:text-neutral-600 transition-all duration-200 hover:scale-105"
                         >
-                            ✕
+                            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
                         </button>
                     </div>
                 </div>
@@ -111,8 +113,8 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                                 className={`input-field ${errors.name ? 'border-error-300 focus:ring-error-500' : ''}`}
                                 placeholder="Enter patient's full name"
                             />
-                            {errors.name && <p className="text-error-500 text-sm mt-1 flex items-center gap-1">
-                                <span>⚠</span> {errors.name}
+                            {errors.name && <p className="text-gray-900 text-sm mt-1 flex items-center gap-1">
+                                {errors.name}
                             </p>}
                         </div>
 
@@ -127,8 +129,8 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                                 className={`input-field ${errors.phone ? 'border-error-300 focus:ring-error-500' : ''}`}
                                 placeholder="Enter phone number"
                             />
-                            {errors.phone && <p className="text-error-500 text-sm mt-1 flex items-center gap-1">
-                                <span>⚠</span> {errors.phone}
+                            {errors.phone && <p className="text-gray-900 text-sm mt-1 flex items-center gap-1">
+                                {errors.phone}
                             </p>}
                         </div>
                     </div>
@@ -148,8 +150,8 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                                 className={`input-field ${errors.age ? 'border-error-300 focus:ring-error-500' : ''}`}
                                 placeholder="Age"
                             />
-                            {errors.age && <p className="text-error-500 text-sm mt-1 flex items-center gap-1">
-                                <span>⚠</span> {errors.age}
+                            {errors.age && <p className="text-gray-900 text-sm mt-1 flex items-center gap-1">
+                                {errors.age}
                             </p>}
                         </div>
                         <div>
@@ -166,8 +168,8 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                                 <option value="FEMALE">Female</option>
                                 <option value="OTHER">Other</option>
                             </select>
-                            {errors.gender && <p className="text-error-500 text-sm mt-1 flex items-center gap-1">
-                                <span>⚠</span> {errors.gender}
+                            {errors.gender && <p className="text-gray-900 text-sm mt-1 flex items-center gap-1">
+                                {errors.gender}
                             </p>}
                         </div>
                     </div>
@@ -185,8 +187,8 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                                 className={`input-field ${errors.email ? 'border-error-300 focus:ring-error-500' : ''}`}
                                 placeholder="Enter email address"
                             />
-                            {errors.email && <p className="text-error-500 text-sm mt-1 flex items-center gap-1">
-                                <span>⚠</span> {errors.email}
+                            {errors.email && <p className="text-gray-900 text-sm mt-1 flex items-center gap-1">
+                                {errors.email}
                             </p>}
                         </div>
                         <div>
@@ -233,7 +235,6 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                             variant="primary"
                             className="flex-1"
                             loading={isSubmitting}
-                            icon={isEdit ? '✏️' : '➕'}
                         >
                             {isEdit ? 'Update Patient' : 'Save Patient'}
                         </Button>

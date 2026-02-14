@@ -693,8 +693,8 @@ const PlatformDashboard = () => {
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                         <div className="p-8">
                             <div className="text-center mb-8">
-                                <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                    <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                    <svg className="w-8 h-8 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                     </svg>
                                 </div>
@@ -711,7 +711,7 @@ const PlatformDashboard = () => {
                                         type="text"
                                         value={editHospitalModal.name}
                                         onChange={(e) => setEditHospitalModal({ ...editHospitalModal, name: e.target.value })}
-                                        className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-900 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200"
+                                        className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-900 focus:bg-white focus:border-gray-900 focus:ring-4 focus:ring-gray-100 transition-all duration-200"
                                     />
                                 </div>
 
@@ -721,7 +721,7 @@ const PlatformDashboard = () => {
                                         type="text"
                                         value={editHospitalModal.adminName}
                                         onChange={(e) => setEditHospitalModal({ ...editHospitalModal, adminName: e.target.value })}
-                                        className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-900 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200"
+                                        className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-900 focus:bg-white focus:border-gray-900 focus:ring-4 focus:ring-gray-100 transition-all duration-200"
                                     />
                                 </div>
 
@@ -731,7 +731,7 @@ const PlatformDashboard = () => {
                                         type="email"
                                         value={editHospitalModal.adminEmail}
                                         onChange={(e) => setEditHospitalModal({ ...editHospitalModal, adminEmail: e.target.value })}
-                                        className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-900 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200"
+                                        className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-900 focus:bg-white focus:border-gray-900 focus:ring-4 focus:ring-gray-100 transition-all duration-200"
                                     />
                                 </div>
 
@@ -740,7 +740,7 @@ const PlatformDashboard = () => {
                                     <select
                                         value={editHospitalModal.plan}
                                         onChange={(e) => setEditHospitalModal({ ...editHospitalModal, plan: e.target.value })}
-                                        className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-900 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200"
+                                        className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-900 focus:bg-white focus:border-gray-900 focus:ring-4 focus:ring-gray-100 transition-all duration-200"
                                     >
                                         <option value="FREE">FREE</option>
                                         <option value="BASIC">BASIC</option>
@@ -766,7 +766,7 @@ const PlatformDashboard = () => {
                                                                 : prev.modules.filter(m => m !== module)
                                                         }));
                                                     }}
-                                                    className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                                                    className="w-4 h-4 text-gray-900 bg-gray-100 border-gray-300 rounded focus:ring-gray-900 focus:ring-2"
                                                 />
                                                 <span className="text-sm font-medium text-gray-700">{module}</span>
                                             </label>
@@ -784,7 +784,7 @@ const PlatformDashboard = () => {
                                     </button>
                                     <button
                                         onClick={handleHospitalUpdate}
-                                        className="flex-1 bg-blue-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors duration-200"
+                                        className="flex-1 bg-gray-900 text-white px-6 py-3 rounded-xl font-semibold hover:bg-gray-800 transition-colors duration-200"
                                     >
                                         Save Changes
                                     </button>
@@ -800,8 +800,8 @@ const PlatformDashboard = () => {
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setPasswordModal({ ...passwordModal, isOpen: false })}>
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
                         <div className="p-8 text-center">
-                            <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                                <svg className="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                                <svg className="w-8 h-8 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
                             </div>
@@ -827,7 +827,7 @@ const PlatformDashboard = () => {
                                                 navigator.clipboard.writeText(passwordModal.password);
                                                 success('Password copied to clipboard');
                                             }}
-                                            className="px-4 py-2 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-100 transition-colors duration-200 font-semibold text-sm"
+                                            className="px-4 py-2 bg-gray-100 text-gray-900 rounded-xl hover:bg-gray-200 transition-colors duration-200 font-semibold text-sm"
                                         >
                                             Copy
                                         </button>
@@ -837,7 +837,7 @@ const PlatformDashboard = () => {
 
                             <button
                                 onClick={() => setPasswordModal({ ...passwordModal, isOpen: false })}
-                                className="w-full bg-blue-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors duration-200"
+                                className="w-full bg-gray-900 text-white px-6 py-3 rounded-xl font-semibold hover:bg-gray-800 transition-colors duration-200"
                             >
                                 Done
                             </button>
@@ -874,10 +874,10 @@ const HospitalsTable = ({ hospitals, hospitalPage, handleToggleStatus, openEditH
             header: 'Plan',
             cell: info => (
                 <div className="flex items-center">
-                    <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs font-semibold mr-2">{info.getValue()}</span>
+                    <span className="px-2 py-1 bg-gray-100 text-gray-900 rounded text-xs font-semibold mr-2">{info.getValue()}</span>
                     <button
                         onClick={() => openEditHospitalModal(info.row.original)}
-                        className="text-gray-400 hover:text-blue-600"
+                        className="text-gray-400 hover:text-gray-900"
                         aria-label="Edit"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
@@ -890,10 +890,7 @@ const HospitalsTable = ({ hospitals, hospitalPage, handleToggleStatus, openEditH
         columnHelper.accessor('isActive', {
             header: 'Status',
             cell: info => (
-                <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${info.getValue()
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-red-100 text-red-800'
-                    }`}>
+                <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
                     {info.getValue() ? 'Active' : 'Inactive'}
                 </span>
             )
@@ -980,15 +977,6 @@ const AuditLogsTable = ({ auditLogs }) => {
 
     // Helper function to get action badge color
     const getActionBadgeColor = (action) => {
-        if (action.includes('CREATED') || action.includes('ADDED')) {
-            return 'bg-green-100 text-green-800';
-        } else if (action.includes('DELETED') || action.includes('REMOVED')) {
-            return 'bg-red-100 text-red-800';
-        } else if (action.includes('UPDATED') || action.includes('MODIFIED')) {
-            return 'bg-blue-100 text-blue-800';
-        } else if (action.includes('CANCELLED')) {
-            return 'bg-yellow-100 text-yellow-800';
-        }
         return 'bg-gray-100 text-gray-800';
     };
 
@@ -1079,10 +1067,7 @@ const UsersTable = ({ users, userPage, onResetPassword, loadUsers }) => {
                 columnHelper.accessor('role', {
             header: 'Role',
             cell: info => (
-                        <span className={`px-2 py-1 rounded text-xs font-semibold ${info.getValue() === 'HOSPITAL_ADMIN' ? 'bg-neutral-100 text-slate-800' :
-                    info.getValue() === 'DOCTOR' ? 'bg-blue-100 text-blue-800' :
-                        'bg-green-100 text-green-800'
-                    }`}>
+                        <span className="px-2 py-1 rounded text-xs font-semibold bg-gray-100 text-gray-800">
                     {info.getValue().replace('_', ' ')}
                 </span>
             ),
@@ -1094,8 +1079,7 @@ const UsersTable = ({ users, userPage, onResetPassword, loadUsers }) => {
         columnHelper.accessor('isActive', {
             header: 'Status',
             cell: info => (
-                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${info.getValue() ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                    }`}>
+                <span className="px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-800">
                     {info.getValue() ? 'Active' : 'Inactive'}
                 </span>
             ),

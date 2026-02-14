@@ -1651,15 +1651,6 @@ const AuditLogsTable = ({ auditLogs, startIndex = 0 }) => {
 
     // Helper function to get action badge color (unchanged)
     const getActionBadgeColor = (action) => {
-        if (action.includes('CREATED') || action.includes('ADDED')) {
-            return 'bg-green-100 text-green-800';
-        } else if (action.includes('DELETED') || action.includes('REMOVED')) {
-            return 'bg-red-100 text-red-800';
-        } else if (action.includes('UPDATED') || action.includes('MODIFIED')) {
-            return 'bg-blue-100 text-blue-800';
-        } else if (action.includes('CANCELLED')) {
-            return 'bg-yellow-100 text-yellow-800';
-        }
         return 'bg-gray-100 text-gray-800';
     };
 

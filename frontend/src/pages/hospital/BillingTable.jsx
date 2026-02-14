@@ -45,7 +45,7 @@ const BillingTable = ({ billing, startIndex = 0, pagination, onUpdateStatus, onD
                     {info.row.original.paymentStatus === 'PENDING' && (
                         <button
                             onClick={() => onUpdateStatus(info.row.original.id, 'PAID')}
-                            className="bg-green-100 text-green-600 hover:bg-green-200 px-3 py-1 rounded-md text-sm font-medium transition-colors"
+                            className="bg-gray-100 text-gray-700 hover:bg-gray-200 px-3 py-1 rounded-md text-sm font-medium transition-colors"
                         >
                             Mark Paid
                         </button>
@@ -53,7 +53,7 @@ const BillingTable = ({ billing, startIndex = 0, pagination, onUpdateStatus, onD
                     {info.row.original.paymentStatus === 'PAID' && (
                         <button
                             onClick={() => onDownload(info.row.original.id)}
-                            className="bg-blue-100 text-blue-600 hover:bg-blue-200 px-3 py-1 rounded-md text-sm font-medium transition-colors flex items-center gap-1"
+                            className="bg-gray-100 text-gray-700 hover:bg-gray-200 px-3 py-1 rounded-md text-sm font-medium transition-colors flex items-center gap-1"
                         >
                             <span>Download</span>
                         </button>

@@ -7,125 +7,125 @@ const getStatusConfig = (status) => {
     const configs = {
         // Success states
         'COMPLETED': { 
-            bg: 'bg-success-100', 
-            text: 'text-success-800', 
-            border: 'border-success-200',
-            dot: 'bg-success-500',
-            icon: '✓'
+            bg: 'bg-gray-100', 
+            text: 'text-gray-800', 
+            border: 'border-gray-200',
+            dot: 'bg-gray-500',
+            icon: null
         },
         'PAID': { 
-            bg: 'bg-success-100', 
-            text: 'text-success-800', 
-            border: 'border-success-200',
-            dot: 'bg-success-500',
+            bg: 'bg-gray-100', 
+            text: 'text-gray-800', 
+            border: 'border-gray-200',
+            dot: 'bg-gray-500',
             icon: null
         },
         'ACTIVE': { 
-            bg: 'bg-success-100', 
-            text: 'text-success-800', 
-            border: 'border-success-200',
-            dot: 'bg-success-500',
-            icon: '✓'
+            bg: 'bg-gray-100', 
+            text: 'text-gray-800', 
+            border: 'border-gray-200',
+            dot: 'bg-gray-500',
+            icon: null
         },
         
         // In progress states
         'SCHEDULED': { 
-            bg: 'bg-primary-100', 
-            text: 'text-primary-800', 
-            border: 'border-primary-200',
-            dot: 'bg-primary-500',
+            bg: 'bg-gray-100', 
+            text: 'text-gray-800', 
+            border: 'border-gray-200',
+            dot: 'bg-gray-500',
             icon: null
         },
         'PENDING': { 
-            bg: 'bg-secondary-100', 
-            text: 'text-secondary-800', 
-            border: 'border-secondary-200',
-            dot: 'bg-secondary-500',
+            bg: 'bg-gray-100', 
+            text: 'text-gray-800', 
+            border: 'border-gray-200',
+            dot: 'bg-gray-500',
             icon: null
         },
         'IN_PROGRESS': { 
-            bg: 'bg-primary-100', 
-            text: 'text-primary-800', 
-            border: 'border-primary-200',
-            dot: 'bg-primary-500',
+            bg: 'bg-gray-100', 
+            text: 'text-gray-800', 
+            border: 'border-gray-200',
+            dot: 'bg-gray-500',
             icon: null
         },
         
         // Alert/Warning states
         'CANCELLED': { 
-            bg: 'bg-alert-100', 
-            text: 'text-alert-800', 
-            border: 'border-alert-200',
-            dot: 'bg-alert-500',
-            icon: '✕'
+            bg: 'bg-gray-100', 
+            text: 'text-gray-800', 
+            border: 'border-gray-200',
+            dot: 'bg-gray-500',
+            icon: null
         },
         'UNPAID': { 
-            bg: 'bg-alert-100', 
-            text: 'text-alert-800', 
-            border: 'border-alert-200',
-            dot: 'bg-alert-500',
+            bg: 'bg-gray-100', 
+            text: 'text-gray-800', 
+            border: 'border-gray-200',
+            dot: 'bg-gray-500',
             icon: null
         },
         'OVERDUE': { 
-            bg: 'bg-alert-100', 
-            text: 'text-alert-800', 
-            border: 'border-alert-200',
-            dot: 'bg-alert-500',
+            bg: 'bg-gray-100', 
+            text: 'text-gray-800', 
+            border: 'border-gray-200',
+            dot: 'bg-gray-500',
             icon: null
         },
         
         // Neutral states
         'INACTIVE': { 
-            bg: 'bg-neutral-100', 
-            text: 'text-neutral-800', 
-            border: 'border-neutral-200',
-            dot: 'bg-neutral-500',
-            icon: '○'
+            bg: 'bg-gray-100', 
+            text: 'text-gray-800', 
+            border: 'border-gray-200',
+            dot: 'bg-gray-500',
+            icon: null
         },
         'DRAFT': { 
-            bg: 'bg-neutral-100', 
-            text: 'text-neutral-800', 
-            border: 'border-neutral-200',
-            dot: 'bg-neutral-500',
+            bg: 'bg-gray-100', 
+            text: 'text-gray-800', 
+            border: 'border-gray-200',
+            dot: 'bg-gray-500',
             icon: null
         },
         'CONSULTING': { 
-            bg: 'bg-primary-100', 
-            text: 'text-primary-800', 
-            border: 'border-primary-200',
-            dot: 'bg-primary-500',
+            bg: 'bg-gray-100', 
+            text: 'text-gray-800', 
+            border: 'border-gray-200',
+            dot: 'bg-gray-500',
             icon: null
         },
         
         // Error/inactive states
         'CANCELLED': { 
-            bg: 'bg-error-100', 
-            text: 'text-error-800', 
-            border: 'border-error-200',
-            dot: 'bg-error-500',
-            icon: '✕'
+            bg: 'bg-gray-100', 
+            text: 'text-gray-800', 
+            border: 'border-gray-200',
+            dot: 'bg-gray-500',
+            icon: null
         },
         'UNPAID': { 
-            bg: 'bg-error-100', 
-            text: 'text-error-800', 
-            border: 'border-error-200',
-            dot: 'bg-error-500',
+            bg: 'bg-gray-100', 
+            text: 'text-gray-800', 
+            border: 'border-gray-200',
+            dot: 'bg-gray-500',
             icon: null
         },
         'INACTIVE': { 
-            bg: 'bg-neutral-100', 
-            text: 'text-neutral-800', 
-            border: 'border-neutral-200',
-            dot: 'bg-neutral-500',
+            bg: 'bg-gray-100', 
+            text: 'text-gray-800', 
+            border: 'border-gray-200',
+            dot: 'bg-gray-500',
             icon: null
         }
     };
     
     return configs[s] || {
-        bg: 'bg-neutral-100',
-        text: 'text-neutral-800',
-        border: 'border-neutral-200',
-        dot: 'bg-neutral-500',
+        bg: 'bg-gray-100',
+        text: 'text-gray-800',
+        border: 'border-gray-200',
+        dot: 'bg-gray-500',
         icon: null
     };
 };
@@ -179,7 +179,7 @@ const StatusBadge = ({ status, options = [], onUpdate, type = 'default', showIco
 
     const menu = (
         <div
-            className="status-badge-dropdown fixed z-[9999] w-44 rounded-xl shadow-organic bg-white ring-1 ring-neutral-200 focus:outline-none animate-slide-down overflow-hidden"
+            className="status-badge-dropdown fixed z-[9999] w-44 rounded-xl shadow-organic bg-white ring-1 ring-gray-200 focus:outline-none animate-slide-down overflow-hidden"
             style={{ top: position.top, left: position.left }}
         >
             <div className="py-2">
@@ -193,7 +193,7 @@ const StatusBadge = ({ status, options = [], onUpdate, type = 'default', showIco
                                 onUpdate(option);
                                 setIsOpen(false);
                             }}
-                            className="block w-full text-left px-4 py-3 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors duration-200 flex items-center gap-3"
+                            className="block w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-200 flex items-center gap-3"
                         >
                             <div className={`w-2 h-2 rounded-full ${optionConfig.dot}`}></div>
                             <span className="flex-1">{option}</span>

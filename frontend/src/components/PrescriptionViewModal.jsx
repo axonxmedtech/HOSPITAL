@@ -44,7 +44,11 @@ const PrescriptionViewModal = ({ isOpen, onClose, patient }) => {
                             <span className="font-semibold">{patient?.name}</span> • ID: {patient?.customId || patient?.publicId || patient?.id}
                         </p>
                     </div>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition text-2xl">×</button>
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition">
+                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
                 </div>
 
                 {/* Content */}
@@ -55,7 +59,6 @@ const PrescriptionViewModal = ({ isOpen, onClose, patient }) => {
                         </div>
                     ) : error ? (
                         <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                            <span className="text-4xl block mb-2">📄</span>
                             <p>{error}</p>
                         </div>
                     ) : data ? (
@@ -140,9 +143,9 @@ const PrescriptionViewModal = ({ isOpen, onClose, patient }) => {
                     {data && (
                         <button
                             onClick={() => window.print()}
-                            className="ml-3 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium flex items-center gap-2 transition"
+                            className="ml-3 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 font-medium flex items-center gap-2 transition"
                         >
-                            <span>🖨️</span> Print
+                            <span>Print</span>
                         </button>
                     )}
                 </div>

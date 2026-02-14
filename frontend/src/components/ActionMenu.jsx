@@ -60,13 +60,13 @@ const ActionMenu = ({ actions }) => {
                             setIsOpen(false);
                         }}
                         className={`group flex items-center w-full px-4 py-2 text-sm ${action.danger
-                            ? 'text-red-600 hover:bg-red-50'
+                            ? 'text-gray-900 hover:bg-gray-50 font-medium'
                             : 'text-gray-700 hover:bg-gray-50'
                             } transition-colors duration-150`}
                         role="menuitem"
                     >
                         {action.icon && (
-                            <span className={`mr-3 h-5 w-5 ${action.danger ? 'text-red-500' : 'text-gray-400 group-hover:text-gray-500'}`}>
+                            <span className={`mr-3 h-5 w-5 ${action.danger ? 'text-gray-700' : 'text-gray-400 group-hover:text-gray-500'}`}>
                                 {action.icon}
                             </span>
                         )}

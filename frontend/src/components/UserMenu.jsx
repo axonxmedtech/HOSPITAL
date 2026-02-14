@@ -87,8 +87,10 @@ const UserMenu = ({ user, onLogout, onProfile }) => {
                             }}
                             className="w-full text-left px-5 py-3 text-sm text-neutral-700 hover:bg-neutral-50 flex items-center gap-3 transition-all duration-200 group"
                         >
-                            <div className="w-8 h-8 rounded-lg bg-neutral-100 flex items-center justify-center group-hover:bg-primary-100 transition-colors duration-200">
-                                <span className="text-neutral-600 group-hover:text-primary-600">👤</span>
+                            <div className="w-8 h-8 rounded-lg bg-neutral-100 flex items-center justify-center group-hover:bg-gray-200 transition-colors duration-200">
+                                <svg className="w-5 h-5 text-neutral-600 group-hover:text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                </svg>
                             </div>
                             <div>
                                 <p className="font-medium">Profile Settings</p>
@@ -103,8 +105,10 @@ const UserMenu = ({ user, onLogout, onProfile }) => {
                             }}
                             className="w-full text-left px-5 py-3 text-sm text-neutral-700 hover:bg-neutral-50 flex items-center gap-3 transition-all duration-200 group"
                         >
-                            <div className="w-8 h-8 rounded-lg bg-neutral-100 flex items-center justify-center group-hover:bg-primary-100 transition-colors duration-200">
-                                <span className="text-neutral-600 group-hover:text-primary-600">❓</span>
+                            <div className="w-8 h-8 rounded-lg bg-neutral-100 flex items-center justify-center group-hover:bg-gray-200 transition-colors duration-200">
+                                <svg className="w-5 h-5 text-neutral-600 group-hover:text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
                             </div>
                             <div>
                                 <p className="font-medium">Help & Support</p>
@@ -120,10 +124,12 @@ const UserMenu = ({ user, onLogout, onProfile }) => {
                                 setIsOpen(false);
                                 onLogout();
                             }}
-                            className="w-full text-left px-5 py-3 text-sm text-error-600 hover:bg-error-50 flex items-center gap-3 transition-all duration-200 font-medium group"
+                            className="w-full text-left px-5 py-3 text-sm text-gray-900 hover:bg-gray-50 flex items-center gap-3 transition-all duration-200 font-medium group"
                         >
-                            <div className="w-8 h-8 rounded-lg bg-error-100 flex items-center justify-center group-hover:bg-error-200 transition-colors duration-200">
-                                <span className="text-error-600">🚪</span>
+                            <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center group-hover:bg-gray-200 transition-colors duration-200">
+                                <svg className="w-5 h-5 text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                </svg>
                             </div>
                             <div>
                                 <p className="font-medium">Sign Out</p>

@@ -198,7 +198,9 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
                         onClick={handleClose}
                         className="text-gray-400 hover:text-gray-600 transition text-2xl leading-none"
                     >
-                        ✕
+                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
                     </button>
                 </div>
 
@@ -291,7 +293,9 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
                             <div className="relative">
                                 <div className="relative">
                                     <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-                                        🔍
+                                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                        </svg>
                                     </span>
                                     <input
                                         type="text"
@@ -319,7 +323,7 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
                                                             {p.name}
                                                         </span>
                                                         <span className="text-xs text-gray-500 flex justify-between">
-                                                            <span>📞 {p.phone}</span>
+                                                            <span>{p.phone}</span>
                                                             <span>{p.age} yrs / {p.gender}</span>
                                                         </span>
                                                     </li>
@@ -397,8 +401,8 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
                                                     ${isBooked
                                                         ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed decoration-slice'
                                                         : isSelected
-                                                            ? 'bg-purple-600 text-white border-purple-600 shadow-md transform scale-105'
-                                                            : 'bg-white text-gray-700 border-gray-300 hover:border-purple-400 hover:text-purple-600'
+                                                            ? 'bg-gray-900 text-white border-gray-900 shadow-md transform scale-105'
+                                                            : 'bg-white text-gray-700 border-gray-300 hover:border-gray-900 hover:text-gray-900'
                                                     }
                                                 `}
                                             >

@@ -148,7 +148,11 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                             <span className="text-gray-500">ID: {patientDetails?.patient?.customId || patientDetails?.patient?.publicId || patientDetails?.patient?.id}</span>
                         </p>
                     </div>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition text-2xl">×</button>
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition">
+                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
                 </div>
 
                 {/* 2-Column Layout */}
@@ -168,7 +172,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                 {/* Demographics */}
                                 <div>
                                     <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-3 flex items-center">
-                                        <span className="mr-2">👤</span> Patient Information
+                                        Patient Information
                                     </h4>
                                     <div className="space-y-2 text-sm">
                                         <div className="flex justify-between py-2 border-b border-gray-200">
@@ -185,8 +189,8 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                         </div>
                                         <div className="flex justify-between py-2 border-b border-gray-200">
                                             <span className="text-gray-500">Status</span>
-                                            <span className={`px-2 py-1 rounded text-xs font-semibold ${patientDetails.patient.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
-                                                (patientDetails.patient.status === 'CONSULTING' || patientDetails.patient.status === 'IN_PROGRESS') ? 'bg-blue-100 text-blue-800' :
+                                            <span className={`px-2 py-1 rounded text-xs font-semibold ${patientDetails.patient.status === 'COMPLETED' ? 'bg-gray-100 text-gray-800' :
+                                                (patientDetails.patient.status === 'CONSULTING' || patientDetails.patient.status === 'IN_PROGRESS') ? 'bg-gray-100 text-gray-800' :
                                                     'bg-gray-100 text-gray-800'
                                                 }`}>
                                                 {patientDetails.patient.status}
@@ -204,7 +208,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                 {/* Medical History */}
                                 <div>
                                     <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-3 flex items-center">
-                                        <span className="mr-2">📋</span> Medical History
+                                        Medical History
                                     </h4>
                                     {patientDetails.medicalHistory && patientDetails.medicalHistory.length > 0 ? (
                                         <div className="space-y-3">
@@ -233,7 +237,6 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                         </div>
                                     ) : (
                                         <div className="text-center py-6 text-gray-400 text-sm">
-                                            <div className="text-3xl mb-2">📝</div>
                                             <p>No previous consultations</p>
                                         </div>
                                     )}
@@ -252,13 +255,13 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                         {/* Tabs */}
                         <div className="flex border-b border-gray-200 bg-white">
                             <button
-                                className={`flex-1 py-4 text-sm font-semibold transition-colors ${activeTab === 'clinical' ? 'text-primary-600 border-b-2 border-primary-600 bg-primary-50' : 'text-gray-500 hover:bg-gray-50'}`}
+                                className={`flex-1 py-4 text-sm font-semibold transition-colors ${activeTab === 'clinical' ? 'text-gray-900 border-b-2 border-gray-900 bg-gray-50' : 'text-gray-500 hover:bg-gray-50'}`}
                                 onClick={() => setActiveTab('clinical')}
                             >
-                                📝 Clinical Notes
+                                Clinical Notes
                             </button>
                             <button
-                                className={`flex-1 py-4 text-sm font-semibold transition-colors ${activeTab === 'prescription' ? 'text-primary-600 border-b-2 border-primary-600 bg-primary-50' : 'text-gray-500 hover:bg-gray-50'}`}
+                                className={`flex-1 py-4 text-sm font-semibold transition-colors ${activeTab === 'prescription' ? 'text-gray-900 border-b-2 border-gray-900 bg-gray-50' : 'text-gray-500 hover:bg-gray-50'}`}
                                 onClick={() => setActiveTab('prescription')}
                             >
                                 Prescription ({formData.prescription.length})
@@ -379,9 +382,11 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                                         </div>
                                                         <button
                                                             onClick={() => handleRemoveMedicine(index)}
-                                                            className="ml-3 text-red-500 hover:text-red-700 font-bold text-lg"
+                                                            className="ml-3 text-gray-500 hover:text-gray-700"
                                                         >
-                                                            ×
+                                                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                            </svg>
                                                         </button>
                                                     </div>
                                                 ))}
@@ -389,7 +394,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                         </div>
                                     )}
 
-                                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
                                         <h4 className="text-sm font-semibold text-gray-700 mb-3">Add Medicine</h4>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div className="col-span-2">
