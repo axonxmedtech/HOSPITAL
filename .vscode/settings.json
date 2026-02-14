@@ -1,5 +1,7 @@
 {
     "java.compile.nullAnalysis.mode": "automatic",
     "java.configuration.updateBuildConfiguration": "interactive",
-    "javascript.autoClosingTags": false
+    "javascript.autoClosingTags": false,
+    "snyk.advanced.autoSelectOrganization": true,
+    "snyk.advanced.organization": "e281a30b-46fc-42bc-9254-c6a232d0137c"
 }
