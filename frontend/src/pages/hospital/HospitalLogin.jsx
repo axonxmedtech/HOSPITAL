@@ -155,10 +155,10 @@ const HospitalLogin = () => {
                         {/* Form Section */}
                         <div className="p-6">
                             {errors.submit && (
-                                <div className="mb-6 bg-white border border-gray-200 p-4">
+                                <div className="mb-6 bg-red-50 border border-red-300 p-4 rounded-lg">
                                     <div className="flex items-start">
-                                        <span className="text-gray-900 font-medium mr-3">Error:</span>
-                                        <p className="text-sm text-gray-900">{errors.submit}</p>
+                                        <span className="text-red-700 font-medium mr-3">Error:</span>
+                                        <p className="text-sm text-red-700">{errors.submit}</p>
                                     </div>
                                 </div>
                             )}
@@ -194,9 +194,9 @@ const HospitalLogin = () => {
                                         onChange={handleEmailChange}
                                         placeholder="your.name@hospital.com"
                                         disabled={loading}
-                                        className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 disabled:opacity-60 disabled:cursor-not-allowed ${errors.email ? 'border-gray-900' : 'border-gray-200'}`}
+                                        className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 disabled:opacity-60 disabled:cursor-not-allowed ${errors.email ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
                                     />
-                                    {errors.email && <p className="text-gray-900 text-sm mt-1">{errors.email}</p>}
+                                    {errors.email && <p className="text-red-600 text-sm mt-1">{errors.email}</p>}
                                 </div>
 
                                 {/* Password Field */}
@@ -211,9 +211,9 @@ const HospitalLogin = () => {
                                         onChange={handlePasswordChange}
                                         placeholder="Enter your secure password"
                                         disabled={loading}
-                                        className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 disabled:opacity-60 disabled:cursor-not-allowed ${errors.password ? 'border-gray-900' : 'border-gray-200'}`}
+                                        className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 disabled:opacity-60 disabled:cursor-not-allowed ${errors.password ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
                                     />
-                                    {errors.password && <p className="text-gray-900 text-sm mt-1">{errors.password}</p>}
+                                    {errors.password && <p className="text-red-600 text-sm mt-1">{errors.password}</p>}
                                 </div>
 
                                 {/* Submit Button */}

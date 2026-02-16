@@ -113,7 +113,7 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                                 className={`input-field ${errors.name ? 'border-error-300 focus:ring-error-500' : ''}`}
                                 placeholder="Enter patient's full name"
                             />
-                            {errors.name && <p className="text-gray-900 text-sm mt-1 flex items-center gap-1">
+                            {errors.name && <p className="text-red-600 text-sm mt-1 flex items-center gap-1">
                                 {errors.name}
                             </p>}
                         </div>
@@ -129,7 +129,7 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                                 className={`input-field ${errors.phone ? 'border-error-300 focus:ring-error-500' : ''}`}
                                 placeholder="Enter phone number"
                             />
-                            {errors.phone && <p className="text-gray-900 text-sm mt-1 flex items-center gap-1">
+                            {errors.phone && <p className="text-red-600 text-sm mt-1 flex items-center gap-1">
                                 {errors.phone}
                             </p>}
                         </div>
@@ -150,7 +150,7 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                                 className={`input-field ${errors.age ? 'border-error-300 focus:ring-error-500' : ''}`}
                                 placeholder="Age"
                             />
-                            {errors.age && <p className="text-gray-900 text-sm mt-1 flex items-center gap-1">
+                            {errors.age && <p className="text-red-600 text-sm mt-1 flex items-center gap-1">
                                 {errors.age}
                             </p>}
                         </div>
@@ -168,7 +168,7 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                                 <option value="FEMALE">Female</option>
                                 <option value="OTHER">Other</option>
                             </select>
-                            {errors.gender && <p className="text-gray-900 text-sm mt-1 flex items-center gap-1">
+                            {errors.gender && <p className="text-red-600 text-sm mt-1 flex items-center gap-1">
                                 {errors.gender}
                             </p>}
                         </div>
@@ -187,7 +187,7 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                                 className={`input-field ${errors.email ? 'border-error-300 focus:ring-error-500' : ''}`}
                                 placeholder="Enter email address"
                             />
-                            {errors.email && <p className="text-gray-900 text-sm mt-1 flex items-center gap-1">
+                            {errors.email && <p className="text-red-600 text-sm mt-1 flex items-center gap-1">
                                 {errors.email}
                             </p>}
                         </div>

@@ -484,42 +484,44 @@ const ReceptionistDashboard = () => {
                 />
 
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
-                    {/* Stats for Receptionist */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                        <div className="bg-white rounded-lg border border-gray-200 p-6">
-                            <div className="flex justify-between items-center">
+                    {/* Stats for Receptionist - Only show on appointments tab */}
+                    {activeTab === 'appointments' && (
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                            <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <p className="text-gray-600 text-sm font-medium">Today's Appointments</p>
+                                        <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.today}</h3>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <p className="text-gray-600 text-sm font-medium">Pending</p>
+                                        <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.pending}</h3>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <p className="text-gray-600 text-sm font-medium">Total Appointments</p>
+                                        <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.total}</h3>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-lg border border-gray-200 p-6">
                                 <div>
-                                    <p className="text-gray-600 text-sm font-medium">Today's Appointments</p>
-                                    <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.today}</h3>
+                                    <p className="text-gray-600 text-sm font-medium">Current / Next Token</p>
+                                    <div className="mt-2 flex items-baseline gap-3">
+                                        <h3 className="text-2xl font-bold text-gray-900">{currentToken ?? '-'}</h3>
+                                        <span className="text-sm text-gray-500">/ {nextToken ?? '-'}</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <div className="bg-white rounded-lg border border-gray-200 p-6">
-                            <div className="flex justify-between items-center">
-                                <div>
-                                    <p className="text-gray-600 text-sm font-medium">Pending</p>
-                                    <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.pending}</h3>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="bg-white rounded-lg border border-gray-200 p-6">
-                            <div className="flex justify-between items-center">
-                                <div>
-                                    <p className="text-gray-600 text-sm font-medium">Total Appointments</p>
-                                    <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.total}</h3>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="bg-white rounded-lg border border-gray-200 p-6">
-                            <div>
-                                <p className="text-gray-600 text-sm font-medium">Current / Next Token</p>
-                                <div className="mt-2 flex items-baseline gap-3">
-                                    <h3 className="text-2xl font-bold text-gray-900">{currentToken ?? '-'}</h3>
-                                    <span className="text-sm text-gray-500">/ {nextToken ?? '-'}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    )}
 
                     {/* Standardized Header */}
                     <PageHeader
@@ -786,6 +788,7 @@ const ReceptionistDashboard = () => {
                                 setCreatedOpd(res);
                                 setIsOpdModalOpen(false);
                                 success('OPD created — token: ' + (res.tokenNumber || '-'));
+                                loadData(); // Refresh the data after OPD creation
                             } catch (err) {
                                 console.error('Failed to create OPD', err);
                                 toastError('Failed to create OPD');
