@@ -6,7 +6,7 @@ import {
 } from '@tanstack/react-table';
 import classNames from 'classnames';
 
-const DataTable = ({ data, columns, pagination, loading, emptyState }) => {
+const DataTable = ({ data, columns, pagination, loading, emptyState, expandedRowIds = [], renderExpandedRow = null, idAccessor = 'id' }) => {
     const table = useReactTable({
         data,
         columns,
@@ -52,21 +52,34 @@ const DataTable = ({ data, columns, pagination, loading, emptyState }) => {
                             ))}
                         </thead>
                         <tbody className="bg-white divide-y divide-neutral-100">
-                            {table.getRowModel().rows.map(row => (
-                                <tr key={row.id} className="hover:bg-neutral-50 transition-colors duration-200">
-                                    {row.getVisibleCells().map(cell => (
-                                        <td
-                                            key={cell.id}
-                                            className="px-6 py-4 whitespace-nowrap text-sm text-slate-700"
-                                        >
-                                            {flexRender(
-                                                cell.column.columnDef.cell,
-                                                cell.getContext()
-                                            )}
-                                        </td>
-                                    ))}
-                                </tr>
-                            ))}
+                            {table.getRowModel().rows.map(row => {
+                                const rowId = row.original && row.original[idAccessor] ? row.original[idAccessor] : row.id;
+                                const isExpanded = Array.isArray(expandedRowIds) && expandedRowIds.includes(rowId);
+                                return (
+                                    <React.Fragment key={row.id}>
+                                        <tr className="hover:bg-neutral-50 transition-colors duration-200">
+                                            {row.getVisibleCells().map(cell => (
+                                                <td
+                                                    key={cell.id}
+                                                    className="px-6 py-4 whitespace-nowrap text-sm text-slate-700"
+                                                >
+                                                    {flexRender(
+                                                        cell.column.columnDef.cell,
+                                                        cell.getContext()
+                                                    )}
+                                                </td>
+                                            ))}
+                                        </tr>
+                                        {isExpanded && renderExpandedRow && (
+                                            <tr className="bg-neutral-50">
+                                                <td colSpan={row.getVisibleCells().length} className="px-6 py-4">
+                                                    {renderExpandedRow(row)}
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </React.Fragment>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>

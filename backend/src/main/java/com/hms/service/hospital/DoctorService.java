@@ -448,19 +448,14 @@ public class DoctorService {
         patient.setStatus(com.hms.entity.PatientStatus.COMPLETED);
         patientRepository.save(patient);
 
-        // 5. Auto-generate Bill
+        // 5. Auto-generate OPD Bill (unified flow)
         try {
-            if (appointment != null) {
-                billingService.autoGenerateOpdBill(appointment);
-            } else if (request.getOpdId() != null) {
-                // Create OPD combined bill (case paper + consultation) and then mark OPD completed
-                com.hms.entity.Billing bill = billingService.createOpdBill(request.getOpdId(), patient.getId(), resolvedDoctorId);
-            } else {
-                // For direct patient consultations, create a simple consultation bill
-                billingService.createConsultationBill(patient.getId(), currentDoctorId, savedRecord.getId());
-            }
+            // Always use OPD bill flow: create itemized bill (case paper + consultation)
+            // If request.getOpdId() is null, createOpdBill will still create the bill but
+            // without linking to an OPD; OPD completion on payment will only run when opdId is present.
+            com.hms.entity.Billing bill = billingService.createOpdBill(request.getOpdId(), patient.getId(), resolvedDoctorId);
         } catch (Exception e) {
-            logger.error("Failed to auto-generate bill", e);
+            logger.error("Failed to create OPD bill", e);
             // Don't fail the consultation if billing fails, just log it
         }
 

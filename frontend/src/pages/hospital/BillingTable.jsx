@@ -1,12 +1,31 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
 
 const BillingTable = ({ billing, startIndex = 0, pagination, onUpdateStatus, onDownload }) => {
+    const [expandedIds, setExpandedIds] = useState([]);
+
+    const toggleExpand = (id) => {
+        setExpandedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    };
     const columnHelper = createColumnHelper();
 
     const columns = [
+        columnHelper.display({
+            id: 'expand',
+            header: '',
+            cell: info => (
+                <button
+                    onClick={() => toggleExpand(info.row.original.id)}
+                    className="p-1 rounded-md hover:bg-neutral-100"
+                    aria-label="Toggle items"
+                >
+                    {expandedIds.includes(info.row.original.id) ? '▾' : '▸'}
+                </button>
+            ),
+            enableSorting: false,
+        }),
         columnHelper.display({
             id: 'sno',
             header: 'S.No.',
@@ -63,7 +82,41 @@ const BillingTable = ({ billing, startIndex = 0, pagination, onUpdateStatus, onD
         }),
     ];
 
-    return <DataTable data={billing} columns={columns} pagination={pagination} />;
+    const renderExpandedRow = (row) => {
+        const items = row.original.items || [];
+        if (!items.length) return <div className="text-sm text-slate-600">No items</div>;
+        return (
+            <div>
+                <table className="min-w-full">
+                    <thead>
+                        <tr>
+                            <th className="text-left text-xs text-slate-500 px-2">Item</th>
+                            <th className="text-right text-xs text-slate-500 px-2">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {items.map(it => (
+                            <tr key={it.id} className="border-t">
+                                <td className="px-2 py-1 text-sm text-slate-700">{it.description}</td>
+                                <td className="px-2 py-1 text-sm text-right text-slate-700">₹{it.amount}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        );
+    };
+
+    return (
+        <DataTable
+            data={billing}
+            columns={columns}
+            pagination={pagination}
+            expandedRowIds={expandedIds}
+            renderExpandedRow={renderExpandedRow}
+            idAccessor={'id'}
+        />
+    );
 };
 
 export default BillingTable;

@@ -53,6 +53,7 @@ const ReceptionistDashboard = () => {
     const [nextToken, setNextToken] = useState(null);
     const [selectedDoctorForQueue, setSelectedDoctorForQueue] = useState('');
     const [billing, setBilling] = useState([]);
+    const [billingStatus, setBillingStatus] = useState('PENDING');
     const [loading, setLoading] = useState(false);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isOpdModalOpen, setIsOpdModalOpen] = useState(false);
@@ -138,7 +139,7 @@ const ReceptionistDashboard = () => {
         }, 30000);
 
         return () => clearInterval(intervalId);
-    }, [activeTab, page, searchTerm, viewFilter, patientViewFilter, pageSize, selectedDoctorForQueue]); // Add pageSize & doctor filter to dependencies
+    }, [activeTab, page, searchTerm, viewFilter, patientViewFilter, pageSize, selectedDoctorForQueue, billingStatus]); // Add pageSize & doctor filter to dependencies
 
     const loadData = async (showSpinner = true) => {
         if (showSpinner) setLoading(true);
@@ -217,7 +218,7 @@ const ReceptionistDashboard = () => {
                     setTotalElements(data.length);
                 }
             } else if (activeTab === 'billing') {
-                const data = await hospitalService.getBills(searchTerm, page, pageSize);
+                const data = await hospitalService.getBills(searchTerm, page, pageSize, billingStatus);
                 if (data.content) {
                     setBilling(data.content);
                     setTotalPages(data.totalPages);
@@ -711,13 +712,26 @@ const ReceptionistDashboard = () => {
                                 />
                             )}
                             {activeTab === 'billing' && billing.length > 0 && (
-                                <BillingTable
-                                    billing={billing}
-                                    startIndex={page * pageSize}
-                                    pagination={pagination}
-                                    onUpdateStatus={handleBillStatus}
-                                    onDownload={handleDownloadReceipt}
-                                />
+                                <div>
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="text-sm text-slate-600 mr-2">Filter:</div>
+                                        <button
+                                            onClick={() => setBillingStatus('PENDING')}
+                                            className={`px-3 py-1 rounded-xl ${billingStatus === 'PENDING' ? 'bg-primary-50 text-primary-600' : 'bg-white border border-neutral-200'}`}
+                                        >Pending</button>
+                                        <button
+                                            onClick={() => setBillingStatus('PAID')}
+                                            className={`px-3 py-1 rounded-xl ${billingStatus === 'PAID' ? 'bg-primary-50 text-primary-600' : 'bg-white border border-neutral-200'}`}
+                                        >Paid</button>
+                                    </div>
+                                    <BillingTable
+                                        billing={billing}
+                                        startIndex={page * pageSize}
+                                        pagination={pagination}
+                                        onUpdateStatus={handleBillStatus}
+                                        onDownload={handleDownloadReceipt}
+                                    />
+                                </div>
                             )}
                         </div>
                     )}

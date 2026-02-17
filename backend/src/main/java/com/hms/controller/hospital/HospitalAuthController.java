@@ -57,4 +57,32 @@ public class HospitalAuthController {
             return ResponseEntity.status(403).body(e.getMessage());
         }
     }
+
+    /**
+     * Get hospital fees for the authenticated user's hospital
+     */
+    @GetMapping("/hospital/settings/fees")
+    public ResponseEntity<?> getHospitalFees(java.security.Principal principal) {
+        try {
+            if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
+            com.hms.dto.HospitalFeesDTO dto = authService.getHospitalFees(principal.getName());
+            return ResponseEntity.ok(dto);
+        } catch (Exception e) {
+            return ResponseEntity.status(403).body(e.getMessage());
+        }
+    }
+
+    /**
+     * Update hospital fees (consultation and case paper). Only Hospital Admin.
+     */
+    @PutMapping("/hospital/settings/fees")
+    public ResponseEntity<?> updateHospitalFees(java.security.Principal principal, @RequestBody com.hms.dto.HospitalFeesDTO fees) {
+        try {
+            if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
+            com.hms.dto.HospitalFeesDTO updated = authService.updateHospitalFees(principal.getName(), fees);
+            return ResponseEntity.ok(updated);
+        } catch (Exception e) {
+            return ResponseEntity.status(403).body(e.getMessage());
+        }
+    }
 }

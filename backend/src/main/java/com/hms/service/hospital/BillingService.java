@@ -74,11 +74,22 @@ public class BillingService {
     /**
      * Get all bills for current hospital with optional search
      */
-    public Page<Billing> getAllBills(String search, Pageable pageable) {
+    public Page<Billing> getAllBills(String search, String status, Pageable pageable) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (search != null && !search.isEmpty()) {
-            return billingRepository.searchBillings(hospitalId, search, pageable);
+            Page<Billing> p = billingRepository.searchBillings(hospitalId, search, pageable);
+            if (status != null && !status.isEmpty()) {
+                java.util.List<Billing> filtered = new java.util.ArrayList<>();
+                for (Billing b : p.getContent()) if (status.equalsIgnoreCase(b.getPaymentStatus())) filtered.add(b);
+                return new org.springframework.data.domain.PageImpl<>(filtered, pageable, filtered.size());
+            }
+            return p;
         }
+
+        if (status != null && !status.isEmpty()) {
+            return billingRepository.findByHospitalIdAndPaymentStatus(hospitalId, status, pageable);
+        }
+
         return billingRepository.findByHospitalId(hospitalId, pageable);
     }
 
@@ -205,9 +216,17 @@ public class BillingService {
             return null;
         }
 
-        // Fixed fees per requirement: case paper = 100, consultation = 400
-        java.math.BigDecimal caseFee = new java.math.BigDecimal("100.00");
-        java.math.BigDecimal consultFee = new java.math.BigDecimal("400.00");
+        // Fees: prefer hospital-configured values, fallback to previous defaults
+        java.math.BigDecimal caseFee = hospital.getCasePaperFee();
+        if (caseFee == null || caseFee.compareTo(java.math.BigDecimal.ZERO) < 0) {
+            caseFee = new java.math.BigDecimal("100.00");
+        }
+
+        java.math.BigDecimal consultFee = hospital.getConsultationFee();
+        if (consultFee == null || consultFee.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            consultFee = new java.math.BigDecimal("500.00");
+        }
+
         java.math.BigDecimal total = caseFee.add(consultFee);
 
         Billing bill = new Billing();
@@ -216,7 +235,7 @@ public class BillingService {
         bill.setDoctorId(doctorId != null ? doctorId : 0L);
         bill.setOpdId(opdId);
         bill.setAmount(total);
-        bill.setDescription("OPD - Case Paper + Consultation (OPD: " + opdId + ")");
+        bill.setDescription("OPD - Case Paper + Consultation");
         bill.setPaymentStatus("PENDING");
         bill.setAppointmentId(null);
 

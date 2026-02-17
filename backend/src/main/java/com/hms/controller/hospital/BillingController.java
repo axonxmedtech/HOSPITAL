@@ -29,10 +29,28 @@ public class BillingController {
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
     public ResponseEntity<?> getAllBills(
             @RequestParam(required = false) String search,
+            @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        Pageable pageable = PageRequest.of(page, size);
-        return ResponseEntity.ok(billingService.getAllBills(search, pageable));
+        Pageable pageable = PageRequest.of(page, size, org.springframework.data.domain.Sort.by("createdAt").descending());
+        // Fetch page of Billing
+        org.springframework.data.domain.Page<com.hms.entity.Billing> billsPage = billingService.getAllBills(search, status, pageable);
+
+        // Attach billing items to each billing as an `items` field
+        java.util.List<java.util.Map<String, Object>> mapped = new java.util.ArrayList<>();
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        // Register Java Time module so LocalDateTime (createdAt) serializes correctly
+        mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+        mapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        for (com.hms.entity.Billing b : billsPage.getContent()) {
+            java.util.List<com.hms.entity.BillingItem> items = billingItemRepository.findByBillingId(b.getId());
+            java.util.Map<String, Object> asMap = mapper.convertValue(b, java.util.Map.class);
+            asMap.put("items", items);
+            mapped.add(asMap);
+        }
+
+        org.springframework.data.domain.Page<java.util.Map<String, Object>> result = new org.springframework.data.domain.PageImpl<>(mapped, pageable, billsPage.getTotalElements());
+        return ResponseEntity.ok(result);
     }
 
     @PutMapping("/{id}/status")
@@ -61,6 +79,9 @@ public class BillingController {
 
     @Autowired
     private com.hms.repository.BillingRepository billingRepository;
+    
+    @Autowired
+    private com.hms.repository.BillingItemRepository billingItemRepository;
 
     @GetMapping("/{id}/pdf")
     public ResponseEntity<?> downloadReceipt(@PathVariable Long id) {

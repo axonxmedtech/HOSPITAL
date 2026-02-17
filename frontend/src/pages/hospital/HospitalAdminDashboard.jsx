@@ -56,6 +56,7 @@ const HospitalAdminDashboard = () => {
     const [pharmacists, setPharmacists] = useState([]);
     const [appointments, setAppointments] = useState([]);
     const [billing, setBilling] = useState([]);
+    const [billingStatus, setBillingStatus] = useState('PENDING');
     const [auditLogs, setAuditLogs] = useState([]);
     const [stats, setStats] = useState({ today: 0, pending: 0, total: 0 });
     const [loading, setLoading] = useState(false);
@@ -64,6 +65,10 @@ const HospitalAdminDashboard = () => {
     const [dashboardStats, setDashboardStats] = useState({ totalPatients: 0, totalDoctors: 0, todaysAppointments: 0 });
     const [todaysAppointments, setTodaysAppointments] = useState([]);
     const [isNewPatient, setIsNewPatient] = useState(false);
+    const [fees, setFees] = useState({ consultationFee: '', casePaperFee: '' });
+    const [origFees, setOrigFees] = useState(null);
+    const [feesLoading, setFeesLoading] = useState(false);
+    const [feesEditing, setFeesEditing] = useState(false);
     const [page, setPage] = useState(0);
     const [pageSize, setPageSize] = useState(10);
     const ITEMS_PER_PAGE = 10;
@@ -139,7 +144,49 @@ const HospitalAdminDashboard = () => {
         } else {
             fetchImmediate();
         }
-    }, [activeTab, searchTerm, page]);
+    }, [activeTab, searchTerm, page, billingStatus]);
+
+    // Load hospital fees when Fees tab is active
+    useEffect(() => {
+        const loadFees = async () => {
+            if (activeTab !== 'fees') return;
+            setFeesLoading(true);
+            try {
+                const data = await hospitalService.getHospitalFees();
+                const loaded = {
+                    consultationFee: data.consultationFee != null ? data.consultationFee : '',
+                    casePaperFee: data.casePaperFee != null ? data.casePaperFee : ''
+                };
+                setFees(loaded);
+                setOrigFees(loaded);
+                setFeesEditing(false);
+            } catch (err) {
+                toastError('Failed to load fees');
+            } finally {
+                setFeesLoading(false);
+            }
+        };
+        loadFees();
+    }, [activeTab]);
+
+    const handleSaveFees = async () => {
+        try {
+            setFeesLoading(true);
+            const payload = {
+                consultationFee: fees.consultationFee === '' ? null : parseFloat(fees.consultationFee),
+                casePaperFee: fees.casePaperFee === '' ? null : parseFloat(fees.casePaperFee)
+            };
+            await hospitalService.updateHospitalFees(payload);
+            success('Fees updated successfully');
+            setOrigFees({ ...fees });
+            setFeesEditing(false);
+        } catch (err) {
+            const msg = err.response?.data || 'Failed to update fees';
+            toastError(msg);
+        } finally {
+            setFeesLoading(false);
+        }
+    };
 
     // Client-side pagination logic removed
     // useEffect(() => {
@@ -241,7 +288,7 @@ const HospitalAdminDashboard = () => {
                     }
 
                 } else if (activeTab === 'billing') {
-                    const data = await hospitalService.getBills(searchTerm,page, pageSize);
+                    const data = await hospitalService.getBills(searchTerm,page, pageSize, billingStatus);
                     if (data.content) {
                         setBilling(data.content);
                         setTotalPages(data.totalPages);
@@ -463,6 +510,7 @@ const HospitalAdminDashboard = () => {
         { id: 'pharmacists', label: 'Pharmacists', icon: null, requiredModule: 'PHARMACY' },
         { id: 'pathology', label: 'Pathology', icon: null, requiredModule: 'PATHOLOGY' },
         { id: 'ipd', label: 'IPD', icon: null, requiredModule: 'IPD' },
+        { id: 'fees', label: 'Fees', icon: null, requiredModule: null },
         { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
     ];
 
@@ -578,11 +626,11 @@ const HospitalAdminDashboard = () => {
                         <PageHeader
                             title={tabs.find(t => t.id === activeTab)?.label}
                             subtitle={`Manage hospital ${activeTab} records`}
-                            onSearch={(e) => setSearchTerm(e.target.value)}
-                            searchValue={searchTerm}
-                            searchPlaceholder={`Search ${activeTab}...`}
-                            onAdd={activeTab !== 'billing' &&  activeTab !== 'audit-logs' && user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
-                            addLabel={`Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'appointments' ? 'Appointment' : 'Billing'}`}
+                            onSearch={activeTab === 'fees' ? null : (e) => setSearchTerm(e.target.value)}
+                            searchValue={activeTab === 'fees' ? '' : searchTerm}
+                            searchPlaceholder={activeTab === 'fees' ? '' : `Search ${activeTab}...`}
+                            onAdd={activeTab !== 'billing' && activeTab !== 'audit-logs' && activeTab !== 'fees' && user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
+                            addLabel={activeTab === 'fees' ? '' : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'appointments' ? 'Appointment' : 'Billing'}`}
                             filter={activeTab === 'patients' ? (
                                 <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
                                     {['today', 'history'].map(view => (
@@ -705,13 +753,78 @@ const HospitalAdminDashboard = () => {
                                     />
                                 )}
                                 {activeTab === 'billing' && billing.length > 0 && (
-                                    <BillingTable
-                                        billing={billing}
-                                        startIndex={page * pageSize}
-                                        pagination={pagination}
-                                        onUpdateStatus={handleBillStatus}
-                                        onDownload={handleDownloadReceipt}
-                                    />
+                                    <div>
+                                        <div className="flex items-center gap-3 mb-4">
+                                            <div className="text-sm text-slate-600 mr-2">Filter:</div>
+                                            <button
+                                                onClick={() => setBillingStatus('PENDING')}
+                                                className={`px-3 py-1 rounded-xl ${billingStatus === 'PENDING' ? 'bg-primary-50 text-primary-600' : 'bg-white border border-neutral-200'}`}
+                                            >Pending</button>
+                                            <button
+                                                onClick={() => setBillingStatus('PAID')}
+                                                className={`px-3 py-1 rounded-xl ${billingStatus === 'PAID' ? 'bg-primary-50 text-primary-600' : 'bg-white border border-neutral-200'}`}
+                                            >Paid</button>
+                                        </div>
+                                        <BillingTable
+                                            billing={billing}
+                                            startIndex={page * pageSize}
+                                            pagination={pagination}
+                                            onUpdateStatus={handleBillStatus}
+                                            onDownload={handleDownloadReceipt}
+                                        />
+                                    </div>
+                                )}
+                                {activeTab === 'fees' && (
+                                    <div className="p-6">
+                                        <h2 className="text-xl font-bold mb-4">Hospital Fees</h2>
+                                        {feesLoading ? (
+                                            <div className="flex items-center">
+                                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-500 mr-3"></div>
+                                                <div className="text-sm text-gray-600">Loading fees...</div>
+                                            </div>
+                                        ) : (
+                                            <div className="max-w-md space-y-4">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">Consultation Fee</label>
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        value={fees.consultationFee}
+                                                        onChange={(e) => setFees(prev => ({ ...prev, consultationFee: e.target.value }))}
+                                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${!feesEditing ? 'bg-gray-50 text-gray-600' : ''}`}
+                                                        placeholder="0.00"
+                                                        disabled={!feesEditing}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">Case Paper Fee</label>
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        value={fees.casePaperFee}
+                                                        onChange={(e) => setFees(prev => ({ ...prev, casePaperFee: e.target.value }))}
+                                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${!feesEditing ? 'bg-gray-50 text-gray-600' : ''}`}
+                                                        placeholder="0.00"
+                                                        disabled={!feesEditing}
+                                                    />
+                                                </div>
+                                                <div className="flex gap-3 pt-4">
+                                                    {!feesEditing ? (
+                                                        user?.role === 'HOSPITAL_ADMIN' ? (
+                                                            <button onClick={() => setFeesEditing(true)} className="flex-1 bg-gray-900 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-800 transition">Edit</button>
+                                                        ) : (
+                                                            <div className="text-sm text-gray-500">Only Hospital Admin can edit fees</div>
+                                                        )
+                                                    ) : (
+                                                        <>
+                                                            <button onClick={() => { setFees(origFees || { consultationFee: '', casePaperFee: '' }); setFeesEditing(false); }} className="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-300 transition">Cancel</button>
+                                                            <button onClick={handleSaveFees} disabled={feesLoading} className="flex-1 bg-gray-900 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-800 transition">Save</button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
                                 )}
                                 {activeTab === 'pharmacy' && (
                                     <div className="flex flex-col items-center justify-center p-12 text-center h-96">

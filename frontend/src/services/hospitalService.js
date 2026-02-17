@@ -255,9 +255,10 @@ const hospitalService = {
     },
 
     // --- Billing ---
-    getBills: async (search = '', page = 0, size = 10) => {
+    getBills: async (search = '', page = 0, size = 10, status) => {
         let url = `/hospital/billing?page=${page}&size=${size}`;
         if (search) url += `&search=${encodeURIComponent(search)}`;
+        if (status) url += `&status=${encodeURIComponent(status)}`;
         const response = await apiClient.get(url);
         return response.data; // Returns Page object with { content: [...], totalElements: ..., totalPages: ... }
     },
@@ -430,10 +431,11 @@ const hospitalService = {
     /**
      * Get all billing records for the current hospital
      */
-    getBillingRecords: async (page = 0, size = 10) => {
-        const response = await apiClient.get(`/hospital/billing?page=${page}&size=${size}`);
+    getBillingRecords: async (page = 0, size = 10, status) => {
+        let url = `/hospital/billing?page=${page}&size=${size}`;
+        if (status) url += `&status=${encodeURIComponent(status)}`;
+        const response = await apiClient.get(url);
         return response.data; // Returns Page object
-        // Filtering nulls (if any) should be done on content array if needed, but backend shouldn't return nulls in Page
     },
 
     /**
@@ -478,6 +480,17 @@ const hospitalService = {
      */
     getAuditLogs: async (searchTerm) => {
         const response = await apiClient.get(`/hospital/audit-logs${searchTerm ? `?search=${encodeURIComponent(searchTerm)}` : ''}`);
+        return response.data;
+    },
+
+    // ========== Hospital Settings / Fees ==========
+    getHospitalFees: async () => {
+        const response = await apiClient.get('/hospital/settings/fees');
+        return response.data;
+    },
+
+    updateHospitalFees: async (fees) => {
+        const response = await apiClient.put('/hospital/settings/fees', fees);
         return response.data;
     },
 

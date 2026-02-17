@@ -164,4 +164,35 @@ public class HospitalAuthService {
 
         return response;
     }
+
+    /**
+     * Get hospital fees (consultation and case paper) for the hospital of the
+     * authenticated user.
+     */
+    public com.hms.dto.HospitalFeesDTO getHospitalFees(String email) {
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new RuntimeException("User not found"));
+        if (user.getHospitalId() == null) throw new RuntimeException("Invalid hospital user");
+        Hospital hospital = hospitalRepository.findById(user.getHospitalId()).orElseThrow(() -> new RuntimeException("Hospital not found"));
+        com.hms.dto.HospitalFeesDTO dto = new com.hms.dto.HospitalFeesDTO();
+        dto.setConsultationFee(hospital.getConsultationFee());
+        dto.setCasePaperFee(hospital.getCasePaperFee());
+        return dto;
+    }
+
+    /**
+     * Update hospital fees. Only `HOSPITAL_ADMIN` role is allowed to update.
+     */
+    public com.hms.dto.HospitalFeesDTO updateHospitalFees(String email, com.hms.dto.HospitalFeesDTO fees) {
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new RuntimeException("User not found"));
+        if (user.getHospitalId() == null) throw new RuntimeException("Invalid hospital user");
+        if (!"HOSPITAL_ADMIN".equals(user.getRole())) {
+            throw new RuntimeException("Access denied: requires HOSPITAL_ADMIN role");
+        }
+        Hospital hospital = hospitalRepository.findById(user.getHospitalId()).orElseThrow(() -> new RuntimeException("Hospital not found"));
+        hospital.setConsultationFee(fees.getConsultationFee());
+        hospital.setCasePaperFee(fees.getCasePaperFee());
+        hospitalRepository.save(hospital);
+        com.hms.dto.HospitalFeesDTO dto = new com.hms.dto.HospitalFeesDTO(hospital.getConsultationFee(), hospital.getCasePaperFee());
+        return dto;
+    }
 }

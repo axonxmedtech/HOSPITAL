@@ -90,6 +90,12 @@ public class Hospital {
     private java.math.BigDecimal consultationFee;
 
     /**
+     * CMS: Case paper fee for OPD (optional, fallback used when null)
+     */
+    @Column(name = "case_paper_fee", precision = 10, scale = 2)
+    private java.math.BigDecimal casePaperFee;
+
+    /**
      * CMS: OPD Timings (e.g., "Mon-Sat: 10AM - 6PM")
      */
     @Column(name = "opd_timings", length = 100)
@@ -181,6 +187,14 @@ public class Hospital {
 
     public void setConsultationFee(java.math.BigDecimal consultationFee) {
         this.consultationFee = consultationFee;
+    }
+
+    public java.math.BigDecimal getCasePaperFee() {
+        return casePaperFee;
+    }
+
+    public void setCasePaperFee(java.math.BigDecimal casePaperFee) {
+        this.casePaperFee = casePaperFee;
     }
 
     public String getOpdTimings() {
