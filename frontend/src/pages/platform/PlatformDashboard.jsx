@@ -504,18 +504,18 @@ const PlatformDashboard = () => {
 
                     {/* Error Display */}
                     {error && (
-                        <div className="mb-6 bg-white border border-gray-200 p-4">
+                        <div className="mb-6 bg-red-50 border border-red-300 p-4 rounded-lg">
                             <div className="flex items-start">
                                 <div className="flex-shrink-0">
-                                    <span className="text-gray-900 font-medium">Error:</span>
+                                    <span className="text-red-700 font-medium">Error:</span>
                                 </div>
                                 <div className="ml-3">
-                                    <p className="text-sm text-gray-900">{error}</p>
+                                    <p className="text-sm text-red-700">{error}</p>
                                 </div>
                                 <div className="ml-auto pl-3">
                                     <button
                                         onClick={() => setError('')}
-                                        className="text-gray-600 hover:text-gray-900"
+                                        className="text-red-600 hover:text-red-900"
                                     >
                                         ×
                                     </button>
@@ -590,9 +590,9 @@ const PlatformDashboard = () => {
                                             if (errors.hospitalName) setErrors({ ...errors, hospitalName: null });
                                         }}
                                         placeholder="Enter hospital name"
-                                        className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 ${errors.hospitalName ? 'border-gray-900' : 'border-gray-200'}`}
+                                        className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 ${errors.hospitalName ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
                                     />
-                                    {errors.hospitalName && <p className="text-gray-900 text-sm font-medium mt-1">{errors.hospitalName}</p>}
+                                    {errors.hospitalName && <p className="text-red-600 text-sm font-medium mt-1">{errors.hospitalName}</p>}
                                 </div>
                                 
                                 <div>
@@ -605,9 +605,9 @@ const PlatformDashboard = () => {
                                             if (errors.adminName) setErrors({ ...errors, adminName: null });
                                         }}
                                         placeholder="Enter admin full name"
-                                        className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 ${errors.adminName ? 'border-gray-900' : 'border-gray-200'}`}
+                                        className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 ${errors.adminName ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
                                     />
-                                    {errors.adminName && <p className="text-gray-900 text-sm font-medium mt-1">{errors.adminName}</p>}
+                                    {errors.adminName && <p className="text-red-600 text-sm font-medium mt-1">{errors.adminName}</p>}
                                 </div>
                                 
                                 <div>
@@ -620,9 +620,9 @@ const PlatformDashboard = () => {
                                             if (errors.adminEmail) setErrors({ ...errors, adminEmail: null });
                                         }}
                                         placeholder="admin@hospital.com"
-                                        className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 ${errors.adminEmail ? 'border-gray-900' : 'border-gray-200'}`}
+                                        className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 ${errors.adminEmail ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
                                     />
-                                    {errors.adminEmail && <p className="text-gray-900 text-sm font-medium mt-1">{errors.adminEmail}</p>}
+                                    {errors.adminEmail && <p className="text-red-600 text-sm font-medium mt-1">{errors.adminEmail}</p>}
                                 </div>
 
                                 <div>
@@ -635,9 +635,9 @@ const PlatformDashboard = () => {
                                             if (errors.adminPassword) setErrors({ ...errors, adminPassword: null });
                                         }}
                                         placeholder="Create secure password"
-                                        className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 ${errors.adminPassword ? 'border-gray-900' : 'border-gray-200'}`}
+                                        className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 ${errors.adminPassword ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
                                     />
-                                    {errors.adminPassword && <p className="text-gray-900 text-sm font-medium mt-1">{errors.adminPassword}</p>}
+                                    {errors.adminPassword && <p className="text-red-600 text-sm font-medium mt-1">{errors.adminPassword}</p>}
                                 </div>
 
                                 <div>

@@ -473,49 +473,51 @@ const DoctorDashboard = () => {
                 {/* Main Content Area */}
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
 
-                    {/* Stats Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
-                        <div className="bg-white rounded-lg border border-gray-200 p-6">
-                            <div className="flex justify-between items-center">
-                                <div>
-                                    <p className="text-gray-600 text-sm font-medium">Current Token</p>
-                                    <h3 className="text-3xl font-bold text-gray-900 mt-1">{currentToken ?? '-'}</h3>
+                    {/* Stats Cards - Only show on appointments tab */}
+                    {activeTab === 'appointments' && (
+                        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
+                            <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <p className="text-gray-600 text-sm font-medium">Current Token</p>
+                                        <h3 className="text-3xl font-bold text-gray-900 mt-1">{currentToken ?? '-'}</h3>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <p className="text-gray-600 text-sm font-medium">Next Token</p>
+                                        <h3 className="text-3xl font-bold text-gray-900 mt-1">{nextToken ?? '-'}</h3>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <p className="text-gray-600 text-sm font-medium">Today's Appointments</p>
+                                        <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.today}</h3>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <p className="text-gray-600 text-sm font-medium">Pending Action</p>
+                                        <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.pending}</h3>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <p className="text-gray-600 text-sm font-medium">Total Appointments</p>
+                                        <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.total}</h3>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <div className="bg-white rounded-lg border border-gray-200 p-6">
-                            <div className="flex justify-between items-center">
-                                <div>
-                                    <p className="text-gray-600 text-sm font-medium">Next Token</p>
-                                    <h3 className="text-3xl font-bold text-gray-900 mt-1">{nextToken ?? '-'}</h3>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="bg-white rounded-lg border border-gray-200 p-6">
-                            <div className="flex justify-between items-center">
-                                <div>
-                                    <p className="text-gray-600 text-sm font-medium">Today's Appointments</p>
-                                    <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.today}</h3>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="bg-white rounded-lg border border-gray-200 p-6">
-                            <div className="flex justify-between items-center">
-                                <div>
-                                    <p className="text-gray-600 text-sm font-medium">Pending Action</p>
-                                    <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.pending}</h3>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="bg-white rounded-lg border border-gray-200 p-6">
-                            <div className="flex justify-between items-center">
-                                <div>
-                                    <p className="text-gray-600 text-sm font-medium">Total Appointments</p>
-                                    <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.total}</h3>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    )}
 
                     {/* Standardized Header */}
                     <PageHeader
