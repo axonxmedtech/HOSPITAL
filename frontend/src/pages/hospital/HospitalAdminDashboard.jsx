@@ -19,6 +19,8 @@ import HistoryDrawer from '../../components/HistoryDrawer';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import PageHeader from '../../components/PageHeader';
+import WardsAndBeds from './WardsAndBeds';
+import WardModal from '../../components/WardModal';
 /**
  * HospitalAdminDashboard - Hospital Admin dashboard
  * 
@@ -501,6 +503,7 @@ const HospitalAdminDashboard = () => {
 
     const allTabs = [
         { id: 'dashboard', label: 'Dashboard', icon: null, requiredModule: null },
+        { id: 'wards', label: 'Wards & Beds', icon: null, requiredModule: null },
         { id: 'patients', label: 'Patients', icon: null, requiredModule: 'OPD' },
         { id: 'doctors', label: 'Doctors', icon: null, requiredModule: 'OPD' },
         { id: 'receptionists', label: 'Receptionists', icon: null, requiredModule: 'OPD' },
@@ -630,7 +633,7 @@ const HospitalAdminDashboard = () => {
                             searchValue={activeTab === 'fees' ? '' : searchTerm}
                             searchPlaceholder={activeTab === 'fees' ? '' : `Search ${activeTab}...`}
                             onAdd={activeTab !== 'billing' && activeTab !== 'audit-logs' && activeTab !== 'fees' && user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
-                            addLabel={activeTab === 'fees' ? '' : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'appointments' ? 'Appointment' : 'Billing'}`}
+                            addLabel={activeTab === 'fees' ? '' : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? 'Ward' : 'Billing'}`}
                             filter={activeTab === 'patients' ? (
                                 <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
                                     {['today', 'history'].map(view => (
@@ -744,6 +747,12 @@ const HospitalAdminDashboard = () => {
                                             onAction={user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
                                         />
                                     )
+                                )}
+
+                                {activeTab === 'wards' && (
+                                    <div className="p-6">
+                                        <WardsAndBeds />
+                                    </div>
                                 )}
                                 {activeTab === 'billing' && billing.length === 0 && (
                                     <EmptyState
@@ -904,8 +913,18 @@ const HospitalAdminDashboard = () => {
                 />
             )}
 
-            {/* Other Modals - doctors, receptionists, billing */}
-            {showModal && activeTab !== 'appointments' && activeTab !== 'patients' && (
+            {/* Ward modal (use specialized modal for wards) */}
+            {showModal && activeTab === 'wards' && (
+                <WardModal
+                    open={showModal}
+                    initial={editData}
+                    onClose={() => { setShowModal(false); }}
+                    onSaved={() => { setShowModal(false); success('Record saved successfully'); loadData(); }}
+                />
+            )}
+
+            {/* Other Modals - doctors, receptionists, billing (exclude wards) */}
+            {showModal && activeTab !== 'appointments' && activeTab !== 'patients' && activeTab !== 'wards' && (
                 <AddModal
                     type={activeTab}
                     onClose={() => {
