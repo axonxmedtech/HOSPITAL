@@ -3,6 +3,7 @@ import hospitalService from '../services/hospitalService';
 import { useToast } from '../context/ToastContext';
 import { validateForm } from '../utils/validation';
 import Button from './Button';
+import CharCountInput from './CharCountInput';
 
 const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
     const [formData, setFormData] = useState({});
@@ -102,44 +103,33 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                 <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[76vh] overflow-auto">
                     {/* Row: Name + Phone */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-semibold text-neutral-700 mb-2">
-                                Full Name <span className="text-error-500">*</span>
-                            </label>
-                            <input
-                                type="text"
-                                value={formData.name || ''}
-                                onChange={(e) => handleChange('name', e.target.value)}
-                                className={`input-field ${errors.name ? 'border-error-300 focus:ring-error-500' : ''}`}
-                                placeholder="Enter patient's full name"
-                            />
-                            {errors.name && <p className="text-red-600 text-sm mt-1 flex items-center gap-1">
-                                {errors.name}
-                            </p>}
-                        </div>
+                        <CharCountInput
+                            label="Full Name"
+                            required
+                            value={formData.name || ''}
+                            onChange={(e) => handleChange('name', e.target.value)}
+                            maxLength={50}
+                            placeholder="Enter patient's full name"
+                            error={errors.name}
+                        />
 
-                        <div>
-                            <label className="block text-sm font-semibold text-neutral-700 mb-2">
-                                Phone Number <span className="text-error-500">*</span>
-                            </label>
-                            <input
-                                type="tel"
-                                value={formData.phone || ''}
-                                onChange={(e) => handleChange('phone', e.target.value)}
-                                className={`input-field ${errors.phone ? 'border-error-300 focus:ring-error-500' : ''}`}
-                                placeholder="Enter phone number"
-                            />
-                            {errors.phone && <p className="text-red-600 text-sm mt-1 flex items-center gap-1">
-                                {errors.phone}
-                            </p>}
-                        </div>
+                        <CharCountInput
+                            label="Phone Number"
+                            required
+                            type="tel"
+                            value={formData.phone || ''}
+                            onChange={(e) => handleChange('phone', e.target.value)}
+                            maxLength={15}
+                            placeholder="Enter phone number"
+                            error={errors.phone}
+                        />
                     </div>
 
                     {/* Row: Age + Gender */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-semibold text-neutral-700 mb-2">
-                                Age <span className="text-error-500">*</span>
+                                Age <span className="text-red-600">*</span>
                             </label>
                             <input
                                 type="number"
@@ -156,7 +146,7 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                         </div>
                         <div>
                             <label className="block text-sm font-semibold text-neutral-700 mb-2">
-                                Gender <span className="text-error-500">*</span>
+                                Gender <span className="text-red-600">*</span>
                             </label>
                             <select
                                 value={formData.gender || ''}
@@ -176,48 +166,36 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
 
                     {/* Row: Email + (Address will be full width) */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-semibold text-neutral-700 mb-2">
-                                Email Address <span className="text-neutral-400 text-xs">(Optional)</span>
-                            </label>
-                            <input
-                                type="email"
-                                value={formData.email || ''}
-                                onChange={(e) => handleChange('email', e.target.value)}
-                                className={`input-field ${errors.email ? 'border-error-300 focus:ring-error-500' : ''}`}
-                                placeholder="Enter email address"
-                            />
-                            {errors.email && <p className="text-red-600 text-sm mt-1 flex items-center gap-1">
-                                {errors.email}
-                            </p>}
-                        </div>
-                        <div>
-                            <label className="block text-sm font-semibold text-neutral-700 mb-2">
-                                Address <span className="text-neutral-400 text-xs">(Optional)</span>
-                            </label>
-                            <textarea
-                                value={formData.address || ''}
-                                onChange={(e) => handleChange('address', e.target.value)}
-                                className="input-field resize-none"
-                                rows="3"
-                                placeholder="Enter complete address"
-                            />
-                        </div>
+                        <CharCountInput
+                            label="Email Address"
+                            type="email"
+                            value={formData.email || ''}
+                            onChange={(e) => handleChange('email', e.target.value)}
+                            maxLength={50}
+                            placeholder="Enter email address"
+                            error={errors.email}
+                        />
+                        <CharCountInput
+                            label="Address"
+                            textarea
+                            rows={3}
+                            value={formData.address || ''}
+                            onChange={(e) => handleChange('address', e.target.value)}
+                            maxLength={500}
+                            placeholder="Enter complete address"
+                        />
                     </div>
 
                     {/* Medical History */}
-                    <div>
-                        <label className="block text-sm font-semibold text-neutral-700 mb-2">
-                            Medical History / Allergies <span className="text-neutral-400 text-xs">(Optional)</span>
-                        </label>
-                        <textarea
-                            value={formData.medicalHistory || ''}
-                            onChange={(e) => handleChange('medicalHistory', e.target.value)}
-                            className="input-field resize-none"
-                            rows="2"
-                            placeholder="Any medical conditions, allergies, or important notes..."
-                        />
-                    </div>
+                    <CharCountInput
+                        label="Medical History / Allergies"
+                        textarea
+                        rows={2}
+                        value={formData.medicalHistory || ''}
+                        onChange={(e) => handleChange('medicalHistory', e.target.value)}
+                        maxLength={500}
+                        placeholder="Any medical conditions, allergies, or important notes..."
+                    />
 
                     {/* Action Buttons */}
                     <div className="flex gap-4 pt-4">

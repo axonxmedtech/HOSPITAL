@@ -94,7 +94,7 @@ const menuIcons = {
     )
 };
 
-const Sidebar = ({ title, tabs, activeTab, onTabChange, footerTitle, footerData, variant = 'plain' }) => {
+const Sidebar = ({ title, tabs, activeTab, onTabChange, footerTitle, footerData, variant = 'plain', isCollapsed = false }) => {
     // Professional color variants - only 2 colors: gray-900 and white
     const variants = {
         plain: {
@@ -118,13 +118,15 @@ const Sidebar = ({ title, tabs, activeTab, onTabChange, footerTitle, footerData,
     const theme = variants[variant] || variants.plain;
 
     return (
-        <aside className="w-72 bg-white z-20 hidden md:flex flex-col h-full border-r border-gray-200 overflow-hidden">
+        <aside className={`${isCollapsed ? 'w-16' : 'w-72'} bg-white z-20 hidden md:flex flex-col h-full border-r border-gray-200 overflow-hidden transition-all duration-300`}>
             {/* Header Section */}
-            <div className="p-6 border-b border-gray-200">
-                <div className="mb-6">
-                    <h1 className="text-xl font-bold text-gray-900">{title}</h1>
-                    <p className="text-sm text-gray-600 mt-1">Management Portal</p>
-                </div>
+            <div className={`${isCollapsed ? 'p-3' : 'p-6'} border-b border-gray-200 transition-all duration-300`}>
+                {!isCollapsed && (
+                    <div className="mb-6">
+                        <h1 className="text-xl font-bold text-gray-900">{title}</h1>
+                        <p className="text-sm text-gray-600 mt-1">Management Portal</p>
+                    </div>
+                )}
 
                 {/* Navigation */}
                 <nav className="space-y-1">
@@ -132,11 +134,12 @@ const Sidebar = ({ title, tabs, activeTab, onTabChange, footerTitle, footerData,
                         <button
                             key={tab.id}
                             onClick={() => onTabChange(tab.id)}
-                            className={`w-full flex items-center px-3 py-2 text-sm font-medium transition-colors duration-200 ${
+                            className={`w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'px-3'} py-2 text-sm font-medium transition-colors duration-200 ${
                                 activeTab === tab.id
                                     ? `${theme.activeBg} ${theme.activeText} ${theme.activeBorder}`
                                     : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                             }`}
+                            title={isCollapsed ? tab.label : ''}
                         >
                             {/* Active indicator */}
                             {activeTab === tab.id && (
@@ -144,32 +147,40 @@ const Sidebar = ({ title, tabs, activeTab, onTabChange, footerTitle, footerData,
                             )}
                             
                             {/* Icon */}
-                            {menuIcons[tab.label] || (
-                                <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                </svg>
-                            )}
+                            <div className={isCollapsed ? '' : 'mr-3'}>
+                                {menuIcons[tab.label] ? (
+                                    React.cloneElement(menuIcons[tab.label], {
+                                        className: `w-5 h-5 ${isCollapsed ? '' : 'mr-0'}`
+                                    })
+                                ) : (
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                )}
+                            </div>
                             
-                            <span className="flex-1 text-left">{tab.label}</span>
+                            {!isCollapsed && <span className="flex-1 text-left">{tab.label}</span>}
                         </button>
                     ))}
                 </nav>
             </div>
 
             {/* Footer Section */}
-            <div className="mt-auto p-6 bg-gray-50 border-t border-gray-200">
-                <div className="bg-white border border-gray-200 p-4">
-                    <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-gray-900 text-white font-bold text-xs flex items-center justify-center">
-                            {footerData?.charAt(0)?.toUpperCase() || 'A'}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-gray-600 uppercase mb-0.5">{footerTitle}</p>
-                            <p className="text-sm font-medium text-gray-900 truncate" title={footerData}>{footerData}</p>
+            {!isCollapsed && (
+                <div className="mt-auto p-6 bg-gray-50 border-t border-gray-200">
+                    <div className="bg-white border border-gray-200 p-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-gray-900 text-white font-bold text-xs flex items-center justify-center">
+                                {footerData?.charAt(0)?.toUpperCase() || 'A'}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium text-gray-600 uppercase mb-0.5">{footerTitle}</p>
+                                <p className="text-sm font-medium text-gray-900 truncate" title={footerData}>{footerData}</p>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            )}
         </aside>
     );
 };

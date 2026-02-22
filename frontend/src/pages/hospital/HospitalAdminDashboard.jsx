@@ -10,6 +10,7 @@ import EmptyState from '../../components/EmptyState';
 import OverviewDashboard from '../../components/OverviewDashboard';
 import AppointmentModal from '../../components/AppointmentModal';
 import PatientModal from '../../components/PatientModal';
+import PatientDetailsModal from '../../components/PatientDetailsModal';
 import ActionMenu from '../../components/ActionMenu';
 import StatusBadge from '../../components/StatusBadge';
 import DataTable from '../../components/DataTable';
@@ -35,21 +36,14 @@ import WardModal from '../../components/WardModal';
  */
 const HospitalAdminDashboard = () => {
     const [searchParams, setSearchParams] = useSearchParams();
-    const activeTab = searchParams.get('tab') || 'dashboard';
-    const patientViewFilter = searchParams.get('patientFilter') || 'history';
+    const activeTab = searchParams.get('tab') || 'overview'; // Changed default from 'dashboard' to 'overview'
 
     // Helper to switch tabs
     const setActiveTab = (tab) => {
         const newParams = { tab };
-        if (tab === 'patients' && patientViewFilter) newParams.patientFilter = patientViewFilter;
         setSearchParams(newParams);
         setSearchTerm(''); // Clear search on tab switch
         setPage(0); // Reset page to 0
-    };
-
-    // Helper to set patient filter
-    const setPatientViewFilter = (filter) => {
-        setSearchParams({ tab: activeTab, patientFilter: filter });
     };
 
     const [patients, setPatients] = useState([]);
@@ -96,6 +90,8 @@ const HospitalAdminDashboard = () => {
 
     const [showModal, setShowModal] = useState(false);
     const [editData, setEditData] = useState(null);
+    const [patientDetailsModal, setPatientDetailsModal] = useState({ isOpen: false, patient: null });
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
     const navigate = useNavigate();
 
@@ -213,7 +209,7 @@ const HospitalAdminDashboard = () => {
                 setStats(statsData);
 
                 if (activeTab === 'patients') {
-                    const data = await hospitalService.getPatients(searchTerm, page, pageSize, patientViewFilter);
+                    const data = await hospitalService.getPatients(searchTerm, page, pageSize);
                     if (data.content) {
                         setPatients(data.content);
                         setTotalPages(data.totalPages);
@@ -485,6 +481,10 @@ const HospitalAdminDashboard = () => {
         setShowModal(true);
     };
 
+    const handleViewDetails = (patient) => {
+        setPatientDetailsModal({ isOpen: true, patient });
+    };
+
     const handleAdd = () => {
         setEditData(null); // Clear previous edit data
         setShowModal(true);
@@ -502,7 +502,7 @@ const HospitalAdminDashboard = () => {
     const modules = user?.modules || ['OPD', 'BILLING']; // Default to CMS core if no modules found
 
     const allTabs = [
-        { id: 'dashboard', label: 'Dashboard', icon: null, requiredModule: null },
+        { id: 'overview', label: 'Overview', icon: null, requiredModule: null },
         { id: 'wards', label: 'Wards & Beds', icon: null, requiredModule: null },
         { id: 'patients', label: 'Patients', icon: null, requiredModule: 'OPD' },
         { id: 'doctors', label: 'Doctors', icon: null, requiredModule: 'OPD' },
@@ -579,6 +579,7 @@ const HospitalAdminDashboard = () => {
                 footerTitle="Hospital"
                 footerData={user?.hospitalName}
                 variant="plain"
+                isCollapsed={sidebarCollapsed}
             />
 
             {/* Main Content Wrapper */}
@@ -589,35 +590,39 @@ const HospitalAdminDashboard = () => {
                     user={user}
                     onLogout={handleLogout}
                     onProfile={() => console.log('Profile clicked')}
+                    onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
                 />
 
                 {/* Main Content Area */}
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
 
-                    {/* Stats Cards (Bucket 1: Better Dashboard Numbers) */}
-                    {activeTab !== 'dashboard' && (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                            <div className="bg-white rounded-lg border border-gray-200 p-6">
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <p className="text-gray-600 text-sm font-medium">Today's Appointments</p>
-                                        <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.today}</h3>
+                    {/* Overview Tab - Stats Only */}
+                    {activeTab === 'overview' && (
+                        <div className="space-y-6">
+                            <h2 className="text-2xl font-bold text-gray-900">Overview</h2>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="text-gray-600 text-sm font-medium">Today's Appointments</p>
+                                            <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.today}</h3>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                            <div className="bg-white rounded-lg border border-gray-200 p-6">
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <p className="text-gray-600 text-sm font-medium">Pending Action</p>
-                                        <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.pending}</h3>
+                                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="text-gray-600 text-sm font-medium">Pending Action</p>
+                                            <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.pending}</h3>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                            <div className="bg-white rounded-lg border border-gray-200 p-6">
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <p className="text-gray-600 text-sm font-medium">Total Active Records</p>
-                                        <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.total}</h3>
+                                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="text-gray-600 text-sm font-medium">Total Active Records</p>
+                                            <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.total}</h3>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -625,7 +630,7 @@ const HospitalAdminDashboard = () => {
                     )}
 
                     {/* Standardized Header */}
-                    {activeTab !== 'dashboard' && activeTab !== 'pharmacy' &&  activeTab !== 'ipd' &&  activeTab !== 'pathology' && (
+                    {activeTab !== 'overview' && activeTab !== 'pharmacy' &&  activeTab !== 'ipd' &&  activeTab !== 'pathology' && (
                         <PageHeader
                             title={tabs.find(t => t.id === activeTab)?.label}
                             subtitle={`Manage hospital ${activeTab} records`}
@@ -633,19 +638,19 @@ const HospitalAdminDashboard = () => {
                             searchValue={activeTab === 'fees' ? '' : searchTerm}
                             searchPlaceholder={activeTab === 'fees' ? '' : `Search ${activeTab}...`}
                             onAdd={activeTab !== 'billing' && activeTab !== 'audit-logs' && activeTab !== 'fees' && user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
-                            addLabel={activeTab === 'fees' ? '' : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? 'Ward' : 'Billing'}`}
-                            filter={activeTab === 'patients' ? (
+                            addLabel={activeTab === 'fees' ? '' : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`}
+                            filter={activeTab === 'billing' ? (
                                 <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
-                                    {['today', 'history'].map(view => (
+                                    {['PENDING', 'PAID'].map(status => (
                                         <button
-                                            key={view}
-                                            onClick={() => setPatientViewFilter(view)}
-                                            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${patientViewFilter === view
+                                            key={status}
+                                            onClick={() => setBillingStatus(status)}
+                                            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${billingStatus === status
                                                 ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
                                                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
                                                 }`}
                                         >
-                                            {view.charAt(0).toUpperCase() + view.slice(1)}
+                                            {status.charAt(0) + status.slice(1).toLowerCase()}
                                         </button>
                                     ))}
                                 </div>
@@ -661,23 +666,12 @@ const HospitalAdminDashboard = () => {
                         </div>
                     ) : (
                         <>
-                            {activeTab === 'dashboard' && (
-                                <div className="space-y-6">
-                                    <OverviewDashboard
-                                        stats={dashboardStats}
-                                        todaysAppointments={todaysAppointments}
-                                        loading={loading}
-                                    />
-                                    <div className="grid grid-cols-1 gap-6">
-                                        <ActivityFeed />
-                                    </div>
-                                </div>
-                            )}
+                            {/* Overview tab content already rendered above */}
 
                             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
                                 {activeTab === 'patients' && (
                                     patients.length > 0 ? (
-                                        <PatientsTable patients={patients} onEdit={handleEdit} onDelete={handleDeletePatient} onHistory={(p) => handleHistory('PATIENT', p.publicId || p.id, p.name)} startIndex={page * pageSize} pagination={pagination} />
+                                        <PatientsTable patients={patients} onEdit={handleEdit} onViewDetails={handleViewDetails} onDelete={handleDeletePatient} onHistory={(p) => handleHistory('PATIENT', p.publicId || p.id, p.name)} startIndex={page * pageSize} pagination={pagination} isAdmin={user?.role === 'HOSPITAL_ADMIN'} />
                                     ) : (
                                         <EmptyState
                                             icon={null}
@@ -950,12 +944,20 @@ const HospitalAdminDashboard = () => {
                 entityId={historyDrawer.entityId}
                 entityName={historyDrawer.entityName}
             />
+
+            {/* Patient Details Modal */}
+            {patientDetailsModal.isOpen && (
+                <PatientDetailsModal
+                    patient={patientDetailsModal.patient}
+                    onClose={() => setPatientDetailsModal({ isOpen: false, patient: null })}
+                />
+            )}
         </div>
     );
 };
 
 // Patients Table Component
-const PatientsTable = ({ patients, isAdmin, onDelete, onEdit, onHistory, startIndex = 0, pagination }) => {
+const PatientsTable = ({ patients, isAdmin, onDelete, onEdit, onViewDetails, onHistory, startIndex = 0, pagination }) => {
     const columnHelper = createColumnHelper();
 
 
@@ -993,6 +995,11 @@ const PatientsTable = ({ patients, isAdmin, onDelete, onEdit, onHistory, startIn
                 cell: info => (
                     <div className="text-right">
                         <ActionMenu actions={[
+                            {
+                                label: 'View Details',
+                                onClick: () => onViewDetails(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" /></svg>
+                            },
                             {
                                 label: 'Edit',
                                 onClick: () => onEdit(info.row.original),
