@@ -5,116 +5,93 @@ const getStatusConfig = (status) => {
     const s = status?.toUpperCase() || '';
     
     const configs = {
-        // Success states
+        // Success states - Green
         'COMPLETED': { 
-            bg: 'bg-gray-100', 
-            text: 'text-gray-800', 
-            border: 'border-gray-200',
-            dot: 'bg-gray-500',
+            bg: 'bg-green-50', 
+            text: 'text-green-700', 
+            border: 'border-green-200',
+            dot: 'bg-green-500',
             icon: null
         },
         'PAID': { 
-            bg: 'bg-gray-100', 
-            text: 'text-gray-800', 
-            border: 'border-gray-200',
-            dot: 'bg-gray-500',
+            bg: 'bg-green-50', 
+            text: 'text-green-700', 
+            border: 'border-green-200',
+            dot: 'bg-green-500',
             icon: null
         },
         'ACTIVE': { 
-            bg: 'bg-gray-100', 
-            text: 'text-gray-800', 
-            border: 'border-gray-200',
-            dot: 'bg-gray-500',
+            bg: 'bg-green-50', 
+            text: 'text-green-700', 
+            border: 'border-green-200',
+            dot: 'bg-green-500',
             icon: null
         },
         
-        // In progress states
+        // In progress states - Blue
         'SCHEDULED': { 
-            bg: 'bg-gray-100', 
-            text: 'text-gray-800', 
-            border: 'border-gray-200',
-            dot: 'bg-gray-500',
+            bg: 'bg-blue-50', 
+            text: 'text-blue-700', 
+            border: 'border-blue-200',
+            dot: 'bg-blue-500',
             icon: null
         },
         'PENDING': { 
-            bg: 'bg-gray-100', 
-            text: 'text-gray-800', 
-            border: 'border-gray-200',
-            dot: 'bg-gray-500',
+            bg: 'bg-yellow-50', 
+            text: 'text-yellow-700', 
+            border: 'border-yellow-200',
+            dot: 'bg-yellow-500',
             icon: null
         },
         'IN_PROGRESS': { 
-            bg: 'bg-gray-100', 
-            text: 'text-gray-800', 
-            border: 'border-gray-200',
-            dot: 'bg-gray-500',
+            bg: 'bg-blue-50', 
+            text: 'text-blue-700', 
+            border: 'border-blue-200',
+            dot: 'bg-blue-500',
+            icon: null
+        },
+        'CONSULTING': { 
+            bg: 'bg-purple-50', 
+            text: 'text-purple-700', 
+            border: 'border-purple-200',
+            dot: 'bg-purple-500',
             icon: null
         },
         
-        // Alert/Warning states
+        // Alert/Warning states - Red/Orange
         'CANCELLED': { 
-            bg: 'bg-gray-100', 
-            text: 'text-gray-800', 
-            border: 'border-gray-200',
-            dot: 'bg-gray-500',
+            bg: 'bg-red-50', 
+            text: 'text-red-700', 
+            border: 'border-red-200',
+            dot: 'bg-red-500',
             icon: null
         },
         'UNPAID': { 
-            bg: 'bg-gray-100', 
-            text: 'text-gray-800', 
-            border: 'border-gray-200',
-            dot: 'bg-gray-500',
+            bg: 'bg-orange-50', 
+            text: 'text-orange-700', 
+            border: 'border-orange-200',
+            dot: 'bg-orange-500',
             icon: null
         },
         'OVERDUE': { 
-            bg: 'bg-gray-100', 
-            text: 'text-gray-800', 
-            border: 'border-gray-200',
-            dot: 'bg-gray-500',
+            bg: 'bg-red-50', 
+            text: 'text-red-700', 
+            border: 'border-red-200',
+            dot: 'bg-red-500',
             icon: null
         },
         
-        // Neutral states
+        // Neutral states - Gray
         'INACTIVE': { 
             bg: 'bg-gray-100', 
-            text: 'text-gray-800', 
+            text: 'text-gray-700', 
             border: 'border-gray-200',
             dot: 'bg-gray-500',
             icon: null
         },
         'DRAFT': { 
             bg: 'bg-gray-100', 
-            text: 'text-gray-800', 
-            border: 'border-gray-200',
-            dot: 'bg-gray-500',
-            icon: null
-        },
-        'CONSULTING': { 
-            bg: 'bg-gray-100', 
-            text: 'text-gray-800', 
-            border: 'border-gray-200',
-            dot: 'bg-gray-500',
-            icon: null
-        },
-        
-        // Error/inactive states
-        'CANCELLED': { 
-            bg: 'bg-gray-100', 
-            text: 'text-gray-800', 
-            border: 'border-gray-200',
-            dot: 'bg-gray-500',
-            icon: null
-        },
-        'UNPAID': { 
-            bg: 'bg-gray-100', 
-            text: 'text-gray-800', 
-            border: 'border-gray-200',
-            dot: 'bg-gray-500',
-            icon: null
-        },
-        'INACTIVE': { 
-            bg: 'bg-gray-100', 
-            text: 'text-gray-800', 
+            text: 'text-gray-700', 
             border: 'border-gray-200',
             dot: 'bg-gray-500',
             icon: null
@@ -123,7 +100,7 @@ const getStatusConfig = (status) => {
     
     return configs[s] || {
         bg: 'bg-gray-100',
-        text: 'text-gray-800',
+        text: 'text-gray-700',
         border: 'border-gray-200',
         dot: 'bg-gray-500',
         icon: null

@@ -7,6 +7,7 @@ import EmptyState from '../../components/EmptyState';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import AppointmentModal from '../../components/AppointmentModal';
 import PatientModal from '../../components/PatientModal';
+import PatientDetailsModal from '../../components/PatientDetailsModal';
 import ActionMenu from '../../components/ActionMenu';
 import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
@@ -22,26 +23,19 @@ import PrescriptionViewModal from '../../components/PrescriptionViewModal';
 const ReceptionistDashboard = () => {
     const user = authService.getCurrentUser();
     const [searchParams, setSearchParams] = useSearchParams();
-    const activeTab = searchParams.get('tab') || 'appointments';
+    const activeTab = searchParams.get('tab') || 'overview'; // Changed default to 'overview'
     const viewFilter = searchParams.get('appointmentFilter') || 'today';
-    const patientViewFilter = searchParams.get('patientFilter') || 'history';
 
     // Helper to switch tabs
     const setActiveTab = (tab) => {
         const newParams = { tab };
         if (tab === 'appointments' && viewFilter) newParams.appointmentFilter = viewFilter;
-        if (tab === 'patients' && patientViewFilter) newParams.patientFilter = patientViewFilter;
         setSearchParams(newParams);
     };
 
     // Helper to set appointment filter
     const setViewFilter = (filter) => {
         setSearchParams({ tab: activeTab, appointmentFilter: filter });
-    };
-
-    // Helper to set patient filter
-    const setPatientViewFilter = (filter) => {
-        setSearchParams({ tab: activeTab, patientFilter: filter });
     };
 
     const [appointments, setAppointments] = useState([]);
@@ -123,6 +117,12 @@ const ReceptionistDashboard = () => {
         entityId: null,
         entityName: ''
     });
+
+    // Sidebar collapse state
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+    // Patient Details Modal
+    const [patientDetailsModal, setPatientDetailsModal] = useState({ isOpen: false, patient: null });
 
     const { success, error: toastError, info } = useToast();
     const navigate = useNavigate();
@@ -207,7 +207,7 @@ const ReceptionistDashboard = () => {
                 else setPatients(patData || []);
 
             } else if (activeTab === 'patients') {
-                const data = await hospitalService.getPatients(searchTerm, page, pageSize, patientViewFilter);
+                const data = await hospitalService.getPatients(searchTerm, page, pageSize);
                 if (data.content) {
                     setPatients(data.content);
                     setTotalPages(data.totalPages);
@@ -431,8 +431,7 @@ const ReceptionistDashboard = () => {
 
 
     const handleViewPatient = (patient) => {
-        setSelectedPatient(patient);
-        setIsAddModalOpen(true);
+        setPatientDetailsModal({ isOpen: true, patient });
     };
 
     const handlePrintOpd = async (opd) => {
@@ -447,6 +446,7 @@ const ReceptionistDashboard = () => {
     };
 
     const tabs = [
+        { id: 'overview', label: 'Overview', icon: null },
         { id: 'patients', label: 'Patients', icon: null },
         { id: 'appointments', label: 'Appointments', icon: null },
         { id: 'opd', label: 'OPD', icon: null },
@@ -473,6 +473,7 @@ const ReceptionistDashboard = () => {
                 footerTitle="Hospital"
                 footerData={user?.hospitalName}
                 variant="plain"
+                isCollapsed={sidebarCollapsed}
             />
 
             {/* Main Content */}
@@ -482,42 +483,46 @@ const ReceptionistDashboard = () => {
                     user={user}
                     onLogout={handleLogout}
                     onProfile={() => console.log('Profile clicked')}
+                    onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
                 />
 
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
-                    {/* Stats for Receptionist - Only show on appointments tab */}
-                    {activeTab === 'appointments' && (
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                            <div className="bg-white rounded-lg border border-gray-200 p-6">
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <p className="text-gray-600 text-sm font-medium">Today's Appointments</p>
-                                        <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.today}</h3>
+                    {/* Overview Tab - Stats Only */}
+                    {activeTab === 'overview' && (
+                        <div className="space-y-6">
+                            <h2 className="text-2xl font-bold text-gray-900">Overview</h2>
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="text-gray-600 text-sm font-medium">Today's Appointments</p>
+                                            <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.today}</h3>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                            <div className="bg-white rounded-lg border border-gray-200 p-6">
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <p className="text-gray-600 text-sm font-medium">Pending</p>
-                                        <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.pending}</h3>
+                                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="text-gray-600 text-sm font-medium">Pending</p>
+                                            <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.pending}</h3>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                            <div className="bg-white rounded-lg border border-gray-200 p-6">
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <p className="text-gray-600 text-sm font-medium">Total Appointments</p>
-                                        <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.total}</h3>
+                                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="text-gray-600 text-sm font-medium">Total Appointments</p>
+                                            <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.total}</h3>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                            <div className="bg-white rounded-lg border border-gray-200 p-6">
-                                <div>
-                                    <p className="text-gray-600 text-sm font-medium">Current / Next Token</p>
-                                    <div className="mt-2 flex items-baseline gap-3">
-                                        <h3 className="text-2xl font-bold text-gray-900">{currentToken ?? '-'}</h3>
-                                        <span className="text-sm text-gray-500">/ {nextToken ?? '-'}</span>
+                                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                    <div>
+                                        <p className="text-gray-600 text-sm font-medium">Current / Next Token</p>
+                                        <div className="mt-2 flex items-baseline gap-3">
+                                            <h3 className="text-2xl font-bold text-gray-900">{currentToken ?? '-'}</h3>
+                                            <span className="text-sm text-gray-500">/ {nextToken ?? '-'}</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -525,15 +530,16 @@ const ReceptionistDashboard = () => {
                     )}
 
                     {/* Standardized Header */}
+                    {activeTab !== 'overview' && (
                     <PageHeader
                         title={tabs.find(t => t.id === activeTab)?.label}
                         subtitle={`Manage ${activeTab} records`}
                         onSearch={activeTab === 'queue' ? null : (e) => setSearchTerm(e.target.value)}
                         searchValue={searchTerm}
                         searchPlaceholder={activeTab === 'queue' ? '' : `Search ${activeTab}...`}
-                        onAdd={activeTab === 'queue' ? null : () => {
+                        onAdd={activeTab === 'queue' || activeTab === 'billing' ? null : () => {
                             if (activeTab === 'opd') setIsOpdModalOpen(true);
-                            else if (activeTab !== 'billing') setIsAddModalOpen(true);
+                            else setIsAddModalOpen(true);
                         }}
                         addLabel={activeTab === 'opd' ? 'New OPD / Case' : `Add ${activeTab.slice(0, -1)}`}
                         filter={activeTab === 'appointments' ? (
@@ -551,18 +557,18 @@ const ReceptionistDashboard = () => {
                                     </button>
                                 ))}
                             </div>
-                        ) : activeTab === 'patients' ? (
+                        ) : activeTab === 'billing' ? (
                             <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
-                                {['today', 'history'].map(view => (
+                                {['PENDING', 'PAID'].map(status => (
                                     <button
-                                        key={view}
-                                        onClick={() => setPatientViewFilter(view)}
-                                        className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${patientViewFilter === view
+                                        key={status}
+                                        onClick={() => setBillingStatus(status)}
+                                        className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${billingStatus === status
                                             ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
                                             : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
                                             }`}
                                     >
-                                        {view.charAt(0).toUpperCase() + view.slice(1)}
+                                        {status.charAt(0) + status.slice(1).toLowerCase()}
                                     </button>
                                 ))}
                             </div>
@@ -576,6 +582,7 @@ const ReceptionistDashboard = () => {
                         ) : null}
                       
                     />
+                    )}
 
                     {loading ? (
                         <div className="flex justify-center items-center h-64">
@@ -810,7 +817,7 @@ const ReceptionistDashboard = () => {
                         }} className="p-6 space-y-4 max-h-[76vh] overflow-auto">
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-semibold text-neutral-700 mb-2">Patient <span className="text-error-500">*</span></label>
+                                    <label className="block text-sm font-semibold text-neutral-700 mb-2">Patient <span className="text-red-600">*</span></label>
                                     <select className="input-field" value={opdForm.patientId || ''} onChange={(e) => setOpdForm(prev => ({ ...prev, patientId: e.target.value }))} required>
                                         <option value="">Select patient</option>
                                         {patients.map(p => <option key={p.id} value={p.id}>{p.name} {p.phone ? `(${p.phone})` : ''}</option>)}
@@ -889,6 +896,14 @@ const ReceptionistDashboard = () => {
                 entityId={historyDrawer.entityId}
                 entityName={historyDrawer.entityName}
             />
+
+            {/* Patient Details Modal */}
+            {patientDetailsModal.isOpen && (
+                <PatientDetailsModal
+                    patient={patientDetailsModal.patient}
+                    onClose={() => setPatientDetailsModal({ isOpen: false, patient: null })}
+                />
+            )}
 
             {/* Prescription Modal */}
             <PrescriptionModal

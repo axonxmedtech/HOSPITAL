@@ -28,12 +28,12 @@
 .data-grid-wrapper .ag-cell {
     display: flex;
     align-items: center;
-    padding: 6px 10px;
+    padding: 4px 8px;
 }
 
 .data-grid-wrapper .ag-row {
     border-bottom: 1px solid var(--ag-border-color);
-    min-height: 32px;
+    min-height: 28px;
 }
 
 /* Loading spinner */
@@ -113,6 +113,6 @@
     }
 
     .data-grid-wrapper .ag-cell {
-        padding: 4px 8px;
+        padding: 3px 6px;
     }
 }

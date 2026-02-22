@@ -1,36 +1,29 @@
 import React from 'react';
 import UserMenu from './UserMenu';
 
-const Navbar = ({ title, user, onLogout, onProfile, actions }) => {
+const Navbar = ({ title, user, onLogout, onProfile, actions, onToggleSidebar }) => {
     return (
-        <header className="bg-white/95 backdrop-blur-sm border-b border-neutral-200 shadow-soft z-10 w-full sticky top-0">
-            <div className="flex justify-between items-center px-8 py-6">
-                <div className="flex items-center gap-6">
-                    {/* Breadcrumb-style title */}
-                    <div className="flex items-center gap-3">
-                        <div className="w-2 h-2 bg-primary-500 rounded-full animate-pulse"></div>
-                        <div>
-                            <h2 className="text-2xl font-bold text-slate-800 tracking-tight capitalize flex items-center gap-2">
-                                {title}
-                                <span className="text-primary-500 text-lg">•</span>
-                            </h2>
-                            <p className="text-sm text-slate-500 mt-0.5 font-medium">
-                                {getSubtitleForTab(title)}
-                            </p>
-                        </div>
-                    </div>
-                </div>
+        <header className="bg-white border-b border-gray-200 z-10 w-full sticky top-0">
+            <div className="flex justify-between items-center px-6 py-3">
+                {/* Left side - Sidebar toggle button */}
+                <button
+                    onClick={onToggleSidebar}
+                    className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="Toggle sidebar"
+                >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                </button>
 
-                <div className="flex items-center gap-6">
-                    {/* Quick stats or actions */}
+                {/* Right side - User menu only */}
+                <div className="flex items-center gap-4">
+                    {/* Quick actions if provided */}
                     {actions && (
                         <div className="flex items-center gap-3">
                             {actions}
                         </div>
                     )}
-
-                    {/* Divider */}
-                    <div className="h-8 w-px bg-neutral-200 hidden sm:block"></div>
 
                     {/* User menu */}
                     <UserMenu
@@ -42,25 +35,6 @@ const Navbar = ({ title, user, onLogout, onProfile, actions }) => {
             </div>
         </header>
     );
-};
-
-// Helper function to get contextual subtitles
-const getSubtitleForTab = (tab) => {
-    const subtitles = {
-        dashboard: 'Overview and quick insights',
-        patients: 'Manage patient records and information',
-        doctors: 'Healthcare provider management',
-        appointments: 'Schedule and track consultations',
-        billing: 'Financial records and payments',
-        receptionists: 'Front desk staff management',
-        pharmacists: 'Pharmacy team administration',
-        'audit-logs': 'System activity and changes',
-        pharmacy: 'Inventory and prescriptions',
-        pathology: 'Lab tests and results',
-        ipd: 'Inpatient department management'
-    };
-    
-    return subtitles[tab] || 'Manage your activities and view reports';
 };
 
 export default Navbar;

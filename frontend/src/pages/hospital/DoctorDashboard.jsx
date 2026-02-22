@@ -32,26 +32,19 @@ const DoctorDashboard = () => {
     const user = authService.getCurrentUser();
     console.log(user)
     const [searchParams, setSearchParams] = useSearchParams();
-    const activeTab = searchParams.get('tab') || 'appointments';
+    const activeTab = searchParams.get('tab') || 'overview'; // Changed default to 'overview'
     const viewFilter = searchParams.get('appointmentFilter') || 'today';
-    const patientViewFilter = searchParams.get('patientFilter') || 'history';
 
     // Helper to switch tabs
     const setActiveTab = (tab) => {
         const newParams = { tab };
         if (tab === 'appointments' && viewFilter) newParams.appointmentFilter = viewFilter;
-        if (tab === 'patients' && patientViewFilter) newParams.patientFilter = patientViewFilter;
         setSearchParams(newParams);
     };
 
     // Helper to set appointment filter
     const setViewFilter = (filter) => {
         setSearchParams({ tab: activeTab, appointmentFilter: filter });
-    };
-
-    // Helper to set patient filter
-    const setPatientViewFilter = (filter) => {
-        setSearchParams({ tab: activeTab, patientFilter: filter });
     };
 
     const [appointments, setAppointments] = useState([]);
@@ -111,6 +104,9 @@ const DoctorDashboard = () => {
         entityId: null,
         entityName: ''
     });
+
+    // Sidebar collapse state
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
     const openConfirmation = (title, message, action, showReasonInput = false, inputPlaceholder = "Please provide a reason...") => {
         setConfirmModal({
@@ -297,6 +293,7 @@ const DoctorDashboard = () => {
     };
 
     const tabs = [
+        { id: 'overview', label: 'Overview', icon: null },
         { id: 'appointments', label: 'My Appointments', icon: null },
         { id: 'queue', label: 'Queue', icon: null },
         { id: 'opd', label: 'OPD', icon: null },
@@ -458,6 +455,7 @@ const DoctorDashboard = () => {
                 footerTitle="My Hospital"
                 footerData={user?.hospitalName}
                 variant="plain"
+                isCollapsed={sidebarCollapsed}
             />
 
             {/* Main Content Wrapper */}
@@ -468,14 +466,15 @@ const DoctorDashboard = () => {
                     user={user}
                     onLogout={handleLogout}
                     onProfile={() => console.log('Profile clicked')}
+                    onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
                 />
 
                 {/* Main Content Area */}
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
 
-                    {/* Stats Cards - Only show on appointments tab */}
-                    {activeTab === 'appointments' && (
-                        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
+                    {/* Overview Tab - Stats Only */}
+                    {activeTab === 'overview' && (
+                        <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
                             <div className="bg-white rounded-lg border border-gray-200 p-6">
                                 <div className="flex justify-between items-center">
                                     <div>
@@ -519,7 +518,8 @@ const DoctorDashboard = () => {
                         </div>
                     )}
 
-                    {/* Standardized Header */}
+                    {/* Standardized Header - Hide on overview tab */}
+                    {activeTab !== 'overview' && (
                     <PageHeader
                         title={activeTab === 'appointments' ? 'My Appointments' : 'My Patients'}
                         subtitle={`Manage your ${activeTab === 'appointments' ? 'schedule' : 'patients'} here.`}
@@ -544,23 +544,9 @@ const DoctorDashboard = () => {
                                     ))}
                                 </div>
                             </div>
-                        ) : activeTab === 'patients' ? (
-                            <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
-                                {['today', 'history'].map(view => (
-                                    <button
-                                        key={view}
-                                        onClick={() => setPatientViewFilter(view)}
-                                        className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${patientViewFilter === view
-                                            ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
-                                            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
-                                            }`}
-                                    >
-                                        {view.charAt(0).toUpperCase() + view.slice(1)}
-                                    </button>
-                                ))}
-                            </div>
                         ) : null}
                     />
+                    )}
 
                     {loading ? (
                         <div className="flex justify-center items-center h-64">
@@ -568,6 +554,7 @@ const DoctorDashboard = () => {
                         </div>
                     ) : (
                         <>
+                            {activeTab !== 'overview' && (
                             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
                                 {activeTab === 'appointments' && (
                                     appointments.length > 0 ? (
@@ -592,52 +579,16 @@ const DoctorDashboard = () => {
 
                                 {activeTab === 'opd' && (
                                     opds.length > 0 ? (
-                                        <div className="p-4 overflow-x-auto">
-                                            <table className="w-full text-sm text-left">
-                                                <thead>
-                                                    <tr>
-                                                        <th className="px-4 py-2">S.No.</th>
-                                                        <th className="px-4 py-2">Case ID</th>
-                                                        <th className="px-4 py-2">Patient</th>
-                                                        <th className="px-4 py-2">Doctor</th>
-                                                        <th className="px-4 py-2">Token</th>
-                                                        <th className="px-4 py-2">Visit</th>
-                                                        <th className="px-4 py-2">Created</th>
-                                                        <th className="px-4 py-2">Actions</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {opds.map((o, idx) => (
-                                                        <tr key={o.id} className="border-t">
-                                                            <td className="px-4 py-3">{(page - 1) * ITEMS_PER_PAGE + idx + 1}</td>
-                                                            <td className="px-4 py-3">{o.caseId}</td>
-                                                            <td className="px-4 py-3">{o.patient?.name}</td>
-                                                            <td className="px-4 py-3">{o.doctor?.name || '-'}</td>
-                                                            <td className="px-4 py-3">{o.tokenNumber || '-'}</td>
-                                                            <td className="px-4 py-3">{o.visitType}</td>
-                                                            <td className="px-4 py-3">{new Date(o.createdAt).toLocaleString()}</td>
-                                                            <td className="px-4 py-3 flex items-center space-x-2">
-                                                                <button onClick={() => handlePrintOpd(o)} className="px-3 py-1 bg-gray-900 text-white rounded">Print</button>
-                                                                {o.status === 'QUEUED' && (
-                                                                    <button
-                                                                        onClick={() => handleStartOpdConsultation(o)}
-                                                                        disabled={o.tokenNumber && currentToken && o.tokenNumber !== currentToken}
-                                                                        className={`px-3 py-1 rounded ${o.tokenNumber && currentToken && o.tokenNumber !== currentToken ? 'bg-gray-300 text-gray-600 cursor-not-allowed' : 'bg-green-600 text-white'}`}>
-                                                                        Start Consultation
-                                                                    </button>
-                                                                )}
-                                                                {(o.status === 'CONSULTED' || o.status === 'COMPLETED') && (
-                                                                    <>
-                                                                        <button onClick={() => handlePrintPrescriptionOpd(o)} className="px-3 py-1 bg-indigo-600 text-white rounded">Print Prescription</button>
-                                                                        <button onClick={() => handleViewPrescriptionOpd(o)} className="px-3 py-1 bg-blue-600 text-white rounded">View Prescription</button>
-                                                                    </>
-                                                                )}
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
+                                        <DoctorOpdTable
+                                            opds={opds}
+                                            currentToken={currentToken}
+                                            onPrintOpd={handlePrintOpd}
+                                            onStartConsultation={handleStartOpdConsultation}
+                                            onPrintPrescription={handlePrintPrescriptionOpd}
+                                            onViewPrescription={handleViewPrescriptionOpd}
+                                            startIndex={(page - 1) * ITEMS_PER_PAGE}
+                                            pagination={pagination}
+                                        />
                                     ) : (
                                         <EmptyState
                                             icon={null}
@@ -703,6 +654,7 @@ const DoctorDashboard = () => {
                                     )
                                 )}
                             </div>
+                            )}
                         </>
                     )}
                 </main>
@@ -935,3 +887,87 @@ const DoctorPatientsTable = ({ patients, onViewHistory, onStartConsultation, onC
     return <DataTable data={patients} columns={columns} pagination={pagination} />;
 };
 
+
+// Doctor OPD Table
+const DoctorOpdTable = ({ opds, currentToken, onPrintOpd, onStartConsultation, onPrintPrescription, onViewPrescription, startIndex = 0, pagination }) => {
+    const columnHelper = createColumnHelper();
+
+    const columns = [
+        columnHelper.display({
+            id: 'sno',
+            header: 'S.NO.',
+            cell: info => startIndex + info.row.index + 1,
+        }),
+        columnHelper.accessor('caseId', {
+            header: 'CASE ID',
+            cell: info => <span className="font-medium text-gray-900">{info.getValue()}</span>,
+        }),
+        columnHelper.accessor(row => row.patient?.name, {
+            id: 'patient',
+            header: 'PATIENT',
+        }),
+        columnHelper.accessor(row => row.doctor?.name || '-', {
+            id: 'doctor',
+            header: 'DOCTOR',
+        }),
+        columnHelper.accessor('tokenNumber', {
+            header: 'TOKEN',
+            cell: info => info.getValue() || '-',
+        }),
+        columnHelper.accessor('visitType', {
+            header: 'VISIT',
+        }),
+        columnHelper.accessor('createdAt', {
+            header: 'CREATED',
+            cell: info => new Date(info.getValue()).toLocaleString(),
+        }),
+        columnHelper.display({
+            id: 'actions',
+            header: () => <div className="text-right">ACTIONS</div>,
+            cell: info => {
+                const opd = info.row.original;
+                const actions = [];
+
+                // Print Case Paper - always available
+                actions.push({
+                    label: 'Print Case Paper',
+                    icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v2a2 2 0 002 2h6a2 2 0 002-2v-2h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clipRule="evenodd" /></svg>,
+                    onClick: () => onPrintOpd(opd)
+                });
+
+                // Start Consultation - only for QUEUED status
+                if (opd.status === 'QUEUED') {
+                    const isDisabled = opd.tokenNumber && currentToken && opd.tokenNumber !== currentToken;
+                    actions.push({
+                        label: 'Start Consultation',
+                        icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 2a4 4 0 00-4 4v1H5a1 1 0 00-.994.89l-1 9A1 1 0 004 18h12a1 1 0 00.994-1.11l-1-9A1 1 0 0015 7h-1V6a4 4 0 00-4-4zM8 6a2 2 0 114 0v1H8V6zm.707 7.293a1 1 0 00-1.414 1.414L9.586 17a1 1 0 001.414 0l2.293-2.293a1 1 0 00-1.414-1.414L10 15.172l-1.293-1.879z" clipRule="evenodd" /></svg>,
+                        onClick: () => onStartConsultation(opd),
+                        disabled: isDisabled
+                    });
+                }
+
+                // Prescription actions - only for CONSULTED or COMPLETED status
+                if (opd.status === 'CONSULTED' || opd.status === 'COMPLETED') {
+                    actions.push({
+                        label: 'Print Prescription',
+                        icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v2a2 2 0 002 2h6a2 2 0 002-2v-2h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clipRule="evenodd" /></svg>,
+                        onClick: () => onPrintPrescription(opd)
+                    });
+                    actions.push({
+                        label: 'View Prescription',
+                        icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" /></svg>,
+                        onClick: () => onViewPrescription(opd)
+                    });
+                }
+
+                return (
+                    <div className="text-right">
+                        <ActionMenu actions={actions} />
+                    </div>
+                );
+            },
+        }),
+    ];
+
+    return <DataTable data={opds} columns={columns} pagination={pagination} />;
+};

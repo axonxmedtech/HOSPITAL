@@ -70,6 +70,9 @@ const PlatformDashboard = () => {
     // Audit Logs State
     const [auditLogs, setAuditLogs] = useState([]);
 
+    // Sidebar collapse state
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
     // Overview Stats State
     const [hospitalStats, setHospitalStats] = useState({ total: 0, active: 0, inactive: 0 });
 
@@ -341,13 +344,14 @@ const PlatformDashboard = () => {
         <div className="flex h-screen bg-gray-50">
             {/* Sidebar */}
             <Sidebar
-                title="HMS Platform"
+                title="HMS Portal"
                 tabs={tabs}
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
                 footerTitle="Platform"
                 footerData="Super Admin"
                 variant="plain"
+                isCollapsed={sidebarCollapsed}
             />
 
             {/* Main Content Wrapper */}
@@ -358,6 +362,7 @@ const PlatformDashboard = () => {
                     user={user}
                     onLogout={handleLogout}
                     onProfile={() => console.log('Profile clicked')}
+                    onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
                 />
 
                 {/* Main Content Area */}

@@ -30,6 +30,7 @@ const PharmacyDashboard = () => {
     const [loading, setLoading] = useState(true);
     const [pendingPrescriptions, setPendingPrescriptions] = useState([]);
     const [inventory, setInventory] = useState([]);
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
     // Dispense Modal State
     const [dispenseModal, setDispenseModal] = useState({
@@ -223,12 +224,14 @@ const PharmacyDashboard = () => {
                 footerTitle="Hospital"
                 footerData={user?.hospitalName}
                 variant="plain"
+                isCollapsed={sidebarCollapsed}
             />
             <div className="flex-1 flex flex-col overflow-hidden">
                 <Navbar
                     title={`Pharmacy Dashboard - ${user?.name}`}
                     user={user}
                     onLogout={handleLogout}
+                    onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
                 />
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-6">
                     <div className="space-y-6">
