@@ -158,7 +158,7 @@ const DoctorDashboard = () => {
             loadData();
         }, 500);
         return () => clearTimeout(timer);
-    }, [activeTab, searchTerm, viewFilter, patientViewFilter]);
+    }, [activeTab, searchTerm, viewFilter]);
 
     useEffect(() => {
         // Use local date instead of UTC

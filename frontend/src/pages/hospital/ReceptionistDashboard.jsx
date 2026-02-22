@@ -139,7 +139,7 @@ const ReceptionistDashboard = () => {
         }, 30000);
 
         return () => clearInterval(intervalId);
-    }, [activeTab, page, searchTerm, viewFilter, patientViewFilter, pageSize, selectedDoctorForQueue, billingStatus]); // Add pageSize & doctor filter to dependencies
+    }, [activeTab, page, searchTerm, viewFilter, pageSize, selectedDoctorForQueue, billingStatus]); // Add pageSize & doctor filter to dependencies
 
     const loadData = async (showSpinner = true) => {
         if (showSpinner) setLoading(true);
