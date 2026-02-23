@@ -521,8 +521,18 @@ const DoctorDashboard = () => {
                     {/* Standardized Header - Hide on overview tab */}
                     {activeTab !== 'overview' && (
                     <PageHeader
-                        title={activeTab === 'appointments' ? 'My Appointments' : 'My Patients'}
-                        subtitle={`Manage your ${activeTab === 'appointments' ? 'schedule' : 'patients'} here.`}
+                        title={
+                            activeTab === 'appointments' ? 'My Appointments' : 
+                            activeTab === 'opd' ? 'OPD Cases' :
+                            activeTab === 'queue' ? 'Patient Queue' :
+                            'My Patients'
+                        }
+                        subtitle={`Manage your ${
+                            activeTab === 'appointments' ? 'schedule' : 
+                            activeTab === 'opd' ? 'OPD cases' :
+                            activeTab === 'queue' ? 'patient queue' :
+                            'patients'
+                        } here.`}
                         onSearch={(e) => setSearchTerm(e.target.value)}
                         searchValue={searchTerm}
                         searchPlaceholder={`Search ${activeTab}...`}

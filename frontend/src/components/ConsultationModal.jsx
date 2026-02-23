@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import hospitalService from '../services/hospitalService';
 import { useToast } from '../context/ToastContext';
 import MedicineAutocomplete from './MedicineAutocomplete';
+import CharCountInput from './CharCountInput';
 
 const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, opd }) => {
     console.log("ConsultationModal render:", { isOpen, appointment, patient, opd });
@@ -272,38 +273,35 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                         <div className="flex-1 overflow-y-auto p-6 bg-white">
                             {activeTab === 'clinical' ? (
                                 <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Symptoms</label>
-                                        <textarea
-                                            value={formData.symptoms}
-                                            onChange={(e) => handleChange('symptoms', e.target.value)}
-                                            className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
-                                            rows="3"
-                                            placeholder="Enter patient's symptoms..."
-                                        />
-                                    </div>
+                                    <CharCountInput
+                                        label="Symptoms"
+                                        textarea
+                                        rows={3}
+                                        value={formData.symptoms}
+                                        onChange={(e) => handleChange('symptoms', e.target.value)}
+                                        maxLength={500}
+                                        placeholder="Enter patient's symptoms..."
+                                    />
 
-                                    <div>
-                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Diagnosis</label>
-                                        <textarea
-                                            value={formData.diagnosis}
-                                            onChange={(e) => handleChange('diagnosis', e.target.value)}
-                                            className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
-                                            rows="3"
-                                            placeholder="Enter diagnosis..."
-                                        />
-                                    </div>
+                                    <CharCountInput
+                                        label="Diagnosis"
+                                        textarea
+                                        rows={3}
+                                        value={formData.diagnosis}
+                                        onChange={(e) => handleChange('diagnosis', e.target.value)}
+                                        maxLength={500}
+                                        placeholder="Enter diagnosis..."
+                                    />
 
-                                    <div>
-                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Treatment Notes</label>
-                                        <textarea
-                                            value={formData.treatmentNotes}
-                                            onChange={(e) => handleChange('treatmentNotes', e.target.value)}
-                                            className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
-                                            rows="4"
-                                            placeholder="Enter treatment plan and notes..."
-                                        />
-                                    </div>
+                                    <CharCountInput
+                                        label="Treatment Notes"
+                                        textarea
+                                        rows={4}
+                                        value={formData.treatmentNotes}
+                                        onChange={(e) => handleChange('treatmentNotes', e.target.value)}
+                                        maxLength={500}
+                                        placeholder="Enter treatment plan and notes..."
+                                    />
 
                                     <div>
                                         <div className="flex items-center gap-3">
