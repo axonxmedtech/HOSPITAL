@@ -756,26 +756,13 @@ const HospitalAdminDashboard = () => {
                                     />
                                 )}
                                 {activeTab === 'billing' && billing.length > 0 && (
-                                    <div>
-                                        <div className="flex items-center gap-3 mb-4">
-                                            <div className="text-sm text-slate-600 mr-2">Filter:</div>
-                                            <button
-                                                onClick={() => setBillingStatus('PENDING')}
-                                                className={`px-3 py-1 rounded-xl ${billingStatus === 'PENDING' ? 'bg-primary-50 text-primary-600' : 'bg-white border border-neutral-200'}`}
-                                            >Pending</button>
-                                            <button
-                                                onClick={() => setBillingStatus('PAID')}
-                                                className={`px-3 py-1 rounded-xl ${billingStatus === 'PAID' ? 'bg-primary-50 text-primary-600' : 'bg-white border border-neutral-200'}`}
-                                            >Paid</button>
-                                        </div>
-                                        <BillingTable
-                                            billing={billing}
-                                            startIndex={page * pageSize}
-                                            pagination={pagination}
-                                            onUpdateStatus={handleBillStatus}
-                                            onDownload={handleDownloadReceipt}
-                                        />
-                                    </div>
+                                    <BillingTable
+                                        billing={billing}
+                                        startIndex={page * pageSize}
+                                        pagination={pagination}
+                                        onUpdateStatus={handleBillStatus}
+                                        onDownload={handleDownloadReceipt}
+                                    />
                                 )}
                                 {activeTab === 'fees' && (
                                     <div className="p-6">
