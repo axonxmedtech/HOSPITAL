@@ -54,6 +54,12 @@ public class MedicalRecord {
     @Column(name = "opd_id", unique = true)
     private Long opdId;
 
+    @Column(name = "ipd_admission_id")
+    private Long ipdAdmissionId;
+
+    @Column(name = "visit_type", nullable = false)
+    private String visitType = "OPD"; // OPD or IPD
+
     @Column(length = 1000)
     private String symptoms;
 

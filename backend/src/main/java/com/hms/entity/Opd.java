@@ -54,7 +54,7 @@ public class Opd {
     @Column(name = "token_number")
     private Integer tokenNumber;
 
-    public enum Status { QUEUED, CONSULTED, COMPLETED }
+    public enum Status { QUEUED, CONSULTED, COMPLETED, IN_IPD }
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)

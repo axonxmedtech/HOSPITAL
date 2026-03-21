@@ -91,6 +91,12 @@ public class Billing {
     @Column(name = "opd_id")
     private Long opdId;
 
+    @Column(name = "ipd_admission_id")
+    private Long ipdAdmissionId;
+
+    @Column(name = "billing_type", nullable = false)
+    private String billingType = "OPD"; // OPD or IPD
+
     /**
      * Consultation fee amount
      * No GST or additional charges in Phase-1

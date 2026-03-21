@@ -33,6 +33,9 @@ public class Bed {
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "current_ipd_admission_id")
+    private Long currentIpdAdmissionId;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

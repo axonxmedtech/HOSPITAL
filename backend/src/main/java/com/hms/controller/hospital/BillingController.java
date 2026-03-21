@@ -1,7 +1,15 @@
 package com.hms.controller.hospital;
 
 import com.hms.entity.Billing;
+import com.hms.entity.BillingItem;
+import com.hms.entity.BillingPayment;
 import com.hms.service.hospital.BillingService;
+
+import java.math.BigDecimal;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -24,6 +32,9 @@ public class BillingController {
 
     @Autowired
     private BillingService billingService;
+
+    @Autowired
+    private com.hms.repository.BillingPaymentRepository billingPaymentRepository;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
@@ -83,6 +94,9 @@ public class BillingController {
     @Autowired
     private com.hms.repository.BillingItemRepository billingItemRepository;
 
+    @Autowired
+    private com.hms.security.SecurityContextHelper securityHelper;
+
     @GetMapping("/{id}/pdf")
     public ResponseEntity<?> downloadReceipt(@PathVariable Long id) {
         try {
@@ -107,5 +121,101 @@ public class BillingController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
+    }
+
+    @GetMapping("/ipd/{ipdId}/bill")
+    public ResponseEntity<?> getIpdBill(@PathVariable Long ipdId) {
+        String role = securityHelper.getCurrentUserRole();
+        if ("DOCTOR".equalsIgnoreCase(role)) {
+            return ResponseEntity.status(403).body("Not allowed");
+        }
+
+        List<Billing> bills = billingRepository.findByIpdAdmissionId(ipdId);
+        if (bills == null || bills.isEmpty()) return ResponseEntity.notFound().build();
+        Billing bill = bills.get(0);
+
+        List<BillingItem> items = billingItemRepository.findByBillingId(bill.getId());
+        List<BillingPayment> payments = billingPaymentRepository.findByBillingId(bill.getId());
+
+        BigDecimal total = bill.getAmount() != null ? bill.getAmount() : BigDecimal.ZERO;
+        for (BillingItem it : items) {
+            if (it.getAmount() != null) total = total.add(it.getAmount());
+        }
+
+        BigDecimal paid = BigDecimal.ZERO;
+        for (BillingPayment pay : payments) {
+            if (pay.getAmount() != null) paid = paid.add(pay.getAmount());
+        }
+
+        Map<String,Object> resp = new HashMap<>();
+        resp.put("billingId", bill.getId());
+        resp.put("totalAmount", total);
+        resp.put("paidAmount", paid);
+        resp.put("balance", total.subtract(paid));
+        java.util.List<Map<String,Object>> list = new java.util.ArrayList<>();
+        for (BillingItem it : items) {
+            Map<String,Object> m = new HashMap<>();
+            m.put("description", it.getDescription());
+            m.put("amount", it.getAmount());
+            list.add(m);
+        }
+        resp.put("items", list);
+
+        return ResponseEntity.ok(resp);
+    }
+
+    public static class PayRequest {
+        public BigDecimal amount;
+        public String mode;
+        public String reference;
+    }
+
+    @PostMapping("/billing/{billingId}/pay")
+    public ResponseEntity<?> payBilling(@PathVariable Long billingId, @RequestBody PayRequest req) {
+        String role = securityHelper.getCurrentUserRole();
+        if (!"RECEPTIONIST".equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
+            return ResponseEntity.status(403).body("Not allowed");
+        }
+
+        Billing bill = billingRepository.findById(billingId).orElse(null);
+        if (bill == null) return ResponseEntity.notFound().build();
+
+        if (req.amount == null || req.amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return ResponseEntity.badRequest().body("Invalid amount");
+        }
+
+        BillingPayment payment = new BillingPayment();
+        payment.setBillingId(billingId);
+        payment.setHospitalId(bill.getHospitalId());
+        payment.setAmount(req.amount);
+        payment.setMode(req.mode);
+        payment.setReference(req.reference);
+        billingPaymentRepository.save(payment);
+
+        // recalc totals
+        List<BillingItem> items = billingItemRepository.findByBillingId(billingId);
+        BigDecimal total = bill.getAmount() != null ? bill.getAmount() : BigDecimal.ZERO;
+        for (BillingItem it : items) if (it.getAmount() != null) total = total.add(it.getAmount());
+
+        List<BillingPayment> payments = billingPaymentRepository.findByBillingId(billingId);
+        BigDecimal paid = BigDecimal.ZERO;
+        for (BillingPayment p : payments) if (p.getAmount() != null) paid = paid.add(p.getAmount());
+
+        if (paid.compareTo(total) >= 0) {
+            bill.setPaymentStatus("PAID");
+            bill.setPaymentMethod(req.mode);
+            bill.setPaymentReference(req.reference);
+        } else {
+            bill.setPaymentStatus("PARTIAL");
+            bill.setPaymentMethod(req.mode);
+        }
+        billingRepository.save(bill);
+
+        Map<String,Object> out = new HashMap<>();
+        out.put("billingId", bill.getId());
+        out.put("totalAmount", total);
+        out.put("paidAmount", paid);
+        out.put("balance", total.subtract(paid));
+        return ResponseEntity.ok(out);
     }
 }

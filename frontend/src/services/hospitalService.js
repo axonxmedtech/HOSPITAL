@@ -342,6 +342,54 @@ const hospitalService = {
         const response = await apiClient.get(`/hospital/doctors/prescription/opd/${opdId}/pdf`, { responseType: 'blob' });
         return response.data;
     },
+    createIpdAdmission: async (payload) => {
+        const response = await apiClient.post('/api/ipd/admit', payload);
+        return response.data;
+    },
+    getIpdAdmissions: async (page = 0, size = 10, search = '') => {
+        const response = await apiClient.get('/api/ipd', { params: { page, size, search } });
+        return response.data;
+    },
+    getMyIpdAdmissions: async () => {
+        const response = await apiClient.get('/api/ipd/my');
+        return response.data;
+    },
+    getAdmittedIpdAdmissions: async () => {
+        const response = await apiClient.get('/api/ipd/admissions');
+        return response.data; // returns array of DTOs
+    },
+    getIpdDetails: async (id) => {
+        const response = await apiClient.get(`/api/ipd/${id}`);
+        return response.data;
+    },
+    planDischarge: async (id, payload) => {
+        const response = await apiClient.post(`/api/ipd/${id}/plan-discharge`, payload);
+        return response.data;
+    },
+    confirmDischarge: async (id) => {
+        const response = await apiClient.post(`/api/ipd/${id}/confirm-discharge`);
+        return response.data;
+    },
+    getIpdBill: async (ipdId) => {
+        const response = await apiClient.get(`/hospital/billing/ipd/${ipdId}/bill`);
+        return response.data;
+    },
+    payBilling: async (billingId, payload) => {
+        const response = await apiClient.post(`/hospital/billing/${billingId}/pay`, payload);
+        return response.data;
+    },
+    addIpdFollowup: async (id, payload) => {
+        const response = await apiClient.post(`/api/ipd/${id}/followup`, payload);
+        return response.data;
+    },
+    addIpdPrescription: async (id, payload) => {
+        const response = await apiClient.post(`/api/ipd/${id}/prescriptions`, payload);
+        return response.data;
+    },
+    stopPrescription: async (prescriptionId) => {
+        const response = await apiClient.put(`/api/ipd/prescriptions/${prescriptionId}/stop`);
+        return response.data;
+    },
 
     /**
      * Get hospital-wide queue for today

@@ -28,4 +28,6 @@ public interface BillingRepository extends JpaRepository<Billing, Long> {
     Page<Billing> searchBillings(Long hospitalId, String search, Pageable pageable);
 
     java.util.Optional<Billing> findTopByPatientIdOrderByCreatedAtDesc(Long patientId);
+
+    java.util.List<Billing> findByIpdAdmissionId(Long ipdAdmissionId);
 }

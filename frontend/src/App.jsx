@@ -6,6 +6,7 @@ import HospitalAdminDashboard from './pages/hospital/HospitalAdminDashboard';
 import DoctorDashboard from './pages/hospital/DoctorDashboard';
 import ReceptionistDashboard from './pages/hospital/ReceptionistDashboard';
 import PharmacyDashboard from './pages/hospital/PharmacyDashboard';
+import IpdDetails from './pages/hospital/IpdDetails';
 import { ToastProvider } from './context/ToastContext';
 import PageMeta from './components/PageMeta';
 
@@ -76,6 +77,15 @@ function App() {
                         element={
                             <PageMeta title="HMS - Pharmacy">
                                 <PharmacyDashboard />
+                            </PageMeta>
+                        }
+                    />
+
+                    <Route
+                        path="/ipd/:id"
+                        element={
+                            <PageMeta title="HMS - IPD Details">
+                                <IpdDetails />
                             </PageMeta>
                         }
                     />

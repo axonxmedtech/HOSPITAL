@@ -94,7 +94,7 @@ const menuIcons = {
     )
 };
 
-const Sidebar = ({ title, tabs, activeTab, onTabChange, footerTitle, footerData, variant = 'plain', isCollapsed = false }) => {
+const Sidebar = ({ title, tabs, activeTab, onTabChange, footerTitle, footerData, variant = 'plain', isCollapsed = false, showOnMobile = false }) => {
     // Professional color variants - only 2 colors: gray-900 and white
     const variants = {
         plain: {
@@ -118,7 +118,7 @@ const Sidebar = ({ title, tabs, activeTab, onTabChange, footerTitle, footerData,
     const theme = variants[variant] || variants.plain;
 
     return (
-        <aside className={`${isCollapsed ? 'w-16' : 'w-72'} bg-white z-20 hidden md:flex flex-col h-full border-r border-gray-200 overflow-hidden transition-all duration-300`}>
+        <aside className={`${isCollapsed ? 'w-16' : 'w-72'} bg-white z-20 ${showOnMobile ? 'flex' : 'hidden md:flex'} flex-col h-full border-r border-gray-200 overflow-hidden transition-all duration-300`}>
             {/* Header Section */}
             <div className={`${isCollapsed ? 'p-3' : 'p-6'} border-b border-gray-200 transition-all duration-300`}>
                 {!isCollapsed && (

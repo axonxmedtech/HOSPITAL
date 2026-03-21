@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 
 /**
  * Prescription - Entity to store medicines prescribed during a visit
@@ -46,11 +47,23 @@ public class Prescription {
     @Column(length = 50)
     private String duration; // e.g., "5 Days"
 
+    @Column(name = "duration_days")
+    private Integer durationDays; // numeric days where applicable
+
+    @Column(name = "start_date")
+    private LocalDate startDate;
+
     @Column(length = 200)
     private String instructions; // e.g., "After food"
 
     @Column(nullable = false)
-    private String status = "PENDING"; // PENDING, DISPENSED
+    private String status = "ACTIVE"; // ACTIVE / STOPPED / COMPLETED
+
+    @Column(name = "type", nullable = false)
+    private String type = "TABLET"; // TABLET / INJECTION / IV_FLUID
+
+    @Column(name = "route", nullable = false)
+    private String route = "ORAL"; // ORAL / IV / IM
 
     @CreationTimestamp
     @Column(nullable = false, updatable = false)

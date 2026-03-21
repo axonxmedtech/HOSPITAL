@@ -52,6 +52,7 @@ const HospitalAdminDashboard = () => {
     const [pharmacists, setPharmacists] = useState([]);
     const [appointments, setAppointments] = useState([]);
     const [billing, setBilling] = useState([]);
+    const [ipds, setIpds] = useState([]);
     const [billingStatus, setBillingStatus] = useState('PENDING');
     const [auditLogs, setAuditLogs] = useState([]);
     const [stats, setStats] = useState({ today: 0, pending: 0, total: 0 });
@@ -295,6 +296,19 @@ const HospitalAdminDashboard = () => {
                         setBilling(data);
                         setTotalPages(1);
                         setTotalElements(data.length);
+                    }
+                } else if (activeTab === 'ipd') {
+                    try {
+                        const data = await hospitalService.getIpdAdmissions(page, pageSize, searchTerm);
+                        const arr = Array.isArray(data) ? data : (data.content || []);
+                        setIpds(arr);
+                        setTotalPages(data.totalPages || 1);
+                        setTotalElements(data.totalElements || arr.length);
+                    } catch (err) {
+                        console.error('Failed to load IPD admissions', err);
+                        setIpds([]);
+                        setTotalPages(1);
+                        setTotalElements(0);
                     }
                 } else if (activeTab === 'audit-logs') {
                     const data = await hospitalService.getAuditLogs(searchTerm);
@@ -829,10 +843,67 @@ const HospitalAdminDashboard = () => {
                                     </div>
                                 )}
                                 {activeTab === 'ipd' && (
-                                    <div className="flex flex-col items-center justify-center p-12 text-center h-96">
-                                        <h2 className="text-2xl font-bold text-gray-900">IPD (In-Patient Department)</h2>
-                                        <p className="text-gray-600 mt-2">IPD Module is currently under development.</p>
-                                    </div>
+                                    ipds.length > 0 ? (
+                                        <div className="p-4 overflow-x-auto">
+                                            <table className="w-full text-sm text-left">
+                                                <thead>
+                                                    <tr>
+                                                        <th className="px-4 py-2">S.No.</th>
+                                                        <th className="px-4 py-2">IPD No.</th>
+                                                        <th className="px-4 py-2">Patient</th>
+                                                        <th className="px-4 py-2">Doctor</th>
+                                                        <th className="px-4 py-2">Ward</th>
+                                                        <th className="px-4 py-2">Bed</th>
+                                                        <th className="px-4 py-2">Admitted</th>
+                                                        <th className="px-4 py-2">Status</th>
+                                                        <th className="px-4 py-2">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {ipds.map((item, idx) => {
+                                                        const ipd = item.ipd || item;
+                                                        const patient = item.patient || ipd.patient || item.patientName;
+                                                        const doctor = item.doctor || ipd.doctor || item.doctorName;
+                                                        const ward = item.ward || ipd.ward;
+                                                        const bed = item.bed || ipd.bed;
+                                                        return (
+                                                            <tr key={idx} className="border-t">
+                                                                <td className="px-4 py-3">{page * pageSize + idx + 1}</td>
+                                                                <td className="px-4 py-3">{ipd.ipdNumber || ipd.id}</td>
+                                                                <td className="px-4 py-3">{patient?.name || patient || '-'}</td>
+                                                                <td className="px-4 py-3">{doctor?.name || doctor || '-'}</td>
+                                                                <td className="px-4 py-3">{ward?.wardName || '-'}</td>
+                                                                <td className="px-4 py-3">{bed?.bedCode || bed?.name || '-'}</td>
+                                                                <td className="px-4 py-3">{ipd.admissionDatetime ? new Date(ipd.admissionDatetime).toLocaleString() : '-'}</td>
+                                                                <td className="px-4 py-3">{ipd.status || 'ACTIVE'}</td>
+                                                                <td className="px-4 py-3">
+                                                                    {(() => {
+                                                                        const theId = ipd.id || ipd.ipdId || (item && item.ipd && item.ipd.id) || null;
+                                                                        return (
+                                                                            <button
+                                                                                className={`px-3 py-1 rounded ${theId ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
+                                                                                onClick={() => { if (theId) window.location.href = `/ipd/${theId}` }}
+                                                                                disabled={!theId}
+                                                                                title={theId ? 'View IPD details' : 'IPD id not available'}
+                                                                            >
+                                                                                View
+                                                                            </button>
+                                                                        );
+                                                                    })()}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    ) : (
+                                        <EmptyState
+                                            icon={null}
+                                            title="No IPD Admissions"
+                                            message="No IPD admissions found for this hospital."
+                                        />
+                                    )
                                 )}
                                 {activeTab === 'audit-logs' && (
                                     auditLogs.length > 0 ? (
