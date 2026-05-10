@@ -55,8 +55,55 @@ public class BillingController {
         mapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         for (com.hms.entity.Billing b : billsPage.getContent()) {
             java.util.List<com.hms.entity.BillingItem> items = billingItemRepository.findByBillingId(b.getId());
+            
+            java.math.BigDecimal totalAmt = java.math.BigDecimal.ZERO;
+            if (items != null && !items.isEmpty()) {
+                for (com.hms.entity.BillingItem it : items) {
+                    if (it.getAmount() != null) {
+                        totalAmt = totalAmt.add(it.getAmount());
+                    }
+                }
+            } else {
+                totalAmt = b.getAmount() != null ? b.getAmount() : java.math.BigDecimal.ZERO;
+                if (totalAmt.compareTo(java.math.BigDecimal.ZERO) == 0 && "IPD".equalsIgnoreCase(b.getBillingType())) {
+                    try {
+                        if (b.getIpdAdmissionId() != null) {
+                            com.hms.entity.IpdAdmission ipd = ipdAdmissionRepository.findById(b.getIpdAdmissionId()).orElse(null);
+                            if (ipd != null && ipd.getWardId() != null) {
+                                com.hms.entity.Ward ward = wardRepository.findById(ipd.getWardId()).orElse(null);
+                                if (ward != null && ward.getBedPrice() != null) {
+                                    totalAmt = totalAmt.add(ward.getBedPrice());
+                                }
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
+
+            java.math.BigDecimal paidAmt = java.math.BigDecimal.ZERO;
+            try {
+                java.util.List<com.hms.entity.BillingPayment> payments = billingPaymentRepository.findByBillingId(b.getId());
+                for (com.hms.entity.BillingPayment pay : payments) {
+                    if (pay.getAmount() != null) {
+                        paidAmt = paidAmt.add(pay.getAmount());
+                    }
+                }
+            } catch (Exception ignored) {}
+
             java.util.Map<String, Object> asMap = mapper.convertValue(b, java.util.Map.class);
             asMap.put("items", items);
+            asMap.put("amount", totalAmt);
+            asMap.put("paidAmount", paidAmt);
+            asMap.put("balance", totalAmt.subtract(paidAmt));
+            // Enrich with patient details
+            try {
+                if (b.getPatientId() != null) {
+                    com.hms.entity.Patient p = patientService.getPatientById(b.getPatientId());
+                    if (p != null) {
+                        asMap.put("patientName", p.getName());
+                    }
+                }
+            } catch (Exception ignored) {}
             mapped.add(asMap);
         }
 
@@ -93,6 +140,12 @@ public class BillingController {
     
     @Autowired
     private com.hms.repository.BillingItemRepository billingItemRepository;
+
+    @Autowired
+    private com.hms.repository.IpdAdmissionRepository ipdAdmissionRepository;
+
+    @Autowired
+    private com.hms.repository.WardRepository wardRepository;
 
     @Autowired
     private com.hms.security.SecurityContextHelper securityHelper;
@@ -137,9 +190,24 @@ public class BillingController {
         List<BillingItem> items = billingItemRepository.findByBillingId(bill.getId());
         List<BillingPayment> payments = billingPaymentRepository.findByBillingId(bill.getId());
 
-        BigDecimal total = bill.getAmount() != null ? bill.getAmount() : BigDecimal.ZERO;
-        for (BillingItem it : items) {
-            if (it.getAmount() != null) total = total.add(it.getAmount());
+        BigDecimal total = BigDecimal.ZERO;
+        if (items != null && !items.isEmpty()) {
+            for (BillingItem it : items) {
+                if (it.getAmount() != null) total = total.add(it.getAmount());
+            }
+        } else {
+            total = bill.getAmount() != null ? bill.getAmount() : BigDecimal.ZERO;
+            if (total.compareTo(BigDecimal.ZERO) == 0) {
+                try {
+                    com.hms.entity.IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElse(null);
+                    if (ipd != null && ipd.getWardId() != null) {
+                        com.hms.entity.Ward ward = wardRepository.findById(ipd.getWardId()).orElse(null);
+                        if (ward != null && ward.getBedPrice() != null) {
+                            total = total.add(ward.getBedPrice());
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
         }
 
         BigDecimal paid = BigDecimal.ZERO;
@@ -170,7 +238,7 @@ public class BillingController {
         public String reference;
     }
 
-    @PostMapping("/billing/{billingId}/pay")
+    @PostMapping("/{billingId}/pay")
     public ResponseEntity<?> payBilling(@PathVariable Long billingId, @RequestBody PayRequest req) {
         String role = securityHelper.getCurrentUserRole();
         if (!"RECEPTIONIST".equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
@@ -194,8 +262,14 @@ public class BillingController {
 
         // recalc totals
         List<BillingItem> items = billingItemRepository.findByBillingId(billingId);
-        BigDecimal total = bill.getAmount() != null ? bill.getAmount() : BigDecimal.ZERO;
-        for (BillingItem it : items) if (it.getAmount() != null) total = total.add(it.getAmount());
+        BigDecimal total = BigDecimal.ZERO;
+        if (items != null && !items.isEmpty()) {
+            for (BillingItem it : items) {
+                if (it.getAmount() != null) total = total.add(it.getAmount());
+            }
+        } else {
+            total = bill.getAmount() != null ? bill.getAmount() : BigDecimal.ZERO;
+        }
 
         List<BillingPayment> payments = billingPaymentRepository.findByBillingId(billingId);
         BigDecimal paid = BigDecimal.ZERO;

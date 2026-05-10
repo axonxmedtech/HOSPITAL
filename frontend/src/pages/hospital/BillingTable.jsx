@@ -36,12 +36,27 @@ const BillingTable = ({ billing, startIndex = 0, pagination, onUpdateStatus, onD
             header: 'Bill No',
             cell: info => <span title="Bill Number">{info.getValue()}</span>,
         }),
-        columnHelper.accessor('patientId', {
-            header: 'Patient ID',
+        columnHelper.accessor('patientName', {
+            header: 'Patient Name',
+            cell: info => info.getValue() || info.row.original.patientId || '-',
         }),
         columnHelper.accessor('amount', {
             header: 'Amount',
-            cell: info => `₹${info.getValue()}`,
+            cell: info => {
+                const total = info.getValue() || 0;
+                const paid = info.row.original.paidAmount || 0;
+                const bal = info.row.original.balance ?? (total - paid);
+                if (paid > 0 && info.row.original.paymentStatus !== 'PAID') {
+                    return (
+                        <div className="text-xs leading-tight">
+                            <div className="text-gray-500">Total: ₹{total}</div>
+                            <div className="text-emerald-600">Paid: ₹{paid}</div>
+                            <div className="font-bold text-red-700 mt-0.5 border-t border-dashed border-gray-200 pt-0.5">Bal: ₹{bal}</div>
+                        </div>
+                    );
+                }
+                return `₹${total}`;
+            },
         }),
         columnHelper.accessor('paymentStatus', {
             header: 'Status',
@@ -61,9 +76,9 @@ const BillingTable = ({ billing, startIndex = 0, pagination, onUpdateStatus, onD
             header: () => <div className="text-right">Actions</div>,
             cell: info => (
                 <div className="flex justify-end gap-2">
-                    {info.row.original.paymentStatus === 'PENDING' && (
+                    {(info.row.original.paymentStatus === 'PENDING' || info.row.original.paymentStatus === 'PARTIAL') && (
                         <button
-                            onClick={() => onUpdateStatus(info.row.original.id, 'PAID')}
+                            onClick={() => onUpdateStatus(info.row.original.id, 'PAID', info.row.original)}
                             className="bg-gray-100 text-gray-700 hover:bg-gray-200 px-3 py-1 rounded-md text-sm font-medium transition-colors"
                         >
                             Mark Paid

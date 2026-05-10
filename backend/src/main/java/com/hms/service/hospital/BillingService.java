@@ -38,6 +38,15 @@ public class BillingService {
     @Autowired
     private SecurityContextHelper securityHelper;
 
+    @Autowired
+    private com.hms.repository.BillingPaymentRepository billingPaymentRepository;
+
+    @Autowired
+    private com.hms.repository.IpdAdmissionRepository ipdAdmissionRepository;
+
+    @Autowired
+    private com.hms.repository.WardRepository wardRepository;
+
     /**
      * Auto-generate a bill for a completed appointment
      */
@@ -113,6 +122,55 @@ public class BillingService {
         }
 
         Billing saved = billingRepository.save(bill);
+
+        // If the bill is marked as PAID, ensure that corresponding BillingPayment is recorded so both sections are synchronized
+        if ("PAID".equalsIgnoreCase(status)) {
+            try {
+                java.util.List<com.hms.entity.BillingItem> items = billingItemRepository.findByBillingId(saved.getId());
+                java.math.BigDecimal totalAmt = java.math.BigDecimal.ZERO;
+                if (items != null && !items.isEmpty()) {
+                    for (com.hms.entity.BillingItem it : items) {
+                        if (it.getAmount() != null) {
+                            totalAmt = totalAmt.add(it.getAmount());
+                        }
+                    }
+                } else {
+                    totalAmt = saved.getAmount() != null ? saved.getAmount() : java.math.BigDecimal.ZERO;
+                    if (totalAmt.compareTo(java.math.BigDecimal.ZERO) == 0 && "IPD".equalsIgnoreCase(saved.getBillingType())) {
+                        if (saved.getIpdAdmissionId() != null) {
+                            com.hms.entity.IpdAdmission ipd = ipdAdmissionRepository.findById(saved.getIpdAdmissionId()).orElse(null);
+                            if (ipd != null && ipd.getWardId() != null) {
+                                com.hms.entity.Ward ward = wardRepository.findById(ipd.getWardId()).orElse(null);
+                                if (ward != null && ward.getBedPrice() != null) {
+                                    totalAmt = totalAmt.add(ward.getBedPrice());
+                                }
+                            }
+                        }
+                    }
+                }
+
+                java.util.List<com.hms.entity.BillingPayment> payments = billingPaymentRepository.findByBillingId(saved.getId());
+                java.math.BigDecimal paidAmt = java.math.BigDecimal.ZERO;
+                for (com.hms.entity.BillingPayment p : payments) {
+                    if (p.getAmount() != null) {
+                        paidAmt = paidAmt.add(p.getAmount());
+                    }
+                }
+
+                if (paidAmt.compareTo(totalAmt) < 0) {
+                    java.math.BigDecimal remaining = totalAmt.subtract(paidAmt);
+                    com.hms.entity.BillingPayment payment = new com.hms.entity.BillingPayment();
+                    payment.setBillingId(saved.getId());
+                    payment.setHospitalId(saved.getHospitalId());
+                    payment.setAmount(remaining);
+                    payment.setMode(paymentMethod != null && !paymentMethod.isEmpty() ? paymentMethod : "CASH");
+                    payment.setReference(paymentReference);
+                    billingPaymentRepository.save(payment);
+                }
+            } catch (Exception e) {
+                logger.warn("Failed to auto-create BillingPayment for PAID status update", e);
+            }
+        }
 
         // If this bill is linked to an OPD and payment marked PAID, mark OPD as COMPLETED
         try {

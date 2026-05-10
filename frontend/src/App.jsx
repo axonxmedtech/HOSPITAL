@@ -9,6 +9,42 @@ import PharmacyDashboard from './pages/hospital/PharmacyDashboard';
 import IpdDetails from './pages/hospital/IpdDetails';
 import { ToastProvider } from './context/ToastContext';
 import PageMeta from './components/PageMeta';
+import authService from './services/authService';
+
+const ProtectedRoute = ({ children, allowedRoles }) => {
+    const user = authService.getCurrentUser();
+    
+    if (!user || !authService.isAuthenticated()) {
+        return <Navigate to="/login" replace />;
+    }
+    
+    if (allowedRoles && !allowedRoles.includes(user.role)) {
+        return <Navigate to="/" replace />;
+    }
+    
+    return children;
+};
+
+const LandingRedirect = () => {
+    const user = authService.getCurrentUser();
+    if (!user) {
+        return <Navigate to="/login" replace />;
+    }
+    switch (user.role) {
+        case 'SUPER_ADMIN':
+            return <Navigate to="/platform/dashboard" replace />;
+        case 'HOSPITAL_ADMIN':
+            return <Navigate to="/hospital/admin" replace />;
+        case 'DOCTOR':
+            return <Navigate to="/hospital/doctor" replace />;
+        case 'RECEPTIONIST':
+            return <Navigate to="/hospital/receptionist" replace />;
+        case 'PHARMACIST':
+            return <Navigate to="/hospital/pharmacy" replace />;
+        default:
+            return <Navigate to="/login" replace />;
+    }
+};
 
 function App() {
     return (
@@ -35,63 +71,75 @@ function App() {
                         }
                     />
 
-                    {/* DASHBOARDS — UNPROTECTED (UI MODE) */}
+                    {/* DASHBOARDS — PROTECTED */}
                     <Route
                         path="/platform/dashboard"
                         element={
-                            <PageMeta title="HMS - Platform Admin">
-                                <PlatformDashboard />
-                            </PageMeta>
+                            <ProtectedRoute allowedRoles={['SUPER_ADMIN']}>
+                                <PageMeta title="HMS - Platform Admin">
+                                    <PlatformDashboard />
+                                </PageMeta>
+                            </ProtectedRoute>
                         }
                     />
 
                     <Route
                         path="/hospital/admin"
                         element={
-                            <PageMeta title="HMS - Hospital Admin">
-                                <HospitalAdminDashboard />
-                            </PageMeta>
+                            <ProtectedRoute allowedRoles={['HOSPITAL_ADMIN']}>
+                                <PageMeta title="HMS - Hospital Admin">
+                                    <HospitalAdminDashboard />
+                                </PageMeta>
+                            </ProtectedRoute>
                         }
                     />
 
                     <Route
                         path="/hospital/doctor"
                         element={
-                            <PageMeta title="HMS - Doctor Portal">
-                                <DoctorDashboard />
-                            </PageMeta>
+                            <ProtectedRoute allowedRoles={['DOCTOR']}>
+                                <PageMeta title="HMS - Doctor Portal">
+                                    <DoctorDashboard />
+                                </PageMeta>
+                            </ProtectedRoute>
                         }
                     />
 
                     <Route
                         path="/hospital/receptionist"
                         element={
-                            <PageMeta title="HMS - Reception">
-                                <ReceptionistDashboard />
-                            </PageMeta>
+                            <ProtectedRoute allowedRoles={['RECEPTIONIST']}>
+                                <PageMeta title="HMS - Reception">
+                                    <ReceptionistDashboard />
+                                </PageMeta>
+                            </ProtectedRoute>
                         }
                     />
 
                     <Route
                         path="/hospital/pharmacy"
                         element={
-                            <PageMeta title="HMS - Pharmacy">
-                                <PharmacyDashboard />
-                            </PageMeta>
+                            <ProtectedRoute allowedRoles={['PHARMACIST']}>
+                                <PageMeta title="HMS - Pharmacy">
+                                    <PharmacyDashboard />
+                                </PageMeta>
+                            </ProtectedRoute>
                         }
                     />
 
                     <Route
                         path="/ipd/:id"
                         element={
-                            <PageMeta title="HMS - IPD Details">
-                                <IpdDetails />
-                            </PageMeta>
+                            <ProtectedRoute allowedRoles={['RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN']}>
+                                <PageMeta title="HMS - IPD Details">
+                                    <IpdDetails />
+                                </PageMeta>
+                            </ProtectedRoute>
                         }
                     />
 
-                    {/* Default landing (pick one for UI work) */}
-                    <Route path="/" element={<Navigate to="/hospital/admin" replace />} />
+                    {/* Default landing */}
+                    <Route path="/" element={<LandingRedirect />} />
 
                     {/* Catch-all */}
                     <Route path="*" element={<Navigate to="/" replace />} />

@@ -655,7 +655,7 @@ const HospitalAdminDashboard = () => {
                             addLabel={activeTab === 'fees' ? '' : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`}
                             filter={activeTab === 'billing' ? (
                                 <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
-                                    {['PENDING', 'PAID'].map(status => (
+                                    {['PENDING', 'PAID', 'PARTIAL'].map(status => (
                                         <button
                                             key={status}
                                             onClick={() => setBillingStatus(status)}

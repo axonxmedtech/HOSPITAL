@@ -133,6 +133,18 @@ const IpdDetails = () => {
         }
     };
 
+    const openBillModal = async () => {
+        setBillModal({ isOpen: true, loading: true, bill: null });
+        try {
+            const b = await hospitalService.getIpdBill(id);
+            setBillModal({ isOpen: true, loading: false, bill: b });
+        } catch (err) {
+            console.error('Failed to load bill', err);
+            toastError('Failed to load bill');
+            setBillModal({ isOpen: false, loading: false, bill: null });
+        }
+    };
+
     return (
         <div className="p-6">
             <div className="mb-3">
@@ -328,17 +340,8 @@ const IpdDetails = () => {
                                 <div className="text-sm text-gray-500">No billing records found.</div>
                             )}
                             <div className="mt-3 flex gap-2">
-                                <button className="px-3 py-1 bg-indigo-600 text-white rounded" onClick={async () => {
-                                    setBillModal({ isOpen: true, loading: true, bill: null });
-                                    try {
-                                        const b = await hospitalService.getIpdBill(id);
-                                        setBillModal({ isOpen: true, loading: false, bill: b });
-                                    } catch (err) {
-                                        toastError('Failed to load bill');
-                                        setBillModal({ isOpen: false, loading: false, bill: null });
-                                    }
-                                }}>View Bill</button>
-                                <button className="px-3 py-1 bg-green-600 text-white rounded" onClick={() => setBillModal({ ...billModal, isOpen: true })}>Take Payment</button>
+                                <button className="px-3 py-1 bg-indigo-600 text-white rounded" onClick={openBillModal}>View Bill</button>
+                                <button className="px-3 py-1 bg-green-600 text-white rounded" onClick={openBillModal}>Take Payment</button>
                                 <button className="px-3 py-1 bg-gray-600 text-white rounded" onClick={() => window.print()}>Print Bill</button>
                             </div>
                         </div>
@@ -449,7 +452,12 @@ const IpdDetails = () => {
                                 </div>
                             </div>
                         ) : (
-                            <div className="text-sm text-gray-500">No bill available.</div>
+                            <div>
+                                <div className="text-sm text-gray-500 mb-4">No bill available.</div>
+                                <div className="flex justify-end">
+                                    <button onClick={() => setBillModal({ isOpen: false, loading: false, bill: null })} className="px-3 py-1 bg-gray-100 rounded">Close</button>
+                                </div>
+                            </div>
                         )}
                     </div>
                 </div>

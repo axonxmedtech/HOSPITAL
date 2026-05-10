@@ -13,9 +13,11 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     // Normalize patient prop when modal opens — don't mutate props
     // We'll compute a patient identifier (publicId or numeric id) when fetching details
 
+    const resolvedPatientId = appointment?.patientId || patient?.publicId || patient?.id || (opd && opd.patient && (opd.patient.publicId || opd.patient.id)) || null;
+
     const [formData, setFormData] = useState({
         appointmentId: appointment?.id || null,
-        patientId: patient?.publicId || patient?.id,
+        patientId: resolvedPatientId,
         opdId: opd?.id || null,
         symptoms: '',
         diagnosis: '',
@@ -31,22 +33,22 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     const LAB_OPTIONS = ["CBC", "LFT", "RFT", "RBS", "Lipid Profile", "TSH", "HbA1c", "Urine Routine"];
 
     // Update form data when modal opens or patient changes
-    // Update form data when modal opens or patient changes
     useEffect(() => {
-        if (isOpen && patient) {
+        const currentPid = appointment?.patientId || patient?.publicId || patient?.id || (opd && opd.patient && (opd.patient.publicId || opd.patient.id)) || null;
+        if (isOpen && currentPid) {
             setFormData(prev => ({
                 ...prev,
                 appointmentId: appointment?.id || null,
-                patientId: patient?.publicId || patient?.id,
+                patientId: currentPid,
                 opdId: opd?.id || prev.opdId,
-                symptoms: prev.patientId === (patient?.publicId || patient?.id) ? prev.symptoms : '',
-                diagnosis: prev.patientId === (patient?.publicId || patient?.id) ? prev.diagnosis : '',
-                treatmentNotes: prev.patientId === (patient?.publicId || patient?.id) ? prev.treatmentNotes : '',
-                followUpDate: prev.patientId === (patient?.publicId || patient?.id) ? prev.followUpDate : '',
-                prescription: prev.patientId === (patient?.publicId || patient?.id) ? prev.prescription : []
+                symptoms: prev.patientId === currentPid ? prev.symptoms : '',
+                diagnosis: prev.patientId === currentPid ? prev.diagnosis : '',
+                treatmentNotes: prev.patientId === currentPid ? prev.treatmentNotes : '',
+                followUpDate: prev.patientId === currentPid ? prev.followUpDate : '',
+                prescription: prev.patientId === currentPid ? prev.prescription : []
             }));
         }
-    }, [isOpen, patient?.id, patient?.publicId, appointment?.id, opd?.id]);
+    }, [isOpen, patient?.id, patient?.publicId, appointment?.id, appointment?.patientId, opd?.id]);
 
     // Default medicine added row
     const [newMedicine, setNewMedicine] = useState({

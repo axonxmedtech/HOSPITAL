@@ -312,10 +312,15 @@ const ReceptionistDashboard = () => {
         }
     };
 
-    const handleBillStatus = async (id, status) => {
+    const handleBillStatus = async (id, status, billObj = null) => {
         // Open payment modal when marking PAID from receptionist
         if (status === 'PAID') {
-            setPaymentModal({ isOpen: true, billId: id });
+            setPaymentModal({ 
+                isOpen: true, 
+                billId: id,
+                amount: billObj?.balance ?? billObj?.amount ?? null,
+                patientName: billObj?.patientName || ''
+            });
             return;
         }
         try {
@@ -584,7 +589,7 @@ const ReceptionistDashboard = () => {
                             </div>
                         ) : activeTab === 'billing' ? (
                             <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
-                                {['PENDING', 'PAID'].map(status => (
+                                {['PENDING', 'PAID', 'PARTIAL'].map(status => (
                                     <button
                                         key={status}
                                         onClick={() => setBillingStatus(status)}
@@ -665,9 +670,9 @@ const ReceptionistDashboard = () => {
                                                         <td className="px-4 py-3">
                                                             <div className="flex items-center gap-2">
                                                                 <button onClick={() => handlePrintOpd(o)} className="px-3 py-1 bg-gray-900 text-white rounded">Print</button>
-                                                                                                {user?.role === 'RECEPTIONIST' && (o.status === 'CONSULTED' || o.status === 'COMPLETED') && !(o.status === 'IN_IPD' || o.ipd || o.patient?.currentIpdId || o.patient?.isAdmitted) && (
-                                                                                                    <button onClick={() => { setIpdOpdForAdmit(o); setIsIpdAdmitOpen(true); }} className="px-3 py-1 bg-green-600 text-white rounded">Admit to IPD</button>
-                                                                                                )}
+                                                                {user?.role === 'RECEPTIONIST' && o.status !== 'IN_IPD' && (
+                                                                    <button onClick={() => { setIpdOpdForAdmit(o); setIsIpdAdmitOpen(true); }} className="px-3 py-1 bg-green-600 text-white rounded">Admit to IPD</button>
+                                                                )}
                                                             </div>
                                                         </td>
                                                     </tr>

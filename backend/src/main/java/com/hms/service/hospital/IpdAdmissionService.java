@@ -58,6 +58,9 @@ public class IpdAdmissionService {
     private com.hms.repository.BillingPaymentRepository billingPaymentRepository;
 
     @Autowired
+    private com.hms.repository.AppointmentRepository appointmentRepository;
+
+    @Autowired
     private SecurityContextHelper securityHelper;
 
     public IpdAdmission admitFromOpd(Long opdId, Long wardId, Long bedId, String admissionType, String primaryDiagnosis) {
@@ -105,15 +108,47 @@ public class IpdAdmissionService {
         opdRepository.save(opd);
 
         // Create initial IPD billing (empty / started)
+        java.math.BigDecimal bedPrice = java.math.BigDecimal.ZERO;
+        if (wardId != null) {
+            java.util.Optional<com.hms.entity.Ward> wardOpt = wardRepository.findById(wardId);
+            if (wardOpt.isPresent()) {
+                java.math.BigDecimal bp = wardOpt.get().getBedPrice();
+                if (bp != null) {
+                    bedPrice = bp;
+                }
+            }
+        }
+
+        Long appointmentId = null;
+        try {
+            java.util.List<com.hms.entity.Appointment> appointments = appointmentRepository.findByPatientIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(saved.getPatientId(), hospitalId);
+            if (appointments != null && !appointments.isEmpty()) {
+                appointmentId = appointments.get(0).getId();
+            }
+        } catch (Exception ignored) {}
+
         Billing bill = new Billing();
         bill.setHospitalId(hospitalId);
         bill.setPatientId(saved.getPatientId());
         bill.setDoctorId(saved.getDoctorId());
         bill.setIpdAdmissionId(saved.getId());
+        bill.setOpdId(opd.getId());
+        bill.setAppointmentId(appointmentId);
         bill.setBillingType("IPD");
-        bill.setAmount(new BigDecimal("0.00"));
+        bill.setAmount(bedPrice);
+        bill.setDescription("Bed Price");
         bill.setPaymentStatus("PENDING");
-        billingRepository.save(bill);
+        Billing savedBill = billingRepository.save(bill);
+
+        // Create billing item for bed price
+        if (bedPrice != null) {
+            com.hms.entity.BillingItem item = new com.hms.entity.BillingItem();
+            item.setBillingId(savedBill.getId());
+            item.setHospitalId(hospitalId);
+            item.setDescription("Bed Price");
+            item.setAmount(bedPrice);
+            billingItemRepository.save(item);
+        }
 
         logger.info("Created IPD admission {} for OPD {}", saved.getIpdNumber(), opdId);
         return saved;
@@ -151,7 +186,7 @@ public class IpdAdmissionService {
         Long doctorId = doctor.getId();
 
         org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 100, org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "admissionDatetime"));
-        org.springframework.data.domain.Page<IpdAdmission> p = ipdAdmissionRepository.findByHospitalIdAndDoctorId(hospitalId, doctorId, pageable);
+        org.springframework.data.domain.Page<IpdAdmission> p = ipdAdmissionRepository.findByHospitalIdAndDoctorIdAndStatus(hospitalId, doctorId, "ADMITTED", pageable);
 
         java.util.List<java.util.Map<String,Object>> rows = new java.util.ArrayList<>();
         for (IpdAdmission ipd : p.getContent()) {
@@ -186,7 +221,7 @@ public class IpdAdmissionService {
             Long doctorId = doctor.getId();
             admissions = ipdAdmissionRepository.findByHospitalIdAndDoctorIdAndStatus(hospitalId, doctorId, "ADMITTED");
         } else if ("RECEPTIONIST".equalsIgnoreCase(role) || "HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
-            admissions = ipdAdmissionRepository.findByHospitalIdAndStatus(hospitalId, "ADMITTED");
+            admissions = ipdAdmissionRepository.findByHospitalIdAndStatusIn(hospitalId, java.util.Arrays.asList("ADMITTED", "DISCHARGE_PLANNED"));
         } else {
             throw new org.springframework.security.access.AccessDeniedException("Not allowed");
         }
@@ -314,8 +349,28 @@ public class IpdAdmissionService {
             java.math.BigDecimal total = java.math.BigDecimal.ZERO;
             java.math.BigDecimal paid = java.math.BigDecimal.ZERO;
             for (Billing b : bills) {
-                if (b.getAmount() != null) total = total.add(b.getAmount());
-                if ("PAID".equalsIgnoreCase(b.getPaymentStatus()) && b.getAmount() != null) paid = paid.add(b.getAmount());
+                // Add BillingItems for this bill
+                java.util.List<com.hms.entity.BillingItem> items = billingItemRepository.findByBillingId(b.getId());
+                if (items != null && !items.isEmpty()) {
+                    for (com.hms.entity.BillingItem it : items) {
+                        if (it.getAmount() != null) {
+                            total = total.add(it.getAmount());
+                        }
+                    }
+                } else {
+                    java.math.BigDecimal bAmt = b.getAmount() != null ? b.getAmount() : java.math.BigDecimal.ZERO;
+                    total = total.add(bAmt);
+                }
+
+                // Sum all BillingPayments made for this bill
+                java.util.List<com.hms.entity.BillingPayment> payments = billingPaymentRepository.findByBillingId(b.getId());
+                if (payments != null) {
+                    for (com.hms.entity.BillingPayment pay : payments) {
+                        if (pay.getAmount() != null) {
+                            paid = paid.add(pay.getAmount());
+                        }
+                    }
+                }
             }
             com.hms.dto.IpdAdmissionDetailsDTO.BillingDTO bd = new com.hms.dto.IpdAdmissionDetailsDTO.BillingDTO();
             bd.totalAmount = total;
@@ -487,14 +542,19 @@ public class IpdAdmissionService {
         java.math.BigDecimal paid = java.math.BigDecimal.ZERO;
         if (bills != null) {
             for (Billing b : bills) {
-                if (b.getAmount() != null) total = total.add(b.getAmount());
                 // include billing items
                 try {
                     java.util.List<com.hms.entity.BillingItem> items = billingItemRepository.findByBillingId(b.getId());
-                    for (com.hms.entity.BillingItem it : items) {
-                        if (it.getAmount() != null) total = total.add(it.getAmount());
+                    if (items != null && !items.isEmpty()) {
+                        for (com.hms.entity.BillingItem it : items) {
+                            if (it.getAmount() != null) total = total.add(it.getAmount());
+                        }
+                    } else {
+                        if (b.getAmount() != null) total = total.add(b.getAmount());
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                    if (b.getAmount() != null) total = total.add(b.getAmount());
+                }
 
                 // payments
                 try {
