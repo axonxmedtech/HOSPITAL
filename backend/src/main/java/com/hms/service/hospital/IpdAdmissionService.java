@@ -61,6 +61,9 @@ public class IpdAdmissionService {
     private com.hms.repository.AppointmentRepository appointmentRepository;
 
     @Autowired
+    private com.hms.repository.HospitalRepository hospitalRepository;
+
+    @Autowired
     private SecurityContextHelper securityHelper;
 
     public IpdAdmission admitFromOpd(Long opdId, Long wardId, Long bedId, String admissionType, String primaryDiagnosis) {
@@ -412,6 +415,30 @@ public class IpdAdmissionService {
         mr.setTreatmentNotes(notes);
 
         com.hms.entity.MedicalRecord saved = medicalRecordRepository.save(mr);
+
+        try {
+            com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId).orElse(null);
+            if (hospital != null && hospital.getConsultationFee() != null && hospital.getConsultationFee().compareTo(BigDecimal.ZERO) > 0) {
+                java.util.List<Billing> bills = billingRepository.findByIpdAdmissionId(ipdId);
+                Billing bill = (bills != null && !bills.isEmpty()) ? bills.get(0) : null;
+                if (bill != null) {
+                    com.hms.entity.BillingItem item = new com.hms.entity.BillingItem();
+                    item.setBillingId(bill.getId());
+                    item.setHospitalId(bill.getHospitalId());
+                    item.setDescription("Doctor Consultation Fee (IPD Follow-up)");
+                    item.setAmount(hospital.getConsultationFee());
+                    billingItemRepository.save(item);
+
+                    // Also update the parent billing amount to keep them in sync
+                    java.math.BigDecimal currentAmt = bill.getAmount() != null ? bill.getAmount() : java.math.BigDecimal.ZERO;
+                    bill.setAmount(currentAmt.add(hospital.getConsultationFee()));
+                    billingRepository.save(bill);
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to auto-add consultation fee billing item for follow-up", e);
+        }
+
         return saved;
     }
 
@@ -466,15 +493,34 @@ public class IpdAdmissionService {
             if (req.getMedicineId() != null) {
                 unitPrice = medicineRepository.findById(req.getMedicineId()).map(m -> m.getUnitPrice()).orElse(null);
             }
-            // If unitPrice available and duration provided, calculate amount
+            // If unitPrice available and duration provided, calculate amount intelligently
             if (bill != null && unitPrice != null && req.getDurationDays() != null && req.getDurationDays() > 0) {
-                java.math.BigDecimal amt = java.math.BigDecimal.valueOf(unitPrice).multiply(java.math.BigDecimal.valueOf(req.getDurationDays()));
+                double multiplier = 1.0;
+                if (req.getFrequency() != null && !req.getFrequency().isEmpty()) {
+                    try {
+                        multiplier = java.util.Arrays.stream(req.getFrequency().split("-"))
+                            .map(String::trim)
+                            .filter(s -> !s.isEmpty() && s.matches("\\d+(\\.\\d+)?"))
+                            .mapToDouble(Double::parseDouble)
+                            .sum();
+                        if (multiplier <= 0) multiplier = 1.0;
+                    } catch (Exception ignored) {}
+                }
+                java.math.BigDecimal totalQty = java.math.BigDecimal.valueOf(multiplier).multiply(java.math.BigDecimal.valueOf(req.getDurationDays()));
+                java.math.BigDecimal amt = java.math.BigDecimal.valueOf(unitPrice).multiply(totalQty);
+
                 com.hms.entity.BillingItem item = new com.hms.entity.BillingItem();
                 item.setBillingId(bill.getId());
                 item.setHospitalId(bill.getHospitalId());
-                item.setDescription(medicineName + (req.getDurationDays() != null ? " (" + req.getDurationDays() + " days)" : ""));
+                // Set description to just medicine name as requested by user
+                item.setDescription(medicineName);
                 item.setAmount(amt);
                 billingItemRepository.save(item);
+
+                // Also update the total amount on parent billing entry
+                java.math.BigDecimal currentAmt = bill.getAmount() != null ? bill.getAmount() : java.math.BigDecimal.ZERO;
+                bill.setAmount(currentAmt.add(amt));
+                billingRepository.save(bill);
             }
         } catch (Exception ex) {
             // Don't block prescription save on billing failures
@@ -608,5 +654,77 @@ public class IpdAdmissionService {
         ipdAdmissionRepository.save(ipd);
 
         return ipd;
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public IpdAdmission changeBed(Long ipdId, Long newBedId) {
+        String role = securityHelper.getCurrentUserRole();
+        if (!"RECEPTIONIST".equalsIgnoreCase(role)) {
+            throw new org.springframework.security.access.AccessDeniedException("Only receptionists can change beds");
+        }
+
+        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new RuntimeException("IPD not found"));
+        
+        if (!"ADMITTED".equalsIgnoreCase(ipd.getStatus()) && !"DISCHARGE_PLANNED".equalsIgnoreCase(ipd.getStatus())) {
+            throw new RuntimeException("Bed change allowed only for active admissions");
+        }
+
+        Bed newBed = bedRepository.findById(newBedId).orElseThrow(() -> new RuntimeException("New bed not found"));
+        if ("occupied".equalsIgnoreCase(newBed.getStatus()) && !newBedId.equals(ipd.getBedId())) {
+             throw new RuntimeException("Requested bed is already occupied");
+        }
+
+        Long oldBedId = ipd.getBedId();
+        if (oldBedId != null && !oldBedId.equals(newBedId)) {
+            Bed oldBed = bedRepository.findById(oldBedId).orElse(null);
+            if (oldBed != null) {
+                oldBed.setStatus("available");
+                oldBed.setCurrentIpdAdmissionId(null);
+                bedRepository.save(oldBed);
+            }
+        }
+
+        newBed.setStatus("occupied");
+        newBed.setCurrentIpdAdmissionId(ipd.getId());
+        bedRepository.save(newBed);
+
+        // Calculate price difference if new ward is more expensive
+        try {
+            java.math.BigDecimal oldRate = java.math.BigDecimal.ZERO;
+            if (ipd.getWardId() != null) {
+                com.hms.entity.Ward oldW = wardRepository.findById(ipd.getWardId()).orElse(null);
+                if (oldW != null && oldW.getBedPrice() != null) oldRate = oldW.getBedPrice();
+            }
+            
+            java.math.BigDecimal newRate = java.math.BigDecimal.ZERO;
+            com.hms.entity.Ward newW = wardRepository.findById(newBed.getWardId()).orElse(null);
+            if (newW != null && newW.getBedPrice() != null) newRate = newW.getBedPrice();
+
+            java.math.BigDecimal diff = newRate.subtract(oldRate);
+            // If positive difference (upgrade), add to bill immediately
+            if (diff.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                java.util.List<Billing> bills = billingRepository.findByIpdAdmissionId(ipd.getId());
+                Billing bill = (bills != null && !bills.isEmpty()) ? bills.get(0) : null;
+                if (bill != null) {
+                    com.hms.entity.BillingItem item = new com.hms.entity.BillingItem();
+                    item.setBillingId(bill.getId());
+                    item.setHospitalId(bill.getHospitalId());
+                    item.setDescription("Bed Upgrade Price Adjustment");
+                    item.setAmount(diff);
+                    billingItemRepository.save(item);
+
+                    java.math.BigDecimal cur = bill.getAmount() != null ? bill.getAmount() : java.math.BigDecimal.ZERO;
+                    bill.setAmount(cur.add(diff));
+                    billingRepository.save(bill);
+                }
+            }
+        } catch (Exception ex) {
+            // Log but don't hard crash simple bed transfer on side-billing logic
+        }
+
+        ipd.setBedId(newBed.getBedId());
+        ipd.setWardId(newBed.getWardId());
+        
+        return ipdAdmissionRepository.save(ipd);
     }
 }

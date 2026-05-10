@@ -390,6 +390,10 @@ const hospitalService = {
         const response = await apiClient.put(`/api/ipd/prescriptions/${prescriptionId}/stop`);
         return response.data;
     },
+    changeBed: async (ipdId, newBedId) => {
+        const response = await apiClient.put(`/api/ipd/${ipdId}/change-bed?newBedId=${newBedId}`);
+        return response.data;
+    },
 
     /**
      * Get hospital-wide queue for today

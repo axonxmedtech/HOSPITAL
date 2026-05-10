@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import hospitalService from '../../services/hospitalService';
 import authService from '../../services/authService';
+import wardService from '../../services/wardService';
 import { useToast } from '../../context/ToastContext';
 import PageHeader from '../../components/PageHeader';
 import EmptyState from '../../components/EmptyState';
@@ -18,9 +19,60 @@ const IpdDetails = () => {
 
     const [followupModal, setFollowupModal] = useState({ isOpen: false, diagnosis: '', notes: '', saving: false });
     const [dischargeModal, setDischargeModal] = useState({ isOpen: false, finalDiagnosis: '', treatmentGiven: '', dischargeNotes: '', followUpDate: '', saving: false });
-    const [medicineModal, setMedicineModal] = useState({ isOpen: false, medicineName: '', type: 'TABLET', route: 'ORAL', dose: '', frequency: '', durationDays: 0, startDate: '', saving: false });
+    const [medicineModal, setMedicineModal] = useState({ isOpen: false, medicineId: null, medicineName: '', type: 'TABLET', route: 'ORAL', dose: '', frequency: '', durationDays: 0, startDate: '', saving: false });
+    const [medSearchResults, setMedSearchResults] = useState([]);
+
+    useEffect(() => {
+        const q = medicineModal.medicineName || '';
+        // Only search if query string is non-null and length >= 3, AND we don't currently have an active locked medicineId (meaning doctor is typing new)
+        if (q.length >= 3 && !medicineModal.medicineId) {
+            const delay = setTimeout(async () => {
+                try {
+                    const resp = await hospitalService.searchMedicines(q);
+                    setMedSearchResults(resp || []);
+                } catch (e) { console.error(e); }
+            }, 400);
+            return () => clearTimeout(delay);
+        } else {
+            setMedSearchResults([]);
+        }
+    }, [medicineModal.medicineName, medicineModal.medicineId]);
     const [billModal, setBillModal] = useState({ isOpen: false, loading: false, bill: null });
     const [payment, setPayment] = useState({ amount: '', mode: 'CASH', saving: false });
+    const [bedModal, setBedModal] = useState({ isOpen: false, wards: [], selectedWard: '', beds: [], selectedBed: '', saving: false });
+
+    useEffect(() => {
+        if (bedModal.isOpen && bedModal.wards.length === 0) {
+            wardService.getWards().then(w => setBedModal(p => ({ ...p, wards: w || [] }))).catch(e => console.error(e));
+        }
+    }, [bedModal.isOpen, bedModal.wards.length]);
+
+    useEffect(() => {
+        if (bedModal.isOpen && bedModal.selectedWard) {
+            wardService.getAvailableBeds(bedModal.selectedWard).then(b => setBedModal(p => ({ ...p, beds: b || [] }))).catch(e => console.error(e));
+        } else {
+            setBedModal(p => ({ ...p, beds: [] }));
+        }
+    }, [bedModal.selectedWard, bedModal.isOpen]);
+
+    const handleBedChange = async () => {
+        if (!bedModal.selectedBed) return toastError('Please select a new bed');
+        setBedModal(p => ({ ...p, saving: true }));
+        try {
+            await hospitalService.changeBed(id, bedModal.selectedBed);
+            success('Bed changed successfully');
+            setBedModal(p => ({ ...p, isOpen: false, selectedBed: '', selectedWard: '' }));
+            // Re-fetch latest detail
+            setLoading(true);
+            const resp = await hospitalService.getIpdDetails(id);
+            setData(resp);
+        } catch (e) {
+            toastError(e.response?.data || 'Failed to change bed');
+        } finally {
+            setBedModal(p => ({ ...p, saving: false }));
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
         const load = async () => {
@@ -168,7 +220,12 @@ const IpdDetails = () => {
                         <div><strong>Type:</strong> {data.admission?.admissionType || '-'}</div>
                         <div><strong>Doctor:</strong> {data.admission?.doctor || '-'}</div>
                         <div><strong>Diagnosis:</strong> {data.admission?.primaryDiagnosis || '-'}</div>
-                        <div><strong>Ward / Bed:</strong> {data.admission?.ward || '-'} / {data.admission?.bed || '-'}</div>
+                        <div>
+                            <strong>Ward / Bed:</strong> {data.admission?.ward || '-'} / {data.admission?.bed || '-'}
+                            {isReceptionist && (data.status === 'ADMITTED' || data.status === 'DISCHARGE_PLANNED') && (
+                                <button onClick={() => setBedModal(p => ({ ...p, isOpen: true, selectedWard: '', selectedBed: '' }))} className="ml-2 px-1.5 py-0.5 bg-gray-100 hover:bg-blue-50 border border-gray-300 text-blue-700 text-[10px] font-bold uppercase rounded shadow-sm transition-colors">Change</button>
+                            )}
+                        </div>
                         <div><strong>Status:</strong> {data.status || '-'}</div>
                     </div>
 
@@ -220,9 +277,45 @@ const IpdDetails = () => {
                                 <div className="bg-white rounded-lg w-full max-w-lg p-6">
                                     <h3 className="text-lg font-semibold mb-3">Add Medicine</h3>
                                     <div className="grid grid-cols-2 gap-3">
-                                        <div>
+                                        <div className="relative">
                                             <label className="block text-sm font-medium mb-1">Medicine Name</label>
-                                            <input value={medicineModal.medicineName} onChange={e => setMedicineModal(prev => ({ ...prev, medicineName: e.target.value }))} className="w-full border p-2 rounded" />
+                                            <input 
+                                                value={medicineModal.medicineName} 
+                                                onChange={e => setMedicineModal(prev => ({ ...prev, medicineName: e.target.value, medicineId: null }))} 
+                                                className="w-full border p-2 rounded" 
+                                                placeholder="Type min 3 letters..."
+                                            />
+                                            {medSearchResults.length > 0 && (
+                                                <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-lg max-h-48 overflow-y-auto">
+                                                    {medSearchResults.map(m => (
+                                                        <div 
+                                                            key={m.id} 
+                                                            onClick={() => {
+                                                                // Extract number from duration string e.g. "5 Days"
+                                                                let parsedDur = 0;
+                                                                if (m.defaultDuration) {
+                                                                    const match = m.defaultDuration.match(/\d+/);
+                                                                    if (match) parsedDur = parseInt(match[0]);
+                                                                }
+                                                                setMedicineModal(prev => ({
+                                                                    ...prev,
+                                                                    medicineId: m.id,
+                                                                    medicineName: m.name,
+                                                                    type: m.type?.toUpperCase() || 'TABLET',
+                                                                    dose: m.defaultDosage || '',
+                                                                    frequency: m.defaultFrequency || '',
+                                                                    durationDays: parsedDur || prev.durationDays
+                                                                }));
+                                                                setMedSearchResults([]);
+                                                            }}
+                                                            className="p-2 hover:bg-blue-50 cursor-pointer border-b text-sm flex justify-between items-center"
+                                                        >
+                                                            <span className="font-medium text-gray-800">{m.name}</span>
+                                                            <span className="text-xs text-gray-500">{m.type}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium mb-1">Type</label>
@@ -264,7 +357,7 @@ const IpdDetails = () => {
                                             setMedicineModal(prev => ({ ...prev, saving: true }));
                                             try {
                                                 const payload = {
-                                                    medicineId: null,
+                                                    medicineId: medicineModal.medicineId,
                                                     medicineName: medicineModal.medicineName,
                                                     type: medicineModal.type,
                                                     route: medicineModal.route,
@@ -387,6 +480,55 @@ const IpdDetails = () => {
                         <div className="flex justify-end gap-3">
                             <button onClick={() => setDischargeModal({ isOpen: false, finalDiagnosis: '', treatmentGiven: '', dischargeNotes: '', followUpDate: '', saving: false })} className="px-3 py-1 bg-gray-100 rounded">Cancel</button>
                             <button onClick={savePlanDischarge} disabled={dischargeModal.saving} className="px-3 py-1 bg-yellow-600 text-white rounded">{dischargeModal.saving ? 'Saving...' : 'Plan Discharge'}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Bed Change Modal */}
+            {bedModal.isOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-lg w-full max-w-md p-6 shadow-xl">
+                        <h3 className="text-lg font-bold text-gray-900 mb-4">Change Assigned Bed</h3>
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Select Ward</label>
+                            <select 
+                                className="w-full border border-gray-300 p-2 rounded"
+                                value={bedModal.selectedWard}
+                                onChange={e => setBedModal(p => ({ ...p, selectedWard: e.target.value, selectedBed: '' }))}
+                            >
+                                <option value="">-- Choose Ward --</option>
+                                {bedModal.wards.map(w => (
+                                    <option key={w.wardId} value={w.wardId}>{w.wardName} (₹{w.bedPrice}/day)</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="mb-5">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Available Beds</label>
+                            <select 
+                                className="w-full border border-gray-300 p-2 rounded"
+                                value={bedModal.selectedBed}
+                                onChange={e => setBedModal(p => ({ ...p, selectedBed: e.target.value }))}
+                                disabled={!bedModal.selectedWard}
+                            >
+                                <option value="">-- Select Bed --</option>
+                                {bedModal.beds.map(b => (
+                                    <option key={b.bedId} value={b.bedId}>{b.bedCode}</option>
+                                ))}
+                            </select>
+                            {bedModal.selectedWard && bedModal.beds.length === 0 && (
+                                <p className="text-xs text-red-500 mt-1">No available beds in this ward.</p>
+                            )}
+                        </div>
+                        <div className="flex justify-end gap-3">
+                            <button onClick={() => setBedModal(p => ({ ...p, isOpen: false }))} className="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded font-medium">Cancel</button>
+                            <button 
+                                onClick={handleBedChange} 
+                                disabled={!bedModal.selectedBed || bedModal.saving} 
+                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium disabled:opacity-50"
+                            >
+                                {bedModal.saving ? 'Saving...' : 'Update Bed'}
+                            </button>
                         </div>
                     </div>
                 </div>
