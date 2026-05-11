@@ -1,0 +1,32 @@
+# Local secrets
+.env
+.env.local
+*.local
+
+# OS Specific
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Artifacts
+dist/
+target/
+build/
+out/
+
+# IDE Specific
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# frontend
+frontend/.env
+frontend/.env.local
+
+# backend
+backend/.env
+backend/.env.local
+
