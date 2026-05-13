@@ -72,41 +72,70 @@ public class PharmacyController {
     public ResponseEntity<?> getPendingPrescriptions() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
-        // Fetch all prescriptions with status 'PENDING'
-        // Note: You might need to add a custom query to PrescriptionRepository for this
-        // For now, assuming we filter list (not efficient for scale, but okay for V1)
-        List<Prescription> pending = prescriptionRepository.findAll().stream()
-                .filter(p -> p.getHospitalId().equals(hospitalId) && "PENDING".equals(p.getStatus()))
-                .collect(Collectors.toList());
+        // 1. Optimized fetch strictly targeting Active state under the hospital_id
+        List<Prescription> active = prescriptionRepository.findByHospitalIdAndStatus(hospitalId, "ACTIVE");
 
-        // Enrich with Patient/Doctor names?
-        // For V1, let's return the raw list plus maybe fetch details
-        // Or better, let's create a DTO structure on the fly
+        if (active.isEmpty()) {
+            return ResponseEntity.ok(new java.util.ArrayList<>());
+        }
 
-        List<Map<String, Object>> response = pending.stream().map(p -> {
+        // 2. Mass-fetch Medical Records to bypass O(N) Select latency
+        java.util.Set<Long> recordIds = active.stream()
+                .map(Prescription::getMedicalRecordId)
+                .collect(Collectors.toSet());
+        
+        java.util.Map<Long, com.hms.entity.MedicalRecord> recordMap = medicalRecordRepository.findAllById(recordIds).stream()
+                .collect(Collectors.toMap(com.hms.entity.MedicalRecord::getId, r -> r, (r1, r2) -> r1));
+
+        // 3. Mass-fetch Patients & Doctors
+        java.util.Set<Long> patientIds = recordMap.values().stream()
+                .map(com.hms.entity.MedicalRecord::getPatientId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        java.util.Set<Long> doctorIds = recordMap.values().stream()
+                .map(com.hms.entity.MedicalRecord::getDoctorId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        java.util.Map<Long, com.hms.entity.Patient> patientMap = patientIds.isEmpty() ? new java.util.HashMap<>() :
+                patientRepository.findAllById(patientIds).stream()
+                .collect(Collectors.toMap(com.hms.entity.Patient::getId, p -> p, (p1, p2) -> p1));
+
+        java.util.Map<Long, com.hms.entity.Doctor> doctorMap = doctorIds.isEmpty() ? new java.util.HashMap<>() :
+                doctorRepository.findAllById(doctorIds).stream()
+                .collect(Collectors.toMap(com.hms.entity.Doctor::getId, d -> d, (d1, d2) -> d1));
+
+        // 4. Rapid memory correlation mapping
+        List<Map<String, Object>> response = active.stream().map(p -> {
             Map<String, Object> map = new java.util.HashMap<>();
             map.put("id", p.getId());
+            map.put("medicalRecordId", p.getMedicalRecordId());
             map.put("medicineName", p.getMedicineName());
             map.put("dosage", p.getDosage());
             map.put("frequency", p.getFrequency());
             map.put("duration", p.getDuration());
+            map.put("instructions", p.getInstructions());
             map.put("createdAt", p.getCreatedAt());
             map.put("status", p.getStatus());
 
-            // Fetch Patient Name via Medical Record
-            // This is N+1 query problem, acceptable for V1 MVP
-            try {
-                var record = medicalRecordRepository.findById(p.getMedicalRecordId()).orElse(null);
-                if (record != null) {
-                    var patient = patientRepository.findById(record.getPatientId()).orElse(null);
-                    if (patient != null)
-                        map.put("patientName", patient.getName());
-
-                    var doctor = doctorRepository.findById(record.getDoctorId()).orElse(null);
-                    if (doctor != null)
-                        map.put("doctorName", doctor.getName());
+            com.hms.entity.MedicalRecord record = recordMap.get(p.getMedicalRecordId());
+            if (record != null) {
+                com.hms.entity.Patient patient = patientMap.get(record.getPatientId());
+                if (patient != null) {
+                    map.put("patientName", patient.getName());
+                    map.put("patientAge", patient.getAge());
+                    map.put("patientGender", patient.getGender());
                 }
-            } catch (Exception e) {
+
+                com.hms.entity.Doctor doctor = doctorMap.get(record.getDoctorId());
+                if (doctor != null) {
+                    map.put("doctorName", doctor.getName());
+                }
+                
+                map.put("diagnosis", record.getDiagnosis());
+                map.put("notes", record.getTreatmentNotes());
+                map.put("symptoms", record.getSymptoms());
             }
 
             return map;

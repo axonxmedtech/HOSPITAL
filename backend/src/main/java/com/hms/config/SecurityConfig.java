@@ -73,8 +73,8 @@ public class SecurityConfig {
                         // Platform endpoints - only Super Admin
                         .requestMatchers("/platform/**").hasRole("SUPER_ADMIN")
 
-                        // Hospital endpoints - Hospital Admin, Doctor, Receptionist, and Pharmacist
-                        .requestMatchers("/hospital/**")
+                        // Hospital and API endpoints - only standard HMS roles allowed
+                        .requestMatchers("/hospital/**", "/api/pharmacy/**")
                         .hasAnyRole("HOSPITAL_ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST")
                         // All other requests require authentication
                         .anyRequest().authenticated())

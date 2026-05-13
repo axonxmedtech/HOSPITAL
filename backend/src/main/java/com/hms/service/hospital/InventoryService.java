@@ -26,11 +26,7 @@ public class InventoryService {
 
     public List<Medicine> getLowStockMedicines() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
-        // Custom query needed or filter in memory if small dataset
-        List<Medicine> all = medicineRepository.findByHospitalId(hospitalId);
-        return all.stream()
-                .filter(m -> m.getStockQuantity() <= m.getMinStockLevel())
-                .toList();
+        return medicineRepository.findLowStock(hospitalId);
     }
 
     @Transactional

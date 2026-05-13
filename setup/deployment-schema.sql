@@ -403,3 +403,229 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- Password: admin123
 INSERT INTO `users` (`email`, `password`, `name`, `role`, `hospital_id`, `is_active`, `public_id`, `created_at`)
 VALUES ('admin@hms.com', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhCy', 'Super Admin', 'SUPER_ADMIN', NULL, TRUE, 'SUPER_ADMIN_001', NOW());
+
+
+CREATE TABLE medicine_master (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+
+    hospital_id BIGINT NOT NULL,
+
+    medicine_code VARCHAR(50) UNIQUE,
+    medicine_name VARCHAR(255) NOT NULL,
+    generic_name VARCHAR(255),
+
+    category_id BIGINT,
+    manufacturer_id BIGINT,
+
+    medicine_type VARCHAR(50),
+    -- TABLET, SYRUP, INJECTION
+
+    schedule_type VARCHAR(20),
+    -- H, H1, X, OTC
+
+    dosage_form VARCHAR(100),
+    strength VARCHAR(100),
+
+    unit_of_measure VARCHAR(50),
+    -- TABLET, ML, BOTTLE
+
+    reorder_level INT DEFAULT 0,
+
+    gst_percentage DECIMAL(5,2),
+
+    requires_prescription BOOLEAN DEFAULT TRUE,
+
+    is_active BOOLEAN DEFAULT TRUE,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE medicine_batches (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+
+    hospital_id BIGINT NOT NULL,
+
+    medicine_id BIGINT NOT NULL,
+
+    batch_number VARCHAR(100) NOT NULL,
+
+    expiry_date DATE NOT NULL,
+    manufacturing_date DATE,
+
+    mrp DECIMAL(10,2) NOT NULL,
+
+    purchase_rate DECIMAL(10,2) NOT NULL,
+
+    selling_price DECIMAL(10,2) NOT NULL,
+
+    current_quantity DECIMAL(10,2) DEFAULT 0,
+
+    reserved_quantity DECIMAL(10,2) DEFAULT 0,
+
+    location_id BIGINT,
+
+    supplier_id BIGINT,
+
+    purchase_invoice_item_id BIGINT,
+
+    status VARCHAR(30),
+    -- ACTIVE, EXPIRED, QUARANTINED, RECALLED
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE inventory_transactions (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+
+    hospital_id BIGINT NOT NULL,
+
+    medicine_batch_id BIGINT NOT NULL,
+
+    transaction_type VARCHAR(50),
+    -- PURCHASE
+    -- SALE
+    -- SALE_RETURN
+    -- PURCHASE_RETURN
+    -- ADJUSTMENT
+    -- EXPIRED
+    -- DAMAGED
+    -- TRANSFER
+
+    quantity DECIMAL(10,2) NOT NULL,
+
+    quantity_before DECIMAL(10,2),
+    quantity_after DECIMAL(10,2),
+
+    reference_type VARCHAR(50),
+    -- PURCHASE_INVOICE
+    -- SALE_INVOICE
+    -- MANUAL
+
+    reference_id BIGINT,
+
+    remarks TEXT,
+
+    created_by BIGINT,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE purchase_invoices (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+
+    hospital_id BIGINT NOT NULL,
+
+    supplier_id BIGINT NOT NULL,
+
+    invoice_number VARCHAR(100),
+
+    invoice_date DATE,
+
+    subtotal DECIMAL(12,2),
+    discount_amount DECIMAL(12,2),
+    gst_amount DECIMAL(12,2),
+    total_amount DECIMAL(12,2),
+
+    payment_status VARCHAR(50),
+
+    posting_status VARCHAR(50),
+    -- DRAFT / POSTED
+
+    created_by BIGINT,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE purchase_invoice_items (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+
+    purchase_invoice_id BIGINT NOT NULL,
+
+    medicine_id BIGINT NOT NULL,
+
+    batch_number VARCHAR(100),
+
+    expiry_date DATE,
+
+    quantity DECIMAL(10,2),
+
+    free_quantity DECIMAL(10,2),
+
+    purchase_rate DECIMAL(10,2),
+
+    mrp DECIMAL(10,2),
+
+    selling_price DECIMAL(10,2),
+
+    gst_percentage DECIMAL(5,2),
+
+    line_total DECIMAL(12,2)
+);
+
+CREATE TABLE pharmacy_sales (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+
+    hospital_id BIGINT NOT NULL,
+
+    invoice_number VARCHAR(100) UNIQUE,
+
+    patient_id BIGINT,
+
+    prescription_id BIGINT,
+
+    doctor_id BIGINT,
+
+    pharmacist_id BIGINT,
+
+    sale_type VARCHAR(30),
+    -- OPD / IPD / WALKIN
+
+    subtotal DECIMAL(12,2),
+    discount_amount DECIMAL(12,2),
+    gst_amount DECIMAL(12,2),
+    total_amount DECIMAL(12,2),
+
+    payment_method VARCHAR(50),
+
+    payment_status VARCHAR(50),
+
+    posting_status VARCHAR(50),
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE pharmacy_sale_items (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+
+    sale_id BIGINT NOT NULL,
+
+    medicine_batch_id BIGINT NOT NULL,
+
+    prescribed_quantity DECIMAL(10,2),
+
+    sold_quantity DECIMAL(10,2),
+
+    unit_price DECIMAL(10,2),
+
+    discount_percentage DECIMAL(5,2),
+
+    gst_percentage DECIMAL(5,2),
+
+    line_total DECIMAL(12,2)
+);
+
+CREATE TABLE sale_returns (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+
+    hospital_id BIGINT NOT NULL,
+
+    sale_id BIGINT NOT NULL,
+
+    return_reason TEXT,
+
+    refund_amount DECIMAL(12,2),
+
+    approved_by BIGINT,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
