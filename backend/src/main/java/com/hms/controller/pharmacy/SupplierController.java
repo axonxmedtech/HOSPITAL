@@ -1,5 +1,8 @@
 package com.hms.controller.pharmacy;
 
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+import java.net.URI;
+
 import com.hms.dto.pharmacy.SupplierRequest;
 import com.hms.service.pharmacy.SupplierService;
 import jakarta.validation.Valid;
@@ -21,7 +24,12 @@ public class SupplierController {
     @PostMapping
     @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> create(@Valid @RequestBody SupplierRequest req) {
-        return ResponseEntity.ok(service.createSupplier(req));
+        var created = service.createSupplier(req);
+        URI location = ServletUriComponentsBuilder.fromCurrentRequest()
+                .path("/{id}")
+                .buildAndExpand(created.getId())
+                .toUri();
+        return ResponseEntity.created(location).body(created);
     }
 
     @GetMapping

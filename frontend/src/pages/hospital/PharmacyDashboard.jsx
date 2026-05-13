@@ -12,6 +12,7 @@ import InventoryView from './pharmacy/InventoryView';
 import PurchaseView from './pharmacy/PurchaseView';
 import ReportsView from './pharmacy/ReportsView';
 import PrescriptionsView from './pharmacy/PrescriptionsView';
+import SuppliersView from './pharmacy/SuppliersView';
 
 const PharmacyDashboard = () => {
     const [user] = useState(authService.getCurrentUser());
@@ -74,6 +75,8 @@ const PharmacyDashboard = () => {
                 return <InventoryView />;
             case 'purchase':
                 return <PurchaseView />;
+            case 'suppliers':
+                return <SuppliersView />;
             case 'reports':
                 return <ReportsView />;
             default:

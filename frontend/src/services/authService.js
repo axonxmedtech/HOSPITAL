@@ -68,21 +68,8 @@ const authService = {
      * @returns {Object|null} User object or null if not logged in
      */
     getCurrentUser: () => {
-        // DISABLED FOR DEVELOPMENT - Return mock user when no real user is logged in
         const userStr = sessionStorage.getItem('user');
-        if (userStr) {
-            return JSON.parse(userStr);
-        }
-        
-        // Return mock user for development
-        return {
-            id: 1,
-            name: "Development User",
-            email: "dev@example.com",
-            role: "HOSPITAL_ADMIN",
-            hospitalId: 1,
-            hospitalName: "Development Hospital"
-        };
+        return userStr ? JSON.parse(userStr) : null;
     },
 
     /**
@@ -91,9 +78,7 @@ const authService = {
      * @returns {boolean} True if user has a valid token
      */
     isAuthenticated: () => {
-        // DISABLED FOR DEVELOPMENT - Always return true to bypass authentication
-        return true;
-        // return !!sessionStorage.getItem('token');
+        return !!sessionStorage.getItem('token');
     },
 
     /**
