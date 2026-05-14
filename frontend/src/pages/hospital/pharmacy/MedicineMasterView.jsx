@@ -234,6 +234,11 @@ const MedicineMasterView = () => {
       accessorKey: 'genericName',
       cell: ({ getValue }) => getValue() || '-',
     },
+    {
+      header: 'Strength',
+      accessorKey: 'strength',
+      cell: ({ getValue }) => getValue() || '-',
+    },
 
     {
       header: 'Category',

@@ -178,6 +178,12 @@ const MedicineForm = ({
         <h3 className="text-2xl font-bold mb-4">{modalTitle}</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            
+            {/* --- SECTION A: Basic Information --- */}
+            <div className="col-span-full mt-2 mb-1 pb-1 border-b border-gray-200 text-sm font-semibold text-gray-600 uppercase tracking-wider">
+              Basic Information
+            </div>
+
             {/* Medicine Name */}
             <div>
               <input
@@ -192,6 +198,7 @@ const MedicineForm = ({
                 <p className="text-xs text-red-600">{errors.medicineName}</p>
               )}
             </div>
+            
             {/* Generic Name */}
             <div>
               <input
@@ -215,6 +222,54 @@ const MedicineForm = ({
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
               />
+            </div>
+
+
+            {/* --- SECTION B: Classification --- */}
+            <div className="col-span-full mt-4 mb-1 pb-1 border-b border-gray-200 text-sm font-semibold text-gray-600 uppercase tracking-wider">
+              Classification
+            </div>
+
+            {/* Category */}
+            <div>
+              <select
+                name="categoryId"
+                required
+                value={formData.categoryId}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
+              >
+                <option value="">Select Category</option>
+                {(Array.isArray(categoryOptions) ? categoryOptions : []).map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.name || opt.categoryName || opt.category?.name || '-'}
+                  </option>
+                ))}
+              </select>
+              {errors.categoryId && (
+                <p className="text-xs text-red-600 ml-1">{errors.categoryId}</p>
+              )}
+            </div>
+
+            {/* Manufacturer */}
+            <div>
+              <select
+                name="manufacturerId"
+                required
+                value={formData.manufacturerId}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
+              >
+                <option value="">Select Manufacturer</option>
+                {(Array.isArray(manufacturerOptions) ? manufacturerOptions : []).map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.name || opt.manufacturerName || opt.manufacturer?.name || '-'}
+                  </option>
+                ))}
+              </select>
+              {errors.manufacturerId && (
+                <p className="text-xs text-red-600 ml-1">{errors.manufacturerId}</p>
+              )}
             </div>
 
             {/* Medicine Type */}
@@ -249,62 +304,56 @@ const MedicineForm = ({
                 <option value="X">Schedule X</option>
               </select>
             </div>
-            {/* Category */}
-            <div>
-              <select
-                name="categoryId"
-                required
-                value={formData.categoryId}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
-              >
-                <option value="">Select Category</option>
-                {(Array.isArray(categoryOptions) ? categoryOptions : []).map((opt) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.name || opt.categoryName || opt.category?.name || '-'}
-                  </option>
-                ))}
-              </select>
-              {errors.categoryId && (
-                <p className="text-xs text-red-600 ml-1">{errors.categoryId}</p>
-              )}
+
+
+            {/* --- SECTION C: Clinical Information --- */}
+            <div className="col-span-full mt-4 mb-1 pb-1 border-b border-gray-200 text-sm font-semibold text-gray-600 uppercase tracking-wider">
+              Clinical Information
             </div>
-            {/* Manufacturer */}
-            <div>
-              <select
-                name="manufacturerId"
-                required
-                value={formData.manufacturerId}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
-              >
-                <option value="">Select Manufacturer</option>
-                {(Array.isArray(manufacturerOptions) ? manufacturerOptions : []).map((opt) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.name ||
-                      opt.manufacturerName ||
-                      opt.manufacturer?.name ||
-                      '-'}
-                  </option>
-                ))}
-              </select>
-              {errors.manufacturerId && (
-                <p className="text-xs text-red-600 ml-1">{errors.manufacturerId}</p>
-              )}
-            </div>
+
             {/* Dosage Form */}
             <div>
               <input
                 name="dosageForm"
-                placeholder="Dosage Form"
+                placeholder="Dosage Form (e.g. Vial, Strip)"
                 value={formData.dosageForm}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
               />
             </div>
 
+            {/* Strength */}
+            <div>
+              <input
+                name="strength"
+                placeholder="Strength (e.g. 500mg)"
+                value={formData.strength}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
+              />
+            </div>
+
+            {/* Unit of Measure */}
+            <div>
+              <select
+                name="unitOfMeasure"
+                value={formData.unitOfMeasure}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
+              >
+                <option value="">Select UOM</option>
+                <option value="STRIP">STRIP</option>
+                <option value="BOTTLE">BOTTLE</option>
+                <option value="ML">ML</option>
+                <option value="TABLET">TABLET</option>
+                <option value="CAPSULE">CAPSULE</option>
+                <option value="TUBE">TUBE</option>
+                <option value="VIAL">VIAL</option>
+              </select>
+            </div>
+
             {/* Active toggle */}
-            <div className="flex items-center">
+            <div className="col-span-full flex items-center mt-2">
               <label className="flex items-center space-x-2">
                 <input
                   type="checkbox"
@@ -313,24 +362,24 @@ const MedicineForm = ({
                   onChange={handleChange}
                   className="h-4 w-4 text-primary-600 border-gray-300 rounded"
                 />
-                <span className="text-sm">Active</span>
+                <span className="text-sm font-medium">Active</span>
               </label>
             </div>
           </div>
 
           {/* Action buttons */}
-          <div className="flex justify-end space-x-3 mt-4">
+          <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-100">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border border-gray-300 rounded text-sm hover:bg-gray-50"
+              className="px-4 py-2 border border-gray-300 rounded text-sm hover:bg-gray-50 transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-4 py-2 bg-gray-900 text-white rounded text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
+              className="px-4 py-2 bg-gray-900 text-white rounded text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50"
             >
               {submitLabel}
             </button>
