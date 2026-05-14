@@ -70,4 +70,12 @@ public class MedicineMasterService {
         if (req.getRequiresPrescription() != null) m.setRequiresPrescription(req.getRequiresPrescription());
         if (req.getIsActive() != null) m.setIsActive(req.getIsActive());
     }
+    @Transactional
+    public MedicineMaster toggleStatus(Long id, Boolean isActive) {
+        MedicineMaster m = repository.findByIdAndHospitalId(id, securityHelper.getCurrentHospitalId())
+                .orElseThrow(() -> new RuntimeException("Medicine not found"));
+        m.setIsActive(isActive);
+        return repository.save(m);
+    }
+
 }
