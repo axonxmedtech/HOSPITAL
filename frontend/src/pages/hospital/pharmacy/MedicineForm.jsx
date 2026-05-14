@@ -205,6 +205,50 @@ const MedicineForm = ({
                 <p className="text-xs text-red-600">{errors.genericName}</p>
               )}
             </div>
+
+            {/* Medicine Code */}
+            <div>
+              <input
+                name="medicineCode"
+                placeholder="Medicine Code (Unique)"
+                value={formData.medicineCode}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
+              />
+            </div>
+
+            {/* Medicine Type */}
+            <div>
+              <select
+                name="medicineType"
+                value={formData.medicineType}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
+              >
+                <option value="">Select Type</option>
+                <option value="TABLET">TABLET</option>
+                <option value="CAPSULE">CAPSULE</option>
+                <option value="SYRUP">SYRUP</option>
+                <option value="INJECTION">INJECTION</option>
+                <option value="OINTMENT">OINTMENT</option>
+              </select>
+            </div>
+
+            {/* Schedule Type */}
+            <div>
+              <select
+                name="scheduleType"
+                value={formData.scheduleType}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
+              >
+                <option value="">Select Schedule</option>
+                <option value="OTC">OTC</option>
+                <option value="H">Schedule H</option>
+                <option value="H1">Schedule H1</option>
+                <option value="X">Schedule X</option>
+              </select>
+            </div>
             {/* Category */}
             <div>
               <select

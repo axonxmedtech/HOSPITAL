@@ -223,6 +223,11 @@ const MedicineMasterView = () => {
       header: 'Medicine Name',
       accessorKey: 'medicineName',
     },
+    {
+      header: 'Code',
+      accessorKey: 'medicineCode',
+      cell: ({ getValue }) => getValue() || '-',
+    },
 
     {
       header: 'Generic Name',
@@ -236,6 +241,11 @@ const MedicineMasterView = () => {
       cell: ({ row }) => {
         return row.original.category?.categoryName || '-';
       },
+    },
+    {
+      header: 'Type',
+      accessorKey: 'medicineType',
+      cell: ({ getValue }) => getValue() || '-',
     },
 
     {
