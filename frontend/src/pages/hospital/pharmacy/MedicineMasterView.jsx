@@ -5,6 +5,10 @@ import { useToast } from '../../../context/ToastContext';
 import DataTable from '../../../components/DataTable';
 import MedicineForm from './MedicineForm';
 import medicinesApi from '../../../services/pharmacy/medicinesApi';
+import categoriesApi from '../../../services/pharmacy/categoriesApi';
+import manufacturersApi from '../../../services/pharmacy/manufacturersApi';
+import CategoryForm from './CategoryForm';
+import ManufacturerForm from './ManufacturerForm';
 
 const MedicineMasterView = () => {
   // UI state
@@ -20,6 +24,12 @@ const MedicineMasterView = () => {
 
   const [categoryOptions, setCategoryOptions] = useState([]);
   const [manufacturerOptions, setManufacturerOptions] = useState([]);
+
+  // Quick-create states
+  const [isManufacturerModalOpen, setIsManufacturerModalOpen] = useState(false);
+  const [isManufacturerSubmitting, setIsManufacturerSubmitting] = useState(false);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [isCategorySubmitting, setIsCategorySubmitting] = useState(false);
 
   // Pagination
   const [pageInfo, setPageInfo] = useState({
@@ -169,6 +179,39 @@ const MedicineMasterView = () => {
       console.error('Save medicine error:', err);
       console.error('Backend error response:', err?.response?.data);
       toast.error('Failed to save medicine');
+    }
+  };
+
+  // ------------------------------------------------------------------
+  // Quick Create Handlers
+  // ------------------------------------------------------------------
+  const handleQuickCategorySave = async (formData) => {
+    setIsCategorySubmitting(true);
+    try {
+      await categoriesApi.create(formData);
+      toast.success('Category created successfully');
+      setIsCategoryModalOpen(false);
+      await fetchDropdownData();
+    } catch (err) {
+      console.error('Quick category save error:', err);
+      toast.error('Failed to create category');
+    } finally {
+      setIsCategorySubmitting(false);
+    }
+  };
+
+  const handleQuickManufacturerSave = async (formData) => {
+    setIsManufacturerSubmitting(true);
+    try {
+      await manufacturersApi.create(formData);
+      toast.success('Manufacturer created successfully');
+      setIsManufacturerModalOpen(false);
+      await fetchDropdownData();
+    } catch (err) {
+      console.error('Quick manufacturer save error:', err);
+      toast.error('Failed to create manufacturer');
+    } finally {
+      setIsManufacturerSubmitting(false);
     }
   };
 
@@ -324,6 +367,20 @@ const MedicineMasterView = () => {
           >
             + Add Medicine
           </button>
+
+          <button
+            onClick={() => setIsManufacturerModalOpen(true)}
+            className="px-4 py-2 border border-gray-300 text-gray-700 text-sm font-bold rounded bg-white hover:bg-gray-50"
+          >
+            + Add Manufacturer
+          </button>
+
+          <button
+            onClick={() => setIsCategoryModalOpen(true)}
+            className="px-4 py-2 border border-gray-300 text-gray-700 text-sm font-bold rounded bg-white hover:bg-gray-50"
+          >
+            + Add Category
+          </button>
         </div>
       </div>
 
@@ -366,6 +423,23 @@ const MedicineMasterView = () => {
           manufacturerOptions={manufacturerOptions}
         />
       )}
+
+      {/* Quick Create Modals */}
+      <CategoryForm
+        isOpen={isCategoryModalOpen}
+        onClose={() => setIsCategoryModalOpen(false)}
+        onSubmit={handleQuickCategorySave}
+        isSubmitting={isCategorySubmitting}
+        mode="create"
+      />
+
+      <ManufacturerForm
+        isOpen={isManufacturerModalOpen}
+        onClose={() => setIsManufacturerModalOpen(false)}
+        onSubmit={handleQuickManufacturerSave}
+        isSubmitting={isManufacturerSubmitting}
+        mode="create"
+      />
     </div>
   );
 };
