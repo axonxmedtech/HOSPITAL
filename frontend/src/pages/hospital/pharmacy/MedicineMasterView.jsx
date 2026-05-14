@@ -266,8 +266,18 @@ const MedicineMasterView = () => {
       accessorKey: 'dosageForm',
       cell: ({ getValue }) => getValue() || '-',
     },
-
-
+    {
+      header: 'Compliance',
+      accessorKey: 'requiresPrescription',
+      cell: ({ getValue }) => {
+        const isRx = getValue();
+        return (
+          <span className={`px-2 py-1 rounded text-xs font-semibold ${isRx ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+            {isRx ? 'Rx Required' : 'OTC'}
+          </span>
+        );
+      },
+    },
 
     {
       header: 'Status',

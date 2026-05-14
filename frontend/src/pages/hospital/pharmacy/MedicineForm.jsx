@@ -41,8 +41,8 @@ const MedicineForm = ({
     scheduleType: '',
     strength: '',
     unitOfMeasure: '',
-    reorderLevel: 0,
-    gstPercentage: 0,
+    reorderLevel: '0',
+    gstPercentage: '0',
     requiresPrescription: true,
     isActive: true,
   });
@@ -66,8 +66,8 @@ const MedicineForm = ({
         scheduleType: initialData.scheduleType || '',
         strength: initialData.strength || '',
         unitOfMeasure: initialData.unitOfMeasure || '',
-        reorderLevel: initialData.reorderLevel != null ? initialData.reorderLevel : 0,
-        gstPercentage: initialData.gstPercentage != null ? initialData.gstPercentage : 0,
+        reorderLevel: initialData.reorderLevel != null ? String(initialData.reorderLevel) : '0',
+        gstPercentage: initialData.gstPercentage != null ? String(initialData.gstPercentage) : '0',
         requiresPrescription: initialData.requiresPrescription != null ? initialData.requiresPrescription : true,
         isActive: initialData.isActive != null ? initialData.isActive : true,
       });
@@ -84,8 +84,8 @@ const MedicineForm = ({
         scheduleType: '',
         strength: '',
         unitOfMeasure: '',
-        reorderLevel: 0,
-        gstPercentage: 0,
+        reorderLevel: '0',
+        gstPercentage: '0',
         requiresPrescription: true,
         isActive: true,
       });
@@ -119,6 +119,33 @@ const MedicineForm = ({
     }));
   };
 
+  // Safe handler for integer inputs
+  const handleIntegerChange = (e) => {
+    const { name, value } = e.target;
+    // Strip everything except digits
+    const sanitized = value.replace(/\D/g, '');
+    setFormData((prev) => ({
+      ...prev,
+      [name]: sanitized,
+    }));
+  };
+
+  // Safe handler for decimal inputs
+  const handleDecimalChange = (e) => {
+    const { name, value } = e.target;
+    // Strip everything except digits and dot
+    let sanitized = value.replace(/[^0-9.]/g, '');
+    // Ensure only one dot exists
+    const parts = sanitized.split('.');
+    if (parts.length > 2) {
+      sanitized = parts[0] + '.' + parts.slice(1).join('');
+    }
+    setFormData((prev) => ({
+      ...prev,
+      [name]: sanitized,
+    }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validate()) return;
@@ -135,8 +162,8 @@ const MedicineForm = ({
         scheduleType: formData.scheduleType.trim() || null,
         strength: formData.strength.trim() || null,
         unitOfMeasure: formData.unitOfMeasure.trim() || null,
-        reorderLevel: Number(formData.reorderLevel) || 0,
-        gstPercentage: formData.gstPercentage ? Number(formData.gstPercentage) : 0,
+        reorderLevel: formData.reorderLevel === '' ? 0 : parseInt(formData.reorderLevel, 10),
+        gstPercentage: formData.gstPercentage === '' ? 0 : parseFloat(formData.gstPercentage) || 0,
         requiresPrescription: !!formData.requiresPrescription,
         isActive: !!formData.isActive,
       };
@@ -352,17 +379,65 @@ const MedicineForm = ({
               </select>
             </div>
 
+            {/* --- SECTION D: Inventory & Tax --- */}
+            <div className="col-span-full mt-4 mb-1 pb-1 border-b border-gray-200 text-sm font-semibold text-gray-600 uppercase tracking-wider">
+              Inventory & Tax
+            </div>
+
+            {/* Reorder Level */}
+            <div>
+              <input
+                type="text"
+                name="reorderLevel"
+                placeholder="Reorder Level (e.g. 50)"
+                value={formData.reorderLevel}
+                onChange={handleIntegerChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
+              />
+            </div>
+
+            {/* GST Percentage */}
+            <div>
+              <input
+                type="text"
+                name="gstPercentage"
+                placeholder="GST Percentage (e.g. 12.5)"
+                value={formData.gstPercentage}
+                onChange={handleDecimalChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
+              />
+            </div>
+
+            {/* --- SECTION E: Compliance --- */}
+            <div className="col-span-full mt-4 mb-1 pb-1 border-b border-gray-200 text-sm font-semibold text-gray-600 uppercase tracking-wider">
+              Compliance
+            </div>
+
+            {/* Prescription toggle */}
+            <div className="col-span-1 sm:col-span-1 flex items-center mt-2">
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="requiresPrescription"
+                  checked={formData.requiresPrescription}
+                  onChange={handleChange}
+                  className="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                />
+                <span className="text-sm font-medium">Requires Prescription (Rx)</span>
+              </label>
+            </div>
+
             {/* Active toggle */}
-            <div className="col-span-full flex items-center mt-2">
-              <label className="flex items-center space-x-2">
+            <div className="col-span-1 sm:col-span-1 flex items-center mt-2">
+              <label className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
                   name="isActive"
                   checked={formData.isActive}
                   onChange={handleChange}
-                  className="h-4 w-4 text-primary-600 border-gray-300 rounded"
+                  className="h-4 w-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
                 />
-                <span className="text-sm font-medium">Active</span>
+                <span className="text-sm font-medium">Active Status</span>
               </label>
             </div>
           </div>
