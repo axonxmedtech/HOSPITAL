@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useToast } from '../../../context/ToastContext';
-import medicinesApi from '../../../services/pharmacy/medicinesApi';
+
 
 /**
  * MedicineForm – modal used for both adding and editing a medicine.
@@ -41,11 +41,7 @@ const MedicineForm = ({
 
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  // Inline creation UI state
-  const [showAddCategory, setShowAddCategory] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [showAddManufacturer, setShowAddManufacturer] = useState(false);
-  const [newManufacturerName, setNewManufacturerName] = useState('');
+
 
   // Populate form when entering edit mode or when the modal opens
   useEffect(() => {
@@ -126,51 +122,7 @@ const MedicineForm = ({
     }
   };
 
-  // Inline creation handlers for Category
-  const addCategory = async () => {
-    if (!newCategoryName.trim()) {
-      toast.error('Category name required');
-      return;
-    }
-    try {
-      const created = await medicinesApi.createCategory({
-        categoryName: newCategoryName,
-        isActive: true,
-      });
-      const refreshed = await medicinesApi.getCategories();
-      const opts = Array.isArray(refreshed) ? refreshed : refreshed.content || [];
-      const newId = created.id || (Array.isArray(opts) && opts[opts.length - 1]?.id);
-      setFormData(p => ({ ...p, categoryId: newId }));
-      setShowAddCategory(false);
-      setNewCategoryName('');
-      toast.success('Category added');
-    } catch (e) {
-      toast.error('Failed to add category');
-    }
-  };
 
-  // Inline creation handlers for Manufacturer
-  const addManufacturer = async () => {
-    if (!newManufacturerName.trim()) {
-      toast.error('Manufacturer name required');
-      return;
-    }
-    try {
-      const created = await medicinesApi.createManufacturer({
-        manufacturerName: newManufacturerName,
-        isActive: true,
-      });
-      const refreshed = await medicinesApi.getManufacturers();
-      const opts = Array.isArray(refreshed) ? refreshed : refreshed.content || [];
-      const newId = created.id || (Array.isArray(opts) && opts[opts.length - 1]?.id);
-      setFormData(p => ({ ...p, manufacturerId: newId }));
-      setShowAddManufacturer(false);
-      setNewManufacturerName('');
-      toast.success('Manufacturer added');
-    } catch (e) {
-      toast.error('Failed to add manufacturer');
-    }
-  };
 
   const modalTitle = mode === 'create' ? 'Add Medicine' : 'Edit Medicine';
   const submitLabel =
@@ -225,13 +177,13 @@ const MedicineForm = ({
               )}
             </div>
             {/* Category */}
-            <div className="flex items-center gap-2">
+            <div>
               <select
                 name="categoryId"
                 required
                 value={formData.categoryId}
                 onChange={handleChange}
-                className="flex-1 w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
               >
                 <option value="">Select Category</option>
                 {(Array.isArray(categoryOptions) ? categoryOptions : []).map((opt) => (
@@ -240,25 +192,18 @@ const MedicineForm = ({
                   </option>
                 ))}
               </select>
-              <button
-                type="button"
-                onClick={() => setShowAddCategory(true)}
-                className="px-3 py-2 rounded bg-primary-600 text-white text-sm whitespace-nowrap"
-              >
-                + Add
-              </button>
+              {errors.categoryId && (
+                <p className="text-xs text-red-600 ml-1">{errors.categoryId}</p>
+              )}
             </div>
-            {errors.categoryId && (
-              <p className="text-xs text-red-600 ml-1">{errors.categoryId}</p>
-            )}
             {/* Manufacturer */}
-            <div className="flex items-center gap-2">
+            <div>
               <select
                 name="manufacturerId"
                 required
                 value={formData.manufacturerId}
                 onChange={handleChange}
-                className="flex-1 w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
               >
                 <option value="">Select Manufacturer</option>
                 {(Array.isArray(manufacturerOptions) ? manufacturerOptions : []).map((opt) => (
@@ -270,17 +215,10 @@ const MedicineForm = ({
                   </option>
                 ))}
               </select>
-              <button
-                type="button"
-                onClick={() => setShowAddManufacturer(true)}
-                className="px-3 py-2 rounded bg-primary-600 text-white text-sm whitespace-nowrap"
-              >
-                + Add
-              </button>
+              {errors.manufacturerId && (
+                <p className="text-xs text-red-600 ml-1">{errors.manufacturerId}</p>
+              )}
             </div>
-            {errors.manufacturerId && (
-              <p className="text-xs text-red-600 ml-1">{errors.manufacturerId}</p>
-            )}
             {/* Dosage Form */}
             <div>
               <input
@@ -326,69 +264,7 @@ const MedicineForm = ({
           </div>
         </form>
 
-        {/* Inline Add Category Modal */}
-        {showAddCategory && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-40">
-            <div className="bg-white rounded-lg p-6 w-96">
-              <h4 className="text-lg font-semibold mb-4">Add Category</h4>
-              <input
-                type="text"
-                placeholder="Category name"
-                value={newCategoryName}
-                onChange={(e) => setNewCategoryName(e.target.value)}
-                className="w-full mb-4 px-3 py-2 border border-gray-300 rounded focus:outline-none"
-              />
-              <div className="flex justify-end space-x-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddCategory(false)}
-                  className="px-3 py-1 border rounded"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={addCategory}
-                  className="px-3 py-1 bg-primary-600 text-white rounded"
-                >
-                  Save
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
-        {/* Inline Add Manufacturer Modal */}
-        {showAddManufacturer && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-40">
-            <div className="bg-white rounded-lg p-6 w-96">
-              <h4 className="text-lg font-semibold mb-4">Add Manufacturer</h4>
-              <input
-                type="text"
-                placeholder="Manufacturer name"
-                value={newManufacturerName}
-                onChange={(e) => setNewManufacturerName(e.target.value)}
-                className="w-full mb-4 px-3 py-2 border border-gray-300 rounded focus:outline-none"
-              />
-              <div className="flex justify-end space-x-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddManufacturer(false)}
-                  className="px-3 py-1 border rounded"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={addManufacturer}
-                  className="px-3 py-1 bg-primary-600 text-white rounded"
-                >
-                  Save
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
