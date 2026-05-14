@@ -36,6 +36,14 @@ const MedicineForm = ({
     categoryId: '',
     manufacturerId: '',
     dosageForm: '',
+    medicineCode: '',
+    medicineType: '',
+    scheduleType: '',
+    strength: '',
+    unitOfMeasure: '',
+    reorderLevel: 0,
+    gstPercentage: 0,
+    requiresPrescription: true,
     isActive: true,
   });
 
@@ -53,9 +61,15 @@ const MedicineForm = ({
         categoryId: initialData.categoryId || '',
         manufacturerId: initialData.manufacturerId || '',
         dosageForm: initialData.dosageForm || '',
-
-        isActive:
-          initialData.isActive != null ? initialData.isActive : true,
+        medicineCode: initialData.medicineCode || '',
+        medicineType: initialData.medicineType || '',
+        scheduleType: initialData.scheduleType || '',
+        strength: initialData.strength || '',
+        unitOfMeasure: initialData.unitOfMeasure || '',
+        reorderLevel: initialData.reorderLevel != null ? initialData.reorderLevel : 0,
+        gstPercentage: initialData.gstPercentage != null ? initialData.gstPercentage : 0,
+        requiresPrescription: initialData.requiresPrescription != null ? initialData.requiresPrescription : true,
+        isActive: initialData.isActive != null ? initialData.isActive : true,
       });
     } else {
       // reset for create mode
@@ -65,7 +79,14 @@ const MedicineForm = ({
         categoryId: '',
         manufacturerId: '',
         dosageForm: '',
-
+        medicineCode: '',
+        medicineType: '',
+        scheduleType: '',
+        strength: '',
+        unitOfMeasure: '',
+        reorderLevel: 0,
+        gstPercentage: 0,
+        requiresPrescription: true,
         isActive: true,
       });
     }
@@ -109,6 +130,14 @@ const MedicineForm = ({
         categoryId: formData.categoryId ? Number(formData.categoryId) : null,
         manufacturerId: formData.manufacturerId ? Number(formData.manufacturerId) : null,
         dosageForm: formData.dosageForm.trim() || null,
+        medicineCode: formData.medicineCode.trim() || null,
+        medicineType: formData.medicineType.trim() || null,
+        scheduleType: formData.scheduleType.trim() || null,
+        strength: formData.strength.trim() || null,
+        unitOfMeasure: formData.unitOfMeasure.trim() || null,
+        reorderLevel: Number(formData.reorderLevel) || 0,
+        gstPercentage: formData.gstPercentage ? Number(formData.gstPercentage) : 0,
+        requiresPrescription: !!formData.requiresPrescription,
         isActive: !!formData.isActive,
       };
       console.log('Submitting payload:', payload);
