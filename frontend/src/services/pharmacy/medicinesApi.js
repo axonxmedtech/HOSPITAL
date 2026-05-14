@@ -54,18 +54,16 @@ const medicinesApi = {
     // Get medicine categories
     getCategories: async () => {
         const response = await apiClient.get(
-            '/api/pharmacy/categories'
+            '/api/pharmacy/categories?page=0&size=1000'
         );
-
         return response.data;
     },
 
     // Get manufacturers
     getManufacturers: async () => {
         const response = await apiClient.get(
-            '/api/pharmacy/manufacturers'
+            '/api/pharmacy/manufacturers?page=0&size=1000'
         );
-
         return response.data;
     },
 
