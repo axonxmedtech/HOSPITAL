@@ -58,4 +58,11 @@ public class ManufacturerService {
         if (req.getIsActive() != null) m.setIsActive(req.getIsActive());
         return manufacturerRepository.save(m);
     }
+
+    @Transactional
+    public Manufacturer toggleStatus(Long id) {
+        Manufacturer m = getById(id);
+        m.setIsActive(!m.getIsActive());
+        return manufacturerRepository.save(m);
+    }
 }

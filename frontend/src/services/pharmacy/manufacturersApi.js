@@ -17,6 +17,10 @@ const manufacturersApi = {
     update: async (id, data) => {
         const response = await apiClient.put(`/api/pharmacy/manufacturers/${id}`, data);
         return response.data;
+    },
+    toggleStatus: async (id) => {
+        const response = await apiClient.patch(`/api/pharmacy/manufacturers/${id}/status`);
+        return response.data;
     }
 };
 

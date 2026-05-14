@@ -45,4 +45,10 @@ public class ManufacturerController {
     public ResponseEntity<?> update(@PathVariable Long id, @Valid @RequestBody ManufacturerRequest request) {
         return ResponseEntity.ok(service.update(id, request));
     }
+
+    @PatchMapping("/{id}/status")
+    @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> toggleStatus(@PathVariable Long id) {
+        return ResponseEntity.ok(service.toggleStatus(id));
+    }
 }
