@@ -219,7 +219,7 @@ const MedicineForm = ({
                 placeholder="Medicine Name"
                 value={formData.medicineName}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-900 transition-all"
               />
               {errors.medicineName && (
                 <p className="text-xs text-red-600">{errors.medicineName}</p>
@@ -233,7 +233,7 @@ const MedicineForm = ({
                 placeholder="Generic Name"
                 value={formData.genericName}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-900 transition-all"
               />
               {errors.genericName && (
                 <p className="text-xs text-red-600">{errors.genericName}</p>
@@ -247,7 +247,7 @@ const MedicineForm = ({
                 placeholder="Medicine Code (Unique)"
                 value={formData.medicineCode}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-900 transition-all"
               />
             </div>
 
@@ -264,7 +264,7 @@ const MedicineForm = ({
                 required
                 value={formData.categoryId}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-900 transition-all"
               >
                 <option value="">Select Category</option>
                 {(Array.isArray(categoryOptions) ? categoryOptions : []).map((opt) => (
@@ -285,7 +285,7 @@ const MedicineForm = ({
                 required
                 value={formData.manufacturerId}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-900 transition-all"
               >
                 <option value="">Select Manufacturer</option>
                 {(Array.isArray(manufacturerOptions) ? manufacturerOptions : []).map((opt) => (
@@ -305,7 +305,7 @@ const MedicineForm = ({
                 name="medicineType"
                 value={formData.medicineType}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-900 transition-all"
               >
                 <option value="">Select Type</option>
                 <option value="TABLET">TABLET</option>
@@ -322,7 +322,7 @@ const MedicineForm = ({
                 name="scheduleType"
                 value={formData.scheduleType}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-900 transition-all"
               >
                 <option value="">Select Schedule</option>
                 <option value="OTC">OTC</option>
@@ -345,7 +345,7 @@ const MedicineForm = ({
                 placeholder="Dosage Form (e.g. Vial, Strip)"
                 value={formData.dosageForm}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-900 transition-all"
               />
             </div>
 
@@ -356,7 +356,7 @@ const MedicineForm = ({
                 placeholder="Strength (e.g. 500mg)"
                 value={formData.strength}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-900 transition-all"
               />
             </div>
 
@@ -366,7 +366,7 @@ const MedicineForm = ({
                 name="unitOfMeasure"
                 value={formData.unitOfMeasure}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-900 transition-all"
               >
                 <option value="">Select UOM</option>
                 <option value="STRIP">STRIP</option>
@@ -392,7 +392,7 @@ const MedicineForm = ({
                 placeholder="Reorder Level (e.g. 50)"
                 value={formData.reorderLevel}
                 onChange={handleIntegerChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-900 transition-all"
               />
             </div>
 
@@ -404,7 +404,7 @@ const MedicineForm = ({
                 placeholder="GST Percentage (e.g. 12.5)"
                 value={formData.gstPercentage}
                 onChange={handleDecimalChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-primary-600"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-900 transition-all"
               />
             </div>
 
@@ -421,7 +421,7 @@ const MedicineForm = ({
                   name="requiresPrescription"
                   checked={formData.requiresPrescription}
                   onChange={handleChange}
-                  className="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                  className="h-4 w-4 text-gray-900 border-gray-300 rounded focus:ring-gray-900"
                 />
                 <span className="text-sm font-medium">Requires Prescription (Rx)</span>
               </label>
@@ -435,7 +435,7 @@ const MedicineForm = ({
                   name="isActive"
                   checked={formData.isActive}
                   onChange={handleChange}
-                  className="h-4 w-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                  className="h-4 w-4 text-gray-900 border-gray-300 rounded focus:ring-gray-900"
                 />
                 <span className="text-sm font-medium">Active Status</span>
               </label>

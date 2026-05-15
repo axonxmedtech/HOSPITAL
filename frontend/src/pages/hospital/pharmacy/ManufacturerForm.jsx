@@ -92,153 +92,138 @@ const ManufacturerForm = ({
     : (isSubmitting ? 'Saving...' : 'Save Manufacturer');
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 overflow-y-auto">
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div 
-        className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden my-8"
+        className="bg-white rounded-2xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-auto p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-          <h3 className="text-xl font-bold text-gray-900">{title}</h3>
-          <button 
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+        <h3 className="text-2xl font-bold mb-4">{title}</h3>
 
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            
+            {/* --- SECTION A: Manufacturer Identity --- */}
+            <div className="col-span-full mt-2 mb-1 pb-1 border-b border-gray-200 text-sm font-semibold text-gray-600 uppercase tracking-wider">
+              Manufacturer Identity
+            </div>
+
             {/* Manufacturer Name */}
-            <div className="md:col-span-2">
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Manufacturer Name <span className="text-red-500">*</span>
-              </label>
+            <div className="col-span-1 sm:col-span-2">
               <input
                 type="text"
                 name="manufacturerName"
                 value={formData.manufacturerName}
                 onChange={handleChange}
-                placeholder="e.g. Cipla Ltd, Sun Pharma"
-                className={`w-full px-4 py-2 border rounded-lg outline-none transition-all focus:ring-2 ${
+                placeholder="Manufacturer Name (e.g. Cipla Ltd) *"
+                className={`w-full px-3 py-2 border rounded focus:outline-none transition-all ${
                   errors.manufacturerName 
-                    ? 'border-red-300 focus:ring-red-100' 
-                    : 'border-gray-200 focus:border-gray-900 focus:ring-gray-100'
+                    ? 'border-red-300 focus:border-red-500' 
+                    : 'border-gray-300 focus:border-gray-900'
                 }`}
                 disabled={isSubmitting}
               />
               {errors.manufacturerName && (
-                <p className="mt-1 text-xs text-red-600 font-medium">{errors.manufacturerName}</p>
+                <p className="mt-1 text-xs text-red-600">{errors.manufacturerName}</p>
               )}
             </div>
 
-            {/* Contact Person */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Contact Person
-              </label>
-              <input
-                type="text"
-                name="contactPerson"
-                value={formData.contactPerson}
-                onChange={handleChange}
-                placeholder="Manager Name"
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-100 transition-all"
-                disabled={isSubmitting}
-              />
-            </div>
-
-            {/* Phone */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Phone Number
-              </label>
-              <input
-                type="text"
-                name="phone"
-                value={formData.phone}
-                onChange={handleChange}
-                placeholder="+91 XXXXXXXXXX"
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-100 transition-all"
-                disabled={isSubmitting}
-              />
-            </div>
-
-            {/* Email */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Email Address
-              </label>
-              <input
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                placeholder="contact@manufacturer.com"
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-100 transition-all"
-                disabled={isSubmitting}
-              />
-            </div>
-
             {/* License Number */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                License Number
-              </label>
+            <div className="col-span-1 sm:col-span-2">
               <input
                 type="text"
                 name="licenseNumber"
                 value={formData.licenseNumber}
                 onChange={handleChange}
-                placeholder="e.g. DL-123456"
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-100 transition-all"
+                placeholder="License Number (e.g. DL-123456)"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-900 transition-all"
                 disabled={isSubmitting}
               />
             </div>
 
+            {/* --- SECTION B: Contact Information --- */}
+            <div className="col-span-full mt-4 mb-1 pb-1 border-b border-gray-200 text-sm font-semibold text-gray-600 uppercase tracking-wider">
+              Contact Information
+            </div>
+
+            {/* Contact Person */}
+            <div className="col-span-1">
+              <input
+                type="text"
+                name="contactPerson"
+                value={formData.contactPerson}
+                onChange={handleChange}
+                placeholder="Contact Person (e.g. Manager Name)"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-900 transition-all"
+                disabled={isSubmitting}
+              />
+            </div>
+
+            {/* Phone */}
+            <div className="col-span-1">
+              <input
+                type="text"
+                name="phone"
+                value={formData.phone}
+                onChange={handleChange}
+                placeholder="Phone Number (+91...)"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-900 transition-all"
+                disabled={isSubmitting}
+              />
+            </div>
+
+            {/* Email */}
+            <div className="col-span-1 sm:col-span-2">
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                placeholder="Email Address"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-900 transition-all"
+                disabled={isSubmitting}
+              />
+            </div>
+
+            {/* --- SECTION C: Business Details --- */}
+            <div className="col-span-full mt-4 mb-1 pb-1 border-b border-gray-200 text-sm font-semibold text-gray-600 uppercase tracking-wider">
+              Business Details
+            </div>
+
             {/* Address */}
-            <div className="md:col-span-2">
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Address
-              </label>
+            <div className="col-span-full">
               <textarea
                 name="address"
                 value={formData.address}
                 onChange={handleChange}
                 rows="2"
                 placeholder="Full manufacturer address..."
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-100 transition-all resize-none"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-900 transition-all resize-none"
                 disabled={isSubmitting}
               />
             </div>
 
             {/* Active Status */}
-            <div className="md:col-span-2 flex items-center space-x-2 pt-2">
-              <input
-                type="checkbox"
-                id="isActive"
-                name="isActive"
-                checked={formData.isActive}
-                onChange={handleChange}
-                className="w-4 h-4 text-gray-900 border-gray-300 rounded focus:ring-gray-900"
-                disabled={isSubmitting}
-              />
-              <label htmlFor="isActive" className="text-sm font-medium text-gray-700 cursor-pointer">
-                Mark as Active Manufacturer
+            <div className="col-span-full flex items-center mt-2">
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="isActive"
+                  checked={formData.isActive}
+                  onChange={handleChange}
+                  className="h-4 w-4 text-gray-900 border-gray-300 rounded focus:ring-gray-900"
+                  disabled={isSubmitting}
+                />
+                <span className="text-sm font-medium">Active Status</span>
               </label>
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-100 mt-6">
+          {/* Actions / Footer */}
+          <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-100">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-all"
+              className="px-4 py-2 border border-gray-300 rounded text-sm hover:bg-gray-50 transition-colors"
               disabled={isSubmitting}
             >
               Cancel
@@ -246,7 +231,7 @@ const ManufacturerForm = ({
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-6 py-2 bg-gray-900 text-white text-sm font-bold rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+              className="px-4 py-2 bg-gray-900 text-white rounded text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50"
             >
               {submitBtnLabel}
             </button>

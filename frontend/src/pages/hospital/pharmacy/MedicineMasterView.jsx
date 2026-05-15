@@ -225,12 +225,12 @@ const MedicineMasterView = () => {
       cell: ({ row }) => {
         const { medicineName, genericName } = row.original;
         return (
-          <div className="flex flex-col leading-tight">
+          <div className="flex flex-col leading-tight gap-px">
             <span className="truncate max-w-[220px] text-sm font-medium text-gray-900" title={medicineName}>
               {medicineName || '-'}
             </span>
             {genericName && (
-              <span className="truncate max-w-[220px] text-xs text-gray-500 mt-0.5" title={genericName}>
+              <span className="truncate max-w-[220px] text-[11px] font-medium text-gray-500" title={genericName}>
                 {genericName}
               </span>
             )}
@@ -253,12 +253,12 @@ const MedicineMasterView = () => {
       cell: ({ row }) => {
         const { dosageForm, strength } = row.original;
         return (
-          <div className="flex flex-col leading-tight">
+          <div className="flex flex-col leading-tight gap-px">
             <span className="truncate max-w-[120px] text-sm font-medium text-gray-900 capitalize" title={dosageForm}>
               {dosageForm || '-'}
             </span>
             {strength && (
-              <span className="truncate max-w-[120px] text-xs text-gray-500 mt-0.5" title={strength}>
+              <span className="truncate max-w-[120px] text-[11px] font-medium text-gray-500" title={strength}>
                 {strength}
               </span>
             )}
@@ -273,12 +273,12 @@ const MedicineMasterView = () => {
         const catName = row.original.category?.categoryName || '-';
         const type = row.original.medicineType;
         return (
-          <div className="flex flex-col leading-tight">
+          <div className="flex flex-col leading-tight gap-px">
             <span className="truncate max-w-[150px] text-sm font-medium text-gray-900" title={catName}>
               {catName}
             </span>
             {type && (
-              <span className="truncate max-w-[150px] text-xs text-gray-500 capitalize mt-0.5" title={type}>
+              <span className="truncate max-w-[150px] text-[11px] font-medium text-gray-500 capitalize" title={type}>
                 {type}
               </span>
             )}
@@ -306,17 +306,17 @@ const MedicineMasterView = () => {
         const isRx = row.original.requiresPrescription;
 
         return (
-          <div className="flex flex-col items-start gap-0.5">
+          <div className="flex flex-col items-start gap-1">
             <span
-              className={`px-1.5 py-px rounded-sm text-[11px] font-semibold whitespace-nowrap ${
-                active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'
+              className={`px-1.5 py-px rounded text-[10px] font-bold uppercase whitespace-nowrap border ${
+                active ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-100 text-gray-600 border-gray-200'
               }`}
             >
               {active ? 'Active' : 'Inactive'}
             </span>
             <span
-              className={`px-1.5 py-px rounded-sm text-[11px] font-semibold whitespace-nowrap ${
-                isRx ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'
+              className={`px-1.5 py-px rounded text-[10px] font-bold uppercase whitespace-nowrap border ${
+                isRx ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-700 border-blue-200'
               }`}
             >
               {isRx ? 'Rx Required' : 'OTC'}
@@ -336,7 +336,7 @@ const MedicineMasterView = () => {
               e.stopPropagation();
               handleEdit(med);
             }}
-            className="px-3 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 whitespace-nowrap"
+            className="px-2.5 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 transition-colors whitespace-nowrap"
           >
             Edit
           </button>
@@ -381,75 +381,71 @@ const MedicineMasterView = () => {
   // Render
   // ------------------------------------------------------------------
   return (
-    <div className="h-full flex flex-col gap-2 -mt-2 max-w-7xl mx-auto w-full">
+    <div className="h-full flex flex-col gap-3 w-full max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 bg-white px-4 py-3 rounded-lg border border-gray-200">
+      <div className="flex justify-between items-center bg-white px-4 py-3 rounded-lg border border-gray-200">
         <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-xl font-bold text-gray-900">
-              Medicine Master
-            </h1>
-          </div>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h1 className="text-xl font-bold text-gray-900">
+            Medicine Master
+          </h1>
+          <p className="text-sm text-gray-500">
             Centralized medicine, manufacturer and category registry.
           </p>
         </div>
       </div>
 
       {/* Toolbar */}
-      <div className="bg-white border border-gray-200 rounded-lg px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
-        {/* ZONE A: Search Zone */}
-        <div className="flex items-center gap-1.5">
-          <div className="relative w-80">
+      <div className="bg-white border border-gray-200 rounded-lg px-4 py-2.5 flex items-center justify-between gap-4">
+        {/* ZONE A: Search */}
+        <div className="flex items-center gap-2">
+          <div className="relative w-72">
             <input
               type="text"
               placeholder="Search catalog..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               onKeyDown={handleKeyDown}
-              className="pl-3 pr-3 py-1.5 border border-gray-300 rounded-md w-full text-sm outline-none focus:border-gray-900 transition-colors"
+              className="pl-3 pr-3 py-1.5 border border-gray-300 rounded-md w-full text-sm focus:border-gray-900 outline-none transition-all"
             />
           </div>
           <button
             onClick={handleSearch}
-            className="px-3 py-1.5 bg-gray-900 text-white text-sm font-medium rounded-md hover:bg-gray-800 transition-colors shadow-sm"
+            className="px-4 py-1.5 bg-gray-50 border border-gray-400/60 text-gray-800 text-sm font-medium rounded hover:bg-gray-100 shadow-sm transition-colors"
           >
             Search
           </button>
         </div>
 
-        {/* ZONE B: Creation Zone */}
-        <div className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 px-2 py-1.5">
+        {/* ZONE B: Actions */}
+        <div className="flex items-center gap-2">
           <button
             onClick={handleAdd}
-            className="px-3 py-1.5 bg-white border border-gray-300 text-gray-800 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
+            className="px-4 py-1.5 bg-gray-900 text-white text-sm font-medium rounded hover:bg-gray-800 shadow-sm transition-colors"
           >
             + Add Medicine
           </button>
-          
-          <div className="h-5 w-px bg-gray-300 mx-0.5"></div>
-          
+          <div className="h-5 w-px bg-gray-200 mx-1"></div>
           <button
             onClick={() => setIsManufacturerModalOpen(true)}
-            className="px-2.5 py-1.5 bg-white border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded hover:bg-gray-50 transition-colors"
           >
-            + Manufacturer
+            + Add Manufacturer
           </button>
           <button
             onClick={() => setIsCategoryModalOpen(true)}
-            className="px-2.5 py-1.5 bg-white border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded hover:bg-gray-50 transition-colors"
           >
-            + Category
+            + Add Category
           </button>
         </div>
       </div>
 
-      {/* Table */}
-      <div
-        className="flex flex-1 gap-4 overflow-hidden"
-        style={{ height: 'calc(100vh - 260px)' }}
+      {/* Table Card */}
+      <div 
+        className="flex-1 bg-white border border-gray-200 rounded-lg flex flex-col min-h-0 overflow-hidden"
+        style={{ maxHeight: 'calc(100vh - 220px)' }}
       >
-        <div className="flex-1 bg-white border border-gray-200 rounded-lg flex flex-col overflow-x-auto">
+        <div className="flex-1 overflow-x-auto">
           <DataTable
             data={medicines}
             columns={columns}
@@ -468,7 +464,7 @@ const MedicineMasterView = () => {
         </div>
       )}
 
-      {/* Modal */}
+      {/* Modals */}
       {isModalOpen && (
         <MedicineForm
           isOpen={isModalOpen}
@@ -484,7 +480,6 @@ const MedicineMasterView = () => {
         />
       )}
 
-      {/* Quick Create Modals */}
       <CategoryForm
         isOpen={isCategoryModalOpen}
         onClose={() => setIsCategoryModalOpen(false)}

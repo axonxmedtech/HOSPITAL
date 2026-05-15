@@ -80,87 +80,76 @@ const CategoryForm = ({
     : (isSubmitting ? 'Saving...' : 'Save Category');
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div 
-        className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden"
+        className="bg-white rounded-2xl shadow-lg w-full max-w-lg max-h-[90vh] overflow-auto p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-          <h3 className="text-xl font-bold text-gray-900">{title}</h3>
-          <button 
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+        <h3 className="text-2xl font-bold mb-4">{title}</h3>
 
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {/* Category Name */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
-              Category Name <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              name="categoryName"
-              value={formData.categoryName}
-              onChange={handleChange}
-              placeholder="e.g. Antibiotics, Painkillers"
-              className={`w-full px-4 py-2 border rounded-lg outline-none transition-all focus:ring-2 ${
-                errors.categoryName 
-                  ? 'border-red-300 focus:ring-red-100' 
-                  : 'border-gray-200 focus:border-gray-900 focus:ring-gray-100'
-              }`}
-              disabled={isSubmitting}
-            />
-            {errors.categoryName && (
-              <p className="mt-1 text-xs text-red-600 font-medium">{errors.categoryName}</p>
-            )}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 gap-4">
+            
+            {/* --- SECTION A: Category Details --- */}
+            <div className="col-span-full mt-2 mb-1 pb-1 border-b border-gray-200 text-sm font-semibold text-gray-600 uppercase tracking-wider">
+              Category Details
+            </div>
+
+            {/* Category Name */}
+            <div className="col-span-full">
+              <input
+                type="text"
+                name="categoryName"
+                value={formData.categoryName}
+                onChange={handleChange}
+                placeholder="Category Name (e.g. Antibiotics) *"
+                className={`w-full px-3 py-2 border rounded focus:outline-none transition-all ${
+                  errors.categoryName 
+                    ? 'border-red-300 focus:border-red-500' 
+                    : 'border-gray-300 focus:border-gray-900'
+                }`}
+                disabled={isSubmitting}
+              />
+              {errors.categoryName && (
+                <p className="mt-1 text-xs text-red-600">{errors.categoryName}</p>
+              )}
+            </div>
+
+            {/* Description */}
+            <div className="col-span-full">
+              <textarea
+                name="description"
+                value={formData.description}
+                onChange={handleChange}
+                rows="3"
+                placeholder="Enter category details..."
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-900 transition-all resize-none"
+                disabled={isSubmitting}
+              />
+            </div>
+
+            {/* Active Status */}
+            <div className="col-span-full flex items-center mt-2">
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="isActive"
+                  checked={formData.isActive}
+                  onChange={handleChange}
+                  className="h-4 w-4 text-gray-900 border-gray-300 rounded focus:ring-gray-900"
+                  disabled={isSubmitting}
+                />
+                <span className="text-sm font-medium">Active Status</span>
+              </label>
+            </div>
           </div>
 
-          {/* Description */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
-              Description
-            </label>
-            <textarea
-              name="description"
-              value={formData.description}
-              onChange={handleChange}
-              rows="3"
-              placeholder="Enter category details..."
-              className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-100 transition-all resize-none"
-              disabled={isSubmitting}
-            />
-          </div>
-
-          {/* Active Status */}
-          <div className="flex items-center space-x-2 pt-2">
-            <input
-              type="checkbox"
-              id="isActive"
-              name="isActive"
-              checked={formData.isActive}
-              onChange={handleChange}
-              className="w-4 h-4 text-gray-900 border-gray-300 rounded focus:ring-gray-900"
-              disabled={isSubmitting}
-            />
-            <label htmlFor="isActive" className="text-sm font-medium text-gray-700 cursor-pointer">
-              Mark as Active
-            </label>
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-100 mt-6">
+          {/* Actions / Footer */}
+          <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-100">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-all"
+              className="px-4 py-2 border border-gray-300 rounded text-sm hover:bg-gray-50 transition-colors"
               disabled={isSubmitting}
             >
               Cancel
@@ -168,7 +157,7 @@ const CategoryForm = ({
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-6 py-2 bg-gray-900 text-white text-sm font-bold rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+              className="px-4 py-2 bg-gray-900 text-white rounded text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50"
             >
               {submitBtnLabel}
             </button>
