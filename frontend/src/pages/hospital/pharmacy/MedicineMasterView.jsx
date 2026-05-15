@@ -220,104 +220,126 @@ const MedicineMasterView = () => {
   // ------------------------------------------------------------------
   const columns = [
     {
-      header: 'Medicine Name',
+      header: 'Medicine',
       accessorKey: 'medicineName',
+      cell: ({ row }) => {
+        const { medicineName, genericName } = row.original;
+        return (
+          <div className="flex flex-col leading-tight">
+            <span className="truncate max-w-[220px] text-sm font-medium text-gray-900" title={medicineName}>
+              {medicineName || '-'}
+            </span>
+            {genericName && (
+              <span className="truncate max-w-[220px] text-xs text-gray-500 mt-0.5" title={genericName}>
+                {genericName}
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     {
       header: 'Code',
       accessorKey: 'medicineCode',
-      cell: ({ getValue }) => getValue() || '-',
-    },
-
-    {
-      header: 'Generic Name',
-      accessorKey: 'genericName',
-      cell: ({ getValue }) => getValue() || '-',
+      cell: ({ getValue }) => (
+        <span className="text-sm text-gray-600 whitespace-nowrap">
+          {getValue() || '-'}
+        </span>
+      ),
     },
     {
-      header: 'Strength',
-      accessorKey: 'strength',
-      cell: ({ getValue }) => getValue() || '-',
-    },
-
-    {
-      header: 'Category',
-      accessorKey: 'categoryId',
+      header: 'Format',
+      accessorKey: 'dosageForm',
       cell: ({ row }) => {
-        return row.original.category?.categoryName || '-';
+        const { dosageForm, strength } = row.original;
+        return (
+          <div className="flex flex-col leading-tight">
+            <span className="truncate max-w-[120px] text-sm font-medium text-gray-900 capitalize" title={dosageForm}>
+              {dosageForm || '-'}
+            </span>
+            {strength && (
+              <span className="truncate max-w-[120px] text-xs text-gray-500 mt-0.5" title={strength}>
+                {strength}
+              </span>
+            )}
+          </div>
+        );
       },
     },
     {
-      header: 'Type',
-      accessorKey: 'medicineType',
-      cell: ({ getValue }) => getValue() || '-',
+      header: 'Classification',
+      accessorKey: 'categoryId',
+      cell: ({ row }) => {
+        const catName = row.original.category?.categoryName || '-';
+        const type = row.original.medicineType;
+        return (
+          <div className="flex flex-col leading-tight">
+            <span className="truncate max-w-[150px] text-sm font-medium text-gray-900" title={catName}>
+              {catName}
+            </span>
+            {type && (
+              <span className="truncate max-w-[150px] text-xs text-gray-500 capitalize mt-0.5" title={type}>
+                {type}
+              </span>
+            )}
+          </div>
+        );
+      },
     },
-
     {
       header: 'Manufacturer',
       accessorKey: 'manufacturerId',
       cell: ({ row }) => {
-        return row.original.manufacturer?.manufacturerName || '-';
-      },
-    },
-
-    {
-      header: 'Dosage Form',
-      accessorKey: 'dosageForm',
-      cell: ({ getValue }) => getValue() || '-',
-    },
-    {
-      header: 'Compliance',
-      accessorKey: 'requiresPrescription',
-      cell: ({ getValue }) => {
-        const isRx = getValue();
+        const mfgName = row.original.manufacturer?.manufacturerName || '-';
         return (
-          <span className={`px-2 py-1 rounded text-xs font-semibold ${isRx ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-            {isRx ? 'Rx Required' : 'OTC'}
+          <span className="block truncate max-w-[180px] text-sm text-gray-600" title={mfgName}>
+            {mfgName}
           </span>
         );
       },
     },
-
     {
       header: 'Status',
       accessorKey: 'isActive',
-      cell: ({ getValue }) => {
-        const active = getValue();
+      cell: ({ row }) => {
+        const active = row.original.isActive;
+        const isRx = row.original.requiresPrescription;
 
         return (
-          <span
-            className={`px-2 py-1 rounded text-xs font-bold ${active
-                ? 'bg-green-50 text-green-700 border border-green-100'
-                : 'bg-amber-50 text-amber-700 border border-amber-100'
+          <div className="flex flex-col items-start gap-0.5">
+            <span
+              className={`px-1.5 py-px rounded-sm text-[11px] font-semibold whitespace-nowrap ${
+                active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'
               }`}
-          >
-            {active ? 'Active' : 'Inactive'}
-          </span>
+            >
+              {active ? 'Active' : 'Inactive'}
+            </span>
+            <span
+              className={`px-1.5 py-px rounded-sm text-[11px] font-semibold whitespace-nowrap ${
+                isRx ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'
+              }`}
+            >
+              {isRx ? 'Rx Required' : 'OTC'}
+            </span>
+          </div>
         );
       },
     },
-
     {
       header: 'Actions',
       cell: ({ row }) => {
         const med = row.original;
-
         return (
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleEdit(med);
-              }}
-              className="px-3 py-1 text-sm text-white bg-gray-900 rounded hover:bg-gray-800"
-            >
-              Edit
-            </button>
-
-
-          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleEdit(med);
+            }}
+            className="px-3 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 whitespace-nowrap"
+          >
+            Edit
+          </button>
         );
       },
     },
@@ -359,7 +381,7 @@ const MedicineMasterView = () => {
   // Render
   // ------------------------------------------------------------------
   return (
-    <div className="h-full flex flex-col gap-4 -mt-2">
+    <div className="h-full flex flex-col gap-4 -mt-2 max-w-7xl mx-auto w-full">
       {/* Toolbar */}
       <div className="bg-white border border-gray-200 rounded-lg p-4 flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap gap-3 items-center">
@@ -414,7 +436,7 @@ const MedicineMasterView = () => {
         className="flex flex-1 gap-4 overflow-hidden"
         style={{ height: 'calc(100vh - 260px)' }}
       >
-        <div className="flex-1 bg-white border border-gray-200 rounded-lg flex flex-col overflow-hidden">
+        <div className="flex-1 bg-white border border-gray-200 rounded-lg flex flex-col overflow-x-auto">
           <DataTable
             data={medicines}
             columns={columns}
