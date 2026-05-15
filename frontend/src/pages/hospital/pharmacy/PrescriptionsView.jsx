@@ -48,6 +48,7 @@ const PrescriptionsView = () => {
                     diagnosis: item.diagnosis || 'See Consultation',
                     notes: item.notes || 'No specific pharmacist notes provided.',
                     symptoms: item.symptoms || 'N/A',
+                    patientId: item.patientId,
                     medicines: []
                 });
             }
@@ -293,7 +294,14 @@ const PrescriptionsView = () => {
                                 Print 
                             </button>
                             <button 
-                                onClick={() => setSelectedPrescription(null)}
+                                onClick={() => onNavigate('billing', { 
+                                    patient: { 
+                                        id: selectedPrescription.patientId, // Ensure this exists in the grouped data
+                                        patientName: selectedPrescription.patientName,
+                                        pid: selectedPrescription.id.replace('RX-', '')
+                                    },
+                                    prescription: selectedPrescription
+                                })}
                                 className="px-6 py-2 bg-gray-900 text-white rounded text-sm font-bold hover:bg-gray-800 transition-colors shadow-md"
                             >
                                 Process Bill

@@ -23,6 +23,7 @@ const PharmacyDashboard = () => {
 
     // Navigation State for sub-modules
     const [activeTab, setActiveTab] = useState('dashboard');
+    const [navData, setNavData] = useState(null);
     const [isPharmacyExpanded, setIsPharmacyExpanded] = useState(true);
 
     const handleLogout = () => {
@@ -36,7 +37,13 @@ const PharmacyDashboard = () => {
             setIsPharmacyExpanded(!isPharmacyExpanded);
         } else {
             setActiveTab(tabId);
+            setNavData(null); // Clear data when using sidebar
         }
+    };
+
+    const handleNavigate = (tabId, data = null) => {
+        setActiveTab(tabId);
+        setNavData(data);
     };
 
     // Sidebar definition with collapsible pharmacy group
@@ -67,16 +74,16 @@ const PharmacyDashboard = () => {
     const renderContent = () => {
         switch (activeTab) {
             case 'dashboard':
-                return <DashboardView onNavigate={(tab) => setActiveTab(tab)} />;
+                return <DashboardView onNavigate={handleNavigate} />;
 
             case 'billing':
-                return <BillingCounterView />;
+                return <BillingCounterView initialData={navData} />;
 
             case 'prescriptions':
-                return <PrescriptionsView />;
+                return <PrescriptionsView onNavigate={handleNavigate} />;
 
             case 'inventory':
-                return <InventoryView />;
+                return <InventoryView onNavigate={handleNavigate} />;
 
             case 'purchase':
                 return <PurchaseView />;

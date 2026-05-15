@@ -95,8 +95,8 @@ public class PurchaseService {
     private void updateInventory(PurchaseInvoice invoice) {
         Long hospitalId = invoice.getHospitalId();
         for (PurchaseInvoiceItem item : invoice.getItems()) {
-            // 1. Find or create batch
-            MedicineBatch batch = batchRepository.findByHospitalIdAndMedicineIdAndBatchNumber(
+            // 1. Find or create batch with Pessimistic Lock
+            MedicineBatch batch = batchRepository.findByHospitalIdAndMedicineIdAndBatchNumberForUpdate(
                     hospitalId, item.getMedicineId(), item.getBatchNumber())
                     .orElse(new MedicineBatch());
 

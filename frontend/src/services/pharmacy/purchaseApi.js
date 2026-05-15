@@ -8,7 +8,9 @@ const purchaseApi = {
         return response.data;
     },
     getAll: async (page = 0, size = 10) => {
-        const response = await apiClient.get(`${API_URL}?page=${page}&size=${size}`);
+        const p = isNaN(parseInt(page)) ? 0 : page;
+        const s = isNaN(parseInt(size)) ? 10 : size;
+        const response = await apiClient.get(`${API_URL}?page=${p}&size=${s}`);
         return response.data;
     },
     getById: async (id) => {

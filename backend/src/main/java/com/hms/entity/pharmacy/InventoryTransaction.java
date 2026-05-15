@@ -26,6 +26,10 @@ public class InventoryTransaction {
     @Column(name = "medicine_batch_id", nullable = false)
     private Long medicineBatchId;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "medicine_batch_id", insertable = false, updatable = false)
+    private MedicineBatch medicineBatch;
+
     @Column(name = "transaction_type")
     private String transactionType; // PURCHASE, SALE, RETURN, ADJUSTMENT
 

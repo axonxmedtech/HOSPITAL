@@ -27,6 +27,7 @@ const SupplierForm = ({
     email: '',
     address: '',
     gstNumber: '',
+    panNumber: '',
     drugLicenseNumber: '',
     creditDays: '',
     isActive: true,
@@ -44,6 +45,7 @@ const SupplierForm = ({
         email: supplier.email || '',
         address: supplier.address || '',
         gstNumber: supplier.gstNumber || '',
+        panNumber: supplier.panNumber || '',
         drugLicenseNumber: supplier.drugLicenseNumber || '',
         creditDays: supplier.creditDays != null ? supplier.creditDays : '',
         isActive: supplier.isActive != null ? supplier.isActive : true,
@@ -57,6 +59,7 @@ const SupplierForm = ({
         email: '',
         address: '',
         gstNumber: '',
+        panNumber: '',
         drugLicenseNumber: '',
         creditDays: '',
         isActive: true,
@@ -150,6 +153,13 @@ const SupplierForm = ({
               name="gstNumber"
               placeholder="GST Number"
               value={formData.gstNumber}
+              onChange={handleChange}
+              className="input-field"
+            />
+            <input
+              name="panNumber"
+              placeholder="PAN Number"
+              value={formData.panNumber}
               onChange={handleChange}
               className="input-field"
             />

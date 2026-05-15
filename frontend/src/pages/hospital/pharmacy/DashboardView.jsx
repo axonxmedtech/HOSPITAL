@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import hospitalService from '../../../services/hospitalService';
 import inventoryApi from '../../../services/pharmacy/inventoryApi';
+import salesApi from '../../../services/pharmacy/salesApi';
 
 const DashboardView = ({ onNavigate }) => {
     const [loading, setLoading] = useState(true);
@@ -8,6 +9,7 @@ const DashboardView = ({ onNavigate }) => {
     const [lowStockCount, setLowStockCount] = useState(0);
     const [lowStockItems, setLowStockItems] = useState([]);
     const [recentPrescriptions, setRecentPrescriptions] = useState([]);
+    const [salesStats, setSalesStats] = useState({ todaySalesTotal: 0, todaySalesCount: 0 });
 
     useEffect(() => {
         const fetchLiveStats = async () => {
@@ -49,6 +51,10 @@ const DashboardView = ({ onNavigate }) => {
                     })));
                 }
 
+                // 3. Fetch Today Sales
+                const salesData = await salesApi.getStats();
+                setSalesStats(salesData);
+
             } catch (err) {
                 console.error("Failed loading pharmacy stats", err);
             } finally {
@@ -61,7 +67,7 @@ const DashboardView = ({ onNavigate }) => {
 
     // Dynamic stats mapping
     const stats = [
-        { title: 'Today Sales', value: '₹0.00', subtitle: 'Awaiting Billing Engine', icon: (
+        { title: 'Today Sales', value: `₹${salesStats.todaySalesTotal.toLocaleString()}`, subtitle: `${salesStats.todaySalesCount} Bills Generated`, icon: (
             <svg className="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>

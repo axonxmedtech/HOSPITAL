@@ -24,7 +24,7 @@ const PurchaseView = () => {
         } finally {
             setLoading(false);
         }
-    }, [pageInfo.page, pageInfo.size, pageInfo.totalElements, toast]);
+    }, [pageInfo.page, pageInfo.size, toast]);
 
     useEffect(() => {
         fetchInvoices();
