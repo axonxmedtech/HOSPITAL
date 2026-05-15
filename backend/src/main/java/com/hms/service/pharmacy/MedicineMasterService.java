@@ -26,6 +26,10 @@ public class MedicineMasterService {
         MedicineMaster m = new MedicineMaster();
         m.setHospitalId(securityHelper.getCurrentHospitalId());
         mapDtoToEntity(req, m);
+        m = repository.save(m);
+        
+        // Auto-generate medicine code based on ID to ensure uniqueness
+        m.setMedicineCode("MED" + (1000 + m.getId()));
         return repository.save(m);
     }
 
@@ -55,7 +59,7 @@ public class MedicineMasterService {
     }
 
     private void mapDtoToEntity(MedicineMasterRequest req, MedicineMaster m) {
-        m.setMedicineCode(req.getMedicineCode());
+
         m.setMedicineName(req.getMedicineName());
         m.setGenericName(req.getGenericName());
         m.setCategoryId(req.getCategoryId());

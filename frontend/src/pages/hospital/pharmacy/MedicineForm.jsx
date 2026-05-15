@@ -30,14 +30,13 @@ const MedicineForm = ({
   // -----------------------------------------------------------------
   // Local form state
   // -----------------------------------------------------------------
-  const [formData, setFormData] = useState({
-    medicineName: '',
-    genericName: '',
-    categoryId: '',
-    manufacturerId: '',
-    dosageForm: '',
-    medicineCode: '',
-    medicineType: '',
+    const [formData, setFormData] = useState({
+      medicineName: '',
+      genericName: '',
+      categoryId: '',
+      manufacturerId: '',
+      dosageForm: '',
+      medicineType: '',
     scheduleType: '',
     strength: '',
     unitOfMeasure: '',
@@ -61,7 +60,6 @@ const MedicineForm = ({
         categoryId: initialData.categoryId || '',
         manufacturerId: initialData.manufacturerId || '',
         dosageForm: initialData.dosageForm || '',
-        medicineCode: initialData.medicineCode || '',
         medicineType: initialData.medicineType || '',
         scheduleType: initialData.scheduleType || '',
         strength: initialData.strength || '',
@@ -79,7 +77,6 @@ const MedicineForm = ({
         categoryId: '',
         manufacturerId: '',
         dosageForm: '',
-        medicineCode: '',
         medicineType: '',
         scheduleType: '',
         strength: '',
@@ -157,7 +154,6 @@ const MedicineForm = ({
         categoryId: formData.categoryId ? Number(formData.categoryId) : null,
         manufacturerId: formData.manufacturerId ? Number(formData.manufacturerId) : null,
         dosageForm: formData.dosageForm.trim() || null,
-        medicineCode: formData.medicineCode.trim() || null,
         medicineType: formData.medicineType.trim() || null,
         scheduleType: formData.scheduleType.trim() || null,
         strength: formData.strength.trim() || null,
@@ -240,16 +236,7 @@ const MedicineForm = ({
               )}
             </div>
 
-            {/* Medicine Code */}
-            <div>
-              <input
-                name="medicineCode"
-                placeholder="Medicine Code (Unique)"
-                value={formData.medicineCode}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-900 transition-all"
-              />
-            </div>
+
 
 
             {/* --- SECTION B: Classification --- */}

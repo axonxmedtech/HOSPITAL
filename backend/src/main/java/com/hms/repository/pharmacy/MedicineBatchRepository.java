@@ -25,4 +25,6 @@ public interface MedicineBatchRepository extends JpaRepository<MedicineBatch, Lo
 
     @Query("SELECT b FROM MedicineBatch b WHERE b.hospitalId = :hospitalId AND b.currentQuantity <= b.medicine.reorderLevel AND b.currentQuantity > 0")
     Page<MedicineBatch> findLowStock(@Param("hospitalId") Long hospitalId, Pageable pageable);
+
+    java.util.Optional<MedicineBatch> findByHospitalIdAndMedicineIdAndBatchNumber(Long hospitalId, Long medicineId, String batchNumber);
 }
