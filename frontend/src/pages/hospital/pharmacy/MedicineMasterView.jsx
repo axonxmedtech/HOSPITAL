@@ -381,52 +381,65 @@ const MedicineMasterView = () => {
   // Render
   // ------------------------------------------------------------------
   return (
-    <div className="h-full flex flex-col gap-4 -mt-2 max-w-7xl mx-auto w-full">
+    <div className="h-full flex flex-col gap-2 -mt-2 max-w-7xl mx-auto w-full">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 bg-white px-4 py-3 rounded-lg border border-gray-200">
+        <div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-bold text-gray-900">
+              Medicine Master
+            </h1>
+          </div>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Centralized medicine, manufacturer and category registry.
+          </p>
+        </div>
+      </div>
+
       {/* Toolbar */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap gap-3 items-center">
-          {/* Search */}
-          <div className="relative w-72">
+      <div className="bg-white border border-gray-200 rounded-lg px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
+        {/* ZONE A: Search Zone */}
+        <div className="flex items-center gap-1.5">
+          <div className="relative w-80">
             <input
               type="text"
-              placeholder="Search medicine..."
+              placeholder="Search catalog..."
               value={searchTerm}
-              onChange={(e) =>
-                setSearchTerm(e.target.value)
-              }
+              onChange={(e) => setSearchTerm(e.target.value)}
               onKeyDown={handleKeyDown}
-              className="pl-4 pr-4 py-2 border border-gray-300 rounded w-full text-sm outline-none focus:border-gray-900"
+              className="pl-3 pr-3 py-1.5 border border-gray-300 rounded-md w-full text-sm outline-none focus:border-gray-900 transition-colors"
             />
           </div>
-
-          {/* Search Button */}
           <button
             onClick={handleSearch}
-            className="px-4 py-2 bg-gray-900 text-white text-sm font-bold rounded hover:bg-gray-800"
+            className="px-3 py-1.5 bg-gray-900 text-white text-sm font-medium rounded-md hover:bg-gray-800 transition-colors shadow-sm"
           >
             Search
           </button>
+        </div>
 
-          {/* Add Button */}
+        {/* ZONE B: Creation Zone */}
+        <div className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 px-2 py-1.5">
           <button
             onClick={handleAdd}
-            className="px-4 py-2 border border-gray-300 text-gray-700 text-sm font-bold rounded bg-white hover:bg-gray-50"
+            className="px-3 py-1.5 bg-white border border-gray-300 text-gray-800 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
           >
             + Add Medicine
           </button>
-
+          
+          <div className="h-5 w-px bg-gray-300 mx-0.5"></div>
+          
           <button
             onClick={() => setIsManufacturerModalOpen(true)}
-            className="px-4 py-2 border border-gray-300 text-gray-700 text-sm font-bold rounded bg-white hover:bg-gray-50"
+            className="px-2.5 py-1.5 bg-white border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
           >
-            + Add Manufacturer
+            + Manufacturer
           </button>
-
           <button
             onClick={() => setIsCategoryModalOpen(true)}
-            className="px-4 py-2 border border-gray-300 text-gray-700 text-sm font-bold rounded bg-white hover:bg-gray-50"
+            className="px-2.5 py-1.5 bg-white border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
           >
-            + Add Category
+            + Category
           </button>
         </div>
       </div>
