@@ -50,12 +50,6 @@ public class InventoryController {
         return ResponseEntity.ok(service.getExpiringInventory(days, PageRequest.of(page, size)));
     }
 
-    @PostMapping
-    @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
-    public ResponseEntity<?> createBatch(@RequestBody com.hms.entity.pharmacy.MedicineBatch batch) {
-        return ResponseEntity.ok(service.createManualBatch(batch));
-    }
-
     @PostMapping("/adjust")
     @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> adjustStock(@RequestBody java.util.Map<String, Object> payload) {

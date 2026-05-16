@@ -4,7 +4,6 @@ import { ViewLayout, ViewToolbar, SearchInput } from '../../../components/pharma
 import inventoryApi from '../../../services/pharmacy/inventoryApi';
 import categoriesApi from '../../../services/pharmacy/categoriesApi';
 import StockAdjustmentModal from '../../../components/StockAdjustmentModal';
-import MedicineBatchForm from '../../../components/MedicineBatchForm';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 
 const InventoryView = ({ onNavigate }) => {
@@ -13,7 +12,6 @@ const InventoryView = ({ onNavigate }) => {
     const [transactions, setTransactions] = useState([]);
     const [txLoading, setTxLoading] = useState(false);
     const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
-    const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
     
     const [selectedStatus, setSelectedStatus] = useState('all');
     const [selectedCategory, setSelectedCategory] = useState('all');
@@ -129,9 +127,7 @@ const InventoryView = ({ onNavigate }) => {
                             <button onClick={handleExport} className="px-4 py-2 border border-gray-300 text-gray-700 text-sm font-bold rounded-lg hover:bg-gray-50 transition-colors">
                                 Export
                             </button>
-                            <button onClick={() => setIsBatchModalOpen(true)} className="px-4 py-2 border border-gray-900 text-gray-900 text-sm font-bold rounded-lg hover:bg-gray-50 transition-all shadow-sm">
-                                + Add Opening Stock
-                            </button>
+
                             <button onClick={() => onNavigate('medicine_master')} className="px-4 py-2 bg-gray-900 text-white text-sm font-bold rounded-lg hover:bg-gray-800 transition-all shadow-md">
                                 + Add Medicine
                             </button>
@@ -280,11 +276,7 @@ const InventoryView = ({ onNavigate }) => {
                 onAdjustmentComplete={refresh}
             />
 
-            <MedicineBatchForm 
-                isOpen={isBatchModalOpen}
-                onClose={() => setIsBatchModalOpen(false)}
-                onSuccess={refresh}
-            />
+
         </ViewLayout>
     );
 };

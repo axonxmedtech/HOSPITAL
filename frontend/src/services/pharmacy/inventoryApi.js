@@ -22,14 +22,8 @@ const inventoryApi = {
         const response = await apiClient.post('/api/pharmacy/inventory/adjust', adjustmentData);
         return response.data;
     },
-    // Transaction History Log
     getTransactions: async (batchId, page = 0, size = 10) => {
         const response = await apiClient.get(`/api/pharmacy/inventory/transactions/${batchId}?page=${page}&size=${size}`);
-        return response.data;
-    },
-    // Create manual batch (Opening Stock)
-    createBatch: async (batchData) => {
-        const response = await apiClient.post('/api/pharmacy/inventory', batchData);
         return response.data;
     }
 };
