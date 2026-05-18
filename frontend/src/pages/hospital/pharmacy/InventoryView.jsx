@@ -4,7 +4,6 @@ import { ViewLayout, ViewToolbar, SearchInput } from '../../../components/pharma
 import inventoryApi from '../../../services/pharmacy/inventoryApi';
 import categoriesApi from '../../../services/pharmacy/categoriesApi';
 import StockAdjustmentModal from '../../../components/StockAdjustmentModal';
-import MedicineBatchForm from '../../../components/MedicineBatchForm';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 
 const InventoryView = ({ onNavigate }) => {
@@ -410,11 +409,7 @@ const InventoryView = ({ onNavigate }) => {
                 onAdjustmentComplete={refresh}
             />
 
-            <MedicineBatchForm 
-                isOpen={isBatchModalOpen}
-                onClose={() => setIsBatchModalOpen(false)}
-                onSuccess={refresh}
-            />
+
         </ViewLayout>
     );
 };
