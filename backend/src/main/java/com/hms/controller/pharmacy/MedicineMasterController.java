@@ -1,5 +1,7 @@
 package com.hms.controller.pharmacy;
 
+import java.util.Map;
+
 import com.hms.dto.pharmacy.MedicineMasterRequest;
 import com.hms.service.pharmacy.MedicineMasterService;
 import jakarta.validation.Valid;
@@ -41,7 +43,7 @@ public class MedicineMasterController {
     }
 
     @PutMapping("/medicines/{id}")
-    @PreAuthorize("hasAnyRole('PHARMACY_ADMIN', 'HOSPITAL_ADMIN', 'INVENTORY_MANAGER')")
+    @PreAuthorize("hasAnyRole('PHARMACIST', 'PHARMACY_ADMIN', 'HOSPITAL_ADMIN', 'INVENTORY_MANAGER')")
     public ResponseEntity<?> update(@PathVariable Long id, @Valid @RequestBody MedicineMasterRequest request) {
         return ResponseEntity.ok(service.update(id, request));
     }
@@ -62,4 +64,18 @@ public class MedicineMasterController {
     public ResponseEntity<?> autocomplete(@RequestParam("q") String query) {
         return ResponseEntity.ok(service.autocomplete(query));
     }
+
+    @PatchMapping("/medicines/{id}/status")
+    @PreAuthorize("hasAnyRole('PHARMACIST', 'PHARMACY_ADMIN', 'HOSPITAL_ADMIN', 'INVENTORY_MANAGER')")
+    public ResponseEntity<?> toggleStatus(
+            @PathVariable Long id,
+            @RequestBody Map<String, Boolean> payload) {
+        Boolean isActive = payload.get("isActive");
+        if (isActive == null) {
+            return ResponseEntity.badRequest().body("Missing isActive flag");
+        }
+        service.toggleStatus(id, isActive);
+        return ResponseEntity.ok().build();
+    }
+
 }

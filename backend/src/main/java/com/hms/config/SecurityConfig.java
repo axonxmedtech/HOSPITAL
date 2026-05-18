@@ -110,7 +110,7 @@ public class SecurityConfig {
         configuration.setAllowedOrigins(origins);
 
         // Allow all HTTP methods
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
 
         // Allow all headers
         configuration.setAllowedHeaders(Arrays.asList("*"));

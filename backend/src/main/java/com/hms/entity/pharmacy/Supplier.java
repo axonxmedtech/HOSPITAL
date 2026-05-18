@@ -39,6 +39,9 @@ public class Supplier {
     @Column(name = "gst_number")
     private String gstNumber;
 
+    @Column(name = "pan_number")
+    private String panNumber;
+
     @Column(name = "drug_license_number")
     private String drugLicenseNumber;
 

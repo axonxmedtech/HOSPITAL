@@ -26,6 +26,10 @@ public class MedicineMasterService {
         MedicineMaster m = new MedicineMaster();
         m.setHospitalId(securityHelper.getCurrentHospitalId());
         mapDtoToEntity(req, m);
+        m = repository.save(m);
+        
+        // Auto-generate medicine code based on ID to ensure uniqueness
+        m.setMedicineCode("MED" + (1000 + m.getId()));
         return repository.save(m);
     }
 
@@ -55,7 +59,7 @@ public class MedicineMasterService {
     }
 
     private void mapDtoToEntity(MedicineMasterRequest req, MedicineMaster m) {
-        m.setMedicineCode(req.getMedicineCode());
+
         m.setMedicineName(req.getMedicineName());
         m.setGenericName(req.getGenericName());
         m.setCategoryId(req.getCategoryId());
@@ -70,4 +74,12 @@ public class MedicineMasterService {
         if (req.getRequiresPrescription() != null) m.setRequiresPrescription(req.getRequiresPrescription());
         if (req.getIsActive() != null) m.setIsActive(req.getIsActive());
     }
+    @Transactional
+    public MedicineMaster toggleStatus(Long id, Boolean isActive) {
+        MedicineMaster m = repository.findByIdAndHospitalId(id, securityHelper.getCurrentHospitalId())
+                .orElseThrow(() -> new RuntimeException("Medicine not found"));
+        m.setIsActive(isActive);
+        return repository.save(m);
+    }
+
 }

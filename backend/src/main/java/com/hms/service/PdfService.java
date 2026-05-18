@@ -1,6 +1,8 @@
 package com.hms.service;
 
 import com.hms.entity.*;
+import com.hms.entity.pharmacy.PharmacySale;
+import com.hms.entity.pharmacy.PharmacySaleItem;
 import com.lowagie.text.*;
 import com.lowagie.text.Font;
 import com.lowagie.text.Rectangle;
@@ -247,6 +249,172 @@ public class PdfService {
         }
 
         return new ByteArrayInputStream(out.toByteArray());
+    }
+
+    public ByteArrayInputStream generatePharmacySaleReceiptPdf(Hospital hospital, Patient patient, PharmacySale sale) {
+        Document document = new Document(PageSize.A4, 36, 36, 48, 36);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+        try {
+            PdfWriter.getInstance(document, out);
+            document.open();
+
+            // 1. Standard Header
+            addStyledHeader(document, hospital, "PHARMACY INVOICE");
+
+            // 2. Metadata Table
+            PdfPTable metaTable = new PdfPTable(2);
+            metaTable.setWidthPercentage(100);
+            metaTable.setSpacingBefore(10f);
+            metaTable.setSpacingAfter(15f);
+
+            PdfPTable leftCol = new PdfPTable(2);
+            leftCol.setWidths(new float[]{1.2f, 2f});
+            addMetaRow(leftCol, "Invoice#", sale.getBillNumber());
+            addMetaRow(leftCol, "Date", sale.getCreatedAt() != null ? sale.getCreatedAt().format(DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm")) : "-");
+            addMetaRow(leftCol, "Patient ID", "-");
+            addMetaRow(leftCol, "Sale Type", "WALK-IN");
+
+            PdfPTable rightCol = new PdfPTable(2);
+            rightCol.setWidths(new float[]{1.2f, 2f});
+            addMetaRow(rightCol, "Customer Name", sale.getPatientName() != null ? sale.getPatientName() : "Walk-in Patient");
+            addMetaRow(rightCol, "Payment Method", sale.getPaymentMethod());
+            addMetaRow(rightCol, "Status", sale.getPaymentStatus());
+
+            PdfPCell leftCell = new PdfPCell(leftCol);
+            leftCell.setBorder(Rectangle.NO_BORDER);
+            metaTable.addCell(leftCell);
+
+            PdfPCell rightCell = new PdfPCell(rightCol);
+            rightCell.setBorder(Rectangle.NO_BORDER);
+            metaTable.addCell(rightCell);
+
+            document.add(metaTable);
+
+            // 3. Line separator
+            Paragraph line = new Paragraph();
+            line.add(new LineSeparator(1f, 100, Color.LIGHT_GRAY, Element.ALIGN_CENTER, -2));
+            document.add(line);
+            document.add(new Paragraph("\n"));
+
+            // 4. Main Medicine Items Table
+            PdfPTable itemsTable = new PdfPTable(7);
+            itemsTable.setWidthPercentage(100);
+            itemsTable.setWidths(new float[]{0.5f, 3.5f, 1.5f, 1.2f, 1.2f, 1.2f, 1.5f});
+
+            addTableHeaderCell(itemsTable, "Sr#");
+            addTableHeaderCell(itemsTable, "Medicine / Batch");
+            addTableHeaderCell(itemsTable, "Expiry");
+            addTableHeaderCell(itemsTable, "Qty");
+            addTableHeaderCell(itemsTable, "Price");
+            addTableHeaderCell(itemsTable, "GST %");
+            addTableHeaderCell(itemsTable, "Total");
+
+            int sr = 1;
+            for (PharmacySaleItem item : sale.getItems()) {
+                addTableCell(itemsTable, String.valueOf(sr++), false);
+                
+                // Medicine Name and Batch
+                String medName = item.getMedicineBatch() != null && item.getMedicineBatch().getMedicine() != null 
+                        ? item.getMedicineBatch().getMedicine().getMedicineName() 
+                        : "Medicine #" + item.getMedicineId();
+                String batchNum = item.getMedicineBatch() != null ? item.getMedicineBatch().getBatchNumber() : "N/A";
+                addTableCell(itemsTable, medName + "\n(Batch: " + batchNum + ")", false);
+                
+                // Expiry Date
+                String expDate = item.getMedicineBatch() != null && item.getMedicineBatch().getExpiryDate() != null
+                        ? item.getMedicineBatch().getExpiryDate().toString()
+                        : "-";
+                addTableCell(itemsTable, expDate, false);
+                
+                // Qty, Unit Price, GST%, Total
+                addTableCell(itemsTable, item.getQuantity() != null ? item.getQuantity().toString() : "0", true);
+                addTableCell(itemsTable, String.format("%.2f", item.getUnitPrice()), true);
+                addTableCell(itemsTable, item.getTaxPercentage() != null ? item.getTaxPercentage().toString() + "%" : "0%", true);
+                addTableCell(itemsTable, "INR " + String.format("%.2f", item.getTotalAmount()), true);
+            }
+
+            document.add(itemsTable);
+            document.add(new Paragraph("\n"));
+
+            // 5. Total Calculations (Right Aligned)
+            PdfPTable summaryTable = new PdfPTable(2);
+            summaryTable.setWidthPercentage(40);
+            summaryTable.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            summaryTable.setWidths(new float[]{1.5f, 1.5f});
+
+            addSummaryRow(summaryTable, "Sub Total:", "INR " + String.format("%.2f", sale.getSubtotal()));
+            addSummaryRow(summaryTable, "Discount:", "- INR " + String.format("%.2f", sale.getDiscountAmount()));
+            addSummaryRow(summaryTable, "GST (Tax):", "+ INR " + String.format("%.2f", sale.getTaxAmount()));
+            addSummaryRow(summaryTable, "Net Payable:", "INR " + String.format("%.2f", sale.getNetAmount()));
+
+            document.add(summaryTable);
+
+            // 6. Signature section
+            addFooterForWalkin(document, patient, sale.getBillNumber(), "Pharmacist Signature");
+
+            document.close();
+
+        } catch (DocumentException e) {
+            throw new RuntimeException("Error generating Pharmacy Invoice PDF", e);
+        }
+
+        return new ByteArrayInputStream(out.toByteArray());
+    }
+
+    private void addSummaryRow(PdfPTable table, String label, String value) {
+        PdfPCell lCell = new PdfPCell(new Phrase(label, SMALL_BOLD_FONT));
+        lCell.setBorder(Rectangle.NO_BORDER);
+        lCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        lCell.setPaddingBottom(5f);
+        table.addCell(lCell);
+
+        PdfPCell vCell = new PdfPCell(new Phrase(value, SMALL_BOLD_FONT));
+        vCell.setBorder(Rectangle.NO_BORDER);
+        vCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        vCell.setPaddingBottom(5f);
+        table.addCell(vCell);
+    }
+
+    private void addFooterForWalkin(Document document, Patient patient, String refNum, String sigLabel) throws DocumentException {
+        // Spacer
+        for (int i = 0; i < 3; i++) document.add(new Paragraph("\n"));
+
+        // Thick bottom gray bar mimicking remittance
+        Paragraph footerBar = new Paragraph();
+        footerBar.add(new LineSeparator(8f, 100, Color.DARK_GRAY, Element.ALIGN_CENTER, -2));
+        document.add(footerBar);
+
+        // Spacer
+        for (int i = 0; i < 2; i++) document.add(new Paragraph("\n"));
+
+        PdfPTable fTable = new PdfPTable(2);
+        fTable.setWidthPercentage(100);
+        fTable.setSpacingBefore(10f);
+
+        // Remittance section
+        PdfPCell remCell = new PdfPCell();
+        remCell.setBorder(Rectangle.NO_BORDER);
+        remCell.addElement(new Paragraph("SUMMARY / REMITTANCE", SMALL_BOLD_FONT));
+        
+        PdfPTable subRem = new PdfPTable(2);
+        subRem.setWidthPercentage(100);
+        subRem.setSpacingBefore(5f);
+        addMetaRow(subRem, "Customer Name", patient != null ? patient.getName() : "Walk-in Patient");
+        addMetaRow(subRem, "Invoice Ref#", refNum);
+        remCell.addElement(subRem);
+        fTable.addCell(remCell);
+
+        // Sign line section
+        PdfPCell sigCell = new PdfPCell();
+        sigCell.setBorder(Rectangle.NO_BORDER);
+        sigCell.setVerticalAlignment(Element.ALIGN_BOTTOM);
+        Paragraph sig = new Paragraph("\n\n______________________\n" + sigLabel, FOOTER_FONT);
+        sig.setAlignment(Element.ALIGN_RIGHT);
+        sigCell.addElement(sig);
+        fTable.addCell(sigCell);
+
+        document.add(fTable);
     }
 
     /**

@@ -9,6 +9,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.hms.exception.ResourceNotFoundException;
+import com.hms.exception.UnauthorizedException;
 
 @Service
 public class SupplierService {
@@ -37,6 +39,9 @@ public class SupplierService {
 
     public Page<Supplier> getAll(String search, Pageable pageable) {
         Long hid = securityHelper.getCurrentHospitalId();
+        if (hid == null) {
+            throw new UnauthorizedException("Unauthenticated request - hospital ID missing");
+        }
         if (search != null && !search.trim().isEmpty()) {
             return supplierRepository.findByHospitalIdAndSupplierNameContainingIgnoreCase(hid, search, pageable);
         }
@@ -45,7 +50,7 @@ public class SupplierService {
 
     public Supplier getById(Long id) {
         return supplierRepository.findByIdAndHospitalId(id, securityHelper.getCurrentHospitalId())
-                .orElseThrow(() -> new RuntimeException("Supplier not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Supplier not found"));
     }
 
     @Transactional
@@ -59,7 +64,8 @@ public class SupplierService {
         s.setGstNumber(req.getGstNumber());
         s.setDrugLicenseNumber(req.getDrugLicenseNumber());
         s.setCreditDays(req.getCreditDays());
-        if (req.getIsActive() != null) s.setIsActive(req.getIsActive());
+        if (req.getIsActive() != null)
+            s.setIsActive(req.getIsActive());
         return supplierRepository.save(s);
     }
 }

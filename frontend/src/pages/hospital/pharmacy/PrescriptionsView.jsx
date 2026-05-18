@@ -8,6 +8,7 @@ const PrescriptionsView = () => {
     const [prescriptions, setPrescriptions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [sourceFilter, setSourceFilter] = useState('ALL');
 
     useEffect(() => {
         fetchData();
@@ -48,6 +49,8 @@ const PrescriptionsView = () => {
                     diagnosis: item.diagnosis || 'See Consultation',
                     notes: item.notes || 'No specific pharmacist notes provided.',
                     symptoms: item.symptoms || 'N/A',
+                    patientId: item.patientId,
+                    prescriptionSource: item.prescriptionSource || 'OPD',
                     medicines: []
                 });
             }
@@ -67,11 +70,13 @@ const PrescriptionsView = () => {
         return Array.from(map.values()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     }, [prescriptions]);
 
-    const filteredPrescriptions = groupedPrescriptions.filter(p => 
-        p.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.doctorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.id.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredPrescriptions = groupedPrescriptions.filter(p => {
+        const matchesSearch = p.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                             p.doctorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                             p.id.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesSource = sourceFilter === 'ALL' || p.prescriptionSource === sourceFilter;
+        return matchesSearch && matchesSource;
+    });
 
     return (
         <div className="space-y-6 relative">
@@ -82,6 +87,16 @@ const PrescriptionsView = () => {
                     <p className="text-sm text-gray-500 mt-0.5">View real-time prescribing data direct from consultation rooms.</p>
                 </div>
                 <div className="flex items-center gap-3 flex-1 sm:flex-none justify-end">
+                     <select
+                        value={sourceFilter}
+                        onChange={(e) => setSourceFilter(e.target.value)}
+                        className="px-3 py-2 border border-gray-300 rounded text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 bg-white font-medium text-gray-700 transition-all cursor-pointer"
+                     >
+                        <option value="ALL">All Visit Types</option>
+                        <option value="APPOINTMENT">Appointments Only</option>
+                        <option value="OPD">OPD Direct Only</option>
+                        <option value="IPD">IPD Admissions Only</option>
+                     </select>
                      <div className="relative w-full sm:w-80">
                          <input 
                             type="text" 
@@ -119,6 +134,7 @@ const PrescriptionsView = () => {
                                  <th className="px-6 py-3 font-medium">Patient Name</th>
                                  <th className="px-6 py-3 font-medium">Doctor Name</th>
                                  <th className="px-6 py-3 font-medium">Prescribed Date</th>
+                                 <th className="px-6 py-3 font-medium">Visit Type</th>
                                  <th className="px-6 py-3 font-medium text-center">Meds Count</th>
                                  <th className="px-6 py-3 font-medium text-right">Action</th>
                              </tr>
@@ -126,7 +142,7 @@ const PrescriptionsView = () => {
                          <tbody className="divide-y divide-gray-100 relative">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                                    <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
                                         <div className="flex flex-col items-center justify-center gap-2">
                                             <div className="w-6 h-6 border-2 border-gray-900 border-t-transparent rounded-full animate-spin"></div>
                                             <span>Querying database...</span>
@@ -157,7 +173,7 @@ const PrescriptionsView = () => {
                                 </tr>
                             )) : (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-16 text-center text-gray-400">
+                                    <td colSpan={7} className="px-6 py-16 text-center text-gray-400">
                                         <div className="flex flex-col items-center">
                                             <svg className="w-16 h-16 mb-3 opacity-20 text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                                             <h3 className="text-lg font-medium text-gray-600">No Data Found</h3>
@@ -293,7 +309,14 @@ const PrescriptionsView = () => {
                                 Print 
                             </button>
                             <button 
-                                onClick={() => setSelectedPrescription(null)}
+                                onClick={() => onNavigate('billing', { 
+                                    patient: { 
+                                        id: selectedPrescription.patientId, // Ensure this exists in the grouped data
+                                        patientName: selectedPrescription.patientName,
+                                        pid: selectedPrescription.id.replace('RX-', '')
+                                    },
+                                    prescription: selectedPrescription
+                                })}
                                 className="px-6 py-2 bg-gray-900 text-white rounded text-sm font-bold hover:bg-gray-800 transition-colors shadow-md"
                             >
                                 Process Bill

@@ -67,7 +67,13 @@ public class MedicineBatch {
     @Column(name = "purchase_invoice_item_id")
     private Long purchaseInvoiceItemId;
 
+    @Column(name = "gst_percentage")
+    private BigDecimal gstPercentage;
+
     private String status; // ACTIVE, EXPIRED, QUARANTINED, RECALLED
+
+    @Column(columnDefinition = "TEXT")
+    private String remarks;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
