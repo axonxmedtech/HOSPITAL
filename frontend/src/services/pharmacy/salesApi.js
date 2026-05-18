@@ -16,6 +16,20 @@ const salesApi = {
     getStats: async () => {
         const response = await apiClient.get('/api/pharmacy/sales/stats');
         return response.data;
+    },
+    downloadPDF: async (id) => {
+        const response = await apiClient.get(`/api/pharmacy/sales/${id}/pdf`, {
+            responseType: 'blob'
+        });
+        return response.data;
+    },
+    searchByBillNumber: async (billNumber) => {
+        const response = await apiClient.get(`/api/pharmacy/sales/search?billNumber=${encodeURIComponent(billNumber)}`);
+        return response.data;
+    },
+    processReturn: async (id, returnItems) => {
+        const response = await apiClient.post(`/api/pharmacy/sales/${id}/return`, returnItems);
+        return response.data;
     }
 };
 

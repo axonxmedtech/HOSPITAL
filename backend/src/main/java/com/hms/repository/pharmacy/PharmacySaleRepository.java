@@ -14,8 +14,8 @@ public interface PharmacySaleRepository extends JpaRepository<PharmacySale, Long
     Optional<PharmacySale> findByIdAndHospitalId(Long id, Long hospitalId);
     Optional<PharmacySale> findByBillNumberAndHospitalId(String billNumber, Long hospitalId);
 
-    @org.springframework.data.jpa.repository.Query("SELECT SUM(s.netAmount) FROM PharmacySale s WHERE s.hospitalId = :hospitalId AND s.billDate BETWEEN :start AND :end")
+    @org.springframework.data.jpa.repository.Query("SELECT SUM(s.netAmount) FROM PharmacySale s WHERE s.hospitalId = :hospitalId AND s.createdAt BETWEEN :start AND :end")
     java.math.BigDecimal getSumOfSalesBetween(Long hospitalId, java.time.LocalDateTime start, java.time.LocalDateTime end);
 
-    long countByHospitalIdAndBillDateBetween(Long hospitalId, java.time.LocalDateTime start, java.time.LocalDateTime end);
+    long countByHospitalIdAndCreatedAtBetween(Long hospitalId, java.time.LocalDateTime start, java.time.LocalDateTime end);
 }

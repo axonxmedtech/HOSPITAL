@@ -20,8 +20,8 @@ public class PharmacySaleItem {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "pharmacy_sale_id", nullable = false)
-    @JsonIgnore
+    @JoinColumn(name = "sale_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonBackReference
     private PharmacySale pharmacySale;
 
     @Column(name = "medicine_id", nullable = false)
@@ -34,21 +34,36 @@ public class PharmacySaleItem {
     @JoinColumn(name = "medicine_batch_id", insertable = false, updatable = false)
     private MedicineBatch medicineBatch;
 
-    @Column(nullable = false, precision = 15, scale = 2)
-    private BigDecimal quantity;
+    @Column(name = "prescribed_quantity", precision = 10, scale = 2)
+    private BigDecimal prescribedQuantity;
 
-    @Column(name = "unit_price", nullable = false, precision = 15, scale = 2)
+    @Column(name = "sold_quantity", nullable = false, precision = 10, scale = 2)
+    private BigDecimal quantity; // Mapped to sold_quantity
+
+    @Column(name = "unit_price", nullable = false, precision = 10, scale = 2)
     private BigDecimal unitPrice;
 
-    @Column(name = "tax_percentage", precision = 5, scale = 2)
-    private BigDecimal taxPercentage;
+    @Column(name = "discount_percentage", precision = 5, scale = 2)
+    private BigDecimal discountPercentage;
 
-    @Column(name = "tax_amount", precision = 15, scale = 2)
+    @Column(name = "gst_percentage", precision = 5, scale = 2)
+    private BigDecimal taxPercentage; // Mapped to gst_percentage
+
+    @Column(name = "tax_percentage")
+    private BigDecimal taxPercentageRaw;
+
+    @Column(name = "tax_amount")
     private BigDecimal taxAmount;
 
-    @Column(name = "discount_amount", precision = 15, scale = 2)
+    @Column(name = "discount_amount", precision = 12, scale = 2)
     private BigDecimal discountAmount;
 
-    @Column(name = "total_amount", nullable = false, precision = 15, scale = 2)
-    private BigDecimal totalAmount;
+    @Column(name = "line_total", nullable = false, precision = 12, scale = 2)
+    private BigDecimal totalAmount; // Mapped to line_total
+
+    @Column(name = "total_amount")
+    private BigDecimal totalAmountRaw;
+
+    @Column(name = "quantity")
+    private BigDecimal quantityRaw;
 }

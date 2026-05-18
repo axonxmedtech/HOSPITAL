@@ -42,7 +42,14 @@ public class MedicineBatchService {
     }
 
     public Page<MedicineBatch> getLowStockInventory(Pageable pageable) {
-        return repository.findLowStock(securityHelper.getCurrentHospitalId(), pageable);
+        Long hid = securityHelper.getCurrentHospitalId();
+        Page<MedicineBatch> page = repository.findLowStock(hid, pageable);
+        for (MedicineBatch b : page.getContent()) {
+            java.math.BigDecimal totalQty = repository.sumCurrentQuantityByMedicineId(hid, b.getMedicineId());
+            if (totalQty == null) totalQty = java.math.BigDecimal.ZERO;
+            b.setCurrentQuantity(totalQty);
+        }
+        return page;
     }
 
     public Page<MedicineBatch> getExpiringInventory(Integer daysThreshold, Pageable pageable) {
@@ -79,5 +86,100 @@ public class MedicineBatchService {
         transactionRepository.save(tx);
 
         return saved;
+    }
+
+    public java.util.List<MedicineBatch> searchAvailableBatchesFEFO(String query) {
+        Long hid = securityHelper.getCurrentHospitalId();
+        return repository.searchAvailableBatchesFEFO(hid, query != null ? query.trim() : "");
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public MedicineBatch blockBatch(Long id) {
+        Long hid = securityHelper.getCurrentHospitalId();
+        MedicineBatch batch = repository.findByIdAndHospitalIdForUpdate(id, hid)
+                .orElseThrow(() -> new RuntimeException("Batch not found"));
+        batch.setStatus("BLOCKED");
+        return repository.save(batch);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public MedicineBatch disposeBatch(Long id, String remarks) {
+        Long hid = securityHelper.getCurrentHospitalId();
+        MedicineBatch batch = repository.findByIdAndHospitalIdForUpdate(id, hid)
+                .orElseThrow(() -> new RuntimeException("Batch not found"));
+        
+        java.math.BigDecimal qtyBefore = batch.getCurrentQuantity();
+        if (qtyBefore == null) qtyBefore = java.math.BigDecimal.ZERO;
+
+        if (qtyBefore.compareTo(java.math.BigDecimal.ZERO) > 0) {
+            // Write off the remaining stock to 0
+            batch.setCurrentQuantity(java.math.BigDecimal.ZERO);
+            
+            InventoryTransaction tx = new InventoryTransaction();
+            tx.setHospitalId(hid);
+            tx.setMedicineBatchId(batch.getId());
+            tx.setTransactionType("ADJUSTMENT");
+            tx.setQuantity(qtyBefore.negate());
+            tx.setQuantityBefore(qtyBefore);
+            tx.setQuantityAfter(java.math.BigDecimal.ZERO);
+            tx.setReferenceType("STOCK_DISPOSAL");
+            tx.setRemarks(remarks != null ? remarks : "Disposed due to expiry");
+            tx.setCreatedBy(securityHelper.getCurrentUserId());
+            transactionRepository.save(tx);
+        }
+
+        batch.setStatus("DISPOSED");
+        return repository.save(batch);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public java.util.Map<String, Object> processSupplierReturn(Long supplierId, java.util.List<java.util.Map<String, Object>> items) {
+        Long hid = securityHelper.getCurrentHospitalId();
+        Long userId = securityHelper.getCurrentUserId();
+        
+        java.math.BigDecimal totalClaimed = java.math.BigDecimal.ZERO;
+        
+        for (java.util.Map<String, Object> item : items) {
+            Long batchId = Long.valueOf(item.get("medicineBatchId").toString());
+            java.math.BigDecimal qtyToReturn = new java.math.BigDecimal(item.get("quantityToReturn").toString());
+            
+            if (qtyToReturn.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                throw new RuntimeException("Return quantity must be positive");
+            }
+            
+            MedicineBatch batch = repository.findByIdAndHospitalIdForUpdate(batchId, hid)
+                    .orElseThrow(() -> new RuntimeException("Batch not found or unauthorized"));
+            
+            if (batch.getCurrentQuantity().compareTo(qtyToReturn) < 0) {
+                throw new RuntimeException("Insufficient stock in batch " + batch.getBatchNumber() + " to return. Available: " + batch.getCurrentQuantity());
+            }
+            
+            java.math.BigDecimal qtyBefore = batch.getCurrentQuantity();
+            batch.setCurrentQuantity(qtyBefore.subtract(qtyToReturn));
+            repository.save(batch);
+            
+            // Calculate claim total
+            java.math.BigDecimal rate = batch.getPurchaseRate() != null ? batch.getPurchaseRate() : java.math.BigDecimal.ZERO;
+            totalClaimed = totalClaimed.add(qtyToReturn.multiply(rate));
+            
+            // Record Return Transaction
+            InventoryTransaction tx = new InventoryTransaction();
+            tx.setHospitalId(hid);
+            tx.setMedicineBatchId(batch.getId());
+            tx.setTransactionType("RETURN");
+            tx.setQuantity(qtyToReturn.negate()); // Negative because stock leaves inventory
+            tx.setQuantityBefore(qtyBefore);
+            tx.setQuantityAfter(batch.getCurrentQuantity());
+            tx.setReferenceType("SUPPLIER_RETURN");
+            tx.setRemarks("Returned to Supplier ID: " + supplierId);
+            tx.setCreatedBy(userId);
+            transactionRepository.save(tx);
+        }
+        
+        java.util.Map<String, Object> res = new java.util.HashMap<>();
+        res.put("status", "SUCCESS");
+        res.put("totalClaimed", totalClaimed);
+        res.put("message", "Supplier return note dispatched successfully!");
+        return res;
     }
 }

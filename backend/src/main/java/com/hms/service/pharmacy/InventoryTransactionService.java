@@ -69,4 +69,9 @@ public class InventoryTransactionService {
 
         return transactionRepository.findByMedicineBatchIdOrderByCreatedAtDesc(batchId, pageable);
     }
+
+    public Page<InventoryTransaction> getReturnsHistory(Pageable pageable) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        return transactionRepository.findByHospitalIdAndTransactionTypeOrderByCreatedAtDesc(hospitalId, "RETURN", pageable);
+    }
 }

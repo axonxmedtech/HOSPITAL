@@ -33,6 +33,12 @@ public class InventoryController {
         return ResponseEntity.ok(service.getInventory(q, categoryId, pageable));
     }
 
+    @GetMapping("/search-batches")
+    @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> searchAvailableBatchesFEFO(@RequestParam(required = false, defaultValue = "") String q) {
+        return ResponseEntity.ok(service.searchAvailableBatchesFEFO(q));
+    }
+
     @GetMapping("/low-stock")
     @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> getLowStock(
@@ -72,5 +78,34 @@ public class InventoryController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         return ResponseEntity.ok(transactionService.getTransactionHistory(batchId, PageRequest.of(page, size)));
+    }
+
+    @PostMapping("/batches/{id}/block")
+    @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> blockBatch(@PathVariable Long id) {
+        return ResponseEntity.ok(service.blockBatch(id));
+    }
+
+    @PostMapping("/batches/{id}/dispose")
+    @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> disposeBatch(@PathVariable Long id, @RequestBody(required = false) java.util.Map<String, String> payload) {
+        String remarks = payload != null ? payload.get("remarks") : "Disposed due to expiry";
+        return ResponseEntity.ok(service.disposeBatch(id, remarks));
+    }
+
+    @PostMapping("/supplier-return")
+    @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> processSupplierReturn(@RequestBody java.util.Map<String, Object> payload) {
+        Long supplierId = Long.valueOf(payload.get("supplierId").toString());
+        java.util.List<java.util.Map<String, Object>> items = (java.util.List<java.util.Map<String, Object>>) payload.get("items");
+        return ResponseEntity.ok(service.processSupplierReturn(supplierId, items));
+    }
+
+    @GetMapping("/returns-history")
+    @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> getReturnsHistory(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(transactionService.getReturnsHistory(org.springframework.data.domain.PageRequest.of(page, size)));
     }
 }

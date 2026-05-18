@@ -9,4 +9,5 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface InventoryTransactionRepository extends JpaRepository<InventoryTransaction, Long> {
     Page<InventoryTransaction> findByMedicineBatchIdOrderByCreatedAtDesc(Long medicineBatchId, Pageable pageable);
+    org.springframework.data.domain.Page<InventoryTransaction> findByHospitalIdAndTransactionTypeOrderByCreatedAtDesc(Long hospitalId, String transactionType, org.springframework.data.domain.Pageable pageable);
 }

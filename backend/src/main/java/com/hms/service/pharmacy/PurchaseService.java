@@ -121,6 +121,7 @@ public class PurchaseService {
             batch.setSellingPrice(item.getSellingPrice());
             batch.setSupplierId(invoice.getSupplierId());
             batch.setPurchaseInvoiceItemId(item.getId());
+            batch.setGstPercentage(item.getGstPercentage());
             batch.setStatus("ACTIVE");
 
             MedicineBatch savedBatch = batchRepository.save(batch);

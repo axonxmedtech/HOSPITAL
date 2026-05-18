@@ -34,7 +34,15 @@ public interface MedicineBatchRepository extends JpaRepository<MedicineBatch, Lo
     @Query("SELECT b FROM MedicineBatch b WHERE b.hospitalId = :hospitalId AND b.expiryDate <= :dateThreshold AND b.currentQuantity > 0")
     Page<MedicineBatch> findExpiringSoon(@Param("hospitalId") Long hospitalId, @Param("dateThreshold") LocalDate dateThreshold, Pageable pageable);
 
-    @Query("SELECT b FROM MedicineBatch b WHERE b.hospitalId = :hospitalId AND b.currentQuantity <= b.medicine.reorderLevel AND b.currentQuantity > 0")
+    @Query("SELECT SUM(b.currentQuantity) FROM MedicineBatch b WHERE b.hospitalId = :hospitalId AND b.medicineId = :medicineId")
+    java.math.BigDecimal sumCurrentQuantityByMedicineId(@Param("hospitalId") Long hospitalId, @Param("medicineId") Long medicineId);
+
+    @Query("SELECT b FROM MedicineBatch b WHERE b.hospitalId = :hospitalId AND b.id IN (" +
+           "  SELECT MIN(sub.id) FROM MedicineBatch sub " +
+           "  WHERE sub.hospitalId = :hospitalId " +
+           "  GROUP BY sub.medicineId " +
+           "  HAVING SUM(sub.currentQuantity) <= (SELECT m.reorderLevel FROM MedicineMaster m WHERE m.id = sub.medicineId)" +
+           ")")
     Page<MedicineBatch> findLowStock(@Param("hospitalId") Long hospitalId, Pageable pageable);
 
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
@@ -43,6 +51,14 @@ public interface MedicineBatchRepository extends JpaRepository<MedicineBatch, Lo
             @Param("hospitalId") Long hospitalId, 
             @Param("medicineId") Long medicineId, 
             @Param("batchNumber") String batchNumber);
+
+    @Query("SELECT b FROM MedicineBatch b JOIN b.medicine m WHERE b.hospitalId = :hospitalId AND b.currentQuantity > 0 " +
+           "AND b.expiryDate > CURRENT_DATE " +
+           "AND (b.status IS NULL OR b.status = 'ACTIVE') AND (" +
+           "LOWER(m.medicineName) LIKE LOWER(CONCAT('%', :q, '%')) OR " +
+           "LOWER(b.batchNumber) LIKE LOWER(CONCAT('%', :q, '%'))) " +
+           "ORDER BY b.expiryDate ASC")
+    java.util.List<MedicineBatch> searchAvailableBatchesFEFO(@Param("hospitalId") Long hospitalId, @Param("q") String query);
 
     java.util.Optional<MedicineBatch> findByHospitalIdAndMedicineIdAndBatchNumber(Long hospitalId, Long medicineId, String batchNumber);
 }

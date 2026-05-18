@@ -7,9 +7,12 @@ import java.util.List;
 @Data
 public class PharmacySaleRequest {
     private Long patientId;
+    private String patientName;
     private String paymentMethod;
     private Boolean isIpdBill;
     private Long ipdAdmissionId;
+    private Long prescriptionId;
+    private Long doctorId;
     private BigDecimal subtotal;
     private BigDecimal taxAmount;
     private BigDecimal discountAmount;
@@ -24,6 +27,7 @@ public class PharmacySaleRequest {
         private BigDecimal unitPrice;
         private BigDecimal taxPercentage;
         private BigDecimal taxAmount;
+        private BigDecimal discountPercentage;
         private BigDecimal discountAmount;
         private BigDecimal totalAmount;
     }

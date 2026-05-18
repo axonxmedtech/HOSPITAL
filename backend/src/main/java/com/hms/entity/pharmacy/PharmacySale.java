@@ -27,44 +27,63 @@ public class PharmacySale {
     @Column(name = "patient_id")
     private Long patientId;
 
-    @Column(name = "bill_number", unique = true, nullable = false)
-    private String billNumber;
+    @Column(name = "prescription_id")
+    private Long prescriptionId;
 
-    @Column(name = "bill_date", nullable = false)
-    private LocalDateTime billDate;
+    @Column(name = "doctor_id")
+    private Long doctorId;
 
-    @Column(nullable = false, precision = 15, scale = 2)
+    @Column(name = "pharmacist_id")
+    private Long pharmacistId;
+
+    @Column(name = "sale_type", length = 30)
+    private String saleType; // WALK-IN, PRESCRIPTION, IPD
+
+    @Column(name = "invoice_number", unique = true)
+    private String billNumber; // Mapped to invoice_number column
+
+    @Column(name = "subtotal", precision = 12, scale = 2)
     private BigDecimal subtotal;
 
-    @Column(name = "tax_amount", precision = 15, scale = 2)
-    private BigDecimal taxAmount;
+    @Column(name = "gst_amount", precision = 12, scale = 2)
+    private BigDecimal taxAmount; // Mapped to gst_amount column
 
-    @Column(name = "discount_amount", precision = 15, scale = 2)
+    @Column(name = "tax_amount")
+    private BigDecimal taxAmountRaw;
+
+    @Column(name = "discount_amount", precision = 12, scale = 2)
     private BigDecimal discountAmount;
 
-    @Column(name = "net_amount", nullable = false, precision = 15, scale = 2)
-    private BigDecimal netAmount;
+    @Column(name = "total_amount", precision = 12, scale = 2)
+    private BigDecimal netAmount; // Mapped to total_amount column
 
-    @Column(name = "payment_status")
+    @Column(name = "net_amount")
+    private BigDecimal netAmountRaw;
+
+    @Column(name = "payment_status", length = 50)
     private String paymentStatus; // PAID, PENDING, CANCELLED
 
-    @Column(name = "payment_method")
+    @Column(name = "payment_method", length = 50)
     private String paymentMethod; // CASH, CARD, UPI, IPD_BILL
 
+    @Column(name = "posting_status", length = 50)
+    private String postingStatus; // DRAFT, POSTED
+
     @Column(name = "is_ipd_bill")
-    private Boolean isIpdBill = false;
+    private Boolean isIpdBill;
 
     @Column(name = "ipd_admission_id")
     private Long ipdAdmissionId;
 
-    @Column(name = "created_by")
-    private Long createdBy;
+    @Column(name = "patient_name")
+    private String patientName;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
-    @OneToMany(mappedBy = "pharmacySale", cascade = CascadeType.ALL, orphanRemoval = true)
+    @com.fasterxml.jackson.annotation.JsonManagedReference
+    @OneToMany(mappedBy = "pharmacySale", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<PharmacySaleItem> items;
 
     @PrePersist
@@ -72,8 +91,8 @@ public class PharmacySale {
         if (this.billNumber == null) {
             this.billNumber = "PHB-" + System.currentTimeMillis();
         }
-        if (this.billDate == null) {
-            this.billDate = LocalDateTime.now();
+        if (this.postingStatus == null) {
+            this.postingStatus = "POSTED";
         }
     }
 }

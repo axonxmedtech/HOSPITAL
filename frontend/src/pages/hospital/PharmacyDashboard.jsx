@@ -14,6 +14,8 @@ import PurchaseView from './pharmacy/PurchaseView';
 import ReportsView from './pharmacy/ReportsView';
 import PrescriptionsView from './pharmacy/PrescriptionsView';
 import SuppliersView from './pharmacy/SuppliersView';
+import ExpiryView from './pharmacy/ExpiryView';
+import ReturnsView from './pharmacy/ReturnsView';
 
 const PharmacyDashboard = () => {
     const [user] = useState(authService.getCurrentUser());
@@ -24,21 +26,16 @@ const PharmacyDashboard = () => {
     // Navigation State for sub-modules
     const [activeTab, setActiveTab] = useState('dashboard');
     const [navData, setNavData] = useState(null);
-    const [isPharmacyExpanded, setIsPharmacyExpanded] = useState(true);
 
     const handleLogout = () => {
         authService.logout();
         navigate('/login');
     };
 
-    // Handle sidebar state toggle for expandable groups
+    // Handle sidebar state toggle
     const handleTabChange = (tabId) => {
-        if (tabId === 'pharmacy_group') {
-            setIsPharmacyExpanded(!isPharmacyExpanded);
-        } else {
-            setActiveTab(tabId);
-            setNavData(null); // Clear data when using sidebar
-        }
+        setActiveTab(tabId);
+        setNavData(null); // Clear data when using sidebar
     };
 
     const handleNavigate = (tabId, data = null) => {
@@ -46,28 +43,18 @@ const PharmacyDashboard = () => {
         setNavData(data);
     };
 
-    // Sidebar definition with collapsible pharmacy group
+    // Flat Sidebar definition matching Receptionist/Doctor layouts to support clean minimalist icons
     const sidebarTabs = [
-        {
-            id: 'pharmacy_group',
-            label: 'Pharmacy',
-            icon: null, // handled by map
-            isExpanded: isPharmacyExpanded,
-            subItems: [
-                { id: 'dashboard', label: 'Dashboard' },
-                { id: 'billing', label: 'Billing Counter' },
-                { id: 'prescriptions', label: 'Prescriptions' },
-                { id: 'inventory', label: 'Inventory' },
-                { id: 'medicine_master', label: 'Medicine Master' },
-                { id: 'purchase', label: 'Purchase Management' },
-                { id: 'suppliers', label: 'Suppliers' },
-                { id: 'returns', label: 'Returns & Refunds' },
-                { id: 'expiry', label: 'Expiry Management' },
-                { id: 'reports', label: 'Reports & Analytics' },
-                { id: 'audit', label: 'Audit Logs' },
-                { id: 'settings', label: 'Settings' }
-            ]
-        }
+        { id: 'dashboard', label: 'Dashboard' },
+        { id: 'billing', label: 'Billing Counter' },
+        { id: 'prescriptions', label: 'Prescriptions' },
+        { id: 'inventory', label: 'Inventory' },
+        { id: 'medicine_master', label: 'Medicine Master' },
+        { id: 'purchase', label: 'Purchase Management' },
+        { id: 'suppliers', label: 'Suppliers' },
+        { id: 'returns', label: 'Returns & Refunds' },
+        { id: 'expiry', label: 'Expiry Management' },
+        { id: 'reports', label: 'Reports & Analytics' }
     ];
 
     // Router-like rendering component based on selected state
@@ -96,6 +83,12 @@ const PharmacyDashboard = () => {
 
             case 'reports':
                 return <ReportsView />;
+                
+            case 'expiry':
+                return <ExpiryView />;
+                
+            case 'returns':
+                return <ReturnsView />;
 
             default:
                 return (

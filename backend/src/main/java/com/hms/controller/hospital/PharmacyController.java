@@ -136,6 +136,17 @@ public class PharmacyController {
                 map.put("diagnosis", record.getDiagnosis());
                 map.put("notes", record.getTreatmentNotes());
                 map.put("symptoms", record.getSymptoms());
+
+                // Resolve the visit source
+                String prescriptionSource = "OPD"; // Default fallback
+                if (record.getIpdAdmissionId() != null || "IPD".equalsIgnoreCase(record.getVisitType())) {
+                    prescriptionSource = "IPD";
+                } else if (record.getAppointmentId() != null) {
+                    prescriptionSource = "APPOINTMENT";
+                } else if (record.getOpdId() != null) {
+                    prescriptionSource = "OPD";
+                }
+                map.put("prescriptionSource", prescriptionSource);
             }
 
             return map;
