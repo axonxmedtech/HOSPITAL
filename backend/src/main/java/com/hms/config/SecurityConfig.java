@@ -69,6 +69,10 @@ public class SecurityConfig {
                         // Public endpoints - no authentication required
                         .requestMatchers("/platform/login", "/login").permitAll()
                         .requestMatchers("/platform/users/debug-users").permitAll()
+                        // Lightweight public health endpoint used by Render / UptimeRobot to
+                        // keep the instance awake and verify liveness. This must remain
+                        // unauthenticated so external uptime probes can access it.
+                        .requestMatchers("/api/public/health").permitAll()
 
                         // Platform endpoints - only Super Admin
                         .requestMatchers("/platform/**").hasRole("SUPER_ADMIN")
