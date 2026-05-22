@@ -15,9 +15,9 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
     useEffect(() => {
         if (isOpen) {
             if (initialData) {
-                setFormData(initialData);
+                setFormData({ insurance: 'NO', ...initialData });
             } else {
-                setFormData({});
+                setFormData({ insurance: 'NO' });
             }
             setErrors({});
             setIsSubmitting(false);
@@ -52,12 +52,15 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
         }
 
         try {
+            // Strip insurance field so it is not sent to backend/database
+            const { insurance, ...savePayload } = formData;
+
             if (isEdit) {
-                await hospitalService.updatePatient(formData.id, formData);
+                await hospitalService.updatePatient(formData.id, savePayload);
                 success('Patient updated successfully');
                 console.log('[PatientModal] Patient updated');
             } else {
-                const result = await hospitalService.addPatient(formData);
+                const result = await hospitalService.addPatient(savePayload);
                 success('Patient added successfully');
                 console.log('[PatientModal] Patient added, calling onSuccess');
             }
@@ -102,7 +105,7 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                 {/* Form */}
                 <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[76vh] overflow-auto">
                     {/* Row: Name + Phone */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         <CharCountInput
                             label="Full Name"
                             required
@@ -126,7 +129,7 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                     </div>
 
                     {/* Row: Age + Gender */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         <div>
                             <label className="block text-sm font-semibold text-neutral-700 mb-2">
                                 Age <span className="text-red-600">*</span>
@@ -164,8 +167,8 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                         </div>
                     </div>
 
-                    {/* Row: Email + (Address will be full width) */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Row: Email + Insurance */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         <CharCountInput
                             label="Email Address"
                             type="email"
@@ -175,22 +178,37 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                             placeholder="Enter email address"
                             error={errors.email}
                         />
-                        <CharCountInput
-                            label="Address"
-                            textarea
-                            rows={3}
-                            value={formData.address || ''}
-                            onChange={(e) => handleChange('address', e.target.value)}
-                            maxLength={500}
-                            placeholder="Enter complete address"
-                        />
+                        <div>
+                            <label className="block text-sm font-semibold text-neutral-700 mb-2">
+                                Insurance
+                            </label>
+                            <select
+                                value={formData.insurance || 'NO'}
+                                onChange={(e) => handleChange('insurance', e.target.value)}
+                                className="input-field cursor-pointer bg-neutral-50 border border-neutral-300 rounded-xl"
+                            >
+                                <option value="NO">No</option>
+                                <option value="YES">Yes</option>
+                            </select>
+                        </div>
                     </div>
 
-                    {/* Medical History */}
+                    {/* Address - Full width */}
+                    <CharCountInput
+                        label="Address"
+                        textarea
+                        rows={4}
+                        value={formData.address || ''}
+                        onChange={(e) => handleChange('address', e.target.value)}
+                        maxLength={500}
+                        placeholder="Enter complete address"
+                    />
+
+                    {/* Medical History - Full width */}
                     <CharCountInput
                         label="Medical History / Allergies"
                         textarea
-                        rows={2}
+                        rows={4}
                         value={formData.medicalHistory || ''}
                         onChange={(e) => handleChange('medicalHistory', e.target.value)}
                         maxLength={500}

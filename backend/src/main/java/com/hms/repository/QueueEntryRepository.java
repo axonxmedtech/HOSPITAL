@@ -3,6 +3,8 @@ package com.hms.repository;
 import com.hms.entity.QueueEntry;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.repository.query.Param;
 
 public interface QueueEntryRepository extends JpaRepository<QueueEntry, Long> {
@@ -17,5 +19,7 @@ public interface QueueEntryRepository extends JpaRepository<QueueEntry, Long> {
         java.util.List<QueueEntry> findQueueForHospitalToday(@Param("hospitalId") Long hospitalId);
 
         // Remove queue entries associated with an OPD case
+        @Modifying
+        @Transactional
         void deleteByOpdId(Long opdId);
 }

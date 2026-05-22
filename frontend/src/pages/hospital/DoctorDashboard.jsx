@@ -48,6 +48,7 @@ const DoctorDashboard = () => {
     };
 
     const [appointments, setAppointments] = useState([]);
+    const [todaysFollowUps, setTodaysFollowUps] = useState([]);
     const [patients, setPatients] = useState([]);
     const [loading, setLoading] = useState(false);
 
@@ -189,6 +190,17 @@ const DoctorDashboard = () => {
                 setAppointments(appointmentsArray);
                 setTotalElements(data.totalElements || 0);
                 setTotalPages(data.totalPages || 1);
+            } else if (activeTab === 'overview') {
+                try {
+                    const data = await hospitalService.getMyAppointments(viewFilter, searchTerm, 0, 100);
+                    const appointmentsArray = Array.isArray(data) ? data : (data.content || []);
+                    setAppointments(appointmentsArray);
+                    
+                    const followUpsData = await hospitalService.getTodaysFollowUps();
+                    setTodaysFollowUps(followUpsData || []);
+                } catch (err) {
+                    console.error('Failed to load overview appointments and followups', err);
+                }
             } else if (activeTab === 'patients') {
                 const data = await hospitalService.getPatients(
                     searchTerm, 
@@ -201,16 +213,16 @@ const DoctorDashboard = () => {
                 setTotalPages(data.totalPages || 1);
             }
 
-            // Doctor-specific queue
-            if (activeTab === 'queue') {
+            // Doctor-specific queue (loaded for overview, queue, and opd tabs to enable position mapping)
+            if (activeTab === 'overview' || activeTab === 'queue' || activeTab === 'opd') {
                 try {
                     // For doctor dashboard use authenticated doctor's queue (backend maps user -> doctor)
                     const q = await hospitalService.getDoctorQueue();
                     setQueueEntries(q || []);
                     if (q && q.length > 0) {
                         const sorted = [...q].sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
-                        setCurrentToken(sorted[0].tokenNumber ?? null);
-                        setNextToken(sorted[1] ? (sorted[1].tokenNumber ?? null) : null);
+                        setCurrentToken(1); // Dynamic first in line
+                        setNextToken(sorted[1] ? 2 : null); // Dynamic second in line
                     } else {
                         setCurrentToken(null);
                         setNextToken(null);
@@ -225,10 +237,12 @@ const DoctorDashboard = () => {
             if (activeTab === 'opd') {
                 try {
                     const opdsData = await hospitalService.getOpds(searchTerm, page - 1, ITEMS_PER_PAGE);
-                    const opdsArray = Array.isArray(opdsData) ? opdsData : (opdsData.content || []);
+                    let opdsArray = Array.isArray(opdsData) ? opdsData : (opdsData.content || []);
+                    // Filter to only show active queued patient OPD cases
+                    opdsArray = opdsArray.filter(o => o.status === 'QUEUED');
                     setOpds(opdsArray);
-                    setTotalElements(opdsData.totalElements || opdsArray.length);
-                    setTotalPages(opdsData.totalPages || 1);
+                    setTotalElements(opdsArray.length);
+                    setTotalPages(1);
                 } catch (err) {
                     console.error('Failed to load OPDs', err);
                     setOpds([]);
@@ -502,46 +516,228 @@ const DoctorDashboard = () => {
                 {/* Main Content Area */}
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
 
-                    {/* Overview Tab - Stats Only */}
+                    {/* Overview Tab */}
                     {activeTab === 'overview' && (
-                        <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-                            <div className="bg-white rounded-lg border border-gray-200 p-6">
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <p className="text-gray-600 text-sm font-medium">Current Token</p>
-                                        <h3 className="text-3xl font-bold text-gray-900 mt-1">{currentToken ?? '-'}</h3>
+                        <div className="space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+                                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="text-gray-600 text-sm font-medium">Current Token</p>
+                                            <h3 className="text-3xl font-bold text-gray-900 mt-1">{currentToken ?? '-'}</h3>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="text-gray-600 text-sm font-medium">Next Token</p>
+                                            <h3 className="text-3xl font-bold text-gray-900 mt-1">{nextToken ?? '-'}</h3>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="text-gray-600 text-sm font-medium">Today's Appointments</p>
+                                            <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.today}</h3>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="text-gray-600 text-sm font-medium">Pending Action</p>
+                                            <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.pending}</h3>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="text-gray-600 text-sm font-medium">Total Appointments</p>
+                                            <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.total}</h3>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                            <div className="bg-white rounded-lg border border-gray-200 p-6">
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <p className="text-gray-600 text-sm font-medium">Next Token</p>
-                                        <h3 className="text-3xl font-bold text-gray-900 mt-1">{nextToken ?? '-'}</h3>
+
+                            {/* Side-by-Side Lists: Appointments and Queue */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
+                                {/* Left Div: Appointments */}
+                                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col h-[650px] overflow-hidden">
+                                    <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gradient-to-r from-gray-50/50 to-white">
+                                        <div>
+                                            <h3 className="text-lg font-bold text-gray-955">Appointments</h3>
+                                            <p className="text-xs text-gray-500 mt-0.5">Manage scheduled clinical slots</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Appointment Controls */}
+                                    <div className="px-6 py-3 bg-gray-50/30 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                        <div className="relative flex-1 max-w-xs">
+                                            <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
+                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                                </svg>
+                                            </span>
+                                            <input
+                                                type="text"
+                                                placeholder="Search appointments..."
+                                                value={searchTerm}
+                                                onChange={(e) => setSearchTerm(e.target.value)}
+                                                className="w-full pl-9 pr-4 py-1.5 text-xs bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 transition-all"
+                                            />
+                                        </div>
+                                        <div className="flex bg-gray-100 rounded-xl p-1 border border-gray-200">
+                                            {['today', 'upcoming', 'history'].map(view => (
+                                                <button
+                                                    key={view}
+                                                    onClick={() => setViewFilter(view)}
+                                                    className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${viewFilter === view
+                                                        ? 'bg-white text-gray-900 shadow-sm border border-gray-100'
+                                                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                                        }`}
+                                                >
+                                                    {view.charAt(0).toUpperCase() + view.slice(1)}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Scrollable Container */}
+                                    <div className="flex-1 overflow-auto p-6 space-y-6">
+                                        {/* Appointments Section */}
+                                        <div>
+                                            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                                <span className="w-1.5 h-3 bg-gray-950 rounded-full"></span>
+                                                Today's Appointments
+                                            </h4>
+                                            {appointments.length > 0 ? (
+                                                <DoctorAppointmentsTable
+                                                    appointments={appointments}
+                                                    onStatusUpdate={handleStatusUpdate}
+                                                    onEdit={handleEditClick}
+                                                    onConsult={handleConsultClick}
+                                                    onPrint={handlePrintPrescription}
+                                                    onAuditHistory={(item) => handleAuditHistory('APPOINTMENT', item.publicId || item.id, "Appointment")}
+                                                    startIndex={0}
+                                                    pagination={null}
+                                                />
+                                            ) : (
+                                                <EmptyState
+                                                    icon={null}
+                                                    title="No Appointments"
+                                                    message="No appointments scheduled for today."
+                                                />
+                                            )}
+                                        </div>
+
+                                        {/* Follow-ups Section */}
+                                        <div className="border-t border-gray-100 pt-6">
+                                            <h4 className="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                                <span className="w-1.5 h-3 bg-indigo-600 rounded-full"></span>
+                                                Today's Follow-Ups
+                                            </h4>
+                                            {todaysFollowUps && todaysFollowUps.length > 0 ? (
+                                                <div className="overflow-x-auto border border-gray-100 rounded-xl">
+                                                     <table className="w-full text-sm text-left">
+                                                         <thead>
+                                                             <tr className="bg-gray-50 border-b border-gray-100">
+                                                                 <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Patient ID</th>
+                                                                 <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Patient Name</th>
+                                                                 <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Diagnosis / Reason</th>
+                                                             </tr>
+                                                         </thead>
+                                                         <tbody className="divide-y divide-gray-50">
+                                                             {todaysFollowUps.map((record) => (
+                                                                 <tr key={record.id} className="hover:bg-gray-50/40 transition-colors">
+                                                                     <td className="px-4 py-3.5 text-xs font-bold text-indigo-600">
+                                                                         {record.patientCustomId || record.patientPublicId || '-'}
+                                                                     </td>
+                                                                     <td className="px-4 py-3.5 text-sm font-semibold text-gray-900">
+                                                                         {record.patientName || '-'}
+                                                                     </td>
+                                                                     <td className="px-4 py-3.5 text-sm text-gray-500 italic">
+                                                                         {record.diagnosis || 'Follow-up'}
+                                                                     </td>
+                                                                 </tr>
+                                                             ))}
+                                                         </tbody>
+                                                     </table>
+                                                 </div>
+                                            ) : (
+                                                <div className="text-center py-8 border border-dashed border-gray-200 rounded-xl">
+                                                    <p className="text-sm text-gray-400 font-medium">No follow-ups scheduled for today.</p>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                            <div className="bg-white rounded-lg border border-gray-200 p-6">
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <p className="text-gray-600 text-sm font-medium">Today's Appointments</p>
-                                        <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.today}</h3>
+
+                                {/* Right Div: Queue */}
+                                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col h-[650px] overflow-hidden">
+                                    <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gradient-to-r from-gray-50/50 to-white">
+                                        <div>
+                                            <h3 className="text-lg font-bold text-gray-955">Queue</h3>
+                                            <p className="text-xs text-gray-500 mt-0.5">Real-time OPD patient workflow</p>
+                                        </div>
                                     </div>
-                                </div>
-                            </div>
-                            <div className="bg-white rounded-lg border border-gray-200 p-6">
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <p className="text-gray-600 text-sm font-medium">Pending Action</p>
-                                        <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.pending}</h3>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="bg-white rounded-lg border border-gray-200 p-6">
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <p className="text-gray-600 text-sm font-medium">Total Appointments</p>
-                                        <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.total}</h3>
+
+                                    {/* Queue Content */}
+                                    <div className="flex-1 overflow-auto p-6">
+                                        {queueEntries.length > 0 ? (
+                                            <div className="overflow-x-auto border border-gray-100 rounded-xl">
+                                                <table className="w-full text-sm text-left">
+                                                    <thead>
+                                                        <tr className="bg-gray-50 border-b border-gray-100">
+                                                            <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">S.No.</th>
+                                                            <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Token</th>
+                                                            <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Patient Name</th>
+                                                            <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Time</th>
+                                                            <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Action</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-50">
+                                                        {[...queueEntries]
+                                                            .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+                                                            .slice(0, 10)
+                                                            .map((q, idx) => (
+                                                                <tr key={q.id} className="hover:bg-gray-50/40 transition-colors">
+                                                                    <td className="px-4 py-3.5 text-sm text-gray-700 font-medium">{idx + 1}</td>
+                                                                    <td className="px-4 py-3.5">
+                                                                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100/30">
+                                                                            #{idx + 1}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="px-4 py-3.5 text-sm font-semibold text-gray-900">{q.opd?.patient?.name || q.opd?.patientName || '-'}</td>
+                                                                    <td className="px-4 py-3.5 text-xs text-gray-400">
+                                                                        {new Date(q.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                    </td>
+                                                                    <td className="px-4 py-3.5 text-xs">
+                                                                        {q.opd?.status === 'QUEUED' ? (
+                                                                            <button
+                                                                                onClick={() => handleStartOpdConsultation(q.opd)}
+                                                                                className="px-3 py-1 bg-gray-900 hover:bg-gray-800 text-white font-semibold rounded-lg transition-colors cursor-pointer"
+                                                                            >
+                                                                                Consult
+                                                                            </button>
+                                                                        ) : (
+                                                                            <span className="text-gray-400 italic">Consulting</span>
+                                                                        )}
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        ) : (
+                                            <EmptyState
+                                                icon={null}
+                                                title="Queue Empty"
+                                                message="No queued OPD cases for today."
+                                            />
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -621,6 +817,7 @@ const DoctorDashboard = () => {
                                     opds.length > 0 ? (
                                         <DoctorOpdTable
                                             opds={opds}
+                                            queueEntries={queueEntries}
                                             currentToken={currentToken}
                                             onPrintOpd={handlePrintOpd}
                                             onStartConsultation={handleStartOpdConsultation}
@@ -712,22 +909,25 @@ const DoctorDashboard = () => {
                                                 <thead>
                                                     <tr>
                                                         <th className="px-4 py-2">S.No.</th>
-                                                        <th className="px-4 py-2">Token</th>
+                                                        <th className="px-4 py-2">Queue Position</th>
                                                         <th className="px-4 py-2">Patient</th>
                                                         <th className="px-4 py-2">Doctor</th>
                                                         <th className="px-4 py-2">Created</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {queueEntries.map((q, idx) => (
-                                                        <tr key={q.id} className="border-t">
-                                                            <td className="px-4 py-3">{idx + 1}</td>
-                                                            <td className="px-4 py-3">{q.tokenNumber}</td>
-                                                            <td className="px-4 py-3">{q.opd?.patient?.name || q.opd?.patientName || '-'}</td>
-                                                            <td className="px-4 py-3">{q.opd?.doctor?.name || q.opd?.doctorName || '-'}</td>
-                                                            <td className="px-4 py-3">{new Date(q.createdAt).toLocaleString()}</td>
-                                                        </tr>
-                                                    ))}
+                                                    {[...queueEntries]
+                                                        .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+                                                        .slice(0, 10)
+                                                        .map((q, idx) => (
+                                                            <tr key={q.id} className="border-t">
+                                                                <td className="px-4 py-3">{idx + 1}</td>
+                                                                <td className="px-4 py-3">#{idx + 1}</td>
+                                                                <td className="px-4 py-3">{q.opd?.patient?.name || q.opd?.patientName || '-'}</td>
+                                                                <td className="px-4 py-3">{q.opd?.doctor?.name || q.opd?.doctorName || '-'}</td>
+                                                                <td className="px-4 py-3">{new Date(q.createdAt).toLocaleString()}</td>
+                                                            </tr>
+                                                        ))}
                                                 </tbody>
                                             </table>
                                         </div>
@@ -821,10 +1021,10 @@ const DoctorDashboard = () => {
                     appointment={consultationModal.appointment}
                     patient={consultationModal.patient}
                     opd={consultationModal.opd}
-                    onClose={() => setConsultationModal({ isOpen: false, appointment: null, patient: null })}
-                    onSuccess={() => {
-                        setConsultationModal({ isOpen: false, appointment: null, patient: null });
-                        success("Consultation completed successfully!");
+                    onClose={() => setConsultationModal({ isOpen: false, appointment: null, patient: null, opd: null })}
+                    onSuccess={(customMsg) => {
+                        setConsultationModal({ isOpen: false, appointment: null, patient: null, opd: null });
+                        success(customMsg || "Consultation completed successfully!");
                         loadData();
                     }}
                 />
@@ -996,8 +1196,15 @@ const DoctorPatientsTable = ({ patients, onViewHistory, onStartConsultation, onC
 
 
 // Doctor OPD Table
-const DoctorOpdTable = ({ opds, currentToken, onPrintOpd, onStartConsultation, onPrintPrescription, onViewPrescription, startIndex = 0, pagination }) => {
+const DoctorOpdTable = ({ opds, queueEntries = [], currentToken, onPrintOpd, onStartConsultation, onPrintPrescription, onViewPrescription, startIndex = 0, pagination }) => {
     const columnHelper = createColumnHelper();
+
+    const getQueuePosition = (opdId) => {
+        if (!queueEntries || queueEntries.length === 0) return null;
+        const sorted = [...queueEntries].sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
+        const index = sorted.findIndex(q => q.opd?.id === opdId);
+        return index !== -1 ? index + 1 : null;
+    };
 
     const columns = [
         columnHelper.display({
@@ -1018,8 +1225,15 @@ const DoctorOpdTable = ({ opds, currentToken, onPrintOpd, onStartConsultation, o
             header: 'DOCTOR',
         }),
         columnHelper.accessor('tokenNumber', {
-            header: 'TOKEN',
-            cell: info => info.getValue() || '-',
+            header: 'TOKEN / POSITION',
+            cell: info => {
+                const opd = info.row.original;
+                if (opd.status === 'QUEUED') {
+                    const pos = getQueuePosition(opd.id);
+                    return pos ? `Position #${pos}` : 'Queued';
+                }
+                return opd.tokenNumber ? `Token #${opd.tokenNumber}` : '-';
+            },
         }),
         columnHelper.accessor('visitType', {
             header: 'VISIT',
@@ -1044,12 +1258,11 @@ const DoctorOpdTable = ({ opds, currentToken, onPrintOpd, onStartConsultation, o
 
                 // Start Consultation - only for QUEUED status
                 if (opd.status === 'QUEUED') {
-                    const isDisabled = opd.tokenNumber && currentToken && opd.tokenNumber !== currentToken;
                     actions.push({
                         label: 'Start Consultation',
                         icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 2a4 4 0 00-4 4v1H5a1 1 0 00-.994.89l-1 9A1 1 0 004 18h12a1 1 0 00.994-1.11l-1-9A1 1 0 0015 7h-1V6a4 4 0 00-4-4zM8 6a2 2 0 114 0v1H8V6zm.707 7.293a1 1 0 00-1.414 1.414L9.586 17a1 1 0 001.414 0l2.293-2.293a1 1 0 00-1.414-1.414L10 15.172l-1.293-1.879z" clipRule="evenodd" /></svg>,
                         onClick: () => onStartConsultation(opd),
-                        disabled: isDisabled
+                        disabled: false
                     });
                 }
 

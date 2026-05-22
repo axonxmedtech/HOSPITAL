@@ -21,7 +21,7 @@ public class IpdAdmissionController {
     private com.hms.security.SecurityContextHelper securityHelper;
 
     @PostMapping("/admit")
-    @PreAuthorize("hasRole('RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> admitToIpd(@RequestBody CreateIpdAdmissionRequest req) {
         try {
             IpdAdmission ipd = ipdAdmissionService.admitFromOpd(req.getOpdId(), req.getWardId(), req.getBedId(), req.getAdmissionType(), req.getPrimaryDiagnosis());

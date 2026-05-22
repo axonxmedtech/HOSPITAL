@@ -11,6 +11,7 @@ import com.hms.repository.OpdRepository;
 import com.hms.security.SecurityContextHelper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -66,6 +67,10 @@ public class IpdAdmissionService {
     @Autowired
     private SecurityContextHelper securityHelper;
 
+    @Autowired
+    private com.hms.repository.QueueEntryRepository queueEntryRepository;
+
+    @Transactional
     public IpdAdmission admitFromOpd(Long opdId, Long wardId, Long bedId, String admissionType, String primaryDiagnosis) {
         // Load OPD
         Opd opd = opdRepository.findById(opdId).orElseThrow(() -> new RuntimeException("OPD not found"));
@@ -109,6 +114,11 @@ public class IpdAdmissionService {
             opd.setStatus(Opd.Status.COMPLETED);
         }
         opdRepository.save(opd);
+
+        // Remove from doctor's active queue
+        try {
+            queueEntryRepository.deleteByOpdId(opdId);
+        } catch (Exception ignored) {}
 
         // Create initial IPD billing (empty / started)
         java.math.BigDecimal bedPrice = java.math.BigDecimal.ZERO;
@@ -157,6 +167,7 @@ public class IpdAdmissionService {
         return saved;
     }
 
+    @Transactional(readOnly = true)
     public org.springframework.data.domain.Page<java.util.Map<String, Object>> listIpdAdmissions(int page, int size, String search) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new RuntimeException("Hospital ID not found in context");
@@ -178,6 +189,7 @@ public class IpdAdmissionService {
         return new org.springframework.data.domain.PageImpl<>(rows, pageable, p.getTotalElements());
     }
 
+    @Transactional(readOnly = true)
     public java.util.List<java.util.Map<String, Object>> listMyIpdAdmissionsForDoctor() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new RuntimeException("Hospital ID not found in context");
@@ -210,6 +222,7 @@ public class IpdAdmissionService {
      * Returns only ADMITTED patients. Receptionist sees all hospital admissions,
      * Doctor sees only their assigned admissions.
      */
+    @Transactional(readOnly = true)
     public java.util.List<com.hms.dto.IpdAdmissionSummaryDTO> getAdmittedIpdSummariesForCurrentUser() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new RuntimeException("Hospital ID not found in context");
@@ -255,6 +268,7 @@ public class IpdAdmissionService {
         return result;
     }
 
+    @Transactional(readOnly = true)
     public com.hms.dto.IpdAdmissionDetailsDTO getIpdAdmissionDetails(Long ipdId) {
         IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new RuntimeException("IPD admission not found"));
 
@@ -387,6 +401,7 @@ public class IpdAdmissionService {
         return dto;
     }
 
+    @Transactional
     public com.hms.entity.MedicalRecord addIpdFollowup(Long ipdId, String diagnosis, String notes) {
         String role = securityHelper.getCurrentUserRole();
         if (!"DOCTOR".equalsIgnoreCase(role)) {
@@ -442,6 +457,7 @@ public class IpdAdmissionService {
         return saved;
     }
 
+    @Transactional
     public com.hms.entity.Prescription addIpdPrescription(Long ipdId, com.hms.dto.AddIpdPrescriptionRequest req) {
         String role = securityHelper.getCurrentUserRole();
         if (!"DOCTOR".equalsIgnoreCase(role)) {
@@ -529,6 +545,7 @@ public class IpdAdmissionService {
         return saved;
     }
 
+    @Transactional
     public com.hms.entity.Prescription stopPrescription(Long prescriptionId) {
         String role = securityHelper.getCurrentUserRole();
         if (!"DOCTOR".equalsIgnoreCase(role)) {
@@ -546,6 +563,7 @@ public class IpdAdmissionService {
         return saved;
     }
 
+    @Transactional
     public com.hms.entity.DischargeSummary planDischarge(Long ipdId, com.hms.dto.PlanDischargeRequest req) {
         String role = securityHelper.getCurrentUserRole();
         if (!"DOCTOR".equalsIgnoreCase(role)) {
@@ -571,6 +589,7 @@ public class IpdAdmissionService {
         return ds;
     }
 
+    @Transactional
     public IpdAdmission confirmDischarge(Long ipdId) {
         String role = securityHelper.getCurrentUserRole();
         if (!"RECEPTIONIST".equalsIgnoreCase(role)) {

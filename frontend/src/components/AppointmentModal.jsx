@@ -61,6 +61,13 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
         }
     }, [isOpen, patients]);
 
+    // Auto-select doctor if only one is available
+    useEffect(() => {
+        if (isOpen && doctors && doctors.length === 1) {
+            handleChange('doctorId', doctors[0].id);
+        }
+    }, [isOpen, doctors]);
+
     // Fetch slots when Doctor + Date are selected
     useEffect(() => {
         const fetchSlots = async () => {
@@ -351,14 +358,21 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
                     {/* Doctor Selection */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Doctor *</label>
-                        <select
-                            value={formData.doctorId || ''}
-                            onChange={(e) => handleChange('doctorId', parseInt(e.target.value))}
-                            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.doctorId ? 'border-red-500' : 'border-gray-300'}`}
-                        >
-                            <option value="">Select Doctor</option>
-                            {doctors.map(d => <option key={d.id} value={d.id}>{d.name} - {d.specialization}</option>)}
-                        </select>
+                        {doctors && doctors.length === 1 ? (
+                            <div className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 text-gray-800 rounded-lg text-sm font-semibold flex items-center justify-between">
+                                <span>{doctors[0].name} - {doctors[0].specialization}</span>
+                                <span className="text-xs px-2 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded-full font-medium">Assigned</span>
+                            </div>
+                        ) : (
+                            <select
+                                value={formData.doctorId || ''}
+                                onChange={(e) => handleChange('doctorId', parseInt(e.target.value))}
+                                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.doctorId ? 'border-red-500' : 'border-gray-300'}`}
+                            >
+                                <option value="">Select Doctor</option>
+                                {doctors.map(d => <option key={d.id} value={d.id}>{d.name} - {d.specialization}</option>)}
+                            </select>
+                        )}
                         {errors.doctorId && <p className="text-red-500 text-xs mt-1">{errors.doctorId}</p>}
                     </div>
 

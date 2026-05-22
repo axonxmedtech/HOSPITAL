@@ -3,12 +3,14 @@ import hospitalService from '../services/hospitalService';
 import { useToast } from '../context/ToastContext';
 import MedicineAutocomplete from './MedicineAutocomplete';
 import CharCountInput from './CharCountInput';
+import IpdAdmitModal from './IpdAdmitModal';
 
 const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, opd }) => {
     console.log("ConsultationModal render:", { isOpen, appointment, patient, opd });
     const [activeTab, setActiveTab] = useState('clinical'); // 'clinical' or 'prescription'
     const [patientDetails, setPatientDetails] = useState(null);
     const [loadingDetails, setLoadingDetails] = useState(false);
+    const [showIpdAdmitModal, setShowIpdAdmitModal] = useState(false);
 
     // Normalize patient prop when modal opens — don't mutate props
     // We'll compute a patient identifier (publicId or numeric id) when fetching details
@@ -462,6 +464,14 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                             >
                                 Cancel
                             </button>
+                            {opd && (
+                                <button
+                                    onClick={() => setShowIpdAdmitModal(true)}
+                                    className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-semibold shadow-md"
+                                >
+                                    Admit to IPD
+                                </button>
+                            )}
                             <button
                                 onClick={handleSubmit}
                                 className="px-6 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-semibold shadow-md"
@@ -472,6 +482,18 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                     </div>
                 </div>
             </div>
+            {showIpdAdmitModal && (
+                <IpdAdmitModal
+                    isOpen={showIpdAdmitModal}
+                    opd={opd}
+                    initialDiagnosis={formData.diagnosis || formData.symptoms || opd?.problem || ''}
+                    onClose={() => setShowIpdAdmitModal(false)}
+                    onSuccess={() => {
+                        setShowIpdAdmitModal(false);
+                        onSuccess("Patient admitted to IPD successfully!");
+                    }}
+                />
+            )}
         </div>
     );
 };

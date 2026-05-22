@@ -40,6 +40,7 @@ const ReceptionistDashboard = () => {
     };
 
     const [appointments, setAppointments] = useState([]);
+    const [todaysFollowUps, setTodaysFollowUps] = useState([]);
     const [patients, setPatients] = useState([]);
     const [doctors, setDoctors] = useState([]);
     const [opds, setOpds] = useState([]);
@@ -51,6 +52,7 @@ const ReceptionistDashboard = () => {
     const [billingStatus, setBillingStatus] = useState('PENDING');
     const [loading, setLoading] = useState(false);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [isAddPatientModalOpen, setIsAddPatientModalOpen] = useState(false);
     const [isOpdModalOpen, setIsOpdModalOpen] = useState(false);
     const [isIpdAdmitOpen, setIsIpdAdmitOpen] = useState(false);
     const [ipdOpdForAdmit, setIpdOpdForAdmit] = useState(null);
@@ -68,6 +70,27 @@ const ReceptionistDashboard = () => {
     });
     const [createdOpd, setCreatedOpd] = useState(null);
     const [selectedPatient, setSelectedPatient] = useState(null);
+    const [patientSearchText, setPatientSearchText] = useState('');
+    const [showPatientDropdown, setShowPatientDropdown] = useState(false);
+
+    // Reset OPD patient search state when modal is opened or closed
+    useEffect(() => {
+        if (!isOpdModalOpen) {
+            setPatientSearchText('');
+            setShowPatientDropdown(false);
+            setOpdForm(prev => ({
+                ...prev,
+                patientId: null,
+                bp: '',
+                temperature: '',
+                pulse: '',
+                weight: '',
+                spo2: '',
+                problem: '',
+                visitType: 'NEW'
+            }));
+        }
+    }, [isOpdModalOpen]);
 
     // Prescription Modal State
     const [prescriptionModal, setPrescriptionModal] = useState({
@@ -104,6 +127,7 @@ const ReceptionistDashboard = () => {
     const [totalPages, setTotalPages] = useState(1);
     const [totalElements, setTotalElements] = useState(0);
     const [searchTerm, setSearchTerm] = useState('');
+    const [opdDateFilter, setOpdDateFilter] = useState('');
 
     const [confirmModal, setConfirmModal] = useState({
         isOpen: false,
@@ -142,7 +166,14 @@ const ReceptionistDashboard = () => {
         }, 30000);
 
         return () => clearInterval(intervalId);
-    }, [activeTab, page, searchTerm, viewFilter, pageSize, selectedDoctorForQueue, billingStatus]); // Add pageSize & doctor filter to dependencies
+    }, [activeTab, page, searchTerm, viewFilter, pageSize, selectedDoctorForQueue, billingStatus, opdDateFilter]); // Add pageSize & doctor filter to dependencies
+
+    // Auto-select doctor in OPD form if only one is available
+    useEffect(() => {
+        if (isOpdModalOpen && doctors && doctors.length === 1) {
+            setOpdForm(prev => ({ ...prev, doctorId: doctors[0].id }));
+        }
+    }, [isOpdModalOpen, doctors]);
 
     const loadData = async (showSpinner = true) => {
         if (showSpinner) setLoading(true);
@@ -151,16 +182,17 @@ const ReceptionistDashboard = () => {
             const statsData = await hospitalService.getAppointmentStats();
             setStats(statsData);
 
-            if (activeTab === 'appointments' || activeTab === 'opd' || activeTab === 'queue' || activeTab === 'ipd') {
+            if (activeTab === 'overview' || activeTab === 'appointments' || activeTab === 'opd' || activeTab === 'queue' || activeTab === 'ipd') {
                 // Fetch appointments (Server-side) + Doctors + Patients for lookup
                 const promises = [
-                    activeTab === 'appointments' ? hospitalService.getAppointments(searchTerm, page, pageSize, viewFilter) : Promise.resolve({ content: [] }),
+                    (activeTab === 'appointments' || activeTab === 'overview') ? hospitalService.getAppointments(searchTerm, page, pageSize, viewFilter) : Promise.resolve({ content: [] }),
                     hospitalService.getDoctors('', 0, 100), // Fetch doctors for lookup
-                    hospitalService.getPatients('', 0, 1000) // Fetch ALL patients (up to 1000) for lookup dropdown
+                    hospitalService.getPatients('', 0, 1000), // Fetch ALL patients (up to 1000) for lookup dropdown
+                    activeTab === 'overview' ? hospitalService.getTodaysFollowUps() : Promise.resolve([])
                 ];
-                const [apptData, docData, patData] = await Promise.all(promises);
+                const [apptData, docData, patData, followUpsData] = await Promise.all(promises);
 
-                if (activeTab === 'appointments') {
+                if (activeTab === 'appointments' || activeTab === 'overview') {
                     if (apptData.content) {
                         setAppointments(apptData.content);
                         setTotalPages(apptData.totalPages);
@@ -170,9 +202,15 @@ const ReceptionistDashboard = () => {
                         setTotalPages(1);
                         setTotalElements(apptData.length);
                     }
-                } else if (activeTab === 'opd') {
+                }
+
+                if (activeTab === 'overview') {
+                    setTodaysFollowUps(followUpsData || []);
+                }
+
+                if (activeTab === 'opd') {
                     // OPD tab: fetch opds separately
-                    const opdsData = await hospitalService.getOpds(searchTerm, page, pageSize);
+                    const opdsData = await hospitalService.getOpds(searchTerm, page, pageSize, opdDateFilter);
                     if (opdsData.content) {
                         setOpds(opdsData.content);
                         setTotalPages(opdsData.totalPages);
@@ -202,7 +240,9 @@ const ReceptionistDashboard = () => {
                     setOpds(arr);
                     setTotalPages(1);
                     setTotalElements((arr && arr.length) || 0);
-                } else if (activeTab === 'queue') {
+                }
+
+                if (activeTab === 'queue' || activeTab === 'overview' || activeTab === 'opd') {
                     // Fetch hospital queue or doctor's queue based on filter and compute current/next tokens
                     let q = [];
                     if (selectedDoctorForQueue) {
@@ -213,8 +253,8 @@ const ReceptionistDashboard = () => {
                     setQueueEntries(q || []);
                     if (q && q.length > 0) {
                         const sorted = [...q].sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
-                        setCurrentToken(sorted[0].tokenNumber ?? null);
-                        setNextToken(sorted[1] ? (sorted[1].tokenNumber ?? null) : null);
+                        setCurrentToken(1); // Dynamic first in line
+                        setNextToken(sorted[1] ? 2 : null); // Dynamic second in line
                     } else {
                         setCurrentToken(null);
                         setNextToken(null);
@@ -476,10 +516,8 @@ const ReceptionistDashboard = () => {
     const tabs = [
         { id: 'overview', label: 'Overview', icon: null },
         { id: 'patients', label: 'Patients', icon: null },
-        { id: 'appointments', label: 'Appointments', icon: null },
         { id: 'opd', label: 'OPD', icon: null },
         { id: 'ipd', label: 'IPD', icon: null },
-        { id: 'queue', label: 'Queue', icon: null },
         { id: 'billing', label: 'Billing', icon: null },
     ];
 
@@ -490,6 +528,24 @@ const ReceptionistDashboard = () => {
         pageCount: totalPages,
         onPageChange: (newPage) => setPage(newPage)
     };
+
+    const getQueuePosition = (opdId) => {
+        if (!queueEntries || queueEntries.length === 0) return null;
+        const sorted = [...queueEntries].sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
+        const index = sorted.findIndex(q => q.opd?.id === opdId);
+        return index !== -1 ? index + 1 : null;
+    };
+
+    const filteredPatientsForOpd = patientSearchText.trim().length >= 3
+        ? patients.filter(p => {
+            const query = patientSearchText.toLowerCase();
+            return (p.name?.toLowerCase().includes(query)) ||
+                   (p.phone?.includes(query)) ||
+                   ((p.customId || p.id?.toString())?.toLowerCase().includes(query));
+          })
+        : [];
+
+    const showPatientSuggestions = showPatientDropdown && patientSearchText.trim().length >= 3;
 
     return (
         <div className="flex h-screen bg-white">
@@ -509,7 +565,7 @@ const ReceptionistDashboard = () => {
             {/* Main Content */}
             <div className="flex-1 flex flex-col overflow-hidden">
                 <Navbar
-                    title={`${tabs.find(t => t.id === activeTab)?.label} Dashboard`}
+                    title={`${tabs.find(t => t.id === activeTab)?.label || (activeTab.charAt(0).toUpperCase() + activeTab.slice(1))} Dashboard`}
                     user={user}
                     onLogout={handleLogout}
                     onProfile={() => console.log('Profile clicked')}
@@ -520,7 +576,18 @@ const ReceptionistDashboard = () => {
                     {/* Overview Tab - Stats Only */}
                     {activeTab === 'overview' && (
                         <div className="space-y-6">
-                            <h2 className="text-2xl font-bold text-gray-900">Overview</h2>
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-2xl font-bold text-gray-900">Overview</h2>
+                                <button
+                                    onClick={() => setIsAddPatientModalOpen(true)}
+                                    className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer animate-fade-in"
+                                >
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                                    </svg>
+                                    Add Patient
+                                </button>
+                            </div>
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                                 <div className="bg-white rounded-lg border border-gray-200 p-6">
                                     <div className="flex justify-between items-center">
@@ -556,18 +623,216 @@ const ReceptionistDashboard = () => {
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Side-by-Side Lists: Appointments and Queue */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
+                                {/* Left Div: Appointments */}
+                                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col h-[650px] overflow-hidden">
+                                    <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gradient-to-r from-gray-50/50 to-white">
+                                        <div>
+                                            <h3 className="text-lg font-bold text-gray-955">Appointments</h3>
+                                            <p className="text-xs text-gray-500 mt-0.5">Manage scheduled clinical slots</p>
+                                        </div>
+                                        <button
+                                            onClick={() => setIsAddModalOpen(true)}
+                                            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer animate-fade-in"
+                                        >
+                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                            </svg>
+                                            Add Appointment
+                                        </button>
+                                    </div>
+
+                                    {/* Appointment Controls */}
+                                    <div className="px-6 py-3 bg-gray-50/30 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                        <div className="relative flex-1 max-w-xs">
+                                            <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
+                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                                </svg>
+                                            </span>
+                                            <input
+                                                type="text"
+                                                placeholder="Search appointments..."
+                                                value={searchTerm}
+                                                onChange={(e) => { setSearchTerm(e.target.value); setPage(0); }}
+                                                className="w-full pl-9 pr-4 py-1.5 text-xs bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 transition-all"
+                                            />
+                                        </div>
+                                        <div className="flex bg-gray-100 rounded-xl p-1 border border-gray-200">
+                                            {['today', 'upcoming', 'history'].map(view => (
+                                                <button
+                                                    key={view}
+                                                    onClick={() => { setViewFilter(view); setPage(0); }}
+                                                    className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${viewFilter === view
+                                                        ? 'bg-white text-gray-900 shadow-sm border border-gray-100'
+                                                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                                        }`}
+                                                >
+                                                    {view.charAt(0).toUpperCase() + view.slice(1)}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                     {/* Appointment List Content */}
+                                     <div className="flex-1 overflow-auto p-6 space-y-6">
+                                         <div>
+                                             <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                                 <span className="w-1.5 h-3 bg-gray-900 rounded-full"></span>
+                                                 Active Appointments
+                                             </h4>
+                                             {appointments.length > 0 ? (
+                                                 <AppointmentsTable
+                                                     appointments={appointments}
+                                                     doctors={doctors}
+                                                     onStatusUpdate={handleStatusUpdate}
+                                                     onHistory={(item) => handleHistory('APPOINTMENT', item.publicId || item.id, "Appointment")}
+                                                     onViewPrescription={handleViewPrescription}
+                                                     startIndex={page * pageSize}
+                                                     pagination={pagination}
+                                                 />
+                                             ) : (
+                                                 <EmptyState
+                                                     icon={null}
+                                                     title="No Appointments Found"
+                                                     message="Schedule appointments for your patients."
+                                                     actionLabel="Schedule Appointment"
+                                                     onAction={() => setIsAddModalOpen(true)}
+                                                 />
+                                             )}
+                                         </div>
+
+                                         <div className="border-t border-gray-100 pt-6">
+                                             <h4 className="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                                 <span className="w-1.5 h-3 bg-indigo-600 rounded-full"></span>
+                                                 Today's Follow-Ups
+                                             </h4>
+                                             {todaysFollowUps && todaysFollowUps.length > 0 ? (
+                                                 <div className="overflow-x-auto border border-gray-100 rounded-xl">
+                                                     <table className="w-full text-sm text-left">
+                                                         <thead>
+                                                             <tr className="bg-gray-50 border-b border-gray-100">
+                                                                 <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Patient ID</th>
+                                                                 <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Patient Name</th>
+                                                                 <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Assigned Doctor</th>
+                                                                 <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Diagnosis / Reason</th>
+                                                             </tr>
+                                                         </thead>
+                                                         <tbody className="divide-y divide-gray-50">
+                                                             {todaysFollowUps.map((record) => (
+                                                                 <tr key={record.id} className="hover:bg-gray-50/40 transition-colors">
+                                                                     <td className="px-4 py-3.5 text-xs font-bold text-indigo-600">
+                                                                         {record.patientCustomId || record.patientPublicId || '-'}
+                                                                     </td>
+                                                                     <td className="px-4 py-3.5 text-sm font-semibold text-gray-900">
+                                                                         {record.patientName || '-'}
+                                                                     </td>
+                                                                     <td className="px-4 py-3.5 text-sm text-gray-600">
+                                                                         {record.doctorName || '-'}
+                                                                     </td>
+                                                                     <td className="px-4 py-3.5 text-sm text-gray-500 italic">
+                                                                         {record.diagnosis || 'Follow-up'}
+                                                                     </td>
+                                                                 </tr>
+                                                             ))}
+                                                         </tbody>
+                                                     </table>
+                                                 </div>
+                                             ) : (
+                                                 <div className="text-center py-8 border border-dashed border-gray-200 rounded-xl">
+                                                     <p className="text-sm text-gray-400 font-medium">No follow-ups scheduled for today.</p>
+                                                 </div>
+                                             )}
+                                         </div>
+                                     </div>
+                                </div>
+
+                                {/* Right Div: Queue */}
+                                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col h-[650px] overflow-hidden">
+                                    <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gradient-to-r from-gray-50/50 to-white">
+                                        <div>
+                                            <h3 className="text-lg font-bold text-gray-955">Queue</h3>
+                                            <p className="text-xs text-gray-500 mt-0.5">Real-time OPD patient workflow</p>
+                                        </div>
+                                        {doctors && doctors.length > 1 && (
+                                            <div className="relative">
+                                                <select
+                                                    value={selectedDoctorForQueue}
+                                                    onChange={(e) => { setSelectedDoctorForQueue(e.target.value); setPage(0); }}
+                                                    className="pl-3 pr-8 py-1.5 text-xs bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 appearance-none font-semibold text-gray-700 cursor-pointer"
+                                                >
+                                                    <option value="">All Doctors</option>
+                                                    {doctors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                                </select>
+                                                <div className="absolute inset-y-0 right-0 flex items-center pr-2.5 pointer-events-none text-gray-400">
+                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                    </svg>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Queue List Content */}
+                                    <div className="flex-1 overflow-auto p-6">
+                                        {queueEntries.length > 0 ? (
+                                            <div className="overflow-x-auto border border-gray-100 rounded-xl">
+                                                <table className="w-full text-sm text-left">
+                                                    <thead>
+                                                        <tr className="bg-gray-50 border-b border-gray-100">
+                                                            <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">S.No.</th>
+                                                            <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Token</th>
+                                                            <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Patient</th>
+                                                            <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Doctor</th>
+                                                            <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Time</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-50">
+                                                        {[...queueEntries]
+                                                            .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+                                                            .slice(0, 10)
+                                                            .map((q, idx) => (
+                                                                <tr key={q.id} className="hover:bg-gray-50/40 transition-colors">
+                                                                    <td className="px-4 py-3.5 text-sm text-gray-955 font-medium">{idx + 1}</td>
+                                                                    <td className="px-4 py-3.5">
+                                                                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100/30">
+                                                                            #{idx + 1}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="px-4 py-3.5 text-sm text-gray-955 font-semibold">{q.opd?.patient?.name || q.opd?.patientName || '-'}</td>
+                                                                    <td className="px-4 py-3.5 text-sm text-gray-600">{q.opd?.doctor?.name || q.opd?.doctorName || '-'}</td>
+                                                                    <td className="px-4 py-3.5 text-xs text-gray-400">
+                                                                        {new Date(q.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        ) : (
+                                            <EmptyState
+                                                icon={null}
+                                                title="Queue Empty"
+                                                message="No queued OPD cases for today."
+                                            />
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     )}
 
                     {/* Standardized Header */}
                     {activeTab !== 'overview' && (
                     <PageHeader
-                        title={tabs.find(t => t.id === activeTab)?.label}
+                        title={tabs.find(t => t.id === activeTab)?.label || (activeTab.charAt(0).toUpperCase() + activeTab.slice(1))}
                         subtitle={`Manage ${activeTab} records`}
                         onSearch={activeTab === 'queue' ? null : (e) => setSearchTerm(e.target.value)}
                         searchValue={searchTerm}
                         searchPlaceholder={activeTab === 'queue' ? '' : `Search ${activeTab}...`}
-                        onAdd={activeTab === 'queue' || activeTab === 'billing' ? null : () => {
+                        onAdd={activeTab === 'queue' || activeTab === 'billing' || activeTab === 'ipd' ? null : () => {
                             if (activeTab === 'opd') setIsOpdModalOpen(true);
                             else setIsAddModalOpen(true);
                         }}
@@ -603,11 +868,42 @@ const ReceptionistDashboard = () => {
                                 ))}
                             </div>
                         ) : activeTab === 'queue' ? (
-                            <div className="flex items-center gap-3">
-                                <select value={selectedDoctorForQueue} onChange={(e) => { setSelectedDoctorForQueue(e.target.value); setPage(0); }} className="input-field">
-                                    <option value="">All Doctors</option>
-                                    {doctors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                                </select>
+                            doctors && doctors.length > 1 ? (
+                                <div className="flex items-center gap-3">
+                                    <select value={selectedDoctorForQueue} onChange={(e) => { setSelectedDoctorForQueue(e.target.value); setPage(0); }} className="input-field">
+                                        <option value="">All Doctors</option>
+                                        {doctors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                    </select>
+                                </div>
+                            ) : null
+                        ) : activeTab === 'opd' ? (
+                            <div className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 shadow-sm">
+                                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Date:</span>
+                                <div className="relative flex items-center">
+                                    <input
+                                        type="date"
+                                        value={opdDateFilter || ''}
+                                        onChange={(e) => {
+                                            setOpdDateFilter(e.target.value);
+                                            setPage(0);
+                                        }}
+                                        className="pl-1 pr-7 py-0.5 text-xs bg-transparent border-0 focus:ring-0 font-semibold text-gray-700 cursor-pointer focus:outline-none"
+                                    />
+                                    {opdDateFilter && (
+                                        <button
+                                            onClick={() => {
+                                                setOpdDateFilter('');
+                                                setPage(0);
+                                            }}
+                                            className="absolute right-0 text-gray-400 hover:text-gray-600 focus:outline-none transition-colors"
+                                            title="Clear Date Filter"
+                                        >
+                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         ) : null}
                       
@@ -651,7 +947,6 @@ const ReceptionistDashboard = () => {
                                                     <th className="px-4 py-2">Case ID</th>
                                                     <th className="px-4 py-2">Patient</th>
                                                     <th className="px-4 py-2">Doctor</th>
-                                                    <th className="px-4 py-2">Token</th>
                                                     <th className="px-4 py-2">Visit</th>
                                                     <th className="px-4 py-2">Created</th>
                                                     <th className="px-4 py-2">Actions</th>
@@ -664,7 +959,6 @@ const ReceptionistDashboard = () => {
                                                         <td className="px-4 py-3">{o.caseId}</td>
                                                         <td className="px-4 py-3">{o.patient?.name}</td>
                                                         <td className="px-4 py-3">{o.doctor?.name || '-'}</td>
-                                                        <td className="px-4 py-3">{o.tokenNumber || '-'}</td>
                                                         <td className="px-4 py-3">{o.visitType}</td>
                                                         <td className="px-4 py-3">{new Date(o.createdAt).toLocaleString()}</td>
                                                         <td className="px-4 py-3">
@@ -766,15 +1060,18 @@ const ReceptionistDashboard = () => {
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {queueEntries.map((q, idx) => (
-                                                    <tr key={q.id} className="border-t">
-                                                        <td className="px-4 py-3">{idx + 1}</td>
-                                                        <td className="px-4 py-3">{q.tokenNumber}</td>
-                                                        <td className="px-4 py-3">{q.opd?.patient?.name || q.opd?.patientName || '-'}</td>
-                                                        <td className="px-4 py-3">{q.opd?.doctor?.name || q.opd?.doctorName || '-'}</td>
-                                                        <td className="px-4 py-3">{new Date(q.createdAt).toLocaleString()}</td>
-                                                    </tr>
-                                                ))}
+                                                {[...queueEntries]
+                                                    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+                                                    .slice(0, 10)
+                                                    .map((q, idx) => (
+                                                        <tr key={q.id} className="border-t">
+                                                            <td className="px-4 py-3">{idx + 1}</td>
+                                                            <td className="px-4 py-3">#{idx + 1}</td>
+                                                            <td className="px-4 py-3">{q.opd?.patient?.name || q.opd?.patientName || '-'}</td>
+                                                            <td className="px-4 py-3">{q.opd?.doctor?.name || q.opd?.doctorName || '-'}</td>
+                                                            <td className="px-4 py-3">{new Date(q.createdAt).toLocaleString()}</td>
+                                                        </tr>
+                                                    ))}
                                             </tbody>
                                         </table>
                                     </div>
@@ -831,7 +1128,7 @@ const ReceptionistDashboard = () => {
             </div>
 
             {/* Appointment Modal - Using Shared Component */}
-            {activeTab === 'appointments' && (
+            {(activeTab === 'appointments' || activeTab === 'overview') && (
                 <AppointmentModal
                     isOpen={isAddModalOpen}
                     onClose={() => setIsAddModalOpen(false)}
@@ -842,16 +1139,18 @@ const ReceptionistDashboard = () => {
             )}
 
             {/* Patient Modal - Using Shared Component */}
-            {activeTab === 'patients' && isAddModalOpen && (
+            {((activeTab === 'patients' && isAddModalOpen) || (activeTab === 'overview' && isAddPatientModalOpen)) && (
                 <PatientModal
-                    isOpen={isAddModalOpen}
+                    isOpen={activeTab === 'patients' ? isAddModalOpen : isAddPatientModalOpen}
                     onClose={() => {
-                        setIsAddModalOpen(false);
+                        if (activeTab === 'patients') setIsAddModalOpen(false);
+                        else setIsAddPatientModalOpen(false);
                         setSelectedPatient(null);
                     }}
                     initialData={selectedPatient}
                     onSuccess={() => {
-                        setIsAddModalOpen(false);
+                        if (activeTab === 'patients') setIsAddModalOpen(false);
+                        else setIsAddPatientModalOpen(false);
                         setSelectedPatient(null);
                         loadData(); // Reload patients list
                     }}
@@ -887,6 +1186,10 @@ const ReceptionistDashboard = () => {
                         </div>
                         <form onSubmit={async (e) => {
                             e.preventDefault();
+                            if (!opdForm.patientId) {
+                                toastError('Please select a valid patient from the suggestions');
+                                return;
+                            }
                             try {
                                 const payload = {
                                     patientId: opdForm.patientId,
@@ -910,19 +1213,85 @@ const ReceptionistDashboard = () => {
                             }
                         }} className="p-6 space-y-4 max-h-[76vh] overflow-auto">
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div>
+                                <div className="relative">
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Patient <span className="text-red-600">*</span></label>
-                                    <select className="input-field" value={opdForm.patientId || ''} onChange={(e) => setOpdForm(prev => ({ ...prev, patientId: e.target.value }))} required>
-                                        <option value="">Select patient</option>
-                                        {patients.map(p => <option key={p.id} value={p.id}>{p.name} {p.phone ? `(${p.phone})` : ''}</option>)}
-                                    </select>
+                                    <div className="relative">
+                                        <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
+                                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                            </svg>
+                                        </span>
+                                        <input
+                                            type="text"
+                                            className="input-field pl-10"
+                                            value={patientSearchText}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setPatientSearchText(val);
+                                                setShowPatientDropdown(true);
+                                                setOpdForm(prev => ({ ...prev, patientId: null }));
+                                            }}
+                                            onFocus={() => setShowPatientDropdown(true)}
+                                            onBlur={() => {
+                                                setTimeout(() => {
+                                                    setShowPatientDropdown(false);
+                                                }, 250);
+                                            }}
+                                            placeholder="Type at least 3 letters to search patient..."
+                                            autoComplete="off"
+                                        />
+                                    </div>
+                                    
+                                    {showPatientSuggestions && (
+                                        <div className="absolute left-0 right-0 mt-1 bg-white border border-neutral-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto divide-y divide-neutral-100 animate-scale-in">
+                                            {filteredPatientsForOpd.length > 0 ? (
+                                                filteredPatientsForOpd.map(p => (
+                                                    <button
+                                                        type="button"
+                                                        key={p.id}
+                                                        onClick={() => {
+                                                            setOpdForm(prev => ({ ...prev, patientId: p.id }));
+                                                            setPatientSearchText(`${p.name}${p.phone ? ` (${p.phone})` : ''}${p.customId ? ` [${p.customId}]` : ''}`);
+                                                            setShowPatientDropdown(false);
+                                                        }}
+                                                        className="w-full px-4 py-3 hover:bg-neutral-50 cursor-pointer transition-colors duration-150 flex flex-col gap-0.5 text-left"
+                                                    >
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="font-semibold text-neutral-800 text-sm">{p.name}</span>
+                                                            {p.customId && (
+                                                                <span className="text-[10px] font-bold px-2 py-0.5 bg-neutral-100 text-neutral-600 rounded-full tracking-wide">
+                                                                    {p.customId}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex gap-4 text-xs text-neutral-500">
+                                                            {p.phone && <span>📞 {p.phone}</span>}
+                                                            {p.gender && <span>👤 {p.gender}</span>}
+                                                            {p.age && <span>🎂 {p.age} Yrs</span>}
+                                                        </div>
+                                                    </button>
+                                                ))
+                                            ) : (
+                                                <div className="px-4 py-4 text-sm text-neutral-500 text-center">
+                                                    No matching patients found
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Doctor</label>
-                                    <select className="input-field" value={opdForm.doctorId || ''} onChange={(e) => setOpdForm(prev => ({ ...prev, doctorId: e.target.value }))}>
-                                        <option value="">Unassigned</option>
-                                        {doctors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                                    </select>
+                                    {doctors && doctors.length === 1 ? (
+                                        <div className="w-full px-4 py-2.5 bg-neutral-50 border border-neutral-200 text-neutral-800 rounded-xl text-sm font-semibold flex items-center justify-between">
+                                            <span>{doctors[0].name}</span>
+                                            <span className="text-xs px-2 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded-full font-medium">Assigned</span>
+                                        </div>
+                                    ) : (
+                                        <select className="input-field" value={opdForm.doctorId || ''} onChange={(e) => setOpdForm(prev => ({ ...prev, doctorId: e.target.value }))}>
+                                            <option value="">Unassigned</option>
+                                            {doctors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                        </select>
+                                    )}
                                 </div>
                             </div>
 

@@ -326,9 +326,10 @@ const hospitalService = {
     /**
      * Get paginated OPD / cases (Receptionist view)
      */
-    getOpds: async (search = '', page = 0, size = 10) => {
+    getOpds: async (search = '', page = 0, size = 10, date = '') => {
         let url = `/hospital/opd?page=${page}&size=${size}`;
         if (search) url += `&search=${encodeURIComponent(search)}`;
+        if (date) url += `&date=${encodeURIComponent(date)}`;
         const response = await apiClient.get(url);
         return response.data;
     },
@@ -359,7 +360,7 @@ const hospitalService = {
         return response.data; // returns array of DTOs
     },
     getIpdDetails: async (id) => {
-        const response = await apiClient.get(`/api/ipd/${id}`);
+        const response = await apiClient.get(`/api/ipd/${id}`, { timeout: 30000 });
         return response.data;
     },
     planDischarge: async (id, payload) => {
@@ -400,6 +401,14 @@ const hospitalService = {
      */
     getHospitalQueue: async () => {
         const response = await apiClient.get(`/hospital/opd/queue`);
+        return response.data;
+    },
+
+    /**
+     * Get today's follow-up patients list based on role
+     */
+    getTodaysFollowUps: async () => {
+        const response = await apiClient.get('/hospital/opd/today-followups');
         return response.data;
     },
 

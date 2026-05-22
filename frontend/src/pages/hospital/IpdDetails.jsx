@@ -433,7 +433,6 @@ const IpdDetails = () => {
                                 <div className="text-sm text-gray-500">No billing records found.</div>
                             )}
                             <div className="mt-3 flex gap-2">
-                                <button className="px-3 py-1 bg-indigo-600 text-white rounded" onClick={openBillModal}>View Bill</button>
                                 <button className="px-3 py-1 bg-green-600 text-white rounded" onClick={openBillModal}>Take Payment</button>
                                 <button className="px-3 py-1 bg-gray-600 text-white rounded" onClick={() => window.print()}>Print Bill</button>
                             </div>
@@ -589,7 +588,7 @@ const IpdDetails = () => {
                                                 setPayment(prev => ({ ...prev, saving: false }));
                                                 setLoading(false);
                                             }
-                                        }} className="px-3 py-1 bg-green-600 text-white rounded">Pay</button>
+                                        }} className="px-3 py-1 bg-green-600 text-white rounded">Paid</button>
                                     </div>
                                 </div>
                             </div>
