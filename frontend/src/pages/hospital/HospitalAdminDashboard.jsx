@@ -66,6 +66,10 @@ const HospitalAdminDashboard = () => {
     const [origFees, setOrigFees] = useState(null);
     const [feesLoading, setFeesLoading] = useState(false);
     const [feesEditing, setFeesEditing] = useState(false);
+    const [operationsSettings, setOperationsSettings] = useState({ receptionMode: 'HAS_RECEPTIONIST', billingHandler: 'RECEPTIONIST' });
+    const [origOperationsSettings, setOrigOperationsSettings] = useState(null);
+    const [settingsLoading, setSettingsLoading] = useState(false);
+    const [settingsEditing, setSettingsEditing] = useState(false);
     const [page, setPage] = useState(0);
     const [pageSize, setPageSize] = useState(10);
     const ITEMS_PER_PAGE = 10;
@@ -77,6 +81,18 @@ const HospitalAdminDashboard = () => {
 
     // Confirmation Modal State
     const [searchTerm, setSearchTerm] = useState('');
+
+    // Modal tracking state instead of activeTab
+    const [modalType, setModalType] = useState(null);
+
+    // Patients state for Overview tab
+    const [patientsSearchTerm, setPatientsSearchTerm] = useState('');
+    const [patientsPage, setPatientsPage] = useState(0);
+    const [patientsTotalPages, setPatientsTotalPages] = useState(1);
+    const [patientsTotalElements, setPatientsTotalElements] = useState(0);
+
+    // Appointments search state for Today's Appointments under Overview tab
+    const [appointmentsSearchTerm, setAppointmentsSearchTerm] = useState('');
 
     // History Drawer State
     const [historyDrawer, setHistoryDrawer] = useState({ isOpen: false, entityType: null, entityId: null, entityName: null });
@@ -93,6 +109,15 @@ const HospitalAdminDashboard = () => {
     const [editData, setEditData] = useState(null);
     const [patientDetailsModal, setPatientDetailsModal] = useState({ isOpen: false, patient: null });
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+    // Help & Support state variables
+    const [faqs, setFaqs] = useState([]);
+    const [tickets, setTickets] = useState([]);
+    const [supportLoading, setSupportLoading] = useState(false);
+    const [supportSubmitting, setSupportSubmitting] = useState(false);
+    const [expandedFaqId, setExpandedFaqId] = useState(null);
+    const [faqSearch, setFaqSearch] = useState('');
+    const [ticketForm, setTicketForm] = useState({ subject: '', message: '', priority: 'LOW' });
 
     const navigate = useNavigate();
 
@@ -145,6 +170,20 @@ const HospitalAdminDashboard = () => {
         }
     }, [activeTab, searchTerm, page, billingStatus]);
 
+    // Effect for Patients list loading (Overview Tab specific)
+    useEffect(() => {
+        if (activeTab !== 'overview') return;
+
+        if (patientsSearchTerm) {
+            const timer = setTimeout(() => {
+                loadPatients(patientsSearchTerm, patientsPage);
+            }, 500);
+            return () => clearTimeout(timer);
+        } else {
+            loadPatients(patientsSearchTerm, patientsPage);
+        }
+    }, [activeTab, patientsSearchTerm, patientsPage, pageSize]);
+
     // Load hospital fees when Fees tab is active
     useEffect(() => {
         const loadFees = async () => {
@@ -187,16 +226,177 @@ const HospitalAdminDashboard = () => {
         }
     };
 
-    // Client-side pagination logic removed
-    // useEffect(() => {
-    //     const applyPagination = () => { ... }
-    //     applyPagination();
-    // }, [patients, doctors, receptionists, appointments, billing, page, activeTab]);
+    // Load hospital operations settings when Settings tab is active
+    useEffect(() => {
+        const loadOperationsSettings = async () => {
+            if (activeTab !== 'settings') return;
+            setSettingsLoading(true);
+            try {
+                const data = await hospitalService.getHospitalOperationsSettings();
+                const loaded = {
+                    receptionMode: data.receptionMode || 'HAS_RECEPTIONIST',
+                    billingHandler: data.billingHandler || 'RECEPTIONIST'
+                };
+                setOperationsSettings(loaded);
+                setOrigOperationsSettings(loaded);
+                setSettingsEditing(false);
+            } catch (err) {
+                toastError('Failed to load settings');
+            } finally {
+                setSettingsLoading(false);
+            }
+        };
+        loadOperationsSettings();
+    }, [activeTab]);
+
+    // Load Support data (FAQs and Tickets) when support tab is active
+    useEffect(() => {
+        const loadSupportData = async () => {
+            if (activeTab !== 'support') return;
+            setSupportLoading(true);
+            try {
+                const [faqData, ticketData] = await Promise.all([
+                    hospitalService.getPublicFaqs(),
+                    hospitalService.getTickets()
+                ]);
+                setFaqs(faqData || []);
+                setTickets(ticketData || []);
+            } catch (err) {
+                console.error("Failed to load Help & Support data", err);
+                toastError("Failed to load FAQs or support tickets");
+            } finally {
+                setSupportLoading(false);
+            }
+        };
+        loadSupportData();
+    }, [activeTab]);
+
+    const handleCreateTicket = async (e) => {
+        e.preventDefault();
+        if (!ticketForm.subject.trim() || !ticketForm.message.trim()) {
+            toastError("Subject and Message are required");
+            return;
+        }
+        setSupportSubmitting(true);
+        try {
+            const newTicket = await hospitalService.createTicket(ticketForm);
+            success("Support ticket submitted successfully");
+            setTickets(prev => [newTicket, ...prev]);
+            setTicketForm({ subject: '', message: '', priority: 'LOW' });
+        } catch (err) {
+            console.error("Failed to submit support ticket", err);
+            const msg = err.response?.data?.message || err.response?.data || "Failed to submit ticket";
+            toastError(msg);
+        } finally {
+            setSupportSubmitting(false);
+        }
+    };
+
+    const toggleReceptionMode = () => {
+        const isCurrentlySolo = operationsSettings.receptionMode === 'SOLO';
+        const nextValue = isCurrentlySolo ? 'HAS_RECEPTIONIST' : 'SOLO';
+        const title = isCurrentlySolo ? 'Enable Receptionist Mode' : 'Disable Receptionist Mode (Solo Doctor)';
+        const message = isCurrentlySolo
+            ? 'Are you sure you want to enable Receptionist Mode? Receptionists will be allowed to log in and manage the clinic workflow.'
+            : 'Are you sure you want to activate Solo Doctor Mode? Receptionist accounts will be blocked from logging in, and Billing will automatically switch to the Doctor.';
+
+        openConfirmation(title, message, async () => {
+            try {
+                setSettingsLoading(true);
+                const updated = {
+                    receptionMode: nextValue,
+                    billingHandler: nextValue === 'SOLO' ? 'DOCTOR' : operationsSettings.billingHandler
+                };
+                await hospitalService.updateHospitalOperationsSettings(updated);
+                setOperationsSettings(updated);
+                setOrigOperationsSettings(updated);
+                success('Operational settings updated successfully.');
+                
+                // Refresh local user profile session
+                const profile = await authService.getProfile();
+                authService.updateCurrentUser(profile);
+                setUser(profile);
+            } catch (err) {
+                const msg = err.response?.data || 'Failed to update receptionist mode';
+                toastError(msg);
+            } finally {
+                setSettingsLoading(false);
+            }
+        }, false);
+    };
+
+    const toggleBillingHandler = () => {
+        if (operationsSettings.receptionMode === 'SOLO') {
+            info('Billing must be managed by Doctor in Solo Doctor Mode.');
+            return;
+        }
+        const isCurrentlyDoctor = operationsSettings.billingHandler === 'DOCTOR';
+        const nextValue = isCurrentlyDoctor ? 'RECEPTIONIST' : 'DOCTOR';
+        const title = isCurrentlyDoctor ? 'Switch Billing to Receptionist' : 'Switch Billing to Doctor';
+        const message = isCurrentlyDoctor
+            ? 'Are you sure you want the Receptionist to handle patient billing? Doctor billing tabs will be hidden.'
+            : 'Are you sure you want the Doctor to handle all billing? Receptionist billing tabs will be hidden.';
+
+        openConfirmation(title, message, async () => {
+            try {
+                setSettingsLoading(true);
+                const updated = {
+                    receptionMode: operationsSettings.receptionMode,
+                    billingHandler: nextValue
+                };
+                await hospitalService.updateHospitalOperationsSettings(updated);
+                setOperationsSettings(updated);
+                setOrigOperationsSettings(updated);
+                success('Operational settings updated successfully.');
+                
+                // Refresh local user profile session
+                const profile = await authService.getProfile();
+                authService.updateCurrentUser(profile);
+                setUser(profile);
+            } catch (err) {
+                const msg = err.response?.data || 'Failed to update billing responsibility';
+                toastError(msg);
+            } finally {
+                setSettingsLoading(false);
+            }
+        }, false);
+    };
+
+    const loadPatients = async (searchTermVal = patientsSearchTerm, pageNum = patientsPage) => {
+        try {
+            const patData = await hospitalService.getPatients(searchTermVal, pageNum, pageSize);
+            if (patData.content) {
+                setPatients(patData.content);
+                setPatientsTotalPages(patData.totalPages);
+                setPatientsTotalElements(patData.totalElements);
+            } else {
+                setPatients(patData);
+                setPatientsTotalPages(1);
+                setPatientsTotalElements(patData.length);
+            }
+        } catch (err) {
+            console.error("Failed to load patients", err);
+        }
+    };
 
     const loadData = async () => {
         setLoading(true);
         try {
-            if (activeTab === 'dashboard') {
+            if (activeTab === 'overview') {
+                const [statsData, todaysAppts, docData] = await Promise.all([
+                    hospitalService.getAppointmentStats(),
+                    hospitalService.getTodaysAppointments(),
+                    hospitalService.getDoctors('', 0, 100)
+                ]);
+                setStats(statsData);
+                setTodaysAppointments(todaysAppts);
+                if (docData.content) {
+                    setDoctors(docData.content);
+                } else {
+                    setDoctors(docData);
+                }
+                await loadPatients(patientsSearchTerm, patientsPage);
+            } else if (activeTab === 'dashboard') {
                 // Load dashboard data
                 const [statsData, todaysAppts] = await Promise.all([
                     hospitalService.getGlobalStats(),
@@ -454,7 +654,7 @@ const HospitalAdminDashboard = () => {
         try {
             await hospitalService.updateAppointmentStatus(id, newStatus);
             success(`Appointment ${newStatus.toLowerCase()} successfully`);
-            if (activeTab === 'appointments') loadData();
+            if (activeTab === 'appointments' || activeTab === 'overview') loadData();
             else if (activeTab === 'dashboard') loadData();
         } catch (err) {
             toastError(`Failed to update appointment status`);
@@ -475,7 +675,7 @@ const HospitalAdminDashboard = () => {
                         await hospitalService.updateAppointmentStatus(id, newStatus);
                         success('Appointment cancelled successfully');
                         // refresh
-                        if (activeTab === 'appointments') loadData();
+                        if (activeTab === 'appointments' || activeTab === 'overview') loadData();
                         else if (activeTab === 'dashboard') loadData();
                     } catch (err) {
                         toastError('Failed to cancel appointment');
@@ -490,8 +690,10 @@ const HospitalAdminDashboard = () => {
         }
     };
 
-    const handleEdit = (item) => {
+    const handleEdit = (item, type = null) => {
         setEditData(item);
+        const modalTypeStr = (type && typeof type === 'string') ? type : activeTab;
+        setModalType(modalTypeStr);
         setShowModal(true);
     };
 
@@ -499,8 +701,10 @@ const HospitalAdminDashboard = () => {
         setPatientDetailsModal({ isOpen: true, patient });
     };
 
-    const handleAdd = () => {
+    const handleAdd = (type = null) => {
         setEditData(null); // Clear previous edit data
+        const modalTypeStr = (type && typeof type === 'string') ? type : activeTab;
+        setModalType(modalTypeStr);
         setShowModal(true);
     };
 
@@ -518,10 +722,8 @@ const HospitalAdminDashboard = () => {
     const allTabs = [
         { id: 'overview', label: 'Overview', icon: null, requiredModule: null },
         { id: 'wards', label: 'Wards & Beds', icon: null, requiredModule: null },
-        { id: 'patients', label: 'Patients', icon: null, requiredModule: 'OPD' },
         { id: 'doctors', label: 'Doctors', icon: null, requiredModule: 'OPD' },
         { id: 'receptionists', label: 'Receptionists', icon: null, requiredModule: 'OPD' },
-        { id: 'appointments', label: 'Appointments', icon: null, requiredModule: 'OPD' },
         { id: 'billing', label: 'Billing', icon: null, requiredModule: 'BILLING' },
         { id: 'pharmacy', label: 'Pharmacy', icon: null, requiredModule: 'PHARMACY' },
         { id: 'pharmacists', label: 'Pharmacists', icon: null, requiredModule: 'PHARMACY' },
@@ -529,6 +731,7 @@ const HospitalAdminDashboard = () => {
         { id: 'ipd', label: 'IPD', icon: null, requiredModule: 'IPD' },
         { id: 'fees', label: 'Fees', icon: null, requiredModule: null },
         { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
+        { id: 'settings', label: 'Settings', icon: null, requiredModule: null },
     ];
 
     const tabs = allTabs.filter(tab =>
@@ -582,6 +785,34 @@ const HospitalAdminDashboard = () => {
         }
     };
 
+    const patientsPagination = {
+        pageIndex: patientsPage,
+        pageSize: pageSize,
+        totalItems: patientsTotalElements,
+        pageCount: patientsTotalPages,
+        onPageChange: (newPage) => setPatientsPage(newPage)
+    };
+
+    const filteredTodaysAppointments = todaysAppointments.filter(appt => {
+        if (!appointmentsSearchTerm) return true;
+        const term = appointmentsSearchTerm.toLowerCase();
+        return (
+            (appt.patientName && appt.patientName.toLowerCase().includes(term)) ||
+            (appt.doctorName && appt.doctorName.toLowerCase().includes(term)) ||
+            (appt.customId && appt.customId.toLowerCase().includes(term)) ||
+            (appt.id && appt.id.toString().includes(term)) ||
+            (appt.notes && appt.notes.toLowerCase().includes(term))
+        );
+    });
+
+    const appointmentsPagination = {
+        pageIndex: 0,
+        pageSize: filteredTodaysAppointments.length || 10,
+        totalItems: filteredTodaysAppointments.length,
+        pageCount: 1,
+        onPageChange: () => {}
+    };
+
     return (
         <div className="flex h-screen bg-white">
             {/* Sidebar */}
@@ -604,13 +835,14 @@ const HospitalAdminDashboard = () => {
                     user={user}
                     onLogout={handleLogout}
                     onProfile={() => console.log('Profile clicked')}
+                    onSupport={() => setActiveTab('support')}
                     onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
                 />
 
                 {/* Main Content Area */}
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
 
-                    {/* Overview Tab - Stats Only */}
+                    {/* Overview Tab - Stats & Inline Tables Split Grid */}
                     {activeTab === 'overview' && (
                         <div className="space-y-6">
                             <h2 className="text-2xl font-bold text-gray-900">Overview</h2>
@@ -640,19 +872,141 @@ const HospitalAdminDashboard = () => {
                                     </div>
                                 </div>
                             </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
+                                {/* Left Div: Patients */}
+                                <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-sm flex flex-col">
+                                    {/* Head */}
+                                    <div className="px-6 py-5 border-b border-neutral-100 bg-neutral-50/50 flex flex-row justify-between items-center">
+                                        <div>
+                                            <h3 className="text-lg font-bold text-slate-800">Patients</h3>
+                                            <p className="text-xs text-slate-500 mt-0.5">Manage registered hospital patients</p>
+                                        </div>
+                                        {user?.role === 'HOSPITAL_ADMIN' && (
+                                            <button
+                                                onClick={() => handleAdd('patients')}
+                                                className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-sm transform hover:-translate-y-0.5 transition-all flex items-center gap-1.5"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                                    <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                                                </svg>
+                                                <span>Add Patient</span>
+                                            </button>
+                                        )}
+                                    </div>
+                                    {/* Body */}
+                                    <div className="p-6 flex-1">
+                                        {/* Search Input for patients */}
+                                        <div className="relative mb-4">
+                                            <input
+                                                type="text"
+                                                placeholder="Search patients..."
+                                                value={patientsSearchTerm}
+                                                onChange={(e) => setPatientsSearchTerm(e.target.value)}
+                                                className="pl-9 pr-4 py-2 border border-neutral-300 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent w-full transition-all bg-neutral-50 focus:bg-white text-slate-800 placeholder-slate-400"
+                                            />
+                                            <span className="absolute left-3 top-2.5 text-slate-400">
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                                </svg>
+                                            </span>
+                                        </div>
+                                        {patients.length > 0 ? (
+                                            <PatientsTable 
+                                                patients={patients} 
+                                                onEdit={(item) => handleEdit(item, 'patients')} 
+                                                onViewDetails={handleViewDetails} 
+                                                onDelete={handleDeletePatient} 
+                                                onHistory={(p) => handleHistory('PATIENT', p.publicId || p.id, p.name)} 
+                                                startIndex={patientsPage * pageSize} 
+                                                pagination={patientsPagination} 
+                                                isAdmin={user?.role === 'HOSPITAL_ADMIN'} 
+                                            />
+                                        ) : (
+                                            <EmptyState
+                                                icon={null}
+                                                title="No Patients Found"
+                                                message="There are no patients registered in the system yet."
+                                                actionLabel="Add Patient"
+                                                onAction={user?.role === 'HOSPITAL_ADMIN' ? () => handleAdd('patients') : null}
+                                            />
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Right Div: Today's Appointments */}
+                                <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-sm flex flex-col">
+                                    {/* Head */}
+                                    <div className="px-6 py-5 border-b border-neutral-100 bg-neutral-50/50 flex flex-row justify-between items-center">
+                                        <div>
+                                            <h3 className="text-lg font-bold text-slate-800">Today's Appointments</h3>
+                                            <p className="text-xs text-slate-500 mt-0.5">Quick overview of appointments for today</p>
+                                        </div>
+                                        {user?.role === 'HOSPITAL_ADMIN' && (
+                                            <button
+                                                onClick={() => handleAdd('appointments')}
+                                                className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-sm transform hover:-translate-y-0.5 transition-all flex items-center gap-1.5"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                                    <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                                                </svg>
+                                                <span>Add Appointment</span>
+                                            </button>
+                                        )}
+                                    </div>
+                                    {/* Body */}
+                                    <div className="p-6 flex-1">
+                                        {/* Search Input for appointments */}
+                                        <div className="relative mb-4">
+                                            <input
+                                                type="text"
+                                                placeholder="Search today's appointments by patient / doctor name..."
+                                                value={appointmentsSearchTerm}
+                                                onChange={(e) => setAppointmentsSearchTerm(e.target.value)}
+                                                className="pl-9 pr-4 py-2 border border-neutral-300 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent w-full transition-all bg-neutral-50 focus:bg-white text-slate-800 placeholder-slate-400"
+                                            />
+                                            <span className="absolute left-3 top-2.5 text-slate-400">
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                                </svg>
+                                            </span>
+                                        </div>
+                                        {filteredTodaysAppointments.length > 0 ? (
+                                            <AppointmentsTable 
+                                                appointments={filteredTodaysAppointments} 
+                                                doctors={doctors} 
+                                                isAdmin={user?.role === 'HOSPITAL_ADMIN'} 
+                                                onDelete={handleDeleteAppointment} 
+                                                onStatusUpdate={onAppointmentStatusUpdate} 
+                                                onHistory={(item) => handleHistory('APPOINTMENT', item.publicId || item.id, "Appointment")} 
+                                                startIndex={0} 
+                                                pagination={appointmentsPagination} 
+                                            />
+                                        ) : (
+                                            <EmptyState
+                                                icon={null}
+                                                title="No Appointments Found"
+                                                message="There are no appointments matching your search today."
+                                                actionLabel="Schedule Appointment"
+                                                onAction={user?.role === 'HOSPITAL_ADMIN' ? () => handleAdd('appointments') : null}
+                                            />
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     )}
 
                     {/* Standardized Header */}
-                    {activeTab !== 'overview' && activeTab !== 'pharmacy' &&  activeTab !== 'ipd' &&  activeTab !== 'pathology' && (
+                    {activeTab !== 'overview' && activeTab !== 'pharmacy' &&  activeTab !== 'ipd' &&  activeTab !== 'pathology' && activeTab !== 'support' && (
                         <PageHeader
                             title={tabs.find(t => t.id === activeTab)?.label}
-                            subtitle={`Manage hospital ${activeTab} records`}
-                            onSearch={activeTab === 'fees' ? null : (e) => setSearchTerm(e.target.value)}
-                            searchValue={activeTab === 'fees' ? '' : searchTerm}
-                            searchPlaceholder={activeTab === 'fees' ? '' : `Search ${activeTab}...`}
-                            onAdd={activeTab !== 'billing' && activeTab !== 'audit-logs' && activeTab !== 'fees' && user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
-                            addLabel={activeTab === 'fees' ? '' : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`}
+                            subtitle={activeTab === 'settings' ? 'Configure operational settings and permissions' : `Manage hospital ${activeTab} records`}
+                            onSearch={(activeTab === 'fees' || activeTab === 'settings') ? null : (e) => setSearchTerm(e.target.value)}
+                            searchValue={(activeTab === 'fees' || activeTab === 'settings') ? '' : searchTerm}
+                            searchPlaceholder={(activeTab === 'fees' || activeTab === 'settings') ? '' : `Search ${activeTab}...`}
+                            onAdd={activeTab !== 'billing' && activeTab !== 'audit-logs' && activeTab !== 'fees' && activeTab !== 'settings' && user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
+                            addLabel={(activeTab === 'fees' || activeTab === 'settings') ? '' : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`}
                             filter={activeTab === 'billing' ? (
                                 <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
                                     {['PENDING', 'PAID', 'PARTIAL'].map(status => (
@@ -682,21 +1036,9 @@ const HospitalAdminDashboard = () => {
                         <>
                             {/* Overview tab content already rendered above */}
 
-                            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
-                                {activeTab === 'patients' && (
-                                    patients.length > 0 ? (
-                                        <PatientsTable patients={patients} onEdit={handleEdit} onViewDetails={handleViewDetails} onDelete={handleDeletePatient} onHistory={(p) => handleHistory('PATIENT', p.publicId || p.id, p.name)} startIndex={page * pageSize} pagination={pagination} isAdmin={user?.role === 'HOSPITAL_ADMIN'} />
-                                    ) : (
-                                        <EmptyState
-                                            icon={null}
-                                            title="No Patients Found"
-                                            message="There are no patients registered in the system yet."
-                                            actionLabel="Add Patient"
-                                            onAction={user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
-                                        />
-                                    )
-                                )}
-                                {activeTab === 'doctors' && (
+                            {activeTab !== 'support' && (
+                                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
+                                    {activeTab === 'doctors' && (
                                     doctors.length > 0 ? (
                                         <DoctorsTable doctors={doctors} onEdit={handleEdit} onDelete={handleDeleteDoctor} startIndex={page * pageSize} pagination={pagination} />
                                     ) : (
@@ -743,19 +1085,6 @@ const HospitalAdminDashboard = () => {
         />
     )
 )}
-                                {activeTab === 'appointments' && (
-                                    appointments.length > 0 ? (
-                                        <AppointmentsTable appointments={appointments} doctors={doctors} isAdmin={user?.role === 'HOSPITAL_ADMIN'} onDelete={handleDeleteAppointment} onStatusUpdate={onAppointmentStatusUpdate} onHistory={(item) => handleHistory('APPOINTMENT', item.publicId || item.id, "Appointment")} startIndex={page * pageSize} pagination={pagination} />
-                                    ) : (
-                                        <EmptyState
-                                            icon={null}
-                                            title="No Appointments"
-                                            message="Schedule appointments for your patients."
-                                            actionLabel="Schedule Appointment"
-                                            onAction={user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
-                                        />
-                                    )
-                                )}
 
                                 {activeTab === 'wards' && (
                                     <div className="p-6">
@@ -825,6 +1154,112 @@ const HospitalAdminDashboard = () => {
                                                             <button onClick={handleSaveFees} disabled={feesLoading} className="flex-1 bg-gray-900 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-800 transition">Save</button>
                                                         </>
                                                     )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                                {activeTab === 'settings' && (
+                                    <div className="p-6 bg-white rounded-2xl border border-gray-200/80 shadow-sm max-w-4xl mx-auto my-4">
+                                        <h2 className="text-xl font-bold mb-1 text-gray-900">Operations Settings</h2>
+                                        <p className="text-sm text-gray-500 mb-8">Configure operational scenarios, staff access permissions, and billing responsibilities.</p>
+                                        
+                                        {settingsLoading ? (
+                                            <div className="flex items-center justify-center p-12">
+                                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-600 mr-3"></div>
+                                                <div className="text-sm text-gray-600 font-medium">Updating operations...</div>
+                                            </div>
+                                        ) : (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                                {/* Receptionist Access Card */}
+                                                <div className="bg-slate-50/50 rounded-2xl border border-gray-200 p-6 flex flex-col justify-between hover:shadow-md transition-all duration-300">
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-4">
+                                                            <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                                                                </svg>
+                                                            </div>
+                                                            <span className={`px-3 py-1 text-xs font-semibold rounded-full ${operationsSettings.receptionMode === 'SOLO' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                                                                {operationsSettings.receptionMode === 'SOLO' ? 'Solo Doctor Mode' : 'Receptionist Mode Active'}
+                                                            </span>
+                                                        </div>
+                                                        <h3 className="text-lg font-bold text-gray-900 mb-2">Receptionist Access</h3>
+                                                        <p className="text-sm text-gray-600 leading-relaxed mb-6">
+                                                            Configure receptionist login and scheduling rights. When disabled, receptionist accounts are blocked from accessing the system.
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                                                        <span className="text-sm font-medium text-gray-700">Receptionist Access Status</span>
+                                                        <button 
+                                                            onClick={toggleReceptionMode}
+                                                            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 ${
+                                                                operationsSettings.receptionMode === 'HAS_RECEPTIONIST' ? 'bg-sky-600' : 'bg-gray-200'
+                                                            }`}
+                                                        >
+                                                            <span className="sr-only">Toggle Receptionist Access</span>
+                                                            <span 
+                                                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                                                    operationsSettings.receptionMode === 'HAS_RECEPTIONIST' ? 'translate-x-5' : 'translate-x-0'
+                                                                }`} 
+                                                            />
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {/* Billing Responsibility Card */}
+                                                <div className="bg-slate-50/50 rounded-2xl border border-gray-200 p-6 flex flex-col justify-between hover:shadow-md transition-all duration-300">
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-4">
+                                                            <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                                                </svg>
+                                                            </div>
+                                                            <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
+                                                                operationsSettings.receptionMode === 'SOLO'
+                                                                    ? 'bg-amber-100 text-amber-800'
+                                                                    : operationsSettings.billingHandler === 'DOCTOR'
+                                                                    ? 'bg-blue-100 text-blue-800'
+                                                                    : 'bg-indigo-100 text-indigo-800'
+                                                            }`}>
+                                                                {operationsSettings.receptionMode === 'SOLO'
+                                                                    ? 'Doctor Managed (Forced)'
+                                                                    : operationsSettings.billingHandler === 'DOCTOR'
+                                                                    ? 'Doctor Managed'
+                                                                    : 'Receptionist Managed'}
+                                                            </span>
+                                                        </div>
+                                                        <h3 className="text-lg font-bold text-gray-900 mb-2">Billing Responsibility</h3>
+                                                        <p className="text-sm text-gray-600 leading-relaxed mb-6">
+                                                            Determine who handles billing and payment collection. In Solo Doctor mode, billing responsibility is restricted to the Doctor.
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                                                        <span className={`text-sm font-medium ${operationsSettings.receptionMode === 'SOLO' ? 'text-gray-400' : 'text-gray-700'}`}>
+                                                            {operationsSettings.billingHandler === 'DOCTOR' ? 'Billing Handled by Doctor' : 'Billing Handled by Receptionist'}
+                                                        </span>
+                                                        <button 
+                                                            disabled={operationsSettings.receptionMode === 'SOLO'}
+                                                            onClick={toggleBillingHandler}
+                                                            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 ${
+                                                                operationsSettings.receptionMode === 'SOLO'
+                                                                    ? 'bg-gray-100 cursor-not-allowed opacity-50'
+                                                                    : operationsSettings.billingHandler === 'DOCTOR'
+                                                                    ? 'bg-sky-600'
+                                                                    : 'bg-gray-200'
+                                                            }`}
+                                                        >
+                                                            <span className="sr-only">Toggle Billing Responsibility</span>
+                                                            <span 
+                                                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                                                    operationsSettings.billingHandler === 'DOCTOR' && operationsSettings.receptionMode !== 'SOLO'
+                                                                        ? 'translate-x-5'
+                                                                        : 'translate-x-0'
+                                                                }`} 
+                                                            />
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         )}
@@ -917,6 +1352,244 @@ const HospitalAdminDashboard = () => {
                                     )
                                 )}
                             </div>
+                            )}
+
+                            {activeTab === 'support' && (
+                                <div className="space-y-6">
+                                    <div className="flex flex-col md:flex-row md:items-center md:justify-between border-b border-neutral-200 pb-5">
+                                        <div>
+                                            <h2 className="text-2xl font-bold text-gray-900">Help & Support Center</h2>
+                                            <p className="text-sm text-gray-500 mt-1">Get answers to frequently asked questions or raise a support ticket with our team.</p>
+                                        </div>
+                                        <div className="mt-4 md:mt-0">
+                                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200">
+                                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                                </svg>
+                                                Secure Support Channel
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {supportLoading ? (
+                                        <div className="flex justify-center items-center h-96">
+                                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-600"></div>
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                                            {/* Left 7 Columns: FAQs */}
+                                            <div className="lg:col-span-7 space-y-6">
+                                                <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-6">
+                                                    <div className="flex items-center justify-between mb-6">
+                                                        <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                                            <svg className="w-5 h-5 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                            </svg>
+                                                            Frequently Asked Questions
+                                                        </h3>
+                                                        <span className="text-xs text-gray-400 font-medium">{faqs.length} articles</span>
+                                                    </div>
+
+                                                    {/* Local search bar for FAQs */}
+                                                    <div className="relative mb-6">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Search FAQ questions or keywords..."
+                                                            value={faqSearch}
+                                                            onChange={(e) => setFaqSearch(e.target.value)}
+                                                            className="w-full pl-10 pr-4 py-2.5 bg-neutral-50 hover:bg-neutral-100/50 focus:bg-white border border-neutral-200 rounded-xl text-sm transition-all focus:ring-2 focus:ring-sky-500 focus:border-transparent text-slate-800 placeholder-slate-400"
+                                                        />
+                                                        <span className="absolute left-3.5 top-3.5 text-slate-400">
+                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                                            </svg>
+                                                        </span>
+                                                    </div>
+
+                                                    {faqs.filter(faq => 
+                                                        faq.question.toLowerCase().includes(faqSearch.toLowerCase()) || 
+                                                        faq.answer.toLowerCase().includes(faqSearch.toLowerCase())
+                                                    ).length === 0 ? (
+                                                        <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl bg-gray-50/50">
+                                                            <svg className="w-10 h-10 text-gray-300 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                            </svg>
+                                                            <p className="text-sm font-medium text-gray-600">No matching FAQs found</p>
+                                                            <p className="text-xs text-gray-400 mt-1">Try searching for other keywords</p>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="space-y-3">
+                                                            {faqs.filter(faq => 
+                                                                faq.question.toLowerCase().includes(faqSearch.toLowerCase()) || 
+                                                                faq.answer.toLowerCase().includes(faqSearch.toLowerCase())
+                                                            ).map((faq) => {
+                                                                const isExpanded = expandedFaqId === faq.id;
+                                                                return (
+                                                                    <div
+                                                                        key={faq.id}
+                                                                        className={`group rounded-xl border transition-all duration-300 ${
+                                                                            isExpanded
+                                                                                ? 'bg-neutral-50/70 border-sky-200 shadow-sm'
+                                                                                : 'bg-white border-neutral-200/80 hover:border-neutral-300 hover:shadow-sm'
+                                                                        }`}
+                                                                    >
+                                                                        <button
+                                                                            onClick={() => setExpandedFaqId(isExpanded ? null : faq.id)}
+                                                                            className="w-full text-left px-5 py-4 flex items-center justify-between gap-4 focus:outline-none"
+                                                                        >
+                                                                            <span className="font-semibold text-neutral-800 text-sm md:text-base group-hover:text-sky-600 transition-colors">
+                                                                                {faq.question}
+                                                                            </span>
+                                                                            <span className={`flex-shrink-0 text-neutral-400 group-hover:text-neutral-600 transition-transform duration-300 ${isExpanded ? 'rotate-180 text-sky-500' : ''}`}>
+                                                                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                                                </svg>
+                                                                            </span>
+                                                                        </button>
+                                                                        <div
+                                                                            className={`grid transition-all duration-300 ease-in-out ${
+                                                                                isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 pointer-events-none'
+                                                                            }`}
+                                                                        >
+                                                                            <div className="overflow-hidden">
+                                                                                <div className="px-5 pb-5 pt-1 text-sm text-neutral-600 leading-relaxed border-t border-neutral-100 bg-white/50 rounded-b-xl">
+                                                                                    {faq.answer}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Right 5 Columns: Submit Ticket & List of submitted tickets */}
+                                            <div className="lg:col-span-5 space-y-6">
+                                                {/* Submit New Ticket Card */}
+                                                <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-6">
+                                                    <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                                        <svg className="w-5 h-5 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                        </svg>
+                                                        Raise a Support Ticket
+                                                    </h3>
+                                                    <form onSubmit={handleCreateTicket} className="space-y-4">
+                                                        <div>
+                                                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Subject</label>
+                                                            <input
+                                                                type="text"
+                                                                value={ticketForm.subject}
+                                                                onChange={(e) => setTicketForm(prev => ({ ...prev, subject: e.target.value }))}
+                                                                placeholder="Briefly describe the issue..."
+                                                                required
+                                                                className="w-full px-3.5 py-2 border border-neutral-200 rounded-xl text-sm focus:ring-2 focus:ring-sky-500 focus:border-transparent text-slate-800 placeholder-slate-400"
+                                                            />
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Priority</label>
+                                                            <div className="grid grid-cols-3 gap-2">
+                                                                {['LOW', 'MEDIUM', 'HIGH'].map((p) => {
+                                                                    const isSelected = ticketForm.priority === p;
+                                                                    return (
+                                                                        <button
+                                                                            key={p}
+                                                                            type="button"
+                                                                            onClick={() => setTicketForm(prev => ({ ...prev, priority: p }))}
+                                                                            className={`py-2 px-3 text-xs font-semibold rounded-xl border text-center transition-all duration-200 focus:outline-none ${
+                                                                                isSelected
+                                                                                    ? `${p === 'LOW' ? 'bg-sky-600 border-sky-600 text-white shadow-sm' : p === 'MEDIUM' ? 'bg-amber-500 border-amber-500 text-white shadow-sm' : 'bg-rose-600 border-rose-600 text-white shadow-sm'}`
+                                                                                    : 'bg-white hover:bg-neutral-50 text-neutral-600 border-neutral-200'
+                                                                            }`}
+                                                                        >
+                                                                            {p}
+                                                                        </button>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Detailed Description</label>
+                                                            <textarea
+                                                                value={ticketForm.message}
+                                                                onChange={(e) => setTicketForm(prev => ({ ...prev, message: e.target.value }))}
+                                                                placeholder="Explain what went wrong, step by step..."
+                                                                rows={4}
+                                                                required
+                                                                className="w-full px-3.5 py-2 border border-neutral-200 rounded-xl text-sm focus:ring-2 focus:ring-sky-500 focus:border-transparent text-slate-800 placeholder-slate-400 resize-none"
+                                                            ></textarea>
+                                                        </div>
+
+                                                        <button
+                                                            type="submit"
+                                                            disabled={supportSubmitting}
+                                                            className="w-full py-2.5 bg-gray-900 hover:bg-gray-800 text-white font-semibold text-sm rounded-xl transition-all duration-300 flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 disabled:opacity-50"
+                                                        >
+                                                            {supportSubmitting ? (
+                                                                <>
+                                                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                                                    Submitting...
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                                                    </svg>
+                                                                    Submit Ticket
+                                                                </>
+                                                            )}
+                                                        </button>
+                                                    </form>
+                                                </div>
+
+                                                {/* Ticket History Card */}
+                                                <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-6">
+                                                    <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                                        <svg className="w-5 h-5 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                                                        </svg>
+                                                        Your Support Tickets
+                                                    </h3>
+
+                                                    {tickets.length === 0 ? (
+                                                        <div className="text-center py-10 border border-dashed border-gray-200 rounded-xl bg-gray-50/50">
+                                                            <p className="text-sm font-medium text-gray-500">No support tickets logged yet</p>
+                                                            <p className="text-xs text-gray-400 mt-1">If you face any issues, submit a ticket above.</p>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="space-y-4 max-h-[350px] overflow-y-auto pr-1">
+                                                            {tickets.map((t) => (
+                                                                <div key={t.id} className="p-4 rounded-xl border border-neutral-100 hover:border-neutral-200/80 bg-neutral-50/30 hover:bg-neutral-50/70 transition-all duration-300">
+                                                                    <div className="flex justify-between items-start gap-2 mb-2">
+                                                                        <h4 className="font-semibold text-neutral-800 text-sm truncate flex-1">{t.subject}</h4>
+                                                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${
+                                                                            t.status === 'RESOLVED' ? 'bg-emerald-100 text-emerald-800' : 'bg-sky-100 text-sky-800'
+                                                                        }`}>
+                                                                            {t.status}
+                                                                        </span>
+                                                                    </div>
+                                                                    <p className="text-xs text-neutral-600 mb-3 line-clamp-2">{t.message}</p>
+                                                                    <div className="flex justify-between items-center text-[10px] text-neutral-400">
+                                                                        <span className={`px-2 py-0.5 rounded font-semibold ${
+                                                                            t.priority === 'HIGH' ? 'bg-rose-50 text-rose-700 border border-rose-100' : t.priority === 'MEDIUM' ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-sky-50 text-sky-700 border border-sky-100'
+                                                                        }`}>
+                                                                            {t.priority} Priority
+                                                                        </span>
+                                                                        <span>{new Date(t.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} {new Date(t.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </>
                     )}
                 </main>
@@ -934,15 +1607,17 @@ const HospitalAdminDashboard = () => {
             />
 
             {/* Appointment Modal - Using Shared Component */}
-            {showModal && activeTab === 'appointments' && (
+            {showModal && modalType === 'appointments' && (
                 <AppointmentModal
                     isOpen={showModal}
                     onClose={() => {
                         setShowModal(false);
+                        setModalType(null);
                         setIsNewPatient(false); // Reset toggle
                     }}
                     onSuccess={() => {
                         setShowModal(false);
+                        setModalType(null);
                         success('Record saved successfully');
                         loadData();
                     }}
@@ -952,12 +1627,16 @@ const HospitalAdminDashboard = () => {
             )}
 
             {/* Patient Modal - Using Shared Component */}
-            {showModal && activeTab === 'patients' && (
+            {showModal && modalType === 'patients' && (
                 <PatientModal
                     isOpen={showModal}
-                    onClose={() => setShowModal(false)}
+                    onClose={() => {
+                        setShowModal(false);
+                        setModalType(null);
+                    }}
                     onSuccess={() => {
                         setShowModal(false);
+                        setModalType(null);
                         success('Patient saved successfully');
                         loadData();
                     }}
@@ -966,24 +1645,26 @@ const HospitalAdminDashboard = () => {
             )}
 
             {/* Ward modal (use specialized modal for wards) */}
-            {showModal && activeTab === 'wards' && (
+            {showModal && modalType === 'wards' && (
                 <WardModal
                     open={showModal}
                     initial={editData}
-                    onClose={() => { setShowModal(false); }}
-                    onSaved={() => { setShowModal(false); success('Record saved successfully'); loadData(); }}
+                    onClose={() => { setShowModal(false); setModalType(null); }}
+                    onSaved={() => { setShowModal(false); setModalType(null); success('Record saved successfully'); loadData(); }}
                 />
             )}
 
             {/* Other Modals - doctors, receptionists, billing (exclude wards) */}
-            {showModal && activeTab !== 'appointments' && activeTab !== 'patients' && activeTab !== 'wards' && (
+            {showModal && modalType !== 'appointments' && modalType !== 'patients' && modalType !== 'wards' && modalType && (
                 <AddModal
-                    type={activeTab}
+                    type={modalType}
                     onClose={() => {
                         setShowModal(false);
+                        setModalType(null);
                     }}
                     onSuccess={() => {
                         setShowModal(false);
+                        setModalType(null);
                         success('Record saved successfully');
                         loadData();
                     }}

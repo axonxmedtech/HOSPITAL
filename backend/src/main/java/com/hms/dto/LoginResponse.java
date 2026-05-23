@@ -60,4 +60,14 @@ public class LoginResponse {
      * Enabled modules for the hospital (e.g., ["OPD", "BILLING", "IPD"])
      */
     private java.util.List<String> modules;
+
+    /**
+     * Operational mode for hospital (receptionMode enums HAS_RECEPTIONIST or SOLO)
+     */
+    private String receptionMode;
+
+    /**
+     * Billing responsibility (billingHandler enums RECEPTIONIST or DOCTOR)
+     */
+    private String billingHandler;
 }

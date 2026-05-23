@@ -131,6 +131,30 @@ const platformService = {
         const response = await apiClient.put(`/platform/tickets/${ticketId}/status`, { status: 'RESOLVED' });
         return response.data;
     },
+
+    /**
+     * Get all FAQs (uses public API since FAQs are global)
+     */
+    getFaqs: async () => {
+        const response = await apiClient.get('/api/public/faqs');
+        return response.data;
+    },
+
+    /**
+     * Add a new FAQ
+     */
+    addFaq: async (faqData) => {
+        const response = await apiClient.post('/platform/faqs', faqData);
+        return response.data;
+    },
+
+    /**
+     * Delete an FAQ by ID
+     */
+    deleteFaq: async (id) => {
+        const response = await apiClient.delete(`/platform/faqs/${id}`);
+        return response.data;
+    },
 };
 
 export default platformService;

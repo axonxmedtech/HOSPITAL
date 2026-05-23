@@ -519,7 +519,7 @@ const ReceptionistDashboard = () => {
         { id: 'opd', label: 'OPD', icon: null },
         { id: 'ipd', label: 'IPD', icon: null },
         { id: 'billing', label: 'Billing', icon: null },
-    ];
+    ].filter(tab => tab.id !== 'billing' || user?.billingHandler !== 'DOCTOR');
 
     const pagination = {
         pageIndex: page,

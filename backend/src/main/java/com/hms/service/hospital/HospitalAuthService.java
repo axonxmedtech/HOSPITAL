@@ -3,9 +3,12 @@ package com.hms.service.hospital;
 import com.hms.dto.LoginRequest;
 import com.hms.dto.LoginResponse;
 import com.hms.entity.Hospital;
+import com.hms.entity.HospitalSetting;
 import com.hms.entity.User;
 import com.hms.repository.HospitalRepository;
+import com.hms.repository.HospitalSettingRepository;
 import com.hms.repository.UserRepository;
+import com.hms.dto.HospitalSettingDTO;
 import com.hms.security.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -35,6 +38,9 @@ public class HospitalAuthService {
 
     @Autowired
     private HospitalRepository hospitalRepository;
+
+    @Autowired
+    private HospitalSettingRepository hospitalSettingRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -94,6 +100,20 @@ public class HospitalAuthService {
             throw new RuntimeException("Hospital is inactive. Please contact support.");
         }
 
+        // Fetch hospital settings (or auto-create default row if not exist)
+        HospitalSetting settings = hospitalSettingRepository.findByHospitalId(hospital.getId())
+                .orElseGet(() -> {
+                    HospitalSetting newSettings = new HospitalSetting();
+                    newSettings.setHospital(hospital);
+                    return hospitalSettingRepository.save(newSettings);
+                });
+
+        // Restrict receptionist login if Solo Doctor mode is active
+        if ("RECEPTIONIST".equals(user.getRole()) && "SOLO".equals(settings.getReceptionMode())) {
+            logger.warn("Login failed - Receptionist login restricted under Solo Doctor mode: {}", request.getEmail());
+            throw new RuntimeException("Solo Doctor Mode is active. Receptionist login is restricted.");
+        }
+
         // Verify user account is active (handle null as active for backward
         // compatibility)
         if (user.getIsActive() != null && !user.getIsActive()) {
@@ -121,6 +141,8 @@ public class HospitalAuthService {
         response.setHospitalId(user.getHospitalId());
         response.setHospitalName(hospital.getName());
         response.setModules(hospital.getModules());
+        response.setReceptionMode(settings.getReceptionMode());
+        response.setBillingHandler(settings.getBillingHandler());
 
         return response;
     }
@@ -146,9 +168,12 @@ public class HospitalAuthService {
             throw new RuntimeException("Hospital is inactive");
         }
 
-        if (user.getIsActive() != null && !user.getIsActive()) {
-            throw new RuntimeException("User account is inactive");
-        }
+        HospitalSetting settings = hospitalSettingRepository.findByHospitalId(hospital.getId())
+                .orElseGet(() -> {
+                    HospitalSetting newSettings = new HospitalSetting();
+                    newSettings.setHospital(hospital);
+                    return hospitalSettingRepository.save(newSettings);
+                });
 
         LoginResponse response = new LoginResponse();
         // We don't need a new token, just profile data. Or request new token?
@@ -161,6 +186,8 @@ public class HospitalAuthService {
         response.setHospitalId(user.getHospitalId());
         response.setHospitalName(hospital.getName());
         response.setModules(hospital.getModules());
+        response.setReceptionMode(settings.getReceptionMode());
+        response.setBillingHandler(settings.getBillingHandler());
 
         return response;
     }
@@ -194,5 +221,46 @@ public class HospitalAuthService {
         hospitalRepository.save(hospital);
         com.hms.dto.HospitalFeesDTO dto = new com.hms.dto.HospitalFeesDTO(hospital.getConsultationFee(), hospital.getCasePaperFee());
         return dto;
+    }
+
+    /**
+     * Get operational settings (receptionMode and billingHandler) for the hospital of the authenticated user.
+     */
+    public HospitalSettingDTO getHospitalOperationsSettings(String email) {
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new RuntimeException("User not found"));
+        if (user.getHospitalId() == null) throw new RuntimeException("Invalid hospital user");
+        HospitalSetting settings = hospitalSettingRepository.findByHospitalId(user.getHospitalId())
+                .orElseGet(() -> {
+                    Hospital hospital = hospitalRepository.findById(user.getHospitalId()).orElseThrow(() -> new RuntimeException("Hospital not found"));
+                    HospitalSetting newSettings = new HospitalSetting();
+                    newSettings.setHospital(hospital);
+                    return hospitalSettingRepository.save(newSettings);
+                });
+        HospitalSettingDTO responseDto = new HospitalSettingDTO();
+        responseDto.setReceptionMode(settings.getReceptionMode());
+        responseDto.setBillingHandler(settings.getBillingHandler());
+        return responseDto;
+    }
+
+    /**
+     * Update operational settings. Only `HOSPITAL_ADMIN` role is allowed to update.
+     */
+    public HospitalSettingDTO updateHospitalOperationsSettings(String email, HospitalSettingDTO dto) {
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new RuntimeException("User not found"));
+        if (user.getHospitalId() == null) throw new RuntimeException("Invalid hospital user");
+        if (!"HOSPITAL_ADMIN".equals(user.getRole())) {
+            throw new RuntimeException("Access denied: requires HOSPITAL_ADMIN role");
+        }
+        HospitalSetting settings = hospitalSettingRepository.findByHospitalId(user.getHospitalId())
+                .orElseGet(() -> {
+                    Hospital hospital = hospitalRepository.findById(user.getHospitalId()).orElseThrow(() -> new RuntimeException("Hospital not found"));
+                    HospitalSetting newSettings = new HospitalSetting();
+                    newSettings.setHospital(hospital);
+                    return hospitalSettingRepository.save(newSettings);
+                });
+        settings.setReceptionMode(dto.getReceptionMode());
+        settings.setBillingHandler(dto.getBillingHandler());
+        hospitalSettingRepository.save(settings);
+        return new HospitalSettingDTO(settings.getReceptionMode(), settings.getBillingHandler());
     }
 }

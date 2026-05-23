@@ -104,6 +104,13 @@ const PlatformDashboard = () => {
     const [tickets, setTickets] = useState([]);
     const [ticketsLoading, setTicketsLoading] = useState(false);
 
+    // FAQs State
+    const [faqs, setFaqs] = useState([]);
+    const [faqsLoading, setFaqsLoading] = useState(false);
+    const [showFaqModal, setShowFaqModal] = useState(false);
+    const [faqForm, setFaqForm] = useState({ question: '', answer: '' });
+    const [faqSubmitting, setFaqSubmitting] = useState(false);
+
     // Set Password Modal State (for Reset Password flow)
     const [resetPwModal, setResetPwModal] = useState({ isOpen: false, hospitalId: null });
 
@@ -118,6 +125,8 @@ const PlatformDashboard = () => {
             loadAuditLogs();
         } else if (activeTab === 'tickets') {
             loadTickets();
+        } else if (activeTab === 'faqs') {
+            loadFaqs();
         }
     }, [activeTab]);
 
@@ -182,6 +191,55 @@ const PlatformDashboard = () => {
         } catch {
             setError('Failed to resolve ticket');
         }
+    };
+
+    const loadFaqs = async () => {
+        setFaqsLoading(true);
+        try {
+            const data = await platformService.getFaqs();
+            setFaqs(data || []);
+        } catch {
+            setError('Failed to load FAQs');
+        } finally {
+            setFaqsLoading(false);
+        }
+    };
+
+    const handleCreateFaq = async (e) => {
+        e.preventDefault();
+        if (!faqForm.question.trim() || !faqForm.answer.trim()) {
+            setError('Question and Answer are required');
+            return;
+        }
+        setFaqSubmitting(true);
+        try {
+            await platformService.addFaq(faqForm);
+            success('FAQ added successfully');
+            setShowFaqModal(false);
+            setFaqForm({ question: '', answer: '' });
+            loadFaqs();
+        } catch (err) {
+            setError(err.response?.data?.message || err.response?.data || 'Failed to add FAQ');
+        } finally {
+            setFaqSubmitting(false);
+        }
+    };
+
+    const handleDeleteFaq = (faqId) => {
+        openConfirmation(
+            'Delete FAQ',
+            'Are you sure you want to delete this FAQ? This action cannot be undone.',
+            async () => {
+                try {
+                    await platformService.deleteFaq(faqId);
+                    setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                    success('FAQ deleted successfully');
+                    loadFaqs();
+                } catch {
+                    setError('Failed to delete FAQ');
+                }
+            }
+        );
     };
 
     const handleLogout = () => {
@@ -355,6 +413,7 @@ const PlatformDashboard = () => {
         { id: 'hospitals', label: 'Hospitals' },
         { id: 'audit_logs', label: 'Audit Logs' },
         { id: 'tickets', label: 'Tickets' },
+        { id: 'faqs', label: 'FAQs' },
     ];
 
     return (
@@ -389,9 +448,32 @@ const PlatformDashboard = () => {
                         <div className="mb-6">
                             <PageHeader
                                 title={tabs.find(t => t.id === activeTab)?.label}
-                                subtitle={activeTab === 'hospitals' ? 'Manage and monitor all registered hospitals on the platform.' : 'Track system activities and administrative actions across the platform.'}
-                                onAdd={activeTab === 'hospitals' ? () => setShowCreateModal(true) : null}
-                                addLabel="Create Hospital"
+                                subtitle={
+                                    activeTab === 'hospitals'
+                                        ? 'Manage and monitor all registered hospitals on the platform.'
+                                        : activeTab === 'tickets'
+                                        ? 'View and resolve support tickets submitted by hospital admins.'
+                                        : activeTab === 'faqs'
+                                        ? 'Manage global frequently asked questions for hospital admins.'
+                                        : 'Track system activities and administrative actions across the platform.'
+                                }
+                                onAdd={
+                                    activeTab === 'hospitals'
+                                        ? () => setShowCreateModal(true)
+                                        : activeTab === 'faqs'
+                                        ? () => {
+                                            setFaqForm({ question: '', answer: '' });
+                                            setShowFaqModal(true);
+                                          }
+                                        : null
+                                }
+                                addLabel={
+                                    activeTab === 'hospitals'
+                                        ? 'Create Hospital'
+                                        : activeTab === 'faqs'
+                                        ? 'Add FAQ'
+                                        : ''
+                                }
                             />
                         </div>
                     )}
@@ -613,6 +695,12 @@ const PlatformDashboard = () => {
                             loading={ticketsLoading}
                             onResolve={handleResolveTicket}
                         />
+                    ) : activeTab === 'faqs' ? (
+                        <FaqsTable
+                            faqs={faqs}
+                            loading={faqsLoading}
+                            onDelete={handleDeleteFaq}
+                        />
                     ) : null}
                 </main>
             </div>
@@ -767,6 +855,77 @@ const PlatformDashboard = () => {
                                         className="flex-1 bg-gray-900 text-white px-4 py-2 font-medium hover:bg-gray-700"
                                     >
                                         Create Hospital
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Create FAQ Modal */}
+            {showFaqModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowFaqModal(false)}>
+                    <div className="bg-white rounded-2xl border border-gray-200 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                        <div className="p-6">
+                            <div className="mb-6 flex justify-between items-center">
+                                <div>
+                                    <h2 className="text-xl font-bold text-gray-900 mb-1">Add Global FAQ</h2>
+                                    <p className="text-sm text-gray-500">Create an FAQ that will be visible to all hospital admins.</p>
+                                </div>
+                                <button onClick={() => setShowFaqModal(false)} className="p-1 hover:bg-neutral-100 rounded-lg text-neutral-400 hover:text-neutral-600 transition-colors">
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                            
+                            <form onSubmit={handleCreateFaq} className="space-y-4">
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Question</label>
+                                    <input
+                                        type="text"
+                                        value={faqForm.question}
+                                        onChange={(e) => setFaqForm(prev => ({ ...prev, question: e.target.value }))}
+                                        placeholder="e.g. How do I configure my billing settings?"
+                                        required
+                                        className="w-full px-3.5 py-2 border border-neutral-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent text-slate-800 placeholder-slate-400"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Answer</label>
+                                    <textarea
+                                        value={faqForm.answer}
+                                        onChange={(e) => setFaqForm(prev => ({ ...prev, answer: e.target.value }))}
+                                        placeholder="Provide a detailed, helpful answer..."
+                                        rows={6}
+                                        required
+                                        className="w-full px-3.5 py-2 border border-neutral-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent text-slate-800 placeholder-slate-400 resize-none"
+                                    ></textarea>
+                                </div>
+
+                                <div className="flex gap-3 justify-end pt-4 border-t border-neutral-100">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowFaqModal(false)}
+                                        className="px-4 py-2 text-sm font-semibold text-neutral-600 hover:bg-neutral-50 rounded-xl border border-neutral-200 transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={faqSubmitting}
+                                        className="px-4 py-2 bg-gray-900 hover:bg-gray-800 text-white font-semibold text-sm rounded-xl transition-all duration-300 flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 disabled:opacity-50"
+                                    >
+                                        {faqSubmitting ? (
+                                            <>
+                                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                                Adding...
+                                            </>
+                                        ) : (
+                                            'Add FAQ'
+                                        )}
                                     </button>
                                 </div>
                             </form>
@@ -1394,6 +1553,62 @@ const TicketsTable = ({ tickets, loading, onResolve }) => {
                                 ) : (
                                     <span className="text-xs text-gray-400 italic">Closed</span>
                                 )}
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+};
+
+// FaqsTable Component
+const FaqsTable = ({ faqs, loading, onDelete }) => {
+    if (loading) return (
+        <div className="bg-white border border-gray-200 p-12 text-center">
+            <div className="w-8 h-8 border-2 border-gray-200 border-t-gray-900 animate-spin mx-auto mb-3"></div>
+            <p className="text-sm text-gray-500">Loading FAQs...</p>
+        </div>
+    );
+
+    if (faqs.length === 0) return (
+        <div className="bg-white border border-gray-200 p-12 text-center">
+            <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-7 h-7 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <h3 className="text-base font-semibold text-gray-900 mb-1">No FAQs yet</h3>
+            <p className="text-sm text-gray-500">Global frequently asked questions will appear here.</p>
+        </div>
+    );
+
+    return (
+        <div className="bg-white border border-gray-200 overflow-x-auto">
+            <table className="min-w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                        {['#', 'Question', 'Answer', 'Actions'].map(h => (
+                            <th key={h} className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                    {faqs.map((faq, idx) => (
+                        <tr key={faq.id} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-6 py-4 text-sm text-gray-400">{idx + 1}</td>
+                            <td className="px-6 py-4 font-medium text-gray-900 text-sm">{faq.question}</td>
+                            <td className="px-6 py-4 text-gray-600 text-sm whitespace-pre-wrap max-w-lg">{faq.answer}</td>
+                            <td className="px-6 py-4">
+                                <button
+                                    onClick={() => onDelete(faq.id)}
+                                    className="p-1.5 text-gray-500 hover:text-red-600 rounded hover:bg-red-50 transition-colors"
+                                    title="Delete FAQ"
+                                >
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                </button>
                             </td>
                         </tr>
                     ))}
