@@ -16,6 +16,10 @@ import PageHeader from '../../components/PageHeader';
 import { createColumnHelper } from '@tanstack/react-table';
 import ConsultationModal from '../../components/ConsultationModal';
 import PrescriptionViewModal from '../../components/PrescriptionViewModal';
+import BillingTable from './BillingTable';
+import AppointmentModal from '../../components/AppointmentModal';
+import PatientModal from '../../components/PatientModal';
+import PatientDetailsModal from '../../components/PatientDetailsModal';
 
 /**
  * DoctorDashboard - Doctor dashboard
@@ -109,6 +113,66 @@ const DoctorDashboard = () => {
     // Sidebar collapse state
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
+    // Billing specific states
+    const [billing, setBilling] = useState([]);
+    const [billingStatus, setBillingStatus] = useState('PENDING');
+
+    // SOLO Doctor specific states
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [isAddPatientModalOpen, setIsAddPatientModalOpen] = useState(false);
+    const [isOpdModalOpen, setIsOpdModalOpen] = useState(false);
+    const [patientDetailsModal, setPatientDetailsModal] = useState({ isOpen: false, patient: null });
+
+    // Payment Modals
+    const [paymentModal, setPaymentModal] = useState({
+        isOpen: false,
+        billId: null,
+        amount: null,
+        patientName: ''
+    });
+
+    const [paymentSuccessModal, setPaymentSuccessModal] = useState({
+        isOpen: false,
+        billId: null,
+        patientName: '',
+        amount: 0
+    });
+
+    // OPD Form
+    const [opdForm, setOpdForm] = useState({
+        patientId: null,
+        receptionistId: null,
+        doctorId: user?.id || null,
+        bp: '',
+        temperature: '',
+        pulse: '',
+        weight: '',
+        spo2: '',
+        problem: '',
+        visitType: 'NEW'
+    });
+    const [patientSearchText, setPatientSearchText] = useState('');
+    const [showPatientDropdown, setShowPatientDropdown] = useState(false);
+
+    // Reset OPD form on modal open/close
+    useEffect(() => {
+        if (!isOpdModalOpen) {
+            setPatientSearchText('');
+            setShowPatientDropdown(false);
+            setOpdForm(prev => ({
+                ...prev,
+                patientId: null,
+                bp: '',
+                temperature: '',
+                pulse: '',
+                weight: '',
+                spo2: '',
+                problem: '',
+                visitType: 'NEW'
+            }));
+        }
+    }, [isOpdModalOpen]);
+
     const openConfirmation = (title, message, action, showReasonInput = false, inputPlaceholder = "Please provide a reason...") => {
         setConfirmModal({
             isOpen: true,
@@ -198,6 +262,13 @@ const DoctorDashboard = () => {
                     
                     const followUpsData = await hospitalService.getTodaysFollowUps();
                     setTodaysFollowUps(followUpsData || []);
+
+                    // If Solo Mode is active, fetch patients for Overview's patient list as well
+                    if (user?.receptionMode === 'SOLO') {
+                        const patData = await hospitalService.getPatients('', 0, 100);
+                        const patientsArray = Array.isArray(patData) ? patData : (patData.content || []);
+                        setPatients(patientsArray);
+                    }
                 } catch (err) {
                     console.error('Failed to load overview appointments and followups', err);
                 }
@@ -210,6 +281,12 @@ const DoctorDashboard = () => {
                 const patientsArray = Array.isArray(data) ? data : (data.content || []);
                 setPatients(patientsArray);
                 setTotalElements(data.totalElements || 0);
+                setTotalPages(data.totalPages || 1);
+            } else if (activeTab === 'billing') {
+                const data = await hospitalService.getBills(searchTerm, page - 1, ITEMS_PER_PAGE, billingStatus);
+                const billingArray = Array.isArray(data) ? data : (data.content || []);
+                setBilling(billingArray);
+                setTotalElements(data.totalElements || billingArray.length);
                 setTotalPages(data.totalPages || 1);
             }
 
@@ -329,6 +406,81 @@ const DoctorDashboard = () => {
         });
     };
 
+    const handleBillStatus = async (id, status, billObj = null) => {
+        // Open payment modal when marking PAID
+        if (status === 'PAID') {
+            setPaymentModal({ 
+                isOpen: true, 
+                billId: id,
+                amount: billObj?.balance ?? billObj?.amount ?? null,
+                patientName: billObj?.patientName || ''
+            });
+            return;
+        }
+        try {
+            await hospitalService.updateBillStatus(id, status);
+            success('Bill status updated');
+            loadData();
+        } catch (err) {
+            toastError('Failed to update bill status');
+        }
+    };
+
+    const confirmPayment = async (id, method, reference) => {
+        try {
+            await hospitalService.updateBillStatus(id, 'PAID', method, reference);
+            success('Bill marked as PAID');
+            loadData();
+        } catch (err) {
+            console.error(err);
+            toastError('Failed to mark bill as paid');
+        }
+    };
+
+    const handleDownloadReceipt = async (id) => {
+        try {
+            const blob = await hospitalService.downloadReceipt(id);
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `receipt_${id}.pdf`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (err) {
+            toastError('Failed to download receipt');
+        }
+    };
+
+    const handleProcessPayment = async (method) => {
+        try {
+            const pm = method === 'Online' ? 'UPI' : 'CASH';
+            let reference = null;
+            if (pm === 'UPI') {
+                reference = window.prompt('Enter UTR / transaction reference (required for UPI):');
+                if (!reference || !reference.trim()) {
+                    toastError('UTR / reference is required for UPI payments');
+                    return;
+                }
+            }
+            await hospitalService.updateBillStatus(paymentModal.billId, 'PAID', pm, reference);
+            // Close Payment Modal
+            setPaymentModal({ isOpen: false, billId: null, amount: null, patientName: '' });
+
+            // Open Success Modal immediately
+            setPaymentSuccessModal({
+                isOpen: true,
+                billId: paymentModal.billId,
+                patientName: paymentModal.patientName,
+                amount: paymentModal.amount
+            });
+
+            loadData();
+        } catch (err) {
+            toastError("Failed to process payment");
+        }
+    };
+
     const handleLogout = () => {
         authService.logout();
         navigate('/login');
@@ -341,6 +493,7 @@ const DoctorDashboard = () => {
         { id: 'queue', label: 'Queue', icon: null },
         { id: 'opd', label: 'OPD', icon: null },
         { id: 'patients', label: 'Patients', icon: null },
+        ...(user?.billingHandler === 'DOCTOR' ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
     ];
 
     const pagination = {
@@ -519,6 +672,22 @@ const DoctorDashboard = () => {
                     {/* Overview Tab */}
                     {activeTab === 'overview' && (
                         <div className="space-y-6">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-2xl font-bold text-gray-900">Overview</h2>
+                                {user?.receptionMode === 'SOLO' && (
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            onClick={() => setIsAddPatientModalOpen(true)}
+                                            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer animate-fade-in"
+                                        >
+                                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                                            </svg>
+                                            Add Patient
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                             <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
                                 <div className="bg-white rounded-lg border border-gray-200 p-6">
                                     <div className="flex justify-between items-center">
@@ -571,6 +740,17 @@ const DoctorDashboard = () => {
                                             <h3 className="text-lg font-bold text-gray-955">Appointments</h3>
                                             <p className="text-xs text-gray-500 mt-0.5">Manage scheduled clinical slots</p>
                                         </div>
+                                        {user?.receptionMode === 'SOLO' && (
+                                            <button
+                                                onClick={() => setIsAddModalOpen(true)}
+                                                className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer animate-fade-in"
+                                            >
+                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                                </svg>
+                                                Add Appointment
+                                            </button>
+                                        )}
                                     </div>
 
                                     {/* Appointment Controls */}
@@ -682,6 +862,17 @@ const DoctorDashboard = () => {
                                             <h3 className="text-lg font-bold text-gray-955">Queue</h3>
                                             <p className="text-xs text-gray-500 mt-0.5">Real-time OPD patient workflow</p>
                                         </div>
+                                        {user?.receptionMode === 'SOLO' && (
+                                            <button
+                                                onClick={() => setIsOpdModalOpen(true)}
+                                                className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer animate-fade-in"
+                                            >
+                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                                </svg>
+                                                OPD Intake
+                                            </button>
+                                        )}
                                     </div>
 
                                     {/* Queue Content */}
@@ -751,36 +942,55 @@ const DoctorDashboard = () => {
                             activeTab === 'appointments' ? 'My Appointments' : 
                             activeTab === 'opd' ? 'OPD Cases' :
                             activeTab === 'queue' ? 'Patient Queue' :
+                            activeTab === 'billing' ? 'Billing Records' :
                             'My Patients'
                         }
                         subtitle={`Manage your ${
                             activeTab === 'appointments' ? 'schedule' : 
                             activeTab === 'opd' ? 'OPD cases' :
                             activeTab === 'queue' ? 'patient queue' :
+                            activeTab === 'billing' ? 'bills' :
                             'patients'
                         } here.`}
                         onSearch={(e) => setSearchTerm(e.target.value)}
                         searchValue={searchTerm}
                         searchPlaceholder={`Search ${activeTab}...`}
-                        filter={activeTab === 'appointments' ? (
-                            <div className="flex items-center gap-4">
-                                {/* View Filter Buttons */}
+                        filter={
+                            activeTab === 'appointments' ? (
+                                <div className="flex items-center gap-4">
+                                    {/* View Filter Buttons */}
+                                    <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
+                                        {['today', 'upcoming', 'history'].map(view => (
+                                            <button
+                                                key={view}
+                                                onClick={() => setViewFilter(view)}
+                                                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${viewFilter === view
+                                                    ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
+                                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                                    }`}
+                                            >
+                                                {view.charAt(0).toUpperCase() + view.slice(1)}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : activeTab === 'billing' ? (
                                 <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
-                                    {['today', 'upcoming', 'history'].map(view => (
+                                    {['PENDING', 'PAID', 'PARTIAL'].map(status => (
                                         <button
-                                            key={view}
-                                            onClick={() => setViewFilter(view)}
-                                            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${viewFilter === view
+                                            key={status}
+                                            onClick={() => setBillingStatus(status)}
+                                            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${billingStatus === status
                                                 ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
                                                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
                                                 }`}
                                         >
-                                            {view.charAt(0).toUpperCase() + view.slice(1)}
+                                            {status.charAt(0) + status.slice(1).toLowerCase()}
                                         </button>
                                     ))}
                                 </div>
-                            </div>
-                        ) : null}
+                            ) : null
+                        }
                     />
                     )}
 
@@ -960,6 +1170,24 @@ const DoctorDashboard = () => {
                                         />
                                     )
                                 )}
+
+                                {activeTab === 'billing' && (
+                                    billing.length === 0 ? (
+                                        <EmptyState
+                                            icon={null}
+                                            title="No Billing Records"
+                                            message="No bills found."
+                                        />
+                                    ) : (
+                                        <BillingTable
+                                            billing={billing}
+                                            startIndex={(page - 1) * ITEMS_PER_PAGE}
+                                            pagination={pagination}
+                                            onUpdateStatus={handleBillStatus}
+                                            onDownload={handleDownloadReceipt}
+                                        />
+                                    )
+                                )}
                             </div>
                             )}
                         </>
@@ -1042,6 +1270,262 @@ const DoctorDashboard = () => {
                     entityId={auditHistory.entityId}
                     entityName={auditHistory.entityName}
                 />
+
+                {isAddModalOpen && (
+                    <AppointmentModal
+                        isOpen={isAddModalOpen}
+                        onClose={() => setIsAddModalOpen(false)}
+                        onSuccess={loadData}
+                        doctors={[{ id: user?.id, name: user?.name }]}
+                        patients={patients}
+                    />
+                )}
+
+                {isAddPatientModalOpen && (
+                    <PatientModal
+                        isOpen={isAddPatientModalOpen}
+                        onClose={() => setIsAddPatientModalOpen(false)}
+                        onSuccess={loadData}
+                    />
+                )}
+
+                {patientDetailsModal.isOpen && (
+                    <PatientDetailsModal
+                        patient={patientDetailsModal.patient}
+                        onClose={() => setPatientDetailsModal({ isOpen: false, patient: null })}
+                    />
+                )}
+
+                {isOpdModalOpen && (
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl animate-scale-in overflow-hidden max-h-[90vh]">
+                            <div className="bg-white px-8 py-6 border-b border-gray-200">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <h3 className="text-2xl font-bold text-neutral-800">OPD Queue Intake</h3>
+                                        <p className="text-sm text-neutral-600 mt-1">Capture vitals and check-in patient to queue</p>
+                                    </div>
+                                    <button onClick={() => setIsOpdModalOpen(false)} className="w-10 h-10 rounded-xl bg-white/80 hover:bg-white flex items-center justify-center text-neutral-400 hover:text-neutral-600 cursor-pointer border-0">
+                                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <form onSubmit={async (e) => {
+                                e.preventDefault();
+                                if (!opdForm.patientId) {
+                                    toastError('Please select a valid patient from the suggestions');
+                                    return;
+                                }
+                                try {
+                                    const payload = {
+                                        patientId: opdForm.patientId,
+                                        doctorId: user?.id,
+                                        bp: opdForm.bp,
+                                        temperature: opdForm.temperature ? parseFloat(opdForm.temperature) : null,
+                                        pulse: opdForm.pulse ? parseInt(opdForm.pulse) : null,
+                                        weight: opdForm.weight ? parseFloat(opdForm.weight) : null,
+                                        spo2: opdForm.spo2 ? parseInt(opdForm.spo2) : null,
+                                        problem: opdForm.problem,
+                                        visitType: opdForm.visitType
+                                    };
+                                    const res = await hospitalService.createOpd(payload);
+                                    setIsOpdModalOpen(false);
+                                    success('OPD created — token: ' + (res.tokenNumber || '-'));
+                                    loadData();
+                                } catch (err) {
+                                    console.error('Failed to create OPD', err);
+                                    toastError('Failed to create OPD');
+                                }
+                            }} className="p-6 space-y-4 max-h-[76vh] overflow-auto">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="relative">
+                                        <label className="block text-sm font-semibold text-neutral-700 mb-2">Patient <span className="text-red-600">*</span></label>
+                                        <div className="relative">
+                                            <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
+                                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                                </svg>
+                                            </span>
+                                            <input
+                                                type="text"
+                                                className="w-full border border-gray-300 rounded-xl pl-10 pr-4 py-2 focus:ring-2 focus:ring-primary-500 text-sm focus:border-transparent text-slate-800"
+                                                value={patientSearchText}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setPatientSearchText(val);
+                                                    setShowPatientDropdown(true);
+                                                    setOpdForm(prev => ({ ...prev, patientId: null }));
+                                                }}
+                                                onFocus={() => setShowPatientDropdown(true)}
+                                                onBlur={() => {
+                                                    setTimeout(() => {
+                                                        setShowPatientDropdown(false);
+                                                    }, 250);
+                                                }}
+                                                placeholder="Type patient name to search..."
+                                                autoComplete="off"
+                                            />
+                                        </div>
+                                        
+                                        {showPatientDropdown && patientSearchText.trim().length >= 2 && (
+                                            <div className="absolute left-0 right-0 mt-1 bg-white border border-neutral-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto divide-y divide-neutral-100">
+                                                {patients.filter(p => p.name?.toLowerCase().includes(patientSearchText.toLowerCase())).length > 0 ? (
+                                                    patients.filter(p => p.name?.toLowerCase().includes(patientSearchText.toLowerCase())).map(p => (
+                                                        <button
+                                                            type="button"
+                                                            key={p.id}
+                                                            onClick={() => {
+                                                                setOpdForm(prev => ({ ...prev, patientId: p.id }));
+                                                                setPatientSearchText(`${p.name}${p.phone ? ` (${p.phone})` : ''}`);
+                                                                setShowPatientDropdown(false);
+                                                            }}
+                                                            className="w-full px-4 py-3 hover:bg-neutral-50 cursor-pointer transition-colors duration-150 flex flex-col gap-0.5 text-left border-0"
+                                                        >
+                                                            <span className="font-semibold text-neutral-800 text-sm">{p.name}</span>
+                                                            <span className="text-xs text-neutral-500">{p.phone ? `📞 ${p.phone}` : ''} | {p.age} Yrs | {p.gender}</span>
+                                                        </button>
+                                                    ))
+                                                ) : (
+                                                    <div className="px-4 py-4 text-sm text-neutral-500 text-center">
+                                                        No matching patients found
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-neutral-700 mb-2">Doctor</label>
+                                        <div className="w-full px-4 py-2.5 bg-neutral-50 border border-neutral-200 text-neutral-850 rounded-xl text-sm font-semibold flex items-center justify-between">
+                                            <span>{user?.name || 'Self'}</span>
+                                            <span className="text-xs px-2 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded-full font-medium">Assigned</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-neutral-700 mb-2">BP</label>
+                                        <input className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.bp} onChange={(e) => setOpdForm(prev => ({ ...prev, bp: e.target.value }))} placeholder="120/80" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-neutral-700 mb-2">Temperature (°C)</label>
+                                        <input type="number" step="0.1" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.temperature} onChange={(e) => setOpdForm(prev => ({ ...prev, temperature: e.target.value }))} />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-neutral-700 mb-2">Pulse</label>
+                                        <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.pulse} onChange={(e) => setOpdForm(prev => ({ ...prev, pulse: e.target.value }))} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-neutral-700 mb-2">Weight (kg)</label>
+                                        <input type="number" step="0.1" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.weight} onChange={(e) => setOpdForm(prev => ({ ...prev, weight: e.target.value }))} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-neutral-700 mb-2">SpO2 (%)</label>
+                                        <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.spo2} onChange={(e) => setOpdForm(prev => ({ ...prev, spo2: e.target.value }))} />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-semibold text-neutral-700 mb-2">Problem / Reason</label>
+                                    <textarea rows={3} className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800 resize-none" value={opdForm.problem} onChange={(e) => setOpdForm(prev => ({ ...prev, problem: e.target.value }))} />
+                                </div>
+
+                                <div className="flex items-center gap-4">
+                                    <label className="text-sm font-medium">Visit Type:</label>
+                                    <label className="inline-flex items-center gap-2 cursor-pointer"><input type="radio" name="visitType" value="NEW" checked={opdForm.visitType === 'NEW'} onChange={() => setOpdForm(prev => ({ ...prev, visitType: 'NEW' }))} /> New</label>
+                                    <label className="inline-flex items-center gap-2 cursor-pointer"><input type="radio" name="visitType" value="FOLLOWUP" checked={opdForm.visitType === 'FOLLOWUP'} onChange={() => setOpdForm(prev => ({ ...prev, visitType: 'FOLLOWUP' }))} /> Follow-up</label>
+                                </div>
+
+                                <div className="flex gap-4 pt-4">
+                                    <button type="button" onClick={() => setIsOpdModalOpen(false)} className="flex-1 py-2.5 rounded-xl border border-gray-300 font-semibold text-gray-700 hover:bg-gray-50 transition">Cancel</button>
+                                    <button type="submit" className="flex-1 py-2.5 rounded-xl bg-slate-900 text-white font-semibold hover:bg-slate-850 transition">Create OPD Case</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )}
+
+                {/* Payment Modal */}
+                {paymentModal.isOpen && (
+                    <div className="fixed inset-0 z-50 overflow-y-auto">
+                        <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+                            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+                                <div className="absolute inset-0 bg-gray-500 opacity-75" onClick={() => setPaymentModal({ ...paymentModal, isOpen: false })}></div>
+                            </div>
+                            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+                            <div className="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                                <div className="bg-white px-8 py-6 border-b border-gray-100">
+                                    <h3 className="text-xl font-bold text-gray-900">Process Payment</h3>
+                                    <p className="text-xs text-gray-500 mt-1">Settle invoice for patient {paymentModal.patientName}</p>
+                                </div>
+                                <div className="p-6 space-y-4">
+                                    <div className="flex justify-between items-center bg-gray-50 p-4 rounded-xl">
+                                        <span className="text-sm font-semibold text-gray-700">Amount Due:</span>
+                                        <span className="text-xl font-bold text-gray-900">₹{paymentModal.amount?.toFixed(2)}</span>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <button
+                                            onClick={() => handleProcessPayment('Cash')}
+                                            className="px-4 py-3 rounded-xl border border-gray-300 hover:bg-gray-50 transition-all font-bold text-gray-800 text-sm flex flex-col items-center gap-1.5"
+                                        >
+                                            💵 Pay Cash
+                                        </button>
+                                        <button
+                                            onClick={() => handleProcessPayment('Online')}
+                                            className="px-4 py-3 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-sm transition-all flex flex-col items-center gap-1.5"
+                                        >
+                                            📱 Pay Online (UPI)
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Payment Success Modal */}
+                {paymentSuccessModal.isOpen && (
+                    <div className="fixed inset-0 z-50 overflow-y-auto">
+                        <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+                            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+                                <div className="absolute inset-0 bg-gray-500 opacity-75" onClick={() => setPaymentSuccessModal({ ...paymentSuccessModal, isOpen: false })}></div>
+                            </div>
+                            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+                            <div className="inline-block align-bottom bg-white rounded-2xl text-center overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full p-8">
+                                <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                </div>
+                                <h3 className="text-xl font-bold text-gray-900 mb-1">Payment Successful!</h3>
+                                <p className="text-sm text-gray-500 mb-4">Received ₹{paymentSuccessModal.amount?.toFixed(2)} from {paymentSuccessModal.patientName}</p>
+                                <div className="flex gap-4">
+                                    <button
+                                        onClick={() => {
+                                            setPaymentSuccessModal({ isOpen: false, billId: null, patientName: '', amount: 0 });
+                                        }}
+                                        className="flex-1 py-2.5 rounded-xl border border-gray-300 font-semibold text-gray-750 hover:bg-gray-50 transition border-0 bg-neutral-100"
+                                    >
+                                        Close
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            handleDownloadReceipt(paymentSuccessModal.billId);
+                                            setPaymentSuccessModal({ isOpen: false, billId: null, patientName: '', amount: 0 });
+                                        }}
+                                        className="flex-1 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold transition"
+                                    >
+                                        Print Receipt
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </>
         </div>
     );

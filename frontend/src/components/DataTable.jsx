@@ -86,8 +86,9 @@ const DataTable = ({ data, columns, pagination, loading, emptyState, expandedRow
 
                 {/* Pagination Controls */}
                 {pagination && (
-                    <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-neutral-200 sm:px-6 rounded-b-xl">
-                        <div className="flex-1 flex justify-between sm:hidden">
+                    <div className="bg-white px-6 py-3 border-t border-neutral-200 rounded-b-xl">
+                        {/* Mobile */}
+                        <div className="flex justify-between sm:hidden">
                             <button
                                 onClick={() => pagination.onPageChange(pagination.pageIndex - 1)}
                                 disabled={pagination.pageIndex === 0}
@@ -103,13 +104,22 @@ const DataTable = ({ data, columns, pagination, loading, emptyState, expandedRow
                                 Next
                             </button>
                         </div>
-                        <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                            <div>
-                                <p className="text-sm text-slate-700">
-                                    Showing <span className="font-medium">{pagination.pageIndex * pagination.pageSize + 1}</span> to <span className="font-medium">{Math.min((pagination.pageIndex + 1) * pagination.pageSize, pagination.totalItems)}</span> of <span className="font-medium">{pagination.totalItems}</span> results
-                                </p>
-                            </div>
-                            <div>
+
+                        {/* Desktop — 3-column grid: left text | center nav | right spacer */}
+                        <div className="hidden sm:grid sm:grid-cols-3 sm:items-center">
+                            {/* Left — result count */}
+                            <p className="text-sm text-slate-500">
+                                Showing{' '}
+                                <span className="font-semibold text-slate-700">{pagination.pageIndex * pagination.pageSize + 1}</span>
+                                {' '}–{' '}
+                                <span className="font-semibold text-slate-700">{Math.min((pagination.pageIndex + 1) * pagination.pageSize, pagination.totalItems)}</span>
+                                {' '}of{' '}
+                                <span className="font-semibold text-slate-700">{pagination.totalItems}</span>
+                                {' '}results
+                            </p>
+
+                            {/* Center — page number buttons */}
+                            <div className="flex justify-center">
                                 <nav className="relative z-0 inline-flex rounded-xl shadow-soft -space-x-px" aria-label="Pagination">
                                     <button
                                         onClick={() => pagination.onPageChange(pagination.pageIndex - 1)}
@@ -122,8 +132,6 @@ const DataTable = ({ data, columns, pagination, loading, emptyState, expandedRow
                                         </svg>
                                     </button>
                                     {[...Array(pagination.pageCount)].map((_, i) => (
-                                        // Logic to show limited page numbers can be added here. For now simplicity.
-                                        // If we have many pages, we might need a smarter pagination component.
                                         <button
                                             key={i}
                                             onClick={() => pagination.onPageChange(i)}
@@ -147,6 +155,9 @@ const DataTable = ({ data, columns, pagination, loading, emptyState, expandedRow
                                     </button>
                                 </nav>
                             </div>
+
+                            {/* Right — spacer to balance the grid */}
+                            <div />
                         </div>
                     </div>
                 )}

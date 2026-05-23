@@ -1,7 +1,7 @@
 import React from 'react';
 import UserMenu from './UserMenu';
 
-const Navbar = ({ title, user, onLogout, onProfile, actions, onToggleSidebar }) => {
+const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggleSidebar }) => {
     return (
         <header className="bg-white border-b border-gray-200 z-10 w-full sticky top-0">
             <div className="flex justify-between items-center px-6 py-3">
@@ -30,6 +30,7 @@ const Navbar = ({ title, user, onLogout, onProfile, actions, onToggleSidebar }) 
                         user={user}
                         onLogout={onLogout}
                         onProfile={onProfile}
+                        onSupport={onSupport}
                     />
                 </div>
             </div>

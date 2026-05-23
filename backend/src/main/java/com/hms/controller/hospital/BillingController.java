@@ -37,7 +37,7 @@ public class BillingController {
     private com.hms.repository.BillingPaymentRepository billingPaymentRepository;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> getAllBills(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
@@ -112,7 +112,7 @@ public class BillingController {
     }
 
     @PutMapping("/{id}/status")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> updateStatus(
             @PathVariable Long id,
             @RequestParam String status,
@@ -178,10 +178,7 @@ public class BillingController {
 
     @GetMapping("/ipd/{ipdId}/bill")
     public ResponseEntity<?> getIpdBill(@PathVariable Long ipdId) {
-        String role = securityHelper.getCurrentUserRole();
-        if ("DOCTOR".equalsIgnoreCase(role)) {
-            return ResponseEntity.status(403).body("Not allowed");
-        }
+        // Doctors can access IPD bills in solo doctor or doctor-billing mode
 
         List<Billing> bills = billingRepository.findByIpdAdmissionId(ipdId);
         if (bills == null || bills.isEmpty()) return ResponseEntity.notFound().build();
@@ -241,7 +238,7 @@ public class BillingController {
     @PostMapping("/{billingId}/pay")
     public ResponseEntity<?> payBilling(@PathVariable Long billingId, @RequestBody PayRequest req) {
         String role = securityHelper.getCurrentUserRole();
-        if (!"RECEPTIONIST".equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
+        if (!"RECEPTIONIST".equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role) && !"DOCTOR".equalsIgnoreCase(role)) {
             return ResponseEntity.status(403).body("Not allowed");
         }
 

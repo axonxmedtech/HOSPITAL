@@ -555,11 +555,37 @@ const hospitalService = {
         return response.data;
     },
 
+    getHospitalOperationsSettings: async () => {
+        const response = await apiClient.get('/hospital/settings/operations');
+        return response.data;
+    },
+
+    updateHospitalOperationsSettings: async (settings) => {
+        const response = await apiClient.put('/hospital/settings/operations', settings);
+        return response.data;
+    },
+
     /**
      * Get history for specific entity
      */
     getEntityHistory: async (entityType, entityId) => {
         const response = await apiClient.get(`/hospital/audit-logs/${entityType}/${entityId}`);
+        return response.data;
+    },
+
+    // ========== Support & FAQ APIs ==========
+    getPublicFaqs: async () => {
+        const response = await apiClient.get('/api/public/faqs');
+        return response.data;
+    },
+
+    getTickets: async () => {
+        const response = await apiClient.get('/hospital/tickets');
+        return response.data;
+    },
+
+    createTicket: async (ticketData) => {
+        const response = await apiClient.post('/hospital/tickets', ticketData);
         return response.data;
     },
 };

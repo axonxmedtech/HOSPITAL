@@ -71,10 +71,10 @@ const platformService = {
     },
 
     /**
-     * Reset Tenant Admin Password
+     * Reset Tenant Admin Password — password chosen by Super Admin
      */
-    resetTenantPassword: async (id, reason) => {
-        const response = await apiClient.post(`/platform/hospitals/${id}/reset-password`, { reason });
+    resetTenantPassword: async (id, password, reason = '') => {
+        const response = await apiClient.post(`/platform/hospitals/${id}/reset-password`, { password, reason });
         return response.data;
     },
 
@@ -113,6 +113,46 @@ const platformService = {
      */
     resetUserPassword: async (id) => {
         const response = await apiClient.post(`/platform/users/${id}/reset-password`);
+        return response.data;
+    },
+
+    /**
+     * Get all support tickets (submitted by hospital admins)
+     */
+    getTickets: async () => {
+        const response = await apiClient.get('/platform/tickets');
+        return response.data;
+    },
+
+    /**
+     * Resolve a ticket by ID
+     */
+    resolveTicket: async (ticketId) => {
+        const response = await apiClient.put(`/platform/tickets/${ticketId}/status`, { status: 'RESOLVED' });
+        return response.data;
+    },
+
+    /**
+     * Get all FAQs (uses public API since FAQs are global)
+     */
+    getFaqs: async () => {
+        const response = await apiClient.get('/api/public/faqs');
+        return response.data;
+    },
+
+    /**
+     * Add a new FAQ
+     */
+    addFaq: async (faqData) => {
+        const response = await apiClient.post('/platform/faqs', faqData);
+        return response.data;
+    },
+
+    /**
+     * Delete an FAQ by ID
+     */
+    deleteFaq: async (id) => {
+        const response = await apiClient.delete(`/platform/faqs/${id}`);
         return response.data;
     },
 };

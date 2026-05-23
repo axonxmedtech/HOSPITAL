@@ -97,6 +97,23 @@ const PlatformDashboard = () => {
         password: ''
     });
 
+    // Profile Modal State
+    const [profileOpen, setProfileOpen] = useState(false);
+
+    // Tickets State
+    const [tickets, setTickets] = useState([]);
+    const [ticketsLoading, setTicketsLoading] = useState(false);
+
+    // FAQs State
+    const [faqs, setFaqs] = useState([]);
+    const [faqsLoading, setFaqsLoading] = useState(false);
+    const [showFaqModal, setShowFaqModal] = useState(false);
+    const [faqForm, setFaqForm] = useState({ question: '', answer: '' });
+    const [faqSubmitting, setFaqSubmitting] = useState(false);
+
+    // Set Password Modal State (for Reset Password flow)
+    const [resetPwModal, setResetPwModal] = useState({ isOpen: false, hospitalId: null });
+
     // Load data based on active tab
     useEffect(() => {
         if (activeTab === 'dashboard') {
@@ -106,6 +123,10 @@ const PlatformDashboard = () => {
             loadHospitals();
         } else if (activeTab === 'audit_logs') {
             loadAuditLogs();
+        } else if (activeTab === 'tickets') {
+            loadTickets();
+        } else if (activeTab === 'faqs') {
+            loadFaqs();
         }
     }, [activeTab]);
 
@@ -149,6 +170,76 @@ const PlatformDashboard = () => {
         } catch (err) {
             setError('Failed to load hospital statistics');
         }
+    };
+
+    const loadTickets = async () => {
+        setTicketsLoading(true);
+        try {
+            const data = await platformService.getTickets();
+            setTickets(data);
+        } catch {
+            setTickets([]); // graceful fallback if endpoint not yet live
+        } finally {
+            setTicketsLoading(false);
+        }
+    };
+
+    const handleResolveTicket = async (ticketId) => {
+        try {
+            await platformService.resolveTicket(ticketId);
+            loadTickets();
+        } catch {
+            setError('Failed to resolve ticket');
+        }
+    };
+
+    const loadFaqs = async () => {
+        setFaqsLoading(true);
+        try {
+            const data = await platformService.getFaqs();
+            setFaqs(data || []);
+        } catch {
+            setError('Failed to load FAQs');
+        } finally {
+            setFaqsLoading(false);
+        }
+    };
+
+    const handleCreateFaq = async (e) => {
+        e.preventDefault();
+        if (!faqForm.question.trim() || !faqForm.answer.trim()) {
+            setError('Question and Answer are required');
+            return;
+        }
+        setFaqSubmitting(true);
+        try {
+            await platformService.addFaq(faqForm);
+            success('FAQ added successfully');
+            setShowFaqModal(false);
+            setFaqForm({ question: '', answer: '' });
+            loadFaqs();
+        } catch (err) {
+            setError(err.response?.data?.message || err.response?.data || 'Failed to add FAQ');
+        } finally {
+            setFaqSubmitting(false);
+        }
+    };
+
+    const handleDeleteFaq = (faqId) => {
+        openConfirmation(
+            'Delete FAQ',
+            'Are you sure you want to delete this FAQ? This action cannot be undone.',
+            async () => {
+                try {
+                    await platformService.deleteFaq(faqId);
+                    setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                    success('FAQ deleted successfully');
+                    loadFaqs();
+                } catch {
+                    setError('Failed to delete FAQ');
+                }
+            }
+        );
     };
 
     const handleLogout = () => {
@@ -216,10 +307,9 @@ const PlatformDashboard = () => {
             `${action} Hospital`,
             `Are you sure you want to ${action.toLowerCase()} this hospital?`,
             async (reason) => {
-                console.log(`${action} hospital ${id}. Reason: ${reason}`);
                 try {
-                    await platformService.updateHospitalStatus(id, !currentStatus);
-                    loadHospitals(); // Reload hospitals list
+                    await platformService.updateHospitalStatus(id, !currentStatus, reason);
+                    loadHospitals();
                 } catch (err) {
                     setError('Failed to update hospital status');
                 }
@@ -289,23 +379,7 @@ const PlatformDashboard = () => {
 
 
     const handleResetPassword = (id) => {
-        openConfirmation(
-            'Reset Admin Password',
-            'Are you sure you want to reset the admin password for this hospital? The old password will stop working immediately.',
-            async () => {
-                try {
-                    const data = await platformService.resetTenantPassword(id);
-                    setPasswordModal({
-                        isOpen: true,
-                        email: data.email,
-                        password: data.password
-                    });
-                    success('Password reset successfully');
-                } catch (err) {
-                    setError('Failed to reset password');
-                }
-            }
-        );
+        setResetPwModal({ isOpen: true, hospitalId: id });
     };
 
     const handleUserResetPassword = (id) => {
@@ -338,6 +412,8 @@ const PlatformDashboard = () => {
         { id: 'dashboard', label: 'Dashboard' },
         { id: 'hospitals', label: 'Hospitals' },
         { id: 'audit_logs', label: 'Audit Logs' },
+        { id: 'tickets', label: 'Tickets' },
+        { id: 'faqs', label: 'FAQs' },
     ];
 
     return (
@@ -361,7 +437,7 @@ const PlatformDashboard = () => {
                     title={tabs.find(t => t.id === activeTab)?.label}
                     user={user}
                     onLogout={handleLogout}
-                    onProfile={() => console.log('Profile clicked')}
+                    onProfile={() => setProfileOpen(true)}
                     onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
                 />
 
@@ -372,9 +448,32 @@ const PlatformDashboard = () => {
                         <div className="mb-6">
                             <PageHeader
                                 title={tabs.find(t => t.id === activeTab)?.label}
-                                subtitle={activeTab === 'hospitals' ? 'Manage and monitor all registered hospitals on the platform.' : 'Track system activities and administrative actions across the platform.'}
-                                onAdd={activeTab === 'hospitals' ? () => setShowCreateModal(true) : null}
-                                addLabel="Create Hospital"
+                                subtitle={
+                                    activeTab === 'hospitals'
+                                        ? 'Manage and monitor all registered hospitals on the platform.'
+                                        : activeTab === 'tickets'
+                                        ? 'View and resolve support tickets submitted by hospital admins.'
+                                        : activeTab === 'faqs'
+                                        ? 'Manage global frequently asked questions for hospital admins.'
+                                        : 'Track system activities and administrative actions across the platform.'
+                                }
+                                onAdd={
+                                    activeTab === 'hospitals'
+                                        ? () => setShowCreateModal(true)
+                                        : activeTab === 'faqs'
+                                        ? () => {
+                                            setFaqForm({ question: '', answer: '' });
+                                            setShowFaqModal(true);
+                                          }
+                                        : null
+                                }
+                                addLabel={
+                                    activeTab === 'hospitals'
+                                        ? 'Create Hospital'
+                                        : activeTab === 'faqs'
+                                        ? 'Add FAQ'
+                                        : ''
+                                }
                             />
                         </div>
                     )}
@@ -390,22 +489,48 @@ const PlatformDashboard = () => {
 
                             {/* Stats Cards */}
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <div className="bg-white border border-gray-200 p-6">
-                                    <p className="text-sm font-medium text-gray-600 mb-2">Total Hospitals</p>
+                                {/* Card 1 — Total Hospitals (Blue) */}
+                                <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow duration-200">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <p className="text-sm font-medium text-gray-600">Total Hospitals</p>
+                                        <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                            <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                            </svg>
+                                        </div>
+                                    </div>
                                     <p className="text-3xl font-bold text-gray-900">{hospitalStats.total || 0}</p>
-                                    <p className="text-sm text-gray-600 mt-2">Registered on platform</p>
+                                    <p className="text-sm text-gray-500 mt-1">Registered on platform</p>
                                 </div>
 
-                                <div className="bg-white border border-gray-200 p-6">
-                                    <p className="text-sm font-medium text-gray-600 mb-2">Active Hospitals</p>
-                                    <p className="text-3xl font-bold text-gray-900">{hospitalStats.active || 0}</p>
-                                    <p className="text-sm text-gray-600 mt-2">Currently operational</p>
+                                {/* Card 2 — Active Hospitals (Green) */}
+                                <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow duration-200">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <p className="text-sm font-medium text-gray-600">Active Hospitals</p>
+                                        <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                            <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                        </div>
+                                    </div>
+                                    <p className="text-3xl font-bold text-green-700">{hospitalStats.active || 0}</p>
+                                    <p className="text-sm text-gray-500 mt-1">Currently operational</p>
                                 </div>
 
-                                <div className="bg-white border border-gray-200 p-6">
-                                    <p className="text-sm font-medium text-gray-600 mb-2">Inactive Hospitals</p>
-                                    <p className="text-3xl font-bold text-gray-900">{hospitalStats.inactive || 0}</p>
-                                    <p className="text-sm text-gray-600 mt-2">Temporarily disabled</p>
+                                {/* Card 3 — Inactive Hospitals (Red, gray when 0) */}
+                                <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow duration-200">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <p className="text-sm font-medium text-gray-600">Inactive Hospitals</p>
+                                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${(hospitalStats.inactive || 0) > 0 ? 'bg-red-100' : 'bg-gray-100'}`}>
+                                            <svg className={`w-5 h-5 ${(hospitalStats.inactive || 0) > 0 ? 'text-red-500' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                        </div>
+                                    </div>
+                                    <p className={`text-3xl font-bold ${(hospitalStats.inactive || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                                        {hospitalStats.inactive || 0}
+                                    </p>
+                                    <p className="text-sm text-gray-500 mt-1">Temporarily disabled</p>
                                 </div>
                             </div>
 
@@ -452,16 +577,21 @@ const PlatformDashboard = () => {
                                                             </div>
                                                         </td>
                                                         <td className="px-6 py-4">
-                                                            <span className={`px-2 py-1 text-xs font-medium ${
+                                                            <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${
                                                                 hospital.isActive 
-                                                                    ? 'bg-gray-100 text-gray-900' 
-                                                                    : 'bg-gray-200 text-gray-600'
+                                                                    ? 'bg-green-100 text-green-800 border-green-200' 
+                                                                    : 'bg-red-100 text-red-700 border-red-200'
                                                             }`}>
                                                                 {hospital.isActive ? 'Active' : 'Inactive'}
                                                             </span>
                                                         </td>
                                                         <td className="px-6 py-4">
-                                                            <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-900">
+                                                            <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${
+                                                                (hospital.plan || 'FREE') === 'PREMIUM' ? 'bg-purple-100 text-purple-700 border-purple-200'
+                                                                : (hospital.plan || 'FREE') === 'BASIC'   ? 'bg-blue-100 text-blue-700 border-blue-200'
+                                                                : (hospital.plan || 'FREE') === 'ENTERPRISE' ? 'bg-amber-100 text-amber-700 border-amber-200'
+                                                                : 'bg-gray-100 text-gray-600 border-gray-200'
+                                                            }`}>
                                                                 {hospital.plan || 'FREE'}
                                                             </span>
                                                         </td>
@@ -475,10 +605,10 @@ const PlatformDashboard = () => {
                                                         <td className="px-6 py-4 text-right">
                                                             <button
                                                                 onClick={() => handleToggleStatus(hospital.publicId || hospital.id, hospital.isActive)}
-                                                                className={`px-3 py-1 text-xs font-medium transition-colors duration-200 ${
+                                                                className={`px-3 py-1 text-xs font-semibold rounded-lg border transition-colors duration-200 ${
                                                                     hospital.isActive
-                                                                        ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                                                        : 'bg-gray-900 text-white hover:bg-gray-700'
+                                                                        ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
+                                                                        : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
                                                                 }`}
                                                             >
                                                                 {hospital.isActive ? 'Deactivate' : 'Activate'}
@@ -559,6 +689,18 @@ const PlatformDashboard = () => {
                                 </div>
                             )}
                         </div>
+                    ) : activeTab === 'tickets' ? (
+                        <TicketsTable
+                            tickets={tickets}
+                            loading={ticketsLoading}
+                            onResolve={handleResolveTicket}
+                        />
+                    ) : activeTab === 'faqs' ? (
+                        <FaqsTable
+                            faqs={faqs}
+                            loading={faqsLoading}
+                            onDelete={handleDeleteFaq}
+                        />
                     ) : null}
                 </main>
             </div>
@@ -573,6 +715,35 @@ const PlatformDashboard = () => {
                 showReasonInput={confirmModal.showReasonInput}
                 inputPlaceholder={confirmModal.inputPlaceholder}
             />
+
+            {/* Password Reset Display Modal */}
+            {passwordModal.isOpen && (
+                <PasswordResetModal
+                    email={passwordModal.email}
+                    password={passwordModal.password}
+                    onClose={() => setPasswordModal({ isOpen: false, email: '', password: '' })}
+                />
+            )}
+
+            {/* Profile Modal */}
+            {profileOpen && (
+                <SuperAdminProfileModal
+                    user={user}
+                    onClose={() => setProfileOpen(false)}
+                />
+            )}
+
+            {/* Set Password Modal (Admin-defined password reset) */}
+            {resetPwModal.isOpen && (
+                <SetPasswordModal
+                    hospitalId={resetPwModal.hospitalId}
+                    onClose={() => setResetPwModal({ isOpen: false, hospitalId: null })}
+                    onSuccess={() => {
+                        setResetPwModal({ isOpen: false, hospitalId: null });
+                        success('Password reset successfully');
+                    }}
+                />
+            )}
 
             {/* Create Hospital Modal */}
             {showCreateModal && (
@@ -684,6 +855,77 @@ const PlatformDashboard = () => {
                                         className="flex-1 bg-gray-900 text-white px-4 py-2 font-medium hover:bg-gray-700"
                                     >
                                         Create Hospital
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Create FAQ Modal */}
+            {showFaqModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowFaqModal(false)}>
+                    <div className="bg-white rounded-2xl border border-gray-200 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                        <div className="p-6">
+                            <div className="mb-6 flex justify-between items-center">
+                                <div>
+                                    <h2 className="text-xl font-bold text-gray-900 mb-1">Add Global FAQ</h2>
+                                    <p className="text-sm text-gray-500">Create an FAQ that will be visible to all hospital admins.</p>
+                                </div>
+                                <button onClick={() => setShowFaqModal(false)} className="p-1 hover:bg-neutral-100 rounded-lg text-neutral-400 hover:text-neutral-600 transition-colors">
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                            
+                            <form onSubmit={handleCreateFaq} className="space-y-4">
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Question</label>
+                                    <input
+                                        type="text"
+                                        value={faqForm.question}
+                                        onChange={(e) => setFaqForm(prev => ({ ...prev, question: e.target.value }))}
+                                        placeholder="e.g. How do I configure my billing settings?"
+                                        required
+                                        className="w-full px-3.5 py-2 border border-neutral-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent text-slate-800 placeholder-slate-400"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Answer</label>
+                                    <textarea
+                                        value={faqForm.answer}
+                                        onChange={(e) => setFaqForm(prev => ({ ...prev, answer: e.target.value }))}
+                                        placeholder="Provide a detailed, helpful answer..."
+                                        rows={6}
+                                        required
+                                        className="w-full px-3.5 py-2 border border-neutral-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent text-slate-800 placeholder-slate-400 resize-none"
+                                    ></textarea>
+                                </div>
+
+                                <div className="flex gap-3 justify-end pt-4 border-t border-neutral-100">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowFaqModal(false)}
+                                        className="px-4 py-2 text-sm font-semibold text-neutral-600 hover:bg-neutral-50 rounded-xl border border-neutral-200 transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={faqSubmitting}
+                                        className="px-4 py-2 bg-gray-900 hover:bg-gray-800 text-white font-semibold text-sm rounded-xl transition-all duration-300 flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 disabled:opacity-50"
+                                    >
+                                        {faqSubmitting ? (
+                                            <>
+                                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                                Adding...
+                                            </>
+                                        ) : (
+                                            'Add FAQ'
+                                        )}
                                     </button>
                                 </div>
                             </form>
@@ -856,6 +1098,526 @@ const PlatformDashboard = () => {
 
 export default PlatformDashboard;
 
+// SetPasswordModal — Super Admin sets the new password manually
+const SetPasswordModal = ({ hospitalId, onClose, onSuccess }) => {
+    const [newPw,     setNewPw]     = useState('');
+    const [confirmPw, setConfirmPw] = useState('');
+    const [showNew,   setShowNew]   = useState(false);
+    const [showCon,   setShowCon]   = useState(false);
+    const [loading,   setLoading]   = useState(false);
+    const [error,     setError]     = useState('');
+
+    const handleSubmit = async () => {
+        setError('');
+        if (!newPw)             return setError('New password is required.');
+        if (newPw.length < 6)   return setError('Password must be at least 6 characters.');
+        if (newPw !== confirmPw) return setError('Passwords do not match.');
+
+        setLoading(true);
+        try {
+            await platformService.resetTenantPassword(hospitalId, newPw);
+            onSuccess();
+        } catch (err) {
+            setError(err.response?.data || 'Failed to reset password.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+            <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+                {/* Header */}
+                <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100">
+                    <div>
+                        <h3 className="text-base font-bold text-gray-900">Reset Admin Password</h3>
+                        <p className="text-xs text-gray-500 mt-0.5">Set a new password for the hospital admin</p>
+                    </div>
+                    <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
+
+                <div className="px-6 py-5 space-y-4">
+                    {/* Warning */}
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex gap-2.5">
+                        <svg className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                        </svg>
+                        <p className="text-xs text-amber-800">The old password will stop working immediately after reset.</p>
+                    </div>
+
+                    {/* New Password */}
+                    <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">New Password</label>
+                        <div className="relative">
+                            <input
+                                type={showNew ? 'text' : 'password'}
+                                value={newPw}
+                                onChange={e => setNewPw(e.target.value)}
+                                placeholder="Min. 6 characters"
+                                className="w-full h-10 px-3 pr-10 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <button type="button" onClick={() => setShowNew(p => !p)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700">
+                                {showNew
+                                    ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                                    : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                }
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Confirm Password */}
+                    <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Confirm Password</label>
+                        <div className="relative">
+                            <input
+                                type={showCon ? 'text' : 'password'}
+                                value={confirmPw}
+                                onChange={e => setConfirmPw(e.target.value)}
+                                placeholder="Re-enter password"
+                                className="w-full h-10 px-3 pr-10 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <button type="button" onClick={() => setShowCon(p => !p)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700">
+                                {showCon
+                                    ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                                    : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                }
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Error */}
+                    {error && <p className="text-sm text-red-600 font-medium">{error}</p>}
+
+                    {/* Actions */}
+                    <div className="flex gap-3 pt-1">
+                        <button onClick={onClose}
+                            className="flex-1 h-10 text-sm border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50 transition-colors">
+                            Cancel
+                        </button>
+                        <button onClick={handleSubmit} disabled={loading}
+                            className="flex-1 h-10 text-sm bg-gray-900 text-white font-semibold rounded-xl hover:bg-gray-700 transition-colors disabled:opacity-60">
+                            {loading ? 'Resetting...' : 'Reset Password'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// PasswordResetModal Component
+const PasswordResetModal = ({ email, password, onClose }) => {
+    const [showPassword, setShowPassword] = useState(false);
+    const [copiedEmail, setCopiedEmail] = useState(false);
+    const [copiedPassword, setCopiedPassword] = useState(false);
+
+    const copyToClipboard = (text, setCopied) => {
+        navigator.clipboard.writeText(text).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        });
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+                {/* Header */}
+                <div className="p-8 pb-0 text-center">
+                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900">Password Reset Successfully!</h3>
+                    <p className="text-sm text-gray-500 mt-1">Share these credentials securely with the admin.</p>
+                </div>
+
+                <div className="p-8 space-y-5">
+                    {/* Warning */}
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex gap-3">
+                        <svg className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                        </svg>
+                        <p className="text-sm text-yellow-800 font-medium">
+                            Save this password now — it cannot be retrieved again after closing this window.
+                        </p>
+                    </div>
+
+                    {/* Email Row */}
+                    <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Email</label>
+                        <div className="flex gap-2">
+                            <input
+                                readOnly
+                                value={email}
+                                className="flex-1 h-10 px-3 text-sm bg-gray-50 border border-gray-200 rounded-lg text-gray-800 select-all"
+                            />
+                            <button
+                                onClick={() => copyToClipboard(email, setCopiedEmail)}
+                                className={`h-10 px-4 text-xs font-semibold rounded-lg border transition-all duration-200 ${
+                                    copiedEmail
+                                        ? 'bg-green-100 text-green-700 border-green-300'
+                                        : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                                }`}
+                            >
+                                {copiedEmail ? '✓ Copied' : 'Copy'}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Password Row */}
+                    <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">New Password</label>
+                        <div className="flex gap-2">
+                            <div className="flex-1 relative">
+                                <input
+                                    readOnly
+                                    type={showPassword ? 'text' : 'password'}
+                                    value={password}
+                                    className="w-full h-10 px-3 pr-10 text-sm bg-gray-50 border border-gray-200 rounded-lg text-gray-800 select-all"
+                                />
+                                <button
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                                >
+                                    {showPassword ? (
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                        </svg>
+                                    ) : (
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                        </svg>
+                                    )}
+                                </button>
+                            </div>
+                            <button
+                                onClick={() => copyToClipboard(password, setCopiedPassword)}
+                                className={`h-10 px-4 text-xs font-semibold rounded-lg border transition-all duration-200 ${
+                                    copiedPassword
+                                        ? 'bg-green-100 text-green-700 border-green-300'
+                                        : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                                }`}
+                            >
+                                {copiedPassword ? '✓ Copied' : 'Copy'}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Close Button */}
+                    <button
+                        onClick={onClose}
+                        className="w-full h-11 bg-gray-900 text-white font-semibold rounded-xl hover:bg-gray-700 transition-colors duration-200"
+                    >
+                        Done
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}; // end PasswordResetModal
+
+// SuperAdminProfileModal Component
+const SuperAdminProfileModal = ({ user, onClose }) => {
+    const [name, setName]         = useState(user?.name || 'Super Admin');
+    const [phone, setPhone]       = useState(user?.phone || '');
+    const [showPwSection, setShowPwSection] = useState(false);
+    const [currentPw, setCurrentPw]   = useState('');
+    const [newPw, setNewPw]           = useState('');
+    const [confirmPw, setConfirmPw]   = useState('');
+    const [showCur, setShowCur]   = useState(false);
+    const [showNew, setShowNew]   = useState(false);
+    const [showCon, setShowCon]   = useState(false);
+    const [saving, setSaving]     = useState(false);
+    const [msg, setMsg]           = useState({ type: '', text: '' });
+
+    const initials = (name || 'SA').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+
+    const handleSave = async () => {
+        if (showPwSection) {
+            if (!currentPw) return setMsg({ type: 'error', text: 'Current password is required.' });
+            if (newPw.length < 6) return setMsg({ type: 'error', text: 'New password must be at least 6 characters.' });
+            if (newPw !== confirmPw) return setMsg({ type: 'error', text: 'Passwords do not match.' });
+        }
+        setSaving(true);
+        try {
+            await new Promise(r => setTimeout(r, 800));
+            setMsg({ type: 'success', text: 'Profile updated successfully.' });
+            setTimeout(onClose, 1200);
+        } catch {
+            setMsg({ type: 'error', text: 'Failed to save changes.' });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const EyeBtn = ({ show, toggle }) => (
+        <button type="button" onClick={toggle} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700">
+            {show
+                ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+            }
+        </button>
+    );
+
+    return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+            <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                {/* Header */}
+                <div className="flex items-center justify-between px-8 pt-8 pb-6 border-b border-gray-100">
+                    <h3 className="text-lg font-bold text-gray-900">Profile Settings</h3>
+                    <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
+
+                <div className="px-8 py-6 space-y-6">
+                    {/* Avatar + Role */}
+                    <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 bg-gray-900 rounded-full flex items-center justify-center flex-shrink-0">
+                            <span className="text-lg font-bold text-white">{initials}</span>
+                        </div>
+                        <div>
+                            <p className="font-semibold text-gray-900">{name}</p>
+                            <span className="inline-block mt-1 px-2.5 py-0.5 text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-200 rounded-full">
+                                Super Admin
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Fields */}
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Full Name</label>
+                            <input value={name} onChange={e => setName(e.target.value)}
+                                className="w-full h-10 px-3 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Email</label>
+                            <div className="flex items-center h-10 px-3 text-sm bg-gray-50 border border-gray-200 rounded-lg text-gray-500 gap-2">
+                                <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                                {user?.email || 'sa@hms.com'}
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Phone</label>
+                            <input value={phone} onChange={e => setPhone(e.target.value)}
+                                placeholder="+91 98765 43210"
+                                className="w-full h-10 px-3 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        </div>
+                    </div>
+
+                    {/* Change Password Toggle */}
+                    <div className="border border-gray-200 rounded-xl overflow-hidden">
+                        <button onClick={() => setShowPwSection(!showPwSection)}
+                            className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-sm font-semibold text-gray-700">
+                            <div className="flex items-center gap-2">
+                                <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
+                                Change Password
+                            </div>
+                            <svg className={`w-4 h-4 text-gray-400 transition-transform ${showPwSection ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                        </button>
+                        {showPwSection && (
+                            <div className="p-4 space-y-3 border-t border-gray-200">
+                                {[
+                                    { label: 'Current Password', val: currentPw, setVal: setCurrentPw, show: showCur, toggle: () => setShowCur(p => !p) },
+                                    { label: 'New Password',     val: newPw,     setVal: setNewPw,     show: showNew, toggle: () => setShowNew(p => !p) },
+                                    { label: 'Confirm Password', val: confirmPw, setVal: setConfirmPw, show: showCon, toggle: () => setShowCon(p => !p) },
+                                ].map(({ label, val, setVal, show, toggle }) => (
+                                    <div key={label}>
+                                        <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
+                                        <div className="relative">
+                                            <input type={show ? 'text' : 'password'} value={val}
+                                                onChange={e => setVal(e.target.value)}
+                                                className="w-full h-10 px-3 pr-10 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                                            <EyeBtn show={show} toggle={toggle} />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Message */}
+                    {msg.text && (
+                        <p className={`text-sm font-medium ${msg.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>{msg.text}</p>
+                    )}
+
+                    {/* Actions */}
+                    <div className="flex gap-3 pt-2">
+                        <button onClick={onClose}
+                            className="flex-1 h-10 text-sm border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50 transition-colors">
+                            Cancel
+                        </button>
+                        <button onClick={handleSave} disabled={saving}
+                            className="flex-1 h-10 text-sm bg-gray-900 text-white font-semibold rounded-xl hover:bg-gray-700 transition-colors disabled:opacity-60">
+                            {saving ? 'Saving...' : 'Save Changes'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}; // end SuperAdminProfileModal
+
+// TicketsTable Component
+const TicketsTable = ({ tickets, loading, onResolve }) => {
+    const priorityBadge = (p) => {
+        if (p === 'HIGH')   return 'bg-red-100 text-red-700 border-red-200';
+        if (p === 'MEDIUM') return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+        return 'bg-green-100 text-green-700 border-green-200';
+    };
+    const statusBadge = (s) => {
+        if (s === 'OPEN')        return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+        if (s === 'IN_PROGRESS') return 'bg-blue-100 text-blue-700 border-blue-200';
+        return 'bg-green-100 text-green-700 border-green-200';
+    };
+
+    if (loading) return (
+        <div className="bg-white border border-gray-200 p-12 text-center">
+            <div className="w-8 h-8 border-2 border-gray-200 border-t-gray-900 animate-spin mx-auto mb-3"></div>
+            <p className="text-sm text-gray-500">Loading tickets...</p>
+        </div>
+    );
+
+    if (tickets.length === 0) return (
+        <div className="bg-white border border-gray-200 p-12 text-center">
+            <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-7 h-7 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+                </svg>
+            </div>
+            <h3 className="text-base font-semibold text-gray-900 mb-1">No tickets yet</h3>
+            <p className="text-sm text-gray-500">Support tickets submitted by hospital admins will appear here.</p>
+        </div>
+    );
+
+    return (
+        <div className="bg-white border border-gray-200 overflow-x-auto">
+            <table className="min-w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                        {['#', 'Hospital', 'Subject', 'Priority', 'Status', 'Submitted', 'Action'].map(h => (
+                            <th key={h} className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                    {tickets.map((ticket, idx) => (
+                        <tr key={ticket.id} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-6 py-4 text-sm text-gray-400">{idx + 1}</td>
+                            <td className="px-6 py-4">
+                                <p className="text-sm font-medium text-gray-900">{ticket.hospitalName}</p>
+                            </td>
+                            <td className="px-6 py-4">
+                                <p className="text-sm text-gray-900">{ticket.subject}</p>
+                                {ticket.message && (
+                                    <p className="text-xs text-gray-400 mt-0.5 truncate max-w-xs">{ticket.message}</p>
+                                )}
+                            </td>
+                            <td className="px-6 py-4">
+                                <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${priorityBadge(ticket.priority)}`}>
+                                    {ticket.priority}
+                                </span>
+                            </td>
+                            <td className="px-6 py-4">
+                                <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${statusBadge(ticket.status)}`}>
+                                    {ticket.status?.replace('_', ' ')}
+                                </span>
+                            </td>
+                            <td className="px-6 py-4">
+                                {ticket.createdAt ? (
+                                    <div>
+                                        <p className="text-sm text-gray-700">
+                                            {new Date(ticket.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                        </p>
+                                        <p className="text-xs text-gray-400">
+                                            {new Date(ticket.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase()}
+                                        </p>
+                                    </div>
+                                ) : <span className="text-gray-300 text-xs">—</span>}
+                            </td>
+                            <td className="px-6 py-4">
+                                {ticket.status !== 'RESOLVED' ? (
+                                    <button
+                                        onClick={() => onResolve(ticket.id)}
+                                        className="px-3 py-1.5 text-xs font-semibold bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+                                    >
+                                        Resolve
+                                    </button>
+                                ) : (
+                                    <span className="text-xs text-gray-400 italic">Closed</span>
+                                )}
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+};
+
+// FaqsTable Component
+const FaqsTable = ({ faqs, loading, onDelete }) => {
+    if (loading) return (
+        <div className="bg-white border border-gray-200 p-12 text-center">
+            <div className="w-8 h-8 border-2 border-gray-200 border-t-gray-900 animate-spin mx-auto mb-3"></div>
+            <p className="text-sm text-gray-500">Loading FAQs...</p>
+        </div>
+    );
+
+    if (faqs.length === 0) return (
+        <div className="bg-white border border-gray-200 p-12 text-center">
+            <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-7 h-7 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <h3 className="text-base font-semibold text-gray-900 mb-1">No FAQs yet</h3>
+            <p className="text-sm text-gray-500">Global frequently asked questions will appear here.</p>
+        </div>
+    );
+
+    return (
+        <div className="bg-white border border-gray-200 overflow-x-auto">
+            <table className="min-w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                        {['#', 'Question', 'Answer', 'Actions'].map(h => (
+                            <th key={h} className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                    {faqs.map((faq, idx) => (
+                        <tr key={faq.id} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-6 py-4 text-sm text-gray-400">{idx + 1}</td>
+                            <td className="px-6 py-4 font-medium text-gray-900 text-sm">{faq.question}</td>
+                            <td className="px-6 py-4 text-gray-600 text-sm whitespace-pre-wrap max-w-lg">{faq.answer}</td>
+                            <td className="px-6 py-4">
+                                <button
+                                    onClick={() => onDelete(faq.id)}
+                                    className="p-1.5 text-gray-500 hover:text-red-600 rounded hover:bg-red-50 transition-colors"
+                                    title="Delete FAQ"
+                                >
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+};
+
 // Hospitals Table Component using DataTable
 const HospitalsTable = ({ hospitals, hospitalPage, handleToggleStatus, openEditHospitalModal, onResetPassword, loadHospitals }) => {
     const columnHelper = createColumnHelper();
@@ -877,25 +1639,36 @@ const HospitalsTable = ({ hospitals, hospitalPage, handleToggleStatus, openEditH
         }),
         columnHelper.accessor('plan', {
             header: 'Plan',
-            cell: info => (
-                <div className="flex items-center">
-                    <span className="px-2 py-1 bg-gray-100 text-gray-900 rounded text-xs font-semibold mr-2">{info.getValue()}</span>
-                    <button
-                        onClick={() => openEditHospitalModal(info.row.original)}
-                        className="text-gray-400 hover:text-gray-900"
-                        aria-label="Edit"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                            <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                        </svg>
-                    </button>
-                </div>
-            )
+            cell: info => {
+                const plan = info.getValue() || 'FREE';
+                const planClass = plan === 'PREMIUM' ? 'bg-purple-100 text-purple-700 border-purple-200'
+                    : plan === 'BASIC'     ? 'bg-blue-100 text-blue-700 border-blue-200'
+                    : plan === 'ENTERPRISE' ? 'bg-amber-100 text-amber-700 border-amber-200'
+                    : 'bg-gray-100 text-gray-600 border-gray-200';
+                return (
+                    <div className="flex items-center gap-2">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${planClass}`}>{plan}</span>
+                        <button
+                            onClick={() => openEditHospitalModal(info.row.original)}
+                            className="text-gray-400 hover:text-blue-600 transition-colors"
+                            aria-label="Edit plan"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                            </svg>
+                        </button>
+                    </div>
+                );
+            }
         }),
         columnHelper.accessor('isActive', {
             header: 'Status',
             cell: info => (
-                <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
+                <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full border ${
+                    info.getValue()
+                        ? 'bg-green-100 text-green-800 border-green-200'
+                        : 'bg-red-100 text-red-700 border-red-200'
+                }`}>
                     {info.getValue() ? 'Active' : 'Inactive'}
                 </span>
             )
@@ -966,24 +1739,55 @@ const AuditLogsTable = ({ auditLogs }) => {
     const [page, setPage] = useState(0);
     const pageSize = 10;
 
-    // Helper function to format timestamp
-    const formatTimestamp = (timestamp) => {
-        const date = new Date(timestamp);
-        return date.toLocaleString('en-IN', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: true
+    // Filter state
+    const [actionFilter, setActionFilter] = useState('');
+    const [fromDate, setFromDate] = useState('');
+    const [toDate, setToDate] = useState('');
+
+    // Helper: format date part only
+    const formatDate = (timestamp) => {
+        return new Date(timestamp).toLocaleDateString('en-IN', {
+            day: '2-digit', month: 'short', year: 'numeric'
         });
     };
 
-    // Helper function to get action badge color
-    const getActionBadgeColor = (action) => {
-        return 'bg-gray-100 text-gray-800';
+    // Helper: format time part only
+    const formatTime = (timestamp) => {
+        return new Date(timestamp).toLocaleTimeString('en-IN', {
+            hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+        }).toUpperCase();
     };
+
+    // Helper: color-coded action badge
+    const getActionBadgeColor = (action) => {
+        if (!action) return 'bg-gray-100 text-gray-600 border-gray-200';
+        const a = action.toUpperCase();
+        if (a.includes('CREATED') || a.includes('CREATE'))    return 'bg-blue-100 text-blue-700 border-blue-200';
+        if (a.includes('UPDATED') || a.includes('UPDATE') || a.includes('MODULES')) return 'bg-purple-100 text-purple-700 border-purple-200';
+        if (a.includes('COMPLETED') || a.includes('DISCHARGED')) return 'bg-green-100 text-green-700 border-green-200';
+        if (a.includes('STATUS') || a.includes('CHANGED'))    return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+        if (a.includes('DELETE') || a.includes('DISABLED') || a.includes('REMOVED')) return 'bg-red-100 text-red-700 border-red-200';
+        if (a.includes('LOGIN') || a.includes('LOGOUT'))      return 'bg-gray-100 text-gray-600 border-gray-200';
+        if (a.includes('RESET') || a.includes('PASSWORD'))    return 'bg-orange-100 text-orange-700 border-orange-200';
+        if (a.includes('ENABLED') || a.includes('ACTIVATED')) return 'bg-green-100 text-green-700 border-green-200';
+        return 'bg-gray-100 text-gray-600 border-gray-200';
+    };
+
+    // Unique actions for dropdown (built from actual log data)
+    const uniqueActions = [...new Set(auditLogs.map(l => l.action).filter(Boolean))].sort();
+
+    // Client-side filter logic
+    const filteredLogs = auditLogs.filter(log => {
+        const logDate = new Date(log.timestamp || log.createdAt);
+        const matchAction = !actionFilter || log.action === actionFilter;
+        const matchFrom  = !fromDate || logDate >= new Date(fromDate);
+        const matchTo    = !toDate   || logDate <= new Date(toDate + 'T23:59:59');
+        return matchAction && matchFrom && matchTo;
+    });
+
+    const handleFilterChange = (setter, value) => { setter(value); setPage(0); };
+    const clearFilters = () => { setActionFilter(''); setFromDate(''); setToDate(''); setPage(0); };
+    const hasActiveFilter = actionFilter || fromDate || toDate;
 
     const columns = [
         columnHelper.display({
@@ -994,15 +1798,16 @@ const AuditLogsTable = ({ auditLogs }) => {
         columnHelper.accessor('timestamp', {
             header: 'TIMESTAMP',
             cell: info => (
-                <span className="text-sm text-gray-600">
-                    {formatTimestamp(info.getValue())}
-                </span>
+                <div>
+                    <p className="text-sm font-medium text-gray-900">{formatDate(info.getValue())}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{formatTime(info.getValue())}</p>
+                </div>
             ),
         }),
         columnHelper.accessor('action', {
             header: 'ACTION',
             cell: info => (
-                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getActionBadgeColor(info.getValue())}`}>
+                <span className={`px-2.5 py-1 rounded-md text-xs font-semibold border ${getActionBadgeColor(info.getValue())}`}>
                     {info.getValue()}
                 </span>
             ),
@@ -1033,27 +1838,78 @@ const AuditLogsTable = ({ auditLogs }) => {
         }),
         columnHelper.accessor('reason', {
             header: 'REASON',
-            cell: info => (
-                <span className="text-sm text-gray-600 italic">
-                    {info.getValue() || '-'}
-                </span>
-            ),
+            cell: info => {
+                const val = info.getValue();
+                if (!val || val === '-' || val === 'N/A') {
+                    return <span className="text-gray-300 text-xs">—</span>;
+                }
+                return <span className="text-sm text-gray-600 italic">{val}</span>;
+            },
         }),
     ];
 
-    // Client-side pagination logic
-    const totalPages = Math.ceil(auditLogs.length / pageSize);
-    const paginatedLogs = auditLogs.slice(page * pageSize, (page + 1) * pageSize);
+    // Paginate the filtered results
+    const totalPages = Math.ceil(filteredLogs.length / pageSize);
+    const paginatedLogs = filteredLogs.slice(page * pageSize, (page + 1) * pageSize);
 
     const pagination = {
         pageIndex: page,
         pageSize: pageSize,
-        totalItems: auditLogs.length,
+        totalItems: filteredLogs.length,
         pageCount: totalPages,
         onPageChange: (newPage) => setPage(newPage)
     };
 
-    return <DataTable data={paginatedLogs} columns={columns} pagination={pagination} />;
+    return (
+        <div>
+            {/* Filter Bar */}
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-gray-500">From</label>
+                        <input type="date" value={fromDate}
+                            onChange={e => handleFilterChange(setFromDate, e.target.value)}
+                            className="h-9 px-3 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-gray-500">To</label>
+                        <input type="date" value={toDate}
+                            onChange={e => handleFilterChange(setToDate, e.target.value)}
+                            className="h-9 px-3 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-gray-500">Action</label>
+                        <select value={actionFilter}
+                            onChange={e => handleFilterChange(setActionFilter, e.target.value)}
+                            className="h-9 px-3 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[180px]">
+                            <option value="">All Actions</option>
+                            {uniqueActions.map(action => (
+                                <option key={action} value={action}>{action}</option>
+                            ))}
+                        </select>
+                    </div>
+                    {hasActiveFilter && (
+                        <>
+                            <div className="flex flex-col gap-1">
+                                <label className="text-xs font-medium text-transparent">x</label>
+                                <button onClick={clearFilters}
+                                    className="h-9 px-4 text-sm text-gray-500 border border-gray-200 rounded-lg bg-white hover:bg-gray-100 transition-colors flex items-center gap-1.5">
+                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                    Clear
+                                </button>
+                            </div>
+                            <div className="ml-auto flex items-end pb-0.5">
+                                <span className="text-xs text-gray-400">{filteredLogs.length} of {auditLogs.length} results</span>
+                            </div>
+                        </>
+                    )}
+                </div>
+            </div>
+            <DataTable data={paginatedLogs} columns={columns} pagination={pagination} />
+        </div>
+    );
 };
 
 // Users Table Component

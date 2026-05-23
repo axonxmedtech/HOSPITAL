@@ -73,7 +73,7 @@ public class HospitalAuthController {
     }
 
     /**
-     * Update hospital fees (consultation and case paper). Only Hospital Admin.
+     * Get hospital fees (consultation and case paper). Only Hospital Admin.
      */
     @PutMapping("/hospital/settings/fees")
     public ResponseEntity<?> updateHospitalFees(java.security.Principal principal, @RequestBody com.hms.dto.HospitalFeesDTO fees) {
@@ -81,6 +81,32 @@ public class HospitalAuthController {
             if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
             com.hms.dto.HospitalFeesDTO updated = authService.updateHospitalFees(principal.getName(), fees);
             return ResponseEntity.ok(updated);
+        } catch (Exception e) {
+            return ResponseEntity.status(403).body(e.getMessage());
+        }
+    }
+
+    /**
+     * Get operations settings (receptionMode and billingHandler)
+     */
+    @GetMapping("/hospital/settings/operations")
+    public ResponseEntity<?> getOperationsSettings(java.security.Principal principal) {
+        try {
+            if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
+            return ResponseEntity.ok(authService.getHospitalOperationsSettings(principal.getName()));
+        } catch (Exception e) {
+            return ResponseEntity.status(403).body(e.getMessage());
+        }
+    }
+
+    /**
+     * Update operations settings (receptionMode and billingHandler)
+     */
+    @PutMapping("/hospital/settings/operations")
+    public ResponseEntity<?> updateOperationsSettings(java.security.Principal principal, @RequestBody com.hms.dto.HospitalSettingDTO dto) {
+        try {
+            if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
+            return ResponseEntity.ok(authService.updateHospitalOperationsSettings(principal.getName(), dto));
         } catch (Exception e) {
             return ResponseEntity.status(403).body(e.getMessage());
         }
