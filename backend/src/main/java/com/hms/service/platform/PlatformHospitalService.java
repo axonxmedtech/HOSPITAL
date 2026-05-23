@@ -243,11 +243,21 @@ public class PlatformHospitalService {
 
     /**
      * Reset Tenant Admin Password
-     * 
-     * @param publicId Hospital Public ID
-     * @return Map containing "email" and "password"
+     * Password is now provided by Super Admin — not auto-generated.
+     *
+     * @param publicId    Hospital Public ID
+     * @param newPassword New password chosen by Super Admin
+     * @param reason      Reason for reset
+     * @return Map containing "email" and success confirmation
      */
-    public Map<String, String> resetTenantAdminPassword(String publicId, String reason) {
+    public Map<String, String> resetTenantAdminPassword(String publicId, String newPassword, String reason) {
+        if (newPassword == null || newPassword.trim().isEmpty()) {
+            throw new RuntimeException("Password cannot be empty");
+        }
+        if (newPassword.length() < 6) {
+            throw new RuntimeException("Password must be at least 6 characters");
+        }
+
         Hospital hospital = hospitalRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new RuntimeException("Hospital not found"));
 
@@ -256,11 +266,7 @@ public class PlatformHospitalService {
             throw new RuntimeException("No admin found for this hospital");
         }
 
-        // Reset the first admin found (usually there's only one main admin)
         User admin = admins.get(0);
-
-        // Generate random password (8 chars)
-        String newPassword = java.util.UUID.randomUUID().toString().substring(0, 8);
         admin.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(admin);
 
@@ -268,7 +274,7 @@ public class PlatformHospitalService {
 
         Map<String, String> result = new HashMap<>();
         result.put("email", admin.getEmail());
-        result.put("password", newPassword);
+        result.put("message", "Password reset successfully");
         return result;
     }
 
