@@ -41,7 +41,7 @@ public class HospitalTicketController {
     }
 
     @PostMapping
-    public ResponseEntity<?> createTicket(@RequestBody SupportTicket ticket) {
+    public ResponseEntity<?> createTicket(@RequestBody com.hms.dto.CreateSupportTicketRequest req) {
         try {
             Long hospitalId = securityHelper.getCurrentHospitalId();
             Long userId = securityHelper.getCurrentUserId();
@@ -51,15 +51,30 @@ public class HospitalTicketController {
             User user = userRepository.findById(userId)
                     .orElseThrow(() -> new RuntimeException("User not found"));
 
-            if (ticket.getSubject() == null || ticket.getSubject().trim().isEmpty() ||
-                ticket.getMessage() == null || ticket.getMessage().trim().isEmpty()) {
+            if (req.getSubject() == null || req.getSubject().trim().isEmpty() ||
+                req.getMessage() == null || req.getMessage().trim().isEmpty()) {
                 return ResponseEntity.badRequest().body("Subject and message are required.");
             }
+
+            SupportTicket ticket = new SupportTicket();
+            ticket.setSubject(req.getSubject().trim());
+            ticket.setMessage(req.getMessage().trim());
+            
+            // Validate priority and default to MEDIUM if invalid
+            String priority = "MEDIUM";
+            if (req.getPriority() != null) {
+                String reqPriority = req.getPriority().trim().toUpperCase();
+                if ("LOW".equals(reqPriority) || "MEDIUM".equals(reqPriority) || "HIGH".equals(reqPriority)) {
+                    priority = reqPriority;
+                }
+            }
+            ticket.setPriority(priority);
 
             ticket.setHospitalId(hospitalId);
             ticket.setHospitalName(hospital.getName());
             ticket.setAdminName(user.getName());
             ticket.setStatus("OPEN");
+            ticket.setCreatedAt(java.time.LocalDateTime.now());
             
             SupportTicket saved = supportTicketRepository.save(ticket);
             return ResponseEntity.ok(saved);

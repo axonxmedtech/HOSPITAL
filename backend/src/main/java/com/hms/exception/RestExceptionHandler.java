@@ -61,6 +61,14 @@ public class RestExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
     }
 
+    // 403 Forbidden
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<Object> handleAccessDenied(org.springframework.security.access.AccessDeniedException ex) {
+        Map<String, String> body = new HashMap<>();
+        body.put("error", ex.getMessage() == null ? "Access Denied" : ex.getMessage());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
+    }
+
     // Fallback for unexpected runtime exceptions – 500 Internal Server Error
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Object> handleRuntime(RuntimeException ex) {

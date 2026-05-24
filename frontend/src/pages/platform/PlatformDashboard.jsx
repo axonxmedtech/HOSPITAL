@@ -12,6 +12,7 @@ import PageHeader from '../../components/PageHeader';
 import EmptyState from '../../components/EmptyState';
 import { useToast } from '../../context/ToastContext';
 import { createColumnHelper } from '@tanstack/react-table';
+import ProfileModal from '../../components/ProfileModal';
 
 /**
  * PlatformDashboard - Super Admin dashboard
@@ -1092,6 +1093,9 @@ const PlatformDashboard = () => {
                     </div>
                 </div>
             )}
+
+            {/* Profile Settings Modal */}
+            <ProfileModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
         </div >
     );
 };

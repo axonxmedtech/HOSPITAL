@@ -77,14 +77,6 @@ public class OpdService {
             } catch (Exception ignored) {}
         }
 
-        // Determine token number for the assigned doctor (per-day)
-        Integer nextToken = 1;
-        if (opd.getDoctor() != null) {
-            Integer max = queueEntryRepository.findMaxTokenForDoctorToday(opd.getDoctor().getId());
-            nextToken = (max == null ? 0 : max) + 1;
-        }
-        opd.setTokenNumber(nextToken);
-
         Opd saved = opdRepository.save(opd);
 
         // Create queue entry
@@ -92,7 +84,6 @@ public class OpdService {
             QueueEntry entry = new QueueEntry();
             entry.setOpd(saved);
             entry.setDoctor(saved.getDoctor());
-            entry.setTokenNumber(saved.getTokenNumber());
             queueEntryRepository.save(entry);
         }
 
@@ -225,17 +216,11 @@ public class OpdService {
         opd.setProblem(record.getDiagnosis() != null ? "Follow-up: " + record.getDiagnosis() : "Follow-up");
         opd.setStatus(com.hms.entity.Opd.Status.QUEUED);
 
-        Integer nextToken = 1;
-        Integer max = queueEntryRepository.findMaxTokenForDoctorToday(doctor.getId());
-        nextToken = (max == null ? 0 : max) + 1;
-        opd.setTokenNumber(nextToken);
-
         com.hms.entity.Opd saved = opdRepository.save(opd);
 
         com.hms.entity.QueueEntry entry = new com.hms.entity.QueueEntry();
         entry.setOpd(saved);
         entry.setDoctor(doctor);
-        entry.setTokenNumber(saved.getTokenNumber());
         queueEntryRepository.save(entry);
 
         try {

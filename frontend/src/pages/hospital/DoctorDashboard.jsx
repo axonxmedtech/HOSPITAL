@@ -20,6 +20,7 @@ import BillingTable from './BillingTable';
 import AppointmentModal from '../../components/AppointmentModal';
 import PatientModal from '../../components/PatientModal';
 import PatientDetailsModal from '../../components/PatientDetailsModal';
+import ProfileModal from '../../components/ProfileModal';
 
 /**
  * DoctorDashboard - Doctor dashboard
@@ -67,8 +68,8 @@ const DoctorDashboard = () => {
     // Queue / OPD state (doctor-specific)
     const [queueEntries, setQueueEntries] = useState([]);
     const [opds, setOpds] = useState([]);
-    const [currentToken, setCurrentToken] = useState(null);
-    const [nextToken, setNextToken] = useState(null);
+    const [currentPatient, setCurrentPatient] = useState(null);
+    const [nextPatient, setNextPatient] = useState(null);
 
     // Pagination & Search
     const [page, setPage] = useState(1);
@@ -112,6 +113,7 @@ const DoctorDashboard = () => {
 
     // Sidebar collapse state
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [profileOpen, setProfileOpen] = useState(false);
 
     // Billing specific states
     const [billing, setBilling] = useState([]);
@@ -298,11 +300,11 @@ const DoctorDashboard = () => {
                     setQueueEntries(q || []);
                     if (q && q.length > 0) {
                         const sorted = [...q].sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
-                        setCurrentToken(1); // Dynamic first in line
-                        setNextToken(sorted[1] ? 2 : null); // Dynamic second in line
+                        setCurrentPatient(sorted[0]?.opd?.patient?.name || sorted[0]?.opd?.patientName || 'No Name');
+                        setNextPatient(sorted[1] ? (sorted[1]?.opd?.patient?.name || sorted[1]?.opd?.patientName || 'No Name') : null);
                     } else {
-                        setCurrentToken(null);
-                        setNextToken(null);
+                        setCurrentPatient(null);
+                        setNextPatient(null);
                     }
                 } catch (err) {
                     console.error('Failed to load doctor queue', err);
@@ -662,7 +664,7 @@ const DoctorDashboard = () => {
                     title={tabs.find(t => t.id === activeTab)?.label}
                     user={user}
                     onLogout={handleLogout}
-                    onProfile={() => console.log('Profile clicked')}
+                    onProfile={() => setProfileOpen(true)}
                     onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
                 />
 
@@ -691,17 +693,17 @@ const DoctorDashboard = () => {
                             <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
                                 <div className="bg-white rounded-lg border border-gray-200 p-6">
                                     <div className="flex justify-between items-center">
-                                        <div>
-                                            <p className="text-gray-600 text-sm font-medium">Current Token</p>
-                                            <h3 className="text-3xl font-bold text-gray-900 mt-1">{currentToken ?? '-'}</h3>
+                                        <div className="min-w-0 w-full">
+                                            <p className="text-gray-600 text-sm font-medium">Current Patient</p>
+                                            <h3 className="text-base font-bold text-gray-900 mt-1 truncate" title={currentPatient}>{currentPatient ?? 'None'}</h3>
                                         </div>
                                     </div>
                                 </div>
                                 <div className="bg-white rounded-lg border border-gray-200 p-6">
                                     <div className="flex justify-between items-center">
-                                        <div>
-                                            <p className="text-gray-600 text-sm font-medium">Next Token</p>
-                                            <h3 className="text-3xl font-bold text-gray-900 mt-1">{nextToken ?? '-'}</h3>
+                                        <div className="min-w-0 w-full">
+                                            <p className="text-gray-600 text-sm font-medium">Next Patient</p>
+                                            <h3 className="text-base font-bold text-gray-900 mt-1 truncate" title={nextPatient}>{nextPatient ?? 'None'}</h3>
                                         </div>
                                     </div>
                                 </div>
@@ -1332,7 +1334,7 @@ const DoctorDashboard = () => {
                                     };
                                     const res = await hospitalService.createOpd(payload);
                                     setIsOpdModalOpen(false);
-                                    success('OPD created — token: ' + (res.tokenNumber || '-'));
+                                    success('OPD Case created successfully — ID: ' + res.caseId);
                                     loadData();
                                 } catch (err) {
                                     console.error('Failed to create OPD', err);
@@ -1526,6 +1528,9 @@ const DoctorDashboard = () => {
                         </div>
                     </div>
                 )}
+
+                {/* Profile Settings Modal */}
+                <ProfileModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
             </>
         </div>
     );
@@ -1708,15 +1713,16 @@ const DoctorOpdTable = ({ opds, queueEntries = [], currentToken, onPrintOpd, onS
             id: 'doctor',
             header: 'DOCTOR',
         }),
-        columnHelper.accessor('tokenNumber', {
-            header: 'TOKEN / POSITION',
+        columnHelper.accessor('status', {
+            id: 'position',
+            header: 'QUEUE POSITION',
             cell: info => {
                 const opd = info.row.original;
                 if (opd.status === 'QUEUED') {
                     const pos = getQueuePosition(opd.id);
                     return pos ? `Position #${pos}` : 'Queued';
                 }
-                return opd.tokenNumber ? `Token #${opd.tokenNumber}` : '-';
+                return '—';
             },
         }),
         columnHelper.accessor('visitType', {

@@ -8,6 +8,7 @@ import ConfirmationModal from '../../components/ConfirmationModal';
 import AppointmentModal from '../../components/AppointmentModal';
 import PatientModal from '../../components/PatientModal';
 import PatientDetailsModal from '../../components/PatientDetailsModal';
+import ProfileModal from '../../components/ProfileModal';
 import ActionMenu from '../../components/ActionMenu';
 import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
@@ -45,8 +46,8 @@ const ReceptionistDashboard = () => {
     const [doctors, setDoctors] = useState([]);
     const [opds, setOpds] = useState([]);
     const [queueEntries, setQueueEntries] = useState([]);
-    const [currentToken, setCurrentToken] = useState(null);
-    const [nextToken, setNextToken] = useState(null);
+    const [currentPatientName, setCurrentPatientName] = useState(null);
+    const [nextPatientName, setNextPatientName] = useState(null);
     const [selectedDoctorForQueue, setSelectedDoctorForQueue] = useState('');
     const [billing, setBilling] = useState([]);
     const [billingStatus, setBillingStatus] = useState('PENDING');
@@ -147,6 +148,7 @@ const ReceptionistDashboard = () => {
 
     // Sidebar collapse state
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [profileOpen, setProfileOpen] = useState(false);
 
     // Patient Details Modal
     const [patientDetailsModal, setPatientDetailsModal] = useState({ isOpen: false, patient: null });
@@ -253,11 +255,11 @@ const ReceptionistDashboard = () => {
                     setQueueEntries(q || []);
                     if (q && q.length > 0) {
                         const sorted = [...q].sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
-                        setCurrentToken(1); // Dynamic first in line
-                        setNextToken(sorted[1] ? 2 : null); // Dynamic second in line
+                        setCurrentPatientName(sorted[0]?.opd?.patient?.name || sorted[0]?.opd?.patientName || 'No Name');
+                        setNextPatientName(sorted[1] ? (sorted[1]?.opd?.patient?.name || sorted[1]?.opd?.patientName || 'No Name') : null);
                     } else {
-                        setCurrentToken(null);
-                        setNextToken(null);
+                        setCurrentPatientName(null);
+                        setNextPatientName(null);
                     }
                 }
 
@@ -568,7 +570,7 @@ const ReceptionistDashboard = () => {
                     title={`${tabs.find(t => t.id === activeTab)?.label || (activeTab.charAt(0).toUpperCase() + activeTab.slice(1))} Dashboard`}
                     user={user}
                     onLogout={handleLogout}
-                    onProfile={() => console.log('Profile clicked')}
+                    onProfile={() => setProfileOpen(true)}
                     onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
                 />
 
@@ -615,10 +617,10 @@ const ReceptionistDashboard = () => {
                                 </div>
                                 <div className="bg-white rounded-lg border border-gray-200 p-6">
                                     <div>
-                                        <p className="text-gray-600 text-sm font-medium">Current / Next Token</p>
-                                        <div className="mt-2 flex items-baseline gap-3">
-                                            <h3 className="text-2xl font-bold text-gray-900">{currentToken ?? '-'}</h3>
-                                            <span className="text-sm text-gray-500">/ {nextToken ?? '-'}</span>
+                                        <p className="text-gray-600 text-sm font-medium">Active / Next Patient</p>
+                                        <div className="mt-2 flex items-baseline gap-2 flex-wrap">
+                                            <h3 className="text-base font-bold text-gray-900 truncate max-w-[150px]" title={currentPatientName}>{currentPatientName ?? 'None'}</h3>
+                                            <span className="text-xs text-gray-500 truncate max-w-[120px]" title={nextPatientName}>/ {nextPatientName ?? 'None'}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -783,7 +785,7 @@ const ReceptionistDashboard = () => {
                                                     <thead>
                                                         <tr className="bg-gray-50 border-b border-gray-100">
                                                             <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">S.No.</th>
-                                                            <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Token</th>
+                                                            <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Position</th>
                                                             <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Patient</th>
                                                             <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Doctor</th>
                                                             <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Time</th>
@@ -798,7 +800,7 @@ const ReceptionistDashboard = () => {
                                                                     <td className="px-4 py-3.5 text-sm text-gray-955 font-medium">{idx + 1}</td>
                                                                     <td className="px-4 py-3.5">
                                                                         <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100/30">
-                                                                            #{idx + 1}
+                                                                            Position #{idx + 1}
                                                                         </span>
                                                                     </td>
                                                                     <td className="px-4 py-3.5 text-sm text-gray-955 font-semibold">{q.opd?.patient?.name || q.opd?.patientName || '-'}</td>
@@ -1053,7 +1055,7 @@ const ReceptionistDashboard = () => {
                                             <thead>
                                                 <tr>
                                                     <th className="px-4 py-2">S.No.</th>
-                                                    <th className="px-4 py-2">Token</th>
+                                                    <th className="px-4 py-2">Position</th>
                                                     <th className="px-4 py-2">Patient</th>
                                                     <th className="px-4 py-2">Doctor</th>
                                                     <th className="px-4 py-2">Created</th>
@@ -1066,7 +1068,7 @@ const ReceptionistDashboard = () => {
                                                     .map((q, idx) => (
                                                         <tr key={q.id} className="border-t">
                                                             <td className="px-4 py-3">{idx + 1}</td>
-                                                            <td className="px-4 py-3">#{idx + 1}</td>
+                                                            <td className="px-4 py-3">Position #{idx + 1}</td>
                                                             <td className="px-4 py-3">{q.opd?.patient?.name || q.opd?.patientName || '-'}</td>
                                                             <td className="px-4 py-3">{q.opd?.doctor?.name || q.opd?.doctorName || '-'}</td>
                                                             <td className="px-4 py-3">{new Date(q.createdAt).toLocaleString()}</td>
@@ -1205,7 +1207,7 @@ const ReceptionistDashboard = () => {
                                 const res = await hospitalService.createOpd(payload);
                                 setCreatedOpd(res);
                                 setIsOpdModalOpen(false);
-                                success('OPD created — token: ' + (res.tokenNumber || '-'));
+                                success('OPD Case created successfully — ID: ' + res.caseId);
                                 loadData(); // Refresh the data after OPD creation
                             } catch (err) {
                                 console.error('Failed to create OPD', err);
@@ -1486,6 +1488,9 @@ const ReceptionistDashboard = () => {
                     </div>
                 </div>
             )}
+
+            {/* Profile Settings Modal */}
+            <ProfileModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
         </div>
     );
 };

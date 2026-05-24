@@ -70,4 +70,12 @@ public class LoginResponse {
      * Billing responsibility (billingHandler enums RECEPTIONIST or DOCTOR)
      */
     private String billingHandler;
+
+    /**
+     * Fresh user profile fields
+     */
+    private String phone;
+    private Integer age;
+    private String gender;
+    private String specialization;
 }

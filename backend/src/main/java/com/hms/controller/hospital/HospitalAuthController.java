@@ -59,6 +59,22 @@ public class HospitalAuthController {
     }
 
     /**
+     * Update current user profile details
+     */
+    @PutMapping("/auth/profile")
+    public ResponseEntity<?> updateProfile(java.security.Principal principal, @RequestBody com.hms.dto.ProfileUpdateRequest request) {
+        try {
+            if (principal == null) {
+                return ResponseEntity.status(401).body("Unauthorized");
+            }
+            LoginResponse response = authService.updateProfile(principal.getName(), request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.status(400).body(e.getMessage());
+        }
+    }
+
+    /**
      * Get hospital fees for the authenticated user's hospital
      */
     @GetMapping("/hospital/settings/fees")
@@ -103,7 +119,7 @@ public class HospitalAuthController {
      * Update operations settings (receptionMode and billingHandler)
      */
     @PutMapping("/hospital/settings/operations")
-    public ResponseEntity<?> updateOperationsSettings(java.security.Principal principal, @RequestBody com.hms.dto.HospitalSettingDTO dto) {
+    public ResponseEntity<?> updateOperationsSettings(java.security.Principal principal, @Valid @RequestBody com.hms.dto.HospitalSettingDTO dto) {
         try {
             if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
             return ResponseEntity.ok(authService.updateHospitalOperationsSettings(principal.getName(), dto));

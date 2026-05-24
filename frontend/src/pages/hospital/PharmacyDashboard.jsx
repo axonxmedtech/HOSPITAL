@@ -5,6 +5,7 @@ import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import authService from '../../services/authService';
 import MedicineMasterView from './pharmacy/MedicineMasterView';
+import ProfileModal from '../../components/ProfileModal';
 
 // Module Views
 import DashboardView from './pharmacy/DashboardView';
@@ -22,6 +23,7 @@ const PharmacyDashboard = () => {
     const navigate = useNavigate();
     const { success, error: toastError } = useToast();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [profileOpen, setProfileOpen] = useState(false);
 
     // Navigation State for sub-modules
     const [activeTab, setActiveTab] = useState('dashboard');
@@ -139,6 +141,7 @@ const PharmacyDashboard = () => {
                     title={`Pharmacy & Inventory Operations`}
                     user={user}
                     onLogout={handleLogout}
+                    onProfile={() => setProfileOpen(true)}
                     onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
                 />
 
@@ -162,6 +165,9 @@ const PharmacyDashboard = () => {
                     {renderContent()}
                 </main>
             </div>
+
+            {/* Profile Settings Modal */}
+            <ProfileModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
         </div>
     );
 };

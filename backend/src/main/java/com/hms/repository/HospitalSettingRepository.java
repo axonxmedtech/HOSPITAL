@@ -23,5 +23,5 @@ public interface HospitalSettingRepository extends JpaRepository<HospitalSetting
      * @param hospitalId database ID of the hospital
      * @return Optional containing the settings if found
      */
-    Optional<HospitalSetting> findByHospitalId(Long hospitalId);
+    Optional<HospitalSetting> findByHospital_Id(Long hospitalId);
 }

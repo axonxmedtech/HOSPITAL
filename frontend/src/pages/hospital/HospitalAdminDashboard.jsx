@@ -11,6 +11,7 @@ import OverviewDashboard from '../../components/OverviewDashboard';
 import AppointmentModal from '../../components/AppointmentModal';
 import PatientModal from '../../components/PatientModal';
 import PatientDetailsModal from '../../components/PatientDetailsModal';
+import ProfileModal from '../../components/ProfileModal';
 import ActionMenu from '../../components/ActionMenu';
 import StatusBadge from '../../components/StatusBadge';
 import DataTable from '../../components/DataTable';
@@ -109,6 +110,7 @@ const HospitalAdminDashboard = () => {
     const [editData, setEditData] = useState(null);
     const [patientDetailsModal, setPatientDetailsModal] = useState({ isOpen: false, patient: null });
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [profileOpen, setProfileOpen] = useState(false);
 
     // Help & Support state variables
     const [faqs, setFaqs] = useState([]);
@@ -834,7 +836,7 @@ const HospitalAdminDashboard = () => {
                     title={activeTab}
                     user={user}
                     onLogout={handleLogout}
-                    onProfile={() => console.log('Profile clicked')}
+                    onProfile={() => setProfileOpen(true)}
                     onSupport={() => setActiveTab('support')}
                     onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
                 />
@@ -1691,6 +1693,9 @@ const HospitalAdminDashboard = () => {
                     onClose={() => setPatientDetailsModal({ isOpen: false, patient: null })}
                 />
             )}
+
+            {/* Profile Settings Modal */}
+            <ProfileModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
         </div>
     );
 };
@@ -2534,18 +2539,18 @@ const AuditLogsTable = ({ auditLogs, startIndex = 0 }) => {
     const [page, setPage] = useState(0);
     const pageSize = 10;
 
-    // Helper function to format timestamp (unchanged)
-    const formatTimestamp = (timestamp) => {
-        const date = new Date(timestamp);
-        return date.toLocaleString('en-IN', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: true
+    // Helper: format date part only
+    const formatDate = (timestamp) => {
+        return new Date(timestamp).toLocaleDateString('en-IN', {
+            day: '2-digit', month: 'short', year: 'numeric'
         });
+    };
+
+    // Helper: format time part only
+    const formatTime = (timestamp) => {
+        return new Date(timestamp).toLocaleTimeString('en-IN', {
+            hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+        }).toUpperCase();
     };
 
     // Helper function to get action badge color (unchanged)
@@ -2562,9 +2567,10 @@ const AuditLogsTable = ({ auditLogs, startIndex = 0 }) => {
         columnHelper.accessor('timestamp', {
             header: 'TIMESTAMP',
             cell: info => (
-                <span className="text-sm text-gray-600">
-                    {formatTimestamp(info.getValue())}
-                </span>
+                <div>
+                    <p className="text-sm font-semibold text-gray-900">{formatDate(info.getValue())}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{formatTime(info.getValue())}</p>
+                </div>
             ),
         }),
         columnHelper.accessor('action', {

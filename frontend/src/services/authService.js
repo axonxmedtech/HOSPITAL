@@ -140,6 +140,19 @@ const authService = {
     },
 
     /**
+     * Update user profile on the server and update local storage
+     * 
+     * @param {Object} profileData - Profile update fields
+     * @returns {Promise} The updated user profile
+     */
+    updateProfile: async (profileData) => {
+        const response = await apiClient.put('/auth/profile', profileData);
+        // Sync local storage with updated details
+        authService.updateCurrentUser(response.data);
+        return response.data;
+    },
+
+    /**
      * Update local user storage with fresh data
      */
     updateCurrentUser: (newProfile) => {

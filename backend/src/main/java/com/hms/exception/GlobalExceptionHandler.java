@@ -24,6 +24,23 @@ import java.time.LocalDateTime;
 public class GlobalExceptionHandler {
 
     /**
+     * Handle AccessDeniedExceptions
+     * Returns 403 Forbidden with the error message
+     * 
+     * @param ex The exception
+     * @return ResponseEntity with error details
+     */
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<Object> handleAccessDeniedException(org.springframework.security.access.AccessDeniedException ex) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", java.time.LocalDateTime.now());
+        body.put("status", HttpStatus.FORBIDDEN.value());
+        body.put("error", "Forbidden");
+        body.put("message", ex.getMessage());
+        return new ResponseEntity<>(body, HttpStatus.FORBIDDEN);
+    }
+
+    /**
      * Handle generic RuntimeExceptions
      * Returns 400 Bad Request with the error message
      * 
