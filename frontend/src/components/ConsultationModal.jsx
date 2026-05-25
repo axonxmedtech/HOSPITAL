@@ -11,6 +11,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     const [patientDetails, setPatientDetails] = useState(null);
     const [loadingDetails, setLoadingDetails] = useState(false);
     const [showIpdAdmitModal, setShowIpdAdmitModal] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
 
     // Normalize patient prop when modal opens — don't mutate props
     // We'll compute a patient identifier (publicId or numeric id) when fetching details
@@ -116,6 +117,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     };
 
     const handleSubmit = async () => {
+        if (submitting) return;
         // Warning if user typed a medicine but didn't click Add
         if (newMedicine.medicineName) {
             toastError("Please click '+ Add Medicine' or clear the medicine fields before submitting.");
@@ -128,6 +130,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
 
         console.log("Submitting Consultation Data:", JSON.stringify(payload, null, 2));
 
+        setSubmitting(true);
         try {
             await hospitalService.submitConsultation(payload);
             success('Consultation submitted successfully');
@@ -136,6 +139,8 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         } catch (err) {
             console.error("Consultation failed", err);
             toastError(err.response?.data || 'Failed to submit consultation');
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -460,23 +465,32 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                         <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end space-x-3">
                             <button
                                 onClick={onClose}
-                                className="px-6 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition font-semibold"
+                                disabled={submitting}
+                                className={`px-6 py-2.5 border border-gray-300 text-gray-700 rounded-lg transition font-semibold ${submitting ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
                             >
                                 Cancel
                             </button>
                             {opd && (
                                 <button
                                     onClick={() => setShowIpdAdmitModal(true)}
-                                    className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-semibold shadow-md"
+                                    disabled={submitting}
+                                    className={`px-6 py-2.5 bg-blue-600 text-white rounded-lg transition font-semibold shadow-md ${submitting ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700'}`}
                                 >
                                     Admit to IPD
                                 </button>
                             )}
                             <button
                                 onClick={handleSubmit}
-                                className="px-6 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-semibold shadow-md"
+                                disabled={submitting}
+                                className={`px-6 py-2.5 text-white rounded-lg transition font-semibold shadow-md flex items-center gap-2 ${submitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
                             >
-                                Complete Consultation
+                                {submitting && (
+                                    <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                )}
+                                {submitting ? 'Submitting...' : 'Complete Consultation'}
                             </button>
                         </div>
                     </div>

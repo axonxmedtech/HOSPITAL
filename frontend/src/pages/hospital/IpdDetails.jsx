@@ -6,6 +6,7 @@ import wardService from '../../services/wardService';
 import { useToast } from '../../context/ToastContext';
 import PageHeader from '../../components/PageHeader';
 import EmptyState from '../../components/EmptyState';
+import { SkeletonDetailCard, SkeletonFormCard } from '../../components/Skeleton';
 
 const IpdDetails = () => {
     const { id } = useParams();
@@ -90,7 +91,7 @@ const IpdDetails = () => {
         load();
     }, [id]);
 
-    if (loading) return <div className="p-6">Loading...</div>;
+    if (loading) return <SkeletonDetailCard />;
     if (!data) return <EmptyState title="Not Found" message="IPD record not found" />;
 
     const onAddFollowUp = () => {
@@ -538,7 +539,7 @@ const IpdDetails = () => {
                     <div className="bg-white rounded-lg w-full max-w-2xl p-6">
                         <h3 className="text-lg font-semibold mb-3">IPD Bill</h3>
                         {billModal.loading ? (
-                            <div>Loading...</div>
+                            <SkeletonFormCard fields={3} />
                         ) : billModal.bill ? (
                             <div>
                                 <div className="mb-3 text-sm">

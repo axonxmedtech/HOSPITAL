@@ -3,7 +3,7 @@ import { createColumnHelper } from '@tanstack/react-table';
 import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
 
-const BillingTable = ({ billing, startIndex = 0, pagination, onUpdateStatus, onDownload }) => {
+const BillingTable = ({ billing, startIndex = 0, pagination, onUpdateStatus, onDownload, updatingBillId, downloadingBillId }) => {
     const [expandedIds, setExpandedIds] = useState([]);
 
     const toggleExpand = (id) => {
@@ -79,17 +79,19 @@ const BillingTable = ({ billing, startIndex = 0, pagination, onUpdateStatus, onD
                     {(info.row.original.paymentStatus === 'PENDING' || info.row.original.paymentStatus === 'PARTIAL') && (
                         <button
                             onClick={() => onUpdateStatus(info.row.original.id, 'PAID', info.row.original)}
-                            className="bg-gray-100 text-gray-700 hover:bg-gray-200 px-3 py-1 rounded-md text-sm font-medium transition-colors"
+                            disabled={!!updatingBillId}
+                            className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${updatingBillId === info.row.original.id ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : updatingBillId ? 'opacity-50 cursor-not-allowed bg-gray-100 text-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                         >
-                            Mark Paid
+                            {updatingBillId === info.row.original.id ? 'Processing...' : 'Mark Paid'}
                         </button>
                     )}
                     {info.row.original.paymentStatus === 'PAID' && (
                         <button
                             onClick={() => onDownload(info.row.original.id)}
-                            className="bg-gray-100 text-gray-700 hover:bg-gray-200 px-3 py-1 rounded-md text-sm font-medium transition-colors flex items-center gap-1"
+                            disabled={!!downloadingBillId}
+                            className={`px-3 py-1 rounded-md text-sm font-medium transition-colors flex items-center gap-1 ${downloadingBillId === info.row.original.id ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : downloadingBillId ? 'opacity-50 cursor-not-allowed bg-gray-100 text-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                         >
-                            <span>Download</span>
+                            <span>{downloadingBillId === info.row.original.id ? 'Downloading...' : 'Download'}</span>
                         </button>
                     )}
                 </div>

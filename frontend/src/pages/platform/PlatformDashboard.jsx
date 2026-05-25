@@ -13,6 +13,7 @@ import EmptyState from '../../components/EmptyState';
 import { useToast } from '../../context/ToastContext';
 import { createColumnHelper } from '@tanstack/react-table';
 import ProfileModal from '../../components/ProfileModal';
+import { SkeletonTable, SkeletonDashboard, SkeletonStatsGrid } from '../../components/Skeleton';
 
 /**
  * PlatformDashboard - Super Admin dashboard
@@ -185,12 +186,17 @@ const PlatformDashboard = () => {
         }
     };
 
+    const [resolvingTicketId, setResolvingTicketId] = useState(null);
     const handleResolveTicket = async (ticketId) => {
+        if (resolvingTicketId) return;
+        setResolvingTicketId(ticketId);
         try {
             await platformService.resolveTicket(ticketId);
             loadTickets();
         } catch {
             setError('Failed to resolve ticket');
+        } finally {
+            setResolvingTicketId(null);
         }
     };
 
@@ -553,8 +559,8 @@ const PlatformDashboard = () => {
                                 </div>
                                 
                                 {loading ? (
-                                    <div className="flex justify-center items-center h-32">
-                                        <div className="w-8 h-8 border-2 border-gray-200 border-t-gray-900 animate-spin"></div>
+                                    <div className="p-2">
+                                        <SkeletonTable rows={5} cols={5} />
                                     </div>
                                 ) : hospitals.length > 0 ? (
                                     <div className="overflow-x-auto">
@@ -662,12 +668,7 @@ const PlatformDashboard = () => {
 
                     {/* Content Sections */}
                     {loading ? (
-                        <div className="flex justify-center items-center h-64">
-                            <div className="text-center">
-                                <div className="w-8 h-8 border-2 border-gray-200 border-t-gray-900 animate-spin mx-auto mb-4"></div>
-                                <p className="text-gray-600">Loading platform data...</p>
-                            </div>
-                        </div>
+                        <SkeletonDashboard statCount={3} tableRows={6} tableCols={7} />
                     ) : activeTab === 'hospitals' ? (
                         <div className="bg-white border border-gray-200">
                             <HospitalsTable
@@ -695,6 +696,7 @@ const PlatformDashboard = () => {
                             tickets={tickets}
                             loading={ticketsLoading}
                             onResolve={handleResolveTicket}
+                            resolvingId={resolvingTicketId}
                         />
                     ) : activeTab === 'faqs' ? (
                         <FaqsTable
@@ -1470,7 +1472,7 @@ const SuperAdminProfileModal = ({ user, onClose }) => {
 }; // end SuperAdminProfileModal
 
 // TicketsTable Component
-const TicketsTable = ({ tickets, loading, onResolve }) => {
+const TicketsTable = ({ tickets, loading, onResolve, resolvingId }) => {
     const priorityBadge = (p) => {
         if (p === 'HIGH')   return 'bg-red-100 text-red-700 border-red-200';
         if (p === 'MEDIUM') return 'bg-yellow-100 text-yellow-700 border-yellow-200';
@@ -1483,9 +1485,8 @@ const TicketsTable = ({ tickets, loading, onResolve }) => {
     };
 
     if (loading) return (
-        <div className="bg-white border border-gray-200 p-12 text-center">
-            <div className="w-8 h-8 border-2 border-gray-200 border-t-gray-900 animate-spin mx-auto mb-3"></div>
-            <p className="text-sm text-gray-500">Loading tickets...</p>
+        <div className="bg-white border border-gray-200 rounded-xl p-2">
+            <SkeletonTable rows={4} cols={7} />
         </div>
     );
 
@@ -1550,9 +1551,10 @@ const TicketsTable = ({ tickets, loading, onResolve }) => {
                                 {ticket.status !== 'RESOLVED' ? (
                                     <button
                                         onClick={() => onResolve(ticket.id)}
-                                        className="px-3 py-1.5 text-xs font-semibold bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+                                        disabled={!!resolvingId}
+                                        className={`px-3 py-1.5 text-xs font-semibold border rounded-lg transition-colors ${resolvingId === ticket.id ? 'bg-gray-200 text-gray-400 border-gray-200 cursor-not-allowed' : resolvingId ? 'opacity-50 cursor-not-allowed bg-green-50 text-green-700 border-green-200' : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'}`}
                                     >
-                                        Resolve
+                                        {resolvingId === ticket.id ? 'Resolving...' : 'Resolve'}
                                     </button>
                                 ) : (
                                     <span className="text-xs text-gray-400 italic">Closed</span>
@@ -1569,9 +1571,8 @@ const TicketsTable = ({ tickets, loading, onResolve }) => {
 // FaqsTable Component
 const FaqsTable = ({ faqs, loading, onDelete }) => {
     if (loading) return (
-        <div className="bg-white border border-gray-200 p-12 text-center">
-            <div className="w-8 h-8 border-2 border-gray-200 border-t-gray-900 animate-spin mx-auto mb-3"></div>
-            <p className="text-sm text-gray-500">Loading FAQs...</p>
+        <div className="bg-white border border-gray-200 rounded-xl p-2">
+            <SkeletonTable rows={3} cols={4} />
         </div>
     );
 

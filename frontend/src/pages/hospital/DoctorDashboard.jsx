@@ -21,6 +21,7 @@ import AppointmentModal from '../../components/AppointmentModal';
 import PatientModal from '../../components/PatientModal';
 import PatientDetailsModal from '../../components/PatientDetailsModal';
 import ProfileModal from '../../components/ProfileModal';
+import { SkeletonDashboard } from '../../components/Skeleton';
 
 /**
  * DoctorDashboard - Doctor dashboard
@@ -439,7 +440,10 @@ const DoctorDashboard = () => {
         }
     };
 
+    const [docDownloadingId, setDocDownloadingId] = useState(null);
     const handleDownloadReceipt = async (id) => {
+        if (docDownloadingId) return;
+        setDocDownloadingId(id);
         try {
             const blob = await hospitalService.downloadReceipt(id);
             const url = window.URL.createObjectURL(blob);
@@ -451,10 +455,16 @@ const DoctorDashboard = () => {
             link.remove();
         } catch (err) {
             toastError('Failed to download receipt');
+        } finally {
+            setDocDownloadingId(null);
         }
     };
 
+    const [docPaymentProcessing, setDocPaymentProcessing] = useState(false);
+
     const handleProcessPayment = async (method) => {
+        if (docPaymentProcessing) return;
+        setDocPaymentProcessing(method);
         try {
             const pm = method === 'Online' ? 'UPI' : 'CASH';
             let reference = null;
@@ -462,6 +472,7 @@ const DoctorDashboard = () => {
                 reference = window.prompt('Enter UTR / transaction reference (required for UPI):');
                 if (!reference || !reference.trim()) {
                     toastError('UTR / reference is required for UPI payments');
+                    setDocPaymentProcessing(false);
                     return;
                 }
             }
@@ -480,6 +491,8 @@ const DoctorDashboard = () => {
             loadData();
         } catch (err) {
             toastError("Failed to process payment");
+        } finally {
+            setDocPaymentProcessing(false);
         }
     };
 
@@ -585,9 +598,13 @@ const DoctorDashboard = () => {
         }
     };
 
+    const [startingConsultationId, setStartingConsultationId] = useState(null);
+
     // Patient consultation handlers
     const handleStartConsultation = async (patient) => {
+        if (startingConsultationId) return;
         console.log("handleStartConsultation called for:", patient);
+        setStartingConsultationId(patient.publicId || patient.id);
         try {
             // Update status to CONSULTING
             await hospitalService.startConsultation(patient.publicId);
@@ -604,6 +621,8 @@ const DoctorDashboard = () => {
             // Still open modal to allow doctor to proceed even if status update fails?
             // Maybe safer to still open it
             setConsultationModal({ isOpen: true, patient });
+        } finally {
+            setStartingConsultationId(null);
         }
     };
 
@@ -911,7 +930,8 @@ const DoctorDashboard = () => {
                                                                         {q.opd?.status === 'QUEUED' ? (
                                                                             <button
                                                                                 onClick={() => handleStartOpdConsultation(q.opd)}
-                                                                                className="px-3 py-1 bg-gray-900 hover:bg-gray-800 text-white font-semibold rounded-lg transition-colors cursor-pointer"
+                                                                                disabled={!!startingConsultationId}
+                                                                                className={`px-3 py-1 font-semibold rounded-lg transition-colors cursor-pointer ${startingConsultationId ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-gray-900 hover:bg-gray-800 text-white'}`}
                                                                             >
                                                                                 Consult
                                                                             </button>
@@ -997,9 +1017,7 @@ const DoctorDashboard = () => {
                     )}
 
                     {loading ? (
-                        <div className="flex justify-center items-center h-64">
-                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500"></div>
-                        </div>
+                        <SkeletonDashboard statCount={5} tableRows={6} tableCols={5} gridCols="md:grid-cols-5" />
                     ) : (
                         <>
                             {activeTab !== 'overview' && (
@@ -1187,6 +1205,7 @@ const DoctorDashboard = () => {
                                             pagination={pagination}
                                             onUpdateStatus={handleBillStatus}
                                             onDownload={handleDownloadReceipt}
+                                            downloadingBillId={docDownloadingId}
                                         />
                                     )
                                 )}
@@ -1472,15 +1491,17 @@ const DoctorDashboard = () => {
                                     <div className="grid grid-cols-2 gap-4">
                                         <button
                                             onClick={() => handleProcessPayment('Cash')}
-                                            className="px-4 py-3 rounded-xl border border-gray-300 hover:bg-gray-50 transition-all font-bold text-gray-800 text-sm flex flex-col items-center gap-1.5"
+                                            disabled={!!docPaymentProcessing}
+                                            className={`px-4 py-3 rounded-xl border transition-all font-bold text-sm flex flex-col items-center gap-1.5 ${docPaymentProcessing ? 'opacity-50 cursor-not-allowed border-gray-200' : 'border-gray-300 hover:bg-gray-50 text-gray-800'}`}
                                         >
-                                            💵 Pay Cash
+                                            {docPaymentProcessing === 'Cash' ? '⏳ Processing...' : '💵 Pay Cash'}
                                         </button>
                                         <button
                                             onClick={() => handleProcessPayment('Online')}
-                                            className="px-4 py-3 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-sm transition-all flex flex-col items-center gap-1.5"
+                                            disabled={!!docPaymentProcessing}
+                                            className={`px-4 py-3 rounded-xl text-white font-bold text-sm transition-all flex flex-col items-center gap-1.5 ${docPaymentProcessing ? 'bg-gray-400 cursor-not-allowed' : 'bg-sky-600 hover:bg-sky-700'}`}
                                         >
-                                            📱 Pay Online (UPI)
+                                            {docPaymentProcessing === 'Online' ? '⏳ Processing...' : '📱 Pay Online (UPI)'}
                                         </button>
                                     </div>
                                 </div>

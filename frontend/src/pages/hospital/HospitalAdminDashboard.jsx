@@ -23,6 +23,7 @@ import Navbar from '../../components/Navbar';
 import PageHeader from '../../components/PageHeader';
 import WardsAndBeds from './WardsAndBeds';
 import WardModal from '../../components/WardModal';
+import { SkeletonDashboard, SkeletonFormCard, SkeletonSettingsCard, SkeletonTable } from '../../components/Skeleton';
 /**
  * HospitalAdminDashboard - Hospital Admin dashboard
  * 
@@ -748,7 +749,10 @@ const HospitalAdminDashboard = () => {
         onPageChange: (newPage) => setPage(newPage)
     };
 
+    const [billStatusUpdating, setBillStatusUpdating] = useState(null);
     const handleBillStatus = async (id, status) => {
+        if (billStatusUpdating) return;
+        setBillStatusUpdating(id);
         try {
             if (status === 'PAID') {
                 const isUpi = window.confirm('Was the payment made via UPI? Click OK for UPI, Cancel for Cash.');
@@ -758,6 +762,7 @@ const HospitalAdminDashboard = () => {
                     reference = window.prompt('Enter UTR / transaction reference (required for UPI):');
                     if (!reference || !reference.trim()) {
                         toastError('UTR / reference is required for UPI payments');
+                        setBillStatusUpdating(null);
                         return;
                     }
                 }
@@ -769,10 +774,15 @@ const HospitalAdminDashboard = () => {
             loadData();
         } catch (err) {
             toastError('Failed to update bill status');
+        } finally {
+            setBillStatusUpdating(null);
         }
     };
 
+    const [downloadingReceiptId, setDownloadingReceiptId] = useState(null);
     const handleDownloadReceipt = async (id) => {
+        if (downloadingReceiptId) return;
+        setDownloadingReceiptId(id);
         try {
             const blob = await hospitalService.downloadReceipt(id);
             const url = window.URL.createObjectURL(blob);
@@ -784,6 +794,8 @@ const HospitalAdminDashboard = () => {
             link.remove();
         } catch (err) {
             toastError('Failed to download receipt');
+        } finally {
+            setDownloadingReceiptId(null);
         }
     };
 
@@ -1031,9 +1043,7 @@ const HospitalAdminDashboard = () => {
                     {/* Error Banner Removed - Using Toasts now */}
 
                     {loading ? (
-                        <div className="flex justify-center items-center h-64">
-                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500"></div>
-                        </div>
+                        <SkeletonDashboard statCount={3} tableRows={6} tableCols={5} />
                     ) : (
                         <>
                             {/* Overview tab content already rendered above */}
@@ -1107,16 +1117,15 @@ const HospitalAdminDashboard = () => {
                                         pagination={pagination}
                                         onUpdateStatus={handleBillStatus}
                                         onDownload={handleDownloadReceipt}
+                                        updatingBillId={billStatusUpdating}
+                                        downloadingBillId={downloadingReceiptId}
                                     />
                                 )}
                                 {activeTab === 'fees' && (
                                     <div className="p-6">
                                         <h2 className="text-xl font-bold mb-4">Hospital Fees</h2>
                                         {feesLoading ? (
-                                            <div className="flex items-center">
-                                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-500 mr-3"></div>
-                                                <div className="text-sm text-gray-600">Loading fees...</div>
-                                            </div>
+                                            <SkeletonFormCard fields={2} />
                                         ) : (
                                             <div className="max-w-md space-y-4">
                                                 <div>
@@ -1167,10 +1176,7 @@ const HospitalAdminDashboard = () => {
                                         <p className="text-sm text-gray-500 mb-8">Configure operational scenarios, staff access permissions, and billing responsibilities.</p>
                                         
                                         {settingsLoading ? (
-                                            <div className="flex items-center justify-center p-12">
-                                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-600 mr-3"></div>
-                                                <div className="text-sm text-gray-600 font-medium">Updating operations...</div>
-                                            </div>
+                                            <SkeletonSettingsCard />
                                         ) : (
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                                 {/* Receptionist Access Card */}
@@ -1374,9 +1380,7 @@ const HospitalAdminDashboard = () => {
                                     </div>
 
                                     {supportLoading ? (
-                                        <div className="flex justify-center items-center h-96">
-                                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-600"></div>
-                                        </div>
+                                        <SkeletonTable rows={4} cols={6} />
                                     ) : (
                                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                                             {/* Left 7 Columns: FAQs */}

@@ -21,6 +21,7 @@ import { createColumnHelper } from '@tanstack/react-table';
 import PrescriptionModal from '../../components/PrescriptionModal';
 import PrescriptionViewModal from '../../components/PrescriptionViewModal';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
+import { SkeletonDashboard } from '../../components/Skeleton';
 
 const ReceptionistDashboard = () => {
     const user = authService.getCurrentUser();
@@ -55,6 +56,7 @@ const ReceptionistDashboard = () => {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isAddPatientModalOpen, setIsAddPatientModalOpen] = useState(false);
     const [isOpdModalOpen, setIsOpdModalOpen] = useState(false);
+    const [opdSubmitting, setOpdSubmitting] = useState(false);
     const [isIpdAdmitOpen, setIsIpdAdmitOpen] = useState(false);
     const [ipdOpdForAdmit, setIpdOpdForAdmit] = useState(null);
     const [opdForm, setOpdForm] = useState({
@@ -385,7 +387,10 @@ const ReceptionistDashboard = () => {
         }
     };
 
+    const [recDownloadingId, setRecDownloadingId] = useState(null);
     const handleDownloadReceipt = async (id) => {
+        if (recDownloadingId) return;
+        setRecDownloadingId(id);
         try {
             const blob = await hospitalService.downloadReceipt(id);
             const url = window.URL.createObjectURL(blob);
@@ -397,6 +402,8 @@ const ReceptionistDashboard = () => {
             link.remove();
         } catch (err) {
             toastError('Failed to download receipt');
+        } finally {
+            setRecDownloadingId(null);
         }
     };
 
@@ -470,7 +477,11 @@ const ReceptionistDashboard = () => {
         });
     };
 
+    const [paymentProcessing, setPaymentProcessing] = useState(false);
+
     const handleProcessPayment = async (method) => {
+        if (paymentProcessing) return;
+        setPaymentProcessing(method);
         try {
             const pm = method === 'Online' ? 'UPI' : 'CASH';
             let reference = null;
@@ -478,6 +489,7 @@ const ReceptionistDashboard = () => {
                 reference = window.prompt('Enter UTR / transaction reference (required for UPI):');
                 if (!reference || !reference.trim()) {
                     toastError('UTR / reference is required for UPI payments');
+                    setPaymentProcessing(false);
                     return;
                 }
             }
@@ -496,6 +508,8 @@ const ReceptionistDashboard = () => {
             loadData();
         } catch (err) {
             toastError("Failed to process payment");
+        } finally {
+            setPaymentProcessing(false);
         }
     };
 
@@ -913,9 +927,7 @@ const ReceptionistDashboard = () => {
                     )}
 
                     {loading ? (
-                        <div className="flex justify-center items-center h-64">
-                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500"></div>
-                        </div>
+                        <SkeletonDashboard statCount={4} tableRows={6} tableCols={5} gridCols="md:grid-cols-4" />
                             ) : (
                                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
                             {activeTab === 'appointments' && (
@@ -1121,6 +1133,7 @@ const ReceptionistDashboard = () => {
                                     pagination={pagination}
                                     onUpdateStatus={handleBillStatus}
                                     onDownload={handleDownloadReceipt}
+                                    downloadingBillId={recDownloadingId}
                                 />
                             )}
                         </div>
@@ -1188,10 +1201,12 @@ const ReceptionistDashboard = () => {
                         </div>
                         <form onSubmit={async (e) => {
                             e.preventDefault();
+                            if (opdSubmitting) return;
                             if (!opdForm.patientId) {
                                 toastError('Please select a valid patient from the suggestions');
                                 return;
                             }
+                            setOpdSubmitting(true);
                             try {
                                 const payload = {
                                     patientId: opdForm.patientId,
@@ -1212,6 +1227,8 @@ const ReceptionistDashboard = () => {
                             } catch (err) {
                                 console.error('Failed to create OPD', err);
                                 toastError('Failed to create OPD');
+                            } finally {
+                                setOpdSubmitting(false);
                             }
                         }} className="p-6 space-y-4 max-h-[76vh] overflow-auto">
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1334,8 +1351,16 @@ const ReceptionistDashboard = () => {
                             </div>
 
                             <div className="flex gap-4 pt-4">
-                                <button type="button" onClick={() => setIsOpdModalOpen(false)} className="flex-1 py-2 rounded-lg border">Cancel</button>
-                                <button type="submit" className="flex-1 py-2 rounded-lg bg-gray-900 text-white">Create OPD</button>
+                                <button type="button" onClick={() => setIsOpdModalOpen(false)} disabled={opdSubmitting} className={`flex-1 py-2 rounded-lg border ${opdSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}>Cancel</button>
+                                <button type="submit" disabled={opdSubmitting} className={`flex-1 py-2 rounded-lg text-white flex items-center justify-center gap-2 ${opdSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-900'}`}>
+                                    {opdSubmitting && (
+                                        <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                    )}
+                                    {opdSubmitting ? 'Creating...' : 'Create OPD'}
+                                </button>
                             </div>
                         </form>
                     </div>
@@ -1414,15 +1439,17 @@ const ReceptionistDashboard = () => {
                                             <div className="grid grid-cols-2 gap-3">
                                                 <button
                                                     onClick={() => handleProcessPayment('Cash')}
-                                                    className="flex items-center justify-center gap-2 p-3 border rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors group"
+                                                    disabled={paymentProcessing}
+                                                    className={`flex items-center justify-center gap-2 p-3 border rounded-lg transition-colors group ${paymentProcessing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50 hover:border-gray-300'}`}
                                                 >
-                                                    <span className="font-medium text-gray-700">Cash</span>
+                                                    <span className="font-medium text-gray-700">{paymentProcessing === 'Cash' ? 'Processing...' : 'Cash'}</span>
                                                 </button>
                                                 <button
                                                     onClick={() => handleProcessPayment('Online')}
-                                                    className="flex items-center justify-center gap-2 p-3 border rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors group"
+                                                    disabled={paymentProcessing}
+                                                    className={`flex items-center justify-center gap-2 p-3 border rounded-lg transition-colors group ${paymentProcessing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50 hover:border-gray-300'}`}
                                                 >
-                                                    <span className="font-medium text-gray-700">Online/UPI</span>
+                                                    <span className="font-medium text-gray-700">{paymentProcessing === 'Online' ? 'Processing...' : 'Online/UPI'}</span>
                                                 </button>
                                             </div>
                                         </div>

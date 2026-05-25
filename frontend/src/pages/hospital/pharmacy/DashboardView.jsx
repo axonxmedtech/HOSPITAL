@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import inventoryApi from '../../../services/pharmacy/inventoryApi';
 import salesApi from '../../../services/pharmacy/salesApi';
+import { SkeletonTableRow } from '../../../components/Skeleton';
 
 const DashboardView = ({ onNavigate }) => {
     const [loading, setLoading] = useState(true);
@@ -172,11 +173,11 @@ const DashboardView = ({ onNavigate }) => {
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
                                     {loading ? (
-                                        <tr>
-                                            <td colSpan={5} className="p-8 text-center text-gray-400">
-                                                Checking inventory levels...
-                                            </td>
-                                        </tr>
+                                        <>{
+                                            Array.from({ length: 3 }).map((_, i) => (
+                                                <SkeletonTableRow key={i} cols={5} delay={i} />
+                                            ))
+                                        }</>
                                     ) : lowStockItems.length > 0 ? lowStockItems.map((stock) => (
                                         <tr key={stock.id} className="hover:bg-gray-50 transition-colors">
                                             <td className="px-4 py-3">

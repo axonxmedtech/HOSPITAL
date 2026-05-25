@@ -5,6 +5,7 @@ import {
     flexRender,
 } from '@tanstack/react-table';
 import classNames from 'classnames';
+import { SkeletonTable } from './Skeleton';
 
 const DataTable = ({ data, columns, pagination, loading, emptyState, expandedRowIds = [], renderExpandedRow = null, idAccessor = 'id' }) => {
     const table = useReactTable({
@@ -16,8 +17,8 @@ const DataTable = ({ data, columns, pagination, loading, emptyState, expandedRow
 
     if (loading) {
         return (
-            <div className="flex justify-center items-center h-64">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500"></div>
+            <div className="animate-fade-in-up">
+                <SkeletonTable rows={6} cols={columns.length || 5} />
             </div>
         );
     }

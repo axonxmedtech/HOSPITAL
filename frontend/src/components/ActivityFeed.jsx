@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import hospitalService from '../services/hospitalService';
+import { SkeletonFeed } from './Skeleton';
 
 const ActivityFeed = () => {
     const [logs, setLogs] = useState([]);
@@ -40,7 +41,7 @@ const ActivityFeed = () => {
         return date.toLocaleString();
     };
 
-    if (loading) return <div className="text-gray-500 text-sm p-4">Loading activity...</div>;
+    if (loading) return <div className="p-4"><SkeletonFeed count={4} /></div>;
     if (error) return <div className="text-red-500 text-sm p-4">{error}</div>;
     if (logs.length === 0) return <div className="text-gray-400 text-sm p-4">No recent activity</div>;
 
