@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from '../../../context/ToastContext';
 import reportsApi from '../../../services/pharmacy/reportsApi';
+import { SkeletonDashboard } from '../../../components/Skeleton';
 
 const ReportsView = () => {
     const { success, error: toastError } = useToast();
@@ -49,7 +50,10 @@ const ReportsView = () => {
         }
     };
 
+    const [exporting, setExporting] = useState(false);
     const handleExport = async () => {
+        if (exporting) return;
+        setExporting(true);
         try {
             const blob = await reportsApi.exportLedgerCsv();
             const url = window.URL.createObjectURL(blob);
@@ -63,18 +67,13 @@ const ReportsView = () => {
         } catch (err) {
             console.error('Failed to export reports:', err);
             toastError('Failed to export financial reports');
+        } finally {
+            setExporting(false);
         }
     };
 
     if (loading) {
-        return (
-            <div className="flex justify-center items-center h-96 bg-white rounded-lg border border-gray-200 shadow-sm">
-                <div className="flex flex-col items-center gap-3">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
-                    <p className="text-sm font-semibold text-gray-500">Compiling real-time analytics...</p>
-                </div>
-            </div>
-        );
+        return <SkeletonDashboard statCount={4} tableRows={5} tableCols={4} gridCols="md:grid-cols-2 lg:grid-cols-4" />;
     }
 
     // Helper to format values as INR Currency
@@ -109,12 +108,20 @@ const ReportsView = () => {
                     </button>
                     <button 
                         onClick={handleExport}
-                        className="px-4 py-2 bg-gray-900 text-white text-sm font-bold rounded hover:bg-gray-800 flex items-center gap-2 transition-all duration-200 hover:shadow-md"
+                        disabled={exporting}
+                        className={`px-4 py-2 text-white text-sm font-bold rounded flex items-center gap-2 transition-all duration-200 ${exporting ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-900 hover:bg-gray-800 hover:shadow-md'}`}
                     >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                        </svg>
-                        Export Tax Ledger
+                        {exporting ? (
+                            <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        ) : (
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                        )}
+                        {exporting ? 'Exporting...' : 'Export Tax Ledger'}
                     </button>
                 </div>
             </div>

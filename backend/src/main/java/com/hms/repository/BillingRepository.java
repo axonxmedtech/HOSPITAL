@@ -30,4 +30,12 @@ public interface BillingRepository extends JpaRepository<Billing, Long> {
     java.util.Optional<Billing> findTopByPatientIdOrderByCreatedAtDesc(Long patientId);
 
     java.util.List<Billing> findByIpdAdmissionId(Long ipdAdmissionId);
+
+    boolean existsByAppointmentId(Long appointmentId);
+
+    boolean existsByOpdId(Long opdId);
+
+    java.util.Optional<Billing> findByAppointmentId(Long appointmentId);
+
+    java.util.Optional<Billing> findByOpdId(Long opdId);
 }

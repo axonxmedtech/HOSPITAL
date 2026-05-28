@@ -13,6 +13,7 @@ import EmptyState from '../../components/EmptyState';
 import { useToast } from '../../context/ToastContext';
 import { createColumnHelper } from '@tanstack/react-table';
 import ProfileModal from '../../components/ProfileModal';
+import { SkeletonTable, SkeletonDashboard, SkeletonStatsGrid } from '../../components/Skeleton';
 
 /**
  * PlatformDashboard - Super Admin dashboard
@@ -64,7 +65,8 @@ const PlatformDashboard = () => {
         adminName: '',
         adminEmail: '',
         adminPassword: '',
-        modules: ['OPD', 'BILLING'] // Default modules
+        modules: ['OPD', 'BILLING'], // Default modules
+        isSingleDoctor: false
     });
     const [errors, setErrors] = useState({}); // Field-level errors
 
@@ -88,7 +90,8 @@ const PlatformDashboard = () => {
         modules: [],
         name: '',
         adminEmail: '',
-        adminName: ''
+        adminName: '',
+        isSingleDoctor: false
     });
 
     // Password Reset Modal State
@@ -185,12 +188,17 @@ const PlatformDashboard = () => {
         }
     };
 
+    const [resolvingTicketId, setResolvingTicketId] = useState(null);
     const handleResolveTicket = async (ticketId) => {
+        if (resolvingTicketId) return;
+        setResolvingTicketId(ticketId);
         try {
             await platformService.resolveTicket(ticketId);
             loadTickets();
         } catch {
             setError('Failed to resolve ticket');
+        } finally {
+            setResolvingTicketId(null);
         }
     };
 
@@ -292,7 +300,8 @@ const PlatformDashboard = () => {
                         adminName: '',
                         adminEmail: '',
                         adminPassword: '',
-                        modules: ['OPD', 'BILLING'] // Reset to defaults
+                        modules: ['OPD', 'BILLING'], // Reset to defaults
+                        isSingleDoctor: false
                     });
                     loadHospitals(); // Reload hospitals list
                 } catch (err) {
@@ -324,15 +333,18 @@ const PlatformDashboard = () => {
         try {
             const hospitalId = editHospitalModal.hospital.publicId || editHospitalModal.hospital.id;
 
-            // Update Details (Name & Email & Admin Name)
+            // Update Details (Name & Email & Admin Name & Single Doctor status)
             if (editHospitalModal.name !== editHospitalModal.hospital.name ||
                 editHospitalModal.adminEmail !== editHospitalModal.hospital.adminEmail ||
-                editHospitalModal.adminName !== editHospitalModal.hospital.adminName) {
+                editHospitalModal.adminName !== editHospitalModal.hospital.adminName ||
+                editHospitalModal.isSingleDoctor !== editHospitalModal.hospital.isSingleDoctor) {
                 await platformService.updateHospitalDetails(
                     hospitalId,
                     editHospitalModal.name,
                     editHospitalModal.adminEmail,
-                    editHospitalModal.adminName
+                    editHospitalModal.adminName,
+                    '', // reason
+                    editHospitalModal.isSingleDoctor
                 );
             }
 
@@ -370,7 +382,8 @@ const PlatformDashboard = () => {
                 modules: details.modules || [],
                 name: details.name,
                 adminEmail: details.adminEmail || '',
-                adminName: details.adminName || ''
+                adminName: details.adminName || '',
+                isSingleDoctor: details.isSingleDoctor || false
             });
         } catch (err) {
             setError('Failed to fetch hospital details');
@@ -553,8 +566,8 @@ const PlatformDashboard = () => {
                                 </div>
                                 
                                 {loading ? (
-                                    <div className="flex justify-center items-center h-32">
-                                        <div className="w-8 h-8 border-2 border-gray-200 border-t-gray-900 animate-spin"></div>
+                                    <div className="p-2">
+                                        <SkeletonTable rows={5} cols={5} />
                                     </div>
                                 ) : hospitals.length > 0 ? (
                                     <div className="overflow-x-auto">
@@ -662,12 +675,7 @@ const PlatformDashboard = () => {
 
                     {/* Content Sections */}
                     {loading ? (
-                        <div className="flex justify-center items-center h-64">
-                            <div className="text-center">
-                                <div className="w-8 h-8 border-2 border-gray-200 border-t-gray-900 animate-spin mx-auto mb-4"></div>
-                                <p className="text-gray-600">Loading platform data...</p>
-                            </div>
-                        </div>
+                        <SkeletonDashboard statCount={3} tableRows={6} tableCols={7} />
                     ) : activeTab === 'hospitals' ? (
                         <div className="bg-white border border-gray-200">
                             <HospitalsTable
@@ -695,6 +703,7 @@ const PlatformDashboard = () => {
                             tickets={tickets}
                             loading={ticketsLoading}
                             onResolve={handleResolveTicket}
+                            resolvingId={resolvingTicketId}
                         />
                     ) : activeTab === 'faqs' ? (
                         <FaqsTable
@@ -841,6 +850,23 @@ const PlatformDashboard = () => {
                                         ))}
                                     </div>
                                     {formData.modules.length === 0 && <p className="mt-2 text-xs text-gray-600 font-medium">At least one module should be enabled.</p>}
+                                </div>
+
+                                <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                                    <label className="flex items-center space-x-2.5 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.isSingleDoctor}
+                                            onChange={(e) => {
+                                                setFormData({ ...formData, isSingleDoctor: e.target.checked });
+                                            }}
+                                            className="w-4 h-4 rounded text-gray-900 border-gray-300 focus:ring-gray-900"
+                                        />
+                                        <div>
+                                            <span className="text-sm font-bold text-gray-900">Single Doctor Hospital</span>
+                                            <p className="text-xs text-gray-500 mt-0.5">Enable unified doctor-admin dashboards for single-doctor clinics.</p>
+                                        </div>
+                                    </label>
                                 </div>
 
                                 <div className="flex gap-3 pt-4 border-t border-gray-200">
@@ -1021,6 +1047,23 @@ const PlatformDashboard = () => {
                                         ))}
                                     </div>
                                     {editHospitalModal.modules.length === 0 && <p className="mt-2 text-xs text-amber-600 font-medium">Warning: Disabling all modules may restrict access.</p>}
+                                </div>
+
+                                <div className="p-4 bg-gray-50 border border-gray-200 rounded-2xl">
+                                    <label className="flex items-center space-x-3 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={editHospitalModal.isSingleDoctor}
+                                            onChange={(e) => {
+                                                setEditHospitalModal({ ...editHospitalModal, isSingleDoctor: e.target.checked });
+                                            }}
+                                            className="w-4 h-4 text-gray-900 bg-gray-100 border-gray-300 rounded focus:ring-gray-900 focus:ring-2"
+                                        />
+                                        <div>
+                                            <span className="text-sm font-bold text-gray-900">Single Doctor Hospital</span>
+                                            <p className="text-xs text-gray-500 mt-0.5">Enable unified doctor-admin dashboards for single-doctor clinics.</p>
+                                        </div>
+                                    </label>
                                 </div>
 
                                 <div className="flex gap-4 pt-6 border-t border-gray-100">
@@ -1470,7 +1513,7 @@ const SuperAdminProfileModal = ({ user, onClose }) => {
 }; // end SuperAdminProfileModal
 
 // TicketsTable Component
-const TicketsTable = ({ tickets, loading, onResolve }) => {
+const TicketsTable = ({ tickets, loading, onResolve, resolvingId }) => {
     const priorityBadge = (p) => {
         if (p === 'HIGH')   return 'bg-red-100 text-red-700 border-red-200';
         if (p === 'MEDIUM') return 'bg-yellow-100 text-yellow-700 border-yellow-200';
@@ -1483,9 +1526,8 @@ const TicketsTable = ({ tickets, loading, onResolve }) => {
     };
 
     if (loading) return (
-        <div className="bg-white border border-gray-200 p-12 text-center">
-            <div className="w-8 h-8 border-2 border-gray-200 border-t-gray-900 animate-spin mx-auto mb-3"></div>
-            <p className="text-sm text-gray-500">Loading tickets...</p>
+        <div className="bg-white border border-gray-200 rounded-xl p-2">
+            <SkeletonTable rows={4} cols={7} />
         </div>
     );
 
@@ -1550,9 +1592,10 @@ const TicketsTable = ({ tickets, loading, onResolve }) => {
                                 {ticket.status !== 'RESOLVED' ? (
                                     <button
                                         onClick={() => onResolve(ticket.id)}
-                                        className="px-3 py-1.5 text-xs font-semibold bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+                                        disabled={!!resolvingId}
+                                        className={`px-3 py-1.5 text-xs font-semibold border rounded-lg transition-colors ${resolvingId === ticket.id ? 'bg-gray-200 text-gray-400 border-gray-200 cursor-not-allowed' : resolvingId ? 'opacity-50 cursor-not-allowed bg-green-50 text-green-700 border-green-200' : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'}`}
                                     >
-                                        Resolve
+                                        {resolvingId === ticket.id ? 'Resolving...' : 'Resolve'}
                                     </button>
                                 ) : (
                                     <span className="text-xs text-gray-400 italic">Closed</span>
@@ -1569,9 +1612,8 @@ const TicketsTable = ({ tickets, loading, onResolve }) => {
 // FaqsTable Component
 const FaqsTable = ({ faqs, loading, onDelete }) => {
     if (loading) return (
-        <div className="bg-white border border-gray-200 p-12 text-center">
-            <div className="w-8 h-8 border-2 border-gray-200 border-t-gray-900 animate-spin mx-auto mb-3"></div>
-            <p className="text-sm text-gray-500">Loading FAQs...</p>
+        <div className="bg-white border border-gray-200 rounded-xl p-2">
+            <SkeletonTable rows={3} cols={4} />
         </div>
     );
 
@@ -1674,6 +1716,18 @@ const HospitalsTable = ({ hospitals, hospitalPage, handleToggleStatus, openEditH
                         : 'bg-red-100 text-red-700 border-red-200'
                 }`}>
                     {info.getValue() ? 'Active' : 'Inactive'}
+                </span>
+            )
+        }),
+        columnHelper.accessor('isSingleDoctor', {
+            header: 'Single Doctor',
+            cell: info => (
+                <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full border ${
+                    info.getValue()
+                        ? 'bg-amber-100 text-amber-800 border-amber-200'
+                        : 'bg-slate-100 text-slate-600 border-slate-200'
+                }`}>
+                    {info.getValue() ? 'Yes' : 'No'}
                 </span>
             )
         }),

@@ -18,7 +18,17 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
         return <Navigate to="/login" replace />;
     }
     
-    if (allowedRoles && !allowedRoles.includes(user.role)) {
+    // In Single Doctor Hospital mode, the Hospital Admin role can access BOTH doctor and admin routes
+    // In Standalone Pharmacy Mode, the Hospital Admin role can access BOTH pharmacist and admin routes
+    const isAllowed = !allowedRoles || allowedRoles.some(role => {
+        if (role === user.role) return true;
+        if (role === 'DOCTOR' && user.role === 'HOSPITAL_ADMIN' && user.isSingleDoctor) return true;
+        const isStandalonePharmacy = user.modules?.includes('PHARMACY') && !user.modules?.includes('OPD');
+        if (role === 'PHARMACIST' && user.role === 'HOSPITAL_ADMIN' && isStandalonePharmacy) return true;
+        return false;
+    });
+
+    if (allowedRoles && !isAllowed) {
         return <Navigate to="/" replace />;
     }
     
@@ -33,8 +43,23 @@ const LandingRedirect = () => {
     switch (user.role) {
         case 'SUPER_ADMIN':
             return <Navigate to="/platform/dashboard" replace />;
-        case 'HOSPITAL_ADMIN':
+        case 'HOSPITAL_ADMIN': {
+            const isStandalonePharmacy = user.modules?.includes('PHARMACY') && !user.modules?.includes('OPD');
+            if (user.isSingleDoctor) {
+                const preference = sessionStorage.getItem('activeDashboard');
+                if (preference === 'admin') {
+                    return <Navigate to="/hospital/admin" replace />;
+                }
+                return <Navigate to="/hospital/doctor" replace />;
+            } else if (isStandalonePharmacy) {
+                const preference = sessionStorage.getItem('activeDashboard');
+                if (preference === 'admin') {
+                    return <Navigate to="/hospital/admin" replace />;
+                }
+                return <Navigate to="/hospital/pharmacy" replace />;
+            }
             return <Navigate to="/hospital/admin" replace />;
+        }
         case 'DOCTOR':
             return <Navigate to="/hospital/doctor" replace />;
         case 'RECEPTIONIST':

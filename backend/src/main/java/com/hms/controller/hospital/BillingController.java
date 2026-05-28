@@ -91,6 +91,7 @@ public class BillingController {
         mapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         for (com.hms.entity.Billing b : billsPage.getContent()) {
             java.util.List<com.hms.entity.BillingItem> items = billingItemRepository.findByBillingId(b.getId());
+            java.util.List<com.hms.entity.BillingMedicine> medicines = billingMedicineRepository.findByBillingId(b.getId());
             
             java.math.BigDecimal totalAmt = java.math.BigDecimal.ZERO;
             if (items != null && !items.isEmpty()) {
@@ -99,7 +100,15 @@ public class BillingController {
                         totalAmt = totalAmt.add(it.getAmount());
                     }
                 }
-            } else {
+            }
+            if (medicines != null && !medicines.isEmpty()) {
+                for (com.hms.entity.BillingMedicine med : medicines) {
+                    if (med.getAmount() != null) {
+                        totalAmt = totalAmt.add(med.getAmount());
+                    }
+                }
+            }
+            if (totalAmt.compareTo(java.math.BigDecimal.ZERO) == 0 && (items == null || items.isEmpty()) && (medicines == null || medicines.isEmpty())) {
                 totalAmt = b.getAmount() != null ? b.getAmount() : java.math.BigDecimal.ZERO;
                 if (totalAmt.compareTo(java.math.BigDecimal.ZERO) == 0 && "IPD".equalsIgnoreCase(b.getBillingType())) {
                     try {
@@ -128,6 +137,7 @@ public class BillingController {
 
             java.util.Map<String, Object> asMap = mapper.convertValue(b, java.util.Map.class);
             asMap.put("items", items);
+            asMap.put("medicines", medicines);
             asMap.put("amount", totalAmt);
             asMap.put("paidAmount", paidAmt);
             asMap.put("balance", totalAmt.subtract(paidAmt));
@@ -179,6 +189,9 @@ public class BillingController {
     private com.hms.repository.BillingItemRepository billingItemRepository;
 
     @Autowired
+    private com.hms.repository.BillingMedicineRepository billingMedicineRepository;
+
+    @Autowired
     private com.hms.repository.IpdAdmissionRepository ipdAdmissionRepository;
 
     @Autowired
@@ -225,6 +238,7 @@ public class BillingController {
             Billing bill = bills.get(0);
 
             List<BillingItem> items = billingItemRepository.findByBillingId(bill.getId());
+            List<com.hms.entity.BillingMedicine> medicines = billingMedicineRepository.findByBillingId(bill.getId());
             List<BillingPayment> payments = billingPaymentRepository.findByBillingId(bill.getId());
 
             BigDecimal total = BigDecimal.ZERO;
@@ -232,7 +246,13 @@ public class BillingController {
                 for (BillingItem it : items) {
                     if (it.getAmount() != null) total = total.add(it.getAmount());
                 }
-            } else {
+            }
+            if (medicines != null && !medicines.isEmpty()) {
+                for (com.hms.entity.BillingMedicine med : medicines) {
+                    if (med.getAmount() != null) total = total.add(med.getAmount());
+                }
+            }
+            if (total.compareTo(BigDecimal.ZERO) == 0 && (items == null || items.isEmpty()) && (medicines == null || medicines.isEmpty())) {
                 total = bill.getAmount() != null ? bill.getAmount() : BigDecimal.ZERO;
                 if (total.compareTo(BigDecimal.ZERO) == 0) {
                     try {
@@ -265,6 +285,17 @@ public class BillingController {
                 list.add(m);
             }
             resp.put("items", list);
+
+            java.util.List<Map<String,Object>> medList = new java.util.ArrayList<>();
+            for (com.hms.entity.BillingMedicine med : medicines) {
+                Map<String,Object> m = new HashMap<>();
+                m.put("medicineName", med.getMedicineName());
+                m.put("quantity", med.getQuantity());
+                m.put("unitPrice", med.getUnitPrice());
+                m.put("amount", med.getAmount());
+                medList.add(m);
+            }
+            resp.put("medicines", medList);
 
             return ResponseEntity.ok(resp);
         } catch (Exception e) {
@@ -305,12 +336,19 @@ public class BillingController {
 
             // recalc totals
             List<BillingItem> items = billingItemRepository.findByBillingId(billingId);
+            List<com.hms.entity.BillingMedicine> medicines = billingMedicineRepository.findByBillingId(billingId);
             BigDecimal total = BigDecimal.ZERO;
             if (items != null && !items.isEmpty()) {
                 for (BillingItem it : items) {
                     if (it.getAmount() != null) total = total.add(it.getAmount());
                 }
-            } else {
+            }
+            if (medicines != null && !medicines.isEmpty()) {
+                for (com.hms.entity.BillingMedicine med : medicines) {
+                    if (med.getAmount() != null) total = total.add(med.getAmount());
+                }
+            }
+            if (total.compareTo(BigDecimal.ZERO) == 0 && (items == null || items.isEmpty()) && (medicines == null || medicines.isEmpty())) {
                 total = bill.getAmount() != null ? bill.getAmount() : BigDecimal.ZERO;
             }
 

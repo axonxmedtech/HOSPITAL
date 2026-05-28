@@ -96,6 +96,13 @@ const getStatusConfig = (status) => {
             dot: 'bg-gray-500',
             icon: null
         },
+        'CLOSED': { 
+            bg: 'bg-gray-100', 
+            text: 'text-gray-700', 
+            border: 'border-gray-200',
+            dot: 'bg-gray-500',
+            icon: null
+        },
         'DRAFT': { 
             bg: 'bg-gray-100', 
             text: 'text-gray-700', 

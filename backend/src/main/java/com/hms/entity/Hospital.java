@@ -117,6 +117,12 @@ public class Hospital {
     @Column(name = "module_name")
     private java.util.List<String> modules = new java.util.ArrayList<>(java.util.Arrays.asList("OPD", "BILLING"));
 
+    /**
+     * Whether this hospital is a single doctor hospital.
+     */
+    @Column(name = "is_single_doctor", nullable = false)
+    private Boolean isSingleDoctor = false;
+
     public Long getId() {
         return id;
     }
@@ -219,5 +225,13 @@ public class Hospital {
 
     public void setModules(java.util.List<String> modules) {
         this.modules = modules;
+    }
+
+    public Boolean getIsSingleDoctor() {
+        return isSingleDoctor;
+    }
+
+    public void setIsSingleDoctor(Boolean isSingleDoctor) {
+        this.isSingleDoctor = isSingleDoctor;
     }
 }

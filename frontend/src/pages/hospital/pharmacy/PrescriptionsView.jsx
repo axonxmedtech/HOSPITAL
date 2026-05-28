@@ -1,8 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { format } from 'date-fns';
 import hospitalService from '../../../services/hospitalService';
+import { SkeletonTableRow } from '../../../components/Skeleton';
+import authService from '../../../services/authService';
+import useWebSocket from '../../../hooks/useWebSocket';
 
 const PrescriptionsView = () => {
+    const user = authService.getCurrentUser();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedPrescription, setSelectedPrescription] = useState(null);
     const [prescriptions, setPrescriptions] = useState([]);
@@ -10,12 +14,8 @@ const PrescriptionsView = () => {
     const [error, setError] = useState(null);
     const [sourceFilter, setSourceFilter] = useState('ALL');
 
-    useEffect(() => {
-        fetchData();
-    }, []);
-
-    const fetchData = async () => {
-        setLoading(true);
+    const fetchData = async (showSpinner = true) => {
+        if (showSpinner) setLoading(true);
         setError(null);
         try {
             const data = await hospitalService.getPendingPrescriptions();
@@ -24,9 +24,20 @@ const PrescriptionsView = () => {
             console.error("Error fetching prescriptions:", err);
             setError("Failed to load prescriptions. Please check backend connection.");
         } finally {
-            setLoading(false);
+            if (showSpinner) setLoading(false);
         }
     };
+
+    useEffect(() => {
+        fetchData(true);
+    }, []);
+
+    useWebSocket(user, null, () => {
+        if (!selectedPrescription) {
+            fetchData(false);
+        }
+    });
+
 
     // 1. Group raw prescription rows by medicalRecordId on frontend
     // Each consultation is one unique visual report for the user
@@ -141,14 +152,11 @@ const PrescriptionsView = () => {
                          </thead>
                          <tbody className="divide-y divide-gray-100 relative">
                             {loading ? (
-                                <tr>
-                                    <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
-                                        <div className="flex flex-col items-center justify-center gap-2">
-                                            <div className="w-6 h-6 border-2 border-gray-900 border-t-transparent rounded-full animate-spin"></div>
-                                            <span>Querying database...</span>
-                                        </div>
-                                    </td>
-                                </tr>
+                                <>{
+                                    Array.from({ length: 5 }).map((_, i) => (
+                                        <SkeletonTableRow key={i} cols={7} delay={i} />
+                                    ))
+                                }</>
                             ) : filteredPrescriptions.length > 0 ? filteredPrescriptions.map((p, idx) => (
                                 <tr key={p.id} className="hover:bg-gray-50 transition-colors">
                                     <td className="px-6 py-4 text-gray-500 font-medium">{idx + 1}</td>

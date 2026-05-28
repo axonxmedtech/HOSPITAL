@@ -42,4 +42,12 @@ public class HospitalSettingDTO {
         message = "billingHandler must be RECEPTIONIST or DOCTOR"
     )
     private String billingHandler;
+
+    private Boolean inClinic = true;
+
+    public HospitalSettingDTO(String receptionMode, String billingHandler) {
+        this.receptionMode = receptionMode;
+        this.billingHandler = billingHandler;
+        this.inClinic = true;
+    }
 }

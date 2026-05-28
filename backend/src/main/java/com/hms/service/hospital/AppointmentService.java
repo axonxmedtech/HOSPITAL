@@ -57,6 +57,9 @@ public class AppointmentService {
     @Autowired
     private com.hms.service.AuditLogService auditLogService;
 
+    @Autowired
+    private com.hms.security.HospitalWebSocketHandler webSocketHandler;
+
     /**
      * Create a new appointment
      * Validates that patient and doctor belong to the same hospital
@@ -183,6 +186,12 @@ public class AppointmentService {
                 appointment.getPatientId(), appointment.getDoctorId(), appointment.getAppointmentTime());
 
         Appointment savedAppointment = appointmentRepository.save(appointment);
+
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            // ignore
+        }
 
         return savedAppointment;
 
@@ -495,6 +504,12 @@ public class AppointmentService {
                 "APPOINTMENT",
                 publicId,
                 reason);
+
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            // ignore
+        }
     }
 
     /**
@@ -563,6 +578,12 @@ public class AppointmentService {
             }
         }
 
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            // ignore
+        }
+
         return saved;
     }
 
@@ -593,6 +614,7 @@ public class AppointmentService {
 
         Appointment appointment = apptOpt.orElseThrow(() -> new RuntimeException("Appointment not found"));
 
+        String oldStatus = appointment.getStatus();
         if (status != null && !status.isEmpty()) {
             // Basic validation
             if (!status.equals("SCHEDULED") && !status.equals("COMPLETED") && !status.equals("CANCELLED")) {
@@ -610,9 +632,8 @@ public class AppointmentService {
             throw new RuntimeException("Failed to save appointment");
         }
 
-        // Trigger Billing if Completed and previously wasn't (or just check if current
-        // is completed and no bill exists? Simplified for now)
-        if ("COMPLETED".equals(status)) {
+        // Trigger Billing if Completed and previously wasn't
+        if ("COMPLETED".equals(status) && !"COMPLETED".equals(oldStatus)) {
             try {
                 billingService.autoGenerateOpdBill(saved);
             } catch (Exception e) {
@@ -633,6 +654,12 @@ public class AppointmentService {
                     null);
         } catch (Exception e) {
             logger.warn("Failed to log appointment update", e);
+        }
+
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            // ignore
         }
 
         return saved;

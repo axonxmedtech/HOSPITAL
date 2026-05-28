@@ -126,8 +126,11 @@ const ExpiryView = () => {
     };
 
     // 🚫 Block batch operation
+    const [blockingId, setBlockingId] = useState(null);
     const handleBlockBatch = async (batchId) => {
+        if (blockingId) return;
         if (!window.confirm("Are you sure you want to FREEZE this batch? This immediately blocks it from being sold or dispensed at the POS billing counter!")) return;
+        setBlockingId(batchId);
         try {
             await inventoryApi.blockBatch(batchId);
             success("Batch status successfully updated to BLOCKED!");
@@ -135,12 +138,16 @@ const ExpiryView = () => {
         } catch (err) {
             console.error("Block failed", err);
             toastError("Failed to block batch.");
+        } finally {
+            setBlockingId(null);
         }
     };
 
     // 🗑️ Dispose batch write-off operation
+    const [disposingBatch, setDisposingBatch] = useState(false);
     const handleDisposeBatch = async () => {
-        if (!selectedBatch) return;
+        if (!selectedBatch || disposingBatch) return;
+        setDisposingBatch(true);
         try {
             await inventoryApi.disposeBatch(selectedBatch.id, disposalRemarks);
             success("Batch has been successfully disposed. Current inventory is set to 0 Units.");
@@ -150,6 +157,8 @@ const ExpiryView = () => {
         } catch (err) {
             console.error("Disposal failed", err);
             toastError("Failed to write off batch stock.");
+        } finally {
+            setDisposingBatch(false);
         }
     };
 
@@ -323,10 +332,11 @@ const ExpiryView = () => {
                                                 {b.status !== 'BLOCKED' && b.status !== 'DISPOSED' && (
                                                     <button 
                                                         onClick={() => handleBlockBatch(b.id)}
-                                                        className="px-2.5 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded font-bold text-[10px] uppercase tracking-wide active:scale-95 transition-all"
+                                                        disabled={!!blockingId}
+                                                        className={`px-2.5 py-1.5 border rounded font-bold text-[10px] uppercase tracking-wide active:scale-95 transition-all ${blockingId === b.id ? 'bg-gray-200 text-gray-400 border-gray-200 cursor-not-allowed' : blockingId ? 'opacity-50 cursor-not-allowed bg-amber-50 text-amber-700 border-amber-200' : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-200'}`}
                                                         title="Deactivate batch from billing counter"
                                                     >
-                                                        Block
+                                                        {blockingId === b.id ? 'Blocking...' : 'Block'}
                                                     </button>
                                                 )}
                                                 {b.status !== 'DISPOSED' && (
@@ -388,15 +398,23 @@ const ExpiryView = () => {
                         <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-gray-100">
                             <button 
                                 onClick={() => { setIsDisposalModalOpen(false); setSelectedBatch(null); }} 
-                                className="px-4 py-2 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-50"
+                                disabled={disposingBatch}
+                                className={`px-4 py-2 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg ${disposingBatch ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
                             >
                                 Cancel
                             </button>
                             <button 
                                 onClick={handleDisposeBatch}
-                                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow-md shadow-red-200"
+                                disabled={disposingBatch}
+                                className={`px-4 py-2 text-white text-xs font-bold rounded-lg shadow-md shadow-red-200 flex items-center gap-2 ${disposingBatch ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'}`}
                             >
-                                Confirm Disposal
+                                {disposingBatch && (
+                                    <svg className="animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                )}
+                                {disposingBatch ? 'Disposing...' : 'Confirm Disposal'}
                             </button>
                         </div>
                     </div>

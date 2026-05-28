@@ -6,13 +6,15 @@ import wardService from '../../services/wardService';
 import { useToast } from '../../context/ToastContext';
 import PageHeader from '../../components/PageHeader';
 import EmptyState from '../../components/EmptyState';
+import { SkeletonDetailCard, SkeletonFormCard } from '../../components/Skeleton';
+import useWebSocket from '../../hooks/useWebSocket';
 
 const IpdDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState(null);
-    const user = authService.getCurrentUser() || {};
+    const [user, setUser] = useState(() => authService.getCurrentUser() || {});
     const isDoctor = authService.isDoctor();
     const isReceptionist = authService.isReceptionist();
     const { success, error: toastError } = useToast();
@@ -21,6 +23,39 @@ const IpdDetails = () => {
     const [dischargeModal, setDischargeModal] = useState({ isOpen: false, finalDiagnosis: '', treatmentGiven: '', dischargeNotes: '', followUpDate: '', saving: false });
     const [medicineModal, setMedicineModal] = useState({ isOpen: false, medicineId: null, medicineName: '', type: 'TABLET', route: 'ORAL', dose: '', frequency: '', durationDays: 0, startDate: '', saving: false });
     const [medSearchResults, setMedSearchResults] = useState([]);
+
+    const [inventory, setInventory] = useState([]);
+    const [administeredList, setAdministeredList] = useState([]);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [showSuggestions, setShowSuggestions] = useState(false);
+
+    useEffect(() => {
+        if (followupModal.isOpen && user?.inClinic !== false) {
+            const fetchInventory = async () => {
+                try {
+                    const res = await hospitalService.getInventoryMedicines();
+                    const filtered = (res || []).filter(item => {
+                        if (!item) return false;
+                        // Handle both active and isActive serialization key variations
+                        const activeVal = item.isActive !== undefined ? item.isActive : item.active;
+                        const isNotInactive = activeVal !== false && activeVal !== 0 && activeVal !== '0';
+                        // Safety checks for stock quantity
+                        const stock = item.stockQuantity !== undefined ? item.stockQuantity : 0;
+                        return isNotInactive && stock > 0;
+                    });
+                    setInventory(filtered);
+                } catch (err) {
+                    console.error("Failed to load clinical stock inventory", err);
+                }
+            };
+            fetchInventory();
+        }
+        if (!followupModal.isOpen) {
+            setAdministeredList([]);
+            setSearchQuery('');
+            setShowSuggestions(false);
+        }
+    }, [followupModal.isOpen]);
 
     useEffect(() => {
         const q = medicineModal.medicineName || '';
@@ -74,23 +109,31 @@ const IpdDetails = () => {
         }
     };
 
+    const load = async (showSpinner = true) => {
+        if (showSpinner) setLoading(true);
+        try {
+            const resp = await hospitalService.getIpdDetails(id);
+            setData(resp);
+        } catch (err) {
+            console.error('Failed to load IPD details', err);
+            setData(null);
+        } finally {
+            if (showSpinner) setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        const load = async () => {
-            setLoading(true);
-            try {
-                const resp = await hospitalService.getIpdDetails(id);
-                setData(resp);
-            } catch (err) {
-                console.error('Failed to load IPD details', err);
-                setData(null);
-            } finally {
-                setLoading(false);
-            }
-        };
-        load();
+        load(true);
     }, [id]);
 
-    if (loading) return <div className="p-6">Loading...</div>;
+    useWebSocket(user, setUser, (silent) => {
+        if (!followupModal.isOpen && !dischargeModal.isOpen && !medicineModal.isOpen && !bedModal.isOpen && !billModal.isOpen) {
+            load(silent);
+        }
+    });
+
+
+    if (loading) return <SkeletonDetailCard />;
     if (!data) return <EmptyState title="Not Found" message="IPD record not found" />;
 
     const onAddFollowUp = () => {
@@ -103,7 +146,15 @@ const IpdDetails = () => {
         if (!followupModal.diagnosis) return toastError('Diagnosis is required');
         setFollowupModal(prev => ({ ...prev, saving: true }));
         try {
-            await hospitalService.addIpdFollowup(id, { diagnosis: followupModal.diagnosis, notes: followupModal.notes });
+            await hospitalService.addIpdFollowup(id, { 
+                diagnosis: followupModal.diagnosis, 
+                notes: followupModal.notes,
+                administeredItems: administeredList.map(item => ({
+                    medicineId: item.medicineId,
+                    medicineName: item.medicineName,
+                    quantity: item.quantity
+                }))
+            });
             success('Follow-up saved');
             closeFollowupModal();
             // reload data
@@ -264,6 +315,135 @@ const IpdDetails = () => {
                                     <label className="block text-sm font-medium mb-1">Notes</label>
                                     <textarea value={followupModal.notes} onChange={e => setFollowupModal(prev => ({ ...prev, notes: e.target.value }))} className="w-full border p-2 rounded" rows={4} />
                                 </div>
+
+                                {user?.inClinic !== false && (
+                                    <div className="bg-slate-50 p-3 rounded-lg border border-gray-200 mb-3 space-y-3">
+                                        <div>
+                                            <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wide">Administered Clinical Stock Items</h4>
+                                            <p className="text-[10px] text-gray-500 mt-0.5">Deducted from physical stock and billed to patient.</p>
+                                        </div>
+
+                                        <div className="relative">
+                                            <input
+                                                type="text"
+                                                placeholder="Search active inventory stock..."
+                                                value={searchQuery}
+                                                onChange={(e) => {
+                                                    setSearchQuery(e.target.value);
+                                                    setShowSuggestions(true);
+                                                }}
+                                                onFocus={() => setShowSuggestions(true)}
+                                                className="w-full border border-gray-300 p-2 text-xs rounded outline-none bg-white"
+                                            />
+
+                                            {showSuggestions && searchQuery.trim().length >= 1 && (
+                                                <div className="absolute left-0 right-0 mt-1 max-h-40 overflow-auto bg-white rounded border border-gray-200 shadow-lg z-50 divide-y divide-gray-100">
+                                                    {inventory
+                                                        .filter(item => item && item.name && item.name.toLowerCase().includes(searchQuery.toLowerCase().trim()))
+                                                        .map(item => (
+                                                            <button
+                                                                key={item.id}
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const existing = administeredList.find(x => x.medicineId === item.id);
+                                                                    if (existing) {
+                                                                        if (existing.quantity < item.stockQuantity) {
+                                                                            setAdministeredList(prev => prev.map(x => x.medicineId === item.id ? { ...x, quantity: x.quantity + 1 } : x));
+                                                                        } else {
+                                                                            toastError(`Cannot add more. Only ${item.stockQuantity} units available.`);
+                                                                        }
+                                                                    } else {
+                                                                        setAdministeredList(prev => [...prev, {
+                                                                            medicineId: item.id,
+                                                                            medicineName: item.name,
+                                                                            quantity: 1,
+                                                                            maxStock: item.stockQuantity
+                                                                        }]);
+                                                                    }
+                                                                    setSearchQuery('');
+                                                                    setShowSuggestions(false);
+                                                                }}
+                                                                className="w-full text-left px-3 py-2 hover:bg-slate-50 flex justify-between items-center text-xs"
+                                                             >
+                                                                <div>
+                                                                    <span className="font-semibold text-gray-800">{item.name}</span>
+                                                                </div>
+                                                                <span className="text-[10px] text-gray-500 font-bold">
+                                                                    Stock: {item.stockQuantity}
+                                                                </span>
+                                                            </button>
+                                                        ))}
+                                                    {inventory.filter(item => item && item.name && item.name.toLowerCase().includes(searchQuery.toLowerCase().trim())).length === 0 && (
+                                                        <div className="p-2 text-center text-xs text-gray-400">No matching stock found.</div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {administeredList.length > 0 && (
+                                            <div className="border border-gray-200 rounded overflow-hidden bg-white max-h-48 overflow-y-auto">
+                                                <table className="min-w-full text-xs">
+                                                    <thead className="bg-slate-50 text-gray-500 font-medium border-b border-gray-200">
+                                                        <tr>
+                                                            <th className="px-3 py-1.5 text-left">Item</th>
+                                                            <th className="px-3 py-1.5 text-center">Qty</th>
+                                                            <th className="px-3 py-1.5 text-right">Action</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-100">
+                                                        {administeredList.map((item) => (
+                                                            <tr key={item.medicineId} className="hover:bg-slate-50/50">
+                                                                <td className="px-3 py-2 font-semibold text-gray-800">{item.medicineName}</td>
+                                                                <td className="px-3 py-2 text-center">
+                                                                    <div className="inline-flex items-center gap-1.5">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                if (item.quantity > 1) {
+                                                                                    setAdministeredList(prev => prev.map(x => x.medicineId === item.medicineId ? { ...x, quantity: x.quantity - 1 } : x));
+                                                                                }
+                                                                            }}
+                                                                            disabled={item.quantity <= 1}
+                                                                            className="w-5 h-5 flex items-center justify-center border border-gray-300 rounded text-gray-500 hover:bg-slate-100 disabled:opacity-50"
+                                                                        >
+                                                                            -
+                                                                        </button>
+                                                                        <span className="font-bold text-xs w-4 text-center">{item.quantity}</span>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                if (item.quantity < item.maxStock) {
+                                                                                    setAdministeredList(prev => prev.map(x => x.medicineId === item.medicineId ? { ...x, quantity: x.quantity + 1 } : x));
+                                                                                } else {
+                                                                                    toastError(`Only ${item.maxStock} available.`);
+                                                                                }
+                                                                            }}
+                                                                            className="w-5 h-5 flex items-center justify-center border border-gray-300 rounded text-gray-500 hover:bg-slate-100"
+                                                                        >
+                                                                            +
+                                                                        </button>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-3 py-2 text-right">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setAdministeredList(prev => prev.filter(x => x.medicineId !== item.medicineId));
+                                                                        }}
+                                                                        className="text-red-500 hover:text-red-700 font-semibold"
+                                                                    >
+                                                                        Remove
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
                                 <div className="flex justify-end gap-3">
                                     <button onClick={closeFollowupModal} className="px-3 py-1 bg-gray-100 rounded">Cancel</button>
                                     <button onClick={saveFollowup} disabled={followupModal.saving} className="px-3 py-1 bg-green-600 text-white rounded">{followupModal.saving ? 'Saving...' : 'Save'}</button>
@@ -538,7 +718,7 @@ const IpdDetails = () => {
                     <div className="bg-white rounded-lg w-full max-w-2xl p-6">
                         <h3 className="text-lg font-semibold mb-3">IPD Bill</h3>
                         {billModal.loading ? (
-                            <div>Loading...</div>
+                            <SkeletonFormCard fields={3} />
                         ) : billModal.bill ? (
                             <div>
                                 <div className="mb-3 text-sm">

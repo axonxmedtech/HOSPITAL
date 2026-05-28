@@ -237,6 +237,47 @@ const hospitalService = {
         return response.data;
     },
 
+    // --- In-Clinic Medicine & Inventory ---
+    getCatalogMedicines: async () => {
+        const response = await apiClient.get('/hospital/medicines/catalog');
+        return response.data;
+    },
+
+    addCatalogMedicine: async (data) => {
+        const response = await apiClient.post('/hospital/medicines/catalog', data);
+        return response.data;
+    },
+
+    updateCatalogMedicine: async (id, data) => {
+        const response = await apiClient.put(`/hospital/medicines/catalog/${id}`, data);
+        return response.data;
+    },
+
+    deleteCatalogMedicine: async (id) => {
+        const response = await apiClient.delete(`/hospital/medicines/catalog/${id}`);
+        return response.data;
+    },
+
+    getInventoryMedicines: async () => {
+        const response = await apiClient.get('/hospital/medicines/inventory');
+        return response.data;
+    },
+
+    addInventoryMedicine: async (data) => {
+        const response = await apiClient.post('/hospital/medicines/inventory', data);
+        return response.data;
+    },
+
+    updateInventoryMedicine: async (id, data) => {
+        const response = await apiClient.put(`/hospital/medicines/inventory/${id}`, data);
+        return response.data;
+    },
+
+    deleteInventoryMedicine: async (id) => {
+        const response = await apiClient.delete(`/hospital/medicines/inventory/${id}`);
+        return response.data;
+    },
+
     /**
      * Get Consultation Details (Prescription)
      */

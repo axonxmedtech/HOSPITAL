@@ -325,17 +325,26 @@
     
     /* Loading states */
     .loading-shimmer {
-        background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-        background-size: 200% 100%;
-        animation: shimmer 1.5s infinite;
+        background: linear-gradient(
+            90deg,
+            #f3f4f6 0%,
+            #f3f4f6 25%,
+            #e5e7eb 37%,
+            #d1d5db 50%,
+            #e5e7eb 63%,
+            #f3f4f6 75%,
+            #f3f4f6 100%
+        );
+        background-size: 400% 100%;
+        animation: shimmer 2s ease-in-out infinite;
     }
     
     @keyframes shimmer {
         0% {
-            background-position: -200% 0;
+            background-position: 100% 0;
         }
         100% {
-            background-position: 200% 0;
+            background-position: -100% 0;
         }
     }
 }

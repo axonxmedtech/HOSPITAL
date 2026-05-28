@@ -4,9 +4,13 @@ import com.hms.dto.CreateHospitalRequest;
 import com.hms.entity.AuditLog;
 import com.hms.entity.Hospital;
 import com.hms.entity.User;
+import com.hms.entity.Doctor;
+import com.hms.entity.HospitalSetting;
 import com.hms.repository.AuditLogRepository;
 import com.hms.repository.HospitalRepository;
 import com.hms.repository.UserRepository;
+import com.hms.repository.DoctorRepository;
+import com.hms.repository.HospitalSettingRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -47,6 +51,12 @@ public class PlatformHospitalService {
     @Autowired
     private AuditLogRepository auditLogRepository;
 
+    @Autowired
+    private DoctorRepository doctorRepository;
+
+    @Autowired
+    private HospitalSettingRepository hospitalSettingRepository;
+
     /**
      * Create a new hospital with hospital admin user
      * 
@@ -75,7 +85,18 @@ public class PlatformHospitalService {
         if (request.getModules() != null && !request.getModules().isEmpty()) {
             hospital.setModules(request.getModules());
         }
+        if (request.getIsSingleDoctor() != null) {
+            hospital.setIsSingleDoctor(request.getIsSingleDoctor());
+        }
         hospital = hospitalRepository.save(hospital);
+
+        // Create default settings (HAS_RECEPTIONIST, RECEPTIONIST billing, inClinic enabled)
+        HospitalSetting settings = new HospitalSetting();
+        settings.setHospital(hospital);
+        settings.setReceptionMode("HAS_RECEPTIONIST");
+        settings.setBillingHandler("RECEPTIONIST");
+        settings.setInClinic(true);
+        hospitalSettingRepository.save(settings);
 
         // Create hospital admin user
         User admin = new User();
@@ -85,6 +106,18 @@ public class PlatformHospitalService {
         admin.setRole("HOSPITAL_ADMIN");
         admin.setHospitalId(hospital.getId()); // Link to hospital
         userRepository.save(admin);
+
+        // If Single Doctor Clinic, automatically create a Doctor profile (only if OPD is enabled)
+        if (Boolean.TRUE.equals(hospital.getIsSingleDoctor()) && hospital.getModules() != null && hospital.getModules().contains("OPD")) {
+            Doctor doctor = new Doctor();
+            doctor.setHospitalId(hospital.getId());
+            doctor.setEmail(admin.getEmail());
+            doctor.setName(admin.getName());
+            doctor.setSpecialization("General Physician");
+            doctor.setPhone("0000000055");
+            doctor.setIsActive(true);
+            doctorRepository.save(doctor);
+        }
 
         // Log action
         logAction("HOSPITAL_CREATED", "Created hospital: " + hospital.getName() + " with admin: " + admin.getEmail());
@@ -154,6 +187,7 @@ public class PlatformHospitalService {
         dto.setModules(hospital.getModules());
         dto.setAddress(hospital.getAddress());
         dto.setPhone(hospital.getPhone());
+        dto.setIsSingleDoctor(hospital.getIsSingleDoctor());
 
         // Fetch Admin Email
         List<User> admins = userRepository.findByHospitalIdAndRole(hospital.getId(), "HOSPITAL_ADMIN");
@@ -279,17 +313,22 @@ public class PlatformHospitalService {
     }
 
     /**
-     * Update hospital name and admin email
+     * Update hospital name, admin email, and single doctor status
      */
     @Transactional
     public Hospital updateHospitalDetails(String publicId, String name, String adminEmail, String adminName,
-            String reason) {
+            String reason, Boolean isSingleDoctor) {
         Hospital hospital = hospitalRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new RuntimeException("Hospital not found"));
 
         boolean nameChanged = !hospital.getName().equals(name);
         String oldName = hospital.getName();
         hospital.setName(name);
+
+        boolean isSingleDoctorChanged = isSingleDoctor != null && !isSingleDoctor.equals(hospital.getIsSingleDoctor());
+        if (isSingleDoctor != null) {
+            hospital.setIsSingleDoctor(isSingleDoctor);
+        }
 
         // Update Admin Email & Name
         List<User> admins = userRepository.findByHospitalIdAndRole(hospital.getId(), "HOSPITAL_ADMIN");
@@ -328,14 +367,36 @@ public class PlatformHospitalService {
 
         Hospital savedHospital = hospitalRepository.save(hospital);
 
-        if (nameChanged || emailChanged || adminNameChanged) {
+        // If Single Doctor Clinic is enabled, ensure a Doctor profile exists (only if OPD is enabled)
+        if (Boolean.TRUE.equals(savedHospital.getIsSingleDoctor()) && savedHospital.getModules() != null && savedHospital.getModules().contains("OPD")) {
+            String targetEmail = adminEmail != null ? adminEmail.trim() : (admins.isEmpty() ? "" : admins.get(0).getEmail());
+            String targetName = adminName != null ? adminName.trim() : (admins.isEmpty() ? "" : admins.get(0).getName());
+            
+            if (!targetEmail.isEmpty()) {
+                boolean doctorExists = doctorRepository.findByEmailAndHospitalId(targetEmail, savedHospital.getId()).isPresent();
+                if (!doctorExists) {
+                    Doctor doctor = new Doctor();
+                    doctor.setHospitalId(savedHospital.getId());
+                    doctor.setEmail(targetEmail);
+                    doctor.setName(targetName);
+                    doctor.setSpecialization("General Physician");
+                    doctor.setPhone("0000000055");
+                    doctor.setIsActive(true);
+                    doctorRepository.save(doctor);
+                }
+            }
+        }
+
+        if (nameChanged || emailChanged || adminNameChanged || isSingleDoctorChanged) {
             StringBuilder details = new StringBuilder("Updated details for hospital. ");
             if (nameChanged)
                 details.append("Hospital Name: '").append(oldName).append("' -> '").append(name).append("'. ");
             if (emailChanged)
                 details.append("Email: '").append(oldEmail).append("' -> '").append(adminEmailValue).append("'. ");
             if (adminNameChanged)
-                details.append("Admin Name: '").append(oldAdminName).append("' -> '").append(adminName).append("'.");
+                details.append("Admin Name: '").append(oldAdminName).append("' -> '").append(adminName).append("'. ");
+            if (isSingleDoctorChanged)
+                details.append("Single Doctor Mode: '").append(!isSingleDoctor).append("' -> '").append(isSingleDoctor).append("'.");
             logAction("HOSPITAL_UPDATED", details.toString(), reason);
         }
 

@@ -3,7 +3,7 @@ import { createColumnHelper } from '@tanstack/react-table';
 import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
 
-const BillingTable = ({ billing, startIndex = 0, pagination, onUpdateStatus, onDownload }) => {
+const BillingTable = ({ billing, startIndex = 0, pagination, onUpdateStatus, onDownload, updatingBillId, downloadingBillId }) => {
     const [expandedIds, setExpandedIds] = useState([]);
 
     const toggleExpand = (id) => {
@@ -60,12 +60,18 @@ const BillingTable = ({ billing, startIndex = 0, pagination, onUpdateStatus, onD
         }),
         columnHelper.accessor('paymentStatus', {
             header: 'Status',
-            cell: info => (
-                <StatusBadge
-                    status={info.getValue()}
-                    type={info.getValue() === 'PAID' ? 'success' : 'warning'}
-                />
-            ),
+            cell: info => {
+                const status = info.getValue() || 'PENDING';
+                let type = 'warning';
+                if (status === 'PAID') type = 'success';
+                else if (status === 'CLOSED') type = 'neutral';
+                return (
+                    <StatusBadge
+                        status={status}
+                        type={type}
+                    />
+                );
+            },
         }),
         columnHelper.accessor('createdAt', {
             header: 'Date',
@@ -79,17 +85,19 @@ const BillingTable = ({ billing, startIndex = 0, pagination, onUpdateStatus, onD
                     {(info.row.original.paymentStatus === 'PENDING' || info.row.original.paymentStatus === 'PARTIAL') && (
                         <button
                             onClick={() => onUpdateStatus(info.row.original.id, 'PAID', info.row.original)}
-                            className="bg-gray-100 text-gray-700 hover:bg-gray-200 px-3 py-1 rounded-md text-sm font-medium transition-colors"
+                            disabled={!!updatingBillId}
+                            className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${updatingBillId === info.row.original.id ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : updatingBillId ? 'opacity-50 cursor-not-allowed bg-gray-100 text-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                         >
-                            Mark Paid
+                            {updatingBillId === info.row.original.id ? 'Processing...' : 'Mark Paid'}
                         </button>
                     )}
                     {info.row.original.paymentStatus === 'PAID' && (
                         <button
                             onClick={() => onDownload(info.row.original.id)}
-                            className="bg-gray-100 text-gray-700 hover:bg-gray-200 px-3 py-1 rounded-md text-sm font-medium transition-colors flex items-center gap-1"
+                            disabled={!!downloadingBillId}
+                            className={`px-3 py-1 rounded-md text-sm font-medium transition-colors flex items-center gap-1 ${downloadingBillId === info.row.original.id ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : downloadingBillId ? 'opacity-50 cursor-not-allowed bg-gray-100 text-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                         >
-                            <span>Download</span>
+                            <span>{downloadingBillId === info.row.original.id ? 'Downloading...' : 'Download'}</span>
                         </button>
                     )}
                 </div>
@@ -99,25 +107,56 @@ const BillingTable = ({ billing, startIndex = 0, pagination, onUpdateStatus, onD
 
     const renderExpandedRow = (row) => {
         const items = row.original.items || [];
-        if (!items.length) return <div className="text-sm text-slate-600">No items</div>;
+        const medicines = row.original.medicines || [];
+        if (!items.length && !medicines.length) return <div className="text-sm text-slate-600">No items or medicines billed</div>;
         return (
-            <div>
-                <table className="min-w-full">
-                    <thead>
-                        <tr>
-                            <th className="text-left text-xs text-slate-500 px-2">Item</th>
-                            <th className="text-right text-xs text-slate-500 px-2">Amount</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {items.map(it => (
-                            <tr key={it.id} className="border-t">
-                                <td className="px-2 py-1 text-sm text-slate-700">{it.description}</td>
-                                <td className="px-2 py-1 text-sm text-right text-slate-700">₹{it.amount}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+            <div className="space-y-4 p-2 bg-slate-50/50 rounded-lg border border-dashed border-gray-200">
+                {items.length > 0 && (
+                    <div>
+                        <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Clinic Charges & Services</div>
+                        <table className="min-w-full">
+                            <thead>
+                                <tr className="border-b border-gray-200">
+                                    <th className="text-left text-xs text-slate-500 pb-1">Description</th>
+                                    <th className="text-right text-xs text-slate-500 pb-1">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {items.map(it => (
+                                    <tr key={it.id} className="border-b border-gray-100 last:border-0">
+                                        <td className="py-1.5 text-sm text-slate-700">{it.description}</td>
+                                        <td className="py-1.5 text-sm text-right text-slate-700">₹{it.amount}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+                {medicines.length > 0 && (
+                    <div>
+                        <div className="text-xs font-bold uppercase tracking-wider text-teal-600 mb-1">Administered In-Clinic Medicines</div>
+                        <table className="min-w-full">
+                            <thead>
+                                <tr className="border-b border-gray-200">
+                                    <th className="text-left text-xs text-slate-500 pb-1">Medicine Name</th>
+                                    <th className="text-center text-xs text-slate-500 pb-1">Qty</th>
+                                    <th className="text-right text-xs text-slate-500 pb-1">Unit Price</th>
+                                    <th className="text-right text-xs text-slate-500 pb-1">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {medicines.map(med => (
+                                    <tr key={med.id} className="border-b border-gray-100 last:border-0">
+                                        <td className="py-1.5 text-sm text-slate-700 font-medium">{med.medicineName}</td>
+                                        <td className="py-1.5 text-sm text-center text-slate-700">{med.quantity}</td>
+                                        <td className="py-1.5 text-sm text-right text-slate-700">₹{med.unitPrice}</td>
+                                        <td className="py-1.5 text-sm text-right text-slate-700 font-semibold text-teal-600">₹{med.amount}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
         );
     };

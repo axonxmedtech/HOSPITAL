@@ -45,15 +45,33 @@ const HospitalLogin = () => {
 
             // 1. Strict Role Validation (Frontend Check)
             // Ensure the user is logging in with the role they SELECTED
-            if (response.role !== selectedRole) {
+            // In Single Doctor Hospital mode, the Hospital Admin can log in as either Hospital Admin or Doctor
+            // In Standalone Pharmacy Mode, the Hospital Admin can log in as either Hospital Admin or Pharmacist
+            const isStandalonePharmacy = response.modules?.includes('PHARMACY') && !response.modules?.includes('OPD');
+            const isValidRole = response.role === selectedRole ||
+                (response.role === 'HOSPITAL_ADMIN' && response.isSingleDoctor && selectedRole === 'DOCTOR') ||
+                (response.role === 'HOSPITAL_ADMIN' && isStandalonePharmacy && selectedRole === 'PHARMACIST');
+
+            if (!isValidRole) {
                 authService.logout(); // Clear the successful session
                 setErrors({ submit: `Access Denied: You are not registered as a ${selectedRole === 'HOSPITAL_ADMIN' ? 'Hospital Admin' : selectedRole === 'DOCTOR' ? 'Doctor' : selectedRole === 'PHARMACIST' ? 'Pharmacist' : 'Receptionist'}.` });
                 return;
             }
 
+            // Save the selected dashboard context preference to session storage
+            if (response.role === 'HOSPITAL_ADMIN' && (response.isSingleDoctor || isStandalonePharmacy)) {
+                sessionStorage.setItem('activeDashboard', selectedRole === 'DOCTOR' ? 'doctor' : selectedRole === 'PHARMACIST' ? 'pharmacy' : 'admin');
+            }
+
             // 2. Redirect based on Verified Role
             if (response.role === 'HOSPITAL_ADMIN') {
-                navigate('/hospital/admin');
+                if (response.isSingleDoctor && selectedRole === 'DOCTOR') {
+                    navigate('/hospital/doctor');
+                } else if (isStandalonePharmacy && selectedRole === 'PHARMACIST') {
+                    navigate('/hospital/pharmacy');
+                } else {
+                    navigate('/hospital/admin');
+                }
             } else if (response.role === 'DOCTOR') {
                 navigate('/hospital/doctor');
             } else if (response.role === 'RECEPTIONIST') {

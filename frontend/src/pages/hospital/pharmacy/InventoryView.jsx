@@ -4,7 +4,7 @@ import { ViewLayout, ViewToolbar, SearchInput } from '../../../components/pharma
 import inventoryApi from '../../../services/pharmacy/inventoryApi';
 import categoriesApi from '../../../services/pharmacy/categoriesApi';
 import StockAdjustmentModal from '../../../components/StockAdjustmentModal';
-import LoadingSpinner from '../../../components/LoadingSpinner';
+import { SkeletonTableRow, SkeletonFeed } from '../../../components/Skeleton';
 
 const InventoryView = ({ onNavigate }) => {
     const [categories, setCategories] = useState([]);
@@ -188,7 +188,11 @@ const InventoryView = ({ onNavigate }) => {
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                             {loading ? (
-                                <tr><td colSpan="7" className="py-20 text-center"><LoadingSpinner /></td></tr>
+                                <>{
+                                    Array.from({ length: 6 }).map((_, i) => (
+                                        <SkeletonTableRow key={i} cols={7} delay={i} />
+                                    ))
+                                }</>
                             ) : groupedInventory.map(item => (
                                 <tr 
                                     key={item.id} 
@@ -353,7 +357,7 @@ const InventoryView = ({ onNavigate }) => {
                                     <div className="bg-gray-50/50 p-4 rounded-xl border border-gray-100 h-full flex flex-col">
                                         <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 shrink-0">Inventory Movement Logs</h4>
                                         <div className="space-y-3 flex-1 overflow-y-auto max-h-60 pr-1 custom-scrollbar">
-                                            {txLoading ? <LoadingSpinner size="sm" /> : transactions.length > 0 ? transactions.map(tx => (
+                                            {txLoading ? <SkeletonFeed count={3} /> : transactions.length > 0 ? transactions.map(tx => (
                                                 <div key={tx.id} className="flex gap-3 text-xs">
                                                     <div className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${
                                                         tx.transactionType === 'SALE' ? 'bg-red-500' : 

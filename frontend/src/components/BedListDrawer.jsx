@@ -21,13 +21,19 @@ const BedListDrawer = ({ open, ward, onClose, onStatusChange }) => {
         } finally { setLoading(false); }
     };
 
+    const [updatingBedId, setUpdatingBedId] = useState(null);
+
     const makeAvailable = async (bedId) => {
+        if (updatingBedId) return;
+        setUpdatingBedId(bedId);
         try {
             await WardService.updateBedStatus(bedId, 'available');
             onStatusChange && onStatusChange();
             fetchBeds();
         } catch (e) {
             alert(e.response?.data || e.message || 'Failed');
+        } finally {
+            setUpdatingBedId(null);
         }
     };
 
@@ -55,7 +61,9 @@ const BedListDrawer = ({ open, ward, onClose, onStatusChange }) => {
                                 </div>
                                 <div>
                                     {b.status === 'maintenance' && (
-                                        <Button size="sm" variant="success" onClick={() => makeAvailable(b.bedId)}>Make Available</Button>
+                                        <Button size="sm" variant="success" onClick={() => makeAvailable(b.bedId)} disabled={!!updatingBedId}>
+                                            {updatingBedId === b.bedId ? 'Updating...' : 'Make Available'}
+                                        </Button>
                                     )}
                                 </div>
                             </div>

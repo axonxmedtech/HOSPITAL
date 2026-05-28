@@ -50,6 +50,9 @@ public class DoctorService {
     @Autowired
     private com.hms.service.AuditLogService auditLogService;
 
+    @Autowired
+    private com.hms.security.HospitalWebSocketHandler webSocketHandler;
+
     /**
      * Add a new doctor
      * Creates both Doctor record and User account for login
@@ -280,6 +283,18 @@ public class DoctorService {
     private MedicineService medicineService;
 
     @Autowired
+    private com.hms.repository.MedicineListRepository medicineListRepository;
+
+    @Autowired
+    private com.hms.repository.MedicineRepository medicineRepository;
+
+    @Autowired
+    private com.hms.repository.BillingMedicineRepository billingMedicineRepository;
+
+    @Autowired
+    private com.hms.repository.BillingRepository billingRepository;
+
+    @Autowired
     private com.hms.repository.OpdRepository opdRepository;
 
     @Autowired
@@ -371,19 +386,19 @@ public class DoctorService {
                 p.setInstructions(item.getInstructions());
                 prescriptionRepository.save(p);
 
-                // --- Dynamic Learning: Auto-add to Master List ---
+                // --- Dynamic Learning: Auto-add to Master Catalog ---
                 try {
-                    com.hms.entity.Medicine newMed = new com.hms.entity.Medicine();
-                    newMed.setName(item.getMedicineName());
-                    newMed.setType("Generic"); // Default, until we have a dropdown for type
-                    newMed.setDefaultDosage(item.getDosage());
-                    newMed.setDefaultFrequency(item.getFrequency());
-                    newMed.setDefaultDuration(item.getDuration());
-                    newMed.setIsActive(true);
-                    // Hospital ID will be set by addMedicine from context
-
-                    // addMedicine handles duplicate check safely
-                    medicineService.addMedicine(newMed);
+                    if (!medicineListRepository.existsByNameAndHospitalId(item.getMedicineName(), hospitalId)) {
+                        com.hms.entity.MedicineList newMed = new com.hms.entity.MedicineList();
+                        newMed.setName(item.getMedicineName());
+                        newMed.setType("Tablet"); // Default type
+                        newMed.setDefaultDosage(item.getDosage());
+                        newMed.setDefaultFrequency(item.getFrequency());
+                        newMed.setDefaultDuration(item.getDuration());
+                        newMed.setHospitalId(hospitalId);
+                        newMed.setIsActive(true);
+                        medicineListRepository.save(newMed);
+                    }
                 } catch (Exception e) {
                     // Ignore if already exists or fails - don't block consultation
                 }
@@ -450,13 +465,86 @@ public class DoctorService {
 
         // 5. Auto-generate OPD Bill (unified flow)
         try {
-            // Always use OPD bill flow: create itemized bill (case paper + consultation)
-            // If request.getOpdId() is null, createOpdBill will still create the bill but
-            // without linking to an OPD; OPD completion on payment will only run when opdId is present.
-            com.hms.entity.Billing bill = billingService.createOpdBill(request.getOpdId(), patient.getId(), resolvedDoctorId);
+            com.hms.entity.Billing bill = null;
+            if (appointment != null) {
+                bill = billingRepository.findByAppointmentId(appointment.getId()).orElse(null);
+            }
+            if (bill == null && request.getOpdId() != null) {
+                bill = billingRepository.findByOpdId(request.getOpdId()).orElse(null);
+            }
+            if (bill == null) {
+                // Always use OPD bill flow: create itemized bill (case paper + consultation)
+                // If request.getOpdId() is null, createOpdBill will still create the bill but
+                // without linking to an OPD; OPD completion on payment will only run when opdId is present.
+                bill = billingService.createOpdBill(request.getOpdId(), patient.getId(), resolvedDoctorId);
+            }
+            
+            // --- Process Administered Items (Stock Billing & Deductions) ---
+            if (bill != null && request.getAdministeredItems() != null && !request.getAdministeredItems().isEmpty()) {
+                for (com.hms.dto.ConsultationRequest.AdministeredItem item : request.getAdministeredItems()) {
+                    if (item.getMedicineId() != null) {
+                        // Secure lookup enforcing hospitalId to prevent cross-tenant writes
+                        com.hms.entity.Medicine med = medicineRepository.findByIdAndHospitalId(item.getMedicineId(), hospitalId)
+                            .orElseThrow(() -> new RuntimeException("Medicine not found in active inventory: ID " + item.getMedicineId()));
+                        
+                        // Strict active state check
+                        if (med.getIsActive() == null || !med.getIsActive()) {
+                            throw new RuntimeException("Medicine is currently inactive and cannot be administered: " + med.getName());
+                        }
+
+                        // Strict tenant match check for safety
+                        if (med.getHospitalId() == null || !med.getHospitalId().equals(hospitalId)) {
+                            throw new RuntimeException("Security violation: Tenant boundary mismatch for medicine ID " + item.getMedicineId());
+                        }
+
+                        // Robust validation to prevent NullPointerException and ensure positive unit prices
+                        if (med.getUnitPrice() == null || med.getUnitPrice() <= 0.0) {
+                            throw new RuntimeException("Medicine unit price is missing or invalid for: " + med.getName() + ". Please configure a valid unit price in inventory.");
+                        }
+
+                        if (med.getStockQuantity() < item.getQuantity()) {
+                            throw new RuntimeException("Insufficient stock for: " + med.getName() + " (Requested: " + item.getQuantity() + ", Available: " + med.getStockQuantity() + ")");
+                        }
+                        
+                        // Deduct Stock
+                        int oldStock = med.getStockQuantity();
+                        med.setStockQuantity(oldStock - item.getQuantity());
+                        medicineRepository.save(med);
+                        
+                        // Audit Log for Stock deduction
+                        try {
+                            auditLogService.logAction(
+                                "INVENTORY_DEDUCTED",
+                                "Deducted " + item.getQuantity() + " units of " + med.getName() + " for patient. Stock: " + oldStock + " -> " + med.getStockQuantity(),
+                                securityHelper.getCurrentUserEmail(),
+                                hospitalId,
+                                "MEDICINE",
+                                med.getId().toString(),
+                                null
+                            );
+                        } catch (Exception ignored) {}
+                        
+                        // Create BillingMedicine charge
+                        com.hms.entity.BillingMedicine bm = new com.hms.entity.BillingMedicine();
+                        bm.setBillingId(bill.getId());
+                        bm.setHospitalId(hospitalId);
+                        bm.setMedicineId(med.getId());
+                        bm.setMedicineName(med.getName());
+                        bm.setQuantity(item.getQuantity());
+                        bm.setUnitPrice(java.math.BigDecimal.valueOf(med.getUnitPrice()));
+                        bm.setAmount(bm.getUnitPrice().multiply(java.math.BigDecimal.valueOf(item.getQuantity())));
+                        billingMedicineRepository.save(bm);
+                    }
+                }
+                
+                // Recalculate bill total (incorporates medicines + service charges)
+                billingService.recalculateTotal(bill.getId());
+            }
         } catch (Exception e) {
-            logger.error("Failed to create OPD bill", e);
-            // Don't fail the consultation if billing fails, just log it
+            logger.error("Failed to create OPD bill or administer stocks", e);
+            if (e instanceof RuntimeException && e.getMessage().contains("Insufficient stock")) {
+                throw (RuntimeException) e; // Prevent consultation completion if stock check fails
+            }
         }
 
         // 6. Audit Log
@@ -474,6 +562,13 @@ public class DoctorService {
                     null);
         } catch (Exception e) {
             logger.warn("Failed to create audit log", e);
+        }
+
+        // Broadcast WebSocket sync update to all clients in the hospital
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh data from submitConsultation", e);
         }
     }
 }

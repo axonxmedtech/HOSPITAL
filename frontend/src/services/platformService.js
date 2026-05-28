@@ -50,10 +50,10 @@ const platformService = {
     },
 
     /**
-     * Update hospital details (name, admin email, admin name)
+     * Update hospital details (name, admin email, admin name, isSingleDoctor)
      */
-    updateHospitalDetails: async (id, name, adminEmail, adminName, reason) => {
-        const response = await apiClient.put(`/platform/hospitals/${id}/details`, { name, adminEmail, adminName, reason });
+    updateHospitalDetails: async (id, name, adminEmail, adminName, reason, isSingleDoctor) => {
+        const response = await apiClient.put(`/platform/hospitals/${id}/details`, { name, adminEmail, adminName, reason, isSingleDoctor });
         return response.data;
     },
 

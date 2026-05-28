@@ -1,16 +1,10 @@
 import StatusBadge from "./StatusBadge";
+import { SkeletonDashboard } from "./Skeleton";
 
 // Overview Dashboard Component for Hospital Admin
 const OverviewDashboard = ({ stats, todaysAppointments, loading }) => {
     if (loading) {
-        return (
-            <div className="flex items-center justify-center h-64">
-                <div className="relative">
-                    <div className="w-16 h-16 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
-                    <div className="absolute inset-0 w-16 h-16 border-4 border-transparent border-t-secondary-400 rounded-full animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }}></div>
-                </div>
-            </div>
-        );
+        return <SkeletonDashboard statCount={3} tableRows={5} tableCols={4} />;
     }
 
     const statCards = [

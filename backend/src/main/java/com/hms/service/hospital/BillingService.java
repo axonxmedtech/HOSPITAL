@@ -27,6 +27,9 @@ public class BillingService {
     private com.hms.repository.BillingItemRepository billingItemRepository;
 
     @Autowired
+    private com.hms.repository.BillingMedicineRepository billingMedicineRepository;
+
+    @Autowired
     private com.hms.repository.OpdRepository opdRepository;
 
     @Autowired
@@ -39,6 +42,9 @@ public class BillingService {
     private SecurityContextHelper securityHelper;
 
     @Autowired
+    private com.hms.security.HospitalWebSocketHandler webSocketHandler;
+
+    @Autowired
     private com.hms.repository.BillingPaymentRepository billingPaymentRepository;
 
     @Autowired
@@ -47,10 +53,18 @@ public class BillingService {
     @Autowired
     private com.hms.repository.WardRepository wardRepository;
 
+    @Autowired
+    private com.hms.repository.MedicalRecordRepository medicalRecordRepository;
+
     /**
      * Auto-generate a bill for a completed appointment
      */
     public void autoGenerateOpdBill(Appointment appointment) {
+        if (billingRepository.existsByAppointmentId(appointment.getId())) {
+            logger.warn("Skipping bill auto-generation: Bill already exists for appointment {}", appointment.getId());
+            return;
+        }
+
         Hospital hospital = hospitalRepository.findById(appointment.getHospitalId())
                 .orElseThrow(() -> new RuntimeException("Hospital not found"));
 
@@ -72,7 +86,28 @@ public class BillingService {
             bill.setPaymentStatus("PENDING"); // Default to pending until collected
             bill.setDescription("Consultation Fee - Auto Generated");
 
-            billingRepository.save(bill);
+            // Attempt to resolve related opdId from MedicalRecord
+            try {
+                java.util.Optional<com.hms.entity.MedicalRecord> recordOpt = medicalRecordRepository.findByAppointmentId(appointment.getId());
+                recordOpt.ifPresent(r -> bill.setOpdId(r.getOpdId()));
+            } catch (Exception e) {
+                logger.warn("Could not resolve related opdId for appointment {}", appointment.getId(), e);
+            }
+
+            Billing saved = billingRepository.save(bill);
+
+            // Create a billing item for breakdown consistency in the UI
+            try {
+                com.hms.entity.BillingItem item = new com.hms.entity.BillingItem();
+                item.setBillingId(saved.getId());
+                item.setHospitalId(hospital.getId());
+                item.setDescription("Consultation Fee");
+                item.setAmount(fee);
+                billingItemRepository.save(item);
+            } catch (Exception e) {
+                logger.warn("Failed to create Consultation Fee billing item for auto-bill {}", saved.getId(), e);
+            }
+
             logger.info("Auto-generated bill for appointment: {} with amount: {}", appointment.getId(), fee);
         } else {
             logger.warn("Skipped bill generation for appointment {}. Fee is null or zero. Hospital Fee: {}",
@@ -106,6 +141,13 @@ public class BillingService {
      * Update payment status
      */
     public Billing updateStatus(Long id, String status, String paymentMethod, String paymentReference) {
+        if (!"PENDING".equalsIgnoreCase(status) && 
+            !"PARTIAL".equalsIgnoreCase(status) && 
+            !"PAID".equalsIgnoreCase(status) && 
+            !"CLOSED".equalsIgnoreCase(status)) {
+            throw new IllegalArgumentException("Invalid billing status value: " + status);
+        }
+
         Long hospitalId = securityHelper.getCurrentHospitalId();
         validateBillingAccess(hospitalId);
 
@@ -127,11 +169,21 @@ public class BillingService {
         if ("PAID".equalsIgnoreCase(status)) {
             try {
                 java.util.List<com.hms.entity.BillingItem> items = billingItemRepository.findByBillingId(saved.getId());
+                java.util.List<com.hms.entity.BillingMedicine> medicines = billingMedicineRepository.findByBillingId(saved.getId());
                 java.math.BigDecimal totalAmt = java.math.BigDecimal.ZERO;
-                if (items != null && !items.isEmpty()) {
-                    for (com.hms.entity.BillingItem it : items) {
-                        if (it.getAmount() != null) {
-                            totalAmt = totalAmt.add(it.getAmount());
+                if ((items != null && !items.isEmpty()) || (medicines != null && !medicines.isEmpty())) {
+                    if (items != null) {
+                        for (com.hms.entity.BillingItem it : items) {
+                            if (it.getAmount() != null) {
+                                totalAmt = totalAmt.add(it.getAmount());
+                            }
+                        }
+                    }
+                    if (medicines != null) {
+                        for (com.hms.entity.BillingMedicine med : medicines) {
+                            if (med.getAmount() != null) {
+                                totalAmt = totalAmt.add(med.getAmount());
+                            }
                         }
                     }
                 } else {
@@ -197,7 +249,12 @@ public class BillingService {
             logger.warn("Failed to update OPD status after bill payment", e);
         }
 
-        // Audit log?
+        try {
+            webSocketHandler.broadcast(saved.getHospitalId(), "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh data from updateStatus", e);
+        }
+
         return saved;
     }
 
@@ -316,5 +373,31 @@ public class BillingService {
 
         logger.info("OPD bill generated for OPD {} patient {} with amount {}", opdId, patientId, total);
         return saved;
+    }
+
+    /**
+     * Centralized utility to recalculate top-level bill amount based on active items.
+     * Prevents IPD denormalized totals divergence.
+     */
+    public void recalculateTotal(Long billingId) {
+        Billing bill = billingRepository.findById(billingId).orElse(null);
+        if (bill != null) {
+            java.util.List<com.hms.entity.BillingItem> items = billingItemRepository.findByBillingId(billingId);
+            BigDecimal total = BigDecimal.ZERO;
+            for (com.hms.entity.BillingItem item : items) {
+                if (item.getAmount() != null) {
+                    total = total.add(item.getAmount());
+                }
+            }
+            java.util.List<com.hms.entity.BillingMedicine> medicines = billingMedicineRepository.findByBillingId(billingId);
+            for (com.hms.entity.BillingMedicine med : medicines) {
+                if (med.getAmount() != null) {
+                    total = total.add(med.getAmount());
+                }
+            }
+            bill.setAmount(total);
+            billingRepository.save(bill);
+            logger.info("Recalculated total for bill {}: {}", billingId, total);
+        }
     }
 }

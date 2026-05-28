@@ -15,6 +15,7 @@ public class ConsultationRequest {
     private LocalDate followUpDate;
     private List<PrescriptionItem> prescription;
     private List<String> labTests;
+    private List<AdministeredItem> administeredItems;
 
     @Data
     public static class PrescriptionItem {
@@ -23,5 +24,12 @@ public class ConsultationRequest {
         private String frequency;
         private String duration;
         private String instructions;
+    }
+
+    @Data
+    public static class AdministeredItem {
+        private Long medicineId;
+        private String medicineName;
+        private Integer quantity;
     }
 }
