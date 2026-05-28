@@ -78,4 +78,6 @@ public class LoginResponse {
     private Integer age;
     private String gender;
     private String specialization;
+    private Boolean isSingleDoctor;
+    private Boolean inClinic;
 }

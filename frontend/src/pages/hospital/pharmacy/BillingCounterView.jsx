@@ -4,8 +4,12 @@ import hospitalService from '../../../services/hospitalService';
 import salesApi from '../../../services/pharmacy/salesApi';
 import { useToast } from '../../../context/ToastContext';
 import LoadingSpinner from '../../../components/LoadingSpinner';
+import authService from '../../../services/authService';
 
 const BillingCounterView = ({ initialData }) => {
+    const user = authService.getCurrentUser();
+    const isStandalonePharmacy = user?.modules?.includes('PHARMACY') && !user?.modules?.includes('OPD');
+
     const toast = useToast();
     const [barcodeMode, setBarcodeMode] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -315,20 +319,22 @@ const BillingCounterView = ({ initialData }) => {
             <div className="bg-white border border-gray-200 rounded-lg p-3 flex flex-wrap items-center justify-between gap-4 shadow-sm">
                 <div className="flex items-center gap-4 flex-1">
                     {/* Segmented Mode Switcher */}
-                    <div className="flex gap-1 p-1 bg-gray-100 rounded-lg border border-gray-200">
-                        <button 
-                            onClick={() => { setBillingMode('WALK_IN'); setPatientSearch(''); setPatientId(null); setDoctorId(null); setSelectedRx(null); setBillItems([]); }}
-                            className={`px-4 py-1.5 rounded-md font-bold text-xs transition-all ${billingMode === 'WALK_IN' ? 'bg-white text-gray-900 shadow-sm border border-gray-200/50' : 'text-gray-500 hover:text-gray-900'}`}
-                        >
-                            🚶‍♂️ Walk-In Customer
-                        </button>
-                        <button 
-                            onClick={() => { setBillingMode('PRESCRIPTION'); setPatientSearch(''); setPatientId(null); setDoctorId(null); setSelectedRx(null); setBillItems([]); }}
-                            className={`px-4 py-1.5 rounded-md font-bold text-xs transition-all ${billingMode === 'PRESCRIPTION' ? 'bg-white text-gray-900 shadow-sm border border-gray-200/50' : 'text-gray-500 hover:text-gray-900'}`}
-                        >
-                            📋 Doctor Prescription
-                        </button>
-                    </div>
+                    {!isStandalonePharmacy && (
+                        <div className="flex gap-1 p-1 bg-gray-100 rounded-lg border border-gray-200">
+                            <button 
+                                onClick={() => { setBillingMode('WALK_IN'); setPatientSearch(''); setPatientId(null); setDoctorId(null); setSelectedRx(null); setBillItems([]); }}
+                                className={`px-4 py-1.5 rounded-md font-bold text-xs transition-all ${billingMode === 'WALK_IN' ? 'bg-white text-gray-900 shadow-sm border border-gray-200/50' : 'text-gray-500 hover:text-gray-900'}`}
+                            >
+                                🚶‍♂️ Walk-In Customer
+                            </button>
+                            <button 
+                                onClick={() => { setBillingMode('PRESCRIPTION'); setPatientSearch(''); setPatientId(null); setDoctorId(null); setSelectedRx(null); setBillItems([]); }}
+                                className={`px-4 py-1.5 rounded-md font-bold text-xs transition-all ${billingMode === 'PRESCRIPTION' ? 'bg-white text-gray-900 shadow-sm border border-gray-200/50' : 'text-gray-500 hover:text-gray-900'}`}
+                            >
+                                📋 Doctor Prescription
+                            </button>
+                        </div>
+                    )}
 
                     {/* Conditional Name Inputs */}
                     {billingMode === 'WALK_IN' ? (
@@ -375,11 +381,13 @@ const BillingCounterView = ({ initialData }) => {
                         </div>
                     )}
                 </div>
-                <div className="flex gap-2">
-                    <span className={`text-xs font-black px-2 py-1 rounded transition-colors uppercase tracking-wider ${billingMode === 'WALK_IN' ? 'bg-gray-100 text-gray-700' : 'bg-blue-100 text-blue-700'}`}>
-                        {billingMode === 'WALK_IN' ? 'Walk-in Mode' : 'Hospital Rx Mode'}
-                    </span>
-                </div>
+                {!isStandalonePharmacy && (
+                    <div className="flex gap-2">
+                        <span className={`text-xs font-black px-2 py-1 rounded transition-colors uppercase tracking-wider ${billingMode === 'WALK_IN' ? 'bg-gray-100 text-gray-700' : 'bg-blue-100 text-blue-700'}`}>
+                            {billingMode === 'WALK_IN' ? 'Walk-in Mode' : 'Hospital Rx Mode'}
+                        </span>
+                    </div>
+                )}
             </div>
 
             <div className="flex flex-1 flex-col lg:flex-row gap-4 overflow-hidden" style={{ minHeight: 'calc(100vh - 240px)' }}>
@@ -579,13 +587,15 @@ const BillingCounterView = ({ initialData }) => {
                                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
                                      UPI / QR
                                 </button>
-                                <button 
-                                    onClick={() => setPaymentMethod('IPD_BILL')}
-                                    className={`p-3 text-[11px] font-black rounded-xl border transition-all col-span-2 flex items-center justify-center gap-2 ${paymentMethod === 'IPD_BILL' ? 'bg-gray-900 text-white border-gray-900 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-900'}`}
-                                >
-                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
-                                    Post to IPD Admission Bill
-                                </button>
+                                {!isStandalonePharmacy && (
+                                    <button 
+                                        onClick={() => setPaymentMethod('IPD_BILL')}
+                                        className={`p-3 text-[11px] font-black rounded-xl border transition-all col-span-2 flex items-center justify-center gap-2 ${paymentMethod === 'IPD_BILL' ? 'bg-gray-900 text-white border-gray-900 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-900'}`}
+                                    >
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                                        Post to IPD Admission Bill
+                                    </button>
+                                )}
                             </div>
                         </div>
                         <div className="p-5 bg-gray-50/50 border-t border-gray-100">

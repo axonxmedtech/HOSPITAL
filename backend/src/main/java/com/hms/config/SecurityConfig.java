@@ -73,6 +73,7 @@ public class SecurityConfig {
                         // keep the instance awake and verify liveness. This must remain
                         // unauthenticated so external uptime probes can access it.
                         .requestMatchers("/api/public/health").permitAll()
+                        .requestMatchers("/ws/**").permitAll()
 
                         // Platform endpoints - only Super Admin
                         .requestMatchers("/platform/**").hasRole("SUPER_ADMIN")

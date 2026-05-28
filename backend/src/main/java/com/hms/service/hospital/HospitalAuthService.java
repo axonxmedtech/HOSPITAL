@@ -233,6 +233,8 @@ public class HospitalAuthService {
         response.setModules(hospital.getModules());
         response.setReceptionMode(settings.getReceptionMode());
         response.setBillingHandler(settings.getBillingHandler());
+        response.setIsSingleDoctor(hospital.getIsSingleDoctor());
+        response.setInClinic(settings.getInClinic());
 
         // Populate profile details
         populateProfileDetails(user, response);
@@ -289,11 +291,18 @@ public class HospitalAuthService {
                     return hospitalSettingRepository.save(newSettings);
                 });
 
+        // Restrict receptionist profile access if Solo Doctor mode is active
+        if ("RECEPTIONIST".equals(user.getRole()) && "SOLO".equals(settings.getReceptionMode())) {
+            throw new RuntimeException("Solo Doctor Mode is active. Access restricted.");
+        }
+
         response.setHospitalId(user.getHospitalId());
         response.setHospitalName(hospital.getName());
         response.setModules(hospital.getModules());
         response.setReceptionMode(settings.getReceptionMode());
         response.setBillingHandler(settings.getBillingHandler());
+        response.setIsSingleDoctor(hospital.getIsSingleDoctor());
+        response.setInClinic(settings.getInClinic());
 
         // Populate profile details
         populateProfileDetails(user, response);
@@ -342,6 +351,20 @@ public class HospitalAuthService {
                 admin.setAge(request.getAge());
                 admin.setGender(request.getGender());
                 hospitalAdminRepository.save(admin);
+
+                // Sync name, phone, and specialization to Doctor profile if single doctor mode is enabled
+                Hospital hospital = hospitalRepository.findById(user.getHospitalId()).orElse(null);
+                if (hospital != null && Boolean.TRUE.equals(hospital.getIsSingleDoctor())) {
+                    doctorRepository.findByEmailAndHospitalId(user.getEmail(), user.getHospitalId())
+                            .ifPresent(doctor -> {
+                                doctor.setName(user.getName());
+                                doctor.setPhone(request.getPhone() != null ? request.getPhone() : "");
+                                if (request.getSpecialization() != null && !request.getSpecialization().trim().isEmpty()) {
+                                    doctor.setSpecialization(request.getSpecialization());
+                                }
+                                doctorRepository.save(doctor);
+                            });
+                }
             } else if ("RECEPTIONIST".equals(user.getRole())) {
                 Receptionist receptionist = receptionistProfileRepository.findByEmail(user.getEmail())
                         .orElseGet(() -> {
@@ -432,12 +455,14 @@ public class HospitalAuthService {
         HospitalSettingDTO responseDto = new HospitalSettingDTO();
         responseDto.setReceptionMode(settings.getReceptionMode());
         responseDto.setBillingHandler(settings.getBillingHandler());
+        responseDto.setInClinic(settings.getInClinic());
         return responseDto;
     }
 
     /**
      * Update operational settings. Only `HOSPITAL_ADMIN` role is allowed to update.
      */
+    @Transactional
     public HospitalSettingDTO updateHospitalOperationsSettings(String email, HospitalSettingDTO dto) {
         User user = userRepository.findByEmail(email).orElseThrow(() -> new RuntimeException("User not found"));
         if (user.getHospitalId() == null) throw new RuntimeException("Invalid hospital user");
@@ -473,7 +498,10 @@ public class HospitalAuthService {
 
         settings.setReceptionMode(receptionMode);
         settings.setBillingHandler(billingHandler);
+        if (dto.getInClinic() != null) {
+            settings.setInClinic(dto.getInClinic());
+        }
         hospitalSettingRepository.save(settings);
-        return new HospitalSettingDTO(settings.getReceptionMode(), settings.getBillingHandler());
+        return new HospitalSettingDTO(settings.getReceptionMode(), settings.getBillingHandler(), settings.getInClinic());
     }
 }

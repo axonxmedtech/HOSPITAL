@@ -45,11 +45,13 @@ const PharmacyDashboard = () => {
         setNavData(data);
     };
 
+    const isStandalonePharmacy = user?.modules?.includes('PHARMACY') && !user?.modules?.includes('OPD');
+
     // Flat Sidebar definition matching Receptionist/Doctor layouts to support clean minimalist icons
     const sidebarTabs = [
         { id: 'dashboard', label: 'Dashboard' },
         { id: 'billing', label: 'Billing Counter' },
-        { id: 'prescriptions', label: 'Prescriptions' },
+        ...(!isStandalonePharmacy ? [{ id: 'prescriptions', label: 'Prescriptions' }] : []),
         { id: 'inventory', label: 'Inventory' },
         { id: 'medicine_master', label: 'Medicine Master' },
         { id: 'purchase', label: 'Purchase Management' },

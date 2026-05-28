@@ -53,4 +53,9 @@ public class CreateHospitalRequest {
      * If null/empty, defaults to CMS mode (OPD, BILLING).
      */
     private java.util.List<String> modules;
+
+    /**
+     * Whether the hospital is a single doctor hospital.
+     */
+    private Boolean isSingleDoctor = false;
 }

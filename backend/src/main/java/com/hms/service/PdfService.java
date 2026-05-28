@@ -11,6 +11,7 @@ import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import com.lowagie.text.pdf.draw.LineSeparator;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.awt.*;
 import java.io.ByteArrayInputStream;
@@ -20,6 +21,21 @@ import java.util.List;
 
 @Service
 public class PdfService {
+
+    @Autowired
+    private com.hms.repository.BillingItemRepository billingItemRepository;
+
+    @Autowired
+    private com.hms.repository.BillingMedicineRepository billingMedicineRepository;
+
+    @Autowired
+    private com.hms.repository.BillingPaymentRepository billingPaymentRepository;
+
+    @Autowired
+    private com.hms.repository.IpdAdmissionRepository ipdAdmissionRepository;
+
+    @Autowired
+    private com.hms.repository.WardRepository wardRepository;
 
     // Standardized Fonts
     private static final Font TITLE_FONT = FontFactory.getFont(FontFactory.TIMES_BOLD, 22, Font.BOLD, new Color(0, 51, 102));
@@ -195,47 +211,140 @@ public class PdfService {
             document.add(line);
             document.add(new Paragraph("\n"));
 
+            // Fetch details to support itemization
+            java.util.List<com.hms.entity.BillingItem> items = billingItemRepository != null ? billingItemRepository.findByBillingId(billing.getId()) : null;
+            java.util.List<com.hms.entity.BillingMedicine> medicines = billingMedicineRepository != null ? billingMedicineRepository.findByBillingId(billing.getId()) : null;
+            java.util.List<com.hms.entity.BillingPayment> payments = billingPaymentRepository != null ? billingPaymentRepository.findByBillingId(billing.getId()) : null;
+
+            // Recalculate totals
+            java.math.BigDecimal totalAmt = java.math.BigDecimal.ZERO;
+            if (items != null && !items.isEmpty()) {
+                for (com.hms.entity.BillingItem it : items) {
+                    if (it.getAmount() != null) {
+                        totalAmt = totalAmt.add(it.getAmount());
+                    }
+                }
+            }
+            if (medicines != null && !medicines.isEmpty()) {
+                for (com.hms.entity.BillingMedicine med : medicines) {
+                    if (med.getAmount() != null) {
+                        totalAmt = totalAmt.add(med.getAmount());
+                    }
+                }
+            }
+            if (totalAmt.compareTo(java.math.BigDecimal.ZERO) == 0 && (items == null || items.isEmpty()) && (medicines == null || medicines.isEmpty())) {
+                totalAmt = billing.getAmount() != null ? billing.getAmount() : java.math.BigDecimal.ZERO;
+                if (totalAmt.compareTo(java.math.BigDecimal.ZERO) == 0 && "IPD".equalsIgnoreCase(billing.getBillingType())) {
+                    try {
+                        if (billing.getIpdAdmissionId() != null && ipdAdmissionRepository != null && wardRepository != null) {
+                            com.hms.entity.IpdAdmission ipd = ipdAdmissionRepository.findById(billing.getIpdAdmissionId()).orElse(null);
+                            if (ipd != null && ipd.getWardId() != null) {
+                                com.hms.entity.Ward ward = wardRepository.findById(ipd.getWardId()).orElse(null);
+                                if (ward != null && ward.getBedPrice() != null) {
+                                    totalAmt = totalAmt.add(ward.getBedPrice());
+                                }
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
+
+            java.math.BigDecimal paidAmt = java.math.BigDecimal.ZERO;
+            if (payments != null && !payments.isEmpty()) {
+                for (com.hms.entity.BillingPayment pay : payments) {
+                    if (pay.getAmount() != null) {
+                        paidAmt = paidAmt.add(pay.getAmount());
+                    }
+                }
+            } else {
+                if ("PAID".equalsIgnoreCase(billing.getPaymentStatus())) {
+                    paidAmt = totalAmt;
+                }
+            }
+
+            java.math.BigDecimal balance = totalAmt.subtract(paidAmt);
+
             // 4. Main Service/Amount Table
-            PdfPTable amtTable = new PdfPTable(4);
+            PdfPTable amtTable = new PdfPTable(5);
             amtTable.setWidthPercentage(100);
-            amtTable.setWidths(new float[]{0.5f, 4f, 1.5f, 1.5f});
+            amtTable.setWidths(new float[]{0.5f, 4f, 1f, 1.5f, 1.5f});
 
             addTableHeaderCell(amtTable, "Sr#");
             addTableHeaderCell(amtTable, "Description");
-            addTableHeaderCell(amtTable, "Unit");
+            addTableHeaderCell(amtTable, "Qty");
+            addTableHeaderCell(amtTable, "Unit Price");
             addTableHeaderCell(amtTable, "Amount");
 
-            // Body rows
-            addTableCell(amtTable, "1", false);
-            addTableCell(amtTable, billing.getDescription() != null ? billing.getDescription() : "Service Fee / Consultation", false);
-            addTableCell(amtTable, "1", true);
-            addTableCell(amtTable, "INR " + String.format("%.2f", billing.getAmount()), true);
+            int sr = 1;
 
-            // Push total right aligned
-            PdfPCell totalLabel = new PdfPCell(new Phrase("Total", SMALL_BOLD_FONT));
-            totalLabel.setColspan(3);
+            // Render general service charges
+            if (items != null && !items.isEmpty()) {
+                for (com.hms.entity.BillingItem it : items) {
+                    addTableCell(amtTable, String.valueOf(sr++), false);
+                    addTableCell(amtTable, it.getDescription(), false);
+                    addTableCell(amtTable, "1", true);
+                    addTableCell(amtTable, "INR " + String.format("%.2f", it.getAmount()), true);
+                    addTableCell(amtTable, "INR " + String.format("%.2f", it.getAmount()), true);
+                }
+            }
+
+            // Render administered medicines
+            if (medicines != null && !medicines.isEmpty()) {
+                for (com.hms.entity.BillingMedicine med : medicines) {
+                    addTableCell(amtTable, String.valueOf(sr++), false);
+                    addTableCell(amtTable, med.getMedicineName() + " (In-Clinic Administered)", false);
+                    addTableCell(amtTable, String.valueOf(med.getQuantity()), true);
+                    addTableCell(amtTable, "INR " + String.format("%.2f", med.getUnitPrice()), true);
+                    addTableCell(amtTable, "INR " + String.format("%.2f", med.getAmount()), true);
+                }
+            }
+
+            // Fallback description if no items exist
+            if (sr == 1) {
+                addTableCell(amtTable, "1", false);
+                addTableCell(amtTable, billing.getDescription() != null ? billing.getDescription() : "Service Fee / Consultation Charge", false);
+                addTableCell(amtTable, "1", true);
+                addTableCell(amtTable, "INR " + String.format("%.2f", totalAmt), true);
+                addTableCell(amtTable, "INR " + String.format("%.2f", totalAmt), true);
+            }
+
+            // Push grand total right aligned
+            PdfPCell totalLabel = new PdfPCell(new Phrase("Grand Total", SMALL_BOLD_FONT));
+            totalLabel.setColspan(4);
             totalLabel.setBorder(Rectangle.NO_BORDER);
             totalLabel.setHorizontalAlignment(Element.ALIGN_RIGHT);
             totalLabel.setPaddingTop(15f);
             amtTable.addCell(totalLabel);
 
-            PdfPCell totalVal = new PdfPCell(new Phrase("INR " + String.format("%.2f", billing.getAmount()), SMALL_BOLD_FONT));
+            PdfPCell totalVal = new PdfPCell(new Phrase("INR " + String.format("%.2f", totalAmt), SMALL_BOLD_FONT));
             totalVal.setBorder(Rectangle.NO_BORDER);
             totalVal.setHorizontalAlignment(Element.ALIGN_RIGHT);
             totalVal.setPaddingTop(15f);
             amtTable.addCell(totalVal);
 
-            // Push final amount right aligned
+            // Paid amount right aligned
             PdfPCell paidLabel = new PdfPCell(new Phrase("Paid Amount", SMALL_BOLD_FONT));
-            paidLabel.setColspan(3);
+            paidLabel.setColspan(4);
             paidLabel.setBorder(Rectangle.NO_BORDER);
             paidLabel.setHorizontalAlignment(Element.ALIGN_RIGHT);
             amtTable.addCell(paidLabel);
 
-            PdfPCell paidVal = new PdfPCell(new Phrase("INR " + String.format("%.2f", billing.getAmount()), SMALL_BOLD_FONT));
+            PdfPCell paidVal = new PdfPCell(new Phrase("INR " + String.format("%.2f", paidAmt), SMALL_BOLD_FONT));
             paidVal.setBorder(Rectangle.NO_BORDER);
             paidVal.setHorizontalAlignment(Element.ALIGN_RIGHT);
             amtTable.addCell(paidVal);
+
+            // Balance due right aligned
+            PdfPCell balLabel = new PdfPCell(new Phrase("Balance Due", SMALL_BOLD_FONT));
+            balLabel.setColspan(4);
+            balLabel.setBorder(Rectangle.NO_BORDER);
+            balLabel.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            amtTable.addCell(balLabel);
+
+            PdfPCell balVal = new PdfPCell(new Phrase("INR " + String.format("%.2f", balance), SMALL_BOLD_FONT));
+            balVal.setBorder(Rectangle.NO_BORDER);
+            balVal.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            amtTable.addCell(balVal);
 
             document.add(amtTable);
 

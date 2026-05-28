@@ -11,6 +11,7 @@ import StatusBadge from '../../components/StatusBadge';
 import HistoryDrawer from '../../components/HistoryDrawer';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
+import useWebSocket from '../../hooks/useWebSocket';
 
 import PageHeader from '../../components/PageHeader';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -21,7 +22,9 @@ import AppointmentModal from '../../components/AppointmentModal';
 import PatientModal from '../../components/PatientModal';
 import PatientDetailsModal from '../../components/PatientDetailsModal';
 import ProfileModal from '../../components/ProfileModal';
+import IpdAdmitModal from '../../components/IpdAdmitModal';
 import { SkeletonDashboard } from '../../components/Skeleton';
+import MedicineInventoryTab from '../../components/MedicineInventoryTab';
 
 /**
  * DoctorDashboard - Doctor dashboard
@@ -35,7 +38,7 @@ import { SkeletonDashboard } from '../../components/Skeleton';
  * @version Phase-1
  */
 const DoctorDashboard = () => {
-    const user = authService.getCurrentUser();
+    const [user, setUser] = useState(() => authService.getCurrentUser());
     console.log(user)
     const [searchParams, setSearchParams] = useSearchParams();
     const activeTab = searchParams.get('tab') || 'overview'; // Changed default to 'overview'
@@ -57,6 +60,7 @@ const DoctorDashboard = () => {
     const [todaysFollowUps, setTodaysFollowUps] = useState([]);
     const [patients, setPatients] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [lowStockItems, setLowStockItems] = useState([]);
 
     // View Prescription Modal State
     const [viewPrescriptionModal, setViewPrescriptionModal] = useState({
@@ -125,6 +129,8 @@ const DoctorDashboard = () => {
     const [isAddPatientModalOpen, setIsAddPatientModalOpen] = useState(false);
     const [isOpdModalOpen, setIsOpdModalOpen] = useState(false);
     const [patientDetailsModal, setPatientDetailsModal] = useState({ isOpen: false, patient: null });
+    const [isIpdAdmitOpen, setIsIpdAdmitOpen] = useState(false);
+    const [ipdOpdForAdmit, setIpdOpdForAdmit] = useState(null);
 
     // Payment Modals
     const [paymentModal, setPaymentModal] = useState({
@@ -228,6 +234,8 @@ const DoctorDashboard = () => {
         return () => clearTimeout(timer);
     }, [activeTab, searchTerm, viewFilter]);
 
+    // WebSocket connection will be initialized below loadData definition to avoid ReferenceError
+
     useEffect(() => {
         // Use local date instead of UTC
         const today = new Date();
@@ -246,8 +254,8 @@ const DoctorDashboard = () => {
     }, [appointments, totalElements]);
 
     
-    const loadData = async () => {
-        setLoading(true);
+    const loadData = async (showSpinner = true) => {
+        if (showSpinner) setLoading(true);
         try {
             if (activeTab === 'appointments') {
                 const localPage = page - 1;
@@ -318,8 +326,11 @@ const DoctorDashboard = () => {
                 try {
                     const opdsData = await hospitalService.getOpds(searchTerm, page - 1, ITEMS_PER_PAGE);
                     let opdsArray = Array.isArray(opdsData) ? opdsData : (opdsData.content || []);
-                    // Filter to only show active queued patient OPD cases
-                    opdsArray = opdsArray.filter(o => o.status === 'QUEUED');
+                    // In Solo Doctor Mode, show all OPD cases (to allow billing, printing, IPD admission, etc.).
+                    // In regular mode, only show active queued patient OPD cases.
+                    if (user?.receptionMode !== 'SOLO') {
+                        opdsArray = opdsArray.filter(o => o.status === 'QUEUED');
+                    }
                     setOpds(opdsArray);
                     setTotalElements(opdsArray.length);
                     setTotalPages(1);
@@ -356,12 +367,59 @@ const DoctorDashboard = () => {
                     setOpds([]);
                 }
             }
+
+            // Check for low-stock items if in Clinic mode
+            if (user?.inClinic !== false) {
+                try {
+                    const inv = await hospitalService.getInventoryMedicines();
+                    const lowStock = (inv || []).filter(item => item.isActive !== false && item.stockQuantity <= item.minStockLevel);
+                    setLowStockItems(lowStock);
+                } catch (err) {
+                    console.error("Failed to load inventory for low stock alerts", err);
+                }
+            } else {
+                setLowStockItems([]);
+            }
         } catch (err) {
             toastError('Failed to load data');
         } finally {
-            setLoading(false);
+            if (showSpinner) setLoading(false);
         }
     };
+
+    // WebSocket real-time live sync (defined after loadData to avoid ReferenceError)
+    useWebSocket(user, setUser, loadData);
+
+    // Fetch fresh profile on mount to sync sessionStorage settings
+    useEffect(() => {
+        const fetchProfileOnMount = async () => {
+            try {
+                const profile = await authService.getProfile();
+                const updatedUser = authService.updateCurrentUser(profile);
+                if (updatedUser) {
+                    setUser(updatedUser);
+                }
+            } catch (err) {
+                console.error("Failed to fetch profile on mount", err);
+            }
+        };
+        fetchProfileOnMount();
+
+        // 15-second background synchronization fallback
+        const interval = setInterval(async () => {
+            try {
+                const profile = await authService.getProfile();
+                const updatedUser = authService.updateCurrentUser(profile);
+                if (updatedUser) {
+                    setUser(updatedUser);
+                }
+            } catch (err) {
+                console.error("Background profile sync failed", err);
+            }
+        }, 15000);
+
+        return () => clearInterval(interval);
+    }, []);
 
     const handleStatusUpdate = (id, newStatus) => {
         const action = newStatus === 'COMPLETED' ? 'Complete' : 'Cancel';
@@ -501,15 +559,28 @@ const DoctorDashboard = () => {
         navigate('/login');
     };
 
+    const isSolo = user?.receptionMode === 'SOLO';
+    const hasBilling = user?.billingHandler === 'DOCTOR';
+    const hasInClinic = user?.inClinic !== false;
+
     const tabs = [
         { id: 'overview', label: 'Overview', icon: null },
         { id: 'appointments', label: 'My Appointments', icon: null },
         { id: 'ipd', label: 'IPD', icon: null },
         { id: 'queue', label: 'Queue', icon: null },
         { id: 'opd', label: 'OPD', icon: null },
-        { id: 'patients', label: 'Patients', icon: null },
-        ...(user?.billingHandler === 'DOCTOR' ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
+        ...(isSolo ? [{ id: 'patients', label: 'Patients', icon: null }] : []),
+        ...((isSolo || hasBilling) ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
+        ...((isSolo && hasInClinic) ? [{ id: 'inventory', label: 'Medicine Inventory', icon: null }] : []),
     ];
+
+    // Fallback if the URL parameter tab is not currently valid/visible
+    useEffect(() => {
+        const isValidTab = tabs.some(t => t.id === activeTab);
+        if (!isValidTab) {
+            setActiveTab('overview');
+        }
+    }, [user, activeTab, tabs]);
 
     const pagination = {
         pageIndex: page - 1, // DataTable expects 0-indexed
@@ -709,6 +780,36 @@ const DoctorDashboard = () => {
                                     </div>
                                 )}
                             </div>
+                            {user?.inClinic !== false && lowStockItems.length > 0 && (
+                                <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-4 flex items-start gap-3 shadow-sm hover:shadow transition-all duration-300 animate-fade-in">
+                                    <div className="p-2 bg-amber-100 text-amber-800 rounded-xl">
+                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                        </svg>
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <h3 className="text-sm font-bold text-amber-900">Low Stock Alert: {lowStockItems.length} clinical items require restocking</h3>
+                                        <p className="text-xs text-amber-700/90 mt-1 leading-relaxed">
+                                            The physical stock levels for these administered items are below reorder thresholds:
+                                        </p>
+                                        <div className="flex flex-wrap gap-2 mt-2">
+                                            {lowStockItems.map(item => (
+                                                <span key={item.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200/40">
+                                                    {item.name} <span className="font-bold">({item.stockQuantity} left)</span>
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    {user?.receptionMode === 'SOLO' && (
+                                        <button 
+                                            onClick={() => setActiveTab('inventory')}
+                                            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg transition-all"
+                                        >
+                                            Restock Inventory
+                                        </button>
+                                    )}
+                                </div>
+                            )}
                             <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
                                 <div className="bg-white rounded-lg border border-gray-200 p-6">
                                     <div className="flex justify-between items-center">
@@ -977,6 +1078,11 @@ const DoctorDashboard = () => {
                         onSearch={(e) => setSearchTerm(e.target.value)}
                         searchValue={searchTerm}
                         searchPlaceholder={`Search ${activeTab}...`}
+                        onAdd={(user?.receptionMode === 'SOLO' && (activeTab === 'patients' || activeTab === 'opd')) ? () => {
+                            if (activeTab === 'patients') setIsAddPatientModalOpen(true);
+                            if (activeTab === 'opd') setIsOpdModalOpen(true);
+                        } : null}
+                        addLabel={activeTab === 'patients' ? 'Register Patient' : 'New OPD Case'}
                         filter={
                             activeTab === 'appointments' ? (
                                 <div className="flex items-center gap-4">
@@ -1048,11 +1154,12 @@ const DoctorDashboard = () => {
                                         <DoctorOpdTable
                                             opds={opds}
                                             queueEntries={queueEntries}
-                                            currentToken={currentToken}
                                             onPrintOpd={handlePrintOpd}
                                             onStartConsultation={handleStartOpdConsultation}
                                             onPrintPrescription={handlePrintPrescriptionOpd}
                                             onViewPrescription={handleViewPrescriptionOpd}
+                                            onAdmitIpd={(opd) => { setIpdOpdForAdmit(opd); setIsIpdAdmitOpen(true); }}
+                                            user={user}
                                             startIndex={(page - 1) * ITEMS_PER_PAGE}
                                             pagination={pagination}
                                         />
@@ -1209,6 +1316,10 @@ const DoctorDashboard = () => {
                                         />
                                     )
                                 )}
+
+                                {activeTab === 'inventory' && (
+                                    <MedicineInventoryTab />
+                                )}
                             </div>
                             )}
                         </>
@@ -1314,6 +1425,15 @@ const DoctorDashboard = () => {
                     <PatientDetailsModal
                         patient={patientDetailsModal.patient}
                         onClose={() => setPatientDetailsModal({ isOpen: false, patient: null })}
+                    />
+                )}
+
+                {isIpdAdmitOpen && (
+                    <IpdAdmitModal
+                        isOpen={isIpdAdmitOpen}
+                        onClose={() => { setIsIpdAdmitOpen(false); setIpdOpdForAdmit(null); }}
+                        opd={ipdOpdForAdmit}
+                        onSuccess={loadData}
                     />
                 )}
 
@@ -1706,7 +1826,7 @@ const DoctorPatientsTable = ({ patients, onViewHistory, onStartConsultation, onC
 
 
 // Doctor OPD Table
-const DoctorOpdTable = ({ opds, queueEntries = [], currentToken, onPrintOpd, onStartConsultation, onPrintPrescription, onViewPrescription, startIndex = 0, pagination }) => {
+const DoctorOpdTable = ({ opds, queueEntries = [], onPrintOpd, onStartConsultation, onPrintPrescription, onViewPrescription, onAdmitIpd, user, startIndex = 0, pagination }) => {
     const columnHelper = createColumnHelper();
 
     const getQueuePosition = (opdId) => {
@@ -1789,6 +1909,15 @@ const DoctorOpdTable = ({ opds, queueEntries = [], currentToken, onPrintOpd, onS
                         icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" /></svg>,
                         onClick: () => onViewPrescription(opd)
                     });
+
+                    // Solo Doctor Mode can admit patient to IPD
+                    if (user?.receptionMode === 'SOLO' && onAdmitIpd) {
+                        actions.push({
+                            label: 'Admit to IPD',
+                            icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /></svg>,
+                            onClick: () => onAdmitIpd(opd)
+                        });
+                    }
                 }
 
                 return (

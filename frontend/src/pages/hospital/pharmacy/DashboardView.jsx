@@ -2,45 +2,52 @@ import React, { useState, useEffect } from 'react';
 import inventoryApi from '../../../services/pharmacy/inventoryApi';
 import salesApi from '../../../services/pharmacy/salesApi';
 import { SkeletonTableRow } from '../../../components/Skeleton';
+import authService from '../../../services/authService';
+import useWebSocket from '../../../hooks/useWebSocket';
 
 const DashboardView = ({ onNavigate }) => {
+    const user = authService.getCurrentUser();
+    const isStandalonePharmacy = user?.modules?.includes('PHARMACY') && !user?.modules?.includes('OPD');
+
     const [loading, setLoading] = useState(true);
     const [lowStockCount, setLowStockCount] = useState(0);
     const [lowStockItems, setLowStockItems] = useState([]);
     const [salesStats, setSalesStats] = useState({ todaySalesTotal: 0, todaySalesCount: 0 });
 
-    useEffect(() => {
-        const fetchLiveStats = async () => {
-            setLoading(true);
-            try {
-                // 1. Fetch Low Stock from ERP Batch Layer
-                const stockResponse = await inventoryApi.getLowStock(0, 10);
-                if (stockResponse && stockResponse.content) {
-                    setLowStockCount(stockResponse.totalElements || stockResponse.content.length);
-                    setLowStockItems(stockResponse.content.map(b => ({
-                        id: b.id,
-                        item: b.medicine?.medicineName || 'Unknown Med',
-                        generic: b.medicine?.genericName || 'N/A',
-                        category: b.medicine?.category?.categoryName || 'General',
-                        available: b.currentQuantity,
-                        unit: b.medicine?.unitOfMeasure || 'Units',
-                        threshold: b.medicine?.reorderLevel || 0
-                    })));
-                }
-
-                // 2. Fetch Today Sales
-                const salesData = await salesApi.getStats();
-                setSalesStats(salesData);
-
-            } catch (err) {
-                console.error("Failed loading pharmacy stats", err);
-            } finally {
-                setLoading(false);
+    const fetchLiveStats = async (showSpinner = true) => {
+        if (showSpinner) setLoading(true);
+        try {
+            // 1. Fetch Low Stock from ERP Batch Layer
+            const stockResponse = await inventoryApi.getLowStock(0, 10);
+            if (stockResponse && stockResponse.content) {
+                setLowStockCount(stockResponse.totalElements || stockResponse.content.length);
+                setLowStockItems(stockResponse.content.map(b => ({
+                    id: b.id,
+                    item: b.medicine?.medicineName || 'Unknown Med',
+                    generic: b.medicine?.genericName || 'N/A',
+                    category: b.medicine?.category?.categoryName || 'General',
+                    available: b.currentQuantity,
+                    unit: b.medicine?.unitOfMeasure || 'Units',
+                    threshold: b.medicine?.reorderLevel || 0
+                })));
             }
-        };
 
-        fetchLiveStats();
+            // 2. Fetch Today Sales
+            const salesData = await salesApi.getStats();
+            setSalesStats(salesData);
+
+        } catch (err) {
+            console.error("Failed loading pharmacy stats", err);
+        } finally {
+            if (showSpinner) setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchLiveStats(true);
     }, []);
+
+    useWebSocket(user, null, () => fetchLiveStats(false));
 
     // Dynamic stats mapping
     const stats = [
@@ -228,10 +235,12 @@ const DashboardView = ({ onNavigate }) => {
                                 <span>🚶‍♂️ Walk-In & Prescription Billing</span>
                                 <span>&rarr;</span>
                             </button>
-                            <button onClick={() => onNavigate('prescriptions')} className="w-full text-left px-3 py-2 bg-gray-50 border border-gray-200 hover:border-gray-900 rounded-lg text-xs font-bold text-gray-700 hover:bg-gray-900 hover:text-white transition-all flex items-center justify-between">
-                                <span>📋 Live Doctor Prescriptions</span>
-                                <span>&rarr;</span>
-                            </button>
+                            {!isStandalonePharmacy && (
+                                <button onClick={() => onNavigate('prescriptions')} className="w-full text-left px-3 py-2 bg-gray-50 border border-gray-200 hover:border-gray-900 rounded-lg text-xs font-bold text-gray-700 hover:bg-gray-900 hover:text-white transition-all flex items-center justify-between">
+                                    <span>📋 Live Doctor Prescriptions</span>
+                                    <span>&rarr;</span>
+                                </button>
+                            )}
                             <button onClick={() => onNavigate('purchase')} className="w-full text-left px-3 py-2 bg-gray-50 border border-gray-200 hover:border-gray-900 rounded-lg text-xs font-bold text-gray-700 hover:bg-gray-900 hover:text-white transition-all flex items-center justify-between">
                                 <span>📦 Purchase Invoice Entry</span>
                                 <span>&rarr;</span>

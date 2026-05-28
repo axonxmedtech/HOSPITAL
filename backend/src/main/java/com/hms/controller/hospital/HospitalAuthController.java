@@ -25,6 +25,12 @@ public class HospitalAuthController {
     @Autowired
     private HospitalAuthService authService;
 
+    @Autowired
+    private com.hms.security.HospitalWebSocketHandler webSocketHandler;
+
+    @Autowired
+    private com.hms.repository.UserRepository userRepository;
+
     /**
      * Hospital user login endpoint
      * Used by Hospital Admin and Doctor
@@ -96,6 +102,9 @@ public class HospitalAuthController {
         try {
             if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
             com.hms.dto.HospitalFeesDTO updated = authService.updateHospitalFees(principal.getName(), fees);
+            userRepository.findByEmail(principal.getName()).ifPresent(user -> {
+                webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
+            });
             return ResponseEntity.ok(updated);
         } catch (Exception e) {
             return ResponseEntity.status(403).body(e.getMessage());
@@ -122,7 +131,11 @@ public class HospitalAuthController {
     public ResponseEntity<?> updateOperationsSettings(java.security.Principal principal, @Valid @RequestBody com.hms.dto.HospitalSettingDTO dto) {
         try {
             if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
-            return ResponseEntity.ok(authService.updateHospitalOperationsSettings(principal.getName(), dto));
+            com.hms.dto.HospitalSettingDTO updated = authService.updateHospitalOperationsSettings(principal.getName(), dto);
+            userRepository.findByEmail(principal.getName()).ifPresent(user -> {
+                webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
+            });
+            return ResponseEntity.ok(updated);
         } catch (Exception e) {
             return ResponseEntity.status(403).body(e.getMessage());
         }

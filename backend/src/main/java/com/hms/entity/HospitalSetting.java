@@ -35,6 +35,9 @@ public class HospitalSetting {
     @Column(name = "billing_handler", nullable = false, length = 20)
     private String billingHandler = "RECEPTIONIST"; // RECEPTIONIST or DOCTOR
 
+    @Column(name = "in_clinic", nullable = false)
+    private Boolean inClinic = true;
+
     public Long getId() {
         return id;
     }
@@ -65,5 +68,13 @@ public class HospitalSetting {
 
     public void setBillingHandler(String billingHandler) {
         this.billingHandler = billingHandler;
+    }
+
+    public Boolean getInClinic() {
+        return inClinic;
+    }
+
+    public void setInClinic(Boolean inClinic) {
+        this.inClinic = inClinic;
     }
 }

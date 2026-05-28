@@ -21,7 +21,7 @@ public class IpdAdmissionController {
     private com.hms.security.SecurityContextHelper securityHelper;
 
     @PostMapping("/admit")
-    @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR')")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> admitToIpd(@RequestBody CreateIpdAdmissionRequest req) {
         try {
             IpdAdmission ipd = ipdAdmissionService.admitFromOpd(req.getOpdId(), req.getWardId(), req.getBedId(), req.getAdmissionType(), req.getPrimaryDiagnosis());
@@ -43,7 +43,7 @@ public class IpdAdmissionController {
         }
     }
 
-    @PreAuthorize("hasAnyRole('RECEPTIONIST','DOCTOR')")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST','DOCTOR','HOSPITAL_ADMIN')")
     @GetMapping("/admissions")
     public ResponseEntity<java.util.List<IpdAdmissionSummaryDTO>> getAdmittedIpdAdmissions() {
         java.util.List<IpdAdmissionSummaryDTO> list = ipdAdmissionService.getAdmittedIpdSummariesForCurrentUser();
@@ -51,7 +51,7 @@ public class IpdAdmissionController {
     }
 
     @GetMapping("/my")
-    @PreAuthorize("hasRole('DOCTOR')")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> listMyIpdAdmissions() {
         try {
             return ResponseEntity.ok(ipdAdmissionService.listMyIpdAdmissionsForDoctor());
@@ -79,10 +79,10 @@ public class IpdAdmissionController {
     }
 
     @PostMapping("/{id}/followup")
-    @PreAuthorize("hasRole('DOCTOR')")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> addFollowup(@PathVariable("id") Long id, @RequestBody com.hms.dto.AddIpdFollowupRequest req) {
         try {
-            com.hms.entity.MedicalRecord mr = ipdAdmissionService.addIpdFollowup(id, req.getDiagnosis(), req.getNotes());
+            com.hms.entity.MedicalRecord mr = ipdAdmissionService.addIpdFollowup(id, req.getDiagnosis(), req.getNotes(), req.getAdministeredItems());
             return ResponseEntity.ok(mr);
         } catch (org.springframework.security.access.AccessDeniedException ade) {
             return ResponseEntity.status(403).body("Access denied");
@@ -92,7 +92,7 @@ public class IpdAdmissionController {
     }
 
     @PostMapping("/{id}/plan-discharge")
-    @PreAuthorize("hasRole('DOCTOR')")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> planDischarge(@PathVariable("id") Long id, @RequestBody com.hms.dto.PlanDischargeRequest req) {
         try {
             com.hms.entity.DischargeSummary ds = ipdAdmissionService.planDischarge(id, req);
@@ -118,7 +118,7 @@ public class IpdAdmissionController {
     }
 
     @PostMapping("/{id}/prescriptions")
-    @PreAuthorize("hasRole('DOCTOR')")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> addPrescription(@PathVariable("id") Long id, @RequestBody com.hms.dto.AddIpdPrescriptionRequest req) {
         try {
             com.hms.entity.Prescription p = ipdAdmissionService.addIpdPrescription(id, req);
@@ -131,7 +131,7 @@ public class IpdAdmissionController {
     }
 
     @PutMapping("/prescriptions/{id}/stop")
-    @PreAuthorize("hasRole('DOCTOR')")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> stopPrescription(@PathVariable("id") Long id) {
         try {
             com.hms.entity.Prescription p = ipdAdmissionService.stopPrescription(id);

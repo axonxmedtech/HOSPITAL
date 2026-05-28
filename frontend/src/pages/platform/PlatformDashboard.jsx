@@ -65,7 +65,8 @@ const PlatformDashboard = () => {
         adminName: '',
         adminEmail: '',
         adminPassword: '',
-        modules: ['OPD', 'BILLING'] // Default modules
+        modules: ['OPD', 'BILLING'], // Default modules
+        isSingleDoctor: false
     });
     const [errors, setErrors] = useState({}); // Field-level errors
 
@@ -89,7 +90,8 @@ const PlatformDashboard = () => {
         modules: [],
         name: '',
         adminEmail: '',
-        adminName: ''
+        adminName: '',
+        isSingleDoctor: false
     });
 
     // Password Reset Modal State
@@ -298,7 +300,8 @@ const PlatformDashboard = () => {
                         adminName: '',
                         adminEmail: '',
                         adminPassword: '',
-                        modules: ['OPD', 'BILLING'] // Reset to defaults
+                        modules: ['OPD', 'BILLING'], // Reset to defaults
+                        isSingleDoctor: false
                     });
                     loadHospitals(); // Reload hospitals list
                 } catch (err) {
@@ -330,15 +333,18 @@ const PlatformDashboard = () => {
         try {
             const hospitalId = editHospitalModal.hospital.publicId || editHospitalModal.hospital.id;
 
-            // Update Details (Name & Email & Admin Name)
+            // Update Details (Name & Email & Admin Name & Single Doctor status)
             if (editHospitalModal.name !== editHospitalModal.hospital.name ||
                 editHospitalModal.adminEmail !== editHospitalModal.hospital.adminEmail ||
-                editHospitalModal.adminName !== editHospitalModal.hospital.adminName) {
+                editHospitalModal.adminName !== editHospitalModal.hospital.adminName ||
+                editHospitalModal.isSingleDoctor !== editHospitalModal.hospital.isSingleDoctor) {
                 await platformService.updateHospitalDetails(
                     hospitalId,
                     editHospitalModal.name,
                     editHospitalModal.adminEmail,
-                    editHospitalModal.adminName
+                    editHospitalModal.adminName,
+                    '', // reason
+                    editHospitalModal.isSingleDoctor
                 );
             }
 
@@ -376,7 +382,8 @@ const PlatformDashboard = () => {
                 modules: details.modules || [],
                 name: details.name,
                 adminEmail: details.adminEmail || '',
-                adminName: details.adminName || ''
+                adminName: details.adminName || '',
+                isSingleDoctor: details.isSingleDoctor || false
             });
         } catch (err) {
             setError('Failed to fetch hospital details');
@@ -845,6 +852,23 @@ const PlatformDashboard = () => {
                                     {formData.modules.length === 0 && <p className="mt-2 text-xs text-gray-600 font-medium">At least one module should be enabled.</p>}
                                 </div>
 
+                                <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                                    <label className="flex items-center space-x-2.5 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.isSingleDoctor}
+                                            onChange={(e) => {
+                                                setFormData({ ...formData, isSingleDoctor: e.target.checked });
+                                            }}
+                                            className="w-4 h-4 rounded text-gray-900 border-gray-300 focus:ring-gray-900"
+                                        />
+                                        <div>
+                                            <span className="text-sm font-bold text-gray-900">Single Doctor Hospital</span>
+                                            <p className="text-xs text-gray-500 mt-0.5">Enable unified doctor-admin dashboards for single-doctor clinics.</p>
+                                        </div>
+                                    </label>
+                                </div>
+
                                 <div className="flex gap-3 pt-4 border-t border-gray-200">
                                     <button
                                         type="button"
@@ -1023,6 +1047,23 @@ const PlatformDashboard = () => {
                                         ))}
                                     </div>
                                     {editHospitalModal.modules.length === 0 && <p className="mt-2 text-xs text-amber-600 font-medium">Warning: Disabling all modules may restrict access.</p>}
+                                </div>
+
+                                <div className="p-4 bg-gray-50 border border-gray-200 rounded-2xl">
+                                    <label className="flex items-center space-x-3 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={editHospitalModal.isSingleDoctor}
+                                            onChange={(e) => {
+                                                setEditHospitalModal({ ...editHospitalModal, isSingleDoctor: e.target.checked });
+                                            }}
+                                            className="w-4 h-4 text-gray-900 bg-gray-100 border-gray-300 rounded focus:ring-gray-900 focus:ring-2"
+                                        />
+                                        <div>
+                                            <span className="text-sm font-bold text-gray-900">Single Doctor Hospital</span>
+                                            <p className="text-xs text-gray-500 mt-0.5">Enable unified doctor-admin dashboards for single-doctor clinics.</p>
+                                        </div>
+                                    </label>
                                 </div>
 
                                 <div className="flex gap-4 pt-6 border-t border-gray-100">
@@ -1675,6 +1716,18 @@ const HospitalsTable = ({ hospitals, hospitalPage, handleToggleStatus, openEditH
                         : 'bg-red-100 text-red-700 border-red-200'
                 }`}>
                     {info.getValue() ? 'Active' : 'Inactive'}
+                </span>
+            )
+        }),
+        columnHelper.accessor('isSingleDoctor', {
+            header: 'Single Doctor',
+            cell: info => (
+                <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full border ${
+                    info.getValue()
+                        ? 'bg-amber-100 text-amber-800 border-amber-200'
+                        : 'bg-slate-100 text-slate-600 border-slate-200'
+                }`}>
+                    {info.getValue() ? 'Yes' : 'No'}
                 </span>
             )
         }),

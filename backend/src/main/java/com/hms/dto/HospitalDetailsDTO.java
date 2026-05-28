@@ -15,6 +15,7 @@ public class HospitalDetailsDTO {
     private List<String> modules;
     private String address;
     private String phone;
+    private Boolean isSingleDoctor;
 
     public String getPublicId() {
         return publicId;
@@ -94,5 +95,13 @@ public class HospitalDetailsDTO {
 
     public void setPhone(String phone) {
         this.phone = phone;
+    }
+
+    public Boolean getIsSingleDoctor() {
+        return isSingleDoctor;
+    }
+
+    public void setIsSingleDoctor(Boolean isSingleDoctor) {
+        this.isSingleDoctor = isSingleDoctor;
     }
 }

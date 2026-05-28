@@ -2,8 +2,11 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { format } from 'date-fns';
 import hospitalService from '../../../services/hospitalService';
 import { SkeletonTableRow } from '../../../components/Skeleton';
+import authService from '../../../services/authService';
+import useWebSocket from '../../../hooks/useWebSocket';
 
 const PrescriptionsView = () => {
+    const user = authService.getCurrentUser();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedPrescription, setSelectedPrescription] = useState(null);
     const [prescriptions, setPrescriptions] = useState([]);
@@ -11,12 +14,8 @@ const PrescriptionsView = () => {
     const [error, setError] = useState(null);
     const [sourceFilter, setSourceFilter] = useState('ALL');
 
-    useEffect(() => {
-        fetchData();
-    }, []);
-
-    const fetchData = async () => {
-        setLoading(true);
+    const fetchData = async (showSpinner = true) => {
+        if (showSpinner) setLoading(true);
         setError(null);
         try {
             const data = await hospitalService.getPendingPrescriptions();
@@ -25,9 +24,20 @@ const PrescriptionsView = () => {
             console.error("Error fetching prescriptions:", err);
             setError("Failed to load prescriptions. Please check backend connection.");
         } finally {
-            setLoading(false);
+            if (showSpinner) setLoading(false);
         }
     };
+
+    useEffect(() => {
+        fetchData(true);
+    }, []);
+
+    useWebSocket(user, null, () => {
+        if (!selectedPrescription) {
+            fetchData(false);
+        }
+    });
+
 
     // 1. Group raw prescription rows by medicalRecordId on frontend
     // Each consultation is one unique visual report for the user

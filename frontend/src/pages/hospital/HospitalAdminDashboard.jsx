@@ -23,7 +23,9 @@ import Navbar from '../../components/Navbar';
 import PageHeader from '../../components/PageHeader';
 import WardsAndBeds from './WardsAndBeds';
 import WardModal from '../../components/WardModal';
+import useWebSocket from '../../hooks/useWebSocket';
 import { SkeletonDashboard, SkeletonFormCard, SkeletonSettingsCard, SkeletonTable } from '../../components/Skeleton';
+import reportsApi from '../../services/pharmacy/reportsApi';
 /**
  * HospitalAdminDashboard - Hospital Admin dashboard
  * 
@@ -38,7 +40,11 @@ import { SkeletonDashboard, SkeletonFormCard, SkeletonSettingsCard, SkeletonTabl
  */
 const HospitalAdminDashboard = () => {
     const [searchParams, setSearchParams] = useSearchParams();
-    const activeTab = searchParams.get('tab') || 'overview'; // Changed default from 'dashboard' to 'overview'
+    const [user, setUser] = useState(authService.getCurrentUser());
+    const modules = user?.modules || ['OPD', 'BILLING'];
+    const hasOPD = modules.includes('OPD');
+    const defaultTab = hasOPD ? 'overview' : 'pharmacy';
+    const activeTab = searchParams.get('tab') || defaultTab;
 
     // Helper to switch tabs
     const setActiveTab = (tab) => {
@@ -59,6 +65,8 @@ const HospitalAdminDashboard = () => {
     const [auditLogs, setAuditLogs] = useState([]);
     const [stats, setStats] = useState({ today: 0, pending: 0, total: 0 });
     const [loading, setLoading] = useState(false);
+    const [pharmacyStats, setPharmacyStats] = useState(null);
+    const [pharmacyStatsLoading, setPharmacyStatsLoading] = useState(false);
 
     // Dashboard state
     const [dashboardStats, setDashboardStats] = useState({ totalPatients: 0, totalDoctors: 0, todaysAppointments: 0 });
@@ -68,7 +76,7 @@ const HospitalAdminDashboard = () => {
     const [origFees, setOrigFees] = useState(null);
     const [feesLoading, setFeesLoading] = useState(false);
     const [feesEditing, setFeesEditing] = useState(false);
-    const [operationsSettings, setOperationsSettings] = useState({ receptionMode: 'HAS_RECEPTIONIST', billingHandler: 'RECEPTIONIST' });
+    const [operationsSettings, setOperationsSettings] = useState({ receptionMode: 'HAS_RECEPTIONIST', billingHandler: 'RECEPTIONIST', inClinic: true });
     const [origOperationsSettings, setOrigOperationsSettings] = useState(null);
     const [settingsLoading, setSettingsLoading] = useState(false);
     const [settingsEditing, setSettingsEditing] = useState(false);
@@ -124,36 +132,12 @@ const HospitalAdminDashboard = () => {
 
     const navigate = useNavigate();
 
-    const [user, setUser] = useState(authService.getCurrentUser());
-
-    // Real-time Profile Sync (Modules, Status, etc.)
-    useEffect(() => {
-        const syncProfile = async () => {
-            try {
-                const profile = await authService.getProfile();
-
-                // Check if modules changed
-                const prevModules = JSON.stringify(user?.modules?.sort() || []);
-                const newModules = JSON.stringify(profile?.modules?.sort() || []);
-
-                if (prevModules !== newModules || user?.hospitalName !== profile.hospitalName || user?.name !== profile.name) {
-                    const updatedUser = authService.updateCurrentUser(profile);
-                    setUser(updatedUser);
-                    console.log('Real-time sync: User profile updated');
-                }
-            } catch (err) {
-                // If unauthorized or forbidden (e.g. deactivated), logout
-                if (err.response && (err.response.status === 401 || err.response.status === 403 || err.response.data?.includes("Inactive"))) {
-                    authService.logout();
-                    navigate('/login');
-                }
-            }
-        };
-
-        // Poll every 10 seconds for standard responsiveness (User requested "Real Time")
-        const interval = setInterval(syncProfile, 10000);
-        return () => clearInterval(interval);
-    }, [user, navigate]);
+    // Real-time WebSocket sync
+    useWebSocket(user, setUser, (silent) => {
+        if (activeTab !== 'fees' && activeTab !== 'settings' && activeTab !== 'support' && activeTab !== 'audit-logs') {
+            loadData(page, pageSize, silent);
+        }
+    });
 
     // Effect for loading data - Immediate for Tab change, Debounced for Search
     useEffect(() => {
@@ -172,6 +156,8 @@ const HospitalAdminDashboard = () => {
             fetchImmediate();
         }
     }, [activeTab, searchTerm, page, billingStatus]);
+
+    // Periodic background polling replaced with WebSocket real-time sync
 
     // Effect for Patients list loading (Overview Tab specific)
     useEffect(() => {
@@ -238,7 +224,8 @@ const HospitalAdminDashboard = () => {
                 const data = await hospitalService.getHospitalOperationsSettings();
                 const loaded = {
                     receptionMode: data.receptionMode || 'HAS_RECEPTIONIST',
-                    billingHandler: data.billingHandler || 'RECEPTIONIST'
+                    billingHandler: data.billingHandler || 'RECEPTIONIST',
+                    inClinic: data.inClinic !== false
                 };
                 setOperationsSettings(loaded);
                 setOrigOperationsSettings(loaded);
@@ -274,6 +261,40 @@ const HospitalAdminDashboard = () => {
         loadSupportData();
     }, [activeTab]);
 
+    // Load Pharmacy Dashboard Analytics when Pharmacy tab is active
+    useEffect(() => {
+        const loadPharmacyDashboard = async () => {
+            if (activeTab !== 'pharmacy') return;
+            setPharmacyStatsLoading(true);
+            try {
+                const data = await reportsApi.getDashboardData();
+                setPharmacyStats(data);
+            } catch (err) {
+                console.error("Failed to load pharmacy dashboard analytics", err);
+                toastError('Failed to load pharmacy dashboard analytics');
+            } finally {
+                setPharmacyStatsLoading(false);
+            }
+        };
+        loadPharmacyDashboard();
+    }, [activeTab]);
+
+    const handleExportLedger = async () => {
+        try {
+            const blob = await reportsApi.exportLedgerCsv();
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `pharmacy_tax_ledger.csv`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            success('Pharmacy tax ledger CSV exported successfully');
+        } catch (err) {
+            toastError('Failed to export ledger CSV');
+        }
+    };
+
     const handleCreateTicket = async (e) => {
         e.preventDefault();
         if (!ticketForm.subject.trim() || !ticketForm.message.trim()) {
@@ -308,7 +329,8 @@ const HospitalAdminDashboard = () => {
                 setSettingsLoading(true);
                 const updated = {
                     receptionMode: nextValue,
-                    billingHandler: nextValue === 'SOLO' ? 'DOCTOR' : operationsSettings.billingHandler
+                    billingHandler: nextValue === 'SOLO' ? 'DOCTOR' : operationsSettings.billingHandler,
+                    inClinic: operationsSettings.inClinic
                 };
                 await hospitalService.updateHospitalOperationsSettings(updated);
                 setOperationsSettings(updated);
@@ -333,23 +355,29 @@ const HospitalAdminDashboard = () => {
             info('Billing must be managed by Doctor in Solo Doctor Mode.');
             return;
         }
-        const isCurrentlyDoctor = operationsSettings.billingHandler === 'DOCTOR';
-        const nextValue = isCurrentlyDoctor ? 'RECEPTIONIST' : 'DOCTOR';
-        const title = isCurrentlyDoctor ? 'Switch Billing to Receptionist' : 'Switch Billing to Doctor';
-        const message = isCurrentlyDoctor
-            ? 'Are you sure you want the Receptionist to handle patient billing? Doctor billing tabs will be hidden.'
-            : 'Are you sure you want the Doctor to handle all billing? Receptionist billing tabs will be hidden.';
+        const isCurrentlyReceptionist = operationsSettings.billingHandler === 'RECEPTIONIST';
+        const nextValue = isCurrentlyReceptionist ? 'DOCTOR' : 'RECEPTIONIST';
+        const title = isCurrentlyReceptionist ? 'Switch Billing to Doctor' : 'Switch Billing to Receptionist';
+        const message = isCurrentlyReceptionist
+            ? 'Are you sure you want the Doctor to handle all billing? Receptionist billing tabs will be hidden.'
+            : 'Are you sure you want the Receptionist to handle patient billing? Doctor billing tabs will be hidden.';
 
         openConfirmation(title, message, async () => {
             try {
                 setSettingsLoading(true);
                 const updated = {
                     receptionMode: operationsSettings.receptionMode,
-                    billingHandler: nextValue
+                    billingHandler: nextValue,
+                    inClinic: operationsSettings.inClinic
                 };
-                await hospitalService.updateHospitalOperationsSettings(updated);
-                setOperationsSettings(updated);
-                setOrigOperationsSettings(updated);
+                const data = await hospitalService.updateHospitalOperationsSettings(updated);
+                const loaded = {
+                    receptionMode: data.receptionMode || 'HAS_RECEPTIONIST',
+                    billingHandler: data.billingHandler || 'RECEPTIONIST',
+                    inClinic: data.inClinic !== false
+                };
+                setOperationsSettings(loaded);
+                setOrigOperationsSettings(loaded);
                 success('Operational settings updated successfully.');
                 
                 // Refresh local user profile session
@@ -358,6 +386,45 @@ const HospitalAdminDashboard = () => {
                 setUser(profile);
             } catch (err) {
                 const msg = err.response?.data || 'Failed to update billing responsibility';
+                toastError(msg);
+            } finally {
+                setSettingsLoading(false);
+            }
+        }, false);
+    };
+
+    const toggleInClinic = () => {
+        const isCurrentlyInClinic = operationsSettings.inClinic !== false;
+        const nextValue = !isCurrentlyInClinic;
+        const title = isCurrentlyInClinic ? 'Disable In-Clinic Mode' : 'Enable In-Clinic Mode';
+        const message = isCurrentlyInClinic
+            ? 'Are you sure you want to disable In-Clinic medicine flow? The Medicine Inventory management tabs will be hidden from the Receptionist and Doctor dashboards.'
+            : 'Are you sure you want to enable In-Clinic medicine flow? This will allow Receptionists and Doctors to manage active stock inventory and administer direct stock charges.';
+
+        openConfirmation(title, message, async () => {
+            try {
+                setSettingsLoading(true);
+                const updated = {
+                    receptionMode: operationsSettings.receptionMode,
+                    billingHandler: operationsSettings.billingHandler,
+                    inClinic: nextValue
+                };
+                const data = await hospitalService.updateHospitalOperationsSettings(updated);
+                const loaded = {
+                    receptionMode: data.receptionMode || 'HAS_RECEPTIONIST',
+                    billingHandler: data.billingHandler || 'RECEPTIONIST',
+                    inClinic: data.inClinic !== false
+                };
+                setOperationsSettings(loaded);
+                setOrigOperationsSettings(loaded);
+                success('Operational settings updated successfully.');
+                
+                // Refresh local user profile session
+                const profile = await authService.getProfile();
+                authService.updateCurrentUser(profile);
+                setUser(profile);
+            } catch (err) {
+                const msg = err.response?.data || 'Failed to update In-Clinic mode';
                 toastError(msg);
             } finally {
                 setSettingsLoading(false);
@@ -382,8 +449,8 @@ const HospitalAdminDashboard = () => {
         }
     };
 
-    const loadData = async () => {
-        setLoading(true);
+    const loadData = async (pageNum = page, sizeNum = pageSize, showSpinner = true) => {
+        if (showSpinner) setLoading(true);
         try {
             if (activeTab === 'overview') {
                 const [statsData, todaysAppts, docData] = await Promise.all([
@@ -522,7 +589,7 @@ const HospitalAdminDashboard = () => {
         } catch (err) {
             toastError('Failed to load data');
         } finally {
-            setLoading(false);
+            if (showSpinner) setLoading(false);
         }
     };
 
@@ -720,11 +787,9 @@ const HospitalAdminDashboard = () => {
         });
     };
 
-    const modules = user?.modules || ['OPD', 'BILLING']; // Default to CMS core if no modules found
-
     const allTabs = [
-        { id: 'overview', label: 'Overview', icon: null, requiredModule: null },
-        { id: 'wards', label: 'Wards & Beds', icon: null, requiredModule: null },
+        { id: 'overview', label: 'Overview', icon: null, requiredModule: 'OPD' },
+        { id: 'wards', label: 'Wards & Beds', icon: null, requiredModule: 'IPD' },
         { id: 'doctors', label: 'Doctors', icon: null, requiredModule: 'OPD' },
         { id: 'receptionists', label: 'Receptionists', icon: null, requiredModule: 'OPD' },
         { id: 'billing', label: 'Billing', icon: null, requiredModule: 'BILLING' },
@@ -732,9 +797,9 @@ const HospitalAdminDashboard = () => {
         { id: 'pharmacists', label: 'Pharmacists', icon: null, requiredModule: 'PHARMACY' },
         { id: 'pathology', label: 'Pathology', icon: null, requiredModule: 'PATHOLOGY' },
         { id: 'ipd', label: 'IPD', icon: null, requiredModule: 'IPD' },
-        { id: 'fees', label: 'Fees', icon: null, requiredModule: null },
+        { id: 'fees', label: 'Fees', icon: null, requiredModule: 'OPD' },
         { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
-        { id: 'settings', label: 'Settings', icon: null, requiredModule: null },
+        { id: 'settings', label: 'Settings', icon: null, requiredModule: 'OPD' },
     ];
 
     const tabs = allTabs.filter(tab =>
@@ -749,33 +814,66 @@ const HospitalAdminDashboard = () => {
         onPageChange: (newPage) => setPage(newPage)
     };
 
+    // Payment Modal States (Admin Dashboard consistent implementation)
+    const [paymentModal, setPaymentModal] = useState({ isOpen: false, billId: null, amount: null, patientName: '' });
+    const [paymentSuccessModal, setPaymentSuccessModal] = useState({ isOpen: false, billId: null, amount: null, patientName: '' });
+    const [paymentProcessing, setPaymentProcessing] = useState(false);
+
     const [billStatusUpdating, setBillStatusUpdating] = useState(null);
-    const handleBillStatus = async (id, status) => {
+    const handleBillStatus = async (id, status, billObj = null) => {
+        if (status === 'PAID') {
+            setPaymentModal({ 
+                isOpen: true, 
+                billId: id,
+                amount: billObj?.balance ?? billObj?.amount ?? null,
+                patientName: billObj?.patientName || ''
+            });
+            return;
+        }
         if (billStatusUpdating) return;
         setBillStatusUpdating(id);
         try {
-            if (status === 'PAID') {
-                const isUpi = window.confirm('Was the payment made via UPI? Click OK for UPI, Cancel for Cash.');
-                let method = isUpi ? 'UPI' : 'CASH';
-                let reference = null;
-                if (isUpi) {
-                    reference = window.prompt('Enter UTR / transaction reference (required for UPI):');
-                    if (!reference || !reference.trim()) {
-                        toastError('UTR / reference is required for UPI payments');
-                        setBillStatusUpdating(null);
-                        return;
-                    }
-                }
-                await hospitalService.updateBillStatus(id, status, method, reference);
-            } else {
-                await hospitalService.updateBillStatus(id, status);
-            }
+            await hospitalService.updateBillStatus(id, status);
             success('Bill status updated');
             loadData();
         } catch (err) {
             toastError('Failed to update bill status');
         } finally {
             setBillStatusUpdating(null);
+        }
+    };
+
+    const handleProcessPayment = async (method) => {
+        if (paymentProcessing) return;
+        setPaymentProcessing(method);
+        try {
+            const pm = method === 'Online' ? 'UPI' : 'CASH';
+            let reference = null;
+            if (pm === 'UPI') {
+                reference = window.prompt('Enter UTR / transaction reference (required for UPI):');
+                if (!reference || !reference.trim()) {
+                    toastError('UTR / reference is required for UPI payments');
+                    setPaymentProcessing(false);
+                    return;
+                }
+            }
+            await hospitalService.updateBillStatus(paymentModal.billId, 'PAID', pm, reference);
+            // Close Payment Modal
+            setPaymentModal({ isOpen: false, billId: null, amount: null, patientName: '' });
+
+            // Open Success Modal immediately
+            setPaymentSuccessModal({
+                isOpen: true,
+                billId: paymentModal.billId,
+                patientName: paymentModal.patientName,
+                amount: paymentModal.amount
+            });
+
+            loadData();
+        } catch (err) {
+            toastError("Failed to process payment");
+        } finally {
+            setPaymentProcessing(false);
         }
     };
 
@@ -1178,7 +1276,7 @@ const HospitalAdminDashboard = () => {
                                         {settingsLoading ? (
                                             <SkeletonSettingsCard />
                                         ) : (
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                                                 {/* Receptionist Access Card */}
                                                 <div className="bg-slate-50/50 rounded-2xl border border-gray-200 p-6 flex flex-col justify-between hover:shadow-md transition-all duration-300">
                                                     <div>
@@ -1227,15 +1325,15 @@ const HospitalAdminDashboard = () => {
                                                             <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
                                                                 operationsSettings.receptionMode === 'SOLO'
                                                                     ? 'bg-amber-100 text-amber-800'
-                                                                    : operationsSettings.billingHandler === 'DOCTOR'
-                                                                    ? 'bg-blue-100 text-blue-800'
-                                                                    : 'bg-indigo-100 text-indigo-800'
+                                                                    : operationsSettings.billingHandler === 'RECEPTIONIST'
+                                                                    ? 'bg-emerald-100 text-emerald-800'
+                                                                    : 'bg-blue-100 text-blue-800'
                                                             }`}>
                                                                 {operationsSettings.receptionMode === 'SOLO'
                                                                     ? 'Doctor Managed (Forced)'
-                                                                    : operationsSettings.billingHandler === 'DOCTOR'
-                                                                    ? 'Doctor Managed'
-                                                                    : 'Receptionist Managed'}
+                                                                    : operationsSettings.billingHandler === 'RECEPTIONIST'
+                                                                    ? 'Receptionist Managed'
+                                                                    : 'Doctor Managed'}
                                                             </span>
                                                         </div>
                                                         <h3 className="text-lg font-bold text-gray-900 mb-2">Billing Responsibility</h3>
@@ -1245,7 +1343,7 @@ const HospitalAdminDashboard = () => {
                                                     </div>
                                                     <div className="flex items-center justify-between border-t border-gray-100 pt-4">
                                                         <span className={`text-sm font-medium ${operationsSettings.receptionMode === 'SOLO' ? 'text-gray-400' : 'text-gray-700'}`}>
-                                                            {operationsSettings.billingHandler === 'DOCTOR' ? 'Billing Handled by Doctor' : 'Billing Handled by Receptionist'}
+                                                            {operationsSettings.billingHandler === 'RECEPTIONIST' ? 'Billing Handled by Receptionist' : 'Billing Handled by Doctor'}
                                                         </span>
                                                         <button 
                                                             disabled={operationsSettings.receptionMode === 'SOLO'}
@@ -1253,7 +1351,7 @@ const HospitalAdminDashboard = () => {
                                                             className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 ${
                                                                 operationsSettings.receptionMode === 'SOLO'
                                                                     ? 'bg-gray-100 cursor-not-allowed opacity-50'
-                                                                    : operationsSettings.billingHandler === 'DOCTOR'
+                                                                    : operationsSettings.billingHandler === 'RECEPTIONIST'
                                                                     ? 'bg-sky-600'
                                                                     : 'bg-gray-200'
                                                             }`}
@@ -1261,9 +1359,47 @@ const HospitalAdminDashboard = () => {
                                                             <span className="sr-only">Toggle Billing Responsibility</span>
                                                             <span 
                                                                 className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                                                                    operationsSettings.billingHandler === 'DOCTOR' && operationsSettings.receptionMode !== 'SOLO'
+                                                                    operationsSettings.billingHandler === 'RECEPTIONIST' && operationsSettings.receptionMode !== 'SOLO'
                                                                         ? 'translate-x-5'
                                                                         : 'translate-x-0'
+                                                                }`} 
+                                                            />
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {/* In-Clinic Mode Card */}
+                                                <div className="bg-slate-50/50 rounded-2xl border border-gray-200 p-6 flex flex-col justify-between hover:shadow-md transition-all duration-300">
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-4">
+                                                            <div className="p-3 bg-teal-50 rounded-xl text-teal-600">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 9.172V5L8 4z" />
+                                                                </svg>
+                                                            </div>
+                                                            <span className={`px-3 py-1 text-xs font-semibold rounded-full ${operationsSettings.inClinic !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                                                                {operationsSettings.inClinic !== false ? 'In-Clinic Enabled' : 'In-Clinic Disabled'}
+                                                            </span>
+                                                        </div>
+                                                        <h3 className="text-lg font-bold text-gray-900 mb-2">In-Clinic Operations</h3>
+                                                        <p className="text-sm text-gray-600 leading-relaxed mb-6">
+                                                            Enable or disable active in-clinic stock inventory, low-stock warnings, and direct administered stock charges during OPD/IPD visits.
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                                                        <span className="text-sm font-medium text-gray-700">
+                                                            {operationsSettings.inClinic !== false ? 'In-Clinic Flow Active' : 'In-Clinic Flow Halted'}
+                                                        </span>
+                                                        <button 
+                                                            onClick={toggleInClinic}
+                                                            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 ${
+                                                                operationsSettings.inClinic !== false ? 'bg-sky-600' : 'bg-gray-200'
+                                                            }`}
+                                                        >
+                                                            <span className="sr-only">Toggle In-Clinic Mode</span>
+                                                            <span 
+                                                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                                                    operationsSettings.inClinic !== false ? 'translate-x-5' : 'translate-x-0'
                                                                 }`} 
                                                             />
                                                         </button>
@@ -1274,9 +1410,290 @@ const HospitalAdminDashboard = () => {
                                     </div>
                                 )}
                                 {activeTab === 'pharmacy' && (
-                                    <div className="flex flex-col items-center justify-center p-12 text-center h-96">
-                                        <h2 className="text-2xl font-bold text-gray-900">Pharmacy</h2>
-                                        <p className="text-gray-600 mt-2">Pharmacy Module is currently under development.</p>
+                                    <div className="space-y-6 animate-in fade-in duration-300">
+                                        
+                                        {/* Header Controls Panel */}
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-emerald-600 to-teal-600 p-6 rounded-2xl text-white shadow-lg relative overflow-hidden">
+                                            <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_107%,rgba(255,255,255,0.1)_0%,rgba(255,255,255,0)_50%)]"></div>
+                                            <div className="relative z-10">
+                                                <h2 className="text-2xl font-bold tracking-tight">Pharmacy Command Center</h2>
+                                                <p className="text-emerald-100 text-sm mt-1">A centralized financial, tax, and inventory risk control panel for administrators.</p>
+                                            </div>
+                                            <div className="flex flex-wrap gap-3 relative z-10">
+                                                <button
+                                                    onClick={handleExportLedger}
+                                                    className="px-4 py-2.5 bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 active:scale-95 shadow-inner"
+                                                >
+                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                    </svg>
+                                                    <span>Export Tax Ledger CSV</span>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {pharmacyStatsLoading ? (
+                                            <SkeletonDashboard statCount={4} tableRows={5} tableCols={4} />
+                                        ) : (
+                                            <div className="space-y-6">
+                                                
+                                                {/* KPI Financial Overview Grid */}
+                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                                    
+                                                    {/* Revenue Card */}
+                                                    <div className="bg-white p-6 rounded-2xl border border-gray-150 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+                                                        <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50 rounded-bl-full -z-10 group-hover:scale-110 transition-transform duration-300"></div>
+                                                        <div className="flex items-center justify-between mb-4">
+                                                            <span className="p-3 bg-emerald-100/80 rounded-xl text-emerald-600">
+                                                                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                                </svg>
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Net Sales Revenue</p>
+                                                        <h3 className="text-3xl font-black text-slate-800 mt-2">₹{(pharmacyStats?.kpis?.netRevenue || 0).toLocaleString()}</h3>
+                                                        <div className="flex items-center gap-1.5 mt-2.5 text-xs">
+                                                            <span className="text-gray-400">Gross Sales:</span>
+                                                            <span className="font-semibold text-slate-700">₹{(pharmacyStats?.kpis?.totalSales || 0).toLocaleString()}</span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Profitability Card */}
+                                                    <div className="bg-white p-6 rounded-2xl border border-gray-150 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+                                                        <div className="absolute top-0 right-0 w-24 h-24 bg-teal-50 rounded-bl-full -z-10 group-hover:scale-110 transition-transform duration-300"></div>
+                                                        <div className="flex items-center justify-between mb-4">
+                                                            <span className="p-3 bg-teal-100/80 rounded-xl text-teal-600">
+                                                                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2" />
+                                                                </svg>
+                                                            </span>
+                                                            <span className="px-2 py-0.5 bg-teal-50 border border-teal-200 text-teal-700 rounded text-[10px] font-black uppercase">
+                                                                Margin {pharmacyStats?.kpis?.profitMargin || 0}%
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Gross profit</p>
+                                                        <h3 className="text-3xl font-black text-slate-800 mt-2">₹{(pharmacyStats?.kpis?.grossProfit || 0).toLocaleString()}</h3>
+                                                        <p className="text-xs text-gray-400 mt-2.5">Reflects margins after cost of sales</p>
+                                                    </div>
+
+                                                    {/* Stock Value Card */}
+                                                    <div className="bg-white p-6 rounded-2xl border border-gray-150 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+                                                        <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-bl-full -z-10 group-hover:scale-110 transition-transform duration-300"></div>
+                                                        <div className="flex items-center justify-between mb-4">
+                                                            <span className="p-3 bg-blue-100/80 rounded-xl text-blue-600">
+                                                                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                                                                </svg>
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Inventory Valuation</p>
+                                                        <h3 className="text-3xl font-black text-slate-800 mt-2">₹{(pharmacyStats?.kpis?.inventoryValue || 0).toLocaleString()}</h3>
+                                                        <p className="text-xs text-gray-400 mt-2.5">Asset value of non-expired stock</p>
+                                                    </div>
+
+                                                    {/* Expired Asset Risk Card */}
+                                                    <div className="bg-white p-6 rounded-2xl border border-gray-150 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+                                                        <div className="absolute top-0 right-0 w-24 h-24 bg-rose-50 rounded-bl-full -z-10 group-hover:scale-110 transition-transform duration-300"></div>
+                                                        <div className="flex items-center justify-between mb-4">
+                                                            <span className="p-3 bg-rose-100/80 rounded-xl text-rose-600">
+                                                                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                                                </svg>
+                                                            </span>
+                                                            {(pharmacyStats?.kpis?.expiredValue || 0) > 0 && (
+                                                                <span className="px-2 py-0.5 bg-rose-50 border border-rose-200 text-rose-700 rounded text-[10px] font-black uppercase animate-pulse">
+                                                                    Risk Detected
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Expired Loss Assets</p>
+                                                        <h3 className="text-3xl font-black text-rose-600 mt-2">₹{(pharmacyStats?.kpis?.expiredValue || 0).toLocaleString()}</h3>
+                                                        <p className="text-xs text-gray-400 mt-2.5">Loss value of already expired stock</p>
+                                                    </div>
+
+                                                </div>
+
+                                                {/* GST Tax Ledger Summary */}
+                                                <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-6 rounded-2xl border border-slate-950 shadow-md text-white">
+                                                    <div className="flex items-center gap-3 mb-6">
+                                                        <span className="p-2 bg-slate-800 text-emerald-400 rounded-xl">
+                                                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                            </svg>
+                                                        </span>
+                                                        <div>
+                                                            <h3 className="font-bold text-base">Enterprise Tax & GST Summary</h3>
+                                                            <p className="text-slate-400 text-xs mt-0.5">Summary of input credit vs output tax liabilities.</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                                        <div className="bg-slate-800/40 p-4 border border-slate-700/50 rounded-xl">
+                                                            <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Input GST (On Purchases)</div>
+                                                            <div className="text-2xl font-black text-slate-100 mt-1">₹{(pharmacyStats?.taxSummary?.inputGst || 0).toLocaleString()}</div>
+                                                            <p className="text-[10px] text-emerald-400 font-semibold mt-1">Claimable Input Credit</p>
+                                                        </div>
+                                                        <div className="bg-slate-800/40 p-4 border border-slate-700/50 rounded-xl">
+                                                            <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Output GST (Collected on Sales)</div>
+                                                            <div className="text-2xl font-black text-slate-100 mt-1">₹{(pharmacyStats?.taxSummary?.outputGst || 0).toLocaleString()}</div>
+                                                            <p className="text-[10px] text-slate-400 mt-1">Collected tax liabilities</p>
+                                                        </div>
+                                                        <div className="bg-slate-800/40 p-4 border border-slate-700/50 rounded-xl relative overflow-hidden group">
+                                                            <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Net Tax Payable</div>
+                                                            <div className="text-2xl font-black text-emerald-400 mt-1">₹{(pharmacyStats?.taxSummary?.netGstPayable || 0).toLocaleString()}</div>
+                                                            <p className="text-[10px] text-slate-400 mt-1">Output tax minus Input credits</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Expiry Risk & Top Moving Split Grid */}
+                                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                                    
+                                                    {/* Expiry Risk Card */}
+                                                    <div className="bg-white border border-gray-150 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+                                                        <div>
+                                                            <div className="flex justify-between items-center mb-6">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="p-2 bg-rose-50 text-rose-600 rounded-lg">
+                                                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                                        </svg>
+                                                                    </span>
+                                                                    <h4 className="font-bold text-sm text-slate-800">Expiry Risk Analysis (FEFO Risk Profile)</h4>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            <div className="space-y-4">
+                                                                <div>
+                                                                    <div className="flex justify-between text-xs text-gray-500 font-semibold mb-1">
+                                                                        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 bg-rose-500 rounded-full"></span> Critical (Next 30 Days)</span>
+                                                                        <span className="font-bold text-slate-800">₹{(pharmacyStats?.expiryRisk?.next30Days || 0).toLocaleString()}</span>
+                                                                    </div>
+                                                                    <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden">
+                                                                        <div 
+                                                                            className="bg-rose-500 h-full rounded-full transition-all duration-500" 
+                                                                            style={{ width: `${Math.min(100, ((pharmacyStats?.expiryRisk?.next30Days || 0) / (pharmacyStats?.kpis?.inventoryValue || 1)) * 100)}%` }}
+                                                                        ></div>
+                                                                    </div>
+                                                                </div>
+
+                                                                <div>
+                                                                    <div className="flex justify-between text-xs text-gray-500 font-semibold mb-1">
+                                                                        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 bg-amber-500 rounded-full"></span> Warning (Next 60 Days)</span>
+                                                                        <span className="font-bold text-slate-800">₹{(pharmacyStats?.expiryRisk?.next60Days || 0).toLocaleString()}</span>
+                                                                    </div>
+                                                                    <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden">
+                                                                        <div 
+                                                                            className="bg-amber-500 h-full rounded-full transition-all duration-500" 
+                                                                            style={{ width: `${Math.min(100, ((pharmacyStats?.expiryRisk?.next60Days || 0) / (pharmacyStats?.kpis?.inventoryValue || 1)) * 100)}%` }}
+                                                                        ></div>
+                                                                    </div>
+                                                                </div>
+
+                                                                <div>
+                                                                    <div className="flex justify-between text-xs text-gray-500 font-semibold mb-1">
+                                                                        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 bg-blue-400 rounded-full"></span> Monitoring (Next 90 Days)</span>
+                                                                        <span className="font-bold text-slate-800">₹{(pharmacyStats?.expiryRisk?.next90Days || 0).toLocaleString()}</span>
+                                                                    </div>
+                                                                    <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden">
+                                                                        <div 
+                                                                            className="bg-blue-400 h-full rounded-full transition-all duration-500" 
+                                                                            style={{ width: `${Math.min(100, ((pharmacyStats?.expiryRisk?.next90Days || 0) / (pharmacyStats?.kpis?.inventoryValue || 1)) * 100)}%` }}
+                                                                        ></div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <p className="text-[10px] text-gray-400 mt-4 leading-relaxed bg-neutral-50 p-3 rounded-lg border border-neutral-100">
+                                                            <strong>Note:</strong> Risk profile represents absolute purchase cost asset valuation. Expiring batches within 30 days should be locked in the Expiry Manager.
+                                                        </p>
+                                                    </div>
+
+                                                    {/* Top Fast-Moving Medicines */}
+                                                    <div className="bg-white border border-gray-150 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+                                                        <div>
+                                                            <div className="flex justify-between items-center mb-6">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+                                                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                                                                        </svg>
+                                                                    </span>
+                                                                    <h4 className="font-bold text-sm text-slate-800">Fast-Moving Medicines (Demand Leaderboard)</h4>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="overflow-x-auto">
+                                                                <table className="min-w-full text-xs text-left">
+                                                                    <thead className="bg-neutral-50 text-slate-500 uppercase font-black tracking-wider border-b border-neutral-100">
+                                                                        <tr>
+                                                                            <th className="px-3 py-2.5">Medicine Name</th>
+                                                                            <th className="px-3 py-2.5 text-right">Units Sold</th>
+                                                                            <th className="px-3 py-2.5 text-right">Revenue</th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody className="divide-y divide-neutral-50">
+                                                                        {pharmacyStats?.fastMoving?.length > 0 ? (
+                                                                            pharmacyStats.fastMoving.map((item, idx) => (
+                                                                                <tr key={idx} className="hover:bg-neutral-50/50 transition-colors">
+                                                                                    <td className="px-3 py-3 font-semibold text-slate-800">{item.name}</td>
+                                                                                    <td className="px-3 py-3 text-right font-bold text-slate-600">{(item.quantity || 0).toLocaleString()}</td>
+                                                                                    <td className="px-3 py-3 text-right font-black text-slate-900">₹{(item.revenue || 0).toLocaleString()}</td>
+                                                                                </tr>
+                                                                            ))
+                                                                        ) : (
+                                                                            <tr>
+                                                                                <td colSpan="3" className="px-3 py-6 text-center text-gray-400 italic">No sales transactions recorded yet.</td>
+                                                                            </tr>
+                                                                        )}
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                </div>
+
+                                                {/* Category Allocation Dashboard */}
+                                                <div className="bg-white border border-gray-150 rounded-2xl p-6 shadow-sm">
+                                                    <div className="flex items-center gap-2 mb-6">
+                                                        <span className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+                                                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                                                            </svg>
+                                                        </span>
+                                                        <h4 className="font-bold text-sm text-slate-800">Category Stock Asset Distribution</h4>
+                                                    </div>
+
+                                                    <div className="overflow-x-auto">
+                                                        <table className="min-w-full text-xs text-left">
+                                                            <thead className="bg-neutral-50 text-slate-500 uppercase font-black tracking-wider border-b border-neutral-100">
+                                                                <tr>
+                                                                    <th className="px-4 py-3">Category</th>
+                                                                    <th className="px-4 py-3 text-right">Unique Batches</th>
+                                                                    <th className="px-4 py-3 text-right">Inventory Stock Value</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-neutral-50">
+                                                                {pharmacyStats?.categoryValuation?.length > 0 ? (
+                                                                    pharmacyStats.categoryValuation.map((cat, idx) => (
+                                                                        <tr key={idx} className="hover:bg-neutral-50/50 transition-colors">
+                                                                            <td className="px-4 py-3 font-semibold text-slate-800">{cat.category}</td>
+                                                                            <td className="px-4 py-3 text-right font-bold text-slate-600">{cat.count || 0}</td>
+                                                                            <td className="px-4 py-3 text-right font-black text-slate-900">₹{(cat.value || 0).toLocaleString()}</td>
+                                                                        </tr>
+                                                                    ))
+                                                                ) : (
+                                                                    <tr>
+                                                                        <td colSpan="3" className="px-4 py-6 text-center text-gray-400 italic">No non-expired active stock batches in system.</td>
+                                                                    </tr>
+                                                                )}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                                 {activeTab === 'pathology' && (
@@ -1696,6 +2113,106 @@ const HospitalAdminDashboard = () => {
                     patient={patientDetailsModal.patient}
                     onClose={() => setPatientDetailsModal({ isOpen: false, patient: null })}
                 />
+            )}
+
+            {/* Payment Modal (Admin Dashboard consistent implementation) */}
+            {paymentModal.isOpen && (
+                <div className="fixed inset-0 z-50 overflow-y-auto">
+                    <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+                        <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+                            <div className="absolute inset-0 bg-gray-500 opacity-75" onClick={() => setPaymentModal({ ...paymentModal, isOpen: false })}></div>
+                        </div>
+                        <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+                        <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                            <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                                <div className="sm:flex sm:items-start">
+                                    <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                                        <h3 className="text-lg leading-6 font-bold text-gray-900 mb-4">
+                                            Collect Payment
+                                        </h3>
+                                        <div className="mt-2 space-y-4">
+                                            <div className="bg-neutral-50 p-4 rounded-xl">
+                                                <div className="text-xs text-gray-400 uppercase font-bold tracking-wide">Patient Name</div>
+                                                <div className="text-sm font-semibold text-gray-900 mt-0.5">{paymentModal.patientName}</div>
+                                                <div className="text-xs text-gray-400 uppercase font-bold tracking-wide mt-3">Outstanding Amount</div>
+                                                <div className="text-xl font-bold text-red-600 mt-0.5">₹{paymentModal.amount}</div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <button
+                                                    onClick={() => handleProcessPayment('Cash')}
+                                                    disabled={!!paymentProcessing}
+                                                    className={`flex flex-col items-center justify-center gap-2 p-4 border rounded-xl transition-all duration-200 group ${paymentProcessing ? 'opacity-50 cursor-not-allowed bg-gray-50' : 'bg-white hover:bg-neutral-50 hover:border-neutral-300 active:scale-95'}`}
+                                                >
+                                                    <span className="font-semibold text-neutral-800 text-sm">Cash</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => handleProcessPayment('Online')}
+                                                    disabled={!!paymentProcessing}
+                                                    className={`flex flex-col items-center justify-center gap-2 p-4 border rounded-xl transition-all duration-200 group ${paymentProcessing ? 'opacity-50 cursor-not-allowed bg-gray-50' : 'bg-white hover:bg-neutral-50 hover:border-neutral-300 active:scale-95'}`}
+                                                >
+                                                    <span className="font-semibold text-neutral-800 text-sm">Online / UPI</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                                <button
+                                    type="button"
+                                    onClick={() => setPaymentModal({ ...paymentModal, isOpen: false })}
+                                    className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Payment Success Modal */}
+            {paymentSuccessModal.isOpen && (
+                <div className="fixed inset-0 z-50 overflow-y-auto">
+                    <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+                        <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+                            <div className="absolute inset-0 bg-gray-500 opacity-75" onClick={() => setPaymentSuccessModal({ ...paymentSuccessModal, isOpen: false })}></div>
+                        </div>
+                        <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+                        <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-sm sm:w-full">
+                            <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                                <div className="sm:flex sm:items-start">
+                                    <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                                        <h3 className="text-lg leading-6 font-bold text-gray-900">
+                                            Payment Successful
+                                        </h3>
+                                        <div className="mt-2">
+                                            <p className="text-sm text-gray-500 mb-4">
+                                                Payment recorded for <strong>{paymentSuccessModal.patientName}</strong>.
+                                            </p>
+                                            <div className="bg-gray-50 p-3 rounded-lg mb-4 text-center">
+                                                <span className="block text-xs text-gray-500 uppercase">Total Received</span>
+                                                <span className="text-2xl font-bold text-gray-900">₹{paymentSuccessModal.amount}</span>
+                                            </div>
+                                            <button
+                                                onClick={() => handleDownloadReceipt(paymentSuccessModal.billId)}
+                                                className="w-full flex items-center justify-center gap-2 p-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors mb-2 text-sm font-semibold"
+                                            >
+                                                <span>Print Receipt</span>
+                                            </button>
+                                            <button
+                                                onClick={() => setPaymentSuccessModal({ ...paymentSuccessModal, isOpen: false })}
+                                                className="w-full p-2 text-gray-500 hover:text-gray-700 text-sm font-medium"
+                                            >
+                                                Close
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             )}
 
             {/* Profile Settings Modal */}

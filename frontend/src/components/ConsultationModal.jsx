@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import authService from '../services/authService';
 import hospitalService from '../services/hospitalService';
 import { useToast } from '../context/ToastContext';
 import MedicineAutocomplete from './MedicineAutocomplete';
@@ -12,6 +13,42 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     const [loadingDetails, setLoadingDetails] = useState(false);
     const [showIpdAdmitModal, setShowIpdAdmitModal] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+
+    const user = authService.getCurrentUser();
+    const [inventory, setInventory] = useState([]);
+    const [administeredList, setAdministeredList] = useState([]); // List of { medicineId, medicineName, quantity, maxStock }
+    const [searchQuery, setSearchQuery] = useState('');
+    const [showSuggestions, setShowSuggestions] = useState(false);
+
+    useEffect(() => {
+        if (isOpen) {
+            const fetchInventory = async () => {
+                try {
+                    const res = await hospitalService.getInventoryMedicines();
+                    console.log("Fetched active stock inventory for consultation:", res);
+                    const filtered = (res || []).filter(item => {
+                        if (!item) return false;
+                        // Handle both active and isActive serialization key variations
+                        const activeVal = item.isActive !== undefined ? item.isActive : item.active;
+                        const isNotInactive = activeVal !== false && activeVal !== 0 && activeVal !== '0';
+                        // Safety checks for stock quantity
+                        const stock = item.stockQuantity !== undefined ? item.stockQuantity : 0;
+                        return isNotInactive && stock > 0;
+                    });
+                    console.log("Filtered active stock inventory (stock > 0):", filtered);
+                    setInventory(filtered);
+                } catch (err) {
+                    console.error("Failed to load clinical stock inventory", err);
+                }
+            };
+            fetchInventory();
+        }
+        if (!isOpen) {
+            setAdministeredList([]);
+            setSearchQuery('');
+            setShowSuggestions(false);
+        }
+    }, [isOpen]);
 
     // Normalize patient prop when modal opens — don't mutate props
     // We'll compute a patient identifier (publicId or numeric id) when fetching details
@@ -127,6 +164,11 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         // Prepare payload; include selected lab tests if any
         const payload = { ...formData };
         if (!payload.labRequired) payload.labTests = [];
+        payload.administeredItems = administeredList.map(item => ({
+            medicineId: item.medicineId,
+            medicineName: item.medicineName,
+            quantity: item.quantity
+        }));
 
         console.log("Submitting Consultation Data:", JSON.stringify(payload, null, 2));
 
@@ -301,6 +343,147 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                         maxLength={500}
                                         placeholder="Enter diagnosis..."
                                     />
+
+                                    {user?.inClinic !== false && (
+                                        <div className="bg-slate-50 p-4 rounded-xl border border-gray-200 mt-4 space-y-4">
+                                            <div>
+                                                <h4 className="text-sm font-bold text-gray-800">Diagnosis medicines</h4>
+                                                <p className="text-xs text-gray-550 mt-0.5">Administer clinical items and medicines in-clinic during consultation.</p>
+                                            </div>
+
+                                            {/* Search and Auto-Complete Input */}
+                                            <div className="relative">
+                                                <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                                    </svg>
+                                                </span>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search active clinical stock (saline, injection, etc. from medicine table)..."
+                                                    value={searchQuery}
+                                                    onChange={(e) => {
+                                                        setSearchQuery(e.target.value);
+                                                        setShowSuggestions(true);
+                                                    }}
+                                                    onFocus={() => setShowSuggestions(true)}
+                                                    className="w-full border border-gray-300 pl-10 pr-4 py-2 text-sm rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none bg-white"
+                                                />
+
+                                                {/* Suggestions Dropdown */}
+                                                {showSuggestions && searchQuery.trim().length >= 1 && (
+                                                    <div className="absolute left-0 right-0 mt-1 max-h-60 overflow-auto bg-white rounded-lg border border-gray-200 shadow-lg z-50 divide-y divide-gray-100">
+                                                        {inventory
+                                                            .filter(item => item && item.name && item.name.toLowerCase().includes(searchQuery.toLowerCase().trim()))
+                                                            .map(item => (
+                                                                <button
+                                                                    key={item.id}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        const existing = administeredList.find(x => x.medicineId === item.id);
+                                                                        if (existing) {
+                                                                            if (existing.quantity < item.stockQuantity) {
+                                                                                setAdministeredList(prev => prev.map(x => x.medicineId === item.id ? { ...x, quantity: x.quantity + 1 } : x));
+                                                                            } else {
+                                                                                toastError(`Cannot add more. Only ${item.stockQuantity} units available in stock.`);
+                                                                            }
+                                                                        } else {
+                                                                            setAdministeredList(prev => [...prev, {
+                                                                                medicineId: item.id,
+                                                                                medicineName: item.name,
+                                                                                quantity: 1,
+                                                                                maxStock: item.stockQuantity
+                                                                            }]);
+                                                                        }
+                                                                        setSearchQuery('');
+                                                                        setShowSuggestions(false);
+                                                                    }}
+                                                                    className="w-full text-left px-4 py-2.5 hover:bg-slate-50 flex justify-between items-center text-sm"
+                                                                >
+                                                                    <div>
+                                                                        <span className="font-semibold text-gray-800">{item.name}</span>
+                                                                        <span className="ml-2 text-xs bg-slate-100 px-2 py-0.5 rounded-full text-gray-600">{item.type}</span>
+                                                                    </div>
+                                                                    <span className={`text-xs font-bold ${item.stockQuantity <= item.minStockLevel ? 'text-amber-600' : 'text-gray-500'}`}>
+                                                                        Stock: {item.stockQuantity} available
+                                                                    </span>
+                                                                </button>
+                                                            ))}
+                                                        {inventory.filter(item => item && item.name && item.name.toLowerCase().includes(searchQuery.toLowerCase().trim())).length === 0 && (
+                                                            <div className="p-3 text-center text-xs text-gray-400">No active stock item matches.</div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Administered List Table */}
+                                            {administeredList.length > 0 && (
+                                                <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                                                    <table className="min-w-full text-sm">
+                                                        <thead className="bg-slate-50 text-gray-500 font-medium border-b border-gray-200">
+                                                            <tr>
+                                                                <th className="px-4 py-2.5 text-left">Medicine Name</th>
+                                                                <th className="px-4 py-2.5 text-center">Qty</th>
+                                                                <th className="px-4 py-2.5 text-right">Stock Status</th>
+                                                                <th className="px-4 py-2.5 text-right">Actions</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-gray-100">
+                                                            {administeredList.map((item) => (
+                                                                <tr key={item.medicineId} className="hover:bg-slate-50/50">
+                                                                    <td className="px-4 py-3 font-semibold text-gray-800">{item.medicineName}</td>
+                                                                    <td className="px-4 py-3 text-center">
+                                                                        <div className="inline-flex items-center gap-2">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    if (item.quantity > 1) {
+                                                                                        setAdministeredList(prev => prev.map(x => x.medicineId === item.medicineId ? { ...x, quantity: x.quantity - 1 } : x));
+                                                                                    }
+                                                                                }}
+                                                                                disabled={item.quantity <= 1}
+                                                                                className="w-6 h-6 flex items-center justify-center border border-gray-300 rounded-md text-gray-500 hover:bg-slate-100 disabled:opacity-50"
+                                                                            >
+                                                                                -
+                                                                            </button>
+                                                                            <span className="font-bold w-6 text-center">{item.quantity}</span>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    if (item.quantity < item.maxStock) {
+                                                                                        setAdministeredList(prev => prev.map(x => x.medicineId === item.medicineId ? { ...x, quantity: x.quantity + 1 } : x));
+                                                                                    } else {
+                                                                                        toastError(`Cannot exceed available stock of ${item.maxStock} units.`);
+                                                                                    }
+                                                                                }}
+                                                                                className="w-6 h-6 flex items-center justify-center border border-gray-300 rounded-md text-gray-500 hover:bg-slate-100"
+                                                                            >
+                                                                                +
+                                                                            </button>
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-right text-xs">
+                                                                        <span className="text-gray-500">Max available: {item.maxStock}</span>
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-right">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                setAdministeredList(prev => prev.filter(x => x.medicineId !== item.medicineId));
+                                                                            }}
+                                                                            className="text-red-500 hover:text-red-700 font-semibold text-xs"
+                                                                        >
+                                                                            Remove
+                                                                        </button>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
 
                                     <CharCountInput
                                         label="Treatment Notes"

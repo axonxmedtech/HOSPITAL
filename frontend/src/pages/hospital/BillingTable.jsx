@@ -60,12 +60,18 @@ const BillingTable = ({ billing, startIndex = 0, pagination, onUpdateStatus, onD
         }),
         columnHelper.accessor('paymentStatus', {
             header: 'Status',
-            cell: info => (
-                <StatusBadge
-                    status={info.getValue()}
-                    type={info.getValue() === 'PAID' ? 'success' : 'warning'}
-                />
-            ),
+            cell: info => {
+                const status = info.getValue() || 'PENDING';
+                let type = 'warning';
+                if (status === 'PAID') type = 'success';
+                else if (status === 'CLOSED') type = 'neutral';
+                return (
+                    <StatusBadge
+                        status={status}
+                        type={type}
+                    />
+                );
+            },
         }),
         columnHelper.accessor('createdAt', {
             header: 'Date',
@@ -101,25 +107,56 @@ const BillingTable = ({ billing, startIndex = 0, pagination, onUpdateStatus, onD
 
     const renderExpandedRow = (row) => {
         const items = row.original.items || [];
-        if (!items.length) return <div className="text-sm text-slate-600">No items</div>;
+        const medicines = row.original.medicines || [];
+        if (!items.length && !medicines.length) return <div className="text-sm text-slate-600">No items or medicines billed</div>;
         return (
-            <div>
-                <table className="min-w-full">
-                    <thead>
-                        <tr>
-                            <th className="text-left text-xs text-slate-500 px-2">Item</th>
-                            <th className="text-right text-xs text-slate-500 px-2">Amount</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {items.map(it => (
-                            <tr key={it.id} className="border-t">
-                                <td className="px-2 py-1 text-sm text-slate-700">{it.description}</td>
-                                <td className="px-2 py-1 text-sm text-right text-slate-700">₹{it.amount}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+            <div className="space-y-4 p-2 bg-slate-50/50 rounded-lg border border-dashed border-gray-200">
+                {items.length > 0 && (
+                    <div>
+                        <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Clinic Charges & Services</div>
+                        <table className="min-w-full">
+                            <thead>
+                                <tr className="border-b border-gray-200">
+                                    <th className="text-left text-xs text-slate-500 pb-1">Description</th>
+                                    <th className="text-right text-xs text-slate-500 pb-1">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {items.map(it => (
+                                    <tr key={it.id} className="border-b border-gray-100 last:border-0">
+                                        <td className="py-1.5 text-sm text-slate-700">{it.description}</td>
+                                        <td className="py-1.5 text-sm text-right text-slate-700">₹{it.amount}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+                {medicines.length > 0 && (
+                    <div>
+                        <div className="text-xs font-bold uppercase tracking-wider text-teal-600 mb-1">Administered In-Clinic Medicines</div>
+                        <table className="min-w-full">
+                            <thead>
+                                <tr className="border-b border-gray-200">
+                                    <th className="text-left text-xs text-slate-500 pb-1">Medicine Name</th>
+                                    <th className="text-center text-xs text-slate-500 pb-1">Qty</th>
+                                    <th className="text-right text-xs text-slate-500 pb-1">Unit Price</th>
+                                    <th className="text-right text-xs text-slate-500 pb-1">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {medicines.map(med => (
+                                    <tr key={med.id} className="border-b border-gray-100 last:border-0">
+                                        <td className="py-1.5 text-sm text-slate-700 font-medium">{med.medicineName}</td>
+                                        <td className="py-1.5 text-sm text-center text-slate-700">{med.quantity}</td>
+                                        <td className="py-1.5 text-sm text-right text-slate-700">₹{med.unitPrice}</td>
+                                        <td className="py-1.5 text-sm text-right text-slate-700 font-semibold text-teal-600">₹{med.amount}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
         );
     };
