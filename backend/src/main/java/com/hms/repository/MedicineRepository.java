@@ -22,4 +22,6 @@ public interface MedicineRepository extends JpaRepository<Medicine, Long> {
     List<Medicine> findLowStock(Long hospitalId);
 
     boolean existsByNameAndHospitalId(String name, Long hospitalId);
+
+    java.util.Optional<Medicine> findByIdAndHospitalId(Long id, Long hospitalId);
 }

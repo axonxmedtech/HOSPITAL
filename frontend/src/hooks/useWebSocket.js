@@ -27,13 +27,17 @@ export default function useWebSocket(user, setUser, loadData) {
         const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
         const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         
-        let wsUrl;
+        const token = sessionStorage.getItem('token');
         if (API_BASE_URL.startsWith('http://') || API_BASE_URL.startsWith('https://')) {
             wsUrl = API_BASE_URL.replace(/^http/, 'ws') + `/ws/hospital/${user.hospitalId}`;
         } else {
             // Relative base URL
             const host = window.location.host;
             wsUrl = `${wsProto}//${host}${API_BASE_URL.startsWith('/') ? '' : '/'}${API_BASE_URL}/ws/hospital/${user.hospitalId}`;
+        }
+
+        if (token) {
+            wsUrl += `?token=${encodeURIComponent(token)}`;
         }
 
         console.log(`Connecting to WebSocket: ${wsUrl}`);

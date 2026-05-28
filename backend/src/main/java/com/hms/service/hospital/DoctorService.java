@@ -483,9 +483,25 @@ public class DoctorService {
             if (bill != null && request.getAdministeredItems() != null && !request.getAdministeredItems().isEmpty()) {
                 for (com.hms.dto.ConsultationRequest.AdministeredItem item : request.getAdministeredItems()) {
                     if (item.getMedicineId() != null) {
-                        com.hms.entity.Medicine med = medicineRepository.findById(item.getMedicineId())
+                        // Secure lookup enforcing hospitalId to prevent cross-tenant writes
+                        com.hms.entity.Medicine med = medicineRepository.findByIdAndHospitalId(item.getMedicineId(), hospitalId)
                             .orElseThrow(() -> new RuntimeException("Medicine not found in active inventory: ID " + item.getMedicineId()));
                         
+                        // Strict active state check
+                        if (med.getIsActive() == null || !med.getIsActive()) {
+                            throw new RuntimeException("Medicine is currently inactive and cannot be administered: " + med.getName());
+                        }
+
+                        // Strict tenant match check for safety
+                        if (med.getHospitalId() == null || !med.getHospitalId().equals(hospitalId)) {
+                            throw new RuntimeException("Security violation: Tenant boundary mismatch for medicine ID " + item.getMedicineId());
+                        }
+
+                        // Robust validation to prevent NullPointerException and ensure positive unit prices
+                        if (med.getUnitPrice() == null || med.getUnitPrice() <= 0.0) {
+                            throw new RuntimeException("Medicine unit price is missing or invalid for: " + med.getName() + ". Please configure a valid unit price in inventory.");
+                        }
+
                         if (med.getStockQuantity() < item.getQuantity()) {
                             throw new RuntimeException("Insufficient stock for: " + med.getName() + " (Requested: " + item.getQuantity() + ", Available: " + med.getStockQuantity() + ")");
                         }

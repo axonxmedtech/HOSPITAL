@@ -25,11 +25,23 @@ public class HospitalWebSocketHandler extends TextWebSocketHandler {
     // Concurrent map of hospitalId -> list of active WebSocket sessions
     private final Map<Long, List<WebSocketSession>> sessions = new ConcurrentHashMap<>();
 
+    private static final int MAX_SESSIONS_PER_HOSPITAL = 50; // Guard against resource/session exhaustion
+
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         Long hospitalId = getHospitalId(session);
         if (hospitalId != null) {
-            sessions.computeIfAbsent(hospitalId, k -> new CopyOnWriteArrayList<>()).add(session);
+            List<WebSocketSession> hospitalSessions = sessions.computeIfAbsent(hospitalId, k -> new CopyOnWriteArrayList<>());
+            
+            // Limit sessions per hospital tenant to prevent resource/memory exhaustion
+            if (hospitalSessions.size() >= MAX_SESSIONS_PER_HOSPITAL) {
+                log.warn("WebSocket session limit reached ({}) for hospitalId: {}. Closing session: {}", 
+                         MAX_SESSIONS_PER_HOSPITAL, hospitalId, session.getId());
+                session.close(CloseStatus.POLICY_VIOLATION);
+                return;
+            }
+            
+            hospitalSessions.add(session);
             log.info("WebSocket connection established for hospitalId: {}, session ID: {}", hospitalId, session.getId());
         } else {
             log.warn("WebSocket connection attempted with invalid hospitalId path. Session ID: {}", session.getId());
@@ -85,6 +97,13 @@ public class HospitalWebSocketHandler extends TextWebSocketHandler {
     }
 
     private Long getHospitalId(WebSocketSession session) {
+        // Enforce using the attribute populated by our handshake interceptor
+        Object idObj = session.getAttributes().get("hospitalId");
+        if (idObj instanceof Long) {
+            return (Long) idObj;
+        }
+        
+        // Fallback/Legacy parsing if interceptor was bypassed or not registered
         try {
             String path = session.getUri().getPath();
             String[] parts = path.split("/");

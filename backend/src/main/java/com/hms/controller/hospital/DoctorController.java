@@ -142,7 +142,7 @@ public class DoctorController {
      * Only Doctors can submit consultations
      */
     @PostMapping("/consultation")
-    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
+    @PreAuthorize("hasRole('DOCTOR')")
     public ResponseEntity<?> submitConsultation(@RequestBody com.hms.dto.ConsultationRequest request) {
         try {
             doctorService.submitConsultation(request);
