@@ -117,6 +117,19 @@ public class IpdAdmissionController {
         }
     }
 
+    @PostMapping("/{id}/administer")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> administerItems(@PathVariable("id") Long id, @RequestBody com.hms.dto.AdministerItemsRequest req) {
+        try {
+            ipdAdmissionService.administerItems(id, req.getAdministeredItems());
+            return ResponseEntity.ok().body("{\"message\":\"Items administered successfully\"}");
+        } catch (org.springframework.security.access.AccessDeniedException ade) {
+            return ResponseEntity.status(403).body("Access denied");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
     @PostMapping("/{id}/prescriptions")
     @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> addPrescription(@PathVariable("id") Long id, @RequestBody com.hms.dto.AddIpdPrescriptionRequest req) {

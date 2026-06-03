@@ -424,6 +424,10 @@ const hospitalService = {
         const response = await apiClient.post(`/api/ipd/${id}/followup`, payload);
         return response.data;
     },
+    administerIpdItems: async (id, items) => {
+        const response = await apiClient.post(`/api/ipd/${id}/administer`, { administeredItems: items });
+        return response.data;
+    },
     addIpdPrescription: async (id, payload) => {
         const response = await apiClient.post(`/api/ipd/${id}/prescriptions`, payload);
         return response.data;

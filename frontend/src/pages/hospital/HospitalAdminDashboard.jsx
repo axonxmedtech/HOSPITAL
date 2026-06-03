@@ -789,6 +789,7 @@ const HospitalAdminDashboard = () => {
 
     const allTabs = [
         { id: 'overview', label: 'Overview', icon: null, requiredModule: 'OPD' },
+        { id: 'patients', label: 'Patients', icon: null, requiredModule: 'OPD' },
         { id: 'wards', label: 'Wards & Beds', icon: null, requiredModule: 'IPD' },
         { id: 'doctors', label: 'Doctors', icon: null, requiredModule: 'OPD' },
         { id: 'receptionists', label: 'Receptionists', icon: null, requiredModule: 'OPD' },
@@ -1148,6 +1149,29 @@ const HospitalAdminDashboard = () => {
 
                             {activeTab !== 'support' && (
                                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
+                                    {activeTab === 'patients' && (
+                                        patients.length > 0 ? (
+                                            <PatientsTable 
+                                                patients={patients} 
+                                                onEdit={(item) => handleEdit(item, 'patients')} 
+                                                onViewDetails={handleViewDetails} 
+                                                onDelete={handleDeletePatient} 
+                                                onHistory={(p) => handleHistory('PATIENT', p.publicId || p.id, p.name)} 
+                                                startIndex={page * pageSize} 
+                                                pagination={pagination} 
+                                                isAdmin={user?.role === 'HOSPITAL_ADMIN'} 
+                                            />
+                                        ) : (
+                                            <EmptyState
+                                                icon={null}
+                                                title="No Patients Found"
+                                                message="Add patients to start scheduling appointments."
+                                                actionLabel="Add Patient"
+                                                onAction={user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
+                                            />
+                                        )
+                                    )}
+
                                     {activeTab === 'doctors' && (
                                     doctors.length > 0 ? (
                                         <DoctorsTable doctors={doctors} onEdit={handleEdit} onDelete={handleDeleteDoctor} startIndex={page * pageSize} pagination={pagination} />

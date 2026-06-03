@@ -550,6 +550,79 @@ public class IpdAdmissionService {
     }
 
     @Transactional
+    public void administerItems(Long ipdId, java.util.List<com.hms.dto.ConsultationRequest.AdministeredItem> administeredItems) {
+        String role = securityHelper.getCurrentUserRole();
+        if (!"DOCTOR".equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
+            throw new org.springframework.security.access.AccessDeniedException("Only doctors can administer items");
+        }
+
+        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new RuntimeException("IPD admission not found"));
+        if (ipd.getStatus() == null || !ipd.getStatus().equalsIgnoreCase("ADMITTED")) {
+            throw new RuntimeException("Cannot administer items to non-admitted IPD");
+        }
+
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new RuntimeException("Hospital ID not found in context");
+
+        if (administeredItems != null && !administeredItems.isEmpty()) {
+            java.util.List<Billing> bills = billingRepository.findByIpdAdmissionId(ipdId);
+            Billing bill = (bills != null && !bills.isEmpty()) ? bills.get(0) : null;
+            if (bill != null) {
+                for (com.hms.dto.ConsultationRequest.AdministeredItem item : administeredItems) {
+                    if (item.getMedicineId() != null) {
+                        com.hms.entity.Medicine med = medicineRepository.findById(item.getMedicineId())
+                                .orElseThrow(() -> new RuntimeException("Medicine not found in active inventory: ID " + item.getMedicineId()));
+
+                        if (med.getStockQuantity() < item.getQuantity()) {
+                            throw new RuntimeException("Insufficient stock for: " + med.getName() + " (Requested: " + item.getQuantity() + ", Available: " + med.getStockQuantity() + ")");
+                        }
+
+                        // Deduct Stock
+                        int oldStock = med.getStockQuantity();
+                        med.setStockQuantity(oldStock - item.getQuantity());
+                        medicineRepository.save(med);
+
+                        // Audit Log for Stock deduction
+                        try {
+                            auditLogService.logAction(
+                                    "INVENTORY_DEDUCTED",
+                                    "Deducted " + item.getQuantity() + " units of " + med.getName() + " for patient. Stock: " + oldStock + " -> " + med.getStockQuantity(),
+                                    securityHelper.getCurrentUserEmail(),
+                                    hospitalId,
+                                    "MEDICINE",
+                                    med.getId().toString(),
+                                    null
+                            );
+                        } catch (Exception ignored) {}
+
+                        // Create BillingMedicine charge
+                        com.hms.entity.BillingMedicine bm = new com.hms.entity.BillingMedicine();
+                        bm.setBillingId(bill.getId());
+                        bm.setHospitalId(hospitalId);
+                        bm.setMedicineId(med.getId());
+                        bm.setMedicineName(med.getName());
+                        bm.setQuantity(item.getQuantity());
+                        bm.setUnitPrice(java.math.BigDecimal.valueOf(med.getUnitPrice()));
+                        bm.setAmount(bm.getUnitPrice().multiply(java.math.BigDecimal.valueOf(item.getQuantity())));
+                        billingMedicineRepository.save(bm);
+                    }
+                }
+
+                // Recalculate bill total (incorporates consultation fee + medicines + bed fees)
+                try {
+                    billingService.recalculateTotal(bill.getId());
+                } catch (Exception ignored) {}
+            }
+        }
+
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh data from administerItems", e);
+        }
+    }
+
+    @Transactional
     public com.hms.entity.Prescription addIpdPrescription(Long ipdId, com.hms.dto.AddIpdPrescriptionRequest req) {
         String role = securityHelper.getCurrentUserRole();
         if (!"DOCTOR".equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
