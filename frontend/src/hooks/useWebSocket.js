@@ -28,6 +28,7 @@ export default function useWebSocket(user, setUser, loadData) {
         const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         
         const token = sessionStorage.getItem('token');
+        let wsUrl = '';
         if (API_BASE_URL.startsWith('http://') || API_BASE_URL.startsWith('https://')) {
             wsUrl = API_BASE_URL.replace(/^http/, 'ws') + `/ws/hospital/${user.hospitalId}`;
         } else {
