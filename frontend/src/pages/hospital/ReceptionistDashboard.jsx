@@ -927,7 +927,7 @@ const ReceptionistDashboard = () => {
                         onSearch={activeTab === 'queue' ? null : (e) => setSearchTerm(e.target.value)}
                         searchValue={searchTerm}
                         searchPlaceholder={activeTab === 'queue' ? '' : `Search ${activeTab}...`}
-                        onAdd={activeTab === 'queue' || activeTab === 'billing' || activeTab === 'ipd' ? null : () => {
+                        onAdd={activeTab === 'queue' || activeTab === 'billing' || activeTab === 'ipd' || activeTab === 'inventory' ? null : () => {
                             if (activeTab === 'opd') setIsOpdModalOpen(true);
                             else setIsAddModalOpen(true);
                         }}
