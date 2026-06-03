@@ -175,13 +175,13 @@ const MedicineInventoryTab = () => {
                         onClick={() => setSubTab('inventory')}
                         className={`flex-1 sm:flex-none px-5 py-2 text-sm font-semibold rounded-lg transition-all ${subTab === 'inventory' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                     >
-                        inventry
+                        Inventory
                     </button>
                     <button
                         onClick={() => setSubTab('catalog')}
                         className={`flex-1 sm:flex-none px-5 py-2 text-sm font-semibold rounded-lg transition-all ${subTab === 'catalog' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                     >
-                        medincines
+                        Medicines
                     </button>
                 </div>
             </div>

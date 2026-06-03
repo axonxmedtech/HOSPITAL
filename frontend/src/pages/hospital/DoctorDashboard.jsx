@@ -147,6 +147,29 @@ const DoctorDashboard = () => {
         amount: 0
     });
 
+    // Resolved Doctor record state
+    const [doctorRecord, setDoctorRecord] = useState(null);
+
+    // Fetch doctor record corresponding to user email
+    useEffect(() => {
+        const fetchDoctorRecord = async () => {
+            try {
+                const docs = await hospitalService.getDoctors('', 0, 100);
+                const docsList = Array.isArray(docs) ? docs : (docs.content || []);
+                const currentDoc = docsList.find(d => d.email === user?.email);
+                if (currentDoc) {
+                    setDoctorRecord(currentDoc);
+                    setOpdForm(prev => ({ ...prev, doctorId: currentDoc.id }));
+                }
+            } catch (err) {
+                console.error("Failed to load doctor record", err);
+            }
+        };
+        if (user?.email) {
+            fetchDoctorRecord();
+        }
+    }, [user]);
+
     // OPD Form
     const [opdForm, setOpdForm] = useState({
         patientId: null,
@@ -171,6 +194,7 @@ const DoctorDashboard = () => {
             setOpdForm(prev => ({
                 ...prev,
                 patientId: null,
+                doctorId: doctorRecord?.id || user?.id || null,
                 bp: '',
                 temperature: '',
                 pulse: '',
@@ -180,7 +204,7 @@ const DoctorDashboard = () => {
                 visitType: 'NEW'
             }));
         }
-    }, [isOpdModalOpen]);
+    }, [isOpdModalOpen, doctorRecord]);
 
     const openConfirmation = (title, message, action, showReasonInput = false, inputPlaceholder = "Please provide a reason...") => {
         setConfirmModal({
@@ -332,8 +356,8 @@ const DoctorDashboard = () => {
                         opdsArray = opdsArray.filter(o => o.status === 'QUEUED');
                     }
                     setOpds(opdsArray);
-                    setTotalElements(opdsArray.length);
-                    setTotalPages(1);
+                    setTotalElements(opdsData.totalElements || opdsArray.length);
+                    setTotalPages(opdsData.totalPages || 1);
                 } catch (err) {
                     console.error('Failed to load OPDs', err);
                     setOpds([]);
@@ -588,6 +612,19 @@ const DoctorDashboard = () => {
         totalItems: totalElements,
         pageCount: totalPages,
         onPageChange: (newPage) => setPage(newPage + 1) // DataTable gives 0-indexed
+    };
+
+    // Client-side pagination logic for queueEntries
+    const sortedQueue = [...queueEntries].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    const queueTotalPages = Math.ceil(sortedQueue.length / ITEMS_PER_PAGE) || 1;
+    const paginatedQueue = sortedQueue.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+
+    const queuePagination = {
+        pageIndex: page - 1,
+        pageSize: ITEMS_PER_PAGE,
+        totalItems: sortedQueue.length,
+        pageCount: queueTotalPages,
+        onPageChange: (newPage) => setPage(newPage + 1)
     };
 
     // Consultation Modal
@@ -1241,33 +1278,11 @@ const DoctorDashboard = () => {
 
                                 {activeTab === 'queue' && (
                                     queueEntries.length > 0 ? (
-                                        <div className="p-4 overflow-x-auto">
-                                            <table className="w-full text-sm text-left">
-                                                <thead>
-                                                    <tr>
-                                                        <th className="px-4 py-2">S.No.</th>
-                                                        <th className="px-4 py-2">Queue Position</th>
-                                                        <th className="px-4 py-2">Patient</th>
-                                                        <th className="px-4 py-2">Doctor</th>
-                                                        <th className="px-4 py-2">Created</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {[...queueEntries]
-                                                        .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
-                                                        .slice(0, 10)
-                                                        .map((q, idx) => (
-                                                            <tr key={q.id} className="border-t">
-                                                                <td className="px-4 py-3">{idx + 1}</td>
-                                                                <td className="px-4 py-3">#{idx + 1}</td>
-                                                                <td className="px-4 py-3">{q.opd?.patient?.name || q.opd?.patientName || '-'}</td>
-                                                                <td className="px-4 py-3">{q.opd?.doctor?.name || q.opd?.doctorName || '-'}</td>
-                                                                <td className="px-4 py-3">{new Date(q.createdAt).toLocaleString()}</td>
-                                                            </tr>
-                                                        ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
+                                        <DoctorQueueTable
+                                            queueEntries={paginatedQueue}
+                                            startIndex={(page - 1) * ITEMS_PER_PAGE}
+                                            pagination={queuePagination}
+                                        />
                                     ) : (
                                         <EmptyState
                                             icon={null}
@@ -1408,7 +1423,7 @@ const DoctorDashboard = () => {
                         isOpen={isAddModalOpen}
                         onClose={() => setIsAddModalOpen(false)}
                         onSuccess={loadData}
-                        doctors={[{ id: user?.id, name: user?.name }]}
+                        doctors={doctorRecord ? [doctorRecord] : [{ id: user?.id, name: user?.name }]}
                         patients={patients}
                     />
                 )}
@@ -1462,7 +1477,7 @@ const DoctorDashboard = () => {
                                 try {
                                     const payload = {
                                         patientId: opdForm.patientId,
-                                        doctorId: user?.id,
+                                        doctorId: opdForm.doctorId || doctorRecord?.id || user?.id,
                                         bp: opdForm.bp,
                                         temperature: opdForm.temperature ? parseFloat(opdForm.temperature) : null,
                                         pulse: opdForm.pulse ? parseInt(opdForm.pulse) : null,
@@ -1930,4 +1945,41 @@ const DoctorOpdTable = ({ opds, queueEntries = [], onPrintOpd, onStartConsultati
     ];
 
     return <DataTable data={opds} columns={columns} pagination={pagination} />;
+};
+
+
+// Doctor Queue Table (Client-side Paginated)
+const DoctorQueueTable = ({ queueEntries, startIndex = 0, pagination }) => {
+    const columnHelper = createColumnHelper();
+
+    const columns = [
+        columnHelper.display({
+            id: 'sno',
+            header: 'S.NO.',
+            cell: info => startIndex + info.row.index + 1,
+        }),
+        columnHelper.display({
+            id: 'position',
+            header: 'QUEUE POSITION',
+            cell: info => (
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100/30">
+                    Position #{startIndex + info.row.index + 1}
+                </span>
+            ),
+        }),
+        columnHelper.accessor(row => row.opd?.patient?.name || row.opd?.patientName || '-', {
+            id: 'patient',
+            header: 'PATIENT',
+        }),
+        columnHelper.accessor(row => row.opd?.doctor?.name || row.opd?.doctorName || '-', {
+            id: 'doctor',
+            header: 'DOCTOR',
+        }),
+        columnHelper.accessor('createdAt', {
+            header: 'CREATED AT',
+            cell: info => new Date(info.getValue()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        }),
+    ];
+
+    return <DataTable data={queueEntries} columns={columns} pagination={pagination} />;
 };
