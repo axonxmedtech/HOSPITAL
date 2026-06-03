@@ -93,7 +93,12 @@ public class HospitalAuthService {
             response.setPhone(admin.getPhone());
             response.setAge(admin.getAge());
             response.setGender(admin.getGender());
-            response.setSpecialization(null);
+            if (Boolean.TRUE.equals(response.getIsSingleDoctor())) {
+                doctorRepository.findByEmailAndHospitalId(user.getEmail(), user.getHospitalId())
+                        .ifPresent(doc -> response.setSpecialization(doc.getSpecialization()));
+            } else {
+                response.setSpecialization(null);
+            }
         } else if ("RECEPTIONIST".equals(user.getRole())) {
             Receptionist receptionist = receptionistProfileRepository.findByEmail(user.getEmail())
                     .orElseGet(() -> {

@@ -80,7 +80,7 @@ public class AppointmentController {
      * and view filter
      */
     @GetMapping("/my-appointments")
-    @PreAuthorize("hasRole('DOCTOR')")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> getMyAppointments(@RequestParam(required = false) String view,
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,

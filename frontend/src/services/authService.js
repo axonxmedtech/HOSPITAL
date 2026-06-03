@@ -108,7 +108,7 @@ const authService = {
      */
     isDoctor: () => {
         const user = authService.getCurrentUser();
-        return user && user.role === 'DOCTOR';
+        return user && (user.role === 'DOCTOR' || (user.role === 'HOSPITAL_ADMIN' && user.isSingleDoctor));
     },
 
     /**

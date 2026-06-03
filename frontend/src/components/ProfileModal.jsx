@@ -148,7 +148,7 @@ const ProfileModal = ({ isOpen, onClose }) => {
                 }
             }
 
-            if (profile.role === 'DOCTOR') {
+            if (profile.role === 'DOCTOR' || (profile.role === 'HOSPITAL_ADMIN' && authService.getCurrentUser()?.isSingleDoctor)) {
                 if (!profile.specialization.trim()) {
                     errors.specialization = 'Doctor specialization is required';
                 }
@@ -190,7 +190,7 @@ const ProfileModal = ({ isOpen, onClose }) => {
                 phone: profile.role !== 'SUPER_ADMIN' ? profile.phone : null,
                 age: (profile.role !== 'SUPER_ADMIN' && profile.role !== 'DOCTOR' && profile.age !== '') ? parseInt(profile.age, 10) : null,
                 gender: (profile.role !== 'SUPER_ADMIN' && profile.role !== 'DOCTOR') ? profile.gender : null,
-                specialization: profile.role === 'DOCTOR' ? profile.specialization : null,
+                specialization: (profile.role === 'DOCTOR' || (profile.role === 'HOSPITAL_ADMIN' && authService.getCurrentUser()?.isSingleDoctor)) ? profile.specialization : null,
                 currentPassword: changePassword ? passwords.currentPassword : null,
                 newPassword: changePassword ? passwords.newPassword : null
             };
@@ -281,7 +281,7 @@ const ProfileModal = ({ isOpen, onClose }) => {
                                         { label: "Age", value: profile.age !== '' ? profile.age : "—" },
                                         { label: "Gender", value: profile.gender ? (profile.gender.charAt(0) + profile.gender.slice(1).toLowerCase()) : "—" }
                                     ] : []),
-                                    ...(profile.role === 'DOCTOR' ? [{ label: "Specialization", value: profile.specialization || "—" }] : [])
+                                    ...((profile.role === 'DOCTOR' || (profile.role === 'HOSPITAL_ADMIN' && authService.getCurrentUser()?.isSingleDoctor)) ? [{ label: "Specialization", value: profile.specialization || "—" }] : [])
                                 ];
 
                                 return (
@@ -383,7 +383,7 @@ const ProfileModal = ({ isOpen, onClose }) => {
                                         )}
 
                                         {/* Row 3: Specialization for Doctor ONLY */}
-                                        {profile.role === 'DOCTOR' && (
+                                        {(profile.role === 'DOCTOR' || (profile.role === 'HOSPITAL_ADMIN' && authService.getCurrentUser()?.isSingleDoctor)) && (
                                             <div>
                                                 <label className="block text-xs font-bold text-gray-700 mb-1.5">
                                                     Specialization <span className="text-red-500">*</span>
