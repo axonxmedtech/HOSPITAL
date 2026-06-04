@@ -30,6 +30,8 @@ import com.hms.service.PdfService;
 @CrossOrigin(origins = { "http://localhost:3000", "http://localhost:5173" })
 public class BillingController {
 
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(BillingController.class);
+
     @Autowired
     private BillingService billingService;
 
@@ -58,7 +60,7 @@ public class BillingController {
 
         // Enforce settings
         if ("ROLE_DOCTOR".equalsIgnoreCase(role) || "DOCTOR".equalsIgnoreCase(role)) {
-            if (!"DOCTOR".equalsIgnoreCase(settings.getBillingHandler())) {
+            if (!"DOCTOR".equalsIgnoreCase(settings.getBillingHandler()) && !"SOLO".equalsIgnoreCase(settings.getReceptionMode())) {
                 throw new org.springframework.security.access.AccessDeniedException("Billing management is restricted to receptionists.");
             }
         } else if ("ROLE_RECEPTIONIST".equalsIgnoreCase(role) || "RECEPTIONIST".equalsIgnoreCase(role)) {
@@ -83,15 +85,69 @@ public class BillingController {
         // Fetch page of Billing
         org.springframework.data.domain.Page<com.hms.entity.Billing> billsPage = billingService.getAllBills(search, status, pageable);
 
-        // Attach billing items to each billing as an `items` field
+        java.util.List<com.hms.entity.Billing> content = billsPage.getContent();
+        java.util.List<Long> billIds = content.stream()
+                .map(com.hms.entity.Billing::getId)
+                .collect(java.util.stream.Collectors.toList());
+
+        java.util.List<Long> patientIds = content.stream()
+                .map(com.hms.entity.Billing::getPatientId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .collect(java.util.stream.Collectors.toList());
+
+        // Batch fetch
+        java.util.List<com.hms.entity.BillingItem> allItems = billIds.isEmpty() ? 
+                java.util.Collections.emptyList() : billingItemRepository.findByBillingIdIn(billIds);
+        java.util.List<com.hms.entity.BillingMedicine> allMedicines = billIds.isEmpty() ? 
+                java.util.Collections.emptyList() : billingMedicineRepository.findByBillingIdIn(billIds);
+        java.util.List<com.hms.entity.BillingPayment> allPayments = billIds.isEmpty() ? 
+                java.util.Collections.emptyList() : billingPaymentRepository.findByBillingIdIn(billIds);
+        java.util.List<com.hms.entity.Patient> allPatients = patientIds.isEmpty() ? 
+                java.util.Collections.emptyList() : patientService.getPatientsByIds(patientIds);
+
+        // Group by billing ID in memory
+        java.util.Map<Long, java.util.List<com.hms.entity.BillingItem>> itemsByBillId = allItems.stream()
+                .collect(java.util.stream.Collectors.groupingBy(com.hms.entity.BillingItem::getBillingId));
+        java.util.Map<Long, java.util.List<com.hms.entity.BillingMedicine>> medicinesByBillId = allMedicines.stream()
+                .collect(java.util.stream.Collectors.groupingBy(com.hms.entity.BillingMedicine::getBillingId));
+        java.util.Map<Long, java.util.List<com.hms.entity.BillingPayment>> paymentsByBillId = allPayments.stream()
+                .collect(java.util.stream.Collectors.groupingBy(com.hms.entity.BillingPayment::getBillingId));
+        java.util.Map<Long, com.hms.entity.Patient> patientById = allPatients.stream()
+                .collect(java.util.stream.Collectors.toMap(com.hms.entity.Patient::getId, java.util.function.Function.identity(), (a, b) -> a));
+
+        // Group IPD Admissions and Wards if any
+        java.util.List<Long> ipdAdmissionIds = content.stream()
+                .map(com.hms.entity.Billing::getIpdAdmissionId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .collect(java.util.stream.Collectors.toList());
+        java.util.Map<Long, com.hms.entity.IpdAdmission> ipdByAdmissionId = java.util.Collections.emptyMap();
+        java.util.Map<Long, com.hms.entity.Ward> wardById = java.util.Collections.emptyMap();
+        if (!ipdAdmissionIds.isEmpty()) {
+            java.util.List<com.hms.entity.IpdAdmission> admissions = ipdAdmissionRepository.findAllById(ipdAdmissionIds);
+            ipdByAdmissionId = admissions.stream()
+                    .collect(java.util.stream.Collectors.toMap(com.hms.entity.IpdAdmission::getId, java.util.function.Function.identity(), (a, b) -> a));
+            java.util.List<Long> wardIds = admissions.stream()
+                    .map(com.hms.entity.IpdAdmission::getWardId)
+                    .filter(java.util.Objects::nonNull)
+                    .distinct()
+                    .collect(java.util.stream.Collectors.toList());
+            if (!wardIds.isEmpty()) {
+                wardById = wardRepository.findAllById(wardIds).stream()
+                        .collect(java.util.stream.Collectors.toMap(com.hms.entity.Ward::getWardId, java.util.function.Function.identity(), (a, b) -> a));
+            }
+        }
+
+        // Map list
         java.util.List<java.util.Map<String, Object>> mapped = new java.util.ArrayList<>();
         com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-        // Register Java Time module so LocalDateTime (createdAt) serializes correctly
         mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
         mapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-        for (com.hms.entity.Billing b : billsPage.getContent()) {
-            java.util.List<com.hms.entity.BillingItem> items = billingItemRepository.findByBillingId(b.getId());
-            java.util.List<com.hms.entity.BillingMedicine> medicines = billingMedicineRepository.findByBillingId(b.getId());
+
+        for (com.hms.entity.Billing b : content) {
+            java.util.List<com.hms.entity.BillingItem> items = itemsByBillId.getOrDefault(b.getId(), java.util.Collections.emptyList());
+            java.util.List<com.hms.entity.BillingMedicine> medicines = medicinesByBillId.getOrDefault(b.getId(), java.util.Collections.emptyList());
             
             java.math.BigDecimal totalAmt = java.math.BigDecimal.ZERO;
             if (items != null && !items.isEmpty()) {
@@ -111,29 +167,25 @@ public class BillingController {
             if (totalAmt.compareTo(java.math.BigDecimal.ZERO) == 0 && (items == null || items.isEmpty()) && (medicines == null || medicines.isEmpty())) {
                 totalAmt = b.getAmount() != null ? b.getAmount() : java.math.BigDecimal.ZERO;
                 if (totalAmt.compareTo(java.math.BigDecimal.ZERO) == 0 && "IPD".equalsIgnoreCase(b.getBillingType())) {
-                    try {
-                        if (b.getIpdAdmissionId() != null) {
-                            com.hms.entity.IpdAdmission ipd = ipdAdmissionRepository.findById(b.getIpdAdmissionId()).orElse(null);
-                            if (ipd != null && ipd.getWardId() != null) {
-                                com.hms.entity.Ward ward = wardRepository.findById(ipd.getWardId()).orElse(null);
-                                if (ward != null && ward.getBedPrice() != null) {
-                                    totalAmt = totalAmt.add(ward.getBedPrice());
-                                }
+                    if (b.getIpdAdmissionId() != null) {
+                        com.hms.entity.IpdAdmission ipd = ipdByAdmissionId.get(b.getIpdAdmissionId());
+                        if (ipd != null && ipd.getWardId() != null) {
+                            com.hms.entity.Ward ward = wardById.get(ipd.getWardId());
+                            if (ward != null && ward.getBedPrice() != null) {
+                                totalAmt = totalAmt.add(ward.getBedPrice());
                             }
                         }
-                    } catch (Exception ignored) {}
+                    }
                 }
             }
 
             java.math.BigDecimal paidAmt = java.math.BigDecimal.ZERO;
-            try {
-                java.util.List<com.hms.entity.BillingPayment> payments = billingPaymentRepository.findByBillingId(b.getId());
-                for (com.hms.entity.BillingPayment pay : payments) {
-                    if (pay.getAmount() != null) {
-                        paidAmt = paidAmt.add(pay.getAmount());
-                    }
+            java.util.List<com.hms.entity.BillingPayment> payments = paymentsByBillId.getOrDefault(b.getId(), java.util.Collections.emptyList());
+            for (com.hms.entity.BillingPayment pay : payments) {
+                if (pay.getAmount() != null) {
+                    paidAmt = paidAmt.add(pay.getAmount());
                 }
-            } catch (Exception ignored) {}
+            }
 
             java.util.Map<String, Object> asMap = mapper.convertValue(b, java.util.Map.class);
             asMap.put("items", items);
@@ -141,15 +193,13 @@ public class BillingController {
             asMap.put("amount", totalAmt);
             asMap.put("paidAmount", paidAmt);
             asMap.put("balance", totalAmt.subtract(paidAmt));
-            // Enrich with patient details
-            try {
-                if (b.getPatientId() != null) {
-                    com.hms.entity.Patient p = patientService.getPatientById(b.getPatientId());
-                    if (p != null) {
-                        asMap.put("patientName", p.getName());
-                    }
+            
+            if (b.getPatientId() != null) {
+                com.hms.entity.Patient p = patientById.get(b.getPatientId());
+                if (p != null) {
+                    asMap.put("patientName", p.getName());
                 }
-            } catch (Exception ignored) {}
+            }
             mapped.add(asMap);
         }
 
@@ -169,9 +219,62 @@ public class BillingController {
             Billing updated = billingService.updateStatus(id, status, paymentMethod, paymentReference);
             return ResponseEntity.ok(updated);
         } catch (Exception e) {
+            logger.error("Failed to update billing status for id: {}", id, e);
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+
+    @PutMapping("/{id}/items")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
+    public ResponseEntity<?> updateBillItems(@PathVariable Long id, @RequestBody java.util.List<com.hms.dto.HospitalFeeDTO> items) {
+        try {
+            validateBillingAccess();
+            Long hospitalId = securityHelper.getCurrentHospitalId();
+            Billing billing = billingRepository.findById(id)
+                    .filter(b -> b.getHospitalId().equals(hospitalId))
+                    .orElseThrow(() -> new RuntimeException("Bill not found"));
+
+            if ("PAID".equalsIgnoreCase(billing.getPaymentStatus()) || "CLOSED".equalsIgnoreCase(billing.getPaymentStatus())) {
+                throw new RuntimeException("Cannot edit items of a paid or closed bill");
+            }
+
+            // Delete existing billing items
+            java.util.List<BillingItem> existing = billingItemRepository.findByBillingId(id);
+            billingItemRepository.deleteAll(existing);
+
+            // Add new billing items
+            if (items != null) {
+                for (com.hms.dto.HospitalFeeDTO itemDto : items) {
+                    if (itemDto.getName() == null || itemDto.getName().trim().isEmpty()) {
+                        continue;
+                    }
+                    BigDecimal amt = itemDto.getDefaultAmount() != null ? itemDto.getDefaultAmount() : BigDecimal.ZERO;
+
+                    BillingItem item = new BillingItem();
+                    item.setBillingId(id);
+                    item.setHospitalId(hospitalId);
+                    item.setDescription(itemDto.getName().trim());
+                    item.setAmount(amt);
+                    billingItemRepository.save(item);
+                }
+            }
+
+            // Recalculate bill total
+            billingService.recalculateTotal(id);
+
+            // Broadcast refresh
+            try {
+                webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+            } catch (Exception ignored) {}
+
+            return ResponseEntity.ok("Bill items updated successfully");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @Autowired
+    private com.hms.security.HospitalWebSocketHandler webSocketHandler;
 
     @Autowired
     private PdfService pdfService;
@@ -224,6 +327,7 @@ public class BillingController {
                     .contentType(MediaType.APPLICATION_PDF)
                     .body(new InputStreamResource(pdf));
         } catch (Exception e) {
+            logger.error("Failed to download billing receipt pdf for id: {}", id, e);
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }

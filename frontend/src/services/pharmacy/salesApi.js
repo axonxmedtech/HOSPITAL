@@ -19,7 +19,8 @@ const salesApi = {
     },
     downloadPDF: async (id) => {
         const response = await apiClient.get(`/api/pharmacy/sales/${id}/pdf`, {
-            responseType: 'blob'
+            responseType: 'blob',
+            timeout: 60000
         });
         return response.data;
     },

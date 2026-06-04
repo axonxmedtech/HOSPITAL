@@ -124,6 +124,18 @@ const DoctorDashboard = () => {
     const [billing, setBilling] = useState([]);
     const [billingStatus, setBillingStatus] = useState('PENDING');
 
+    const [customFees, setCustomFees] = useState([]);
+    const [standardFees, setStandardFees] = useState({ consultationFee: '0', casePaperFee: '0' });
+    const [editBillItemsModal, setEditBillItemsModal] = useState({
+        isOpen: false,
+        billId: null,
+        items: [],
+        medicines: [],
+        patientName: '',
+        billNumber: ''
+    });
+    const [editBillItemsSubmitting, setEditBillItemsSubmitting] = useState(false);
+
     // SOLO Doctor specific states
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isAddPatientModalOpen, setIsAddPatientModalOpen] = useState(false);
@@ -522,24 +534,93 @@ const DoctorDashboard = () => {
         }
     };
 
-    const [docDownloadingId, setDocDownloadingId] = useState(null);
-    const handleDownloadReceipt = async (id) => {
-        if (docDownloadingId) return;
-        setDocDownloadingId(id);
+    const [docPrintingId, setDocPrintingId] = useState(null);
+    const handlePrintReceipt = async (id) => {
+        if (docPrintingId) return;
+        setDocPrintingId(id);
         try {
             const blob = await hospitalService.downloadReceipt(id);
             const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `receipt_${id}.pdf`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
+            const printWindow = window.open(url, '_blank');
+            if (printWindow) {
+                printWindow.focus();
+            } else {
+                toastError('Please allow popups to print/view the receipt');
+            }
         } catch (err) {
-            toastError('Failed to download receipt');
+            toastError('Failed to load receipt for printing');
         } finally {
-            setDocDownloadingId(null);
+            setDocPrintingId(null);
         }
+    };
+
+    const handleOpenEditBillItems = async (billObj) => {
+        try {
+            const [stdData, customData] = await Promise.all([
+                hospitalService.getHospitalFees(),
+                hospitalService.getCustomFees()
+            ]);
+            setStandardFees({
+                consultationFee: stdData.consultationFee != null ? stdData.consultationFee : '0',
+                casePaperFee: stdData.casePaperFee != null ? stdData.casePaperFee : '0'
+            });
+            setCustomFees(customData || []);
+            
+            const mappedItems = (billObj.items || []).map(it => ({
+                id: it.id,
+                name: it.description,
+                defaultAmount: it.amount
+            }));
+
+            setEditBillItemsModal({
+                isOpen: true,
+                billId: billObj.id,
+                items: mappedItems,
+                medicines: billObj.medicines || [],
+                patientName: billObj.patientName || '',
+                billNumber: billObj.customId || billObj.id
+            });
+        } catch (err) {
+            toastError("Failed to open bill editor");
+        }
+    };
+
+    const handleSaveBillItems = async () => {
+        setEditBillItemsSubmitting(true);
+        try {
+            const filteredItems = editBillItemsModal.items.filter(it => it.name && it.name.trim() !== "");
+            await hospitalService.updateBillItems(editBillItemsModal.billId, filteredItems);
+            success("Bill items updated successfully");
+            setEditBillItemsModal({ isOpen: false, billId: null, items: [], medicines: [], patientName: '', billNumber: '' });
+            loadData();
+        } catch (err) {
+            const msg = err.response?.data || "Failed to update bill items";
+            toastError(msg);
+        } finally {
+            setEditBillItemsSubmitting(false);
+        }
+    };
+
+    const updateBillItem = (index, field, value) => {
+        setEditBillItemsModal(prev => {
+            const updated = [...prev.items];
+            updated[index] = { ...updated[index], [field]: value };
+            return { ...prev, items: updated };
+        });
+    };
+
+    const removeBillItem = (index) => {
+        setEditBillItemsModal(prev => {
+            const updated = prev.items.filter((_, i) => i !== index);
+            return { ...prev, items: updated };
+        });
+    };
+
+    const addBillItem = () => {
+        setEditBillItemsModal(prev => ({
+            ...prev,
+            items: [...prev.items, { name: '', defaultAmount: '' }]
+        }));
     };
 
     const [docPaymentProcessing, setDocPaymentProcessing] = useState(false);
@@ -1326,8 +1407,9 @@ const DoctorDashboard = () => {
                                             startIndex={(page - 1) * ITEMS_PER_PAGE}
                                             pagination={pagination}
                                             onUpdateStatus={handleBillStatus}
-                                            onDownload={handleDownloadReceipt}
-                                            downloadingBillId={docDownloadingId}
+                                            onPrint={handlePrintReceipt}
+                                            printingBillId={docPrintingId}
+                                            onEditItems={handleOpenEditBillItems}
                                         />
                                     )
                                 )}
@@ -1672,7 +1754,7 @@ const DoctorDashboard = () => {
                                     </button>
                                     <button
                                         onClick={() => {
-                                            handleDownloadReceipt(paymentSuccessModal.billId);
+                                            handlePrintReceipt(paymentSuccessModal.billId);
                                             setPaymentSuccessModal({ isOpen: false, billId: null, patientName: '', amount: 0 });
                                         }}
                                         className="flex-1 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold transition"
@@ -1687,6 +1769,151 @@ const DoctorDashboard = () => {
 
                 {/* Profile Settings Modal */}
                 <ProfileModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
+
+                {/* Edit Bill Items Modal */}
+                {editBillItemsModal.isOpen && (
+                    <div className="fixed inset-0 z-50 overflow-y-auto">
+                        <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+                            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+                                <div className="absolute inset-0 bg-gray-500 opacity-75" onClick={() => setEditBillItemsModal({ ...editBillItemsModal, isOpen: false })}></div>
+                            </div>
+                            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+                            <div className="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full border border-gray-200">
+                                <div className="bg-white px-6 pt-6 pb-4">
+                                    <h3 className="text-lg leading-6 font-bold text-gray-900 mb-1">
+                                        Edit Bill Charges
+                                    </h3>
+                                    <p className="text-xs text-gray-500 mb-4">
+                                        Patient: <span className="font-semibold text-gray-800">{editBillItemsModal.patientName}</span> | Bill No: <span className="font-semibold text-gray-800">{editBillItemsModal.billNumber}</span>
+                                    </p>
+                                    
+                                    <div className="space-y-4">
+                                        <div className="flex justify-between items-center">
+                                            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wide">Clinic Charges & Services</h4>
+                                            <button
+                                                type="button"
+                                                onClick={addBillItem}
+                                                className="text-xs font-semibold text-sky-600 hover:text-sky-800"
+                                            >
+                                                + Add Charge Item
+                                            </button>
+                                        </div>
+
+                                        <div className="space-y-3 max-h-[250px] overflow-y-auto pr-1">
+                                            {editBillItemsModal.items.map((item, index) => (
+                                                <div key={index} className="flex gap-2 items-center bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                                    <div className="flex-1 space-y-2">
+                                                        <div className="flex gap-2">
+                                                            <select
+                                                                onChange={(e) => {
+                                                                    const val = e.target.value;
+                                                                    if (val === 'consultation') {
+                                                                        updateBillItem(index, 'name', 'Consultation Fee');
+                                                                        updateBillItem(index, 'defaultAmount', standardFees.consultationFee || '0');
+                                                                    } else if (val === 'case_paper') {
+                                                                        updateBillItem(index, 'name', 'Case Paper Fee');
+                                                                        updateBillItem(index, 'defaultAmount', standardFees.casePaperFee || '0');
+                                                                    } else if (val.startsWith('custom_')) {
+                                                                        const customId = parseInt(val.replace('custom_', ''));
+                                                                        const found = customFees.find(f => f.id === customId);
+                                                                        if (found) {
+                                                                            updateBillItem(index, 'name', found.name);
+                                                                            updateBillItem(index, 'defaultAmount', found.defaultAmount || '0');
+                                                                        }
+                                                                    } else if (val === 'injections') {
+                                                                        updateBillItem(index, 'name', 'Injections');
+                                                                        updateBillItem(index, 'defaultAmount', '0');
+                                                                    } else if (val === 'medicines_by_hospital') {
+                                                                        updateBillItem(index, 'name', 'Medicines by Hospital');
+                                                                        updateBillItem(index, 'defaultAmount', '0');
+                                                                    }
+                                                                }}
+                                                                className="text-xs border border-gray-200 rounded-lg p-1 bg-white focus:ring-1 focus:ring-sky-500"
+                                                                defaultValue=""
+                                                            >
+                                                                <option value="" disabled>-- Select Charge Preset --</option>
+                                                                <option value="consultation">Consultation Fee (₹{standardFees.consultationFee || 0})</option>
+                                                                <option value="case_paper">Case Paper Fee (₹{standardFees.casePaperFee || 0})</option>
+                                                                <option value="injections">Injections</option>
+                                                                <option value="medicines_by_hospital">Medicines by Hospital</option>
+                                                                {customFees.map(f => (
+                                                                    <option key={f.id} value={`custom_${f.id}`}>{f.name} (₹{f.defaultAmount || 0})</option>
+                                                                ))}
+                                                                <option value="manual">Manual Entry</option>
+                                                            </select>
+                                                        </div>
+                                                        <div className="grid grid-cols-3 gap-2">
+                                                            <input
+                                                                type="text"
+                                                                placeholder="Description"
+                                                                value={item.name}
+                                                                onChange={(e) => updateBillItem(index, 'name', e.target.value)}
+                                                                className="col-span-2 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-1 focus:ring-sky-500 focus:border-transparent bg-white font-medium text-gray-900"
+                                                            />
+                                                            <input
+                                                                type="number"
+                                                                placeholder="Amount"
+                                                                value={item.defaultAmount}
+                                                                onChange={(e) => updateBillItem(index, 'defaultAmount', e.target.value)}
+                                                                className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-1 focus:ring-sky-500 focus:border-transparent bg-white text-gray-900 font-semibold"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeBillItem(index)}
+                                                        className="text-red-500 hover:text-red-700 p-2 text-lg font-bold"
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            {editBillItemsModal.items.length === 0 && (
+                                                <div className="text-center py-6 border border-dashed border-gray-200 rounded-xl bg-gray-50 text-xs text-gray-400">
+                                                    No charges added yet. Click "+ Add Charge Item" to begin.
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {editBillItemsModal.medicines && editBillItemsModal.medicines.length > 0 && (
+                                            <div className="border-t border-gray-100 pt-3">
+                                                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Administered In-Clinic Medicines (Read-Only)</h4>
+                                                <div className="space-y-2 max-h-[120px] overflow-y-auto pr-1">
+                                                    {editBillItemsModal.medicines.map((med, index) => (
+                                                        <div key={index} className="flex justify-between items-center text-xs text-gray-600 bg-teal-50/50 border border-teal-100/50 p-2 rounded-lg">
+                                                            <div>
+                                                                <span className="font-semibold text-gray-800">{med.medicineName}</span>
+                                                                <span className="text-gray-500 ml-2">Qty: {med.quantity}</span>
+                                                            </div>
+                                                            <span className="font-semibold text-teal-700">₹{med.amount}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="bg-gray-50 px-6 py-4 flex flex-row-reverse gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={handleSaveBillItems}
+                                        disabled={editBillItemsSubmitting}
+                                        className="px-4 py-2 bg-gray-900 text-white rounded-xl text-sm font-semibold hover:bg-slate-800 transition disabled:opacity-50"
+                                    >
+                                        {editBillItemsSubmitting ? 'Saving...' : 'Save Changes'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setEditBillItemsModal({ isOpen: false, billId: null, items: [], medicines: [], patientName: '', billNumber: '' })}
+                                        className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50 transition"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </>
         </div>
     );

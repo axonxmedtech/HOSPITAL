@@ -291,7 +291,8 @@ const hospitalService = {
      */
     downloadPrescription: async (appointmentId) => {
         return apiClient.get(`/hospital/doctors/prescription/${appointmentId}/pdf`, {
-            responseType: 'blob'
+            responseType: 'blob',
+            timeout: 60000
         }).then(response => response.data);
     },
 
@@ -314,7 +315,8 @@ const hospitalService = {
 
     downloadReceipt: async (id) => {
         const response = await apiClient.get(`/hospital/billing/${id}/pdf`, {
-            responseType: 'blob'
+            responseType: 'blob',
+            timeout: 60000
         });
         return response.data;
     },
@@ -376,12 +378,18 @@ const hospitalService = {
     },
 
     downloadCasePaper: async (opdId) => {
-        const response = await apiClient.get(`/hospital/opd/${opdId}/pdf`, { responseType: 'blob' });
+        const response = await apiClient.get(`/hospital/opd/${opdId}/pdf`, {
+            responseType: 'blob',
+            timeout: 60000
+        });
         return response.data;
     },
 
     downloadPrescriptionByOpd: async (opdId) => {
-        const response = await apiClient.get(`/hospital/doctors/prescription/opd/${opdId}/pdf`, { responseType: 'blob' });
+        const response = await apiClient.get(`/hospital/doctors/prescription/opd/${opdId}/pdf`, {
+            responseType: 'blob',
+            timeout: 60000
+        });
         return response.data;
     },
     createIpdAdmission: async (payload) => {
@@ -597,6 +605,31 @@ const hospitalService = {
 
     updateHospitalFees: async (fees) => {
         const response = await apiClient.put('/hospital/settings/fees', fees);
+        return response.data;
+    },
+
+    getCustomFees: async () => {
+        const response = await apiClient.get('/hospital/settings/fees/custom');
+        return response.data;
+    },
+
+    addCustomFee: async (feeData) => {
+        const response = await apiClient.post('/hospital/settings/fees/custom', feeData);
+        return response.data;
+    },
+
+    updateCustomFee: async (id, feeData) => {
+        const response = await apiClient.put(`/hospital/settings/fees/custom/${id}`, feeData);
+        return response.data;
+    },
+
+    deleteCustomFee: async (id) => {
+        const response = await apiClient.delete(`/hospital/settings/fees/custom/${id}`);
+        return response.data;
+    },
+
+    updateBillItems: async (billId, items) => {
+        const response = await apiClient.put(`/hospital/billing/${billId}/items`, items);
         return response.data;
     },
 

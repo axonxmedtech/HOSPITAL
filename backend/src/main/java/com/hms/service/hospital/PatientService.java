@@ -354,4 +354,15 @@ public class PatientService {
         result.put("prescriptions", prescriptions);
         return result;
     }
+
+    public List<Patient> getPatientsByIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) return java.util.Collections.emptyList();
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital ID not found in context");
+        }
+        return patientRepository.findAllById(ids).stream()
+                .filter(p -> p.getHospitalId().equals(hospitalId))
+                .collect(java.util.stream.Collectors.toList());
+    }
 }

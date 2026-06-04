@@ -66,6 +66,12 @@ public class BillingControllerTest {
     @MockBean
     private SecurityContextHelper securityHelper;
 
+    @MockBean
+    private com.hms.security.HospitalWebSocketHandler webSocketHandler;
+
+    @MockBean
+    private com.hms.repository.BillingMedicineRepository billingMedicineRepository;
+
     private HospitalSetting settings;
 
     @BeforeEach
@@ -100,6 +106,7 @@ public class BillingControllerTest {
     @WithMockUser(roles = "DOCTOR")
     public void testDoctorAccess_WhenBillingHandlerIsReceptionist_Forbidden() throws Exception {
         settings.setBillingHandler("RECEPTIONIST");
+        settings.setReceptionMode("HAS_RECEPTIONIST");
         when(securityHelper.getCurrentUserRole()).thenReturn("ROLE_DOCTOR");
 
         mockMvc.perform(get("/hospital/billing")
@@ -107,6 +114,20 @@ public class BillingControllerTest {
                 .param("size", "10")
                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "DOCTOR")
+    public void testDoctorAccess_WhenBillingHandlerIsReceptionistButReceptionModeIsSolo_Allowed() throws Exception {
+        settings.setBillingHandler("RECEPTIONIST");
+        settings.setReceptionMode("SOLO");
+        when(securityHelper.getCurrentUserRole()).thenReturn("ROLE_DOCTOR");
+
+        mockMvc.perform(get("/hospital/billing")
+                .param("page", "0")
+                .param("size", "10")
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk());
     }
 
     @Test

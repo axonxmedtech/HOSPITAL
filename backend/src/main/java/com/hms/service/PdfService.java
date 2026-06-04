@@ -37,6 +37,12 @@ public class PdfService {
     @Autowired
     private com.hms.repository.WardRepository wardRepository;
 
+    @Autowired
+    private com.hms.repository.DoctorRepository doctorRepository;
+
+    @Autowired
+    private com.hms.repository.MedicalRecordRepository medicalRecordRepository;
+
     // Standardized Fonts
     private static final Font TITLE_FONT = FontFactory.getFont(FontFactory.TIMES_BOLD, 22, Font.BOLD, new Color(0, 51, 102));
     private static final Font SUBTITLE_FONT = FontFactory.getFont(FontFactory.HELVETICA_BOLDOBLIQUE, 16, Font.ITALIC, Color.DARK_GRAY);
@@ -46,6 +52,56 @@ public class PdfService {
     private static final Font NORMAL_FONT = FontFactory.getFont(FontFactory.HELVETICA, 10, Font.NORMAL, Color.BLACK);
     private static final Font FOOTER_FONT = FontFactory.getFont(FontFactory.HELVETICA, 9, Font.NORMAL, Color.GRAY);
     private static final Font SMALL_BOLD_FONT = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Font.BOLD, Color.BLACK);
+
+    private static final Color PRIMARY_RED = new Color(180, 0, 0);
+    private static final Color NAVY_BLUE = new Color(0, 51, 102);
+    private static final Font RED_TITLE_FONT = FontFactory.getFont(FontFactory.TIMES_BOLD, 22, Font.BOLD, PRIMARY_RED);
+    private static final Font RED_DOCTOR_FONT = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, Font.BOLD, PRIMARY_RED);
+
+    // Helper: build a dynamic list of charge rows from billing items + medicines
+    private java.util.List<Object[]> buildDynamicChargeRows(
+            java.util.List<com.hms.entity.BillingItem> items,
+            java.util.List<com.hms.entity.BillingMedicine> medicines) {
+        // Each entry is: { String description, BigDecimal amount }
+        java.util.List<Object[]> rows = new java.util.ArrayList<>();
+
+        if (items != null) {
+            for (com.hms.entity.BillingItem it : items) {
+                String desc = (it.getDescription() != null && !it.getDescription().trim().isEmpty())
+                        ? it.getDescription().trim()
+                        : "Service Charge";
+                java.math.BigDecimal amt = (it.getAmount() != null) ? it.getAmount() : java.math.BigDecimal.ZERO;
+                rows.add(new Object[]{desc, amt});
+            }
+        }
+
+        // Sum all in-clinic medicines into one row
+        if (medicines != null && !medicines.isEmpty()) {
+            java.math.BigDecimal medTotal = java.math.BigDecimal.ZERO;
+            for (com.hms.entity.BillingMedicine med : medicines) {
+                if (med.getAmount() != null) medTotal = medTotal.add(med.getAmount());
+            }
+            if (medTotal.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                rows.add(new Object[]{"Medicines by Hospital", medTotal});
+            }
+        }
+
+        return rows;
+    }
+
+    private String convertNumberToWords(long number) {
+        if (number == 0) return "Zero";
+        String[] units = { "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
+                           "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen" };
+        String[] tens = { "", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety" };
+
+        if (number < 20) return units[(int) number];
+        if (number < 100) return tens[(int) (number / 10)] + ((number % 10 != 0) ? " " + units[(int) (number % 10)] : "");
+        if (number < 1000) return units[(int) (number / 100)] + " Hundred" + ((number % 100 != 0) ? " and " + convertNumberToWords(number % 100) : "");
+        if (number < 100000) return convertNumberToWords(number / 1000) + " Thousand" + ((number % 1000 != 0) ? " " + convertNumberToWords(number % 1000) : "");
+        if (number < 10000000) return convertNumberToWords(number / 100000) + " Lakh" + ((number % 100000 != 0) ? " " + convertNumberToWords(number % 100000) : "");
+        return convertNumberToWords(number / 10000000) + " Crore" + ((number % 10000000 != 0) ? " " + convertNumberToWords(number % 10000000) : "");
+    }
 
     public ByteArrayInputStream generatePrescriptionPdf(
             Hospital hospital,
@@ -72,17 +128,31 @@ public class PdfService {
 
             PdfPTable leftCol = new PdfPTable(2);
             leftCol.setWidths(new float[]{1.2f, 2f});
-            addMetaRow(leftCol, "Prescription#", medicalRecord.getId().toString());
-            addMetaRow(leftCol, "Date", medicalRecord.getCreatedAt().format(DateTimeFormatter.ofPattern("MMM dd, yyyy")));
-            addMetaRow(leftCol, "Patient ID", patient.getCustomId());
-            addMetaRow(leftCol, "Age / Gender", patient.getAge() + " / " + patient.getGender());
+            
+            String recordId = (medicalRecord != null && medicalRecord.getId() != null) ? medicalRecord.getId().toString() : "-";
+            String recordDate = (medicalRecord != null && medicalRecord.getCreatedAt() != null) 
+                    ? medicalRecord.getCreatedAt().format(DateTimeFormatter.ofPattern("MMM dd, yyyy")) 
+                    : "-";
+            String patId = (patient != null && patient.getCustomId() != null) ? patient.getCustomId() : "-";
+            String patAgeGender = (patient != null) ? patient.getAge() + " / " + patient.getGender() : "-";
+
+            addMetaRow(leftCol, "Prescription#", recordId);
+            addMetaRow(leftCol, "Date", recordDate);
+            addMetaRow(leftCol, "Patient ID", patId);
+            addMetaRow(leftCol, "Age / Gender", patAgeGender);
 
             PdfPTable rightCol = new PdfPTable(2);
             rightCol.setWidths(new float[]{1.2f, 2f});
-            addMetaRow(rightCol, "Doctor", "Dr. " + doctor.getName());
-            addMetaRow(rightCol, "Spec.", doctor.getSpecialization());
-            addMetaRow(rightCol, "Bill To:", patient.getName());
-            addMetaRow(rightCol, "Address", patient.getAddress() != null ? patient.getAddress() : "-");
+            
+            String docName = (doctor != null && doctor.getName() != null) ? doctor.getName() : "Unknown";
+            String docSpec = (doctor != null && doctor.getSpecialization() != null) ? doctor.getSpecialization() : "-";
+            String patName = (patient != null && patient.getName() != null) ? patient.getName() : "Unknown";
+            String patAddress = (patient != null && patient.getAddress() != null) ? patient.getAddress() : "-";
+
+            addMetaRow(rightCol, "Doctor", "Dr. " + docName);
+            addMetaRow(rightCol, "Spec.", docSpec);
+            addMetaRow(rightCol, "Bill To:", patName);
+            addMetaRow(rightCol, "Address", patAddress);
 
             PdfPCell leftCell = new PdfPCell(leftCol);
             leftCell.setBorder(Rectangle.NO_BORDER);
@@ -165,51 +235,202 @@ public class PdfService {
     }
 
     public ByteArrayInputStream generateBillingReceiptPdf(Hospital hospital, Patient patient, Billing billing) {
-        // Now using A4 for consistent styling
-        Document document = new Document(PageSize.A4, 36, 36, 48, 36);
+        // Redesigned PDF to look exactly like a premium pre-printed receipt
+        Document document = new Document(PageSize.A4, 36, 36, 36, 36);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
 
         try {
             PdfWriter.getInstance(document, out);
             document.open();
 
-            // 1. Standard Header
-            addStyledHeader(document, hospital, "SERVICE CHARGES");
+            // Resolve Doctor associated with this bill
+            Doctor doctor = null;
+            if (billing.getDoctorId() != null) {
+                doctor = doctorRepository.findById(billing.getDoctorId()).orElse(null);
+            }
+            if (doctor == null && hospital != null) {
+                java.util.List<Doctor> doctors = doctorRepository.findByHospitalIdAndIsActiveTrueOrderByCreatedAtDesc(hospital.getId());
+                if (doctors != null && !doctors.isEmpty()) {
+                    doctor = doctors.get(0);
+                }
+            }
 
-            // 2. Metadata Table
-            PdfPTable metaTable = new PdfPTable(2);
-            metaTable.setWidthPercentage(100);
-            metaTable.setSpacingBefore(10f);
-            metaTable.setSpacingAfter(15f);
+            // Resolve Diagnosis dynamically from related MedicalRecord
+            String diagnosis = "-";
+            if (billing.getOpdId() != null) {
+                java.util.Optional<com.hms.entity.MedicalRecord> record = medicalRecordRepository.findByOpdId(billing.getOpdId());
+                if (record.isPresent() && record.get().getDiagnosis() != null && !record.get().getDiagnosis().isEmpty()) {
+                    diagnosis = record.get().getDiagnosis();
+                }
+            } else if (billing.getIpdAdmissionId() != null) {
+                java.util.List<com.hms.entity.MedicalRecord> records = medicalRecordRepository.findByIpdAdmissionIdOrderByCreatedAtDesc(billing.getIpdAdmissionId());
+                if (records != null && !records.isEmpty() && records.get(0).getDiagnosis() != null && !records.get(0).getDiagnosis().isEmpty()) {
+                    diagnosis = records.get(0).getDiagnosis();
+                }
+            } else if (billing.getAppointmentId() != null) {
+                java.util.Optional<com.hms.entity.MedicalRecord> record = medicalRecordRepository.findByAppointmentId(billing.getAppointmentId());
+                if (record.isPresent() && record.get().getDiagnosis() != null && !record.get().getDiagnosis().isEmpty()) {
+                    diagnosis = record.get().getDiagnosis();
+                }
+            }
 
-            PdfPTable leftCol = new PdfPTable(2);
-            leftCol.setWidths(new float[]{1.2f, 2f});
-            addMetaRow(leftCol, "Invoice#", billing.getCustomId());
-            addMetaRow(leftCol, "Date", billing.getCreatedAt().format(DateTimeFormatter.ofPattern("MMM dd, yyyy")));
-            addMetaRow(leftCol, "Customer ID", patient.getCustomId());
-            addMetaRow(leftCol, "Type", billing.getBillingType());
+            // 1. Premium Letterhead Header Table
+            PdfPTable headerTable = new PdfPTable(3);
+            headerTable.setWidthPercentage(100);
+            headerTable.setWidths(new float[]{1.2f, 4f, 1f});
 
-            PdfPTable rightCol = new PdfPTable(2);
-            rightCol.setWidths(new float[]{1.2f, 2f});
-            addMetaRow(rightCol, "Bill To:", patient.getName());
-            addMetaRow(rightCol, "Address", patient.getAddress() != null ? patient.getAddress() : "N/A");
-            addMetaRow(rightCol, "Status", billing.getPaymentStatus());
+            // Logo Box
+            PdfPCell logoCell = new PdfPCell();
+            logoCell.setBorder(Rectangle.NO_BORDER);
+            logoCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+            
+            if (hospital != null && hospital.getLogoUrl() != null && !hospital.getLogoUrl().trim().isEmpty()) {
+                try {
+                    com.lowagie.text.Image logoImg = com.lowagie.text.Image.getInstance(new java.net.URL(hospital.getLogoUrl().trim()));
+                    logoImg.scaleToFit(60f, 60f);
+                    logoImg.setAlignment(Element.ALIGN_CENTER);
+                    logoCell.addElement(logoImg);
+                } catch (Exception e) {
+                    drawTextFallbackLogo(logoCell, hospital);
+                }
+            } else {
+                drawTextFallbackLogo(logoCell, hospital);
+            }
+            headerTable.addCell(logoCell);
 
-            PdfPCell leftCell = new PdfPCell(leftCol);
-            leftCell.setBorder(Rectangle.NO_BORDER);
-            metaTable.addCell(leftCell);
+            // Hospital Details Center
+            PdfPCell centerHeader = new PdfPCell();
+            centerHeader.setBorder(Rectangle.NO_BORDER);
+            centerHeader.setHorizontalAlignment(Element.ALIGN_CENTER);
+            
+            String parentOrgText = (hospital != null && hospital.getParentOrganization() != null && !hospital.getParentOrganization().trim().isEmpty())
+                    ? hospital.getParentOrganization().trim()
+                    : "";
+            if (!parentOrgText.isEmpty()) {
+                Paragraph gmfText = new Paragraph(parentOrgText, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Font.BOLD, NAVY_BLUE));
+                gmfText.setAlignment(Element.ALIGN_CENTER);
+                centerHeader.addElement(gmfText);
+            }
+            String rawHospName = (hospital != null && hospital.getName() != null) ? hospital.getName().toUpperCase() : "HOSPITAL";
+            Paragraph hospText = new Paragraph(rawHospName, RED_TITLE_FONT);
+            hospText.setAlignment(Element.ALIGN_CENTER);
+            String addressText = (hospital != null && hospital.getAddress() != null) ? hospital.getAddress() : "\"Amrutwel\" Near water Tank, Shikrapur, Tal. Shirur, Dist. Pune.";
+            Paragraph addrText = new Paragraph(addressText, FontFactory.getFont(FontFactory.HELVETICA, 8, Font.NORMAL, Color.DARK_GRAY));
+            addrText.setAlignment(Element.ALIGN_CENTER);
 
-            PdfPCell rightCell = new PdfPCell(rightCol);
-            rightCell.setBorder(Rectangle.NO_BORDER);
-            metaTable.addCell(rightCell);
+            centerHeader.addElement(hospText);
+            centerHeader.addElement(addrText);
+            headerTable.addCell(centerHeader);
 
-            document.add(metaTable);
+            // Right Caduceus Space (Empty / Symmetric padding)
+            PdfPCell rightHeader = new PdfPCell();
+            rightHeader.setBorder(Rectangle.NO_BORDER);
+            headerTable.addCell(rightHeader);
 
-            // 3. Line separator
-            Paragraph line = new Paragraph();
-            line.add(new LineSeparator(1f, 100, Color.LIGHT_GRAY, Element.ALIGN_CENTER, -2));
-            document.add(line);
+            document.add(headerTable);
+
+            // 2. Doctor credentials block
+            PdfPTable docTable = new PdfPTable(2);
+            docTable.setWidthPercentage(100);
+            docTable.setWidths(new float[]{3.5f, 2f});
+            docTable.setSpacingBefore(6f);
+
+            String docName = (doctor != null && doctor.getName() != null) ? doctor.getName().toUpperCase() : "B. B. INGALE";
+            String docSpec = (doctor != null && doctor.getSpecialization() != null) ? doctor.getSpecialization() : "M.B.B.S, Diploma in Industrial Health";
+            String docPhone = (doctor != null && doctor.getPhone() != null) ? doctor.getPhone() : "9850914919";
+
+            PdfPCell docLeft = new PdfPCell();
+            docLeft.setBorder(Rectangle.NO_BORDER);
+            Paragraph pName = new Paragraph("Dr. " + docName, RED_DOCTOR_FONT);
+            Paragraph pSpec = new Paragraph("(" + docSpec + ")", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8, Font.NORMAL, Color.DARK_GRAY));
+            docLeft.addElement(pName);
+            docLeft.addElement(pSpec);
+            docTable.addCell(docLeft);
+
+            PdfPCell docRight = new PdfPCell();
+            docRight.setBorder(Rectangle.NO_BORDER);
+            Paragraph pPhone = new Paragraph("Mob. : " + docPhone, SMALL_BOLD_FONT);
+            pPhone.setAlignment(Element.ALIGN_RIGHT);
+            docRight.addElement(pPhone);
+            docTable.addCell(docRight);
+
+            document.add(docTable);
+
+            // Separator Line
+            Paragraph borderLine = new Paragraph();
+            borderLine.add(new LineSeparator(1.5f, 100, Color.BLACK, Element.ALIGN_CENTER, -1));
+            document.add(borderLine);
             document.add(new Paragraph("\n"));
+
+            // 3. Patient Details Table (with under-lined input style)
+            PdfPTable patientTable = new PdfPTable(2);
+            patientTable.setWidthPercentage(100);
+            patientTable.setWidths(new float[]{3f, 2f});
+            patientTable.setSpacingAfter(10f);
+
+            // No & Date
+            PdfPCell noCell = new PdfPCell();
+            noCell.setBorder(Rectangle.NO_BORDER);
+            Paragraph noPara = new Paragraph("No. : ", NORMAL_FONT);
+            String rawCustomId = (billing != null && billing.getCustomId() != null) ? billing.getCustomId() : "-";
+            noPara.add(new Chunk(rawCustomId, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12, Font.BOLD, PRIMARY_RED)));
+            noCell.addElement(noPara);
+            patientTable.addCell(noCell);
+
+            PdfPCell dateCell = new PdfPCell();
+            dateCell.setBorder(Rectangle.NO_BORDER);
+            String rawDate = (billing != null && billing.getCreatedAt() != null) 
+                    ? billing.getCreatedAt().format(DateTimeFormatter.ofPattern("dd / MM / yyyy")) 
+                    : "-";
+            Paragraph datePara = new Paragraph("Date :  " + rawDate, NORMAL_FONT);
+            dateCell.addElement(datePara);
+            patientTable.addCell(dateCell);
+
+            // Patient Name (Row 2, colspan 2)
+            PdfPCell nameCell = new PdfPCell();
+            nameCell.setColspan(2);
+            nameCell.setBorder(Rectangle.NO_BORDER);
+            nameCell.setPaddingTop(4f);
+            nameCell.setPaddingBottom(4f);
+            Paragraph namePara = new Paragraph("Name of Patient :  ", NORMAL_FONT);
+            String patName = (patient != null && patient.getName() != null) ? patient.getName().toUpperCase() : "PATIENT";
+            namePara.add(new Chunk(patName, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Font.BOLD, Color.BLACK)));
+            nameCell.addElement(namePara);
+            nameCell.setBorder(Rectangle.BOTTOM);
+            nameCell.setBorderColor(Color.LIGHT_GRAY);
+            nameCell.setBorderWidth(0.5f);
+            patientTable.addCell(nameCell);
+
+            // Address (Row 3, colspan 2)
+            PdfPCell addrCell = new PdfPCell();
+            addrCell.setColspan(2);
+            addrCell.setBorder(Rectangle.NO_BORDER);
+            addrCell.setPaddingTop(4f);
+            addrCell.setPaddingBottom(4f);
+            Paragraph addrPara = new Paragraph("Address :  ", NORMAL_FONT);
+            String patAddr = (patient != null && patient.getAddress() != null) ? patient.getAddress() : "-";
+            addrPara.add(new Chunk(patAddr, NORMAL_FONT));
+            addrCell.addElement(addrPara);
+            addrCell.setBorder(Rectangle.BOTTOM);
+            addrCell.setBorderColor(Color.LIGHT_GRAY);
+            addrCell.setBorderWidth(0.5f);
+            patientTable.addCell(addrCell);
+
+            // Diagnosis (Row 4, colspan 2)
+            PdfPCell diagCell = new PdfPCell();
+            diagCell.setColspan(2);
+            diagCell.setBorder(Rectangle.NO_BORDER);
+            diagCell.setPaddingTop(4f);
+            diagCell.setPaddingBottom(4f);
+            Paragraph diagPara = new Paragraph("Diagnosis :  ", NORMAL_FONT);
+            diagPara.add(new Chunk(diagnosis, NORMAL_FONT));
+            diagCell.addElement(diagPara);
+            diagCell.setBorder(Rectangle.BOTTOM);
+            diagCell.setBorderColor(Color.LIGHT_GRAY);
+            diagCell.setBorderWidth(0.5f);
+            patientTable.addCell(diagCell);
+
+            document.add(patientTable);
 
             // Fetch details to support itemization
             java.util.List<com.hms.entity.BillingItem> items = billingItemRepository != null ? billingItemRepository.findByBillingId(billing.getId()) : null;
@@ -218,43 +439,24 @@ public class PdfService {
 
             // Recalculate totals
             java.math.BigDecimal totalAmt = java.math.BigDecimal.ZERO;
-            if (items != null && !items.isEmpty()) {
+            if (items != null) {
                 for (com.hms.entity.BillingItem it : items) {
-                    if (it.getAmount() != null) {
-                        totalAmt = totalAmt.add(it.getAmount());
-                    }
+                    if (it.getAmount() != null) totalAmt = totalAmt.add(it.getAmount());
                 }
             }
-            if (medicines != null && !medicines.isEmpty()) {
+            if (medicines != null) {
                 for (com.hms.entity.BillingMedicine med : medicines) {
-                    if (med.getAmount() != null) {
-                        totalAmt = totalAmt.add(med.getAmount());
-                    }
+                    if (med.getAmount() != null) totalAmt = totalAmt.add(med.getAmount());
                 }
             }
             if (totalAmt.compareTo(java.math.BigDecimal.ZERO) == 0 && (items == null || items.isEmpty()) && (medicines == null || medicines.isEmpty())) {
                 totalAmt = billing.getAmount() != null ? billing.getAmount() : java.math.BigDecimal.ZERO;
-                if (totalAmt.compareTo(java.math.BigDecimal.ZERO) == 0 && "IPD".equalsIgnoreCase(billing.getBillingType())) {
-                    try {
-                        if (billing.getIpdAdmissionId() != null && ipdAdmissionRepository != null && wardRepository != null) {
-                            com.hms.entity.IpdAdmission ipd = ipdAdmissionRepository.findById(billing.getIpdAdmissionId()).orElse(null);
-                            if (ipd != null && ipd.getWardId() != null) {
-                                com.hms.entity.Ward ward = wardRepository.findById(ipd.getWardId()).orElse(null);
-                                if (ward != null && ward.getBedPrice() != null) {
-                                    totalAmt = totalAmt.add(ward.getBedPrice());
-                                }
-                            }
-                        }
-                    } catch (Exception ignored) {}
-                }
             }
 
             java.math.BigDecimal paidAmt = java.math.BigDecimal.ZERO;
             if (payments != null && !payments.isEmpty()) {
                 for (com.hms.entity.BillingPayment pay : payments) {
-                    if (pay.getAmount() != null) {
-                        paidAmt = paidAmt.add(pay.getAmount());
-                    }
+                    if (pay.getAmount() != null) paidAmt = paidAmt.add(pay.getAmount());
                 }
             } else {
                 if ("PAID".equalsIgnoreCase(billing.getPaymentStatus())) {
@@ -264,92 +466,153 @@ public class PdfService {
 
             java.math.BigDecimal balance = totalAmt.subtract(paidAmt);
 
-            // 4. Main Service/Amount Table
-            PdfPTable amtTable = new PdfPTable(5);
-            amtTable.setWidthPercentage(100);
-            amtTable.setWidths(new float[]{0.5f, 4f, 1f, 1.5f, 1.5f});
+            // 4. Dynamic Charges Table
+            java.util.List<Object[]> chargeRows = buildDynamicChargeRows(items, medicines);
 
-            addTableHeaderCell(amtTable, "Sr#");
-            addTableHeaderCell(amtTable, "Description");
-            addTableHeaderCell(amtTable, "Qty");
-            addTableHeaderCell(amtTable, "Unit Price");
-            addTableHeaderCell(amtTable, "Amount");
+            // Fallback: if no items and no medicines, but bill has amount, show one row
+            if (chargeRows.isEmpty() && totalAmt.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                String fallbackDesc = "OPD".equalsIgnoreCase(billing.getBillingType()) ? "Consultation Charges" : "Service Charges";
+                chargeRows.add(new Object[]{fallbackDesc, totalAmt});
+            }
 
-            int sr = 1;
+            PdfPTable table = new PdfPTable(4);
+            table.setWidthPercentage(100);
+            table.setWidths(new float[]{0.6f, 4.4f, 1.2f, 0.5f});
 
-            // Render general service charges
-            if (items != null && !items.isEmpty()) {
-                for (com.hms.entity.BillingItem it : items) {
-                    addTableCell(amtTable, String.valueOf(sr++), false);
-                    addTableCell(amtTable, it.getDescription(), false);
-                    addTableCell(amtTable, "1", true);
-                    addTableCell(amtTable, "INR " + String.format("%.2f", it.getAmount()), true);
-                    addTableCell(amtTable, "INR " + String.format("%.2f", it.getAmount()), true);
+            // Table Headers
+            addTableHeaderCell(table, "S.No.");
+            addTableHeaderCell(table, "Fees For");
+            addTableHeaderCell(table, "Amount Rs.");
+            addTableHeaderCell(table, "Ps.");
+
+            // Render actual charge rows
+            int rowIdx = 1;
+            for (Object[] row : chargeRows) {
+                String desc = (String) row[0];
+                java.math.BigDecimal val = (java.math.BigDecimal) row[1];
+                String rsStr = "";
+                String psStr = "";
+                if (val != null && val.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                    long rupees = val.longValue();
+                    int paise = val.subtract(java.math.BigDecimal.valueOf(rupees)).multiply(java.math.BigDecimal.valueOf(100)).intValue();
+                    rsStr = String.valueOf(rupees);
+                    psStr = paise == 0 ? "00" : String.format("%02d", paise);
                 }
+                addTableCell(table, String.valueOf(rowIdx), false);
+                addTableCell(table, desc, false);
+                addTableCell(table, rsStr, true);
+                addTableCell(table, psStr, true);
+                rowIdx++;
             }
 
-            // Render administered medicines
-            if (medicines != null && !medicines.isEmpty()) {
-                for (com.hms.entity.BillingMedicine med : medicines) {
-                    addTableCell(amtTable, String.valueOf(sr++), false);
-                    addTableCell(amtTable, med.getMedicineName() + " (In-Clinic Administered)", false);
-                    addTableCell(amtTable, String.valueOf(med.getQuantity()), true);
-                    addTableCell(amtTable, "INR " + String.format("%.2f", med.getUnitPrice()), true);
-                    addTableCell(amtTable, "INR " + String.format("%.2f", med.getAmount()), true);
-                }
+            // Pad remaining space as a single tall empty row (no serial numbers)
+            int MIN_ROWS = 12;
+            int blankRows = MIN_ROWS - chargeRows.size();
+            if (blankRows > 0) {
+                float rowHeight = 18f; // approximate height per row in points
+                PdfPCell spacerCell = new PdfPCell(new Phrase(" "));
+                spacerCell.setColspan(4);
+                spacerCell.setBorder(Rectangle.NO_BORDER);
+                spacerCell.setFixedHeight(blankRows * rowHeight);
+                table.addCell(spacerCell);
             }
 
-            // Fallback description if no items exist
-            if (sr == 1) {
-                addTableCell(amtTable, "1", false);
-                addTableCell(amtTable, billing.getDescription() != null ? billing.getDescription() : "Service Fee / Consultation Charge", false);
-                addTableCell(amtTable, "1", true);
-                addTableCell(amtTable, "INR " + String.format("%.2f", totalAmt), true);
-                addTableCell(amtTable, "INR " + String.format("%.2f", totalAmt), true);
+
+            // Total Row
+            long totalRupees = totalAmt.longValue();
+            int totalPaise = totalAmt.subtract(java.math.BigDecimal.valueOf(totalRupees)).multiply(java.math.BigDecimal.valueOf(100)).intValue();
+            String totalRsStr = String.valueOf(totalRupees);
+            String totalPsStr = totalPaise == 0 ? "00" : String.format("%02d", totalPaise);
+
+            PdfPCell totalLabelCell = new PdfPCell(new Phrase("Total", SMALL_BOLD_FONT));
+            totalLabelCell.setColspan(2);
+            totalLabelCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            totalLabelCell.setPadding(5f);
+            table.addCell(totalLabelCell);
+            PdfPCell totalRsCell = new PdfPCell(new Phrase(totalRsStr, SMALL_BOLD_FONT));
+            totalRsCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            totalRsCell.setPadding(5f);
+            table.addCell(totalRsCell);
+            PdfPCell totalPsCell = new PdfPCell(new Phrase(totalPsStr, SMALL_BOLD_FONT));
+            totalPsCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            totalPsCell.setPadding(5f);
+            table.addCell(totalPsCell);
+
+            // Received Row
+            long paidRupees = paidAmt.longValue();
+            int paidPaise = paidAmt.subtract(java.math.BigDecimal.valueOf(paidRupees)).multiply(java.math.BigDecimal.valueOf(100)).intValue();
+            String paidRsStr = String.valueOf(paidRupees);
+            String paidPsStr = paidPaise == 0 ? "00" : String.format("%02d", paidPaise);
+
+            PdfPCell receivedLabelCell = new PdfPCell(new Phrase("Received", SMALL_BOLD_FONT));
+            receivedLabelCell.setColspan(2);
+            receivedLabelCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            receivedLabelCell.setPadding(5f);
+            table.addCell(receivedLabelCell);
+            PdfPCell paidRsCell = new PdfPCell(new Phrase(paidRsStr, SMALL_BOLD_FONT));
+            paidRsCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            paidRsCell.setPadding(5f);
+            table.addCell(paidRsCell);
+            PdfPCell paidPsCell = new PdfPCell(new Phrase(paidPsStr, SMALL_BOLD_FONT));
+            paidPsCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            paidPsCell.setPadding(5f);
+            table.addCell(paidPsCell);
+
+            // Balance Row
+            long balRupees = balance.longValue();
+            int balPaise = balance.subtract(java.math.BigDecimal.valueOf(balRupees)).multiply(java.math.BigDecimal.valueOf(100)).intValue();
+            String balRsStr = String.valueOf(balRupees);
+            String balPsStr = balPaise == 0 ? "00" : String.format("%02d", balPaise);
+
+            PdfPCell balanceLabelCell = new PdfPCell(new Phrase("Balance", SMALL_BOLD_FONT));
+            balanceLabelCell.setColspan(2);
+            balanceLabelCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            balanceLabelCell.setPadding(5f);
+            table.addCell(balanceLabelCell);
+            PdfPCell balRsCell = new PdfPCell(new Phrase(balRsStr, SMALL_BOLD_FONT));
+            balRsCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            balRsCell.setPadding(5f);
+            table.addCell(balRsCell);
+            PdfPCell balPsCell = new PdfPCell(new Phrase(balPsStr, SMALL_BOLD_FONT));
+            balPsCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            balPsCell.setPadding(5f);
+            table.addCell(balPsCell);
+
+            document.add(table);
+
+            // 5. Footer & Stamping block
+            PdfPTable footerTable = new PdfPTable(2);
+            footerTable.setWidthPercentage(100);
+            footerTable.setSpacingBefore(12f);
+            footerTable.setWidths(new float[]{3.5f, 2.5f});
+
+            PdfPCell footerLeft = new PdfPCell();
+            footerLeft.setBorder(Rectangle.NO_BORDER);
+            Paragraph recPara = new Paragraph("Received Rs. :  ", NORMAL_FONT);
+            if (paidAmt.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                recPara.add(new Chunk(convertNumberToWords(paidRupees) + " Only", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9, Font.BOLD, Color.BLACK)));
+            } else {
+                recPara.add(new Chunk("_______________________________________", NORMAL_FONT));
             }
+            footerLeft.addElement(recPara);
+            footerTable.addCell(footerLeft);
 
-            // Push grand total right aligned
-            PdfPCell totalLabel = new PdfPCell(new Phrase("Grand Total", SMALL_BOLD_FONT));
-            totalLabel.setColspan(4);
-            totalLabel.setBorder(Rectangle.NO_BORDER);
-            totalLabel.setHorizontalAlignment(Element.ALIGN_RIGHT);
-            totalLabel.setPaddingTop(15f);
-            amtTable.addCell(totalLabel);
+            PdfPCell footerRight = new PdfPCell();
+            footerRight.setBorder(Rectangle.NO_BORDER);
+            footerRight.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            
+            Paragraph forHospital = new Paragraph("For " + hospital.getName(), SMALL_BOLD_FONT);
+            forHospital.setAlignment(Element.ALIGN_RIGHT);
+            
+            Paragraph sigLine = new Paragraph("\n\n\n___________________________\nAuthorized Signature", FOOTER_FONT);
+            sigLine.setAlignment(Element.ALIGN_RIGHT);
+            
+            footerRight.addElement(forHospital);
+            footerRight.addElement(sigLine);
+            footerTable.addCell(footerRight);
 
-            PdfPCell totalVal = new PdfPCell(new Phrase("INR " + String.format("%.2f", totalAmt), SMALL_BOLD_FONT));
-            totalVal.setBorder(Rectangle.NO_BORDER);
-            totalVal.setHorizontalAlignment(Element.ALIGN_RIGHT);
-            totalVal.setPaddingTop(15f);
-            amtTable.addCell(totalVal);
-
-            // Paid amount right aligned
-            PdfPCell paidLabel = new PdfPCell(new Phrase("Paid Amount", SMALL_BOLD_FONT));
-            paidLabel.setColspan(4);
-            paidLabel.setBorder(Rectangle.NO_BORDER);
-            paidLabel.setHorizontalAlignment(Element.ALIGN_RIGHT);
-            amtTable.addCell(paidLabel);
-
-            PdfPCell paidVal = new PdfPCell(new Phrase("INR " + String.format("%.2f", paidAmt), SMALL_BOLD_FONT));
-            paidVal.setBorder(Rectangle.NO_BORDER);
-            paidVal.setHorizontalAlignment(Element.ALIGN_RIGHT);
-            amtTable.addCell(paidVal);
-
-            // Balance due right aligned
-            PdfPCell balLabel = new PdfPCell(new Phrase("Balance Due", SMALL_BOLD_FONT));
-            balLabel.setColspan(4);
-            balLabel.setBorder(Rectangle.NO_BORDER);
-            balLabel.setHorizontalAlignment(Element.ALIGN_RIGHT);
-            amtTable.addCell(balLabel);
-
-            PdfPCell balVal = new PdfPCell(new Phrase("INR " + String.format("%.2f", balance), SMALL_BOLD_FONT));
-            balVal.setBorder(Rectangle.NO_BORDER);
-            balVal.setHorizontalAlignment(Element.ALIGN_RIGHT);
-            amtTable.addCell(balVal);
-
-            document.add(amtTable);
-
-            // 5. Footers and signature
-            addFooter(document, patient, billing.getCustomId(), "Authorized Signature");
+            footerTable.setKeepTogether(true);
+            document.add(footerTable);
 
             document.close();
 
@@ -438,9 +701,9 @@ public class PdfService {
                 
                 // Qty, Unit Price, GST%, Total
                 addTableCell(itemsTable, item.getQuantity() != null ? item.getQuantity().toString() : "0", true);
-                addTableCell(itemsTable, String.format("%.2f", item.getUnitPrice()), true);
+                addTableCell(itemsTable, item.getUnitPrice() != null ? String.format("%.2f", item.getUnitPrice()) : "0.00", true);
                 addTableCell(itemsTable, item.getTaxPercentage() != null ? item.getTaxPercentage().toString() + "%" : "0%", true);
-                addTableCell(itemsTable, "INR " + String.format("%.2f", item.getTotalAmount()), true);
+                addTableCell(itemsTable, item.getTotalAmount() != null ? "INR " + String.format("%.2f", item.getTotalAmount()) : "INR 0.00", true);
             }
 
             document.add(itemsTable);
@@ -452,10 +715,10 @@ public class PdfService {
             summaryTable.setHorizontalAlignment(Element.ALIGN_RIGHT);
             summaryTable.setWidths(new float[]{1.5f, 1.5f});
 
-            addSummaryRow(summaryTable, "Sub Total:", "INR " + String.format("%.2f", sale.getSubtotal()));
-            addSummaryRow(summaryTable, "Discount:", "- INR " + String.format("%.2f", sale.getDiscountAmount()));
-            addSummaryRow(summaryTable, "GST (Tax):", "+ INR " + String.format("%.2f", sale.getTaxAmount()));
-            addSummaryRow(summaryTable, "Net Payable:", "INR " + String.format("%.2f", sale.getNetAmount()));
+            addSummaryRow(summaryTable, "Sub Total:", sale.getSubtotal() != null ? "INR " + String.format("%.2f", sale.getSubtotal()) : "INR 0.00");
+            addSummaryRow(summaryTable, "Discount:", sale.getDiscountAmount() != null ? "- INR " + String.format("%.2f", sale.getDiscountAmount()) : "INR 0.00");
+            addSummaryRow(summaryTable, "GST (Tax):", sale.getTaxAmount() != null ? "+ INR " + String.format("%.2f", sale.getTaxAmount()) : "INR 0.00");
+            addSummaryRow(summaryTable, "Net Payable:", sale.getNetAmount() != null ? "INR " + String.format("%.2f", sale.getNetAmount()) : "INR 0.00");
 
             document.add(summaryTable);
 
@@ -537,8 +800,9 @@ public class PdfService {
         // Left side: Name & Address
         PdfPCell left = new PdfPCell();
         left.setBorder(Rectangle.NO_BORDER);
-        left.addElement(new Paragraph(hospital.getName().toUpperCase(), TITLE_FONT));
-        String addr = hospital.getAddress() != null ? hospital.getAddress() : "Hospital Location Address Unavailable";
+        String hospitalName = (hospital != null && hospital.getName() != null) ? hospital.getName().toUpperCase() : "HOSPITAL";
+        left.addElement(new Paragraph(hospitalName, TITLE_FONT));
+        String addr = (hospital != null && hospital.getAddress() != null) ? hospital.getAddress() : "Hospital Location Address Unavailable";
         left.addElement(new Paragraph(addr, NORMAL_FONT));
         headerTable.addCell(left);
 
@@ -549,8 +813,10 @@ public class PdfService {
 
         PdfPTable contactSubTable = new PdfPTable(2);
         contactSubTable.setWidths(new float[]{1f, 2.5f});
-        addHeaderContactRow(contactSubTable, "Phone:", hospital.getPhone() != null ? hospital.getPhone() : "-");
-        addHeaderContactRow(contactSubTable, "E-mail:", "support@" + hospital.getName().toLowerCase().replaceAll("\\s+", "") + ".com");
+        String phoneVal = (hospital != null && hospital.getPhone() != null) ? hospital.getPhone() : "-";
+        addHeaderContactRow(contactSubTable, "Phone:", phoneVal);
+        String emailDomain = (hospital != null && hospital.getName() != null) ? hospital.getName().toLowerCase().replaceAll("\\s+", "") : "hospital";
+        addHeaderContactRow(contactSubTable, "E-mail:", "support@" + emailDomain + ".com");
         right.addElement(contactSubTable);
         headerTable.addCell(right);
 
@@ -625,7 +891,7 @@ public class PdfService {
         footerBar.add(new LineSeparator(8f, 100, Color.DARK_GRAY, Element.ALIGN_CENTER, -2));
         document.add(footerBar);
 
-// Spacer
+        // Spacer
         for (int i = 0; i < 2; i++) document.add(new Paragraph("\n"));
 
         PdfPTable fTable = new PdfPTable(2);
@@ -640,7 +906,8 @@ public class PdfService {
         PdfPTable subRem = new PdfPTable(2);
         subRem.setWidthPercentage(100);
         subRem.setSpacingBefore(5f);
-        addMetaRow(subRem, "Patient Name", patient.getName());
+        String patName = (patient != null && patient.getName() != null) ? patient.getName() : "Unknown";
+        addMetaRow(subRem, "Patient Name", patName);
         addMetaRow(subRem, "Ref No#", refNum);
         remCell.addElement(subRem);
         fTable.addCell(remCell);
@@ -655,5 +922,31 @@ public class PdfService {
         fTable.addCell(sigCell);
 
         document.add(fTable);
+    }
+
+    private void drawTextFallbackLogo(PdfPCell logoCell, Hospital hospital) {
+        String initials = "HOSP";
+        if (hospital != null && hospital.getName() != null) {
+            String name = hospital.getName().trim();
+            String[] parts = name.split("\\s+");
+            if (parts.length >= 2) {
+                initials = (parts[0].substring(0, Math.min(parts[0].length(), 1)) + parts[1].substring(0, Math.min(parts[1].length(), 1))).toUpperCase();
+            } else if (name.length() > 0) {
+                initials = name.substring(0, Math.min(name.length(), 4)).toUpperCase();
+            }
+        }
+        
+        PdfPTable logoBorderTable = new PdfPTable(1);
+        logoBorderTable.setWidthPercentage(100);
+        
+        PdfPCell borderCell = new PdfPCell(new Phrase(initials, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12, Font.BOLD, PRIMARY_RED)));
+        borderCell.setBorderColor(PRIMARY_RED);
+        borderCell.setBorderWidth(1.5f);
+        borderCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+        borderCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        borderCell.setPadding(6f);
+        
+        logoBorderTable.addCell(borderCell);
+        logoCell.addElement(logoBorderTable);
     }
 }

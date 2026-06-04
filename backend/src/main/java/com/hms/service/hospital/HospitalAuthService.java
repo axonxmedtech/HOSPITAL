@@ -308,6 +308,10 @@ public class HospitalAuthService {
         response.setBillingHandler(settings.getBillingHandler());
         response.setIsSingleDoctor(hospital.getIsSingleDoctor());
         response.setInClinic(settings.getInClinic());
+        response.setLogoUrl(hospital.getLogoUrl());
+        response.setParentOrganization(hospital.getParentOrganization());
+        response.setHospitalAddress(hospital.getAddress());
+        response.setHospitalPhone(hospital.getPhone());
 
         // Populate profile details
         populateProfileDetails(user, response);
@@ -357,8 +361,27 @@ public class HospitalAuthService {
                 admin.setGender(request.getGender());
                 hospitalAdminRepository.save(admin);
 
-                // Sync name, phone, and specialization to Doctor profile if single doctor mode is enabled
                 Hospital hospital = hospitalRepository.findById(user.getHospitalId()).orElse(null);
+                if (hospital != null) {
+                    if (request.getHospitalName() != null && !request.getHospitalName().trim().isEmpty()) {
+                        hospital.setName(request.getHospitalName());
+                    }
+                    if (request.getHospitalAddress() != null) {
+                        hospital.setAddress(request.getHospitalAddress());
+                    }
+                    if (request.getHospitalPhone() != null) {
+                        hospital.setPhone(request.getHospitalPhone());
+                    }
+                    if (request.getParentOrganization() != null) {
+                        hospital.setParentOrganization(request.getParentOrganization());
+                    }
+                    if (request.getLogoUrl() != null) {
+                        hospital.setLogoUrl(request.getLogoUrl());
+                    }
+                    hospitalRepository.save(hospital);
+                }
+
+                // Sync name, phone, and specialization to Doctor profile if single doctor mode is enabled
                 if (hospital != null && Boolean.TRUE.equals(hospital.getIsSingleDoctor())) {
                     doctorRepository.findByEmailAndHospitalId(user.getEmail(), user.getHospitalId())
                             .ifPresent(doctor -> {

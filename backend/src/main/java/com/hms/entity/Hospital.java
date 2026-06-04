@@ -69,6 +69,12 @@ public class Hospital {
     @Column(length = 20)
     private String phone;
 
+    @Column(name = "logo_url", length = 500)
+    private String logoUrl;
+
+    @Column(name = "parent_organization", length = 200)
+    private String parentOrganization;
+
     /**
      * Whether the hospital is currently active
      * Inactive hospitals cannot be accessed by their users
@@ -233,5 +239,21 @@ public class Hospital {
 
     public void setIsSingleDoctor(Boolean isSingleDoctor) {
         this.isSingleDoctor = isSingleDoctor;
+    }
+
+    public String getLogoUrl() {
+        return logoUrl;
+    }
+
+    public void setLogoUrl(String logoUrl) {
+        this.logoUrl = logoUrl;
+    }
+
+    public String getParentOrganization() {
+        return parentOrganization;
+    }
+
+    public void setParentOrganization(String parentOrganization) {
+        this.parentOrganization = parentOrganization;
     }
 }

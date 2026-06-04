@@ -3,7 +3,7 @@ import { createColumnHelper } from '@tanstack/react-table';
 import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
 
-const BillingTable = ({ billing, startIndex = 0, pagination, onUpdateStatus, onDownload, updatingBillId, downloadingBillId }) => {
+const BillingTable = ({ billing, startIndex = 0, pagination, onUpdateStatus, onPrint, updatingBillId, printingBillId, onEditItems }) => {
     const [expandedIds, setExpandedIds] = useState([]);
 
     const toggleExpand = (id) => {
@@ -83,21 +83,31 @@ const BillingTable = ({ billing, startIndex = 0, pagination, onUpdateStatus, onD
             cell: info => (
                 <div className="flex justify-end gap-2">
                     {(info.row.original.paymentStatus === 'PENDING' || info.row.original.paymentStatus === 'PARTIAL') && (
-                        <button
-                            onClick={() => onUpdateStatus(info.row.original.id, 'PAID', info.row.original)}
-                            disabled={!!updatingBillId}
-                            className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${updatingBillId === info.row.original.id ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : updatingBillId ? 'opacity-50 cursor-not-allowed bg-gray-100 text-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                        >
-                            {updatingBillId === info.row.original.id ? 'Processing...' : 'Mark Paid'}
-                        </button>
+                        <>
+                            {onEditItems && (
+                                <button
+                                    onClick={() => onEditItems(info.row.original)}
+                                    className="px-3 py-1 rounded-md text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                                >
+                                    Edit Charges
+                                </button>
+                            )}
+                            <button
+                                onClick={() => onUpdateStatus(info.row.original.id, 'PAID', info.row.original)}
+                                disabled={!!updatingBillId}
+                                className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${updatingBillId === info.row.original.id ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : updatingBillId ? 'opacity-50 cursor-not-allowed bg-gray-100 text-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                            >
+                                {updatingBillId === info.row.original.id ? 'Processing...' : 'Mark Paid'}
+                            </button>
+                        </>
                     )}
                     {info.row.original.paymentStatus === 'PAID' && (
                         <button
-                            onClick={() => onDownload(info.row.original.id)}
-                            disabled={!!downloadingBillId}
-                            className={`px-3 py-1 rounded-md text-sm font-medium transition-colors flex items-center gap-1 ${downloadingBillId === info.row.original.id ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : downloadingBillId ? 'opacity-50 cursor-not-allowed bg-gray-100 text-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                            onClick={() => onPrint(info.row.original.id)}
+                            disabled={!!printingBillId}
+                            className={`px-3 py-1 rounded-md text-sm font-medium transition-colors flex items-center gap-1 ${printingBillId === info.row.original.id ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : printingBillId ? 'opacity-50 cursor-not-allowed bg-gray-100 text-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                         >
-                            <span>{downloadingBillId === info.row.original.id ? 'Downloading...' : 'Download'}</span>
+                            <span>{printingBillId === info.row.original.id ? 'Printing...' : 'Print'}</span>
                         </button>
                     )}
                 </div>

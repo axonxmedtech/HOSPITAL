@@ -25,7 +25,11 @@ const ProfileModal = ({ isOpen, onClose }) => {
         age: '',
         gender: '',
         specialization: '',
-        hospitalName: ''
+        hospitalName: '',
+        hospitalAddress: '',
+        hospitalPhone: '',
+        parentOrganization: '',
+        logoUrl: ''
     });
 
     // Password fields
@@ -37,6 +41,7 @@ const ProfileModal = ({ isOpen, onClose }) => {
     });
 
     const [formErrors, setFormErrors] = useState({});
+    const [uploadingLogo, setUploadingLogo] = useState(false);
 
     // Fetch the latest profile data when the modal is opened
     useEffect(() => {
@@ -65,7 +70,11 @@ const ProfileModal = ({ isOpen, onClose }) => {
                 age: data.age !== null ? data.age : '',
                 gender: data.gender || '',
                 specialization: data.specialization || '',
-                hospitalName: data.hospitalName || ''
+                hospitalName: data.hospitalName || '',
+                hospitalAddress: data.hospitalAddress || '',
+                hospitalPhone: data.hospitalPhone || '',
+                parentOrganization: data.parentOrganization || '',
+                logoUrl: data.logoUrl || ''
             });
         } catch (err) {
             console.error("Error fetching latest profile details:", err);
@@ -106,6 +115,48 @@ const ProfileModal = ({ isOpen, onClose }) => {
                 delete next[field];
                 return next;
             });
+        }
+    };
+
+    const handleLogoUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.size > 1048576) {
+            toastError("Logo image size must be under 1MB.");
+            return;
+        }
+
+        const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+        const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+
+        if (!cloudName || !uploadPreset) {
+            toastError("Cloudinary is not configured. Please define VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET in your environment.");
+            return;
+        }
+
+        setUploadingLogo(true);
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('upload_preset', uploadPreset);
+
+        try {
+            const axios = (await import('axios')).default;
+            const res = await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, formData);
+            if (res.data && res.data.secure_url) {
+                setProfile(prev => ({
+                    ...prev,
+                    logoUrl: res.data.secure_url
+                }));
+                success("Logo uploaded successfully!");
+            } else {
+                toastError("Failed to upload logo.");
+            }
+        } catch (err) {
+            console.error("Cloudinary upload error:", err);
+            toastError(err.response?.data?.error?.message || "Failed to upload logo to Cloudinary.");
+        } finally {
+            setUploadingLogo(false);
         }
     };
 
@@ -194,6 +245,14 @@ const ProfileModal = ({ isOpen, onClose }) => {
                 currentPassword: changePassword ? passwords.currentPassword : null,
                 newPassword: changePassword ? passwords.newPassword : null
             };
+
+            if (profile.role === 'HOSPITAL_ADMIN') {
+                updatePayload.hospitalName = profile.hospitalName;
+                updatePayload.hospitalAddress = profile.hospitalAddress;
+                updatePayload.hospitalPhone = profile.hospitalPhone;
+                updatePayload.parentOrganization = profile.parentOrganization;
+                updatePayload.logoUrl = profile.logoUrl;
+            }
 
             await authService.updateProfile(updatePayload);
             success("Profile settings updated successfully.");
@@ -284,6 +343,15 @@ const ProfileModal = ({ isOpen, onClose }) => {
                                     ...((profile.role === 'DOCTOR' || (profile.role === 'HOSPITAL_ADMIN' && authService.getCurrentUser()?.isSingleDoctor)) ? [{ label: "Specialization", value: profile.specialization || "—" }] : [])
                                 ];
 
+                                if (profile.role === 'HOSPITAL_ADMIN') {
+                                    infoFields.push(
+                                        { label: "Hospital Name", value: profile.hospitalName || "—" },
+                                        { label: "Hospital Phone", value: profile.hospitalPhone || "—" },
+                                        { label: "Hospital Address", value: profile.hospitalAddress || "—" },
+                                        { label: "Parent Organization", value: profile.parentOrganization || "—" }
+                                    );
+                                }
+
                                 return (
                                     <div className="space-y-6">
                                         <div className="flex items-center justify-between border-b border-gray-100 pb-2">
@@ -298,6 +366,15 @@ const ProfileModal = ({ isOpen, onClose }) => {
                                                 </div>
                                             ))}
                                         </div>
+
+                                        {profile.role === 'HOSPITAL_ADMIN' && profile.logoUrl && (
+                                            <div className="flex flex-col gap-1.5 bg-neutral-50/50 rounded-xl p-5 border border-gray-100">
+                                                <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider block">Hospital Logo</span>
+                                                <div className="w-24 h-24 border rounded-lg bg-white flex items-center justify-center p-2 overflow-hidden shadow-inner mt-1">
+                                                    <img src={profile.logoUrl} alt="Logo" className="max-w-full max-h-full object-contain" />
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })() : (
@@ -397,6 +474,104 @@ const ProfileModal = ({ isOpen, onClose }) => {
                                                     required
                                                 />
                                                 {formErrors.specialization && <p className="text-xs text-red-500 mt-1">{formErrors.specialization}</p>}
+                                            </div>
+                                        )}
+
+                                        {/* Hospital details section for HOSPITAL_ADMIN ONLY */}
+                                        {profile.role === 'HOSPITAL_ADMIN' && (
+                                            <div className="space-y-4 pt-4 border-t border-gray-100">
+                                                <h5 className="text-xs font-bold uppercase tracking-wider text-neutral-400 border-b border-gray-100 pb-2">Hospital Details & Branding</h5>
+                                                
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                                                            Hospital Name
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={profile.hospitalName}
+                                                            onChange={(e) => handleInputChange('hospitalName', e.target.value)}
+                                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-neutral-800 text-sm bg-white"
+                                                            placeholder="Hospital Name"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                                                            Hospital Phone
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={profile.hospitalPhone}
+                                                            onChange={(e) => handleInputChange('hospitalPhone', e.target.value)}
+                                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-neutral-800 text-sm bg-white"
+                                                            placeholder="Hospital contact number"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                                                        Hospital Address
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={profile.hospitalAddress}
+                                                        onChange={(e) => handleInputChange('hospitalAddress', e.target.value)}
+                                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-neutral-800 text-sm bg-white"
+                                                        placeholder="Hospital full address"
+                                                    />
+                                                </div>
+
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                                                            Parent Organization / Trust
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={profile.parentOrganization}
+                                                            onChange={(e) => handleInputChange('parentOrganization', e.target.value)}
+                                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-neutral-800 text-sm bg-white"
+                                                            placeholder="e.g. Geeta Medical Foundation's"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                                                            Hospital Logo (via Cloudinary)
+                                                        </label>
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                type="file"
+                                                                accept="image/*"
+                                                                onChange={handleLogoUpload}
+                                                                disabled={uploadingLogo}
+                                                                className="w-full text-xs text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-neutral-900 file:text-white hover:file:bg-neutral-800 cursor-pointer disabled:opacity-50"
+                                                            />
+                                                            {uploadingLogo && (
+                                                                <svg className="animate-spin h-4 w-4 text-neutral-800 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                                </svg>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Logo preview */}
+                                                {profile.logoUrl && (
+                                                    <div className="mt-2 flex items-center gap-3">
+                                                        <div className="w-16 h-16 border rounded-lg overflow-hidden flex items-center justify-center bg-gray-50">
+                                                            <img src={profile.logoUrl} alt="Hospital Logo" className="max-w-full max-h-full object-contain" />
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleInputChange('logoUrl', '')}
+                                                            className="text-xs text-red-500 font-bold hover:text-red-700"
+                                                        >
+                                                            Remove Logo
+                                                        </button>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>

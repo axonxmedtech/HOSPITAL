@@ -15,4 +15,9 @@ public class ProfileUpdateRequest {
     private String specialization; // for Doctor role only
     private String currentPassword;
     private String newPassword;
+    private String hospitalName;
+    private String hospitalAddress;
+    private String hospitalPhone;
+    private String logoUrl;
+    private String parentOrganization;
 }

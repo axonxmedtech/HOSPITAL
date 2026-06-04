@@ -10,6 +10,6 @@ import java.util.List;
 public interface BillingMedicineRepository extends JpaRepository<BillingMedicine, Long> {
 
     List<BillingMedicine> findByBillingId(Long billingId);
-
     List<BillingMedicine> findByHospitalIdAndBillingId(Long hospitalId, Long billingId);
+    List<BillingMedicine> findByBillingIdIn(List<Long> billingIds);
 }

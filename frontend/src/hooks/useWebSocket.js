@@ -15,8 +15,20 @@ export default function useWebSocket(user, setUser, loadData) {
     const reconnectTimeoutRef = useRef(null);
     const delayRef = useRef(1000); // Start with 1 second delay for reconnection
 
+    // Store latest references to avoid stale closures
+    const userRef = useRef(user);
+    const setUserRef = useRef(setUser);
+    const loadDataRef = useRef(loadData);
+
+    useEffect(() => {
+        userRef.current = user;
+        setUserRef.current = setUser;
+        loadDataRef.current = loadData;
+    });
+
     const connect = () => {
-        if (!user || !user.hospitalId) return;
+        const currentUser = userRef.current;
+        if (!currentUser || !currentUser.hospitalId) return;
 
         // Cleanup existing connection
         if (wsRef.current) {
@@ -30,11 +42,11 @@ export default function useWebSocket(user, setUser, loadData) {
         const token = sessionStorage.getItem('token');
         let wsUrl = '';
         if (API_BASE_URL.startsWith('http://') || API_BASE_URL.startsWith('https://')) {
-            wsUrl = API_BASE_URL.replace(/^http/, 'ws') + `/ws/hospital/${user.hospitalId}`;
+            wsUrl = API_BASE_URL.replace(/^http/, 'ws') + `/ws/hospital/${currentUser.hospitalId}`;
         } else {
             // Relative base URL
             const host = window.location.host;
-            wsUrl = `${wsProto}//${host}${API_BASE_URL.startsWith('/') ? '' : '/'}${API_BASE_URL}/ws/hospital/${user.hospitalId}`;
+            wsUrl = `${wsProto}//${host}${API_BASE_URL.startsWith('/') ? '' : '/'}${API_BASE_URL}/ws/hospital/${currentUser.hospitalId}`;
         }
 
         if (token) {
@@ -59,16 +71,16 @@ export default function useWebSocket(user, setUser, loadData) {
                     try {
                         const profile = await authService.getProfile();
                         const updatedUser = authService.updateCurrentUser(profile);
-                        if (setUser && updatedUser) {
-                            setUser(updatedUser);
+                        if (setUserRef.current && updatedUser) {
+                            setUserRef.current(updatedUser);
                         }
                     } catch (err) {
                         console.error('Failed to sync profile after settings update:', err);
                     }
                 } else if (data.type === 'REFRESH_DATA') {
                     console.log('Data change detected! Triggering refresh...');
-                    if (loadData) {
-                        loadData(false); // Call loadData silently without full screen loading
+                    if (loadDataRef.current) {
+                        loadDataRef.current(false); // Call loadData silently without full screen loading
                     }
                 }
             } catch (err) {
