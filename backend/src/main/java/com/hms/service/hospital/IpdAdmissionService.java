@@ -30,6 +30,9 @@ public class IpdAdmissionService {
     private com.hms.repository.PatientRepository patientRepository;
 
     @Autowired
+    private com.hms.repository.HospitalSettingRepository hospitalSettingRepository;
+
+    @Autowired
     private com.hms.repository.DoctorRepository doctorRepository;
 
     @Autowired
@@ -771,12 +774,18 @@ public class IpdAdmissionService {
 
     @Transactional
     public IpdAdmission confirmDischarge(Long ipdId) {
-        String role = securityHelper.getCurrentUserRole();
-        if (!"RECEPTIONIST".equalsIgnoreCase(role)) {
-            throw new org.springframework.security.access.AccessDeniedException("Only receptionists can confirm discharge");
-        }
-
         IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new RuntimeException("IPD admission not found"));
+
+        String role = securityHelper.getCurrentUserRole();
+        Long hospitalId = ipd.getHospitalId();
+        com.hms.entity.HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(hospitalId).orElse(null);
+        boolean isSolo = settings != null && "SOLO".equalsIgnoreCase(settings.getReceptionMode());
+
+        if (!"RECEPTIONIST".equalsIgnoreCase(role) && 
+            !"HOSPITAL_ADMIN".equalsIgnoreCase(role) && 
+            !("DOCTOR".equalsIgnoreCase(role) && isSolo)) {
+            throw new org.springframework.security.access.AccessDeniedException("Only receptionists (or doctors under Solo Doctor mode) can confirm discharge");
+        }
         if (ipd.getStatus() == null || !ipd.getStatus().equalsIgnoreCase("DISCHARGE_PLANNED")) {
             throw new RuntimeException("Discharge is not planned for this IPD");
         }
@@ -871,12 +880,18 @@ public class IpdAdmissionService {
 
     @org.springframework.transaction.annotation.Transactional
     public IpdAdmission changeBed(Long ipdId, Long newBedId) {
-        String role = securityHelper.getCurrentUserRole();
-        if (!"RECEPTIONIST".equalsIgnoreCase(role)) {
-            throw new org.springframework.security.access.AccessDeniedException("Only receptionists can change beds");
-        }
-
         IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new RuntimeException("IPD not found"));
+
+        String role = securityHelper.getCurrentUserRole();
+        Long hospitalId = ipd.getHospitalId();
+        com.hms.entity.HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(hospitalId).orElse(null);
+        boolean isSolo = settings != null && "SOLO".equalsIgnoreCase(settings.getReceptionMode());
+
+        if (!"RECEPTIONIST".equalsIgnoreCase(role) && 
+            !"HOSPITAL_ADMIN".equalsIgnoreCase(role) && 
+            !("DOCTOR".equalsIgnoreCase(role) && isSolo)) {
+            throw new org.springframework.security.access.AccessDeniedException("Only receptionists (or doctors under Solo Doctor mode) can change beds");
+        }
         
         if (!"ADMITTED".equalsIgnoreCase(ipd.getStatus()) && !"DISCHARGE_PLANNED".equalsIgnoreCase(ipd.getStatus())) {
             throw new RuntimeException("Bed change allowed only for active admissions");

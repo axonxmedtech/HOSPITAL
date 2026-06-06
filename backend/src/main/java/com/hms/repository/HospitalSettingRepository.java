@@ -3,6 +3,8 @@ package com.hms.repository;
 import com.hms.entity.HospitalSetting;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 
 import java.util.Optional;
 
@@ -23,5 +25,10 @@ public interface HospitalSettingRepository extends JpaRepository<HospitalSetting
      * @param hospitalId database ID of the hospital
      * @return Optional containing the settings if found
      */
+    @Cacheable(value = "hospitalSettings", key = "#hospitalId")
     Optional<HospitalSetting> findByHospital_Id(Long hospitalId);
+
+    @Override
+    @CacheEvict(value = "hospitalSettings", key = "#entity.hospital.id")
+    <S extends HospitalSetting> S save(S entity);
 }

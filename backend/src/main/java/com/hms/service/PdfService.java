@@ -110,11 +110,12 @@ public class PdfService {
             MedicalRecord medicalRecord,
             List<Prescription> prescriptions) {
 
-        Document document = new Document(PageSize.A4, 36, 36, 48, 36);
+        Document document = new Document(PageSize.A4, 36, 36, 48, 180);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
 
         try {
-            PdfWriter.getInstance(document, out);
+            PdfWriter writer = PdfWriter.getInstance(document, out);
+            addPageBorder(writer);
             document.open();
 
             // 1. Standard Header
@@ -223,7 +224,7 @@ public class PdfService {
             }
 
             // 6. Remittance / Footer style
-            addFooter(document, patient, medicalRecord.getId().toString(), "Prescription Authorized Signature");
+            addFixedFooter(writer, patient, medicalRecord.getId().toString(), "Prescription Authorized Signature");
 
             document.close();
 
@@ -235,12 +236,13 @@ public class PdfService {
     }
 
     public ByteArrayInputStream generateBillingReceiptPdf(Hospital hospital, Patient patient, Billing billing) {
-        // Redesigned PDF to look exactly like a premium pre-printed receipt
-        Document document = new Document(PageSize.A4, 36, 36, 36, 36);
+        // Redesigned PDF to look exactly like a premium pre-printed receipt with a fixed bottom section
+        Document document = new Document(PageSize.A4, 36, 36, 36, 180);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
 
         try {
-            PdfWriter.getInstance(document, out);
+            PdfWriter writer = PdfWriter.getInstance(document, out);
+            addPageBorder(writer);
             document.open();
 
             // Resolve Doctor associated with this bill
@@ -505,18 +507,12 @@ public class PdfService {
                 rowIdx++;
             }
 
-            // Pad remaining space as a single tall empty row (no serial numbers)
-            int MIN_ROWS = 12;
-            int blankRows = MIN_ROWS - chargeRows.size();
-            if (blankRows > 0) {
-                float rowHeight = 18f; // approximate height per row in points
-                PdfPCell spacerCell = new PdfPCell(new Phrase(" "));
-                spacerCell.setColspan(4);
-                spacerCell.setBorder(Rectangle.NO_BORDER);
-                spacerCell.setFixedHeight(blankRows * rowHeight);
-                table.addCell(spacerCell);
-            }
+            document.add(table);
 
+            // 5. Fixed Totals Table at the bottom
+            PdfPTable fixedBottomTable = new PdfPTable(4);
+            fixedBottomTable.setTotalWidth(523f);
+            fixedBottomTable.setWidths(new float[]{0.6f, 4.4f, 1.2f, 0.5f});
 
             // Total Row
             long totalRupees = totalAmt.longValue();
@@ -528,15 +524,15 @@ public class PdfService {
             totalLabelCell.setColspan(2);
             totalLabelCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
             totalLabelCell.setPadding(5f);
-            table.addCell(totalLabelCell);
+            fixedBottomTable.addCell(totalLabelCell);
             PdfPCell totalRsCell = new PdfPCell(new Phrase(totalRsStr, SMALL_BOLD_FONT));
             totalRsCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
             totalRsCell.setPadding(5f);
-            table.addCell(totalRsCell);
+            fixedBottomTable.addCell(totalRsCell);
             PdfPCell totalPsCell = new PdfPCell(new Phrase(totalPsStr, SMALL_BOLD_FONT));
             totalPsCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
             totalPsCell.setPadding(5f);
-            table.addCell(totalPsCell);
+            fixedBottomTable.addCell(totalPsCell);
 
             // Received Row
             long paidRupees = paidAmt.longValue();
@@ -548,15 +544,15 @@ public class PdfService {
             receivedLabelCell.setColspan(2);
             receivedLabelCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
             receivedLabelCell.setPadding(5f);
-            table.addCell(receivedLabelCell);
+            fixedBottomTable.addCell(receivedLabelCell);
             PdfPCell paidRsCell = new PdfPCell(new Phrase(paidRsStr, SMALL_BOLD_FONT));
             paidRsCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
             paidRsCell.setPadding(5f);
-            table.addCell(paidRsCell);
+            fixedBottomTable.addCell(paidRsCell);
             PdfPCell paidPsCell = new PdfPCell(new Phrase(paidPsStr, SMALL_BOLD_FONT));
             paidPsCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
             paidPsCell.setPadding(5f);
-            table.addCell(paidPsCell);
+            fixedBottomTable.addCell(paidPsCell);
 
             // Balance Row
             long balRupees = balance.longValue();
@@ -568,22 +564,21 @@ public class PdfService {
             balanceLabelCell.setColspan(2);
             balanceLabelCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
             balanceLabelCell.setPadding(5f);
-            table.addCell(balanceLabelCell);
+            fixedBottomTable.addCell(balanceLabelCell);
             PdfPCell balRsCell = new PdfPCell(new Phrase(balRsStr, SMALL_BOLD_FONT));
             balRsCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
             balRsCell.setPadding(5f);
-            table.addCell(balRsCell);
+            fixedBottomTable.addCell(balRsCell);
             PdfPCell balPsCell = new PdfPCell(new Phrase(balPsStr, SMALL_BOLD_FONT));
             balPsCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
             balPsCell.setPadding(5f);
-            table.addCell(balPsCell);
+            fixedBottomTable.addCell(balPsCell);
 
-            document.add(table);
+            fixedBottomTable.writeSelectedRows(0, -1, 36, 175, writer.getDirectContent());
 
-            // 5. Footer & Stamping block
+            // 6. Fixed Signature / Remittance Table at the bottom
             PdfPTable footerTable = new PdfPTable(2);
-            footerTable.setWidthPercentage(100);
-            footerTable.setSpacingBefore(12f);
+            footerTable.setTotalWidth(523f);
             footerTable.setWidths(new float[]{3.5f, 2.5f});
 
             PdfPCell footerLeft = new PdfPCell();
@@ -611,8 +606,7 @@ public class PdfService {
             footerRight.addElement(sigLine);
             footerTable.addCell(footerRight);
 
-            footerTable.setKeepTogether(true);
-            document.add(footerTable);
+            footerTable.writeSelectedRows(0, -1, 36, 110, writer.getDirectContent());
 
             document.close();
 
@@ -624,11 +618,12 @@ public class PdfService {
     }
 
     public ByteArrayInputStream generatePharmacySaleReceiptPdf(Hospital hospital, Patient patient, PharmacySale sale) {
-        Document document = new Document(PageSize.A4, 36, 36, 48, 36);
+        Document document = new Document(PageSize.A4, 36, 36, 48, 180);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
 
         try {
-            PdfWriter.getInstance(document, out);
+            PdfWriter writer = PdfWriter.getInstance(document, out);
+            addPageBorder(writer);
             document.open();
 
             // 1. Standard Header
@@ -709,10 +704,9 @@ public class PdfService {
             document.add(itemsTable);
             document.add(new Paragraph("\n"));
 
-            // 5. Total Calculations (Right Aligned)
+            // 5. Total Calculations (Right Aligned - Fixed Position)
             PdfPTable summaryTable = new PdfPTable(2);
-            summaryTable.setWidthPercentage(40);
-            summaryTable.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            summaryTable.setTotalWidth(200f);
             summaryTable.setWidths(new float[]{1.5f, 1.5f});
 
             addSummaryRow(summaryTable, "Sub Total:", sale.getSubtotal() != null ? "INR " + String.format("%.2f", sale.getSubtotal()) : "INR 0.00");
@@ -720,10 +714,37 @@ public class PdfService {
             addSummaryRow(summaryTable, "GST (Tax):", sale.getTaxAmount() != null ? "+ INR " + String.format("%.2f", sale.getTaxAmount()) : "INR 0.00");
             addSummaryRow(summaryTable, "Net Payable:", sale.getNetAmount() != null ? "INR " + String.format("%.2f", sale.getNetAmount()) : "INR 0.00");
 
-            document.add(summaryTable);
+            summaryTable.writeSelectedRows(0, -1, 359, 175, writer.getDirectContent());
 
-            // 6. Signature section
-            addFooterForWalkin(document, patient, sale.getBillNumber(), "Pharmacist Signature");
+            // 6. Signature section (Fixed Position)
+            PdfPTable fTable = new PdfPTable(2);
+            fTable.setTotalWidth(523f);
+            fTable.setWidths(new float[]{3.5f, 2.5f});
+            
+            // Remittance section
+            PdfPCell remCell = new PdfPCell();
+            remCell.setBorder(Rectangle.NO_BORDER);
+            remCell.addElement(new Paragraph("SUMMARY / REMITTANCE", SMALL_BOLD_FONT));
+            
+            PdfPTable subRem = new PdfPTable(2);
+            subRem.setWidthPercentage(100);
+            subRem.setSpacingBefore(5f);
+            subRem.setWidths(new float[]{1.2f, 2f});
+            addMetaRow(subRem, "Customer Name", sale.getPatientName() != null ? sale.getPatientName() : "Walk-in Patient");
+            addMetaRow(subRem, "Invoice Ref#", sale.getBillNumber());
+            remCell.addElement(subRem);
+            fTable.addCell(remCell);
+
+            // Sign line section
+            PdfPCell sigCell = new PdfPCell();
+            sigCell.setBorder(Rectangle.NO_BORDER);
+            sigCell.setVerticalAlignment(Element.ALIGN_BOTTOM);
+            Paragraph sig = new Paragraph("\n\n______________________\nPharmacist Signature", FOOTER_FONT);
+            sig.setAlignment(Element.ALIGN_RIGHT);
+            sigCell.addElement(sig);
+            fTable.addCell(sigCell);
+
+            fTable.writeSelectedRows(0, -1, 36, 110, writer.getDirectContent());
 
             document.close();
 
@@ -948,5 +969,63 @@ public class PdfService {
         
         logoBorderTable.addCell(borderCell);
         logoCell.addElement(logoBorderTable);
+    }
+
+    private void addPageBorder(PdfWriter writer) {
+        writer.setPageEvent(new com.lowagie.text.pdf.PdfPageEventHelper() {
+            @Override
+            public void onEndPage(PdfWriter writer, Document document) {
+                com.lowagie.text.pdf.PdfContentByte cb = writer.getDirectContent();
+                
+                // Draw outer border
+                cb.setColorStroke(Color.BLACK);
+                cb.setLineWidth(1.0f);
+                float margin = 20f;
+                float x1 = margin;
+                float y1 = margin;
+                float x2 = document.getPageSize().getWidth() - margin;
+                float y2 = document.getPageSize().getHeight() - margin;
+                cb.rectangle(x1, y1, x2 - x1, y2 - y1);
+                cb.stroke();
+
+                // Draw inner border
+                cb.setLineWidth(0.5f);
+                float innerMargin = 23f;
+                cb.rectangle(innerMargin, innerMargin, document.getPageSize().getWidth() - 2 * innerMargin, document.getPageSize().getHeight() - 2 * innerMargin);
+                cb.stroke();
+            }
+        });
+    }
+
+    private void addFixedFooter(PdfWriter writer, Patient patient, String refNum, String sigLabel) throws DocumentException {
+        PdfPTable fTable = new PdfPTable(2);
+        fTable.setTotalWidth(523f);
+        fTable.setWidths(new float[]{3.5f, 2.5f});
+
+        // Remittance section
+        PdfPCell remCell = new PdfPCell();
+        remCell.setBorder(Rectangle.NO_BORDER);
+        remCell.addElement(new Paragraph("SUMMARY / REMITTANCE", SMALL_BOLD_FONT));
+        
+        PdfPTable subRem = new PdfPTable(2);
+        subRem.setWidthPercentage(100);
+        subRem.setSpacingBefore(5f);
+        subRem.setWidths(new float[]{1.2f, 2f});
+        String patName = (patient != null && patient.getName() != null) ? patient.getName() : "Unknown";
+        addMetaRow(subRem, "Patient Name", patName);
+        addMetaRow(subRem, "Ref No#", refNum);
+        remCell.addElement(subRem);
+        fTable.addCell(remCell);
+
+        // Sign line section
+        PdfPCell sigCell = new PdfPCell();
+        sigCell.setBorder(Rectangle.NO_BORDER);
+        sigCell.setVerticalAlignment(Element.ALIGN_BOTTOM);
+        Paragraph sig = new Paragraph("\n\n______________________\n" + sigLabel, FOOTER_FONT);
+        sig.setAlignment(Element.ALIGN_RIGHT);
+        sigCell.addElement(sig);
+        fTable.addCell(sigCell);
+
+        fTable.writeSelectedRows(0, -1, 36, 110, writer.getDirectContent());
     }
 }

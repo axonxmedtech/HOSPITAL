@@ -30,13 +30,10 @@ import java.util.Map;
 public class HospitalStatsController {
 
     @Autowired
-    private PatientService patientService;
+    private com.hms.service.hospital.HospitalStatsService statsService;
 
     @Autowired
-    private DoctorService doctorService;
-
-    @Autowired
-    private AppointmentService appointmentService;
+    private com.hms.security.SecurityContextHelper securityHelper;
 
     /**
      * Get dashboard statistics for Hospital Admin Overview
@@ -44,16 +41,10 @@ public class HospitalStatsController {
      */
     @GetMapping
     public ResponseEntity<Map<String, Long>> getDashboardStats() {
-        long totalPatients = patientService.getAllPatients().size();
-        long totalDoctors = doctorService.getAllDoctors(PageRequest.of(0, 1))
-                .getTotalElements();
-        long todaysAppointments = appointmentService.getTodaysAppointments().size();
-
-        Map<String, Long> stats = new HashMap<>();
-        stats.put("totalPatients", totalPatients);
-        stats.put("totalDoctors", totalDoctors);
-        stats.put("todaysAppointments", todaysAppointments);
-
-        return ResponseEntity.ok(stats);
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital context not found");
+        }
+        return ResponseEntity.ok(statsService.getStats(hospitalId));
     }
 }

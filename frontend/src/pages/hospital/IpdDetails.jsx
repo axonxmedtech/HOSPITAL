@@ -17,6 +17,7 @@ const IpdDetails = () => {
     const [user, setUser] = useState(() => authService.getCurrentUser() || {});
     const isDoctor = authService.isDoctor();
     const isReceptionist = authService.isReceptionist();
+    const isSoloDoctor = isDoctor && user?.receptionMode === 'SOLO';
     const { success, error: toastError } = useToast();
 
     const isAdmin = user?.role === 'HOSPITAL_ADMIN';
@@ -82,6 +83,7 @@ const IpdDetails = () => {
         }
     }, [medicineModal.medicineName, medicineModal.medicineId]);
     const [billModal, setBillModal] = useState({ isOpen: false, loading: false, bill: null });
+    const [printingBill, setPrintingBill] = useState(false);
     const [payment, setPayment] = useState({ amount: '', mode: 'CASH', saving: false });
     const [bedModal, setBedModal] = useState({ isOpen: false, wards: [], selectedWard: '', beds: [], selectedBed: '', saving: false });
 
@@ -253,6 +255,38 @@ const IpdDetails = () => {
         }
     };
 
+    const handlePrintIpdBill = async () => {
+        if (printingBill) return;
+        setPrintingBill(true);
+        
+        // Pre-open the window synchronously to bypass popup blocker
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+            printWindow.document.write('<p style="font-family: sans-serif; text-align: center; margin-top: 20px;">Generating bill PDF, please wait...</p>');
+        }
+        
+        try {
+            const billData = await hospitalService.getIpdBill(id);
+            if (!billData || !billData.billingId) {
+                throw new Error("No billing ID found for this IPD admission");
+            }
+            
+            const blob = await hospitalService.downloadReceipt(billData.billingId);
+            const url = window.URL.createObjectURL(blob);
+            if (printWindow) {
+                printWindow.location.href = url;
+            }
+        } catch (err) {
+            console.error(err);
+            if (printWindow) {
+                printWindow.close();
+            }
+            toastError(err.message || 'Failed to load bill for printing');
+        } finally {
+            setPrintingBill(false);
+        }
+    };
+
     return (
         <div className="p-6">
             <div className="mb-3">
@@ -278,7 +312,7 @@ const IpdDetails = () => {
                         <div><strong>Diagnosis:</strong> {data.admission?.primaryDiagnosis || '-'}</div>
                         <div>
                             <strong>Ward / Bed:</strong> {data.admission?.ward || '-'} / {data.admission?.bed || '-'}
-                            {isReceptionist && (data.status === 'ADMITTED' || data.status === 'DISCHARGE_PLANNED') && (
+                             {(isReceptionist || isSoloDoctor || isAdmin) && (data.status === 'ADMITTED' || data.status === 'DISCHARGE_PLANNED') && (
                                 <button onClick={() => setBedModal(p => ({ ...p, isOpen: true, selectedWard: '', selectedBed: '' }))} className="ml-2 px-1.5 py-0.5 bg-gray-100 hover:bg-blue-50 border border-gray-300 text-blue-700 text-[10px] font-bold uppercase rounded shadow-sm transition-colors">Change</button>
                             )}
                         </div>
@@ -703,7 +737,13 @@ const IpdDetails = () => {
                             )}
                             <div className="mt-3 flex gap-2">
                                 <button className="px-3 py-1 bg-green-600 text-white rounded" onClick={openBillModal}>Take Payment</button>
-                                <button className="px-3 py-1 bg-gray-600 text-white rounded" onClick={() => window.print()}>Print Bill</button>
+                                <button 
+                                    className="px-3 py-1 bg-gray-600 text-white rounded disabled:opacity-50" 
+                                    onClick={handlePrintIpdBill}
+                                    disabled={printingBill}
+                                >
+                                    {printingBill ? 'Printing...' : 'Print Bill'}
+                                </button>
                             </div>
                         </div>
                     ) : (
@@ -716,7 +756,7 @@ const IpdDetails = () => {
                     {isDoctor && data.status === 'ADMITTED' && (
                         <button className="px-3 py-1 bg-yellow-600 text-white rounded" onClick={onPlanDischarge}>📝 Plan Discharge</button>
                     )}
-                    {isReceptionist && data.status === 'DISCHARGE_PLANNED' && (
+                    {(isReceptionist || isSoloDoctor || isAdmin) && data.status === 'DISCHARGE_PLANNED' && (
                         <div>
                             <button className="px-3 py-1 bg-green-600 text-white rounded" onClick={onConfirmDischarge}>✅ Confirm Discharge</button>
                         </div>

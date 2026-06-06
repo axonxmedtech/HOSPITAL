@@ -464,6 +464,15 @@ public class AppointmentService {
         return populateNames(appointments);
     }
 
+    public long getTodaysAppointmentsCount() {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital ID not found in context");
+        }
+        LocalDate today = LocalDate.now();
+        return appointmentRepository.countByHospitalIdAndIsActiveTrueAndAppointmentDate(hospitalId, today);
+    }
+
     // ... keeping the rest (delete, update, stats, myAppointments)
 
     /**

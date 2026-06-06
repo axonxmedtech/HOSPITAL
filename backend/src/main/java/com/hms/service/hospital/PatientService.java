@@ -147,10 +147,7 @@ public class PatientService {
         }
 
         // Populate latest bill for each patient
-        patients.forEach(patient -> {
-            billingRepository.findTopByPatientIdOrderByCreatedAtDesc(patient.getId())
-                    .ifPresent(patient::setLatestBill);
-        });
+        populateLatestBills(patients.getContent());
 
         return patients;
     }
@@ -158,6 +155,30 @@ public class PatientService {
     public org.springframework.data.domain.Page<Patient> getAllPatients(
             org.springframework.data.domain.Pageable pageable) {
         return getAllPatients(null, null, pageable);
+    }
+
+    public long getPatientCount() {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital ID not found in context");
+        }
+        return patientRepository.countByHospitalIdAndIsActiveTrue(hospitalId);
+    }
+
+    private void populateLatestBills(List<Patient> patients) {
+        if (patients == null || patients.isEmpty()) return;
+        List<Long> patientIds = patients.stream()
+                .map(Patient::getId)
+                .collect(java.util.stream.Collectors.toList());
+        List<com.hms.entity.Billing> latestBills = billingRepository.findLatestBillForPatients(patientIds);
+        java.util.Map<Long, com.hms.entity.Billing> billMap = latestBills.stream()
+                .collect(java.util.stream.Collectors.toMap(com.hms.entity.Billing::getPatientId, b -> b, (b1, b2) -> b1));
+        patients.forEach(patient -> {
+            com.hms.entity.Billing bill = billMap.get(patient.getId());
+            if (bill != null) {
+                patient.setLatestBill(bill);
+            }
+        });
     }
 
     // Kept for backward compatibility/internal use (e.g. stats)
@@ -168,10 +189,7 @@ public class PatientService {
         List<Patient> patients = patientRepository.findByHospitalIdAndIsActiveTrueOrderByCreatedAtDesc(hospitalId);
 
         // Populate latest bill
-        patients.forEach(patient -> {
-            billingRepository.findTopByPatientIdOrderByCreatedAtDesc(patient.getId())
-                    .ifPresent(patient::setLatestBill);
-        });
+        populateLatestBills(patients);
 
         return patients;
     }
@@ -197,10 +215,7 @@ public class PatientService {
                         hospitalId, query, hospitalId, query);
 
         // Populate latest bill
-        patients.forEach(patient -> {
-            billingRepository.findTopByPatientIdOrderByCreatedAtDesc(patient.getId())
-                    .ifPresent(patient::setLatestBill);
-        });
+        populateLatestBills(patients);
 
         return patients;
     }

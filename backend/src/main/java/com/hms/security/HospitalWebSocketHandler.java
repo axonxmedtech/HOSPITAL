@@ -25,6 +25,10 @@ public class HospitalWebSocketHandler extends TextWebSocketHandler {
     // Concurrent map of hospitalId -> list of active WebSocket sessions
     private final Map<Long, List<WebSocketSession>> sessions = new ConcurrentHashMap<>();
 
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.context.annotation.Lazy
+    private com.hms.service.hospital.HospitalStatsService statsService;
+
     private static final int MAX_SESSIONS_PER_HOSPITAL = 50; // Guard against resource/session exhaustion
 
     @Override
@@ -79,21 +83,38 @@ public class HospitalWebSocketHandler extends TextWebSocketHandler {
      */
     public void broadcast(Long hospitalId, String jsonPayload) {
         if (hospitalId == null) return;
+
+        // Evict cached dashboard stats when any data changes
+        if (jsonPayload != null && jsonPayload.contains("REFRESH_DATA")) {
+            try {
+                if (statsService != null) {
+                    statsService.evictStats(hospitalId);
+                }
+            } catch (Exception e) {
+                log.error("Failed to evict stats cache for hospitalId: {}", hospitalId, e);
+            }
+        }
+
         List<WebSocketSession> hospitalSessions = sessions.get(hospitalId);
         if (hospitalSessions == null || hospitalSessions.isEmpty()) {
             return;
         }
         log.info("Broadcasting to hospitalId: {}, message: {}", hospitalId, jsonPayload);
         TextMessage message = new TextMessage(jsonPayload);
-        for (WebSocketSession session : hospitalSessions) {
-            if (session.isOpen()) {
-                try {
-                    session.sendMessage(message);
-                } catch (IOException e) {
-                    log.error("Failed to send WebSocket message to session: {}", session.getId(), e);
+        
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            for (WebSocketSession session : hospitalSessions) {
+                if (session.isOpen()) {
+                    try {
+                        synchronized (session) {
+                            session.sendMessage(message);
+                        }
+                    } catch (Exception e) {
+                        log.error("Failed to send WebSocket message to session: {}", session.getId(), e);
+                    }
                 }
             }
-        }
+        });
     }
 
     private Long getHospitalId(WebSocketSession session) {

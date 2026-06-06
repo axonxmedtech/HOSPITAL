@@ -27,6 +27,7 @@ public class HospitalSetting {
 
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "hospital_id", nullable = false, unique = true)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private Hospital hospital;
 
     @Column(name = "reception_mode", nullable = false, length = 20)

@@ -1085,16 +1085,24 @@ const HospitalAdminDashboard = () => {
     const handlePrintReceipt = async (id) => {
         if (printingReceiptId) return;
         setPrintingReceiptId(id);
+        
+        // Pre-open the window synchronously to bypass popup blocker
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+            printWindow.document.write('<p style="font-family: sans-serif; text-align: center; margin-top: 20px;">Generating receipt PDF, please wait...</p>');
+        }
+        
         try {
             const blob = await hospitalService.downloadReceipt(id);
             const url = window.URL.createObjectURL(blob);
-            const printWindow = window.open(url, '_blank');
             if (printWindow) {
-                printWindow.focus();
-            } else {
-                toastError('Please allow popups to print/view the receipt');
+                printWindow.location.href = url;
             }
         } catch (err) {
+            console.error(err);
+            if (printWindow) {
+                printWindow.close();
+            }
             toastError('Failed to load receipt for printing');
         } finally {
             setPrintingReceiptId(null);
@@ -2050,39 +2058,38 @@ const HospitalAdminDashboard = () => {
                                                 </thead>
                                                 <tbody>
                                                     {ipds.map((item, idx) => {
-                                                        const ipd = item.ipd || item;
-                                                        const patient = item.patient || ipd.patient || item.patientName;
-                                                        const doctor = item.doctor || ipd.doctor || item.doctorName;
-                                                        const ward = item.ward || ipd.ward;
-                                                        const bed = item.bed || ipd.bed;
-                                                        return (
-                                                            <tr key={idx} className="border-t">
-                                                                <td className="px-4 py-3">{page * pageSize + idx + 1}</td>
-                                                                <td className="px-4 py-3">{ipd.ipdNumber || ipd.id}</td>
-                                                                <td className="px-4 py-3">{patient?.name || patient || '-'}</td>
-                                                                <td className="px-4 py-3">{doctor?.name || doctor || '-'}</td>
-                                                                <td className="px-4 py-3">{ward?.wardName || '-'}</td>
-                                                                <td className="px-4 py-3">{bed?.bedCode || bed?.name || '-'}</td>
-                                                                <td className="px-4 py-3">{ipd.admissionDatetime ? new Date(ipd.admissionDatetime).toLocaleString() : '-'}</td>
-                                                                <td className="px-4 py-3">{ipd.status || 'ACTIVE'}</td>
-                                                                <td className="px-4 py-3">
-                                                                    {(() => {
-                                                                        const theId = ipd.id || ipd.ipdId || (item && item.ipd && item.ipd.id) || null;
-                                                                        return (
-                                                                            <button
-                                                                                className={`px-3 py-1 rounded ${theId ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
-                                                                                onClick={() => { if (theId) window.location.href = `/ipd/${theId}` }}
-                                                                                disabled={!theId}
-                                                                                title={theId ? 'View IPD details' : 'IPD id not available'}
-                                                                            >
-                                                                                View
-                                                                            </button>
-                                                                        );
-                                                                    })()}
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    })}
+                                                         const row = item.ipd || item;
+                                                         const ipdNumber = row.ipdNumber || row.ipd?.ipdNumber || row.ipdNumber;
+                                                         const patientName = row.patientName || row.patient?.name || '-';
+                                                         const doctorName = row.doctorName || row.doctor?.name || '-';
+                                                         const wardName = row.wardName || row.ward?.name || '-';
+                                                         const bedNumber = row.bedNumber || row.bed?.bedNumber || row.bed?.bedCode || row.bed?.name || '-';
+                                                         const admittedAt = row.admissionDateTime || row.admissionDatetime || row.ipd?.admissionDatetime;
+                                                         const status = row.status || row.ipd?.status || 'ADMITTED';
+                                                         const theId = row.ipdId || row.id || row.ipd?.id || row.ipd?.ipdId || null;
+                                                         return (
+                                                             <tr key={idx} className="border-t">
+                                                                 <td className="px-4 py-3">{page * pageSize + idx + 1}</td>
+                                                                 <td className="px-4 py-3">{ipdNumber || row.id}</td>
+                                                                 <td className="px-4 py-3">{patientName}</td>
+                                                                 <td className="px-4 py-3">{doctorName}</td>
+                                                                 <td className="px-4 py-3">{wardName}</td>
+                                                                 <td className="px-4 py-3">{bedNumber}</td>
+                                                                 <td className="px-4 py-3">{admittedAt ? new Date(admittedAt).toLocaleString() : '-'}</td>
+                                                                 <td className="px-4 py-3">{status}</td>
+                                                                 <td className="px-4 py-3">
+                                                                     <button
+                                                                         className={`px-3 py-1 rounded ${theId ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
+                                                                         onClick={() => { if (theId) window.location.href = `/ipd/${theId}` }}
+                                                                         disabled={!theId}
+                                                                         title={theId ? 'View IPD details' : 'IPD id not available'}
+                                                                     >
+                                                                         View
+                                                                     </button>
+                                                                 </td>
+                                                             </tr>
+                                                         );
+                                                     })}
                                                 </tbody>
                                             </table>
                                         </div>

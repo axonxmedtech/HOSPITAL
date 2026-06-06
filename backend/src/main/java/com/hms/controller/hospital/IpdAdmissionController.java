@@ -114,7 +114,7 @@ public class IpdAdmissionController {
     }
 
     @PostMapping("/{id}/confirm-discharge")
-    @PreAuthorize("hasRole('RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> confirmDischarge(@PathVariable("id") Long id) {
         try {
             IpdAdmission ipd = ipdAdmissionService.confirmDischarge(id);
@@ -165,7 +165,7 @@ public class IpdAdmissionController {
         }
     }
     @PutMapping("/{id}/change-bed")
-    @PreAuthorize("hasRole('RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> changeBed(@PathVariable("id") Long id, @RequestParam("newBedId") Long newBedId) {
         try {
             IpdAdmission updated = ipdAdmissionService.changeBed(id, newBedId);

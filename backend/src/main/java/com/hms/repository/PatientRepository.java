@@ -21,6 +21,8 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
 
         long countByHospitalId(Long hospitalId);
 
+        long countByHospitalIdAndIsActiveTrue(Long hospitalId);
+
         /**
          * Find all patients belonging to a specific hospital
          * Used to list patients for a hospital (multi-tenant filtering)

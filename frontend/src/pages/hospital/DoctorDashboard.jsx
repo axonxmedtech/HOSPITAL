@@ -25,6 +25,7 @@ import ProfileModal from '../../components/ProfileModal';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
 import { SkeletonDashboard, SkeletonStatsGrid, SkeletonOverviewDual, SkeletonTable } from '../../components/Skeleton';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
+import HospitalInventoryTab from '../../components/HospitalInventoryTab';
 
 /**
  * DoctorDashboard - Doctor dashboard
@@ -83,6 +84,7 @@ const DoctorDashboard = () => {
     const [paginatedData, setPaginatedData] = useState([]);
     const [totalPages, setTotalPages] = useState(1);
     const [totalElements, setTotalElements] = useState(0);
+    const [totalAppointments, setTotalAppointments] = useState(0);
     const [searchTerm, setSearchTerm] = useState('');
 
     const { success, error: toastError, info } = useToast();
@@ -284,9 +286,9 @@ const DoctorDashboard = () => {
         setStats({
             today: todayCount,
             pending: pendingCount,
-            total: totalElements // Use totalElements from server instead of local array length
+            total: totalAppointments
         });
-    }, [appointments, totalElements]);
+    }, [appointments, totalAppointments]);
 
     
     const loadData = async (showSpinner = true) => {
@@ -299,12 +301,14 @@ const DoctorDashboard = () => {
                 const appointmentsArray = Array.isArray(data) ? data : (data.content || []);
                 setAppointments(appointmentsArray);
                 setTotalElements(data.totalElements || 0);
+                setTotalAppointments(data.totalElements || 0);
                 setTotalPages(data.totalPages || 1);
             } else if (activeTab === 'overview') {
                 try {
                     const data = await hospitalService.getMyAppointments(viewFilter, searchTerm, 0, 100);
                     const appointmentsArray = Array.isArray(data) ? data : (data.content || []);
                     setAppointments(appointmentsArray);
+                    setTotalAppointments(data.totalElements || appointmentsArray.length);
                     
                     const followUpsData = await hospitalService.getTodaysFollowUps();
                     setTodaysFollowUps(followUpsData || []);
@@ -403,16 +407,47 @@ const DoctorDashboard = () => {
                 }
             }
 
-            // Check for low-stock items if in Clinic mode
-            if (user?.inClinic !== false) {
-                try {
-                    const inv = await hospitalService.getInventoryMedicines();
-                    const lowStock = (inv || []).filter(item => item.isActive !== false && item.stockQuantity <= item.minStockLevel);
-                    setLowStockItems(lowStock);
-                } catch (err) {
-                    console.error("Failed to load inventory for low stock alerts", err);
+            // Check for low-stock items if in Clinic mode or Solo mode
+            try {
+                let lowStock = [];
+                const promises = [];
+
+                if (user?.inClinic !== false) {
+                    promises.push(
+                        hospitalService.getInventoryMedicines()
+                            .then(inv => (inv || [])
+                                .filter(item => item.isActive !== false && item.stockQuantity <= item.minStockLevel)
+                                .map(item => ({ ...item, isMedicine: true }))
+                            )
+                            .catch(err => {
+                                console.error("Failed to load medicine inventory for low stock alerts", err);
+                                return [];
+                            })
+                    );
                 }
-            } else {
+
+                if (user?.receptionMode === 'SOLO') {
+                    promises.push(
+                        hospitalService.getHospitalInventory()
+                            .then(inv => (inv || [])
+                                .filter(item => item.isActive !== false && item.stockQuantity <= item.minStockLevel)
+                                .map(item => ({ ...item, isHospitalItem: true }))
+                            )
+                            .catch(err => {
+                                console.error("Failed to load hospital inventory for low stock alerts", err);
+                                return [];
+                            })
+                    );
+                }
+
+                if (promises.length > 0) {
+                    const results = await Promise.all(promises);
+                    lowStock = results.flat();
+                }
+
+                setLowStockItems(lowStock);
+            } catch (err) {
+                console.error("Failed to check for low-stock items", err);
                 setLowStockItems([]);
             }
         } catch (err) {
@@ -537,16 +572,24 @@ const DoctorDashboard = () => {
     const handlePrintReceipt = async (id) => {
         if (docPrintingId) return;
         setDocPrintingId(id);
+        
+        // Pre-open the window synchronously to bypass popup blocker
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+            printWindow.document.write('<p style="font-family: sans-serif; text-align: center; margin-top: 20px;">Generating receipt PDF, please wait...</p>');
+        }
+        
         try {
             const blob = await hospitalService.downloadReceipt(id);
             const url = window.URL.createObjectURL(blob);
-            const printWindow = window.open(url, '_blank');
             if (printWindow) {
-                printWindow.focus();
-            } else {
-                toastError('Please allow popups to print/view the receipt');
+                printWindow.location.href = url;
             }
         } catch (err) {
+            console.error(err);
+            if (printWindow) {
+                printWindow.close();
+            }
             toastError('Failed to load receipt for printing');
         } finally {
             setDocPrintingId(null);
@@ -676,6 +719,7 @@ const DoctorDashboard = () => {
         ...(isSolo ? [{ id: 'patients', label: 'Patients', icon: null }] : []),
         ...((isSolo || hasBilling) ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
         ...((isSolo && hasInClinic) ? [{ id: 'inventory', label: 'Medicine Inventory', icon: null }] : []),
+        ...(isSolo ? [{ id: 'hospital-inventory', label: 'Hospital Inventory', icon: null }] : []),
     ];
 
     // Fallback if the URL parameter tab is not currently valid/visible
@@ -897,7 +941,7 @@ const DoctorDashboard = () => {
                                     </div>
                                 )}
                             </div>
-                            {user?.inClinic !== false && lowStockItems.length > 0 && (
+                            {lowStockItems.length > 0 && (
                                 <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-4 flex items-start gap-3 shadow-sm hover:shadow transition-all duration-300 animate-fade-in">
                                     <div className="p-2 bg-amber-100 text-amber-800 rounded-xl">
                                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -905,9 +949,9 @@ const DoctorDashboard = () => {
                                         </svg>
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <h3 className="text-sm font-bold text-amber-900">Low Stock Alert: {lowStockItems.length} clinical items require restocking</h3>
+                                        <h3 className="text-sm font-bold text-amber-900">Low Stock Alert: {lowStockItems.length} items require restocking</h3>
                                         <p className="text-xs text-amber-700/90 mt-1 leading-relaxed">
-                                            The physical stock levels for these administered items are below reorder thresholds:
+                                            The physical stock levels for these items are below reorder thresholds:
                                         </p>
                                         <div className="flex flex-wrap gap-2 mt-2">
                                             {lowStockItems.map(item => (
@@ -918,12 +962,24 @@ const DoctorDashboard = () => {
                                         </div>
                                     </div>
                                     {user?.receptionMode === 'SOLO' && (
-                                        <button 
-                                            onClick={() => setActiveTab('inventory')}
-                                            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg transition-all"
-                                        >
-                                            Restock Inventory
-                                        </button>
+                                        <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+                                            {lowStockItems.some(item => item.isMedicine) && (
+                                                <button 
+                                                    onClick={() => setActiveTab('inventory')}
+                                                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg transition-all whitespace-nowrap"
+                                                >
+                                                    Restock Medicines
+                                                </button>
+                                            )}
+                                            {lowStockItems.some(item => item.isHospitalItem) && (
+                                                <button 
+                                                    onClick={() => setActiveTab('hospital-inventory')}
+                                                    className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-lg transition-all whitespace-nowrap"
+                                                >
+                                                    Restock Hospital Inventory
+                                                </button>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
                             )}
@@ -1175,8 +1231,8 @@ const DoctorDashboard = () => {
                         </div>
                     )}
 
-                    {/* Standardized Header - Hide on overview tab */}
-                    {activeTab !== 'overview' && (
+                    {/* Standardized Header - Hide on overview, inventory and hospital-inventory tabs */}
+                    {activeTab !== 'overview' && activeTab !== 'inventory' && activeTab !== 'hospital-inventory' && (
                     <PageHeader
                         title={
                             activeTab === 'appointments' ? 'My Appointments' : 
@@ -1286,6 +1342,7 @@ const DoctorDashboard = () => {
                                             onViewPrescription={handleViewPrescriptionOpd}
                                             onAdmitIpd={(opd) => { setIpdOpdForAdmit(opd); setIsIpdAdmitOpen(true); }}
                                             user={user}
+                                            hasIPD={hasIPD}
                                             startIndex={(page - 1) * ITEMS_PER_PAGE}
                                             pagination={pagination}
                                         />
@@ -1424,6 +1481,10 @@ const DoctorDashboard = () => {
 
                                 {activeTab === 'inventory' && (
                                     <MedicineInventoryTab />
+                                )}
+
+                                {activeTab === 'hospital-inventory' && (
+                                    <HospitalInventoryTab />
                                 )}
                             </div>
                             )}
@@ -2074,7 +2135,7 @@ const DoctorPatientsTable = ({ patients, onViewHistory, onStartConsultation, onC
 
 
 // Doctor OPD Table
-const DoctorOpdTable = ({ opds, queueEntries = [], onPrintOpd, onStartConsultation, onPrintPrescription, onViewPrescription, onAdmitIpd, user, startIndex = 0, pagination }) => {
+const DoctorOpdTable = ({ opds, queueEntries = [], onPrintOpd, onStartConsultation, onPrintPrescription, onViewPrescription, onAdmitIpd, user, hasIPD, startIndex = 0, pagination }) => {
     const columnHelper = createColumnHelper();
 
     const getQueuePosition = (opdId) => {

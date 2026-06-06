@@ -448,16 +448,24 @@ const ReceptionistDashboard = () => {
     const handlePrintReceipt = async (id) => {
         if (recPrintingId) return;
         setRecPrintingId(id);
+        
+        // Pre-open the window synchronously to bypass popup blocker
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+            printWindow.document.write('<p style="font-family: sans-serif; text-align: center; margin-top: 20px;">Generating receipt PDF, please wait...</p>');
+        }
+        
         try {
             const blob = await hospitalService.downloadReceipt(id);
             const url = window.URL.createObjectURL(blob);
-            const printWindow = window.open(url, '_blank');
             if (printWindow) {
-                printWindow.focus();
-            } else {
-                toastError('Please allow popups to print/view the receipt');
+                printWindow.location.href = url;
             }
         } catch (err) {
+            console.error(err);
+            if (printWindow) {
+                printWindow.close();
+            }
             toastError('Failed to load receipt for printing');
         } finally {
             setRecPrintingId(null);

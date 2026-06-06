@@ -143,10 +143,8 @@ public class PlatformHospitalService {
      * @return Map with hospital statistics
      */
     public Map<String, Long> getHospitalStats() {
-        List<Hospital> allHospitals = hospitalRepository.findAll();
-
-        long total = allHospitals.size();
-        long active = allHospitals.stream().filter(Hospital::getIsActive).count();
+        long total = hospitalRepository.count();
+        long active = hospitalRepository.countByIsActive(true);
         long inactive = total - active;
 
         Map<String, Long> stats = new HashMap<>();
