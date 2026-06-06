@@ -1,26 +1,65 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import hospitalService from '../services/hospitalService';
 
 /**
  * PatientDetailsModal - Read-only view of patient information with tabs for additional data
  * 
  * Features:
  * - Basic patient information (read-only)
- * - Tabbed interface for: Info, OPD History, IPD History, Prescriptions
- * - Expandable design for future additions
- * 
- * @param {Object} patient - Patient data object
- * @param {Function} onClose - Close modal callback
+ * - Tabbed interface for: Info, Case Papers (OPD History + Prescriptions), Bills
  */
 const PatientDetailsModal = ({ patient, onClose }) => {
     const [activeTab, setActiveTab] = useState('info');
+
+    const [casePapers, setCasePapers] = useState([]);
+    const [loadingCasePapers, setLoadingCasePapers] = useState(false);
+
+    const [bills, setBills] = useState([]);
+    const [loadingBills, setLoadingBills] = useState(false);
+    const [printingBillId, setPrintingBillId] = useState(null);
+
+    useEffect(() => {
+        const fetchCasePapers = async () => {
+            setLoadingCasePapers(true);
+            try {
+                const pid = patient.publicId || patient.id;
+                const res = await hospitalService.getPatientConsultationDetails(pid);
+                setCasePapers(res.medicalHistory || []);
+            } catch (err) {
+                console.error("Failed to fetch case papers:", err);
+            } finally {
+                setLoadingCasePapers(false);
+            }
+        };
+
+        const fetchBills = async () => {
+            setLoadingBills(true);
+            try {
+                const pid = patient.publicId || patient.id;
+                const res = await hospitalService.getPatientBills(pid);
+                setBills(res || []);
+            } catch (err) {
+                console.error("Failed to fetch patient bills:", err);
+            } finally {
+                setLoadingBills(false);
+            }
+        };
+
+        if (patient) {
+            if (activeTab === 'casepapers') {
+                fetchCasePapers();
+            } else if (activeTab === 'bills') {
+                fetchBills();
+            }
+        }
+    }, [activeTab, patient?.id, patient?.publicId]);
 
     if (!patient) return null;
 
     const tabs = [
         { id: 'info', label: 'Patient Info' },
-        { id: 'opd', label: 'OPD History' },
-        { id: 'ipd', label: 'IPD History' },
-        { id: 'prescriptions', label: 'Prescriptions' },
+        { id: 'casepapers', label: 'Case Papers' },
+        { id: 'bills', label: 'Bills' },
     ];
 
     return (
@@ -53,7 +92,7 @@ const PatientDetailsModal = ({ patient, onClose }) => {
                                 onClick={() => setActiveTab(tab.id)}
                                 className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors ${
                                     activeTab === tab.id
-                                        ? 'border-gray-900 text-gray-900'
+                                        ? 'border-gray-900 text-gray-900 font-semibold'
                                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                                 }`}
                             >
@@ -105,36 +144,169 @@ const PatientDetailsModal = ({ patient, onClose }) => {
                         </div>
                     )}
 
-                    {activeTab === 'opd' && (
-                        <div className="text-center py-12">
-                            <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                            <h3 className="text-lg font-medium text-gray-900 mb-2">OPD History</h3>
-                            <p className="text-gray-600">OPD visit history will be displayed here</p>
-                            <p className="text-sm text-gray-500 mt-2">Coming soon...</p>
+                    {activeTab === 'casepapers' && (
+                        <div className="space-y-4">
+                            {loadingCasePapers ? (
+                                <div className="text-center py-12 text-gray-500">
+                                    <div className="animate-spin h-6 w-6 border-b-2 border-gray-900 mx-auto mb-2 rounded-full"></div>
+                                    Loading clinical history...
+                                </div>
+                            ) : casePapers.length > 0 ? (
+                                casePapers.map((record) => (
+                                    <div key={record.id} className="bg-white rounded-lg p-5 border border-gray-200 shadow-sm space-y-3">
+                                        <div className="flex justify-between items-start border-b border-gray-100 pb-2">
+                                            <div>
+                                                <span className="text-sm font-semibold text-gray-800">{record.doctorName || 'Doctor'}</span>
+                                                <span className="mx-2 text-gray-300">•</span>
+                                                <span className="text-xs text-gray-500">
+                                                    {record.date ? new Date(record.date).toLocaleDateString('en-US', {
+                                                        year: 'numeric',
+                                                        month: 'short',
+                                                        day: 'numeric'
+                                                    }) : 'N/A'}
+                                                </span>
+                                            </div>
+                                            {record.followUpDate && (
+                                                <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                                                    Follow-up: {new Date(record.followUpDate).toLocaleDateString()}
+                                                </span>
+                                            )}
+                                        </div>
+                                        
+                                        {record.symptoms && (
+                                            <div>
+                                                <label className="text-xs text-gray-400 block font-medium">Symptoms</label>
+                                                <p className="text-sm text-gray-700">{record.symptoms}</p>
+                                            </div>
+                                        )}
+                                        
+                                        {record.diagnosis && (
+                                            <div>
+                                                <label className="text-xs text-gray-400 block font-medium">Diagnosis</label>
+                                                <p className="text-sm font-semibold text-gray-800">{record.diagnosis}</p>
+                                            </div>
+                                        )}
+                                        
+                                        {record.treatment && (
+                                            <div>
+                                                <label className="text-xs text-gray-400 block font-medium">Treatment & Notes</label>
+                                                <p className="text-sm text-gray-700">{record.treatment}</p>
+                                            </div>
+                                        )}
+                                        
+                                        {record.prescriptions && record.prescriptions.length > 0 && (
+                                            <div className="pt-2 border-t border-gray-100">
+                                                <label className="text-xs text-teal-600 block font-semibold mb-1.5">Prescribed Medicines</label>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                    {record.prescriptions.map((med) => (
+                                                        <div key={med.id} className="bg-slate-50 p-2.5 rounded-lg border border-gray-200 text-xs">
+                                                            <span className="font-bold text-gray-800 block">{med.medicineName}</span>
+                                                            <span className="text-gray-500 block mt-0.5">
+                                                                {med.dosage} • {med.frequency} • {med.duration}
+                                                            </span>
+                                                            {med.instructions && (
+                                                                <span className="text-gray-400 block mt-0.5 italic">{med.instructions}</span>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="text-center py-12 text-gray-400 text-sm">
+                                    <p>No previous case papers found.</p>
+                                </div>
+                            )}
                         </div>
                     )}
 
-                    {activeTab === 'ipd' && (
-                        <div className="text-center py-12">
-                            <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                            </svg>
-                            <h3 className="text-lg font-medium text-gray-900 mb-2">IPD History</h3>
-                            <p className="text-gray-600">Inpatient admission history will be displayed here</p>
-                            <p className="text-sm text-gray-500 mt-2">Coming soon...</p>
-                        </div>
-                    )}
-
-                    {activeTab === 'prescriptions' && (
-                        <div className="text-center py-12">
-                            <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                            <h3 className="text-lg font-medium text-gray-900 mb-2">Prescriptions</h3>
-                            <p className="text-gray-600">Patient prescription history will be displayed here</p>
-                            <p className="text-sm text-gray-500 mt-2">Coming soon...</p>
+                    {activeTab === 'bills' && (
+                        <div className="space-y-4">
+                            {loadingBills ? (
+                                <div className="text-center py-12 text-gray-500">
+                                    <div className="animate-spin h-6 w-6 border-b-2 border-gray-900 mx-auto mb-2 rounded-full"></div>
+                                    Loading bills...
+                                </div>
+                            ) : bills.length > 0 ? (
+                                <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                                    <table className="min-w-full text-sm text-left">
+                                        <thead className="bg-gray-50 text-gray-600 font-medium border-b border-gray-200">
+                                            <tr>
+                                                <th className="px-4 py-3">S.No.</th>
+                                                <th className="px-4 py-3">Bill No</th>
+                                                <th className="px-4 py-3">Date</th>
+                                                <th className="px-4 py-3">Status</th>
+                                                <th className="px-4 py-3 text-right">Total</th>
+                                                <th className="px-4 py-3 text-right">Paid</th>
+                                                <th className="px-4 py-3 text-right">Balance</th>
+                                                <th className="px-4 py-3 text-center">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100 bg-white">
+                                            {bills.map((bill, index) => {
+                                                const total = bill.amount || 0;
+                                                const paid = bill.paidAmount || 0;
+                                                const bal = bill.balance ?? (total - paid);
+                                                return (
+                                                    <tr key={bill.id} className="hover:bg-gray-50">
+                                                        <td className="px-4 py-3 text-gray-500">{index + 1}</td>
+                                                        <td className="px-4 py-3 font-semibold text-gray-800">{bill.customId || bill.id}</td>
+                                                        <td className="px-4 py-3 text-gray-500">{new Date(bill.createdAt).toLocaleDateString()}</td>
+                                                        <td className="px-4 py-3">
+                                                            <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${
+                                                                bill.paymentStatus === 'PAID' ? 'bg-emerald-50 text-emerald-700' :
+                                                                bill.paymentStatus === 'PARTIAL' ? 'bg-amber-50 text-amber-700' :
+                                                                'bg-red-50 text-red-700'
+                                                            }`}>
+                                                                {bill.paymentStatus || 'PENDING'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-right text-gray-800 font-medium">₹{total}</td>
+                                                        <td className="px-4 py-3 text-right text-emerald-600">₹{paid}</td>
+                                                        <td className={`px-4 py-3 text-right font-semibold ${bal > 0 ? 'text-red-600' : 'text-gray-500'}`}>₹{bal}</td>
+                                                        <td className="px-4 py-3 text-center">
+                                                            <button
+                                                                onClick={async () => {
+                                                                    try {
+                                                                        setPrintingBillId(bill.id);
+                                                                        const blob = await hospitalService.downloadReceipt(bill.id);
+                                                                        const fileURL = URL.createObjectURL(blob);
+                                                                        const pdfWindow = window.open();
+                                                                        if (pdfWindow) {
+                                                                            pdfWindow.location.href = fileURL;
+                                                                        } else {
+                                                                            const link = document.createElement('a');
+                                                                            link.href = fileURL;
+                                                                            link.setAttribute('download', `receipt_${bill.customId || bill.id}.pdf`);
+                                                                            document.body.appendChild(link);
+                                                                            link.click();
+                                                                            link.remove();
+                                                                        }
+                                                                    } catch (err) {
+                                                                        console.error("Print failed:", err);
+                                                                    } finally {
+                                                                        setPrintingBillId(null);
+                                                                    }
+                                                                }}
+                                                                disabled={printingBillId === bill.id}
+                                                                className="px-2.5 py-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 rounded-md transition disabled:opacity-50"
+                                                            >
+                                                                {printingBillId === bill.id ? 'Printing...' : 'Print'}
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <div className="text-center py-12 text-gray-400 text-sm">
+                                    <p>No bills found for this patient.</p>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>

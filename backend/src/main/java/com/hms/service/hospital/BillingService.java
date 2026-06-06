@@ -156,6 +156,13 @@ public class BillingService {
                 .orElseThrow(() -> new RuntimeException("Bill not found"));
 
         bill.setPaymentStatus(status);
+        if ("PAID".equalsIgnoreCase(status)) {
+            try {
+                String userEmail = securityHelper.getCurrentUserEmail();
+                String userRole = securityHelper.getCurrentUserRole();
+                bill.setMarkedPaidBy(userRole + " (" + userEmail + ")");
+            } catch (Exception ignored) {}
+        }
         if (paymentMethod != null && !paymentMethod.isEmpty()) {
             bill.setPaymentMethod(paymentMethod);
         }
@@ -310,6 +317,13 @@ public class BillingService {
         item.setAmount(fee);
         billingItemRepository.save(item);
 
+        // Broadcast real-time refresh
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after consultation bill creation", e);
+        }
+
         logger.info("Consultation bill generated for patient {} with amount {}", patientId, fee);
         return saved;
     }
@@ -370,6 +384,13 @@ public class BillingService {
         item2.setDescription("Consultation Fee");
         item2.setAmount(consultFee);
         billingItemRepository.save(item2);
+
+        // Broadcast real-time refresh
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after OPD bill creation", e);
+        }
 
         logger.info("OPD bill generated for OPD {} patient {} with amount {}", opdId, patientId, total);
         return saved;

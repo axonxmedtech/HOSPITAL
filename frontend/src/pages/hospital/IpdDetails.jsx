@@ -19,6 +19,12 @@ const IpdDetails = () => {
     const isReceptionist = authService.isReceptionist();
     const { success, error: toastError } = useToast();
 
+    const isAdmin = user?.role === 'HOSPITAL_ADMIN';
+    const canManageBilling = 
+        isAdmin ||
+        (isDoctor && (user?.billingHandler === 'DOCTOR' || user?.billingHandler === 'BOTH')) ||
+        (isReceptionist && (user?.billingHandler === 'RECEPTIONIST' || user?.billingHandler === 'BOTH'));
+
     const [followupModal, setFollowupModal] = useState({ isOpen: false, diagnosis: '', notes: '', saving: false });
     const [dischargeModal, setDischargeModal] = useState({ isOpen: false, finalDiagnosis: '', treatmentGiven: '', dischargeNotes: '', followUpDate: '', saving: false });
     const [medicineModal, setMedicineModal] = useState({ isOpen: false, medicineId: null, medicineName: '', type: 'TABLET', route: 'ORAL', dose: '', frequency: '', durationDays: 0, startDate: '', saving: false });
@@ -450,15 +456,12 @@ const IpdDetails = () => {
                                                         await hospitalService.addIpdPrescription(id, payload);
                                                         success('Medicine prescribed successfully');
                                                         setMedicineModal(prev => ({ ...prev, isOpen: false }));
-                                                        setLoading(true);
-                                                        const resp = await hospitalService.getIpdDetails(id);
-                                                        setData(resp);
+                                                        await load(false); // Silent reload to show updated prescriptions
                                                     } catch (err) {
                                                         console.error('Failed to add medicine', err);
                                                         toastError(err.response?.data || err.message || 'Failed to add medicine');
                                                     } finally {
                                                         setMedicineModal(prev => ({ ...prev, saving: false }));
-                                                        setLoading(false);
                                                     }
                                                 }} disabled={medicineModal.saving} className="px-3 py-1 bg-blue-600 text-white rounded text-sm">{medicineModal.saving ? 'Saving...' : 'Save Prescription'}</button>
                                             </div>
@@ -624,29 +627,58 @@ const IpdDetails = () => {
 
                     <hr className="my-4" />
 
-                    <h3 className="font-semibold mb-2">Current Medicines</h3>
-                    {data.activePrescriptions && data.activePrescriptions.length > 0 ? (
-                        <ul className="space-y-2">
-                            {data.activePrescriptions.map((p, i) => (
-                                <li key={i} className="p-2 border rounded flex justify-between items-center">
-                                    <div>
-                                        <div className="font-medium">{p.name}</div>
-                                        <div className="text-xs text-gray-600">{p.type} • {p.route} • {p.frequency}</div>
-                                    </div>
-                                    <div>
-                                        {isDoctor ? (
-                                            <div className="flex gap-2">
-                                                <button className="px-2 py-1 bg-yellow-500 text-white rounded" onClick={() => onStopMedicine(p.id)}>Stop</button>
+                    <h3 className="font-semibold mb-2">Current Medicines & Items</h3>
+
+                    {/* Prescribed Medicines */}
+                    {data.activePrescriptions && data.activePrescriptions.length > 0 && (
+                        <>
+                            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1">Prescribed Medicines</p>
+                            <ul className="space-y-2 mb-3">
+                                {data.activePrescriptions.map((p, i) => (
+                                    <li key={i} className="p-2 border border-blue-100 rounded bg-blue-50 flex justify-between items-center">
+                                        <div>
+                                            <div className="font-medium">{p.name}</div>
+                                            <div className="text-xs text-gray-600">{p.type} • {p.route} • {p.frequency}</div>
+                                        </div>
+                                        <div>
+                                            {isDoctor ? (
+                                                <div className="flex gap-2">
+                                                    <button className="px-2 py-1 bg-yellow-500 text-white rounded text-xs" onClick={() => onStopMedicine(p.id)}>Stop</button>
+                                                </div>
+                                            ) : (
+                                                <div className="text-xs text-gray-500">{p.status}</div>
+                                            )}
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+                        </>
+                    )}
+
+                    {/* Administered Stock Items */}
+                    {data.administeredItems && data.administeredItems.length > 0 && (
+                        <>
+                            <p className="text-xs font-semibold text-teal-700 uppercase tracking-wide mb-1">Administered Stock Items</p>
+                            <ul className="space-y-2 mb-3">
+                                {data.administeredItems.map((item, i) => (
+                                    <li key={i} className="p-2 border border-teal-100 rounded bg-teal-50 flex justify-between items-center">
+                                        <div>
+                                            <div className="font-medium flex items-center gap-2">
+                                                {item.name}
+                                                <span className="text-xs bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded font-semibold">Stock</span>
                                             </div>
-                                        ) : (
-                                            <div className="text-xs text-gray-500">{p.status}</div>
-                                        )}
-                                    </div>
-                                </li>
-                            ))}
-                        </ul>
-                    ) : (
-                        <div className="text-sm text-gray-500">No active medicines.</div>
+                                            <div className="text-xs text-gray-500">Qty: {item.quantity}{item.administeredAt ? ` • ${item.administeredAt}` : ''}</div>
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+                        </>
+                    )}
+
+                    {/* Empty state — no prescriptions AND no administered items */}
+                    {(!data.activePrescriptions || data.activePrescriptions.length === 0) &&
+                     (!data.administeredItems || data.administeredItems.length === 0) && (
+                        <div className="text-sm text-gray-500">No active medicines or administered items.</div>
                     )}
 
                     {isDoctor && data.status !== 'DISCHARGE_PLANNED' && data.status !== 'DISCHARGED' && (
@@ -658,7 +690,7 @@ const IpdDetails = () => {
 
                 <aside className="bg-white border rounded p-4">
                     <h3 className="font-semibold mb-2">Billing</h3>
-                    {isReceptionist ? (
+                    {canManageBilling ? (
                         <div>
                             {data.billing ? (
                                 <div className="text-sm">

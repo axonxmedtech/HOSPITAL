@@ -3,6 +3,7 @@ package com.hms.service.hospital;
 import com.hms.entity.Patient;
 import com.hms.repository.PatientRepository;
 import com.hms.security.SecurityContextHelper;
+import com.hms.security.HospitalWebSocketHandler;
 import com.hms.service.AuditLogService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -26,13 +27,19 @@ public class PatientService {
     private AuditLogService auditLogService;
 
     @Autowired
-    private com.hms.repository.MedicalRecordRepository medicalRecordRepository;
+    private HospitalWebSocketHandler webSocketHandler;
 
     @Autowired
     private com.hms.repository.BillingRepository billingRepository;
 
     @Autowired
     private com.hms.repository.PrescriptionRepository prescriptionRepository;
+
+    @Autowired
+    private com.hms.repository.DoctorRepository doctorRepository;
+
+    @Autowired
+    private com.hms.repository.MedicalRecordRepository medicalRecordRepository;
 
     /**
      * Add a new patient
@@ -70,6 +77,13 @@ public class PatientService {
             logger.warn("Failed to create audit log for patient creation", e);
         }
 
+        // Broadcast real-time refresh
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after patient creation", e);
+        }
+
         return savedPatient;
     }
 
@@ -92,7 +106,17 @@ public class PatientService {
         existingPatient.setAddress(updatedData.getAddress());
         existingPatient.setMedicalHistory(updatedData.getMedicalHistory());
 
-        return patientRepository.save(existingPatient);
+        Patient saved = patientRepository.save(existingPatient);
+
+        // Broadcast real-time refresh
+        try {
+            Long hid = securityHelper.getCurrentHospitalId();
+            if (hid != null) webSocketHandler.broadcast(hid, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after patient update", e);
+        }
+
+        return saved;
     }
 
     /**
@@ -234,6 +258,13 @@ public class PatientService {
         } catch (Exception e) {
             logger.warn("Failed to create audit log for patient deletion", e);
         }
+
+        // Broadcast real-time refresh
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after patient deletion", e);
+        }
     }
 
     /**
@@ -302,9 +333,9 @@ public class PatientService {
             patient = getPatientByPublicId(patientIdentifier);
         }
 
-        // Get medical history (last 5 consultations)
+        // Get medical history (all consultations sorted newest to oldest)
         List<com.hms.entity.MedicalRecord> medicalHistory = medicalRecordRepository
-                .findTop5ByPatientIdOrderByCreatedAtDesc(patient.getId());
+                .findByPatientIdOrderByCreatedAtDesc(patient.getId());
 
         // Build response
         java.util.Map<String, Object> response = new java.util.HashMap<>();
@@ -320,15 +351,56 @@ public class PatientService {
         patientData.put("status", patient.getStatus() != null ? patient.getStatus().toString() : "REGISTERED");
         response.put("patient", patientData);
 
-        // Medical history
+        // --- Batch-fetch doctors and prescriptions to avoid N+1 queries ---
+
+        // Collect all unique doctor IDs and medical record IDs
+        java.util.Set<Long> doctorIds = new java.util.HashSet<>();
+        java.util.List<Long> medicalRecordIds = new java.util.ArrayList<>();
+        for (com.hms.entity.MedicalRecord record : medicalHistory) {
+            if (record.getDoctorId() != null) {
+                doctorIds.add(record.getDoctorId());
+            }
+            medicalRecordIds.add(record.getId());
+        }
+
+        // Batch fetch all doctors in one query
+        java.util.Map<Long, String> doctorNameMap = new java.util.HashMap<>();
+        if (!doctorIds.isEmpty()) {
+            List<com.hms.entity.Doctor> doctors = doctorRepository.findAllById(doctorIds);
+            for (com.hms.entity.Doctor doc : doctors) {
+                doctorNameMap.put(doc.getId(), doc.getName());
+            }
+        }
+
+        // Batch fetch all prescriptions in one query
+        java.util.Map<Long, List<com.hms.entity.Prescription>> prescriptionMap = new java.util.HashMap<>();
+        if (!medicalRecordIds.isEmpty()) {
+            List<com.hms.entity.Prescription> allPrescriptions = prescriptionRepository
+                    .findByMedicalRecordIdIn(medicalRecordIds);
+            for (com.hms.entity.Prescription p : allPrescriptions) {
+                prescriptionMap.computeIfAbsent(p.getMedicalRecordId(), k -> new java.util.ArrayList<>()).add(p);
+            }
+        }
+
+        // Medical history - map from pre-fetched data (no more individual queries)
         List<java.util.Map<String, Object>> historyList = new java.util.ArrayList<>();
         for (com.hms.entity.MedicalRecord record : medicalHistory) {
             java.util.Map<String, Object> historyItem = new java.util.HashMap<>();
+            historyItem.put("id", record.getId());
             historyItem.put("date", record.getCreatedAt());
             historyItem.put("symptoms", record.getSymptoms());
             historyItem.put("diagnosis", record.getDiagnosis());
             historyItem.put("treatment", record.getTreatmentNotes());
-            // You can add doctor name if you have doctor repository
+            historyItem.put("followUpDate", record.getFollowUpDate());
+
+            String doctorName = "Unknown Doctor";
+            if (record.getDoctorId() != null) {
+                doctorName = doctorNameMap.getOrDefault(record.getDoctorId(), "Unknown Doctor");
+            }
+            historyItem.put("doctorName", doctorName);
+
+            historyItem.put("prescriptions", prescriptionMap.getOrDefault(record.getId(), java.util.Collections.emptyList()));
+
             historyList.add(historyItem);
         }
         response.put("medicalHistory", historyList);

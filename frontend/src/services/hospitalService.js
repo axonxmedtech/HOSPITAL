@@ -666,6 +666,57 @@ const hospitalService = {
         const response = await apiClient.post('/hospital/tickets', ticketData);
         return response.data;
     },
+
+    // ========== Hospital Inventory & Patient Bills ==========
+    getPatientBills: async (patientId) => {
+        const response = await apiClient.get(`/hospital/billing/patient/${patientId}`);
+        return response.data;
+    },
+
+    searchHospitalInventoryCatalog: async (query) => {
+        const response = await apiClient.get(`/hospital/hospital-inventory/search?query=${encodeURIComponent(query)}`);
+        return response.data;
+    },
+
+    getHospitalInventoryCatalog: async () => {
+        const response = await apiClient.get('/hospital/hospital-inventory/catalog');
+        return response.data;
+    },
+
+    addHospitalInventoryCatalog: async (item) => {
+        const response = await apiClient.post('/hospital/hospital-inventory/catalog', item);
+        return response.data;
+    },
+
+    updateHospitalInventoryCatalog: async (id, item) => {
+        const response = await apiClient.put(`/hospital/hospital-inventory/catalog/${id}`, item);
+        return response.data;
+    },
+
+    deleteHospitalInventoryCatalog: async (id) => {
+        const response = await apiClient.delete(`/hospital/hospital-inventory/catalog/${id}`);
+        return response.data;
+    },
+
+    getHospitalInventory: async () => {
+        const response = await apiClient.get('/hospital/hospital-inventory/inventory');
+        return response.data;
+    },
+
+    addHospitalInventory: async (stock) => {
+        const response = await apiClient.post('/hospital/hospital-inventory/inventory', stock);
+        return response.data;
+    },
+
+    updateHospitalInventory: async (id, stock) => {
+        const response = await apiClient.put(`/hospital/hospital-inventory/inventory/${id}`, stock);
+        return response.data;
+    },
+
+    deleteHospitalInventory: async (id) => {
+        const response = await apiClient.delete(`/hospital/hospital-inventory/inventory/${id}`);
+        return response.data;
+    },
 };
 
 export default hospitalService;

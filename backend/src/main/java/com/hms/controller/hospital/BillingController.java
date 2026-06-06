@@ -60,11 +60,14 @@ public class BillingController {
 
         // Enforce settings
         if ("ROLE_DOCTOR".equalsIgnoreCase(role) || "DOCTOR".equalsIgnoreCase(role)) {
-            if (!"DOCTOR".equalsIgnoreCase(settings.getBillingHandler()) && !"SOLO".equalsIgnoreCase(settings.getReceptionMode())) {
+            if (!"DOCTOR".equalsIgnoreCase(settings.getBillingHandler()) && 
+                !"BOTH".equalsIgnoreCase(settings.getBillingHandler()) &&
+                !"SOLO".equalsIgnoreCase(settings.getReceptionMode())) {
                 throw new org.springframework.security.access.AccessDeniedException("Billing management is restricted to receptionists.");
             }
         } else if ("ROLE_RECEPTIONIST".equalsIgnoreCase(role) || "RECEPTIONIST".equalsIgnoreCase(role)) {
-            if (!"RECEPTIONIST".equalsIgnoreCase(settings.getBillingHandler())) {
+            if (!"RECEPTIONIST".equalsIgnoreCase(settings.getBillingHandler()) && 
+                !"BOTH".equalsIgnoreCase(settings.getBillingHandler())) {
                 throw new org.springframework.security.access.AccessDeniedException("Billing management is restricted to doctors.");
             }
             if ("SOLO".equalsIgnoreCase(settings.getReceptionMode())) {
@@ -464,6 +467,11 @@ public class BillingController {
                 bill.setPaymentStatus("PAID");
                 bill.setPaymentMethod(req.mode);
                 bill.setPaymentReference(req.reference);
+                try {
+                    String userEmail = securityHelper.getCurrentUserEmail();
+                    String userRole = securityHelper.getCurrentUserRole();
+                    bill.setMarkedPaidBy(userRole + " (" + userEmail + ")");
+                } catch (Exception ignored) {}
             } else {
                 bill.setPaymentStatus("PARTIAL");
                 bill.setPaymentMethod(req.mode);
@@ -476,6 +484,66 @@ public class BillingController {
             out.put("paidAmount", paid);
             out.put("balance", total.subtract(paid));
             return ResponseEntity.ok(out);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/patient/{patientPublicId}")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
+    public ResponseEntity<?> getPatientBills(@PathVariable String patientPublicId) {
+        try {
+            validateBillingAccess();
+            Long hospitalId = securityHelper.getCurrentHospitalId();
+            com.hms.entity.Patient patient = patientService.getPatientByPublicId(patientPublicId);
+            if (patient == null || !patient.getHospitalId().equals(hospitalId)) {
+                throw new RuntimeException("Patient not found or unauthorized");
+            }
+
+            java.util.List<Billing> patientBills = billingRepository.findByPatientIdOrderByCreatedAtDesc(patient.getId());
+            java.util.List<Long> billIds = patientBills.stream().map(Billing::getId).collect(java.util.stream.Collectors.toList());
+
+            java.util.List<com.hms.entity.BillingItem> allItems = billIds.isEmpty() ? java.util.Collections.emptyList() : billingItemRepository.findByBillingIdIn(billIds);
+            java.util.List<com.hms.entity.BillingMedicine> allMedicines = billIds.isEmpty() ? java.util.Collections.emptyList() : billingMedicineRepository.findByBillingIdIn(billIds);
+            java.util.List<BillingPayment> allPayments = billIds.isEmpty() ? java.util.Collections.emptyList() : billingPaymentRepository.findByBillingIdIn(billIds);
+
+            java.util.Map<Long, java.util.List<com.hms.entity.BillingItem>> itemsByBillId = allItems.stream().collect(java.util.stream.Collectors.groupingBy(com.hms.entity.BillingItem::getBillingId));
+            java.util.Map<Long, java.util.List<com.hms.entity.BillingMedicine>> medicinesByBillId = allMedicines.stream().collect(java.util.stream.Collectors.groupingBy(com.hms.entity.BillingMedicine::getBillingId));
+            java.util.Map<Long, java.util.List<com.hms.entity.BillingPayment>> paymentsByBillId = allPayments.stream().collect(java.util.stream.Collectors.groupingBy(com.hms.entity.BillingPayment::getBillingId));
+
+            java.util.List<java.util.Map<String, Object>> mapped = new java.util.ArrayList<>();
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+            mapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+
+            for (Billing b : patientBills) {
+                java.util.Map<String, Object> asMap = mapper.convertValue(b, java.util.Map.class);
+                
+                java.util.List<com.hms.entity.BillingItem> items = itemsByBillId.getOrDefault(b.getId(), java.util.Collections.emptyList());
+                java.util.List<com.hms.entity.BillingMedicine> medicines = medicinesByBillId.getOrDefault(b.getId(), java.util.Collections.emptyList());
+                java.util.List<com.hms.entity.BillingPayment> payments = paymentsByBillId.getOrDefault(b.getId(), java.util.Collections.emptyList());
+
+                BigDecimal totalAmt = BigDecimal.ZERO;
+                for (com.hms.entity.BillingItem it : items) if (it.getAmount() != null) totalAmt = totalAmt.add(it.getAmount());
+                for (com.hms.entity.BillingMedicine med : medicines) if (med.getAmount() != null) totalAmt = totalAmt.add(med.getAmount());
+
+                if (totalAmt.compareTo(BigDecimal.ZERO) == 0) {
+                    totalAmt = b.getAmount() != null ? b.getAmount() : BigDecimal.ZERO;
+                }
+
+                BigDecimal paidAmt = BigDecimal.ZERO;
+                for (BillingPayment pay : payments) if (pay.getAmount() != null) paidAmt = paidAmt.add(pay.getAmount());
+
+                asMap.put("items", items);
+                asMap.put("medicines", medicines);
+                asMap.put("payments", payments);
+                asMap.put("amount", totalAmt);
+                asMap.put("paidAmount", paidAmt);
+                asMap.put("balance", totalAmt.subtract(paidAmt));
+                asMap.put("patientName", patient.getName());
+                mapped.add(asMap);
+            }
+            return ResponseEntity.ok(mapped);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

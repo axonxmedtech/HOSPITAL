@@ -32,4 +32,12 @@ public class ConsultationRequest {
         private String medicineName;
         private Integer quantity;
     }
+
+    private List<ChargeItem> charges;
+
+    @Data
+    public static class ChargeItem {
+        private String description;
+        private java.math.BigDecimal amount;
+    }
 }

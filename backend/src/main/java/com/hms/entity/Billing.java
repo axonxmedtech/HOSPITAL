@@ -128,6 +128,9 @@ public class Billing {
     @Column(length = 500)
     private String description;
 
+    @Column(name = "marked_paid_by", length = 100)
+    private String markedPaidBy;
+
     /**
      * Timestamp when the billing record was created
      */

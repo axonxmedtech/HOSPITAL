@@ -4,14 +4,19 @@ import com.hms.dto.CreateOpdRequest;
 import com.hms.entity.*;
 import com.hms.repository.*;
 import com.hms.security.SecurityContextHelper;
+import com.hms.security.HospitalWebSocketHandler;
 import com.hms.service.AuditLogService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Optional;
 
 @Service
 public class OpdService {
+
+    private static final Logger logger = LoggerFactory.getLogger(OpdService.class);
 
     private final OpdRepository opdRepository;
     private final QueueEntryRepository queueEntryRepository;
@@ -22,6 +27,7 @@ public class OpdService {
 
     private final SecurityContextHelper securityHelper;
     private final AuditLogService auditLogService;
+    private final HospitalWebSocketHandler webSocketHandler;
 
     public OpdService(OpdRepository opdRepository,
                       QueueEntryRepository queueEntryRepository,
@@ -30,7 +36,8 @@ public class OpdService {
                       UserRepository userRepository,
                       MedicalRecordRepository medicalRecordRepository,
                       SecurityContextHelper securityHelper,
-                      AuditLogService auditLogService) {
+                      AuditLogService auditLogService,
+                      HospitalWebSocketHandler webSocketHandler) {
         this.opdRepository = opdRepository;
         this.queueEntryRepository = queueEntryRepository;
         this.patientRepository = patientRepository;
@@ -39,6 +46,7 @@ public class OpdService {
         this.medicalRecordRepository = medicalRecordRepository;
         this.securityHelper = securityHelper;
         this.auditLogService = auditLogService;
+        this.webSocketHandler = webSocketHandler;
     }
 
     @Transactional
@@ -107,6 +115,16 @@ public class OpdService {
                     null
             );
         } catch (Exception ignored) {
+        }
+
+        // Broadcast real-time update to all connected clients in this hospital
+        try {
+            Long broadcastHospitalId = securityHelper.getCurrentHospitalId();
+            if (broadcastHospitalId != null) {
+                webSocketHandler.broadcast(broadcastHospitalId, "{\"type\":\"REFRESH_DATA\"}");
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after OPD creation", e);
         }
 
         return saved;

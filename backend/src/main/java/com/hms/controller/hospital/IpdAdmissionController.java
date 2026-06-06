@@ -20,6 +20,9 @@ public class IpdAdmissionController {
     @Autowired
     private com.hms.security.SecurityContextHelper securityHelper;
 
+    @Autowired
+    private com.hms.repository.HospitalSettingRepository hospitalSettingRepository;
+
     @PostMapping("/admit")
     @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> admitToIpd(@RequestBody CreateIpdAdmissionRequest req) {
@@ -65,10 +68,16 @@ public class IpdAdmissionController {
     public ResponseEntity<?> getIpdDetails(@PathVariable("id") Long id) {
         try {
             com.hms.dto.IpdAdmissionDetailsDTO dto = ipdAdmissionService.getIpdAdmissionDetails(id);
-            // If current user is DOCTOR, hide billing section (sensitive)
+            // If current user is DOCTOR, hide billing section unless settings allow DOCTOR or BOTH
             String role = securityHelper.getCurrentUserRole();
             if ("DOCTOR".equalsIgnoreCase(role)) {
-                dto.setBilling(null);
+                Long hospitalId = securityHelper.getCurrentHospitalId();
+                com.hms.entity.HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(hospitalId).orElse(null);
+                if (settings == null || 
+                    (!"DOCTOR".equalsIgnoreCase(settings.getBillingHandler()) && 
+                     !"BOTH".equalsIgnoreCase(settings.getBillingHandler()))) {
+                    dto.setBilling(null);
+                }
             }
             return ResponseEntity.ok(dto);
         } catch (org.springframework.security.access.AccessDeniedException ade) {

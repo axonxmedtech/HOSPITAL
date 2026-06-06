@@ -23,7 +23,7 @@ import PatientModal from '../../components/PatientModal';
 import PatientDetailsModal from '../../components/PatientDetailsModal';
 import ProfileModal from '../../components/ProfileModal';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
-import { SkeletonDashboard } from '../../components/Skeleton';
+import { SkeletonDashboard, SkeletonStatsGrid, SkeletonOverviewDual, SkeletonTable } from '../../components/Skeleton';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
 
 /**
@@ -39,9 +39,10 @@ import MedicineInventoryTab from '../../components/MedicineInventoryTab';
  */
 const DoctorDashboard = () => {
     const [user, setUser] = useState(() => authService.getCurrentUser());
-    console.log(user)
+    const modules = user?.modules || [];
+    const hasIPD = modules.includes('IPD');
     const [searchParams, setSearchParams] = useSearchParams();
-    const activeTab = searchParams.get('tab') || 'overview'; // Changed default to 'overview'
+    const activeTab = searchParams.get('tab') || 'overview';
     const viewFilter = searchParams.get('appointmentFilter') || 'today';
 
     // Helper to switch tabs
@@ -230,12 +231,7 @@ const DoctorDashboard = () => {
     };
 
     const handleViewHistory = (patient) => {
-        setAuditHistory({
-            isOpen: true,
-            entityType: 'PATIENT',
-            entityId: patient.publicId || patient.id,
-            entityName: patient.name
-        });
+        setPatientDetailsModal({ isOpen: true, patient });
     };
 
     const handleEditClick = (appointment) => {
@@ -263,12 +259,15 @@ const DoctorDashboard = () => {
     };
 
     useEffect(() => {
+        setPage(1);
+    }, [activeTab, searchTerm, viewFilter, billingStatus]);
+
+    useEffect(() => {
         const timer = setTimeout(() => {
-            setPage(1);
             loadData();
         }, 500);
         return () => clearTimeout(timer);
-    }, [activeTab, searchTerm, viewFilter]);
+    }, [activeTab, searchTerm, viewFilter, billingStatus, page]);
 
     // WebSocket connection will be initialized below loadData definition to avoid ReferenceError
 
@@ -665,7 +664,7 @@ const DoctorDashboard = () => {
     };
 
     const isSolo = user?.receptionMode === 'SOLO';
-    const hasBilling = user?.billingHandler === 'DOCTOR';
+    const hasBilling = user?.billingHandler === 'DOCTOR' || user?.billingHandler === 'BOTH';
     const hasInClinic = user?.inClinic !== false;
 
     const tabs = [
@@ -880,7 +879,7 @@ const DoctorDashboard = () => {
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
 
                     {/* Overview Tab */}
-                    {activeTab === 'overview' && (
+                    {activeTab === 'overview' && !loading && (
                         <div className="space-y-6">
                             <div className="flex items-center justify-between">
                                 <h2 className="text-2xl font-bold text-gray-900">Overview</h2>
@@ -1225,7 +1224,7 @@ const DoctorDashboard = () => {
                                     {['PENDING', 'PAID', 'PARTIAL'].map(status => (
                                         <button
                                             key={status}
-                                            onClick={() => setBillingStatus(status)}
+                                            onClick={() => { setBillingStatus(status); setPage(1); }}
                                             className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${billingStatus === status
                                                 ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
                                                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
@@ -1240,11 +1239,20 @@ const DoctorDashboard = () => {
                     />
                     )}
 
-                    {loading ? (
-                        <SkeletonDashboard statCount={5} tableRows={6} tableCols={5} gridCols="md:grid-cols-5" />
-                    ) : (
-                        <>
-                            {activeTab !== 'overview' && (
+                    {loading && (
+                        <div className="space-y-8 animate-fade-in-up">
+                            {activeTab === 'overview' ? (
+                                <>
+                                    <SkeletonStatsGrid count={5} gridCols="md:grid-cols-5" />
+                                    <SkeletonOverviewDual />
+                                </>
+                            ) : (
+                                <SkeletonTable rows={6} cols={5} />
+                            )}
+                        </div>
+                    )}
+
+                    {!loading && activeTab !== 'overview' && (
                             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
                                 {activeTab === 'appointments' && (
                                     appointments.length > 0 ? (
@@ -1419,8 +1427,6 @@ const DoctorDashboard = () => {
                                 )}
                             </div>
                             )}
-                        </>
-                    )}
                 </main>
             </div>
 
@@ -2048,8 +2054,8 @@ const DoctorPatientsTable = ({ patients, onViewHistory, onStartConsultation, onC
                 // Secondary actions for three-dot menu
                 const secondaryActions = [
                     {
-                        label: 'View History',
-                        icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" /></svg>,
+                        label: 'View Details',
+                        icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" /></svg>,
                         onClick: () => onViewHistory(patient)
                     }
                 ];
@@ -2152,8 +2158,8 @@ const DoctorOpdTable = ({ opds, queueEntries = [], onPrintOpd, onStartConsultati
                         onClick: () => onViewPrescription(opd)
                     });
 
-                    // Solo Doctor Mode can admit patient to IPD
-                    if (user?.receptionMode === 'SOLO' && onAdmitIpd) {
+                    // Solo Doctor Mode + IPD module enabled: can admit patient to IPD
+                    if (user?.receptionMode === 'SOLO' && hasIPD && onAdmitIpd) {
                         actions.push({
                             label: 'Admit to IPD',
                             icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /></svg>,

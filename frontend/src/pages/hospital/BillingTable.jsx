@@ -167,6 +167,11 @@ const BillingTable = ({ billing, startIndex = 0, pagination, onUpdateStatus, onP
                         </table>
                     </div>
                 )}
+                {row.original.markedPaidBy && (
+                    <div className="mt-3 pt-2 border-t border-dashed border-gray-200 text-xs text-gray-500">
+                        Marked Paid By: <span className="text-gray-700 font-semibold">{row.original.markedPaidBy}</span>
+                    </div>
+                )}
             </div>
         );
     };

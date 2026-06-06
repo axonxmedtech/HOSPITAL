@@ -10,6 +10,7 @@ import java.util.Optional;
 @Repository
 public interface MedicalRecordRepository extends JpaRepository<MedicalRecord, Long> {
     List<MedicalRecord> findByPatientId(Long patientId);
+    List<MedicalRecord> findByPatientIdOrderByCreatedAtDesc(Long patientId);
 
     Optional<MedicalRecord> findByAppointmentId(Long appointmentId);
 

@@ -112,6 +112,13 @@ public class DoctorService {
             logger.warn("Failed to create audit log for doctor creation", e);
         }
 
+        // Broadcast real-time refresh
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after doctor creation", e);
+        }
+
         return doctor;
     }
 
@@ -189,7 +196,17 @@ public class DoctorService {
         // Note: Email and Password updates are not allowed here to prevent auth
         // potential issues
 
-        return doctorRepository.save(existingDoctor);
+        Doctor saved = doctorRepository.save(existingDoctor);
+
+        // Broadcast real-time refresh
+        try {
+            Long hid = securityHelper.getCurrentHospitalId();
+            if (hid != null) webSocketHandler.broadcast(hid, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after doctor update", e);
+        }
+
+        return saved;
     }
 
     /**
@@ -260,6 +277,13 @@ public class DoctorService {
                 "DOCTOR",
                 publicId,
                 reason);
+
+        // Broadcast real-time refresh
+        try {
+            webSocketHandler.broadcast(doctor.getHospitalId(), "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after doctor deletion", e);
+        }
     }
 
     @Autowired
@@ -293,6 +317,9 @@ public class DoctorService {
 
     @Autowired
     private com.hms.repository.BillingRepository billingRepository;
+
+    @Autowired
+    private com.hms.repository.BillingItemRepository billingItemRepository;
 
     @Autowired
     private com.hms.repository.OpdRepository opdRepository;
@@ -477,6 +504,24 @@ public class DoctorService {
                 // If request.getOpdId() is null, createOpdBill will still create the bill but
                 // without linking to an OPD; OPD completion on payment will only run when opdId is present.
                 bill = billingService.createOpdBill(request.getOpdId(), patient.getId(), resolvedDoctorId);
+            }
+
+            if (bill != null && request.getCharges() != null && "PENDING".equalsIgnoreCase(bill.getPaymentStatus())) {
+                java.util.List<com.hms.entity.BillingItem> existingItems = billingItemRepository.findByBillingId(bill.getId());
+                billingItemRepository.deleteAll(existingItems);
+
+                for (com.hms.dto.ConsultationRequest.ChargeItem charge : request.getCharges()) {
+                    if (charge.getDescription() == null || charge.getDescription().trim().isEmpty()) {
+                        continue;
+                    }
+                    com.hms.entity.BillingItem item = new com.hms.entity.BillingItem();
+                    item.setBillingId(bill.getId());
+                    item.setHospitalId(hospitalId);
+                    item.setDescription(charge.getDescription().trim());
+                    item.setAmount(charge.getAmount() != null ? charge.getAmount() : java.math.BigDecimal.ZERO);
+                    billingItemRepository.save(item);
+                }
+                billingService.recalculateTotal(bill.getId());
             }
             
             // --- Process Administered Items (Stock Billing & Deductions) ---

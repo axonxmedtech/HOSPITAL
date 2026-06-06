@@ -22,13 +22,15 @@ import { createColumnHelper } from '@tanstack/react-table';
 import PrescriptionModal from '../../components/PrescriptionModal';
 import PrescriptionViewModal from '../../components/PrescriptionViewModal';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
-import { SkeletonDashboard } from '../../components/Skeleton';
+import { SkeletonDashboard, SkeletonStatsGrid, SkeletonOverviewDual, SkeletonTable } from '../../components/Skeleton';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
 
 const ReceptionistDashboard = () => {
     const [user, setUser] = useState(() => authService.getCurrentUser());
+    const modules = user?.modules || [];
+    const hasIPD = modules.includes('IPD');
     const [searchParams, setSearchParams] = useSearchParams();
-    const activeTab = searchParams.get('tab') || 'overview'; // Changed default to 'overview'
+    const activeTab = searchParams.get('tab') || 'overview';
     const viewFilter = searchParams.get('appointmentFilter') || 'today';
 
     // Helper to switch tabs
@@ -722,8 +724,8 @@ const ReceptionistDashboard = () => {
                 />
 
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
-                    {/* Overview Tab - Stats Only */}
-                    {activeTab === 'overview' && (
+                    {/* Overview Tab */}
+                    {activeTab === 'overview' && !loading && (
                         <div className="space-y-6">
                             <div className="flex items-center justify-between">
                                 <h2 className="text-2xl font-bold text-gray-900">Overview</h2>
@@ -1034,7 +1036,7 @@ const ReceptionistDashboard = () => {
                                 {['PENDING', 'PAID', 'PARTIAL'].map(status => (
                                     <button
                                         key={status}
-                                        onClick={() => setBillingStatus(status)}
+                                        onClick={() => { setBillingStatus(status); setPage(0); }}
                                         className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${billingStatus === status
                                             ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
                                             : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
@@ -1087,9 +1089,20 @@ const ReceptionistDashboard = () => {
                     />
                     )}
 
-                    {loading ? (
-                        <SkeletonDashboard statCount={4} tableRows={6} tableCols={5} gridCols="md:grid-cols-4" />
+                    {loading && (
+                        <div className="space-y-8 animate-fade-in-up">
+                            {activeTab === 'overview' ? (
+                                <>
+                                    <SkeletonStatsGrid count={4} gridCols="md:grid-cols-4" />
+                                    <SkeletonOverviewDual />
+                                </>
                             ) : (
+                                <SkeletonTable rows={6} cols={5} />
+                            )}
+                        </div>
+                    )}
+
+                    {!loading && activeTab !== 'overview' && (
                                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
                             {activeTab === 'appointments' && (
                                 appointments.length > 0 ? (
@@ -1139,7 +1152,7 @@ const ReceptionistDashboard = () => {
                                                         <td className="px-4 py-3">
                                                             <div className="flex items-center gap-2">
                                                                 <button onClick={() => handlePrintOpd(o)} className="px-3 py-1 bg-gray-900 text-white rounded">Print</button>
-                                                                {user?.role === 'RECEPTIONIST' && o.status !== 'IN_IPD' && (
+                                                                {user?.role === 'RECEPTIONIST' && hasIPD && o.status !== 'IN_IPD' && (
                                                                     <button onClick={() => { setIpdOpdForAdmit(o); setIsIpdAdmitOpen(true); }} className="px-3 py-1 bg-green-600 text-white rounded">Admit to IPD</button>
                                                                 )}
                                                             </div>

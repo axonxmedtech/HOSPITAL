@@ -506,8 +506,8 @@ public class HospitalAuthService {
         if (!"HAS_RECEPTIONIST".equals(receptionMode) && !"SOLO".equals(receptionMode)) {
             throw new IllegalArgumentException("receptionMode must be HAS_RECEPTIONIST or SOLO");
         }
-        if (!"RECEPTIONIST".equals(billingHandler) && !"DOCTOR".equals(billingHandler)) {
-            throw new IllegalArgumentException("billingHandler must be RECEPTIONIST or DOCTOR");
+        if (!"RECEPTIONIST".equals(billingHandler) && !"DOCTOR".equals(billingHandler) && !"BOTH".equals(billingHandler)) {
+            throw new IllegalArgumentException("billingHandler must be RECEPTIONIST, DOCTOR, or BOTH");
         }
 
         // Cross-field invariant: SOLO mode has no receptionist, so billing must be handled by DOCTOR.

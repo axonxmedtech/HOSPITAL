@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import hospitalService from '../services/hospitalService';
 import { useToast } from '../context/ToastContext';
-import Skeleton from './Skeleton';
 
-const MedicineInventoryTab = () => {
+const HospitalInventoryTab = () => {
     const [subTab, setSubTab] = useState('inventory'); // 'inventory' or 'catalog'
     
     // Data states
@@ -11,20 +10,23 @@ const MedicineInventoryTab = () => {
     const [catalogList, setCatalogList] = useState([]);
     const [loading, setLoading] = useState(false);
     
+    // Fee options for catalog linking (fetched from admin fees)
+    const [availableFees, setAvailableFees] = useState([]);
+    
     // Modal states
     const [stockModal, setStockModal] = useState({ isOpen: false, isEdit: false, data: null });
     const [catalogModal, setCatalogModal] = useState({ isOpen: false, isEdit: false, data: null });
 
     const { success, error: toastError } = useToast();
 
-    const [stockMedicineQuery, setStockMedicineQuery] = useState('');
+    const [stockItemQuery, setStockItemQuery] = useState('');
     const [showStockSuggestions, setShowStockSuggestions] = useState(false);
 
     useEffect(() => {
         if (stockModal.isOpen) {
-            setStockMedicineQuery(stockModal.data?.name || '');
+            setStockItemQuery(stockModal.data?.name || '');
         } else {
-            setStockMedicineQuery('');
+            setStockItemQuery('');
         }
         setShowStockSuggestions(false);
     }, [stockModal.isOpen, stockModal.data]);
@@ -32,17 +34,35 @@ const MedicineInventoryTab = () => {
     // Fetch catalog list
     const fetchCatalog = async () => {
         try {
-            const res = await hospitalService.getCatalogMedicines();
+            const res = await hospitalService.getHospitalInventoryCatalog();
             setCatalogList(res || []);
         } catch (err) {
             console.error(err);
         }
     };
 
+    // Fetch available fees for linking (from admin Fees tab)
+    // Only custom fees are shown here — standard fees (consultation/casepaper) apply automatically
+    const fetchFees = async () => {
+        try {
+            const customFees = await hospitalService.getCustomFees();
+            // Use raw numeric ID from HospitalFee — stored directly as linkedFeeId (Long) in DB
+            const custom = (customFees || []).map(f => ({
+                id: f.id,          // numeric Long ID
+                name: f.name,
+                displayName: `${f.name} (₹${f.defaultAmount})`,
+                amount: f.defaultAmount
+            }));
+            setAvailableFees(custom);
+        } catch (err) {
+            console.error('Failed to load fees', err);
+        }
+    };
+
     // Fetch active stock inventory
     const fetchInventory = async () => {
         try {
-            const res = await hospitalService.getInventoryMedicines();
+            const res = await hospitalService.getHospitalInventory();
             setInventoryList(res || []);
         } catch (err) {
             console.error(err);
@@ -54,12 +74,12 @@ const MedicineInventoryTab = () => {
         try {
             if (subTab === 'inventory') {
                 await fetchInventory();
-                await fetchCatalog(); // Load catalog to populate options in stock intake modal
+                await fetchCatalog(); // Load catalog to populate options
             } else {
-                await fetchCatalog();
+                await Promise.all([fetchCatalog(), fetchFees()]);
             }
         } catch (err) {
-            toastError('Failed to load medicine inventory data.');
+            toastError('Failed to load hospital inventory data.');
         } finally {
             setLoading(false);
         }
@@ -73,32 +93,34 @@ const MedicineInventoryTab = () => {
     const handleStockSubmit = async (e) => {
         e.preventDefault();
         const form = e.target;
-        const medicineName = form.medicineName.value.trim();
+        const itemName = form.itemName.value.trim();
         const type = form.type.value;
         const stockQuantity = parseInt(form.stockQuantity.value);
         const unitPrice = parseFloat(form.unitPrice.value);
         const minStockLevel = parseInt(form.minStockLevel.value);
         const expiryDate = form.expiryDate.value;
+        const manufacturer = form.manufacturer.value.trim();
 
-        if (!medicineName) return;
+        if (!itemName) return;
 
         const payload = {
-            name: medicineName,
+            name: itemName,
             type,
             stockQuantity,
             unitPrice,
             minStockLevel,
-            expiryDate: expiryDate ? expiryDate : null
+            expiryDate: expiryDate ? expiryDate : null,
+            manufacturer: manufacturer ? manufacturer : null
         };
 
         try {
             setLoading(true);
             if (stockModal.isEdit) {
-                await hospitalService.updateInventoryMedicine(stockModal.data.id, payload);
+                await hospitalService.updateHospitalInventory(stockModal.data.id, payload);
                 success('Stock details updated successfully.');
             } else {
-                await hospitalService.addInventoryMedicine(payload);
-                success('Medicine added to stock inventory.');
+                await hospitalService.addHospitalInventory(payload);
+                success('Item added to stock inventory.');
             }
             setStockModal({ isOpen: false, isEdit: false, data: null });
             loadData();
@@ -115,30 +137,27 @@ const MedicineInventoryTab = () => {
         const form = e.target;
         const name = form.name.value.trim();
         const type = form.type.value;
-        const defaultDosage = form.defaultDosage.value.trim();
-        const defaultFrequency = form.defaultFrequency.value.trim();
-        const defaultDuration = form.defaultDuration.value.trim();
         const manufacturer = form.manufacturer.value.trim();
+        const linkedFeeId = form.linkedFeeId?.value || null;
 
         if (!name) return;
 
         const payload = {
             name,
             type,
-            defaultDosage,
-            defaultFrequency,
-            defaultDuration,
-            manufacturer
+            manufacturer: manufacturer ? manufacturer : null,
+            // Parse as number (custom fee ID is a Long in DB); null if empty/invalid
+            linkedFeeId: linkedFeeId && !isNaN(linkedFeeId) ? Number(linkedFeeId) : null
         };
 
         try {
             setLoading(true);
             if (catalogModal.isEdit) {
-                await hospitalService.updateCatalogMedicine(catalogModal.data.id, payload);
+                await hospitalService.updateHospitalInventoryCatalog(catalogModal.data.id, payload);
                 success('Catalog record updated successfully.');
             } else {
-                await hospitalService.addCatalogMedicine(payload);
-                success('Medicine registered in catalog.');
+                await hospitalService.addHospitalInventoryCatalog(payload);
+                success('Item registered in catalog.');
             }
             setCatalogModal({ isOpen: false, isEdit: false, data: null });
             loadData();
@@ -152,7 +171,7 @@ const MedicineInventoryTab = () => {
     const handleDeactivateStock = async (id) => {
         if (!window.confirm('Are you sure you want to remove this item from active stock inventory?')) return;
         try {
-            await hospitalService.deleteInventoryMedicine(id);
+            await hospitalService.deleteHospitalInventory(id);
             success('Item removed from inventory.');
             loadData();
         } catch (err) {
@@ -163,7 +182,7 @@ const MedicineInventoryTab = () => {
     const handleDeactivateCatalog = async (id) => {
         if (!window.confirm('Are you sure you want to deactivate this item in the catalog directory?')) return;
         try {
-            await hospitalService.deleteCatalogMedicine(id);
+            await hospitalService.deleteHospitalInventoryCatalog(id);
             success('Item deactivated in catalog.');
             loadData();
         } catch (err) {
@@ -177,8 +196,8 @@ const MedicineInventoryTab = () => {
             {/* Header and Toggle Controls */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-100 pb-4">
                 <div>
-                    <h2 className="text-xl font-bold text-gray-900">In-Clinic Medicine Inventory</h2>
-                    <p className="text-sm text-gray-500">Manage catalog lookup medicines and active in-clinic physical stock levels.</p>
+                    <h2 className="text-xl font-bold text-gray-900">Hospital Equipment & Consumable Inventory</h2>
+                    <p className="text-sm text-gray-500">Manage catalog lookup items and active physical stock levels for non-medicine equipment (e.g. saline, syringes, gloves).</p>
                 </div>
                 
                 {/* Segmented Top-Tab Toggle */}
@@ -187,13 +206,13 @@ const MedicineInventoryTab = () => {
                         onClick={() => setSubTab('inventory')}
                         className={`flex-1 sm:flex-none px-5 py-2 text-sm font-semibold rounded-lg transition-all ${subTab === 'inventory' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                     >
-                        Inventory
+                        Active Stock
                     </button>
                     <button
                         onClick={() => setSubTab('catalog')}
                         className={`flex-1 sm:flex-none px-5 py-2 text-sm font-semibold rounded-lg transition-all ${subTab === 'catalog' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                     >
-                        Medicines
+                        Catalog Lookup
                     </button>
                 </div>
             </div>
@@ -211,14 +230,14 @@ const MedicineInventoryTab = () => {
                         onClick={() => setStockModal({ isOpen: true, isEdit: false, data: null })}
                         className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition font-semibold text-sm shadow-md shadow-teal-600/10 active:scale-95"
                     >
-                        + Add to Inventory
+                        + Add Stock
                     </button>
                 ) : (
                     <button
                         onClick={() => setCatalogModal({ isOpen: true, isEdit: false, data: null })}
                         className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition font-semibold text-sm shadow-md shadow-teal-600/10 active:scale-95"
                     >
-                        + Add New Medicine
+                        + Add Catalog Item
                     </button>
                 )}
             </div>
@@ -236,10 +255,10 @@ const MedicineInventoryTab = () => {
                     <table className="min-w-full text-sm text-left">
                         <thead>
                             <tr className="border-b border-gray-200 text-gray-500 font-medium">
-                                <th className="pb-3 text-left">Medicine Name</th>
+                                <th className="pb-3 text-left">Item Name</th>
                                 <th className="pb-3 text-center">Type</th>
                                 <th className="pb-3 text-center">Quantity</th>
-                                <th className="pb-3 text-right">Unit Price</th>
+                                <th className="pb-3 text-right">Unit Cost</th>
                                 <th className="pb-3 text-center">Expiry Date</th>
                                 <th className="pb-3 text-center">Stock Level</th>
                                 <th className="pb-3 text-right">Actions</th>
@@ -252,7 +271,7 @@ const MedicineInventoryTab = () => {
                                     <tr key={item.id} className="hover:bg-slate-50/50 transition">
                                         <td className="py-3 font-semibold text-gray-800">{item.name}</td>
                                         <td className="py-3 text-center text-gray-600">
-                                            <span className="px-2 py-0.5 text-xs bg-slate-100 rounded-full font-medium">{item.type || 'Tablet'}</span>
+                                            <span className="px-2 py-0.5 text-xs bg-slate-100 rounded-full font-medium">{item.type || 'Consumable'}</span>
                                         </td>
                                         <td className="py-3 text-center font-bold text-gray-900">{item.stockQuantity}</td>
                                         <td className="py-3 text-right text-gray-900 font-medium">₹{item.unitPrice?.toFixed(2)}</td>
@@ -288,7 +307,7 @@ const MedicineInventoryTab = () => {
                             {inventoryList.filter(x => x.isActive !== false).length === 0 && (
                                 <tr>
                                     <td colSpan={7} className="py-8 text-center text-gray-400">
-                                        No stock items in inventory. Click "+ Add to Inventory" to stock items.
+                                        No stock items in inventory. Click "+ Add Stock" to stock items.
                                     </td>
                                 </tr>
                             )}
@@ -296,17 +315,15 @@ const MedicineInventoryTab = () => {
                     </table>
                 </div>
             ) : (
-                /* MEDICINES CATALOG LIST */
+                /* CATALOG LIST */
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm text-left">
                         <thead>
                             <tr className="border-b border-gray-200 text-gray-500 font-medium">
-                                <th className="pb-3 text-left">Medicine Name</th>
+                                <th className="pb-3 text-left">Item Name</th>
                                 <th className="pb-3 text-center">Type</th>
-                                <th className="pb-3 text-center">Default Dosage</th>
-                                <th className="pb-3 text-center">Frequency</th>
-                                <th className="pb-3 text-center">Duration</th>
                                 <th className="pb-3 text-left">Manufacturer</th>
+                                <th className="pb-3 text-left">Linked Charge</th>
                                 <th className="pb-3 text-right">Actions</th>
                             </tr>
                         </thead>
@@ -317,10 +334,16 @@ const MedicineInventoryTab = () => {
                                     <td className="py-3 text-center">
                                         <span className="px-2 py-0.5 text-xs bg-slate-100 rounded-full font-medium">{item.type}</span>
                                     </td>
-                                    <td className="py-3 text-center text-gray-600">{item.defaultDosage || '-'}</td>
-                                    <td className="py-3 text-center text-gray-600">{item.defaultFrequency || '-'}</td>
-                                    <td className="py-3 text-center text-gray-600">{item.defaultDuration || '-'}</td>
                                     <td className="py-3 text-left text-gray-500">{item.manufacturer || '-'}</td>
+                                    <td className="py-3 text-left">
+                                        {item.linkedFeeId ? (
+                                            <span className="px-2 py-0.5 text-xs bg-teal-50 text-teal-700 border border-teal-100 rounded-full font-medium">
+                                                {availableFees.find(f => String(f.id) === String(item.linkedFeeId))?.name || `Fee ID: ${item.linkedFeeId}`}
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs text-gray-400">No charge linked</span>
+                                        )}
+                                    </td>
                                     <td className="py-3 text-right space-x-2">
                                         <button
                                             onClick={() => setCatalogModal({ isOpen: true, isEdit: true, data: item })}
@@ -339,8 +362,8 @@ const MedicineInventoryTab = () => {
                             ))}
                             {catalogList.filter(x => x.isActive !== false).length === 0 && (
                                 <tr>
-                                    <td colSpan={7} className="py-8 text-center text-gray-400">
-                                        No catalog dictionary medicines registered.
+                                    <td colSpan={5} className="py-8 text-center text-gray-400">
+                                        No catalog items registered.
                                     </td>
                                 </tr>
                             )}
@@ -361,26 +384,26 @@ const MedicineInventoryTab = () => {
                         </div>
                         
                         <form onSubmit={handleStockSubmit} className="p-6 space-y-4">
-                            {/* Medicine Name Autocomplete Input */}
+                            {/* Item Name Autocomplete Input */}
                             <div className="relative">
-                                <label className="block text-sm font-semibold text-gray-700 mb-1">Medicine Name *</label>
+                                <label className="block text-sm font-semibold text-gray-700 mb-1">Item Name *</label>
                                 <input
                                     type="text"
-                                    name="medicineName"
-                                    placeholder="Type medicine name..."
+                                    name="itemName"
+                                    placeholder="Type general item name (e.g. Gloves, Syringe)..."
                                     required
                                     disabled={stockModal.isEdit}
-                                    value={stockMedicineQuery}
+                                    value={stockItemQuery}
                                     onChange={(e) => {
                                         const name = e.target.value;
-                                        setStockMedicineQuery(name);
+                                        setStockItemQuery(name);
                                         setShowStockSuggestions(true);
                                         
                                         const isKnown = catalogList.some(x => x.name.toLowerCase() === name.trim().toLowerCase());
                                         const hint = document.getElementById('catalog-hint');
                                         if (hint) {
                                             if (name.trim().length >= 3 && !isKnown) {
-                                                hint.innerText = "💡 This medicine will be registered automatically in the catalog dictionary.";
+                                                hint.innerText = "💡 This item will be registered automatically in the catalog dictionary.";
                                                 hint.classList.remove('hidden');
                                             } else {
                                                 hint.classList.add('hidden');
@@ -391,18 +414,18 @@ const MedicineInventoryTab = () => {
                                     onBlur={() => {
                                         setTimeout(() => setShowStockSuggestions(false), 200);
                                     }}
-                                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none disabled:bg-gray-100"
+                                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none disabled:bg-gray-100 text-gray-800"
                                 />
-                                {showStockSuggestions && stockMedicineQuery.trim().length >= 3 && (
+                                {showStockSuggestions && stockItemQuery.trim().length >= 3 && (
                                     <div className="absolute left-0 right-0 mt-1 max-h-40 overflow-y-auto bg-white rounded-lg border border-gray-200 shadow-lg z-50 divide-y divide-gray-100">
                                         {catalogList
-                                            .filter(x => x.isActive !== false && x.name.toLowerCase().includes(stockMedicineQuery.toLowerCase().trim()))
+                                            .filter(x => x.isActive !== false && x.name.toLowerCase().includes(stockItemQuery.toLowerCase().trim()))
                                             .map(c => (
                                                 <button
                                                     key={c.id}
                                                     type="button"
                                                     onMouseDown={() => {
-                                                        setStockMedicineQuery(c.name);
+                                                        setStockItemQuery(c.name);
                                                         setShowStockSuggestions(false);
                                                         const hint = document.getElementById('catalog-hint');
                                                         if (hint) hint.classList.add('hidden');
@@ -412,8 +435,8 @@ const MedicineInventoryTab = () => {
                                                     {c.name} <span className="text-xs text-gray-400 font-normal">({c.type})</span>
                                                 </button>
                                             ))}
-                                        {catalogList.filter(x => x.isActive !== false && x.name.toLowerCase().includes(stockMedicineQuery.toLowerCase().trim())).length === 0 && (
-                                            <div className="p-2.5 text-center text-xs text-gray-400">No matching catalog medicine.</div>
+                                        {catalogList.filter(x => x.isActive !== false && x.name.toLowerCase().includes(stockItemQuery.toLowerCase().trim())).length === 0 && (
+                                            <div className="p-2.5 text-center text-xs text-gray-400">No matching catalog item.</div>
                                         )}
                                     </div>
                                 )}
@@ -426,15 +449,13 @@ const MedicineInventoryTab = () => {
                                 <select
                                     name="type"
                                     required
-                                    defaultValue={stockModal.data?.type || 'Tablet'}
-                                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                                    defaultValue={stockModal.data?.type || 'Consumable'}
+                                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none bg-white text-gray-800"
                                 >
-                                    <option value="Tablet">Tablet</option>
-                                    <option value="Capsule">Capsule</option>
-                                    <option value="Syrup">Syrup</option>
-                                    <option value="Injection">Injection</option>
-                                    <option value="Saline">Saline</option>
-                                    <option value="Cream">Cream</option>
+                                    <option value="Consumable">Consumable (Gloves, Swabs)</option>
+                                    <option value="Surgical">Surgical Instruments (Syringes, Needles)</option>
+                                    <option value="Fluid">Saline/Fluid</option>
+                                    <option value="Equipment">Diagnostic Equipment</option>
                                     <option value="Other">Other</option>
                                 </select>
                             </div>
@@ -469,7 +490,7 @@ const MedicineInventoryTab = () => {
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-1">Low Stock Warning Limit *</label>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-1">Min Stock Warning Level *</label>
                                     <input
                                         type="number"
                                         name="minStockLevel"
@@ -489,6 +510,17 @@ const MedicineInventoryTab = () => {
                                         className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
                                     />
                                 </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-1">Manufacturer</label>
+                                <input
+                                    type="text"
+                                    name="manufacturer"
+                                    placeholder="e.g. Generic Co."
+                                    defaultValue={stockModal.data?.manufacturer || ''}
+                                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                                />
                             </div>
 
                             <div className="pt-4 flex gap-3">
@@ -511,12 +543,12 @@ const MedicineInventoryTab = () => {
                 </div>
             )}
 
-            {/* MODAL 2: ADD/EDIT CATALOG DICTIONARY MEDICINE */}
+            {/* MODAL 2: ADD/EDIT CATALOG DICTIONARY ITEM */}
             {catalogModal.isOpen && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in-up" onClick={e => e.stopPropagation()}>
                         <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-slate-50">
-                            <h3 className="text-lg font-bold text-gray-800">{catalogModal.isEdit ? 'Edit Catalog Specifications' : 'Register Catalog Medicine'}</h3>
+                            <h3 className="text-lg font-bold text-gray-800">{catalogModal.isEdit ? 'Edit Catalog Specifications' : 'Register Catalog Item'}</h3>
                             <button onClick={() => setCatalogModal({ isOpen: false, isEdit: false, data: null })} className="text-gray-400 hover:text-gray-600">
                                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                             </button>
@@ -524,12 +556,12 @@ const MedicineInventoryTab = () => {
                         
                         <form onSubmit={handleCatalogSubmit} className="p-6 space-y-4">
                             <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-1">Medicine Name *</label>
+                                <label className="block text-sm font-semibold text-gray-700 mb-1">Item Name *</label>
                                 <input
                                     type="text"
                                     name="name"
                                     required
-                                    placeholder="e.g. Paracetamol"
+                                    placeholder="e.g. Syringe 5ml"
                                     defaultValue={catalogModal.data?.name || ''}
                                     className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
                                 />
@@ -540,63 +572,41 @@ const MedicineInventoryTab = () => {
                                 <select
                                     name="type"
                                     required
-                                    defaultValue={catalogModal.data?.type || 'Tablet'}
-                                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                                    defaultValue={catalogModal.data?.type || 'Consumable'}
+                                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none bg-white text-gray-800"
                                 >
-                                    <option value="Tablet">Tablet</option>
-                                    <option value="Capsule">Capsule</option>
-                                    <option value="Syrup">Syrup</option>
-                                    <option value="Injection">Injection</option>
-                                    <option value="Saline">Saline</option>
-                                    <option value="Cream">Cream</option>
+                                    <option value="Consumable">Consumable (Gloves, Swabs)</option>
+                                    <option value="Surgical">Surgical Instruments (Syringes, Needles)</option>
+                                    <option value="Fluid">Saline/Fluid</option>
+                                    <option value="Equipment">Diagnostic Equipment</option>
                                     <option value="Other">Other</option>
                                 </select>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-1">Default Dosage</label>
-                                    <input
-                                        type="text"
-                                        name="defaultDosage"
-                                        placeholder="e.g. 500mg"
-                                        defaultValue={catalogModal.data?.defaultDosage || ''}
-                                        className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-1">Default Frequency</label>
-                                    <input
-                                        type="text"
-                                        name="defaultFrequency"
-                                        placeholder="e.g. 1-0-1"
-                                        defaultValue={catalogModal.data?.defaultFrequency || ''}
-                                        className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
-                                    />
-                                </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-1">Manufacturer</label>
+                                <input
+                                    type="text"
+                                    name="manufacturer"
+                                    placeholder="e.g. Generic Co."
+                                    defaultValue={catalogModal.data?.manufacturer || ''}
+                                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                                />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-1">Default Duration</label>
-                                    <input
-                                        type="text"
-                                        name="defaultDuration"
-                                        placeholder="e.g. 3 Days"
-                                        defaultValue={catalogModal.data?.defaultDuration || ''}
-                                        className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-1">Manufacturer</label>
-                                    <input
-                                        type="text"
-                                        name="manufacturer"
-                                        placeholder="e.g. Generic"
-                                        defaultValue={catalogModal.data?.manufacturer || ''}
-                                        className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
-                                    />
-                                </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-1">Linked Charge / Fee</label>
+                                <select
+                                    name="linkedFeeId"
+                                    defaultValue={catalogModal.data?.linkedFeeId || ''}
+                                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none bg-white text-gray-800"
+                                >
+                                     <option value="">-- No charge linked --</option>
+                                     {availableFees.map(fee => (
+                                         <option key={fee.id} value={fee.id}>{fee.displayName || fee.name}</option>
+                                     ))}
+                                 </select>
+                                 <p className="text-xs text-gray-400 mt-1">Link a custom fee from the Fees tab. When this item is used in a consultation/IPD, the linked fee will be auto-applied to the bill.</p>
                             </div>
 
                             <div className="pt-4 flex gap-3">
@@ -611,7 +621,7 @@ const MedicineInventoryTab = () => {
                                     type="submit"
                                     className="flex-1 px-4 py-2.5 bg-teal-600 text-white rounded-lg font-semibold hover:bg-teal-700 transition shadow-md shadow-teal-600/10"
                                 >
-                                    {catalogModal.isEdit ? 'Save Changes' : 'Register Medicine'}
+                                    {catalogModal.isEdit ? 'Save Changes' : 'Register Item'}
                                 </button>
                             </div>
                         </form>
@@ -622,4 +632,4 @@ const MedicineInventoryTab = () => {
     );
 };
 
-export default MedicineInventoryTab;
+export default HospitalInventoryTab;

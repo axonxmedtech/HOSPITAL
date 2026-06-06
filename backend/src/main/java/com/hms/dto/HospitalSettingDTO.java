@@ -34,12 +34,12 @@ public class HospitalSettingDTO {
 
     /**
      * Who handles billing in this hospital.
-     * Must be one of: RECEPTIONIST, DOCTOR
+     * Must be one of: RECEPTIONIST, DOCTOR, BOTH
      */
     @NotBlank(message = "billingHandler is required")
     @Pattern(
-        regexp = "RECEPTIONIST|DOCTOR",
-        message = "billingHandler must be RECEPTIONIST or DOCTOR"
+        regexp = "RECEPTIONIST|DOCTOR|BOTH",
+        message = "billingHandler must be RECEPTIONIST, DOCTOR, or BOTH"
     )
     private String billingHandler;
 

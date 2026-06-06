@@ -426,6 +426,28 @@ public class IpdAdmissionService {
             dto.setBilling(null);
         }
 
+        // administered stock items — sourced from BillingMedicine rows for this IPD
+        java.util.List<com.hms.dto.IpdAdmissionDetailsDTO.AdministeredItemDTO> administeredDtos = new java.util.ArrayList<>();
+        try {
+            if (bills != null) {
+                for (Billing b : bills) {
+                    java.util.List<com.hms.entity.BillingMedicine> bMeds = billingMedicineRepository.findByBillingId(b.getId());
+                    if (bMeds != null) {
+                        for (com.hms.entity.BillingMedicine bm : bMeds) {
+                            com.hms.dto.IpdAdmissionDetailsDTO.AdministeredItemDTO ad = new com.hms.dto.IpdAdmissionDetailsDTO.AdministeredItemDTO();
+                            ad.name = bm.getMedicineName();
+                            ad.quantity = bm.getQuantity();
+                            ad.administeredAt = bm.getCreatedAt() != null ? bm.getCreatedAt().toLocalDate().toString() : null;
+                            administeredDtos.add(ad);
+                        }
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            // fallback empty
+        }
+        dto.setAdministeredItems(administeredDtos);
+
         return dto;
     }
 
@@ -639,18 +661,45 @@ public class IpdAdmissionService {
 
         // Resolve latest medical record for this IPD
         java.util.List<com.hms.entity.MedicalRecord> mrs = medicalRecordRepository.findByIpdAdmissionIdOrderByCreatedAtDesc(ipdId);
+        com.hms.entity.MedicalRecord latest;
         if (mrs == null || mrs.isEmpty()) {
-            throw new RuntimeException("No medical record found for this IPD. Create a follow-up first.");
+            latest = new com.hms.entity.MedicalRecord();
+            latest.setHospitalId(hospitalId);
+            latest.setPatientId(ipd.getPatientId());
+            Long resolvedDocId = ipd.getDoctorId();
+            if (resolvedDocId == null) {
+                try {
+                    java.util.Optional<com.hms.entity.Doctor> dopt = doctorRepository.findByEmailAndHospitalId(securityHelper.getCurrentUserEmail(), hospitalId);
+                    if (dopt.isPresent()) {
+                        resolvedDocId = dopt.get().getId();
+                    }
+                } catch (Exception ignored) {}
+            }
+            latest.setDoctorId(resolvedDocId);
+            latest.setIpdAdmissionId(ipdId);
+            latest.setVisitType("IPD");
+            latest.setDiagnosis(ipd.getPrimaryDiagnosis() != null && !ipd.getPrimaryDiagnosis().trim().isEmpty() ? ipd.getPrimaryDiagnosis() : "IPD Admission");
+            latest.setTreatmentNotes("Initial IPD Admission Medical Record");
+            latest = medicalRecordRepository.save(latest);
+        } else {
+            latest = mrs.get(0);
         }
-        com.hms.entity.MedicalRecord latest = mrs.get(0);
 
-        // Resolve medicine name if medicineId provided
-        final String[] medicineNameArray = {null};
-        if (req.getMedicineId() != null) {
-            medicineRepository.findById(req.getMedicineId()).ifPresent(m -> medicineNameArray[0] = m.getName());
+        // Resolve medicine name:
+        // Priority 1: explicit name from request (doctor typed it manually)
+        // Priority 2: look up from inventory by medicineId
+        // Priority 3: fallback label using medicineId
+        String medicineName = req.getMedicineName() != null && !req.getMedicineName().trim().isEmpty()
+                ? req.getMedicineName().trim()
+                : null;
+        if (medicineName == null && req.getMedicineId() != null) {
+            medicineName = medicineRepository.findById(req.getMedicineId())
+                    .map(m -> m.getName())
+                    .orElse(null);
         }
-        String medicineName = medicineNameArray[0];
-        if (medicineName == null) medicineName = "MED-" + (req.getMedicineId() == null ? java.util.UUID.randomUUID().toString() : req.getMedicineId());
+        if (medicineName == null) {
+            medicineName = req.getMedicineId() != null ? "MED-" + req.getMedicineId() : "Unknown Medicine";
+        }
 
         com.hms.entity.Prescription p = new com.hms.entity.Prescription();
         p.setHospitalId(hospitalId);

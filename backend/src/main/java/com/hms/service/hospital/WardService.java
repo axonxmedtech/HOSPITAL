@@ -6,8 +6,11 @@ import com.hms.entity.Ward;
 import com.hms.repository.BedRepository;
 import com.hms.repository.WardRepository;
 import com.hms.security.SecurityContextHelper;
+import com.hms.security.HospitalWebSocketHandler;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -15,14 +18,20 @@ import java.util.stream.Collectors;
 @Service
 public class WardService {
 
+    private static final Logger logger = LoggerFactory.getLogger(WardService.class);
+
     private final WardRepository wardRepository;
     private final BedRepository bedRepository;
     private final SecurityContextHelper securityHelper;
+    private final HospitalWebSocketHandler webSocketHandler;
 
-    public WardService(WardRepository wardRepository, BedRepository bedRepository, SecurityContextHelper securityHelper) {
+    public WardService(WardRepository wardRepository, BedRepository bedRepository,
+                       SecurityContextHelper securityHelper,
+                       HospitalWebSocketHandler webSocketHandler) {
         this.wardRepository = wardRepository;
         this.bedRepository = bedRepository;
         this.securityHelper = securityHelper;
+        this.webSocketHandler = webSocketHandler;
     }
 
     @Transactional
@@ -63,6 +72,13 @@ public class WardService {
             bedRepository.save(b);
         }
 
+        // Broadcast real-time refresh
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after ward creation", e);
+        }
+
         return toResponse(saved);
     }
 
@@ -100,6 +116,14 @@ public class WardService {
         if (req.getFloorNumber() != null) w.setFloorNumber(req.getFloorNumber());
 
         Ward saved = wardRepository.save(w);
+
+        // Broadcast real-time refresh
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after ward update", e);
+        }
+
         return toResponse(saved);
     }
 
