@@ -16,6 +16,14 @@ public class ConsultationRequest {
     private List<PrescriptionItem> prescription;
     private List<String> labTests;
     private List<AdministeredItem> administeredItems;
+    private List<HospitalInventoryItem> hospitalInventoryItems;
+
+    @Data
+    public static class HospitalInventoryItem {
+        private Long stockId;
+        private String name;
+        private Integer quantity;
+    }
 
     @Data
     public static class PrescriptionItem {

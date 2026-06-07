@@ -172,6 +172,20 @@ public class BillingService {
 
         Billing saved = billingRepository.save(bill);
 
+        // Create audit log
+        try {
+            auditLogService.logAction(
+                    "BILLING_STATUS_CHANGED",
+                    "Bill " + saved.getCustomId() + " status updated to " + status + ".",
+                    securityHelper.getCurrentUserEmail(),
+                    hospitalId,
+                    "BILLING",
+                    saved.getPublicId(),
+                    null);
+        } catch (Exception e) {
+            logger.warn("Failed to create audit log for billing status update", e);
+        }
+
         // If the bill is marked as PAID, ensure that corresponding BillingPayment is recorded so both sections are synchronized
         if ("PAID".equalsIgnoreCase(status)) {
             try {

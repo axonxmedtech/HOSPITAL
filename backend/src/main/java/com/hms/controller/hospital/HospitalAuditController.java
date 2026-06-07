@@ -27,7 +27,9 @@ public class HospitalAuditController {
      */
     @GetMapping
     public ResponseEntity<List<AuditLog>> getRecentActivity(
-            @RequestParam(required = false) String search) {
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false) Integer limit) {
         try {
             Long hospitalId = securityHelper.getCurrentHospitalId();
 
@@ -36,10 +38,14 @@ public class HospitalAuditController {
                 return ResponseEntity.ok(java.util.Collections.emptyList());
             }
 
-            List<AuditLog> logs = auditLogService.getLogsByHospitalId(hospitalId, search);
-            // Return only the last 20 for the Dashboard feed
-            if (logs.size() > 20) {
-                logs = logs.subList(0, 20);
+            String mappedRole = null;
+            if (role != null && !role.trim().isEmpty() && !"ALL".equalsIgnoreCase(role)) {
+                mappedRole = role.trim();
+            }
+
+            List<AuditLog> logs = auditLogService.getLogsByHospitalId(hospitalId, search, mappedRole);
+            if (limit != null && logs.size() > limit) {
+                logs = logs.subList(0, limit);
             }
             return ResponseEntity.ok(logs);
         } catch (Exception e) {
@@ -56,11 +62,15 @@ public class HospitalAuditController {
     public ResponseEntity<List<AuditLog>> getEntityHistory(
             @PathVariable String entityType,
             @PathVariable String entityId) {
-        // Security check: Ensure the user belongs to the same hospital as the entity
-        // (Optional implementation detail)
-        // For Phase-1, valid authenticated admin access is sufficient.
-
-        List<AuditLog> logs = auditLogService.getLogsByEntity(entityType.toUpperCase(), entityId);
-        return ResponseEntity.ok(logs);
+        try {
+            Long hospitalId = securityHelper.getCurrentHospitalId();
+            if (hospitalId == null) {
+                return ResponseEntity.ok(java.util.Collections.emptyList());
+            }
+            List<AuditLog> logs = auditLogService.getLogsByEntityAndHospitalId(entityType.toUpperCase(), entityId, hospitalId);
+            return ResponseEntity.ok(logs);
+        } catch (Exception e) {
+            return ResponseEntity.ok(java.util.Collections.emptyList());
+        }
     }
 }

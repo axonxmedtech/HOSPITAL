@@ -16,6 +16,7 @@ import java.util.List;
 public class AuditLogService {
 
     private final AuditLogRepository auditLogRepository;
+    private final com.hms.security.SecurityContextHelper securityHelper;
 
     /**
      * Logs a system action.
@@ -39,10 +40,25 @@ public class AuditLogService {
         log.setEntityType(entityType);
         log.setEntityId(entityId);
         log.setReason(reason);
+        
+        try {
+            String role = securityHelper.getCurrentUserRole();
+            log.setPerformedByRole(role);
+        } catch (Exception ignored) {
+            // Ignore if called out of authenticated request context
+        }
+        
         auditLogRepository.save(log);
     }
 
-    public List<AuditLog> getLogsByHospitalId(Long hospitalId, String search) {
+    public List<AuditLog> getLogsByHospitalId(Long hospitalId, String search, String role) {
+        if (role != null && !role.isBlank()) {
+            if (search != null && !search.isBlank()) {
+                return auditLogRepository.findByHospitalIdAndPerformedByRoleAndActionContainingIgnoreCaseOrderByTimestampDesc(
+                        hospitalId, role, search);
+            }
+            return auditLogRepository.findByHospitalIdAndPerformedByRoleOrderByTimestampDesc(hospitalId, role);
+        }
         if (search != null && !search.isBlank()) {
             return auditLogRepository.findByHospitalIdAndActionContainingIgnoreCaseOrderByTimestampDesc(hospitalId,
                     search);
@@ -50,7 +66,15 @@ public class AuditLogService {
         return auditLogRepository.findByHospitalIdOrderByTimestampDesc(hospitalId);
     }
 
+    public List<AuditLog> getLogsByHospitalId(Long hospitalId, String search) {
+        return getLogsByHospitalId(hospitalId, search, null);
+    }
+
     public List<AuditLog> getLogsByEntity(String entityType, String entityId) {
         return auditLogRepository.findByEntityTypeAndEntityIdOrderByTimestampDesc(entityType, entityId);
+    }
+
+    public List<AuditLog> getLogsByEntityAndHospitalId(String entityType, String entityId, Long hospitalId) {
+        return auditLogRepository.findByEntityTypeAndEntityIdAndHospitalIdOrderByTimestampDesc(entityType, entityId, hospitalId);
     }
 }

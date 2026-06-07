@@ -49,6 +49,9 @@ public class AuditLog {
     @Column(name = "performed_by", nullable = false)
     private String performedBy; // Username/Email of the admin
 
+    @Column(name = "performed_by_role")
+    private String performedByRole;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime timestamp;
@@ -103,6 +106,14 @@ public class AuditLog {
 
     public void setPerformedBy(String performedBy) {
         this.performedBy = performedBy;
+    }
+
+    public String getPerformedByRole() {
+        return performedByRole;
+    }
+
+    public void setPerformedByRole(String performedByRole) {
+        this.performedByRole = performedByRole;
     }
 
     public LocalDateTime getTimestamp() {

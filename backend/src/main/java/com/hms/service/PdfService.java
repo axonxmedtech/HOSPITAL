@@ -1028,4 +1028,203 @@ public class PdfService {
 
         fTable.writeSelectedRows(0, -1, 36, 110, writer.getDirectContent());
     }
+
+    public ByteArrayInputStream generateMedicinesListPdf(
+            Hospital hospital,
+            Patient patient,
+            String title,
+            List<String[]> itemsList) {
+
+        Document document = new Document(PageSize.A4, 36, 36, 48, 180);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+        try {
+            PdfWriter writer = PdfWriter.getInstance(document, out);
+            addPageBorder(writer);
+            document.open();
+
+            // 1. Standard Header
+            addStyledHeader(document, hospital, title);
+
+            // 2. Metadata Section
+            PdfPTable metaTable = new PdfPTable(2);
+            metaTable.setWidthPercentage(100);
+            metaTable.setSpacingBefore(10f);
+            metaTable.setSpacingAfter(15f);
+
+            PdfPTable leftCol = new PdfPTable(2);
+            leftCol.setWidths(new float[]{1.2f, 2f});
+            
+            String patId = (patient != null && patient.getCustomId() != null) ? patient.getCustomId() : "-";
+            String patAgeGender = (patient != null) ? patient.getAge() + " / " + patient.getGender() : "-";
+            String dateStr = java.time.LocalDate.now().format(DateTimeFormatter.ofPattern("MMM dd, yyyy"));
+
+            addMetaRow(leftCol, "Date", dateStr);
+            addMetaRow(leftCol, "Patient ID", patId);
+            addMetaRow(leftCol, "Age / Gender", patAgeGender);
+
+            PdfPTable rightCol = new PdfPTable(2);
+            rightCol.setWidths(new float[]{1.2f, 2f});
+            
+            String patName = (patient != null && patient.getName() != null) ? patient.getName() : "Unknown";
+            String patAddress = (patient != null && patient.getAddress() != null) ? patient.getAddress() : "-";
+
+            addMetaRow(rightCol, "Patient Name", patName);
+            addMetaRow(rightCol, "Address", patAddress);
+
+            PdfPCell leftCell = new PdfPCell(leftCol);
+            leftCell.setBorder(Rectangle.NO_BORDER);
+            metaTable.addCell(leftCell);
+
+            PdfPCell rightCell = new PdfPCell(rightCol);
+            rightCell.setBorder(Rectangle.NO_BORDER);
+            metaTable.addCell(rightCell);
+
+            document.add(metaTable);
+
+            // Separator Line
+            Paragraph line = new Paragraph();
+            line.add(new LineSeparator(1f, 100, Color.LIGHT_GRAY, Element.ALIGN_CENTER, -2));
+            document.add(line);
+            document.add(new Paragraph("\n"));
+
+            // 3. Main Medicines Table
+            PdfPTable table = new PdfPTable(3);
+            table.setWidthPercentage(100);
+            table.setWidths(new float[]{1f, 6f, 2f});
+
+            addTableHeaderCell(table, "S.No.");
+            addTableHeaderCell(table, "Medicine / Item Description");
+            addTableHeaderCell(table, "Quantity");
+
+            if (itemsList != null && !itemsList.isEmpty()) {
+                int sr = 1;
+                for (String[] row : itemsList) {
+                    addTableCell(table, String.valueOf(sr++), false);
+                    addTableCell(table, row[0], false);
+                    addTableCell(table, row[1], false);
+                }
+            } else {
+                PdfPCell cell = new PdfPCell(new Phrase("No medicines or items recorded.", NORMAL_FONT));
+                cell.setColspan(3);
+                cell.setPadding(8f);
+                table.addCell(cell);
+            }
+            document.add(table);
+
+            // 4. Authorized Signature Block (fixed footer)
+            addFixedFooter(writer, patient, "-", "Authorized Signature");
+
+            document.close();
+
+        } catch (DocumentException e) {
+            throw new RuntimeException("Error generating Medicines List PDF", e);
+        }
+
+        return new ByteArrayInputStream(out.toByteArray());
+    }
+
+    public ByteArrayInputStream generateIpdPrescriptionPdf(
+            Hospital hospital,
+            Patient patient,
+            IpdAdmission ipd,
+            List<Prescription> prescriptions) {
+
+        Document document = new Document(PageSize.A4, 36, 36, 48, 180);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+        try {
+            PdfWriter writer = PdfWriter.getInstance(document, out);
+            addPageBorder(writer);
+            document.open();
+
+            // 1. Standard Header
+            addStyledHeader(document, hospital, "IPD PRESCRIPTION");
+
+            // 2. Metadata Section
+            PdfPTable metaTable = new PdfPTable(2);
+            metaTable.setWidthPercentage(100);
+            metaTable.setSpacingBefore(10f);
+            metaTable.setSpacingAfter(15f);
+
+            PdfPTable leftCol = new PdfPTable(2);
+            leftCol.setWidths(new float[]{1.2f, 2f});
+            
+            String ipdNo = (ipd != null) ? ipd.getIpdNumber() : "-";
+            String adDate = (ipd != null && ipd.getAdmissionDatetime() != null) 
+                    ? ipd.getAdmissionDatetime().format(DateTimeFormatter.ofPattern("MMM dd, yyyy")) 
+                    : "-";
+            String patId = (patient != null && patient.getCustomId() != null) ? patient.getCustomId() : "-";
+            String patAgeGender = (patient != null) ? patient.getAge() + " / " + patient.getGender() : "-";
+
+            addMetaRow(leftCol, "IPD Case#", ipdNo);
+            addMetaRow(leftCol, "Admission Date", adDate);
+            addMetaRow(leftCol, "Patient ID", patId);
+            addMetaRow(leftCol, "Age / Gender", patAgeGender);
+
+            PdfPTable rightCol = new PdfPTable(2);
+            rightCol.setWidths(new float[]{1.2f, 2f});
+            
+            String patName = (patient != null && patient.getName() != null) ? patient.getName() : "Unknown";
+            String patAddress = (patient != null && patient.getAddress() != null) ? patient.getAddress() : "-";
+            String primaryDiag = (ipd != null && ipd.getPrimaryDiagnosis() != null) ? ipd.getPrimaryDiagnosis() : "-";
+
+            addMetaRow(rightCol, "Patient Name", patName);
+            addMetaRow(rightCol, "Address", patAddress);
+            addMetaRow(rightCol, "Primary Diag", primaryDiag);
+
+            PdfPCell leftCell = new PdfPCell(leftCol);
+            leftCell.setBorder(Rectangle.NO_BORDER);
+            metaTable.addCell(leftCell);
+
+            PdfPCell rightCell = new PdfPCell(rightCol);
+            rightCell.setBorder(Rectangle.NO_BORDER);
+            metaTable.addCell(rightCell);
+
+            document.add(metaTable);
+
+            // Separator Line
+            Paragraph line = new Paragraph();
+            line.add(new LineSeparator(1f, 100, Color.LIGHT_GRAY, Element.ALIGN_CENTER, -2));
+            document.add(line);
+            document.add(new Paragraph("\n"));
+
+            // 3. Main Medication Table
+            PdfPTable rxTable = new PdfPTable(5);
+            rxTable.setWidthPercentage(100);
+            rxTable.setWidths(new float[]{3f, 1f, 1f, 1.5f, 2.5f});
+
+            addTableHeaderCell(rxTable, "Medicine");
+            addTableHeaderCell(rxTable, "Dosage");
+            addTableHeaderCell(rxTable, "Freq");
+            addTableHeaderCell(rxTable, "Duration");
+            addTableHeaderCell(rxTable, "Instruction");
+
+            if (prescriptions != null && !prescriptions.isEmpty()) {
+                for (Prescription p : prescriptions) {
+                    addTableCell(rxTable, p.getMedicineName(), false);
+                    addTableCell(rxTable, p.getDosage(), false);
+                    addTableCell(rxTable, p.getFrequency(), false);
+                    addTableCell(rxTable, p.getDuration(), false);
+                    addTableCell(rxTable, p.getInstructions(), false);
+                }
+            } else {
+                PdfPCell cell = new PdfPCell(new Phrase("No medications prescribed.", NORMAL_FONT));
+                cell.setColspan(5);
+                cell.setPadding(8f);
+                rxTable.addCell(cell);
+            }
+            document.add(rxTable);
+
+            // 4. Fixed Footer Style
+            addFixedFooter(writer, patient, ipdNo, "Prescription Authorized Signature");
+
+            document.close();
+
+        } catch (DocumentException e) {
+            throw new RuntimeException("Error generating IPD Prescription PDF", e);
+        }
+
+        return new ByteArrayInputStream(out.toByteArray());
+    }
 }

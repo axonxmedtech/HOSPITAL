@@ -17,7 +17,7 @@ const ActivityFeed = () => {
     // Also expose a way to refresh externally if needed (e.g. via context or prop)
     const fetchLogs = async () => {
         try {
-            const data = await hospitalService.getAuditLogs();
+            const data = await hospitalService.getAuditLogs(null, null, 20);
             setLogs(Array.isArray(data) ? data : []);
         } catch (err) {
             console.error("Failed to load activity logs", err);

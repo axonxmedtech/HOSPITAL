@@ -265,6 +265,20 @@ public class BillingController {
             // Recalculate bill total
             billingService.recalculateTotal(id);
 
+            // Audit logging
+            try {
+                auditLogService.logAction(
+                        "BILLING_ITEMS_UPDATED",
+                        "Billing items updated for bill " + billing.getCustomId() + ".",
+                        securityHelper.getCurrentUserEmail(),
+                        hospitalId,
+                        "BILLING",
+                        billing.getPublicId(),
+                        null);
+            } catch (Exception e) {
+                logger.warn("Failed to create audit log for billing items update", e);
+            }
+
             // Broadcast refresh
             try {
                 webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
@@ -278,6 +292,9 @@ public class BillingController {
 
     @Autowired
     private com.hms.security.HospitalWebSocketHandler webSocketHandler;
+
+    @Autowired
+    private com.hms.service.AuditLogService auditLogService;
 
     @Autowired
     private PdfService pdfService;
@@ -433,6 +450,35 @@ public class BillingController {
                 return ResponseEntity.badRequest().body("Invalid amount");
             }
 
+            // Calculate remaining balance before saving new payment
+            {
+                List<BillingItem> itemsVal = billingItemRepository.findByBillingId(billingId);
+                List<com.hms.entity.BillingMedicine> medicinesVal = billingMedicineRepository.findByBillingId(billingId);
+                BigDecimal totalVal = BigDecimal.ZERO;
+                if (itemsVal != null && !itemsVal.isEmpty()) {
+                    for (BillingItem it : itemsVal) {
+                        if (it.getAmount() != null) totalVal = totalVal.add(it.getAmount());
+                    }
+                }
+                if (medicinesVal != null && !medicinesVal.isEmpty()) {
+                    for (com.hms.entity.BillingMedicine med : medicinesVal) {
+                        if (med.getAmount() != null) totalVal = totalVal.add(med.getAmount());
+                    }
+                }
+                if (totalVal.compareTo(BigDecimal.ZERO) == 0 && (itemsVal == null || itemsVal.isEmpty()) && (medicinesVal == null || medicinesVal.isEmpty())) {
+                    totalVal = bill.getAmount() != null ? bill.getAmount() : BigDecimal.ZERO;
+                }
+
+                List<BillingPayment> paymentsVal = billingPaymentRepository.findByBillingId(billingId);
+                BigDecimal paidVal = BigDecimal.ZERO;
+                for (BillingPayment p : paymentsVal) if (p.getAmount() != null) paidVal = paidVal.add(p.getAmount());
+
+                BigDecimal balanceVal = totalVal.subtract(paidVal);
+                if (req.amount.compareTo(balanceVal) > 0) {
+                    return ResponseEntity.badRequest().body("The remaining bill is less than the payment amount");
+                }
+            }
+
             BillingPayment payment = new BillingPayment();
             payment.setBillingId(billingId);
             payment.setHospitalId(bill.getHospitalId());
@@ -440,6 +486,20 @@ public class BillingController {
             payment.setMode(req.mode);
             payment.setReference(req.reference);
             billingPaymentRepository.save(payment);
+
+            // Audit logging
+            try {
+                auditLogService.logAction(
+                        "BILLING_PAYMENT_RECORDED",
+                        "Recorded payment of " + req.amount + " (" + req.mode + ") for bill " + bill.getCustomId() + ".",
+                        securityHelper.getCurrentUserEmail(),
+                        bill.getHospitalId(),
+                        "BILLING",
+                        bill.getPublicId(),
+                        null);
+            } catch (Exception e) {
+                logger.warn("Failed to create audit log for billing payment", e);
+            }
 
             // recalc totals
             List<BillingItem> items = billingItemRepository.findByBillingId(billingId);

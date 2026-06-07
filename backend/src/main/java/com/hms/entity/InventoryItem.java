@@ -43,4 +43,7 @@ public class InventoryItem {
      */
     @Column(name = "linked_fee_id")
     private Long linkedFeeId;
+
+    @Column(name = "relative_item_ids", length = 1000)
+    private String relativeItemIds; // JSON array of numbers, e.g. "[12, 15]"
 }

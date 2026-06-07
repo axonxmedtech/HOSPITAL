@@ -6,6 +6,7 @@ import com.hms.repository.*;
 import com.hms.security.SecurityContextHelper;
 import com.hms.security.JwtUtil;
 import com.hms.service.PdfService;
+import com.hms.service.AuditLogService;
 import com.hms.service.hospital.BillingService;
 import com.hms.service.hospital.PatientService;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,6 +33,9 @@ public class BillingControllerTest {
 
     @MockBean
     private JwtUtil jwtUtil;
+
+    @MockBean
+    private AuditLogService auditLogService;
 
     @MockBean
     private BillingService billingService;

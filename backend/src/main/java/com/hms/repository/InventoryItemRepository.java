@@ -15,6 +15,8 @@ public interface InventoryItemRepository extends JpaRepository<InventoryItem, Lo
 
     boolean existsByNameAndHospitalId(String name, Long hospitalId);
 
+    Optional<InventoryItem> findByNameAndHospitalId(String name, Long hospitalId);
+
     Optional<InventoryItem> findByIdAndHospitalId(Long id, Long hospitalId);
 
     @Query("SELECT i FROM InventoryItem i WHERE i.hospitalId = :hospitalId AND LOWER(i.name) LIKE LOWER(CONCAT('%', :query, '%'))")

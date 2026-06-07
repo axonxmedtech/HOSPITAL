@@ -436,6 +436,10 @@ const hospitalService = {
         const response = await apiClient.post(`/api/ipd/${id}/administer`, { administeredItems: items });
         return response.data;
     },
+    administerIpdHospitalItems: async (id, items) => {
+        const response = await apiClient.post(`/api/ipd/${id}/administer-hospital-items`, { items });
+        return response.data;
+    },
     addIpdPrescription: async (id, payload) => {
         const response = await apiClient.post(`/api/ipd/${id}/prescriptions`, payload);
         return response.data;
@@ -589,11 +593,16 @@ const hospitalService = {
 
     // ========== Audit Log APIs ==========
 
-    /**
-     * Get recent activity for dashboard
-     */
-    getAuditLogs: async (searchTerm) => {
-        const response = await apiClient.get(`/hospital/audit-logs${searchTerm ? `?search=${encodeURIComponent(searchTerm)}` : ''}`);
+    getAuditLogs: async (searchTerm, role, limit) => {
+        let url = '/hospital/audit-logs';
+        const params = [];
+        if (searchTerm) params.push(`search=${encodeURIComponent(searchTerm)}`);
+        if (role) params.push(`role=${encodeURIComponent(role)}`);
+        if (limit) params.push(`limit=${limit}`);
+        if (params.length > 0) {
+            url += `?${params.join('&')}`;
+        }
+        const response = await apiClient.get(url);
         return response.data;
     },
 
@@ -715,6 +724,30 @@ const hospitalService = {
 
     deleteHospitalInventory: async (id) => {
         const response = await apiClient.delete(`/hospital/hospital-inventory/inventory/${id}`);
+        return response.data;
+    },
+
+    downloadOpdMedicinesList: async (opdId) => {
+        const response = await apiClient.get(`/hospital/patients/opd/${opdId}/medicines/pdf`, {
+            responseType: 'blob',
+            timeout: 60000
+        });
+        return response.data;
+    },
+
+    downloadIpdPrescription: async (ipdId) => {
+        const response = await apiClient.get(`/hospital/patients/ipd/${ipdId}/prescription/pdf`, {
+            responseType: 'blob',
+            timeout: 60000
+        });
+        return response.data;
+    },
+
+    downloadIpdMedicinesList: async (ipdId) => {
+        const response = await apiClient.get(`/hospital/patients/ipd/${ipdId}/medicines/pdf`, {
+            responseType: 'blob',
+            timeout: 60000
+        });
         return response.data;
     },
 };

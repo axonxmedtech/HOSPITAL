@@ -1,6 +1,9 @@
 package com.hms.service.hospital;
 
 import com.hms.entity.Patient;
+import com.hms.entity.Billing;
+import com.hms.entity.BillingItem;
+import com.hms.entity.BillingMedicine;
 import com.hms.repository.PatientRepository;
 import com.hms.security.SecurityContextHelper;
 import com.hms.security.HospitalWebSocketHandler;
@@ -40,6 +43,42 @@ public class PatientService {
 
     @Autowired
     private com.hms.repository.MedicalRecordRepository medicalRecordRepository;
+
+    @Autowired
+    private com.hms.repository.IpdAdmissionRepository ipdAdmissionRepository;
+
+    @Autowired
+    private com.hms.repository.BillingItemRepository billingItemRepository;
+
+    @Autowired
+    private com.hms.repository.BillingMedicineRepository billingMedicineRepository;
+
+    @Autowired
+    private com.hms.repository.AuditLogRepository auditLogRepository;
+
+    @Autowired
+    private com.hms.repository.BedRepository bedRepository;
+
+    @Autowired
+    private com.hms.repository.WardRepository wardRepository;
+
+    @Autowired
+    private com.hms.repository.IpdBedHistoryRepository ipdBedHistoryRepository;
+
+    @Autowired
+    private com.hms.repository.OpdRepository opdRepository;
+
+    @Autowired
+    private com.hms.repository.HospitalRepository hospitalRepository;
+
+    @Autowired
+    private com.hms.repository.DischargeSummaryRepository dischargeSummaryRepository;
+
+    @Autowired
+    private com.hms.repository.InventoryItemRepository inventoryItemRepository;
+
+    @Autowired
+    private com.hms.service.PdfService pdfService;
 
     /**
      * Add a new patient
@@ -107,6 +146,23 @@ public class PatientService {
         existingPatient.setMedicalHistory(updatedData.getMedicalHistory());
 
         Patient saved = patientRepository.save(existingPatient);
+
+        // Create audit log
+        try {
+            Long hid = securityHelper.getCurrentHospitalId();
+            if (hid != null) {
+                auditLogService.logAction(
+                        "PATIENT_UPDATED",
+                        "Patient " + saved.getName() + " details were updated.",
+                        securityHelper.getCurrentUserEmail(),
+                        hid,
+                        "PATIENT",
+                        saved.getPublicId(),
+                        null);
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to create audit log for patient update", e);
+        }
 
         // Broadcast real-time refresh
         try {
@@ -352,6 +408,28 @@ public class PatientService {
         List<com.hms.entity.MedicalRecord> medicalHistory = medicalRecordRepository
                 .findByPatientIdOrderByCreatedAtDesc(patient.getId());
 
+        // Get IPD admissions
+        List<com.hms.entity.IpdAdmission> ipdAdmissions = ipdAdmissionRepository
+                .findByPatientIdOrderByAdmissionDatetimeDesc(patient.getId());
+
+        // Group IPD Admissions by ID
+        java.util.List<Long> ipdAdmissionIds = new java.util.ArrayList<>();
+        java.util.List<String> ipdAdmissionIdStrings = new java.util.ArrayList<>();
+        for (com.hms.entity.IpdAdmission ipd : ipdAdmissions) {
+            ipdAdmissionIds.add(ipd.getId());
+            ipdAdmissionIdStrings.add(ipd.getId().toString());
+        }
+
+        // Batch-fetch medical records for IPD admissions
+        java.util.Map<Long, List<com.hms.entity.MedicalRecord>> ipdRecordMap = new java.util.HashMap<>();
+        java.util.List<com.hms.entity.MedicalRecord> ipdRecords = java.util.Collections.emptyList();
+        if (!ipdAdmissionIds.isEmpty()) {
+            ipdRecords = medicalRecordRepository.findByIpdAdmissionIdIn(ipdAdmissionIds);
+            for (com.hms.entity.MedicalRecord mr : ipdRecords) {
+                ipdRecordMap.computeIfAbsent(mr.getIpdAdmissionId(), k -> new java.util.ArrayList<>()).add(mr);
+            }
+        }
+
         // Build response
         java.util.Map<String, Object> response = new java.util.HashMap<>();
 
@@ -377,6 +455,19 @@ public class PatientService {
             }
             medicalRecordIds.add(record.getId());
         }
+        for (com.hms.entity.IpdAdmission ipd : ipdAdmissions) {
+            if (ipd.getDoctorId() != null) {
+                doctorIds.add(ipd.getDoctorId());
+            }
+        }
+        for (com.hms.entity.MedicalRecord mr : ipdRecords) {
+            if (mr.getDoctorId() != null) {
+                doctorIds.add(mr.getDoctorId());
+            }
+            if (!medicalRecordIds.contains(mr.getId())) {
+                medicalRecordIds.add(mr.getId());
+            }
+        }
 
         // Batch fetch all doctors in one query
         java.util.Map<Long, String> doctorNameMap = new java.util.HashMap<>();
@@ -397,7 +488,7 @@ public class PatientService {
             }
         }
 
-        // Medical history - map from pre-fetched data (no more individual queries)
+        // 1. Flat medical history - map from pre-fetched data (for backward compatibility)
         List<java.util.Map<String, Object>> historyList = new java.util.ArrayList<>();
         for (com.hms.entity.MedicalRecord record : medicalHistory) {
             java.util.Map<String, Object> historyItem = new java.util.HashMap<>();
@@ -419,6 +510,212 @@ public class PatientService {
             historyList.add(historyItem);
         }
         response.put("medicalHistory", historyList);
+
+        // 2. Populate OPD History (detailed)
+        List<Billing> patientBills = billingRepository.findByPatientIdOrderByCreatedAtDesc(patient.getId());
+        java.util.Map<Long, Billing> opdToBillMap = new java.util.HashMap<>();
+        for (Billing b : patientBills) {
+            if (b.getOpdId() != null) {
+                opdToBillMap.put(b.getOpdId(), b);
+            }
+        }
+
+        java.util.List<Long> opdBillIds = new java.util.ArrayList<>();
+        for (Billing b : opdToBillMap.values()) {
+            opdBillIds.add(b.getId());
+        }
+
+        java.util.Map<Long, java.util.List<com.hms.entity.BillingItem>> opdBillItemsMap = new java.util.HashMap<>();
+        java.util.Map<Long, java.util.List<com.hms.entity.BillingMedicine>> opdBillMedsMap = new java.util.HashMap<>();
+        if (!opdBillIds.isEmpty()) {
+            java.util.List<com.hms.entity.BillingItem> items = billingItemRepository.findByBillingIdIn(opdBillIds);
+            for (com.hms.entity.BillingItem item : items) {
+                opdBillItemsMap.computeIfAbsent(item.getBillingId(), k -> new java.util.ArrayList<>()).add(item);
+            }
+            java.util.List<com.hms.entity.BillingMedicine> meds = billingMedicineRepository.findByBillingIdIn(opdBillIds);
+            for (com.hms.entity.BillingMedicine med : meds) {
+                opdBillMedsMap.computeIfAbsent(med.getBillingId(), k -> new java.util.ArrayList<>()).add(med);
+            }
+        }
+
+        List<java.util.Map<String, Object>> opdHistoryList = new java.util.ArrayList<>();
+        for (com.hms.entity.MedicalRecord record : medicalHistory) {
+            String vt = record.getVisitType();
+            if (vt == null || vt.equalsIgnoreCase("OPD")) {
+                java.util.Map<String, Object> opdItem = new java.util.HashMap<>();
+                opdItem.put("id", record.getId());
+                opdItem.put("date", record.getCreatedAt());
+                opdItem.put("symptoms", record.getSymptoms());
+                opdItem.put("diagnosis", record.getDiagnosis());
+                opdItem.put("treatment", record.getTreatmentNotes());
+                opdItem.put("followUpDate", record.getFollowUpDate());
+                opdItem.put("opdId", record.getOpdId());
+
+                String doctorName = "Unknown Doctor";
+                if (record.getDoctorId() != null) {
+                    doctorName = doctorNameMap.getOrDefault(record.getDoctorId(), "Unknown Doctor");
+                }
+                opdItem.put("doctorName", doctorName);
+                opdItem.put("prescriptions", prescriptionMap.getOrDefault(record.getId(), java.util.Collections.emptyList()));
+
+                // Billed Items & In-Clinic Medicines
+                java.util.List<java.util.Map<String, Object>> hospitalItems = new java.util.ArrayList<>();
+                java.util.List<java.util.Map<String, Object>> inClinicMedicines = new java.util.ArrayList<>();
+                if (record.getOpdId() != null) {
+                    Billing b = opdToBillMap.get(record.getOpdId());
+                    if (b != null) {
+                        java.util.List<com.hms.entity.BillingItem> items = opdBillItemsMap.getOrDefault(b.getId(), java.util.Collections.emptyList());
+                        for (com.hms.entity.BillingItem it : items) {
+                            java.util.Map<String, Object> itemMap = new java.util.HashMap<>();
+                            itemMap.put("description", it.getDescription());
+                            itemMap.put("amount", it.getAmount());
+                            hospitalItems.add(itemMap);
+                        }
+                        java.util.List<com.hms.entity.BillingMedicine> meds = opdBillMedsMap.getOrDefault(b.getId(), java.util.Collections.emptyList());
+                        for (com.hms.entity.BillingMedicine me : meds) {
+                            java.util.Map<String, Object> medMap = new java.util.HashMap<>();
+                            medMap.put("medicineName", me.getMedicineName());
+                            medMap.put("quantity", me.getQuantity());
+                            medMap.put("unitPrice", me.getUnitPrice());
+                            medMap.put("amount", me.getAmount());
+                            inClinicMedicines.add(medMap);
+                        }
+                    }
+                }
+                opdItem.put("hospitalItems", hospitalItems);
+                opdItem.put("inClinicMedicines", inClinicMedicines);
+
+                opdHistoryList.add(opdItem);
+            }
+        }
+        response.put("opdHistory", opdHistoryList);
+
+        // Fetch beds & wards to construct O(1) maps for resolving names
+        java.util.List<com.hms.entity.Bed> allBeds = bedRepository.findAll();
+        java.util.List<com.hms.entity.Ward> allWards = wardRepository.findAll();
+        java.util.Map<Long, String> bedCodeMap = new java.util.HashMap<>();
+        for (com.hms.entity.Bed b : allBeds) {
+            bedCodeMap.put(b.getBedId(), b.getBedCode());
+        }
+        java.util.Map<Long, String> wardNameMap = new java.util.HashMap<>();
+        for (com.hms.entity.Ward w : allWards) {
+            wardNameMap.put(w.getWardId(), w.getWardName());
+        }
+
+        // 3. Populate IPD History (consolidated) from IpdBedHistory table
+        java.util.Map<Long, java.util.List<java.util.Map<String, Object>>> ipdBedLogsMap = new java.util.HashMap<>();
+        if (!ipdAdmissionIds.isEmpty()) {
+            java.util.List<com.hms.entity.IpdBedHistory> bedHistories = ipdBedHistoryRepository.findByIpdAdmissionIdInOrderByAssignedAtAsc(ipdAdmissionIds);
+            for (com.hms.entity.IpdBedHistory hist : bedHistories) {
+                try {
+                    String bedCode = bedCodeMap.getOrDefault(hist.getBedId(), "Unknown");
+                    String wardName = wardNameMap.getOrDefault(hist.getWardId(), "Unknown");
+                    String details;
+                    if (hist.getReleasedAt() == null) {
+                        details = "Current Assignment: Bed " + bedCode + " in " + wardName;
+                    } else {
+                        details = "Transferred from Bed " + bedCode + " in " + wardName + " (Released: " + hist.getReleasedAt().format(java.time.format.DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm")) + ")";
+                    }
+
+                    java.util.Map<String, Object> logMap = new java.util.HashMap<>();
+                    logMap.put("timestamp", hist.getAssignedAt());
+                    logMap.put("details", details);
+                    logMap.put("id", hist.getId());
+                    logMap.put("wardId", hist.getWardId());
+                    logMap.put("bedId", hist.getBedId());
+                    logMap.put("wardName", wardName);
+                    logMap.put("bedCode", bedCode);
+                    logMap.put("assignedAt", hist.getAssignedAt());
+                    logMap.put("releasedAt", hist.getReleasedAt());
+                    ipdBedLogsMap.computeIfAbsent(hist.getIpdAdmissionId(), k -> new java.util.ArrayList<>()).add(logMap);
+                } catch (Exception ignored) {}
+            }
+        }
+
+        java.util.List<java.util.Map<String, Object>> ipdHistoryList = new java.util.ArrayList<>();
+        for (com.hms.entity.IpdAdmission ipd : ipdAdmissions) {
+            java.util.Map<String, Object> ipdItem = new java.util.HashMap<>();
+            ipdItem.put("id", ipd.getId());
+            ipdItem.put("ipdNumber", ipd.getIpdNumber());
+            ipdItem.put("admissionDatetime", ipd.getAdmissionDatetime());
+            ipdItem.put("dischargeDatetime", ipd.getDischargeDatetime());
+            ipdItem.put("status", ipd.getStatus());
+            ipdItem.put("primaryDiagnosis", ipd.getPrimaryDiagnosis());
+            ipdItem.put("notes", ipd.getNotes());
+
+            String primaryDoc = "Unknown Doctor";
+            if (ipd.getDoctorId() != null) {
+                primaryDoc = doctorNameMap.getOrDefault(ipd.getDoctorId(), "Unknown Doctor");
+            }
+            ipdItem.put("doctorName", primaryDoc);
+
+            String currentBedCode = ipd.getBedId() != null ? bedCodeMap.getOrDefault(ipd.getBedId(), "N/A") : "N/A";
+            String currentWardName = ipd.getWardId() != null ? wardNameMap.getOrDefault(ipd.getWardId(), "N/A") : "N/A";
+            ipdItem.put("currentBed", currentBedCode);
+            ipdItem.put("currentWard", currentWardName);
+
+            // Fetch doctor entries for this IPD admission
+            java.util.List<com.hms.entity.MedicalRecord> records = ipdRecordMap.getOrDefault(ipd.getId(), java.util.Collections.emptyList());
+            java.util.List<com.hms.entity.MedicalRecord> sortedRecords = new java.util.ArrayList<>(records);
+            sortedRecords.sort(java.util.Comparator.comparing(com.hms.entity.MedicalRecord::getCreatedAt));
+
+            java.util.List<java.util.Map<String, Object>> doctorEntries = new java.util.ArrayList<>();
+            for (com.hms.entity.MedicalRecord record : sortedRecords) {
+                java.util.Map<String, Object> recordMap = new java.util.HashMap<>();
+                recordMap.put("id", record.getId());
+                recordMap.put("date", record.getCreatedAt());
+                recordMap.put("symptoms", record.getSymptoms());
+                recordMap.put("diagnosis", record.getDiagnosis());
+                recordMap.put("treatmentNotes", record.getTreatmentNotes());
+
+                String recordDocName = "Unknown Doctor";
+                if (record.getDoctorId() != null) {
+                    recordDocName = doctorNameMap.getOrDefault(record.getDoctorId(), "Unknown Doctor");
+                }
+                recordMap.put("doctorName", recordDocName);
+
+                // Parse administered items JSON
+                java.util.List<java.util.Map<String, Object>> administeredItems = new java.util.ArrayList<>();
+                if (record.getAdministeredItemsJson() != null && !record.getAdministeredItemsJson().isEmpty()) {
+                    try {
+                        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                        java.util.List<?> items = mapper.readValue(record.getAdministeredItemsJson(), java.util.List.class);
+                        for (Object item : items) {
+                            if (item instanceof java.util.Map) {
+                                java.util.Map<?, ?> im = (java.util.Map<?, ?>) item;
+                                java.util.Map<String, Object> amMap = new java.util.HashMap<>();
+                                amMap.put("medicineName", im.get("medicineName"));
+                                amMap.put("quantity", im.get("quantity"));
+                                administeredItems.add(amMap);
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                }
+                recordMap.put("administeredItems", administeredItems);
+                doctorEntries.add(recordMap);
+            }
+            ipdItem.put("doctorEntries", doctorEntries);
+
+            // Bed occupancy changes list
+            java.util.List<java.util.Map<String, Object>> bedHistory = ipdBedLogsMap.getOrDefault(ipd.getId(), java.util.Collections.emptyList());
+            ipdItem.put("bedHistory", bedHistory);
+
+            // Discharge summary (final diagnosis, treatment, notes, follow-up date)
+            try {
+                dischargeSummaryRepository.findByIpdAdmissionId(ipd.getId()).ifPresent(ds -> {
+                    java.util.Map<String, Object> dsMap = new java.util.HashMap<>();
+                    dsMap.put("finalDiagnosis", ds.getFinalDiagnosis());
+                    dsMap.put("treatmentGiven", ds.getTreatmentGiven());
+                    dsMap.put("dischargeNotes", ds.getDischargeNotes());
+                    dsMap.put("followUpDate", ds.getFollowUpDate());
+                    dsMap.put("createdAt", ds.getCreatedAt());
+                    ipdItem.put("dischargeSummary", dsMap);
+                });
+            } catch (Exception ignored) {}
+
+            ipdHistoryList.add(ipdItem);
+        }
+        response.put("ipdHistory", ipdHistoryList);
 
         return response;
     }
@@ -451,5 +748,134 @@ public class PatientService {
         return patientRepository.findAllById(ids).stream()
                 .filter(p -> p.getHospitalId().equals(hospitalId))
                 .collect(java.util.stream.Collectors.toList());
+    }
+
+    public java.io.ByteArrayInputStream getOpdMedicinesPdf(Long opdId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
+                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+        
+        com.hms.entity.MedicalRecord record = medicalRecordRepository.findByOpdId(opdId)
+                .orElseThrow(() -> new RuntimeException("Medical record not found for OPD"));
+        
+        com.hms.entity.Patient patient = patientRepository.findById(record.getPatientId())
+                .orElseThrow(() -> new RuntimeException("Patient not found"));
+
+        com.hms.entity.Billing bill = billingRepository.findByOpdId(opdId).orElse(null);
+        java.util.List<String[]> itemsList = new java.util.ArrayList<>();
+        if (bill != null) {
+            java.util.List<com.hms.entity.BillingItem> items = billingItemRepository.findByBillingId(bill.getId());
+            for (com.hms.entity.BillingItem it : items) {
+                String desc = it.getDescription();
+                if (desc != null) {
+                    String[] parsed = parseBillingItemDescription(desc);
+                    if (parsed != null) {
+                        String baseName = parsed[0];
+                        String qty = parsed[1];
+                        if (inventoryItemRepository.existsByNameAndHospitalId(baseName, hospitalId)) {
+                            itemsList.add(new String[]{baseName, qty});
+                        }
+                    }
+                }
+            }
+            java.util.List<com.hms.entity.BillingMedicine> meds = billingMedicineRepository.findByBillingId(bill.getId());
+            for (com.hms.entity.BillingMedicine me : meds) {
+                itemsList.add(new String[]{me.getMedicineName() != null ? me.getMedicineName() : "Medicine", String.valueOf(me.getQuantity())});
+            }
+        }
+        return pdfService.generateMedicinesListPdf(hospital, patient, "OPD MEDICINES & ITEMS LIST", itemsList);
+    }
+
+    public java.io.ByteArrayInputStream getIpdMedicinesPdf(Long ipdId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
+                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+        
+        com.hms.entity.IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId)
+                .orElseThrow(() -> new RuntimeException("IPD Admission not found"));
+        
+        com.hms.entity.Patient patient = patientRepository.findById(ipd.getPatientId())
+                .orElseThrow(() -> new RuntimeException("Patient not found"));
+
+        java.util.List<Billing> bills = billingRepository.findByIpdAdmissionId(ipdId);
+        java.util.List<String[]> itemsList = new java.util.ArrayList<>();
+        
+        if (bills != null && !bills.isEmpty()) {
+            Billing bill = bills.get(0);
+            java.util.List<com.hms.entity.BillingItem> items = billingItemRepository.findByBillingId(bill.getId());
+            for (com.hms.entity.BillingItem it : items) {
+                String desc = it.getDescription();
+                if (desc != null) {
+                    String[] parsed = parseBillingItemDescription(desc);
+                    if (parsed != null) {
+                        String baseName = parsed[0];
+                        String qty = parsed[1];
+                        if (inventoryItemRepository.existsByNameAndHospitalId(baseName, hospitalId)) {
+                            itemsList.add(new String[]{baseName, qty});
+                        }
+                    }
+                }
+            }
+            java.util.List<com.hms.entity.BillingMedicine> meds = billingMedicineRepository.findByBillingId(bill.getId());
+            for (com.hms.entity.BillingMedicine me : meds) {
+                itemsList.add(new String[]{me.getMedicineName() != null ? me.getMedicineName() : "Medicine", String.valueOf(me.getQuantity())});
+            }
+        }
+        
+        if (itemsList.isEmpty()) {
+            java.util.List<com.hms.entity.MedicalRecord> records = medicalRecordRepository.findByIpdAdmissionIdOrderByCreatedAtDesc(ipdId);
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            for (com.hms.entity.MedicalRecord record : records) {
+                if (record.getAdministeredItemsJson() != null && !record.getAdministeredItemsJson().isEmpty()) {
+                    try {
+                        java.util.List<?> items = mapper.readValue(record.getAdministeredItemsJson(), java.util.List.class);
+                        for (Object item : items) {
+                            if (item instanceof java.util.Map) {
+                                java.util.Map<?, ?> im = (java.util.Map<?, ?>) item;
+                                String name = String.valueOf(im.get("medicineName"));
+                                String qty = String.valueOf(im.get("quantity"));
+                                itemsList.add(new String[]{name, qty});
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
+        }
+        return pdfService.generateMedicinesListPdf(hospital, patient, "IPD MEDICINES & ADMINISTERED ITEMS", itemsList);
+    }
+
+    private String[] parseBillingItemDescription(String desc) {
+        if (desc == null) return null;
+        String baseName = desc.trim();
+        String qty = "1";
+        if (baseName.contains(" (Qty: ")) {
+            int idx = baseName.indexOf(" (Qty: ");
+            String rest = baseName.substring(idx + 7);
+            baseName = baseName.substring(0, idx).trim();
+            if (rest.contains(")")) {
+                qty = rest.substring(0, rest.indexOf(")")).trim();
+            }
+        } else if (baseName.contains(" x")) {
+            int idx = baseName.lastIndexOf(" x");
+            qty = baseName.substring(idx + 2).trim();
+            baseName = baseName.substring(0, idx).trim();
+        }
+        return new String[]{baseName, qty};
+    }
+
+    public java.io.ByteArrayInputStream getIpdPrescriptionPdf(Long ipdId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
+                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+        
+        com.hms.entity.IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId)
+                .orElseThrow(() -> new RuntimeException("IPD Admission not found"));
+        
+        com.hms.entity.Patient patient = patientRepository.findById(ipd.getPatientId())
+                .orElseThrow(() -> new RuntimeException("Patient not found"));
+
+        java.util.List<com.hms.entity.Prescription> prescriptions = prescriptionRepository.findByIpdAdmissionIdOrderByStartDate(ipdId);
+        
+        return pdfService.generateIpdPrescriptionPdf(hospital, patient, ipd, prescriptions);
     }
 }

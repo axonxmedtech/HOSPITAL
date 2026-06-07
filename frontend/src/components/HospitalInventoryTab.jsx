@@ -22,6 +22,11 @@ const HospitalInventoryTab = () => {
     const [stockItemQuery, setStockItemQuery] = useState('');
     const [showStockSuggestions, setShowStockSuggestions] = useState(false);
 
+    // Relative items states for catalog item
+    const [selectedRelativeItems, setSelectedRelativeItems] = useState([]);
+    const [relativeItemSearch, setRelativeItemSearch] = useState('');
+    const [showRelativeSuggestions, setShowRelativeSuggestions] = useState(false);
+
     useEffect(() => {
         if (stockModal.isOpen) {
             setStockItemQuery(stockModal.data?.name || '');
@@ -30,6 +35,24 @@ const HospitalInventoryTab = () => {
         }
         setShowStockSuggestions(false);
     }, [stockModal.isOpen, stockModal.data]);
+
+    useEffect(() => {
+        if (catalogModal.isOpen) {
+            if (catalogModal.isEdit && catalogModal.data) {
+                try {
+                    const ids = JSON.parse(catalogModal.data.relativeItemIds || '[]');
+                    const matched = catalogList.filter(x => ids.includes(x.id)).map(x => ({ id: x.id, name: x.name }));
+                    setSelectedRelativeItems(matched);
+                } catch (e) {
+                    setSelectedRelativeItems([]);
+                }
+            } else {
+                setSelectedRelativeItems([]);
+            }
+            setRelativeItemSearch('');
+            setShowRelativeSuggestions(false);
+        }
+    }, [catalogModal.isOpen, catalogModal.isEdit, catalogModal.data, catalogList]);
 
     // Fetch catalog list
     const fetchCatalog = async () => {
@@ -147,7 +170,8 @@ const HospitalInventoryTab = () => {
             type,
             manufacturer: manufacturer ? manufacturer : null,
             // Parse as number (custom fee ID is a Long in DB); null if empty/invalid
-            linkedFeeId: linkedFeeId && !isNaN(linkedFeeId) ? Number(linkedFeeId) : null
+            linkedFeeId: linkedFeeId && !isNaN(linkedFeeId) ? Number(linkedFeeId) : null,
+            relativeItemIds: JSON.stringify(selectedRelativeItems.map(x => x.id))
         };
 
         try {
@@ -607,6 +631,79 @@ const HospitalInventoryTab = () => {
                                      ))}
                                  </select>
                                  <p className="text-xs text-gray-400 mt-1">Link a custom fee from the Fees tab. When this item is used in a consultation/IPD, the linked fee will be auto-applied to the bill.</p>
+                            </div>
+
+                            {/* Relative Items search and select */}
+                            <div className="relative">
+                                <label className="block text-sm font-semibold text-gray-700 mb-1">Relative Items (Dependencies)</label>
+                                <input
+                                    type="text"
+                                    placeholder="Search child/relative items (needle, tube)..."
+                                    value={relativeItemSearch}
+                                    onChange={(e) => {
+                                        setRelativeItemSearch(e.target.value);
+                                        setShowRelativeSuggestions(true);
+                                    }}
+                                    onFocus={() => setShowRelativeSuggestions(true)}
+                                    onBlur={() => setTimeout(() => setShowRelativeSuggestions(false), 200)}
+                                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none text-gray-800"
+                                />
+
+                                {showRelativeSuggestions && relativeItemSearch.trim().length >= 1 && (
+                                    <div className="absolute left-0 right-0 mt-1 max-h-40 overflow-y-auto bg-white rounded-lg border border-gray-200 shadow-lg z-50 divide-y divide-gray-100">
+                                        {catalogList
+                                            .filter(x => x.isActive !== false 
+                                                && x.name.toLowerCase().includes(relativeItemSearch.toLowerCase().trim())
+                                                // Prevent self-reference
+                                                && x.id !== catalogModal.data?.id
+                                                // Prevent duplicate selection
+                                                && !selectedRelativeItems.some(item => item.id === x.id)
+                                            )
+                                            .map(c => (
+                                                <button
+                                                    key={c.id}
+                                                    type="button"
+                                                    onMouseDown={() => {
+                                                        setSelectedRelativeItems(prev => [...prev, { id: c.id, name: c.name }]);
+                                                        setRelativeItemSearch('');
+                                                        setShowRelativeSuggestions(false);
+                                                    }}
+                                                    className="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm font-medium text-gray-800"
+                                                >
+                                                    {c.name} <span className="text-xs text-gray-400 font-normal">({c.type})</span>
+                                                </button>
+                                            ))}
+                                        {catalogList.filter(x => x.isActive !== false 
+                                            && x.name.toLowerCase().includes(relativeItemSearch.toLowerCase().trim())
+                                            && x.id !== catalogModal.data?.id
+                                            && !selectedRelativeItems.some(item => item.id === x.id)
+                                        ).length === 0 && (
+                                            <div className="p-2.5 text-center text-xs text-gray-400">No matching catalog items.</div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Selected Items Tags */}
+                                {selectedRelativeItems.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                        {selectedRelativeItems.map(item => (
+                                            <span 
+                                                key={item.id} 
+                                                className="inline-flex items-center gap-1 px-3 py-1 bg-teal-50 text-teal-700 border border-teal-200 rounded-full text-xs font-semibold"
+                                            >
+                                                {item.name}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelectedRelativeItems(prev => prev.filter(x => x.id !== item.id))}
+                                                    className="hover:text-teal-900 focus:outline-none text-teal-500 font-bold"
+                                                >
+                                                    &times;
+                                                </button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                                <p className="text-xs text-gray-400 mt-1">These relative items will be automatically degraded from active stock when this catalog item is administered to a patient.</p>
                             </div>
 
                             <div className="pt-4 flex gap-3">

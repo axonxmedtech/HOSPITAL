@@ -13,6 +13,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     const [loadingDetails, setLoadingDetails] = useState(false);
     const [showIpdAdmitModal, setShowIpdAdmitModal] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [admitModalOpd, setAdmitModalOpd] = useState(null);
 
     const user = authService.getCurrentUser();
     const hasIPD = (user?.modules || []).includes('IPD');
@@ -223,8 +224,8 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         }));
         // Build charges: standard fees + hospital inventory items (via linked fee)
         const inventoryCharges = hospitalInvItems.map(item => ({
-            description: item.feeName || item.name,
-            amount: item.feeAmount || 0
+            description: `${item.feeName || item.name} (Qty: ${item.qty})`,
+            amount: (item.feeAmount || 0) * item.qty
         }));
         payload.charges = [
             ...appliedCharges,
@@ -251,6 +252,55 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         } catch (err) {
             console.error("Consultation failed", err);
             toastError(err.response?.data || 'Failed to submit consultation');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const handleAdmitToIpdClick = async () => {
+        if (submitting) return;
+        // Warning if user typed a medicine but didn't click Add
+        if (newMedicine.medicineName) {
+            toastError("Please click '+ Add Medicine' or clear the medicine fields before submitting.");
+            return;
+        }
+
+        // Prepare payload; include selected lab tests if any
+        const payload = { ...formData };
+        if (!payload.labRequired) payload.labTests = [];
+        payload.administeredItems = administeredList.map(item => ({
+            medicineId: item.medicineId,
+            medicineName: item.medicineName,
+            quantity: item.quantity
+        }));
+        // Build charges: standard fees + hospital inventory items (via linked fee)
+        const inventoryCharges = hospitalInvItems.map(item => ({
+            description: `${item.feeName || item.name} (Qty: ${item.qty})`,
+            amount: (item.feeAmount || 0) * item.qty
+        }));
+        payload.charges = [
+            ...appliedCharges,
+            ...inventoryCharges
+        ].map(c => ({
+            description: c.description,
+            amount: Number(c.amount || 0)
+        }));
+        // Include hospital inventory items used
+        payload.hospitalInventoryItems = hospitalInvItems.map(item => ({
+            stockId: item.stockId,
+            name: item.name,
+            quantity: item.qty
+        }));
+
+        setSubmitting(true);
+        try {
+            const resp = await hospitalService.submitConsultation(payload);
+            success('Consultation submitted successfully. Opening IPD Admission...');
+            setAdmitModalOpd(resp.opd || { id: resp.opdId, problem: formData.diagnosis || formData.symptoms });
+            setShowIpdAdmitModal(true);
+        } catch (err) {
+            console.error("Consultation submit for IPD failed", err);
+            toastError(err.response?.data?.message || err.response?.data || 'Failed to submit consultation before IPD admission');
         } finally {
             setSubmitting(false);
         }
@@ -525,7 +575,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                                                     </div>
                                                                 </td>
                                                                 <td className="px-3 py-2 text-right text-teal-700 font-semibold">
-                                                                    {item.feeAmount ? `₹${item.feeAmount}` : <span className="text-gray-400">No charge</span>}
+                                                                    {item.feeAmount ? `₹${item.feeAmount * item.qty}` : <span className="text-gray-400">No charge</span>}
                                                                     {item.feeName && item.feeAmount ? <div className="text-[10px] text-gray-400">{item.feeName}</div> : null}
                                                                 </td>
                                                                 <td className="px-3 py-2 text-right">
@@ -535,7 +585,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                                         ))}
                                                         <tr className="bg-slate-50 font-semibold border-t border-gray-200">
                                                             <td colSpan={2} className="px-3 py-2 text-left text-gray-700">Total Added Charges</td>
-                                                            <td className="px-3 py-2 text-right text-teal-600 font-bold">₹{hospitalInvItems.reduce((s, x) => s + (x.feeAmount || 0), 0)}</td>
+                                                            <td className="px-3 py-2 text-right text-teal-600 font-bold">₹{hospitalInvItems.reduce((s, x) => s + ((x.feeAmount || 0) * x.qty), 0)}</td>
                                                             <td />
                                                         </tr>
                                                     </tbody>
@@ -853,9 +903,9 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                             >
                                 Cancel
                             </button>
-                            {opd && hasIPD && (
+                            {(opd || appointment) && hasIPD && (
                                 <button
-                                    onClick={() => setShowIpdAdmitModal(true)}
+                                    onClick={handleAdmitToIpdClick}
                                     disabled={submitting}
                                     className={`px-6 py-2.5 bg-blue-600 text-white rounded-lg transition font-semibold shadow-md ${submitting ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700'}`}
                                 >
@@ -882,12 +932,13 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
             {showIpdAdmitModal && (
                 <IpdAdmitModal
                     isOpen={showIpdAdmitModal}
-                    opd={opd}
-                    initialDiagnosis={formData.diagnosis || formData.symptoms || opd?.problem || ''}
+                    opd={admitModalOpd || opd}
+                    initialDiagnosis={formData.diagnosis || formData.symptoms || (admitModalOpd || opd)?.problem || ''}
                     onClose={() => setShowIpdAdmitModal(false)}
                     onSuccess={() => {
                         setShowIpdAdmitModal(false);
                         onSuccess("Patient admitted to IPD successfully!");
+                        onClose();
                     }}
                 />
             )}

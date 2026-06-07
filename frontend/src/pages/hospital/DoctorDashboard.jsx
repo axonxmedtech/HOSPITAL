@@ -146,6 +146,8 @@ const DoctorDashboard = () => {
     const [patientDetailsModal, setPatientDetailsModal] = useState({ isOpen: false, patient: null });
     const [isIpdAdmitOpen, setIsIpdAdmitOpen] = useState(false);
     const [ipdOpdForAdmit, setIpdOpdForAdmit] = useState(null);
+    // State for admit-to-IPD directly from appointment action
+    const [ipdFromAppointment, setIpdFromAppointment] = useState({ isOpen: false, appointment: null });
 
     // Payment Modals
     const [paymentModal, setPaymentModal] = useState({
@@ -758,34 +760,45 @@ const DoctorDashboard = () => {
         setConsultationModal({ isOpen: true, appointment });
     };
 
+    const printPdfBlob = (blob) => {
+        const fileURL = URL.createObjectURL(blob);
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.width = '0px';
+        iframe.style.height = '0px';
+        iframe.style.border = 'none';
+        iframe.src = fileURL;
+        document.body.appendChild(iframe);
+        iframe.onload = () => {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+            setTimeout(() => {
+                iframe.remove();
+                URL.revokeObjectURL(fileURL);
+            }, 1000);
+        };
+    };
+
     const handlePrintPrescription = async (appointmentId) => {
         try {
             const blob = await hospitalService.downloadPrescription(appointmentId);
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `prescription_${appointmentId}.pdf`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
+            printPdfBlob(blob);
         } catch (err) {
             // Check if error response is a blob
             if (err.response?.data instanceof Blob) {
-                // Read blob as text to extract error message
                 err.response.data.text().then(text => {
                     if (text.toLowerCase().includes('consultation not found')) {
                         toastError("Prescription not found");
                     } else {
-                        toastError("Failed to download prescription");
+                        toastError("Failed to print prescription");
                     }
                 });
             } else {
-                // Handle regular JSON error response
                 const errorMessage = err.response?.data?.message || err.message || '';
                 if (errorMessage.toLowerCase().includes('consultation not found')) {
                     toastError("Prescription not found");
                 } else {
-                    toastError("Failed to download prescription");
+                    toastError("Failed to print prescription");
                 }
             }
             console.error(err);
@@ -806,16 +819,10 @@ const DoctorDashboard = () => {
     const handlePrintPrescriptionOpd = async (opd) => {
         try {
             const blob = await hospitalService.downloadPrescriptionByOpd(opd.id);
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `prescription_opd_${opd.id}.pdf`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
+            printPdfBlob(blob);
         } catch (err) {
-            console.error('Failed to download prescription', err);
-            toastError('Failed to download prescription');
+            console.error('Failed to print prescription', err);
+            toastError('Failed to print prescription');
         }
     };
 
@@ -1096,6 +1103,8 @@ const DoctorDashboard = () => {
                                                     onConsult={handleConsultClick}
                                                     onPrint={handlePrintPrescription}
                                                     onAuditHistory={(item) => handleAuditHistory('APPOINTMENT', item.publicId || item.id, "Appointment")}
+                                                    onAdmitToIpd={(appt) => setConsultationModal({ isOpen: true, appointment: appt })}
+                                                    hasIPD={hasIPD}
                                                     startIndex={0}
                                                     pagination={null}
                                                 />
@@ -1251,11 +1260,12 @@ const DoctorDashboard = () => {
                         onSearch={(e) => setSearchTerm(e.target.value)}
                         searchValue={searchTerm}
                         searchPlaceholder={`Search ${activeTab}...`}
-                        onAdd={(user?.receptionMode === 'SOLO' && (activeTab === 'patients' || activeTab === 'opd')) ? () => {
+                        onAdd={(user?.receptionMode === 'SOLO' && (activeTab === 'patients' || activeTab === 'opd' || activeTab === 'appointments')) ? () => {
                             if (activeTab === 'patients') setIsAddPatientModalOpen(true);
                             if (activeTab === 'opd') setIsOpdModalOpen(true);
+                            if (activeTab === 'appointments') setIsAddModalOpen(true);
                         } : null}
-                        addLabel={activeTab === 'patients' ? 'Register Patient' : 'New OPD Case'}
+                        addLabel={activeTab === 'patients' ? 'Register Patient' : activeTab === 'opd' ? 'New OPD Case' : 'Add Appointment'}
                         filter={
                             activeTab === 'appointments' ? (
                                 <div className="flex items-center gap-4">
@@ -1319,6 +1329,8 @@ const DoctorDashboard = () => {
                                             onConsult={handleConsultClick}
                                             onPrint={handlePrintPrescription}
                                             onAuditHistory={(item) => handleAuditHistory('APPOINTMENT', item.publicId || item.id, "Appointment")}
+                                            onAdmitToIpd={(appt) => setConsultationModal({ isOpen: true, appointment: appt })}
+                                            hasIPD={hasIPD}
                                             startIndex={(page - 1) * ITEMS_PER_PAGE}
                                             pagination={pagination}
                                         />
@@ -1395,10 +1407,10 @@ const DoctorDashboard = () => {
                                                                     <td className="px-4 py-3">
                                                                         {(() => {
                                                                             const theId = row.ipdId || row.id || row.ipd?.id || row.ipd?.ipdId || null;
-                                                                            return (
+                                                                                return (
                                                                                 <button
                                                                                     className={`px-3 py-1 rounded ${theId ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
-                                                                                    onClick={() => { if (theId) window.location.href = `/ipd/${theId}` }}
+                                                                                    onClick={() => { if (theId) navigate(`/ipd/${theId}`) }}
                                                                                     disabled={!theId}
                                                                                     title={theId ? 'Open IPD case' : 'IPD id not available'}
                                                                                 >
@@ -1592,14 +1604,8 @@ const DoctorDashboard = () => {
                     />
                 )}
 
-                {isIpdAdmitOpen && (
-                    <IpdAdmitModal
-                        isOpen={isIpdAdmitOpen}
-                        onClose={() => { setIsIpdAdmitOpen(false); setIpdOpdForAdmit(null); }}
-                        opd={ipdOpdForAdmit}
-                        onSuccess={loadData}
-                    />
-                )}
+                {/* Admit to IPD directly from Appointment - opens consultation modal so doctor fills data first */}
+                {/* (ipdFromAppointment state opens the existing consultationModal with the appointment) */}
 
                 {isOpdModalOpen && (
                     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -1989,7 +1995,7 @@ const DoctorDashboard = () => {
 export default DoctorDashboard;
 
 // Doctor Appointments Table
-const DoctorAppointmentsTable = ({ appointments, onStatusUpdate, onEdit, onConsult, onPrint, onAuditHistory, startIndex = 0, pagination }) => {
+const DoctorAppointmentsTable = ({ appointments, onStatusUpdate, onEdit, onConsult, onPrint, onAuditHistory, onAdmitToIpd, hasIPD, startIndex = 0, pagination }) => {
     const columnHelper = createColumnHelper();
 
     const columns = [
@@ -2058,7 +2064,13 @@ const DoctorAppointmentsTable = ({ appointments, onStatusUpdate, onEdit, onConsu
                             label: 'Edit Details',
                             icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /></svg>,
                             onClick: () => onEdit(info.row.original)
-                        }] : []),
+                        },
+                        ...(hasIPD ? [{
+                            label: 'Admit to IPD',
+                            icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /></svg>,
+                            onClick: () => onAdmitToIpd(info.row.original)
+                        }] : [])
+                        ] : []),
                         ...(info.row.original.status === 'COMPLETED' ? [{
                             label: 'Print Prescription',
                             icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v2a2 2 0 002 2h6a2 2 0 002-2v-2h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clipRule="evenodd" /></svg>,

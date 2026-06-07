@@ -16,4 +16,6 @@ public interface HospitalInventoryRepository extends JpaRepository<HospitalInven
     Optional<HospitalInventory> findByIdAndHospitalId(Long id, Long hospitalId);
 
     boolean existsByNameAndHospitalId(String name, Long hospitalId);
+
+    List<HospitalInventory> findByNameAndHospitalIdAndIsActiveTrue(String name, Long hospitalId);
 }

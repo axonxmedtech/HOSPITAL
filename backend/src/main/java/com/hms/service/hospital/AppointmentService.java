@@ -187,6 +187,30 @@ public class AppointmentService {
 
         Appointment savedAppointment = appointmentRepository.save(appointment);
 
+        // Log Appointment Creation Audit
+        try {
+            String pName = savedAppointment.getPatientName();
+            if (pName == null || pName.isBlank()) {
+                pName = patientRepository.findById(savedAppointment.getPatientId())
+                    .map(com.hms.entity.Patient::getName).orElse("Unknown");
+            }
+            String dName = savedAppointment.getDoctorName();
+            if (dName == null || dName.isBlank()) {
+                dName = doctorRepository.findById(savedAppointment.getDoctorId())
+                    .map(com.hms.entity.Doctor::getName).orElse("Unknown");
+            }
+            auditLogService.logAction(
+                    "APPOINTMENT_CREATED",
+                    "Appointment for patient " + pName + " with doctor " + dName + " was scheduled.",
+                    securityHelper.getCurrentUserEmail(),
+                    hospitalId,
+                    "APPOINTMENT",
+                    savedAppointment.getPublicId(),
+                    null);
+        } catch (Exception e) {
+            logger.warn("Failed to create audit log for appointment scheduling", e);
+        }
+
         try {
             webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
         } catch (Exception e) {
@@ -194,11 +218,6 @@ public class AppointmentService {
         }
 
         return savedAppointment;
-
-        // Log Appointment Creation Audit
-        // (Logging moved to after save to have ID)
-        // Note: The original code returned before logging, which was a bug. Fixed order
-        // here.
     }
 
     /**

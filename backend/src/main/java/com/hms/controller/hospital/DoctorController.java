@@ -145,8 +145,14 @@ public class DoctorController {
     @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> submitConsultation(@RequestBody com.hms.dto.ConsultationRequest request) {
         try {
-            doctorService.submitConsultation(request);
-            return ResponseEntity.ok("Consultation submitted successfully");
+            com.hms.entity.Opd opd = doctorService.submitConsultation(request);
+            java.util.Map<String, Object> response = new java.util.HashMap<>();
+            response.put("message", "Consultation submitted successfully");
+            if (opd != null) {
+                response.put("opdId", opd.getId());
+                response.put("opd", opd);
+            }
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

@@ -76,10 +76,19 @@ public class IpdAdmissionService {
     private com.hms.repository.HospitalRepository hospitalRepository;
 
     @Autowired
+    private com.hms.repository.IpdBedHistoryRepository ipdBedHistoryRepository;
+
+    @Autowired
     private SecurityContextHelper securityHelper;
 
     @Autowired
     private com.hms.repository.QueueEntryRepository queueEntryRepository;
+
+    @Autowired
+    private com.hms.repository.HospitalInventoryRepository hospitalInventoryRepository;
+
+    @Autowired
+    private HospitalInventoryService hospitalInventoryService;
 
     @Autowired
     private com.hms.security.HospitalWebSocketHandler webSocketHandler;
@@ -113,6 +122,18 @@ public class IpdAdmissionService {
         ipd.setPrimaryDiagnosis(primaryDiagnosis != null ? primaryDiagnosis : "");
 
         IpdAdmission saved = ipdAdmissionRepository.save(ipd);
+
+        // Record initial bed assignment in IpdBedHistory
+        try {
+            com.hms.entity.IpdBedHistory initialHist = new com.hms.entity.IpdBedHistory();
+            initialHist.setIpdAdmissionId(saved.getId());
+            initialHist.setWardId(wardId);
+            initialHist.setBedId(bedId);
+            initialHist.setAssignedAt(LocalDateTime.now());
+            ipdBedHistoryRepository.save(initialHist);
+        } catch (Exception e) {
+            logger.warn("Failed to save initial bed history", e);
+        }
 
         // Mark bed occupied
         bed.setStatus("occupied");
@@ -178,6 +199,20 @@ public class IpdAdmissionService {
         }
 
         logger.info("Created IPD admission {} for OPD {}", saved.getIpdNumber(), opdId);
+
+        // Audit log
+        try {
+            auditLogService.logAction(
+                    "IPD_ADMISSION_CREATED",
+                    "Patient was admitted to IPD (Case: " + saved.getIpdNumber() + ").",
+                    securityHelper.getCurrentUserEmail(),
+                    hospitalId,
+                    "IPD",
+                    saved.getId().toString(),
+                    null);
+        } catch (Exception e) {
+            logger.warn("Failed to create audit log for IPD admission", e);
+        }
 
         try {
             webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
@@ -491,23 +526,7 @@ public class IpdAdmissionService {
 
         com.hms.entity.MedicalRecord saved = medicalRecordRepository.save(mr);
 
-        try {
-            com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId).orElse(null);
-            if (hospital != null && hospital.getConsultationFee() != null && hospital.getConsultationFee().compareTo(BigDecimal.ZERO) > 0) {
-                java.util.List<Billing> bills = billingRepository.findByIpdAdmissionId(ipdId);
-                Billing bill = (bills != null && !bills.isEmpty()) ? bills.get(0) : null;
-                if (bill != null) {
-                    com.hms.entity.BillingItem item = new com.hms.entity.BillingItem();
-                    item.setBillingId(bill.getId());
-                    item.setHospitalId(bill.getHospitalId());
-                    item.setDescription("Doctor Consultation Fee (IPD Follow-up)");
-                    item.setAmount(hospital.getConsultationFee());
-                    billingItemRepository.save(item);
-                }
-            }
-        } catch (Exception e) {
-            logger.warn("Failed to auto-add consultation fee billing item for follow-up", e);
-        }
+        // IPD follow-ups do NOT add a consultation fee – doctors visit their own admitted patients.
 
         // --- Process Administered Items (Stock Deductions & Billing) ---
         if (administeredItems != null && !administeredItems.isEmpty()) {
@@ -648,6 +667,83 @@ public class IpdAdmissionService {
     }
 
     @Transactional
+    public void administerHospitalItems(Long ipdId, java.util.List<com.hms.dto.AdministerHospitalItemsRequest.HospitalItem> items) {
+        String role = securityHelper.getCurrentUserRole();
+        if (!"DOCTOR".equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
+            throw new org.springframework.security.access.AccessDeniedException("Only doctors can administer items");
+        }
+
+        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new RuntimeException("IPD admission not found"));
+        if (ipd.getStatus() == null || (!ipd.getStatus().equalsIgnoreCase("ADMITTED") && !ipd.getStatus().equalsIgnoreCase("DISCHARGE_PLANNED"))) {
+            throw new RuntimeException("Cannot administer items to non-admitted IPD");
+        }
+
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new RuntimeException("Hospital ID not found in context");
+
+        if (items != null && !items.isEmpty()) {
+            java.util.List<Billing> bills = billingRepository.findByIpdAdmissionId(ipdId);
+            Billing bill = (bills != null && !bills.isEmpty()) ? bills.get(0) : null;
+            if (bill != null) {
+                for (com.hms.dto.AdministerHospitalItemsRequest.HospitalItem item : items) {
+                    if (item.getStockId() != null) {
+                        com.hms.entity.HospitalInventory stock = hospitalInventoryRepository.findById(item.getStockId())
+                                .orElseThrow(() -> new RuntimeException("Hospital item not found in active inventory: ID " + item.getStockId()));
+
+                        if (stock.getStockQuantity() < item.getQuantity()) {
+                            throw new RuntimeException("Insufficient stock for: " + stock.getName() + " (Requested: " + item.getQuantity() + ", Available: " + stock.getStockQuantity() + ")");
+                        }
+
+                        // Deduct Stock
+                        int oldStock = stock.getStockQuantity();
+                        stock.setStockQuantity(oldStock - item.getQuantity());
+                        hospitalInventoryRepository.save(stock);
+
+                        // Degrade relative items
+                        try {
+                            hospitalInventoryService.degradeRelativeItems(stock.getName(), item.getQuantity(), hospitalId);
+                        } catch (Exception ignored) {}
+
+                        // Audit Log for Stock deduction
+                        try {
+                            auditLogService.logAction(
+                                    "INVENTORY_DEDUCTED",
+                                    "Deducted " + item.getQuantity() + " units of " + stock.getName() + " for patient. Stock: " + oldStock + " -> " + stock.getStockQuantity(),
+                                    securityHelper.getCurrentUserEmail(),
+                                    hospitalId,
+                                    "INVENTORY",
+                                    stock.getId().toString(),
+                                    null
+                            );
+                        } catch (Exception ignored) {}
+
+                        // Create BillingItem charge
+                        com.hms.entity.BillingItem bi = new com.hms.entity.BillingItem();
+                        bi.setBillingId(bill.getId());
+                        bi.setHospitalId(hospitalId);
+                        bi.setDescription(stock.getName() + " (Qty: " + item.getQuantity() + ")");
+                        java.math.BigDecimal unitPrice = item.getFeeAmount() != null ? item.getFeeAmount() : 
+                                (stock.getUnitPrice() != null ? java.math.BigDecimal.valueOf(stock.getUnitPrice()) : java.math.BigDecimal.ZERO);
+                        bi.setAmount(unitPrice.multiply(java.math.BigDecimal.valueOf(item.getQuantity())));
+                        billingItemRepository.save(bi);
+                    }
+                }
+
+                // Recalculate bill total (incorporates consultation fee + medicines + bed fees + hospital items)
+                try {
+                    billingService.recalculateTotal(bill.getId());
+                } catch (Exception ignored) {}
+            }
+        }
+
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh data from administerHospitalItems", e);
+        }
+    }
+
+    @Transactional
     public com.hms.entity.Prescription addIpdPrescription(Long ipdId, com.hms.dto.AddIpdPrescriptionRequest req) {
         String role = securityHelper.getCurrentUserRole();
         if (!"DOCTOR".equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
@@ -763,6 +859,20 @@ public class IpdAdmissionService {
         ipd.setStatus("DISCHARGE_PLANNED");
         ipdAdmissionRepository.save(ipd);
 
+        // Audit log
+        try {
+            auditLogService.logAction(
+                    "IPD_DISCHARGE_PLANNED",
+                    "Planned discharge for IPD Case: " + ipd.getIpdNumber() + ".",
+                    securityHelper.getCurrentUserEmail(),
+                    ipd.getHospitalId(),
+                    "IPD",
+                    ipd.getId().toString(),
+                    null);
+        } catch (Exception e) {
+            logger.warn("Failed to create audit log for IPD planned discharge", e);
+        }
+
         try {
             webSocketHandler.broadcast(ipd.getHospitalId(), "{\"type\":\"REFRESH_DATA\"}");
         } catch (Exception e) {
@@ -869,6 +979,33 @@ public class IpdAdmissionService {
         ipd.setDischargeDatetime(LocalDateTime.now());
         ipdAdmissionRepository.save(ipd);
 
+        // Release the active bed history record
+        try {
+            java.util.Optional<com.hms.entity.IpdBedHistory> activeHistOpt = ipdBedHistoryRepository
+                    .findByIpdAdmissionIdAndReleasedAtIsNull(ipd.getId());
+            if (activeHistOpt.isPresent()) {
+                com.hms.entity.IpdBedHistory activeHist = activeHistOpt.get();
+                activeHist.setReleasedAt(LocalDateTime.now());
+                ipdBedHistoryRepository.save(activeHist);
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to close bed history logs in confirmDischarge", e);
+        }
+
+        // Audit log
+        try {
+            auditLogService.logAction(
+                    "IPD_DISCHARGED",
+                    "Confirmed discharge for IPD Case: " + ipd.getIpdNumber() + ".",
+                    securityHelper.getCurrentUserEmail(),
+                    ipd.getHospitalId(),
+                    "IPD",
+                    ipd.getId().toString(),
+                    null);
+        } catch (Exception e) {
+            logger.warn("Failed to create audit log for IPD discharge confirmation", e);
+        }
+
         try {
             webSocketHandler.broadcast(ipd.getHospitalId(), "{\"type\":\"REFRESH_DATA\"}");
         } catch (Exception e) {
@@ -903,18 +1040,34 @@ public class IpdAdmissionService {
         }
 
         Long oldBedId = ipd.getBedId();
-        if (oldBedId != null && !oldBedId.equals(newBedId)) {
+        String oldBedCode = "Unknown Bed";
+        String oldWardName = "Unknown Ward";
+        if (oldBedId != null) {
             Bed oldBed = bedRepository.findById(oldBedId).orElse(null);
             if (oldBed != null) {
-                oldBed.setStatus("available");
-                oldBed.setCurrentIpdAdmissionId(null);
-                bedRepository.save(oldBed);
+                oldBedCode = oldBed.getBedCode();
+                com.hms.entity.Ward oldW = wardRepository.findById(oldBed.getWardId()).orElse(null);
+                if (oldW != null) {
+                    oldWardName = oldW.getWardName();
+                }
+                if (!oldBedId.equals(newBedId)) {
+                    oldBed.setStatus("available");
+                    oldBed.setCurrentIpdAdmissionId(null);
+                    bedRepository.save(oldBed);
+                }
             }
         }
 
         newBed.setStatus("occupied");
         newBed.setCurrentIpdAdmissionId(ipd.getId());
         bedRepository.save(newBed);
+
+        String newBedCode = newBed.getBedCode();
+        String newWardName = "Unknown Ward";
+        com.hms.entity.Ward newWardEntity = wardRepository.findById(newBed.getWardId()).orElse(null);
+        if (newWardEntity != null) {
+            newWardName = newWardEntity.getWardName();
+        }
 
         // Calculate price difference if new ward is more expensive
         try {
@@ -952,6 +1105,41 @@ public class IpdAdmissionService {
         ipd.setWardId(newBed.getWardId());
         
         IpdAdmission saved = ipdAdmissionRepository.save(ipd);
+
+        // Update IpdBedHistory
+        try {
+            java.util.Optional<com.hms.entity.IpdBedHistory> activeHistOpt = ipdBedHistoryRepository
+                    .findByIpdAdmissionIdAndReleasedAtIsNull(ipd.getId());
+            if (activeHistOpt.isPresent()) {
+                com.hms.entity.IpdBedHistory activeHist = activeHistOpt.get();
+                activeHist.setReleasedAt(LocalDateTime.now());
+                ipdBedHistoryRepository.save(activeHist);
+            }
+            
+            com.hms.entity.IpdBedHistory newHist = new com.hms.entity.IpdBedHistory();
+            newHist.setIpdAdmissionId(ipd.getId());
+            newHist.setWardId(newBed.getWardId());
+            newHist.setBedId(newBed.getBedId());
+            newHist.setAssignedAt(LocalDateTime.now());
+            ipdBedHistoryRepository.save(newHist);
+        } catch (Exception e) {
+            logger.warn("Failed to update bed history logs in changeBed", e);
+        }
+
+        try {
+            String details = "Transferred from Bed " + oldBedCode + " (" + oldWardName + ") to Bed " + newBedCode + " (" + newWardName + ").";
+            auditLogService.logAction(
+                    "BED_CHANGED",
+                    details,
+                    securityHelper.getCurrentUserEmail(),
+                    hospitalId,
+                    "IPD",
+                    ipd.getId().toString(),
+                    null);
+        } catch (Exception e) {
+            logger.warn("Failed to create audit log for bed change", e);
+        }
+
         try {
             webSocketHandler.broadcast(ipd.getHospitalId(), "{\"type\":\"REFRESH_DATA\"}");
         } catch (Exception e) {

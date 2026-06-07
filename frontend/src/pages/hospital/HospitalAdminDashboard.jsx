@@ -105,6 +105,7 @@ const HospitalAdminDashboard = () => {
     const [origOperationsSettings, setOrigOperationsSettings] = useState(null);
     const [settingsLoading, setSettingsLoading] = useState(false);
     const [settingsEditing, setSettingsEditing] = useState(false);
+    const [auditLogRoleFilter, setAuditLogRoleFilter] = useState('ALL');
     const [page, setPage] = useState(0);
     const [pageSize, setPageSize] = useState(10);
     const ITEMS_PER_PAGE = 10;
@@ -190,7 +191,7 @@ const HospitalAdminDashboard = () => {
         } else {
             fetchImmediate();
         }
-    }, [activeTab, searchTerm, page, billingStatus]);
+    }, [activeTab, searchTerm, page, billingStatus, auditLogRoleFilter]);
 
     // Periodic background polling replaced with WebSocket real-time sync
 
@@ -368,11 +369,12 @@ const HospitalAdminDashboard = () => {
         }));
     };
 
-    // Load hospital operations settings when Settings tab is active
+    // Load hospital operations settings when Settings or Audit Logs tab is active
     useEffect(() => {
         const loadOperationsSettings = async () => {
-            if (activeTab !== 'settings') return;
-            setSettingsLoading(true);
+            if (activeTab !== 'settings' && activeTab !== 'audit-logs') return;
+            const showSpinner = activeTab === 'settings';
+            if (showSpinner) setSettingsLoading(true);
             try {
                 const data = await hospitalService.getHospitalOperationsSettings();
                 const loaded = {
@@ -382,11 +384,11 @@ const HospitalAdminDashboard = () => {
                 };
                 setOperationsSettings(loaded);
                 setOrigOperationsSettings(loaded);
-                setSettingsEditing(false);
+                if (activeTab === 'settings') setSettingsEditing(false);
             } catch (err) {
-                toastError('Failed to load settings');
+                if (activeTab === 'settings') toastError('Failed to load settings');
             } finally {
-                setSettingsLoading(false);
+                if (showSpinner) setSettingsLoading(false);
             }
         };
         loadOperationsSettings();
@@ -770,7 +772,7 @@ const HospitalAdminDashboard = () => {
                         setTotalElements(0);
                     }
                 } else if (activeTab === 'audit-logs') {
-                    const data = await hospitalService.getAuditLogs(searchTerm);
+                    const data = await hospitalService.getAuditLogs(searchTerm, auditLogRoleFilter);
                     setAuditLogs(data);
                     setTotalPages(1); // Audit logs don't have pagination yet
                 }
@@ -1343,6 +1345,27 @@ const HospitalAdminDashboard = () => {
                                                 }`}
                                         >
                                             {status.charAt(0) + status.slice(1).toLowerCase()}
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : activeTab === 'audit-logs' ? (
+                                <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 gap-1">
+                                    {[
+                                        { id: 'ALL', label: 'All' },
+                                        { id: 'DOCTOR', label: 'Doctor' },
+                                        { id: 'HOSPITAL_ADMIN', label: 'Admin' },
+                                        ...(operationsSettings.receptionMode !== 'SOLO' ? [{ id: 'RECEPTIONIST', label: 'Reception' }] : []),
+                                        ...(modules.includes('PHARMACY') ? [{ id: 'PHARMACIST', label: 'Pharmacy' }] : [])
+                                    ].map(item => (
+                                        <button
+                                            key={item.id}
+                                            onClick={() => setAuditLogRoleFilter(item.id)}
+                                            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${auditLogRoleFilter === item.id
+                                                ? 'bg-white text-blue-600 shadow-sm border border-gray-100 font-semibold'
+                                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                                }`}
+                                        >
+                                            {item.label}
                                         </button>
                                     ))}
                                 </div>

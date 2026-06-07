@@ -8,11 +8,15 @@ import com.hms.security.SecurityContextHelper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
 @Service
 public class HospitalInventoryService {
+
+    private static final Logger logger = LoggerFactory.getLogger(HospitalInventoryService.class);
 
     @Autowired
     private HospitalInventoryRepository hospitalInventoryRepository;
@@ -90,6 +94,7 @@ public class HospitalInventoryService {
         catalog.setType(request.getType());
         catalog.setManufacturer(request.getManufacturer());
         catalog.setLinkedFeeId(request.getLinkedFeeId()); // persist fee link
+        catalog.setRelativeItemIds(request.getRelativeItemIds()); // persist relative items
         if (request.getIsActive() != null) {
             catalog.setIsActive(request.getIsActive());
         }
@@ -265,5 +270,74 @@ public class HospitalInventoryService {
         try {
             webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
         } catch (Exception ignored) {}
+    }
+
+    @Transactional
+    public void degradeRelativeItems(String parentItemName, int quantity, Long hospitalId) {
+        if (parentItemName == null) return;
+
+        java.util.Optional<com.hms.entity.InventoryItem> parentOpt = inventoryItemRepository.findByNameAndHospitalId(parentItemName, hospitalId);
+        if (!parentOpt.isPresent()) return;
+
+        com.hms.entity.InventoryItem parent = parentOpt.get();
+        String relativeIdsJson = parent.getRelativeItemIds();
+        if (relativeIdsJson == null || relativeIdsJson.trim().isEmpty() || relativeIdsJson.equals("[]")) {
+            return;
+        }
+
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            java.util.List<?> ids = mapper.readValue(relativeIdsJson, java.util.List.class);
+            for (Object idObj : ids) {
+                Long childId = null;
+                if (idObj instanceof Number) {
+                    childId = ((Number) idObj).longValue();
+                } else {
+                    childId = Long.valueOf(String.valueOf(idObj));
+                }
+
+                java.util.Optional<com.hms.entity.InventoryItem> childOpt = inventoryItemRepository.findById(childId);
+                if (childOpt.isPresent() && childOpt.get().getHospitalId().equals(hospitalId)) {
+                    String childName = childOpt.get().getName();
+
+                    int requiredQty = quantity;
+                    java.util.List<com.hms.entity.HospitalInventory> childStocks = hospitalInventoryRepository.findByNameAndHospitalIdAndIsActiveTrue(childName, hospitalId);
+
+                    // FEFO/FIFO sort: expiry date ascending (nulls last) then ID
+                    childStocks.sort((a, b) -> {
+                        if (a.getExpiryDate() == null && b.getExpiryDate() == null) return a.getId().compareTo(b.getId());
+                        if (a.getExpiryDate() == null) return 1;
+                        if (b.getExpiryDate() == null) return -1;
+                        return a.getExpiryDate().compareTo(b.getExpiryDate());
+                    });
+
+                    for (com.hms.entity.HospitalInventory childStock : childStocks) {
+                        if (requiredQty <= 0) break;
+                        int available = childStock.getStockQuantity();
+                        if (available > 0) {
+                            int toDeduct = Math.min(available, requiredQty);
+                            childStock.setStockQuantity(available - toDeduct);
+                            hospitalInventoryRepository.save(childStock);
+                            requiredQty -= toDeduct;
+
+                            // Audit Log
+                            try {
+                                auditLogService.logAction(
+                                    "INVENTORY_DEDUCTED",
+                                    "Deducted relative item: " + toDeduct + " units of " + childStock.getName() + " (linked to use of " + parentItemName + "). Stock: " + available + " -> " + childStock.getStockQuantity(),
+                                    securityHelper.getCurrentUserEmail(),
+                                    hospitalId,
+                                    "INVENTORY",
+                                    childStock.getId().toString(),
+                                    null
+                                );
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Failed to degrade relative items for parent: " + parentItemName, e);
+        }
     }
 }
