@@ -591,6 +591,26 @@ const hospitalService = {
         return response.data;
     },
 
+    /**
+     * Get patient activity for a specific date (OPD, Appointment, IPD)
+     * Used by Patient tab's Date toggle view
+     */
+    getPatientActivityByDate: async (date) => {
+        const response = await apiClient.get(`/hospital/stats/patient-activity?date=${date}`);
+        return response.data;
+    },
+
+    /**
+     * Download patient activity PDF report for a specific date
+     */
+    downloadPatientActivityPdf: async (date) => {
+        const response = await apiClient.get(`/hospital/stats/patient-activity/pdf?date=${date}`, {
+            responseType: 'blob',
+            timeout: 60000
+        });
+        return response.data;
+    },
+
     // ========== Audit Log APIs ==========
 
     getAuditLogs: async (searchTerm, role, limit) => {

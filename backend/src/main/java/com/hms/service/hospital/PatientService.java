@@ -24,6 +24,9 @@ public class PatientService {
     private PatientRepository patientRepository;
 
     @Autowired
+    private org.springframework.cache.CacheManager cacheManager;
+
+    @Autowired
     private SecurityContextHelper securityHelper;
 
     @Autowired
@@ -80,6 +83,16 @@ public class PatientService {
     @Autowired
     private com.hms.service.PdfService pdfService;
 
+    private void evictStatsCache(Long hospitalId) {
+        if (hospitalId != null && cacheManager != null) {
+            org.springframework.cache.Cache cache = cacheManager.getCache("hospitalStats");
+            if (cache != null) {
+                cache.evict(hospitalId);
+                logger.info("Evicted hospitalStats cache for hospitalId: {}", hospitalId);
+            }
+        }
+    }
+
     /**
      * Add a new patient
      * Automatically sets hospital_id from the authenticated user's context
@@ -100,6 +113,7 @@ public class PatientService {
 
         logger.info("Hospital {} creating new patient: {}", hospitalId, patient.getName());
         Patient savedPatient = patientRepository.save(patient);
+        evictStatsCache(hospitalId);
 
         // Create audit log
         try {
@@ -146,6 +160,7 @@ public class PatientService {
         existingPatient.setMedicalHistory(updatedData.getMedicalHistory());
 
         Patient saved = patientRepository.save(existingPatient);
+        evictStatsCache(saved.getHospitalId());
 
         // Create audit log
         try {
@@ -192,8 +207,14 @@ public class PatientService {
 
         // Handle 'today' view
         if ("today".equalsIgnoreCase(view)) {
-            java.time.LocalDateTime startOfDay = java.time.LocalDate.now().atStartOfDay();
-            java.time.LocalDateTime endOfDay = java.time.LocalDate.now().atTime(java.time.LocalTime.MAX);
+            java.time.LocalDateTime localStart = java.time.LocalDate.now().atStartOfDay();
+            java.time.LocalDateTime localEnd = java.time.LocalDate.now().atTime(java.time.LocalTime.MAX);
+
+            java.time.ZoneId sysZone = java.time.ZoneId.systemDefault();
+            java.time.ZoneOffset utcOffset = java.time.ZoneOffset.UTC;
+
+            java.time.LocalDateTime startOfDay = localStart.atZone(sysZone).withZoneSameInstant(utcOffset).toLocalDateTime();
+            java.time.LocalDateTime endOfDay = localEnd.atZone(sysZone).withZoneSameInstant(utcOffset).toLocalDateTime();
 
             patients = patientRepository.findByHospitalIdAndIsActiveTrueAndCreatedAtBetweenOrderByCreatedAtDesc(
                     hospitalId, startOfDay, endOfDay, pageable);
@@ -315,6 +336,7 @@ public class PatientService {
         logger.info("Hospital {} soft deleting patient ID: {}. Reason: {}", hospitalId, publicId, reason);
         patient.setIsActive(false);
         patientRepository.save(patient);
+        evictStatsCache(hospitalId);
 
         try {
             auditLogService.logAction(

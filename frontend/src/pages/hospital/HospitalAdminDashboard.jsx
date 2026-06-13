@@ -157,6 +157,13 @@ const HospitalAdminDashboard = () => {
     const [adminIpdOpdForAdmit, setAdminIpdOpdForAdmit] = useState(null);
     const [profileOpen, setProfileOpen] = useState(false);
 
+    // Patient tab: Date / All toggle
+    const [patientTabView, setPatientTabView] = useState('All');
+    const [patientDateFilter, setPatientDateFilter] = useState(new Date().toISOString().split('T')[0]);
+    const [datePatients, setDatePatients] = useState([]);
+    const [datePatientsLoading, setDatePatientsLoading] = useState(false);
+
+
     // Help & Support state variables
     const [faqs, setFaqs] = useState([]);
     const [tickets, setTickets] = useState([]);
@@ -191,7 +198,7 @@ const HospitalAdminDashboard = () => {
         } else {
             fetchImmediate();
         }
-    }, [activeTab, searchTerm, page, billingStatus, auditLogRoleFilter]);
+    }, [activeTab, searchTerm, page, billingStatus, auditLogRoleFilter, patientTabView, patientDateFilter]);
 
     // Periodic background polling replaced with WebSocket real-time sync
 
@@ -601,16 +608,30 @@ const HospitalAdminDashboard = () => {
         }
     };
 
+    const loadDatePatients = async (dateVal = patientDateFilter) => {
+        setDatePatientsLoading(true);
+        try {
+            const data = await hospitalService.getPatientActivityByDate(dateVal);
+            setDatePatients(data || []);
+        } catch (err) {
+            console.error("Failed to load patient activity for date", err);
+            toastError("Failed to load patient activities");
+        } finally {
+            setDatePatientsLoading(false);
+        }
+    };
+
     const loadData = async (pageNum = page, sizeNum = pageSize, showSpinner = true) => {
         if (showSpinner) setLoading(true);
         try {
             if (activeTab === 'overview') {
-                const [statsData, todaysAppts, docData] = await Promise.all([
+                const [statsData, globalStatsData, todaysAppts, docData] = await Promise.all([
                     hospitalService.getAppointmentStats(),
+                    hospitalService.getGlobalStats(),
                     hospitalService.getTodaysAppointments(),
                     hospitalService.getDoctors('', 0, 100)
                 ]);
-                setStats(statsData);
+                setStats({ ...statsData, ...globalStatsData });
                 setTodaysAppointments(todaysAppts);
                 if (docData.content) {
                     setDoctors(docData.content);
@@ -632,16 +653,20 @@ const HospitalAdminDashboard = () => {
                 setStats(statsData);
 
                 if (activeTab === 'patients') {
-                    const data = await hospitalService.getPatients(searchTerm, page, pageSize);
-                    if (data.content) {
-                        setPatients(data.content);
-                        setTotalPages(data.totalPages);
-                        setTotalElements(data.totalElements);
+                    if (patientTabView === 'All') {
+                        const data = await hospitalService.getPatients(searchTerm, page, pageSize);
+                        if (data.content) {
+                            setPatients(data.content);
+                            setTotalPages(data.totalPages);
+                            setTotalElements(data.totalElements);
+                        } else {
+                            // Fallback for list
+                            setPatients(data);
+                            setTotalPages(1);
+                            setTotalElements(data.length);
+                        }
                     } else {
-                        // Fallback for list
-                        setPatients(data);
-                        setTotalPages(1);
-                        setTotalElements(data.length);
+                        await loadDatePatients(patientDateFilter);
                     }
                 } else if (activeTab === 'doctors') {
                     const data = await hospitalService.getDoctors(searchTerm, page, pageSize);
@@ -898,6 +923,17 @@ const HospitalAdminDashboard = () => {
         } catch (err) {
             console.error('Failed to download case paper', err);
             toastError('Failed to download case paper');
+        }
+    };
+
+    const handleDownloadActivityReport = async () => {
+        try {
+            const blob = await hospitalService.downloadPatientActivityPdf(patientDateFilter);
+            const url = window.URL.createObjectURL(blob);
+            window.open(url, '_blank');
+        } catch (err) {
+            console.error('Failed to generate report', err);
+            toastError('Failed to generate PDF report');
         }
     };
 
@@ -1176,24 +1212,24 @@ const HospitalAdminDashboard = () => {
                                 <div className="bg-white rounded-lg border border-gray-200 p-6">
                                     <div className="flex justify-between items-center">
                                         <div>
-                                            <p className="text-gray-600 text-sm font-medium">Today's Appointments</p>
-                                            <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.today}</h3>
+                                            <p className="text-gray-600 text-sm font-medium">Total Registered Patients</p>
+                                            <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.totalRegisteredPatients || stats.totalPatients || 0}</h3>
                                         </div>
                                     </div>
                                 </div>
                                 <div className="bg-white rounded-lg border border-gray-200 p-6">
                                     <div className="flex justify-between items-center">
                                         <div>
-                                            <p className="text-gray-600 text-sm font-medium">Pending Action</p>
-                                            <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.pending}</h3>
+                                            <p className="text-gray-600 text-sm font-medium">Patients This Month</p>
+                                            <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.patientsThisMonth || 0}</h3>
                                         </div>
                                     </div>
                                 </div>
                                 <div className="bg-white rounded-lg border border-gray-200 p-6">
                                     <div className="flex justify-between items-center">
                                         <div>
-                                            <p className="text-gray-600 text-sm font-medium">Total Active Records</p>
-                                            <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.total}</h3>
+                                            <p className="text-gray-600 text-sm font-medium">Patients Today</p>
+                                            <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.patientsToday || 0}</h3>
                                         </div>
                                     </div>
                                 </div>
@@ -1333,7 +1369,50 @@ const HospitalAdminDashboard = () => {
                             searchPlaceholder={(activeTab === 'fees' || activeTab === 'settings') ? '' : `Search ${activeTab}...`}
                             onAdd={activeTab === 'opd' ? () => setIsAdminOpdModalOpen(true) : (activeTab !== 'billing' && activeTab !== 'audit-logs' && activeTab !== 'fees' && activeTab !== 'settings' && user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null)}
                             addLabel={activeTab === 'opd' ? 'New OPD' : (activeTab === 'fees' || activeTab === 'settings') ? '' : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`}
-                            filter={activeTab === 'billing' ? (
+                            filter={activeTab === 'patients' ? (
+                                <div className="flex items-center gap-2">
+                                    <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
+                                        {['All', 'Date'].map(view => (
+                                            <button
+                                                key={view}
+                                                type="button"
+                                                onClick={() => {
+                                                    setPatientTabView(view);
+                                                    setPage(0);
+                                                    setSearchTerm('');
+                                                }}
+                                                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${patientTabView === view
+                                                    ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
+                                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                                    }`}
+                                            >
+                                                {view}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {patientTabView === 'Date' && (
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="date"
+                                                value={patientDateFilter}
+                                                onChange={(e) => setPatientDateFilter(e.target.value)}
+                                                className="px-3 py-1.5 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-transparent bg-white text-slate-800"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={handleDownloadActivityReport}
+                                                disabled={datePatientsLoading || datePatients.length === 0}
+                                                className="bg-sky-600 hover:bg-sky-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                                </svg>
+                                                <span>Download PDF</span>
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : activeTab === 'billing' ? (
                                 <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
                                     {['PENDING', 'PAID', 'PARTIAL'].map(status => (
                                         <button
@@ -1391,25 +1470,49 @@ const HospitalAdminDashboard = () => {
                             {(activeTab === 'patients' || activeTab === 'doctors' || activeTab === 'pharmacists' || activeTab === 'receptionists' || activeTab === 'wards' || activeTab === 'billing' || activeTab === 'fees' || activeTab === 'opd') && (
                                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
                                     {activeTab === 'patients' && (
-                                        patients.length > 0 ? (
-                                            <PatientsTable 
-                                                patients={patients} 
-                                                onEdit={(item) => handleEdit(item, 'patients')} 
-                                                onViewDetails={handleViewDetails} 
-                                                onDelete={handleDeletePatient} 
-                                                onHistory={(p) => setPatientDetailsModal({ isOpen: true, patient: p })} 
-                                                startIndex={page * pageSize} 
-                                                pagination={pagination} 
-                                                isAdmin={user?.role === 'HOSPITAL_ADMIN'} 
-                                            />
+                                        patientTabView === 'All' ? (
+                                            patients.length > 0 ? (
+                                                <PatientsTable 
+                                                    patients={patients} 
+                                                    onEdit={(item) => handleEdit(item, 'patients')} 
+                                                    onViewDetails={handleViewDetails} 
+                                                    onDelete={handleDeletePatient} 
+                                                    onHistory={(p) => setPatientDetailsModal({ isOpen: true, patient: p })} 
+                                                    startIndex={page * pageSize} 
+                                                    pagination={pagination} 
+                                                    isAdmin={user?.role === 'HOSPITAL_ADMIN'} 
+                                                />
+                                            ) : (
+                                                <EmptyState
+                                                    icon={null}
+                                                    title="No Patients Found"
+                                                    message="Add patients to start scheduling appointments."
+                                                    actionLabel="Add Patient"
+                                                    onAction={user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
+                                                />
+                                            )
                                         ) : (
-                                            <EmptyState
-                                                icon={null}
-                                                title="No Patients Found"
-                                                message="Add patients to start scheduling appointments."
-                                                actionLabel="Add Patient"
-                                                onAction={user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
-                                            />
+                                            (() => {
+                                                const filteredDatePatients = datePatients.filter(item => {
+                                                    if (!searchTerm) return true;
+                                                    const query = searchTerm.toLowerCase();
+                                                    return (item.patientName || '').toLowerCase().includes(query) ||
+                                                           (item.patientId || '').toLowerCase().includes(query) ||
+                                                           (item.phone || '').toLowerCase().includes(query) ||
+                                                           (item.doctorName || '').toLowerCase().includes(query) ||
+                                                           (item.details || '').toLowerCase().includes(query) ||
+                                                           (item.activityType || '').toLowerCase().includes(query);
+                                                });
+                                                return filteredDatePatients.length > 0 ? (
+                                                    <PatientActivityTable activities={filteredDatePatients} />
+                                                ) : (
+                                                    <EmptyState
+                                                        icon={null}
+                                                        title="No Patient Activity"
+                                                        message={searchTerm ? `No activity matching "${searchTerm}" found on ${patientDateFilter}.` : `No patient activity (OPD, Appointment, IPD) found on ${patientDateFilter}.`}
+                                                    />
+                                                );
+                                            })()
                                         )
                                     )}
 
@@ -2921,6 +3024,70 @@ const HospitalAdminDashboard = () => {
             )}
         </div>
     );
+};
+
+// Patient Activity Table Component for Date View
+const PatientActivityTable = ({ activities }) => {
+    const columnHelper = createColumnHelper();
+
+    const columns = [
+        columnHelper.display({
+            id: 'sno',
+            header: 'S.No.',
+            cell: info => info.row.index + 1,
+        }),
+        columnHelper.accessor('patientId', {
+            header: 'Patient ID',
+            cell: info => <span className="font-semibold text-gray-700">{info.getValue() || 'N/A'}</span>,
+        }),
+        columnHelper.accessor('patientName', {
+            header: 'Patient Name',
+            cell: info => <span className="font-medium text-gray-900">{info.getValue() || 'Unknown'}</span>,
+        }),
+        columnHelper.accessor('phone', {
+            header: 'Phone',
+            cell: info => info.getValue() || 'N/A',
+        }),
+        columnHelper.accessor('activityType', {
+            header: 'Activity Type',
+            cell: info => {
+                const type = info.getValue();
+                switch (type) {
+                    case 'OPD':
+                        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200">OPD</span>;
+                    case 'APPOINTMENT':
+                        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">Appointment</span>;
+                    case 'IPD':
+                        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-800 border border-orange-200">IPD</span>;
+                    default:
+                        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-800 border border-gray-200">{type}</span>;
+                }
+            }
+        }),
+        columnHelper.accessor('activityTime', {
+            header: 'Time',
+            cell: info => {
+                const val = info.getValue();
+                if (!val) return 'N/A';
+                try {
+                    const date = new Date(val);
+                    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                } catch (e) {
+                    return val;
+                }
+            }
+        }),
+        columnHelper.accessor('doctorName', {
+            header: 'Doctor Name',
+            cell: info => info.getValue() || 'N/A',
+        }),
+        columnHelper.accessor('details', {
+            header: 'Details',
+            cell: info => <span className="text-gray-500 font-mono text-xs">{info.getValue() || 'N/A'}</span>,
+        }),
+    ];
+
+    return <DataTable data={activities} columns={columns} />;
 };
 
 // Patients Table Component
