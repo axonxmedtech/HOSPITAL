@@ -21,6 +21,8 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
 
         long countByHospitalId(Long hospitalId);
 
+        long countByHospitalIdAndIsActiveTrue(Long hospitalId);
+
         /**
          * Find all patients belonging to a specific hospital
          * Used to list patients for a hospital (multi-tenant filtering)
@@ -83,4 +85,11 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
         org.springframework.data.domain.Page<Patient> findByHospitalIdAndIsActiveTrueAndCreatedAtBetweenOrderByCreatedAtDesc(
                         Long hospitalId, java.time.LocalDateTime start, java.time.LocalDateTime end,
                         org.springframework.data.domain.Pageable pageable);
+
+        /**
+         * Count active patients created within a date range
+         * Used for "Patients This Month" and "Patients Today" stats
+         */
+        long countByHospitalIdAndIsActiveTrueAndCreatedAtBetween(
+                        Long hospitalId, java.time.LocalDateTime start, java.time.LocalDateTime end);
 }

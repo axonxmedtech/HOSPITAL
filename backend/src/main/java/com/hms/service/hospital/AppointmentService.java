@@ -57,6 +57,9 @@ public class AppointmentService {
     @Autowired
     private com.hms.service.AuditLogService auditLogService;
 
+    @Autowired
+    private com.hms.security.HospitalWebSocketHandler webSocketHandler;
+
     /**
      * Create a new appointment
      * Validates that patient and doctor belong to the same hospital
@@ -184,12 +187,37 @@ public class AppointmentService {
 
         Appointment savedAppointment = appointmentRepository.save(appointment);
 
-        return savedAppointment;
-
         // Log Appointment Creation Audit
-        // (Logging moved to after save to have ID)
-        // Note: The original code returned before logging, which was a bug. Fixed order
-        // here.
+        try {
+            String pName = savedAppointment.getPatientName();
+            if (pName == null || pName.isBlank()) {
+                pName = patientRepository.findById(savedAppointment.getPatientId())
+                    .map(com.hms.entity.Patient::getName).orElse("Unknown");
+            }
+            String dName = savedAppointment.getDoctorName();
+            if (dName == null || dName.isBlank()) {
+                dName = doctorRepository.findById(savedAppointment.getDoctorId())
+                    .map(com.hms.entity.Doctor::getName).orElse("Unknown");
+            }
+            auditLogService.logAction(
+                    "APPOINTMENT_CREATED",
+                    "Appointment for patient " + pName + " with doctor " + dName + " was scheduled.",
+                    securityHelper.getCurrentUserEmail(),
+                    hospitalId,
+                    "APPOINTMENT",
+                    savedAppointment.getPublicId(),
+                    null);
+        } catch (Exception e) {
+            logger.warn("Failed to create audit log for appointment scheduling", e);
+        }
+
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            // ignore
+        }
+
+        return savedAppointment;
     }
 
     /**
@@ -455,6 +483,15 @@ public class AppointmentService {
         return populateNames(appointments);
     }
 
+    public long getTodaysAppointmentsCount() {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital ID not found in context");
+        }
+        LocalDate today = LocalDate.now();
+        return appointmentRepository.countByHospitalIdAndIsActiveTrueAndAppointmentDate(hospitalId, today);
+    }
+
     // ... keeping the rest (delete, update, stats, myAppointments)
 
     /**
@@ -495,6 +532,12 @@ public class AppointmentService {
                 "APPOINTMENT",
                 publicId,
                 reason);
+
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            // ignore
+        }
     }
 
     /**
@@ -563,6 +606,12 @@ public class AppointmentService {
             }
         }
 
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            // ignore
+        }
+
         return saved;
     }
 
@@ -593,6 +642,7 @@ public class AppointmentService {
 
         Appointment appointment = apptOpt.orElseThrow(() -> new RuntimeException("Appointment not found"));
 
+        String oldStatus = appointment.getStatus();
         if (status != null && !status.isEmpty()) {
             // Basic validation
             if (!status.equals("SCHEDULED") && !status.equals("COMPLETED") && !status.equals("CANCELLED")) {
@@ -610,9 +660,8 @@ public class AppointmentService {
             throw new RuntimeException("Failed to save appointment");
         }
 
-        // Trigger Billing if Completed and previously wasn't (or just check if current
-        // is completed and no bill exists? Simplified for now)
-        if ("COMPLETED".equals(status)) {
+        // Trigger Billing if Completed and previously wasn't
+        if ("COMPLETED".equals(status) && !"COMPLETED".equals(oldStatus)) {
             try {
                 billingService.autoGenerateOpdBill(saved);
             } catch (Exception e) {
@@ -633,6 +682,12 @@ public class AppointmentService {
                     null);
         } catch (Exception e) {
             logger.warn("Failed to log appointment update", e);
+        }
+
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            // ignore
         }
 
         return saved;

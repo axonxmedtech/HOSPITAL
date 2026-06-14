@@ -38,4 +38,6 @@ public interface HospitalRepository extends JpaRepository<Hospital, Long> {
      */
     org.springframework.data.domain.Page<Hospital> findAllByOrderByCreatedAtDesc(
             org.springframework.data.domain.Pageable pageable);
+
+    long countByIsActive(boolean isActive);
 }

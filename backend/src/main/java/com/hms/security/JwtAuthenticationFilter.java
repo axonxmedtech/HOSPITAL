@@ -49,14 +49,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
 
-        // Extract Authorization header
         String authHeader = request.getHeader("Authorization");
+        String token = null;
 
         // Check if Authorization header exists and starts with "Bearer "
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             // Extract token (remove "Bearer " prefix)
-            String token = authHeader.substring(7);
+            token = authHeader.substring(7);
+        } else if (request.getRequestURI() != null && request.getRequestURI().contains("/ws/")) {
+            // Extract token from query parameter for WebSocket handshake
+            token = request.getParameter("token");
+        }
 
+        if (token != null) {
             try {
                 // Validate token
                 if (jwtUtil.validateToken(token)) {

@@ -16,7 +16,10 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import org.springframework.beans.factory.annotation.Value;
 import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * SecurityConfig - Spring Security configuration
@@ -38,6 +41,9 @@ public class SecurityConfig {
 
     @Autowired
     private JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    @Value("${cors.allowed.origins}")
+    private String allowedOrigins;
 
     /**
      * Configure HTTP security
@@ -63,14 +69,17 @@ public class SecurityConfig {
                         // Public endpoints - no authentication required
                         .requestMatchers("/platform/login", "/login").permitAll()
                         .requestMatchers("/platform/users/debug-users").permitAll()
+                        .requestMatchers("/api/public/health").permitAll()
 
                         // Platform endpoints - only Super Admin
                         .requestMatchers("/platform/**").hasRole("SUPER_ADMIN")
 
-                        // Hospital endpoints - Hospital Admin, Doctor, Receptionist, and Pharmacist
-                        .requestMatchers("/hospital/**")
-                        .hasAnyRole("HOSPITAL_ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST")
+                        // WebSocket endpoints - authenticated standard HMS roles & Super Admin
+                        .requestMatchers("/ws/**").hasAnyRole("HOSPITAL_ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST", "SUPER_ADMIN")
 
+                        // Hospital and API endpoints - only standard HMS roles allowed
+                        .requestMatchers("/hospital/**", "/api/pharmacy/**")
+                        .hasAnyRole("HOSPITAL_ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST")
                         // All other requests require authentication
                         .anyRequest().authenticated())
 
@@ -93,12 +102,19 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // Allow frontend origin (adjust for production)
-        configuration.setAllowedOrigins(
-                Arrays.asList("http://localhost:3000", "http://localhost:5173", "http://localhost:5174"));
+        // Dynamically split by comma and trim to allow multiple origins
+        List<String> origins = Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim)
+                .collect(Collectors.toList());
+
+        // Always ensure standard localhost is added for safety in dev, plus the production link
+        if (!origins.contains("http://localhost:5173")) origins.add("http://localhost:5173");
+        if (!origins.contains("http://localhost:3000")) origins.add("http://localhost:3000");
+
+        configuration.setAllowedOrigins(origins);
 
         // Allow all HTTP methods
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
 
         // Allow all headers
         configuration.setAllowedHeaders(Arrays.asList("*"));

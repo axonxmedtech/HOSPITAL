@@ -3,6 +3,7 @@ package com.hms.service.hospital;
 import com.hms.entity.User;
 import com.hms.repository.UserRepository;
 import com.hms.security.SecurityContextHelper;
+import com.hms.security.HospitalWebSocketHandler;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -45,6 +46,9 @@ public class ReceptionistService {
     @Autowired
     private AuditLogRepository auditLogRepository;
 
+    @Autowired
+    private HospitalWebSocketHandler webSocketHandler;
+
     /**
      * Create a new receptionist
      * 
@@ -76,6 +80,13 @@ public class ReceptionistService {
         logger.info("Created receptionist: {} for hospital: {}", email, hospitalId);
 
         logAction("RECEPTIONIST_CREATED", "Created receptionist: " + email, null, hospitalId);
+
+        // Broadcast real-time refresh
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after receptionist creation", e);
+        }
 
         return saved;
     }
@@ -127,6 +138,13 @@ public class ReceptionistService {
         logger.info("Deleted receptionist ID: {}", publicId);
 
         logAction("RECEPTIONIST_DELETED", "Deleted (soft) receptionist: " + user.getEmail(), reason, hospitalId);
+
+        // Broadcast real-time refresh
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after receptionist deletion", e);
+        }
     }
 
     public void deleteReceptionist(String publicId) {

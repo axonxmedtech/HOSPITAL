@@ -13,7 +13,7 @@ import axios from 'axios';
  */
 
 // Base URL for backend API
-const API_BASE_URL = 'http://localhost:8080';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
 // Create axios instance
 const apiClient = axios.create({
@@ -21,7 +21,7 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000, // 10 seconds timeout
+  timeout: 30000, // 30 seconds timeout
 });
 
 // Request interceptor to add JWT token to headers

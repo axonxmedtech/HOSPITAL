@@ -179,12 +179,13 @@ public class PlatformHospitalController {
     @PutMapping("/{id}/details")
     public ResponseEntity<?> updateHospitalDetails(
             @PathVariable String id,
-            @RequestBody Map<String, String> request) {
+            @RequestBody Map<String, Object> request) {
         try {
-            String name = request.get("name");
-            String adminEmail = request.get("adminEmail");
-            String adminName = request.get("adminName");
-            String reason = request.get("reason");
+            String name = (String) request.get("name");
+            String adminEmail = (String) request.get("adminEmail");
+            String adminName = (String) request.get("adminName");
+            String reason = (String) request.get("reason");
+            Boolean isSingleDoctor = (Boolean) request.get("isSingleDoctor");
 
             if (name == null || name.trim().isEmpty()) {
                 return ResponseEntity.badRequest().body("Hospital name is required");
@@ -196,7 +197,7 @@ public class PlatformHospitalController {
                 return ResponseEntity.badRequest().body("Admin name is required");
             }
 
-            Hospital hospital = hospitalService.updateHospitalDetails(id, name, adminEmail, adminName, reason);
+            Hospital hospital = hospitalService.updateHospitalDetails(id, name, adminEmail, adminName, reason, isSingleDoctor);
             return ResponseEntity.ok(hospital);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
@@ -204,18 +205,22 @@ public class PlatformHospitalController {
     }
 
     /**
-     * Reset Tenant Admin Password
-     * 
-     * @param id Hospital ID
-     * @return Map containing "email" and "password"
+     * Reset Tenant Admin Password — password set by Super Admin
+     *
+     * @param id   Hospital ID
+     * @param body Map containing "password" and optional "reason"
      */
     @PostMapping("/{id}/reset-password")
     public ResponseEntity<?> resetTenantAdminPassword(@PathVariable String id,
             @RequestBody(required = false) Map<String, String> body) {
         try {
-            String reason = body != null ? body.get("reason") : null;
-            Map<String, String> credentials = hospitalService.resetTenantAdminPassword(id, reason);
-            return ResponseEntity.ok(credentials);
+            String password = body != null ? body.get("password") : null;
+            String reason   = body != null ? body.get("reason")   : null;
+            if (password == null || password.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body("Password is required");
+            }
+            Map<String, String> result = hospitalService.resetTenantAdminPassword(id, password, reason);
+            return ResponseEntity.ok(result);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

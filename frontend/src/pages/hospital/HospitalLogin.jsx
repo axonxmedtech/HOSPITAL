@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { useNavigate } from 'react-router-dom';
 import authService from '../../services/authService';
 import { validateForm } from '../../utils/validation';
@@ -18,6 +19,7 @@ const HospitalLogin = () => {
     const [selectedRole, setSelectedRole] = useState('HOSPITAL_ADMIN'); // Default role
     const [errors, setErrors] = useState({});
     const [loading, setLoading] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
     const navigate = useNavigate();
 
     const handleSubmit = async (e) => {
@@ -43,15 +45,33 @@ const HospitalLogin = () => {
 
             // 1. Strict Role Validation (Frontend Check)
             // Ensure the user is logging in with the role they SELECTED
-            if (response.role !== selectedRole) {
+            // In Single Doctor Hospital mode, the Hospital Admin can log in as either Hospital Admin or Doctor
+            // In Standalone Pharmacy Mode, the Hospital Admin can log in as either Hospital Admin or Pharmacist
+            const isStandalonePharmacy = response.modules?.includes('PHARMACY') && !response.modules?.includes('OPD');
+            const isValidRole = response.role === selectedRole ||
+                (response.role === 'HOSPITAL_ADMIN' && response.isSingleDoctor && selectedRole === 'DOCTOR') ||
+                (response.role === 'HOSPITAL_ADMIN' && isStandalonePharmacy && selectedRole === 'PHARMACIST');
+
+            if (!isValidRole) {
                 authService.logout(); // Clear the successful session
                 setErrors({ submit: `Access Denied: You are not registered as a ${selectedRole === 'HOSPITAL_ADMIN' ? 'Hospital Admin' : selectedRole === 'DOCTOR' ? 'Doctor' : selectedRole === 'PHARMACIST' ? 'Pharmacist' : 'Receptionist'}.` });
                 return;
             }
 
+            // Save the selected dashboard context preference to session storage
+            if (response.role === 'HOSPITAL_ADMIN' && (response.isSingleDoctor || isStandalonePharmacy)) {
+                sessionStorage.setItem('activeDashboard', selectedRole === 'DOCTOR' ? 'doctor' : selectedRole === 'PHARMACIST' ? 'pharmacy' : 'admin');
+            }
+
             // 2. Redirect based on Verified Role
             if (response.role === 'HOSPITAL_ADMIN') {
-                navigate('/hospital/admin');
+                if (response.isSingleDoctor && selectedRole === 'DOCTOR') {
+                    navigate('/hospital/doctor');
+                } else if (isStandalonePharmacy && selectedRole === 'PHARMACIST') {
+                    navigate('/hospital/pharmacy');
+                } else {
+                    navigate('/hospital/admin');
+                }
             } else if (response.role === 'DOCTOR') {
                 navigate('/hospital/doctor');
             } else if (response.role === 'RECEPTIONIST') {
@@ -173,7 +193,7 @@ const HospitalLogin = () => {
                                         id="role"
                                         value={selectedRole}
                                         onChange={handleRoleChange}
-                                        className="w-full px-3 py-2 bg-white border border-gray-200 text-gray-900 focus:border-gray-900"
+                                        className="w-full h-11 px-4 py-2.5 text-sm bg-white border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                     >
                                         <option value="HOSPITAL_ADMIN">Hospital Administration</option>
                                         <option value="DOCTOR">Medical Staff</option>
@@ -194,7 +214,7 @@ const HospitalLogin = () => {
                                         onChange={handleEmailChange}
                                         placeholder="your.name@hospital.com"
                                         disabled={loading}
-                                        className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 disabled:opacity-60 disabled:cursor-not-allowed ${errors.email ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
+                                        className={`w-full h-11 px-4 py-2.5 text-sm bg-white border rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-60 disabled:cursor-not-allowed ${errors.email ? 'border-red-400 bg-red-50' : 'border-gray-300'}`}
                                     />
                                     {errors.email && <p className="text-red-600 text-sm mt-1">{errors.email}</p>}
                                 </div>
@@ -204,15 +224,28 @@ const HospitalLogin = () => {
                                     <label htmlFor="password" className="block text-sm font-medium text-gray-900">
                                         Password
                                     </label>
-                                    <input
-                                        type="password"
-                                        id="password"
-                                        value={password}
-                                        onChange={handlePasswordChange}
-                                        placeholder="Enter your secure password"
-                                        disabled={loading}
-                                        className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 disabled:opacity-60 disabled:cursor-not-allowed ${errors.password ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
-                                    />
+                                    <div className="relative">
+                                        <input
+                                            type={showPassword ? 'text' : 'password'}
+                                            id="password"
+                                            value={password}
+                                            onChange={handlePasswordChange}
+                                            placeholder="Enter your secure password"
+                                            disabled={loading}
+                                            className={`w-full h-11 px-4 py-2.5 pr-10 text-sm bg-white border rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-60 disabled:cursor-not-allowed ${errors.password ? 'border-red-400 bg-red-50' : 'border-gray-300'}`}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPassword(prev => !prev)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                                            tabIndex={-1}
+                                            aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                        >
+                                            {showPassword
+                                                ? <EyeSlashIcon className="w-4 h-4" />
+                                                : <EyeIcon className="w-4 h-4" />}
+                                        </button>
+                                    </div>
                                     {errors.password && <p className="text-red-600 text-sm mt-1">{errors.password}</p>}
                                 </div>
 
@@ -221,7 +254,7 @@ const HospitalLogin = () => {
                                     <button
                                         type="submit"
                                         disabled={loading}
-                                        className="w-full bg-gray-900 hover:bg-gray-700 text-white font-medium py-3 px-4 transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                                        className="w-full h-11 bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold rounded-lg px-4 transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
                                     >
                                         {loading ? (
                                             <span className="flex items-center justify-center">

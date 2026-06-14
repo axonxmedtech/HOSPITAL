@@ -25,6 +25,12 @@ public class HospitalAuthController {
     @Autowired
     private HospitalAuthService authService;
 
+    @Autowired
+    private com.hms.security.HospitalWebSocketHandler webSocketHandler;
+
+    @Autowired
+    private com.hms.repository.UserRepository userRepository;
+
     /**
      * Hospital user login endpoint
      * Used by Hospital Admin and Doctor
@@ -59,6 +65,22 @@ public class HospitalAuthController {
     }
 
     /**
+     * Update current user profile details
+     */
+    @PutMapping("/auth/profile")
+    public ResponseEntity<?> updateProfile(java.security.Principal principal, @RequestBody com.hms.dto.ProfileUpdateRequest request) {
+        try {
+            if (principal == null) {
+                return ResponseEntity.status(401).body("Unauthorized");
+            }
+            LoginResponse response = authService.updateProfile(principal.getName(), request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.status(400).body(e.getMessage());
+        }
+    }
+
+    /**
      * Get hospital fees for the authenticated user's hospital
      */
     @GetMapping("/hospital/settings/fees")
@@ -73,13 +95,46 @@ public class HospitalAuthController {
     }
 
     /**
-     * Update hospital fees (consultation and case paper). Only Hospital Admin.
+     * Get hospital fees (consultation and case paper). Only Hospital Admin.
      */
     @PutMapping("/hospital/settings/fees")
     public ResponseEntity<?> updateHospitalFees(java.security.Principal principal, @RequestBody com.hms.dto.HospitalFeesDTO fees) {
         try {
             if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
             com.hms.dto.HospitalFeesDTO updated = authService.updateHospitalFees(principal.getName(), fees);
+            userRepository.findByEmail(principal.getName()).ifPresent(user -> {
+                webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
+            });
+            return ResponseEntity.ok(updated);
+        } catch (Exception e) {
+            return ResponseEntity.status(403).body(e.getMessage());
+        }
+    }
+
+    /**
+     * Get operations settings (receptionMode and billingHandler)
+     */
+    @GetMapping("/hospital/settings/operations")
+    public ResponseEntity<?> getOperationsSettings(java.security.Principal principal) {
+        try {
+            if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
+            return ResponseEntity.ok(authService.getHospitalOperationsSettings(principal.getName()));
+        } catch (Exception e) {
+            return ResponseEntity.status(403).body(e.getMessage());
+        }
+    }
+
+    /**
+     * Update operations settings (receptionMode and billingHandler)
+     */
+    @PutMapping("/hospital/settings/operations")
+    public ResponseEntity<?> updateOperationsSettings(java.security.Principal principal, @Valid @RequestBody com.hms.dto.HospitalSettingDTO dto) {
+        try {
+            if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
+            com.hms.dto.HospitalSettingDTO updated = authService.updateHospitalOperationsSettings(principal.getName(), dto);
+            userRepository.findByEmail(principal.getName()).ifPresent(user -> {
+                webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
+            });
             return ResponseEntity.ok(updated);
         } catch (Exception e) {
             return ResponseEntity.status(403).body(e.getMessage());

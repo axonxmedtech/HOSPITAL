@@ -20,8 +20,11 @@ public class IpdAdmissionController {
     @Autowired
     private com.hms.security.SecurityContextHelper securityHelper;
 
+    @Autowired
+    private com.hms.repository.HospitalSettingRepository hospitalSettingRepository;
+
     @PostMapping("/admit")
-    @PreAuthorize("hasRole('RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> admitToIpd(@RequestBody CreateIpdAdmissionRequest req) {
         try {
             IpdAdmission ipd = ipdAdmissionService.admitFromOpd(req.getOpdId(), req.getWardId(), req.getBedId(), req.getAdmissionType(), req.getPrimaryDiagnosis());
@@ -43,7 +46,7 @@ public class IpdAdmissionController {
         }
     }
 
-    @PreAuthorize("hasAnyRole('RECEPTIONIST','DOCTOR')")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST','DOCTOR','HOSPITAL_ADMIN')")
     @GetMapping("/admissions")
     public ResponseEntity<java.util.List<IpdAdmissionSummaryDTO>> getAdmittedIpdAdmissions() {
         java.util.List<IpdAdmissionSummaryDTO> list = ipdAdmissionService.getAdmittedIpdSummariesForCurrentUser();
@@ -51,7 +54,7 @@ public class IpdAdmissionController {
     }
 
     @GetMapping("/my")
-    @PreAuthorize("hasRole('DOCTOR')")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> listMyIpdAdmissions() {
         try {
             return ResponseEntity.ok(ipdAdmissionService.listMyIpdAdmissionsForDoctor());
@@ -65,10 +68,16 @@ public class IpdAdmissionController {
     public ResponseEntity<?> getIpdDetails(@PathVariable("id") Long id) {
         try {
             com.hms.dto.IpdAdmissionDetailsDTO dto = ipdAdmissionService.getIpdAdmissionDetails(id);
-            // If current user is DOCTOR, hide billing section (sensitive)
+            // If current user is DOCTOR, hide billing section unless settings allow DOCTOR or BOTH
             String role = securityHelper.getCurrentUserRole();
             if ("DOCTOR".equalsIgnoreCase(role)) {
-                dto.setBilling(null);
+                Long hospitalId = securityHelper.getCurrentHospitalId();
+                com.hms.entity.HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(hospitalId).orElse(null);
+                if (settings == null || 
+                    (!"DOCTOR".equalsIgnoreCase(settings.getBillingHandler()) && 
+                     !"BOTH".equalsIgnoreCase(settings.getBillingHandler()))) {
+                    dto.setBilling(null);
+                }
             }
             return ResponseEntity.ok(dto);
         } catch (org.springframework.security.access.AccessDeniedException ade) {
@@ -79,10 +88,10 @@ public class IpdAdmissionController {
     }
 
     @PostMapping("/{id}/followup")
-    @PreAuthorize("hasRole('DOCTOR')")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> addFollowup(@PathVariable("id") Long id, @RequestBody com.hms.dto.AddIpdFollowupRequest req) {
         try {
-            com.hms.entity.MedicalRecord mr = ipdAdmissionService.addIpdFollowup(id, req.getDiagnosis(), req.getNotes());
+            com.hms.entity.MedicalRecord mr = ipdAdmissionService.addIpdFollowup(id, req.getDiagnosis(), req.getNotes(), req.getAdministeredItems());
             return ResponseEntity.ok(mr);
         } catch (org.springframework.security.access.AccessDeniedException ade) {
             return ResponseEntity.status(403).body("Access denied");
@@ -92,7 +101,7 @@ public class IpdAdmissionController {
     }
 
     @PostMapping("/{id}/plan-discharge")
-    @PreAuthorize("hasRole('DOCTOR')")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> planDischarge(@PathVariable("id") Long id, @RequestBody com.hms.dto.PlanDischargeRequest req) {
         try {
             com.hms.entity.DischargeSummary ds = ipdAdmissionService.planDischarge(id, req);
@@ -105,7 +114,7 @@ public class IpdAdmissionController {
     }
 
     @PostMapping("/{id}/confirm-discharge")
-    @PreAuthorize("hasRole('RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> confirmDischarge(@PathVariable("id") Long id) {
         try {
             IpdAdmission ipd = ipdAdmissionService.confirmDischarge(id);
@@ -117,8 +126,34 @@ public class IpdAdmissionController {
         }
     }
 
+    @PostMapping("/{id}/administer")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> administerItems(@PathVariable("id") Long id, @RequestBody com.hms.dto.AdministerItemsRequest req) {
+        try {
+            ipdAdmissionService.administerItems(id, req.getAdministeredItems());
+            return ResponseEntity.ok().body("{\"message\":\"Items administered successfully\"}");
+        } catch (org.springframework.security.access.AccessDeniedException ade) {
+            return ResponseEntity.status(403).body("Access denied");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/{id}/administer-hospital-items")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> administerHospitalItems(@PathVariable("id") Long id, @RequestBody com.hms.dto.AdministerHospitalItemsRequest req) {
+        try {
+            ipdAdmissionService.administerHospitalItems(id, req.getItems());
+            return ResponseEntity.ok().body("{\"message\":\"Hospital items administered successfully\"}");
+        } catch (org.springframework.security.access.AccessDeniedException ade) {
+            return ResponseEntity.status(403).body("Access denied");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
     @PostMapping("/{id}/prescriptions")
-    @PreAuthorize("hasRole('DOCTOR')")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> addPrescription(@PathVariable("id") Long id, @RequestBody com.hms.dto.AddIpdPrescriptionRequest req) {
         try {
             com.hms.entity.Prescription p = ipdAdmissionService.addIpdPrescription(id, req);
@@ -131,11 +166,23 @@ public class IpdAdmissionController {
     }
 
     @PutMapping("/prescriptions/{id}/stop")
-    @PreAuthorize("hasRole('DOCTOR')")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> stopPrescription(@PathVariable("id") Long id) {
         try {
             com.hms.entity.Prescription p = ipdAdmissionService.stopPrescription(id);
             return ResponseEntity.ok(p);
+        } catch (org.springframework.security.access.AccessDeniedException ade) {
+            return ResponseEntity.status(403).body("Access denied");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+    @PutMapping("/{id}/change-bed")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> changeBed(@PathVariable("id") Long id, @RequestParam("newBedId") Long newBedId) {
+        try {
+            IpdAdmission updated = ipdAdmissionService.changeBed(id, newBedId);
+            return ResponseEntity.ok(updated);
         } catch (org.springframework.security.access.AccessDeniedException ade) {
             return ResponseEntity.status(403).body("Access denied");
         } catch (Exception e) {

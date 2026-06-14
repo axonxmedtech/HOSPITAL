@@ -77,10 +77,11 @@ public class OpdController {
     @GetMapping
     public ResponseEntity<?> listOpds(
             @RequestParam(required = false) String search,
+            @RequestParam(required = false) String date,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
-        var result = opdService.getOpds(search, pageable);
+        var result = opdService.getOpds(search, date, pageable);
         return ResponseEntity.ok(result);
     }
 
@@ -128,5 +129,54 @@ public class OpdController {
     public ResponseEntity<java.util.List<?>> getHospitalQueue() {
         java.util.List<?> queue = opdService.getHospitalQueue();
         return ResponseEntity.ok(queue);
+    }
+
+    @GetMapping("/today-followups")
+    public ResponseEntity<java.util.List<?>> getTodayFollowUps() {
+        try {
+            Long hospitalId = securityHelper.getCurrentHospitalId();
+            if (hospitalId == null) {
+                return ResponseEntity.ok(java.util.List.of());
+            }
+
+            // Trigger auto-queueing first so today's followups are created and queued
+            opdService.autoQueueTodaysFollowupsForHospital(hospitalId);
+
+            String email = securityHelper.getCurrentUserEmail();
+            java.util.Optional<com.hms.entity.Doctor> d = doctorRepository.findByEmailAndHospitalId(email, hospitalId);
+
+            java.util.List<com.hms.entity.MedicalRecord> followUps;
+            java.time.LocalDate today = java.time.LocalDate.now();
+            if (d.isPresent() && "DOCTOR".equals(securityHelper.getCurrentUserRole())) {
+                followUps = opdService.getFollowUpsForDoctorToday(hospitalId, d.get().getId(), today);
+            } else {
+                followUps = opdService.getFollowUpsForHospitalToday(hospitalId, today);
+            }
+
+            java.util.List<java.util.Map<String, Object>> response = new java.util.ArrayList<>();
+            for (com.hms.entity.MedicalRecord mr : followUps) {
+                java.util.Map<String, Object> map = new java.util.HashMap<>();
+                map.put("id", mr.getId());
+                map.put("followUpDate", mr.getFollowUpDate());
+                map.put("diagnosis", mr.getDiagnosis());
+
+                opdService.getPatientNameAndCustomIdAndPublicId(mr.getPatientId()).ifPresent(p -> {
+                    map.put("patientName", p.get("name"));
+                    map.put("patientCustomId", p.get("customId"));
+                    map.put("patientPublicId", p.get("publicId"));
+                });
+
+                opdService.getDoctorName(mr.getDoctorId()).ifPresent(name -> {
+                    map.put("doctorName", name);
+                });
+
+                response.add(map);
+            }
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Failed to fetch today's followups", e);
+            return ResponseEntity.ok(java.util.List.of());
+        }
     }
 }

@@ -9,4 +9,5 @@ import java.util.List;
 @Repository
 public interface BillingPaymentRepository extends JpaRepository<BillingPayment, Long> {
     List<BillingPayment> findByBillingId(Long billingId);
+    List<BillingPayment> findByBillingIdIn(List<Long> billingIds);
 }

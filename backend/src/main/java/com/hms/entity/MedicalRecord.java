@@ -71,6 +71,9 @@ public class MedicalRecord {
 
     private LocalDate followUpDate;
 
+    @Column(name = "administered_items_json", length = 3000)
+    private String administeredItemsJson;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

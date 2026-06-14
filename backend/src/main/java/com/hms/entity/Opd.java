@@ -51,9 +51,6 @@ public class Opd {
     @Column(name = "visit_type")
     private VisitType visitType;
 
-    @Column(name = "token_number")
-    private Integer tokenNumber;
-
     public enum Status { QUEUED, CONSULTED, COMPLETED, IN_IPD }
 
     @Enumerated(EnumType.STRING)
@@ -92,8 +89,6 @@ public class Opd {
     public void setProblem(String problem) { this.problem = problem; }
     public VisitType getVisitType() { return visitType; }
     public void setVisitType(VisitType visitType) { this.visitType = visitType; }
-    public Integer getTokenNumber() { return tokenNumber; }
-    public void setTokenNumber(Integer tokenNumber) { this.tokenNumber = tokenNumber; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public Status getStatus() { return status; }

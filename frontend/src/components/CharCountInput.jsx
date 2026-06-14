@@ -26,22 +26,23 @@ const CharCountInput = ({
     rows = 3,
     placeholder = '',
     type = 'text',
+    className = '',
     ...rest 
 }) => {
     const currentLength = value?.length || 0;
     const isNearLimit = maxLength && currentLength > maxLength * 0.8;
     const isOverLimit = maxLength && currentLength > maxLength;
 
-    const inputClasses = `w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-colors ${
-        error ? 'border-red-400 bg-red-50' : 'border-gray-300'
-    }`;
+    const inputClasses = `w-full px-4 py-3 text-sm border rounded-xl bg-neutral-50 placeholder-slate-400 text-slate-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent focus:bg-white transition-all duration-200 ease-in-out ${
+        error ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-neutral-300'
+    } ${className}`;
 
     const InputComponent = textarea ? 'textarea' : 'input';
 
     return (
         <div>
             {label && (
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label className="block text-sm font-semibold text-neutral-700 mb-2">
                     {label} {required && <span className="text-red-600">*</span>}
                 </label>
             )}

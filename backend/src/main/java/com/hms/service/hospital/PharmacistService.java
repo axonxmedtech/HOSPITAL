@@ -3,6 +3,7 @@ package com.hms.service.hospital;
 import com.hms.entity.User;
 import com.hms.repository.UserRepository;
 import com.hms.security.SecurityContextHelper;
+import com.hms.security.HospitalWebSocketHandler;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -38,6 +39,9 @@ public class PharmacistService {
     @Autowired
     private AuditLogRepository auditLogRepository;
 
+    @Autowired
+    private HospitalWebSocketHandler webSocketHandler;
+
     @Transactional
     public User createPharmacist(String name, String email, String password) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
@@ -61,6 +65,13 @@ public class PharmacistService {
         logger.info("Created pharmacist: {} for hospital: {}", email, hospitalId);
 
         logAction("PHARMACIST_CREATED", "Created pharmacist: " + email, null, hospitalId);
+
+        // Broadcast real-time refresh
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after pharmacist creation", e);
+        }
 
         return saved;
     }
@@ -98,6 +109,13 @@ public class PharmacistService {
         logger.info("Deleted pharmacist ID: {}", publicId);
 
         logAction("PHARMACIST_DELETED", "Deleted (soft) pharmacist: " + user.getEmail(), reason, hospitalId);
+
+        // Broadcast real-time refresh
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after pharmacist deletion", e);
+        }
     }
 
     private void logAction(String action, String details, String reason, Long hospitalId) {

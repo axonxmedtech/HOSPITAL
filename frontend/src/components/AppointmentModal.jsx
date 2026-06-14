@@ -10,6 +10,7 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
     const [formData, setFormData] = useState({});
     const [isNewPatient, setIsNewPatient] = useState(false);
     const [errors, setErrors] = useState({});
+    const [submitting, setSubmitting] = useState(false);
     const { success, error: toastError } = useToast();
 
     // Custom Combobox State
@@ -60,6 +61,13 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
             if (patients) setFilteredPatients(patients);
         }
     }, [isOpen, patients]);
+
+    // Auto-select doctor if only one is available
+    useEffect(() => {
+        if (isOpen && doctors && doctors.length === 1) {
+            handleChange('doctorId', doctors[0].id);
+        }
+    }, [isOpen, doctors]);
 
     // Fetch slots when Doctor + Date are selected
     useEffect(() => {
@@ -140,6 +148,7 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (submitting) return;
         setErrors({});
 
         // Define validation rules
@@ -169,6 +178,7 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
             return;
         }
 
+        setSubmitting(true);
         try {
             await hospitalService.createAppointment(formData);
             success('Appointment scheduled successfully');
@@ -177,6 +187,8 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
         } catch (err) {
             const errorMsg = err.response?.data?.message || err.response?.data || 'Failed to create appointment';
             toastError(errorMsg);
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -351,14 +363,21 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
                     {/* Doctor Selection */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Doctor *</label>
-                        <select
-                            value={formData.doctorId || ''}
-                            onChange={(e) => handleChange('doctorId', parseInt(e.target.value))}
-                            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.doctorId ? 'border-red-500' : 'border-gray-300'}`}
-                        >
-                            <option value="">Select Doctor</option>
-                            {doctors.map(d => <option key={d.id} value={d.id}>{d.name} - {d.specialization}</option>)}
-                        </select>
+                        {doctors && doctors.length === 1 ? (
+                            <div className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 text-gray-800 rounded-lg text-sm font-semibold flex items-center justify-between">
+                                <span>{doctors[0].name} - {doctors[0].specialization}</span>
+                                <span className="text-xs px-2 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded-full font-medium">Assigned</span>
+                            </div>
+                        ) : (
+                            <select
+                                value={formData.doctorId || ''}
+                                onChange={(e) => handleChange('doctorId', parseInt(e.target.value))}
+                                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.doctorId ? 'border-red-500' : 'border-gray-300'}`}
+                            >
+                                <option value="">Select Doctor</option>
+                                {doctors.map(d => <option key={d.id} value={d.id}>{d.name} - {d.specialization}</option>)}
+                            </select>
+                        )}
                         {errors.doctorId && <p className="text-red-500 text-xs mt-1">{errors.doctorId}</p>}
                     </div>
 
@@ -433,15 +452,23 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
                         <button
                             type="button"
                             onClick={handleClose}
-                            className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition"
+                            disabled={submitting}
+                            className={`flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium transition ${submitting ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
-                            className="flex-1 bg-gray-900 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-800 transition"
+                            disabled={submitting}
+                            className={`flex-1 px-4 py-2 rounded-lg font-medium transition flex items-center justify-center gap-2 ${submitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-900 text-white hover:bg-gray-800'}`}
                         >
-                            Schedule
+                            {submitting && (
+                                <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                            )}
+                            {submitting ? 'Scheduling...' : 'Schedule'}
                         </button>
                     </div>
                 </form>

@@ -11,6 +11,8 @@ import java.util.List;
 public interface PrescriptionRepository extends JpaRepository<Prescription, Long> {
     List<Prescription> findByMedicalRecordId(Long medicalRecordId);
 
+    List<Prescription> findByMedicalRecordIdIn(List<Long> medicalRecordIds);
+
     List<Prescription> findByHospitalIdAndStatus(Long hospitalId, String status);
 
     // For Pharmacy Dashboard

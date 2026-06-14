@@ -29,6 +29,13 @@ const getStatusConfig = (status) => {
         },
         
         // In progress states - Blue
+        'PARTIAL': { 
+            bg: 'bg-blue-50', 
+            text: 'text-blue-700', 
+            border: 'border-blue-200',
+            dot: 'bg-blue-500',
+            icon: null
+        },
         'SCHEDULED': { 
             bg: 'bg-blue-50', 
             text: 'text-blue-700', 
@@ -83,6 +90,13 @@ const getStatusConfig = (status) => {
         
         // Neutral states - Gray
         'INACTIVE': { 
+            bg: 'bg-gray-100', 
+            text: 'text-gray-700', 
+            border: 'border-gray-200',
+            dot: 'bg-gray-500',
+            icon: null
+        },
+        'CLOSED': { 
             bg: 'bg-gray-100', 
             text: 'text-gray-700', 
             border: 'border-gray-200',

@@ -3,13 +3,13 @@ import wardService from '../services/wardService';
 import hospitalService from '../services/hospitalService';
 import { useToast } from '../context/ToastContext';
 
-const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess }) => {
+const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) => {
     const [wards, setWards] = useState([]);
     const [selectedWard, setSelectedWard] = useState(null);
     const [beds, setBeds] = useState([]);
     const [selectedBed, setSelectedBed] = useState(null);
     const [admissionType, setAdmissionType] = useState('ELECTIVE');
-    const [primaryDiagnosis, setPrimaryDiagnosis] = useState(opd?.problem || '');
+    const [primaryDiagnosis, setPrimaryDiagnosis] = useState(initialDiagnosis || opd?.problem || '');
     const [loading, setLoading] = useState(false);
     const { success, error: toastError } = useToast();
 
@@ -24,8 +24,8 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess }) => {
             }
         };
         load();
-        setPrimaryDiagnosis(opd?.problem || '');
-    }, [isOpen, opd?.id]);
+        setPrimaryDiagnosis(initialDiagnosis || opd?.problem || '');
+    }, [isOpen, opd?.id, initialDiagnosis]);
 
     useEffect(() => {
         const loadBeds = async () => {
@@ -39,6 +39,20 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess }) => {
         };
         loadBeds();
     }, [selectedWard]);
+
+    // Auto-select ward if only one is available
+    useEffect(() => {
+        if (wards && wards.length === 1) {
+            setSelectedWard(Number(wards[0].wardId));
+        }
+    }, [wards]);
+
+    // Auto-select bed if only one is available
+    useEffect(() => {
+        if (beds && beds.length === 1) {
+            setSelectedBed(Number(beds[0].bedId));
+        }
+    }, [beds]);
 
     if (!isOpen) return null;
 
@@ -78,19 +92,33 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess }) => {
 
                 <div className="space-y-4">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">Ward</label>
-                        <select className="w-full border rounded px-3 py-2" value={selectedWard || ''} onChange={e => setSelectedWard(Number(e.target.value))}>
-                            <option value="">Select ward</option>
-                            {wards.map(w => <option key={w.wardId} value={w.wardId}>{w.wardName}</option>)}
-                        </select>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Ward</label>
+                        {wards && wards.length === 1 ? (
+                            <div className="w-full px-3 py-2 bg-gray-50 border border-gray-200 text-gray-800 rounded text-sm font-semibold flex items-center justify-between">
+                                <span>{wards[0].wardName}</span>
+                                <span className="text-xs px-2 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded-full font-medium">Assigned</span>
+                            </div>
+                        ) : (
+                            <select className="w-full border rounded px-3 py-2" value={selectedWard || ''} onChange={e => setSelectedWard(Number(e.target.value))}>
+                                <option value="">Select ward</option>
+                                {wards.map(w => <option key={w.wardId} value={w.wardId}>{w.wardName}</option>)}
+                            </select>
+                        )}
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">Bed (Available)</label>
-                        <select className="w-full border rounded px-3 py-2" value={selectedBed || ''} onChange={e => setSelectedBed(Number(e.target.value))}>
-                            <option value="">Select bed</option>
-                            {beds.map(b => <option key={b.bedId} value={b.bedId}>{b.bedCode} — {b.status}</option>)}
-                        </select>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Bed (Available)</label>
+                        {beds && beds.length === 1 ? (
+                            <div className="w-full px-3 py-2 bg-gray-50 border border-gray-200 text-gray-805 rounded text-sm font-semibold flex items-center justify-between">
+                                <span>{beds[0].bedCode} — {beds[0].status}</span>
+                                <span className="text-xs px-2 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded-full font-medium">Assigned</span>
+                            </div>
+                        ) : (
+                            <select className="w-full border rounded px-3 py-2" value={selectedBed || ''} onChange={e => setSelectedBed(Number(e.target.value))}>
+                                <option value="">Select bed</option>
+                                {beds.map(b => <option key={b.bedId} value={b.bedId}>{b.bedCode} — {b.status}</option>)}
+                            </select>
+                        )}
                     </div>
 
                     <div>

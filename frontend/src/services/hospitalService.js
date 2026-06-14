@@ -237,6 +237,47 @@ const hospitalService = {
         return response.data;
     },
 
+    // --- In-Clinic Medicine & Inventory ---
+    getCatalogMedicines: async () => {
+        const response = await apiClient.get('/hospital/medicines/catalog');
+        return response.data;
+    },
+
+    addCatalogMedicine: async (data) => {
+        const response = await apiClient.post('/hospital/medicines/catalog', data);
+        return response.data;
+    },
+
+    updateCatalogMedicine: async (id, data) => {
+        const response = await apiClient.put(`/hospital/medicines/catalog/${id}`, data);
+        return response.data;
+    },
+
+    deleteCatalogMedicine: async (id) => {
+        const response = await apiClient.delete(`/hospital/medicines/catalog/${id}`);
+        return response.data;
+    },
+
+    getInventoryMedicines: async () => {
+        const response = await apiClient.get('/hospital/medicines/inventory');
+        return response.data;
+    },
+
+    addInventoryMedicine: async (data) => {
+        const response = await apiClient.post('/hospital/medicines/inventory', data);
+        return response.data;
+    },
+
+    updateInventoryMedicine: async (id, data) => {
+        const response = await apiClient.put(`/hospital/medicines/inventory/${id}`, data);
+        return response.data;
+    },
+
+    deleteInventoryMedicine: async (id) => {
+        const response = await apiClient.delete(`/hospital/medicines/inventory/${id}`);
+        return response.data;
+    },
+
     /**
      * Get Consultation Details (Prescription)
      */
@@ -250,7 +291,8 @@ const hospitalService = {
      */
     downloadPrescription: async (appointmentId) => {
         return apiClient.get(`/hospital/doctors/prescription/${appointmentId}/pdf`, {
-            responseType: 'blob'
+            responseType: 'blob',
+            timeout: 60000
         }).then(response => response.data);
     },
 
@@ -273,7 +315,8 @@ const hospitalService = {
 
     downloadReceipt: async (id) => {
         const response = await apiClient.get(`/hospital/billing/${id}/pdf`, {
-            responseType: 'blob'
+            responseType: 'blob',
+            timeout: 60000
         });
         return response.data;
     },
@@ -326,20 +369,27 @@ const hospitalService = {
     /**
      * Get paginated OPD / cases (Receptionist view)
      */
-    getOpds: async (search = '', page = 0, size = 10) => {
+    getOpds: async (search = '', page = 0, size = 10, date = '') => {
         let url = `/hospital/opd?page=${page}&size=${size}`;
         if (search) url += `&search=${encodeURIComponent(search)}`;
+        if (date) url += `&date=${encodeURIComponent(date)}`;
         const response = await apiClient.get(url);
         return response.data;
     },
 
     downloadCasePaper: async (opdId) => {
-        const response = await apiClient.get(`/hospital/opd/${opdId}/pdf`, { responseType: 'blob' });
+        const response = await apiClient.get(`/hospital/opd/${opdId}/pdf`, {
+            responseType: 'blob',
+            timeout: 60000
+        });
         return response.data;
     },
 
     downloadPrescriptionByOpd: async (opdId) => {
-        const response = await apiClient.get(`/hospital/doctors/prescription/opd/${opdId}/pdf`, { responseType: 'blob' });
+        const response = await apiClient.get(`/hospital/doctors/prescription/opd/${opdId}/pdf`, {
+            responseType: 'blob',
+            timeout: 60000
+        });
         return response.data;
     },
     createIpdAdmission: async (payload) => {
@@ -359,7 +409,7 @@ const hospitalService = {
         return response.data; // returns array of DTOs
     },
     getIpdDetails: async (id) => {
-        const response = await apiClient.get(`/api/ipd/${id}`);
+        const response = await apiClient.get(`/api/ipd/${id}`, { timeout: 30000 });
         return response.data;
     },
     planDischarge: async (id, payload) => {
@@ -382,6 +432,14 @@ const hospitalService = {
         const response = await apiClient.post(`/api/ipd/${id}/followup`, payload);
         return response.data;
     },
+    administerIpdItems: async (id, items) => {
+        const response = await apiClient.post(`/api/ipd/${id}/administer`, { administeredItems: items });
+        return response.data;
+    },
+    administerIpdHospitalItems: async (id, items) => {
+        const response = await apiClient.post(`/api/ipd/${id}/administer-hospital-items`, { items });
+        return response.data;
+    },
     addIpdPrescription: async (id, payload) => {
         const response = await apiClient.post(`/api/ipd/${id}/prescriptions`, payload);
         return response.data;
@@ -390,12 +448,24 @@ const hospitalService = {
         const response = await apiClient.put(`/api/ipd/prescriptions/${prescriptionId}/stop`);
         return response.data;
     },
+    changeBed: async (ipdId, newBedId) => {
+        const response = await apiClient.put(`/api/ipd/${ipdId}/change-bed?newBedId=${newBedId}`);
+        return response.data;
+    },
 
     /**
      * Get hospital-wide queue for today
      */
     getHospitalQueue: async () => {
         const response = await apiClient.get(`/hospital/opd/queue`);
+        return response.data;
+    },
+
+    /**
+     * Get today's follow-up patients list based on role
+     */
+    getTodaysFollowUps: async () => {
+        const response = await apiClient.get('/hospital/opd/today-followups');
         return response.data;
     },
 
@@ -521,13 +591,38 @@ const hospitalService = {
         return response.data;
     },
 
-    // ========== Audit Log APIs ==========
+    /**
+     * Get patient activity for a specific date (OPD, Appointment, IPD)
+     * Used by Patient tab's Date toggle view
+     */
+    getPatientActivityByDate: async (date) => {
+        const response = await apiClient.get(`/hospital/stats/patient-activity?date=${date}`);
+        return response.data;
+    },
 
     /**
-     * Get recent activity for dashboard
+     * Download patient activity PDF report for a specific date
      */
-    getAuditLogs: async (searchTerm) => {
-        const response = await apiClient.get(`/hospital/audit-logs${searchTerm ? `?search=${encodeURIComponent(searchTerm)}` : ''}`);
+    downloadPatientActivityPdf: async (date) => {
+        const response = await apiClient.get(`/hospital/stats/patient-activity/pdf?date=${date}`, {
+            responseType: 'blob',
+            timeout: 60000
+        });
+        return response.data;
+    },
+
+    // ========== Audit Log APIs ==========
+
+    getAuditLogs: async (searchTerm, role, limit) => {
+        let url = '/hospital/audit-logs';
+        const params = [];
+        if (searchTerm) params.push(`search=${encodeURIComponent(searchTerm)}`);
+        if (role) params.push(`role=${encodeURIComponent(role)}`);
+        if (limit) params.push(`limit=${limit}`);
+        if (params.length > 0) {
+            url += `?${params.join('&')}`;
+        }
+        const response = await apiClient.get(url);
         return response.data;
     },
 
@@ -542,11 +637,137 @@ const hospitalService = {
         return response.data;
     },
 
+    getCustomFees: async () => {
+        const response = await apiClient.get('/hospital/settings/fees/custom');
+        return response.data;
+    },
+
+    addCustomFee: async (feeData) => {
+        const response = await apiClient.post('/hospital/settings/fees/custom', feeData);
+        return response.data;
+    },
+
+    updateCustomFee: async (id, feeData) => {
+        const response = await apiClient.put(`/hospital/settings/fees/custom/${id}`, feeData);
+        return response.data;
+    },
+
+    deleteCustomFee: async (id) => {
+        const response = await apiClient.delete(`/hospital/settings/fees/custom/${id}`);
+        return response.data;
+    },
+
+    updateBillItems: async (billId, items) => {
+        const response = await apiClient.put(`/hospital/billing/${billId}/items`, items);
+        return response.data;
+    },
+
+    getHospitalOperationsSettings: async () => {
+        const response = await apiClient.get('/hospital/settings/operations');
+        return response.data;
+    },
+
+    updateHospitalOperationsSettings: async (settings) => {
+        const response = await apiClient.put('/hospital/settings/operations', settings);
+        return response.data;
+    },
+
     /**
      * Get history for specific entity
      */
     getEntityHistory: async (entityType, entityId) => {
         const response = await apiClient.get(`/hospital/audit-logs/${entityType}/${entityId}`);
+        return response.data;
+    },
+
+    // ========== Support & FAQ APIs ==========
+    getPublicFaqs: async () => {
+        const response = await apiClient.get('/api/public/faqs');
+        return response.data;
+    },
+
+    getTickets: async () => {
+        const response = await apiClient.get('/hospital/tickets');
+        return response.data;
+    },
+
+    createTicket: async (ticketData) => {
+        const response = await apiClient.post('/hospital/tickets', ticketData);
+        return response.data;
+    },
+
+    // ========== Hospital Inventory & Patient Bills ==========
+    getPatientBills: async (patientId) => {
+        const response = await apiClient.get(`/hospital/billing/patient/${patientId}`);
+        return response.data;
+    },
+
+    searchHospitalInventoryCatalog: async (query) => {
+        const response = await apiClient.get(`/hospital/hospital-inventory/search?query=${encodeURIComponent(query)}`);
+        return response.data;
+    },
+
+    getHospitalInventoryCatalog: async () => {
+        const response = await apiClient.get('/hospital/hospital-inventory/catalog');
+        return response.data;
+    },
+
+    addHospitalInventoryCatalog: async (item) => {
+        const response = await apiClient.post('/hospital/hospital-inventory/catalog', item);
+        return response.data;
+    },
+
+    updateHospitalInventoryCatalog: async (id, item) => {
+        const response = await apiClient.put(`/hospital/hospital-inventory/catalog/${id}`, item);
+        return response.data;
+    },
+
+    deleteHospitalInventoryCatalog: async (id) => {
+        const response = await apiClient.delete(`/hospital/hospital-inventory/catalog/${id}`);
+        return response.data;
+    },
+
+    getHospitalInventory: async () => {
+        const response = await apiClient.get('/hospital/hospital-inventory/inventory');
+        return response.data;
+    },
+
+    addHospitalInventory: async (stock) => {
+        const response = await apiClient.post('/hospital/hospital-inventory/inventory', stock);
+        return response.data;
+    },
+
+    updateHospitalInventory: async (id, stock) => {
+        const response = await apiClient.put(`/hospital/hospital-inventory/inventory/${id}`, stock);
+        return response.data;
+    },
+
+    deleteHospitalInventory: async (id) => {
+        const response = await apiClient.delete(`/hospital/hospital-inventory/inventory/${id}`);
+        return response.data;
+    },
+
+    downloadOpdMedicinesList: async (opdId) => {
+        const response = await apiClient.get(`/hospital/patients/opd/${opdId}/medicines/pdf`, {
+            responseType: 'blob',
+            timeout: 60000
+        });
+        return response.data;
+    },
+
+    downloadIpdPrescription: async (ipdId) => {
+        const response = await apiClient.get(`/hospital/patients/ipd/${ipdId}/prescription/pdf`, {
+            responseType: 'blob',
+            timeout: 60000
+        });
+        return response.data;
+    },
+
+    downloadIpdMedicinesList: async (ipdId) => {
+        const response = await apiClient.get(`/hospital/patients/ipd/${ipdId}/medicines/pdf`, {
+            responseType: 'blob',
+            timeout: 60000
+        });
         return response.data;
     },
 };

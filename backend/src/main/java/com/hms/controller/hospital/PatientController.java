@@ -119,7 +119,7 @@ public class PatientController {
      * @return Updated patient
      */
     @PutMapping("/{publicId}/status")
-    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> updatePatientStatus(
             @PathVariable String publicId,
             @RequestParam String status) {
@@ -142,7 +142,7 @@ public class PatientController {
      * @return Updated patient
      */
     @PostMapping("/{publicId}/start-consultation")
-    @PreAuthorize("hasRole('DOCTOR')")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> startConsultation(@PathVariable String publicId) {
         try {
             Patient updatedPatient = patientService.startConsultation(publicId);
@@ -161,7 +161,7 @@ public class PatientController {
      * @return Patient consultation details
      */
     @GetMapping("/{publicId}/consultation-details")
-    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> getPatientConsultationDetails(@PathVariable String publicId) {
         try {
             java.util.Map<String, Object> details = patientService.getPatientConsultationDetails(publicId);
@@ -175,10 +175,58 @@ public class PatientController {
      * Get latest prescription for a patient
      */
     @GetMapping("/{publicId}/latest-prescription")
-    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> getLatestPrescription(@PathVariable String publicId) {
         try {
             return ResponseEntity.ok(patientService.getLatestPrescription(publicId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/opd/{opdId}/medicines/pdf")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> getOpdMedicinesPdf(@PathVariable Long opdId) {
+        try {
+            java.io.ByteArrayInputStream pdf = patientService.getOpdMedicinesPdf(opdId);
+            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            headers.add("Content-Disposition", "inline; filename=opd_medicines_" + opdId + ".pdf");
+            return ResponseEntity.ok()
+                    .headers(headers)
+                    .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                    .body(new org.springframework.core.io.InputStreamResource(pdf));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/ipd/{ipdId}/medicines/pdf")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> getIpdMedicinesPdf(@PathVariable Long ipdId) {
+        try {
+            java.io.ByteArrayInputStream pdf = patientService.getIpdMedicinesPdf(ipdId);
+            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            headers.add("Content-Disposition", "inline; filename=ipd_medicines_" + ipdId + ".pdf");
+            return ResponseEntity.ok()
+                    .headers(headers)
+                    .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                    .body(new org.springframework.core.io.InputStreamResource(pdf));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/ipd/{ipdId}/prescription/pdf")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> getIpdPrescriptionPdf(@PathVariable Long ipdId) {
+        try {
+            java.io.ByteArrayInputStream pdf = patientService.getIpdPrescriptionPdf(ipdId);
+            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            headers.add("Content-Disposition", "inline; filename=ipd_prescription_" + ipdId + ".pdf");
+            return ResponseEntity.ok()
+                    .headers(headers)
+                    .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                    .body(new org.springframework.core.io.InputStreamResource(pdf));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

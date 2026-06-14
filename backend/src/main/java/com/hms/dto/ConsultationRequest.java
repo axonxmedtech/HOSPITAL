@@ -15,6 +15,15 @@ public class ConsultationRequest {
     private LocalDate followUpDate;
     private List<PrescriptionItem> prescription;
     private List<String> labTests;
+    private List<AdministeredItem> administeredItems;
+    private List<HospitalInventoryItem> hospitalInventoryItems;
+
+    @Data
+    public static class HospitalInventoryItem {
+        private Long stockId;
+        private String name;
+        private Integer quantity;
+    }
 
     @Data
     public static class PrescriptionItem {
@@ -23,5 +32,20 @@ public class ConsultationRequest {
         private String frequency;
         private String duration;
         private String instructions;
+    }
+
+    @Data
+    public static class AdministeredItem {
+        private Long medicineId;
+        private String medicineName;
+        private Integer quantity;
+    }
+
+    private List<ChargeItem> charges;
+
+    @Data
+    public static class ChargeItem {
+        private String description;
+        private java.math.BigDecimal amount;
     }
 }

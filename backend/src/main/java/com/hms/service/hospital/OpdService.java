@@ -4,38 +4,49 @@ import com.hms.dto.CreateOpdRequest;
 import com.hms.entity.*;
 import com.hms.repository.*;
 import com.hms.security.SecurityContextHelper;
+import com.hms.security.HospitalWebSocketHandler;
 import com.hms.service.AuditLogService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Optional;
 
 @Service
 public class OpdService {
 
+    private static final Logger logger = LoggerFactory.getLogger(OpdService.class);
+
     private final OpdRepository opdRepository;
     private final QueueEntryRepository queueEntryRepository;
     private final PatientRepository patientRepository;
     private final DoctorRepository doctorRepository;
     private final UserRepository userRepository;
+    private final MedicalRecordRepository medicalRecordRepository;
 
     private final SecurityContextHelper securityHelper;
     private final AuditLogService auditLogService;
+    private final HospitalWebSocketHandler webSocketHandler;
 
     public OpdService(OpdRepository opdRepository,
                       QueueEntryRepository queueEntryRepository,
                       PatientRepository patientRepository,
                       DoctorRepository doctorRepository,
                       UserRepository userRepository,
+                      MedicalRecordRepository medicalRecordRepository,
                       SecurityContextHelper securityHelper,
-                      AuditLogService auditLogService) {
+                      AuditLogService auditLogService,
+                      HospitalWebSocketHandler webSocketHandler) {
         this.opdRepository = opdRepository;
         this.queueEntryRepository = queueEntryRepository;
         this.patientRepository = patientRepository;
         this.doctorRepository = doctorRepository;
         this.userRepository = userRepository;
+        this.medicalRecordRepository = medicalRecordRepository;
         this.securityHelper = securityHelper;
         this.auditLogService = auditLogService;
+        this.webSocketHandler = webSocketHandler;
     }
 
     @Transactional
@@ -74,14 +85,6 @@ public class OpdService {
             } catch (Exception ignored) {}
         }
 
-        // Determine token number for the assigned doctor (per-day)
-        Integer nextToken = 1;
-        if (opd.getDoctor() != null) {
-            Integer max = queueEntryRepository.findMaxTokenForDoctorToday(opd.getDoctor().getId());
-            nextToken = (max == null ? 0 : max) + 1;
-        }
-        opd.setTokenNumber(nextToken);
-
         Opd saved = opdRepository.save(opd);
 
         // Create queue entry
@@ -89,7 +92,6 @@ public class OpdService {
             QueueEntry entry = new QueueEntry();
             entry.setOpd(saved);
             entry.setDoctor(saved.getDoctor());
-            entry.setTokenNumber(saved.getTokenNumber());
             queueEntryRepository.save(entry);
         }
 
@@ -115,10 +117,26 @@ public class OpdService {
         } catch (Exception ignored) {
         }
 
+        // Broadcast real-time update to all connected clients in this hospital
+        try {
+            Long broadcastHospitalId = securityHelper.getCurrentHospitalId();
+            if (broadcastHospitalId != null) {
+                webSocketHandler.broadcast(broadcastHospitalId, "{\"type\":\"REFRESH_DATA\"}");
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after OPD creation", e);
+        }
+
         return saved;
     }
 
     public java.util.List<QueueEntry> getQueueForDoctor(Long doctorId) {
+        try {
+            Long hospitalId = securityHelper.getCurrentHospitalId();
+            if (hospitalId != null) {
+                autoQueueTodaysFollowupsForDoctor(hospitalId, doctorId);
+            }
+        } catch (Exception ignored) {}
         return queueEntryRepository.findQueueForDoctorToday(doctorId);
     }
 
@@ -126,7 +144,7 @@ public class OpdService {
         return opdRepository.findById(id).orElse(null);
     }
 
-    public org.springframework.data.domain.Page<Opd> getOpds(String search, org.springframework.data.domain.Pageable pageable) {
+    public org.springframework.data.domain.Page<Opd> getOpds(String search, String dateStr, org.springframework.data.domain.Pageable pageable) {
         Long hospitalId = null;
         try {
             hospitalId = securityHelper.getCurrentHospitalId();
@@ -137,10 +155,19 @@ public class OpdService {
             return new org.springframework.data.domain.PageImpl<>(java.util.List.of());
         }
 
-        if (search != null && !search.trim().isEmpty()) {
-            return opdRepository.searchByHospital(hospitalId, search.trim(), pageable);
+        java.time.LocalDateTime startDate = null;
+        java.time.LocalDateTime endDate = null;
+        if (dateStr != null && !dateStr.trim().isEmpty()) {
+            try {
+                java.time.LocalDate date = java.time.LocalDate.parse(dateStr.trim());
+                startDate = date.atStartOfDay();
+                endDate = date.atTime(23, 59, 59, 999999999);
+            } catch (Exception ignored) {}
         }
-        return opdRepository.findByPatient_HospitalId(hospitalId, pageable);
+
+        String searchVal = (search != null && !search.trim().isEmpty()) ? search.trim() : null;
+
+        return opdRepository.searchByHospitalAndDateRange(hospitalId, searchVal, startDate, endDate, pageable);
     }
 
     public java.util.List<QueueEntry> getHospitalQueue() {
@@ -149,6 +176,104 @@ public class OpdService {
             hospitalId = securityHelper.getCurrentHospitalId();
         } catch (Exception ignored) {}
         if (hospitalId == null) return java.util.List.of();
+        try {
+            autoQueueTodaysFollowupsForHospital(hospitalId);
+        } catch (Exception ignored) {}
         return queueEntryRepository.findQueueForHospitalToday(hospitalId);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public void autoQueueTodaysFollowupsForHospital(Long hospitalId) {
+        java.time.LocalDate today = java.time.LocalDate.now();
+        java.time.LocalDateTime startOfToday = today.atStartOfDay();
+
+        java.util.List<com.hms.entity.MedicalRecord> records = medicalRecordRepository.findByHospitalIdAndFollowUpDate(hospitalId, today);
+        for (com.hms.entity.MedicalRecord record : records) {
+            boolean alreadyQueued = opdRepository.existsByPatientIdAndVisitTypeAndCreatedAtGreaterThanEqual(
+                    record.getPatientId(),
+                    com.hms.entity.Opd.VisitType.FOLLOWUP,
+                    startOfToday
+            );
+            if (!alreadyQueued) {
+                queueFollowUp(record);
+            }
+        }
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public void autoQueueTodaysFollowupsForDoctor(Long hospitalId, Long doctorId) {
+        java.time.LocalDate today = java.time.LocalDate.now();
+        java.time.LocalDateTime startOfToday = today.atStartOfDay();
+
+        java.util.List<com.hms.entity.MedicalRecord> records = medicalRecordRepository.findByHospitalIdAndDoctorIdAndFollowUpDate(hospitalId, doctorId, today);
+        for (com.hms.entity.MedicalRecord record : records) {
+            boolean alreadyQueued = opdRepository.existsByPatientIdAndVisitTypeAndCreatedAtGreaterThanEqual(
+                    record.getPatientId(),
+                    com.hms.entity.Opd.VisitType.FOLLOWUP,
+                    startOfToday
+            );
+            if (!alreadyQueued) {
+                queueFollowUp(record);
+            }
+        }
+    }
+
+    private void queueFollowUp(com.hms.entity.MedicalRecord record) {
+        com.hms.entity.Opd opd = new com.hms.entity.Opd();
+        opd.setCaseId("OPD-" + System.currentTimeMillis());
+
+        com.hms.entity.Patient patient = patientRepository.findById(record.getPatientId()).orElse(null);
+        if (patient == null) return;
+        opd.setPatient(patient);
+
+        com.hms.entity.Doctor doctor = doctorRepository.findById(record.getDoctorId()).orElse(null);
+        if (doctor == null) return;
+        opd.setDoctor(doctor);
+
+        opd.setVisitType(com.hms.entity.Opd.VisitType.FOLLOWUP);
+        opd.setProblem(record.getDiagnosis() != null ? "Follow-up: " + record.getDiagnosis() : "Follow-up");
+        opd.setStatus(com.hms.entity.Opd.Status.QUEUED);
+
+        com.hms.entity.Opd saved = opdRepository.save(opd);
+
+        com.hms.entity.QueueEntry entry = new com.hms.entity.QueueEntry();
+        entry.setOpd(saved);
+        entry.setDoctor(doctor);
+        queueEntryRepository.save(entry);
+
+        try {
+            String details = "OPD Follow-up " + saved.getCaseId() + " auto-created for patient " + patient.getId();
+            auditLogService.logAction(
+                    "OPD_CREATED",
+                    details,
+                    "SYSTEM",
+                    record.getHospitalId(),
+                    "OPD",
+                    saved.getCaseId(),
+                    null
+            );
+        } catch (Exception ignored) {}
+    }
+
+    public java.util.List<com.hms.entity.MedicalRecord> getFollowUpsForDoctorToday(Long hospitalId, Long doctorId, java.time.LocalDate today) {
+        return medicalRecordRepository.findByHospitalIdAndDoctorIdAndFollowUpDate(hospitalId, doctorId, today);
+    }
+
+    public java.util.List<com.hms.entity.MedicalRecord> getFollowUpsForHospitalToday(Long hospitalId, java.time.LocalDate today) {
+        return medicalRecordRepository.findByHospitalIdAndFollowUpDate(hospitalId, today);
+    }
+
+    public java.util.Optional<java.util.Map<String, String>> getPatientNameAndCustomIdAndPublicId(Long patientId) {
+        return patientRepository.findById(patientId).map(p -> {
+            java.util.Map<String, String> map = new java.util.HashMap<>();
+            map.put("name", p.getName());
+            map.put("customId", p.getCustomId());
+            map.put("publicId", p.getPublicId());
+            return map;
+        });
+    }
+
+    public java.util.Optional<String> getDoctorName(Long doctorId) {
+        return doctorRepository.findById(doctorId).map(com.hms.entity.Doctor::getName);
     }
 }

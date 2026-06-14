@@ -29,5 +29,26 @@ public interface BillingRepository extends JpaRepository<Billing, Long> {
 
     java.util.Optional<Billing> findTopByPatientIdOrderByCreatedAtDesc(Long patientId);
 
+    @Query("""
+        SELECT b FROM Billing b
+        WHERE b.id IN (
+            SELECT MAX(b2.id)
+            FROM Billing b2
+            WHERE b2.patientId IN :patientIds
+            GROUP BY b2.patientId
+        )
+    """)
+    List<Billing> findLatestBillForPatients(@org.springframework.data.repository.query.Param("patientIds") List<Long> patientIds);
+
+    List<Billing> findByPatientIdOrderByCreatedAtDesc(Long patientId);
+
     java.util.List<Billing> findByIpdAdmissionId(Long ipdAdmissionId);
+
+    boolean existsByAppointmentId(Long appointmentId);
+
+    boolean existsByOpdId(Long opdId);
+
+    java.util.Optional<Billing> findByAppointmentId(Long appointmentId);
+
+    java.util.Optional<Billing> findByOpdId(Long opdId);
 }
