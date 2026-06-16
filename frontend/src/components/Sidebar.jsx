@@ -184,7 +184,7 @@ const Sidebar = ({ title, tabs, activeTab, onTabChange, footerTitle, footerData,
             <div className={`${isCollapsed ? 'p-3' : 'p-6'} border-b border-gray-200 transition-all duration-300`}>
                 {!isCollapsed && (
                     <div className="mb-6">
-                        <h1 className="text-xl font-bold text-gray-900">{title}</h1>
+                        <img src="/logo.png" alt="logo" className="h-full w-[70%]" />
                         <p className="text-sm text-gray-600 mt-1">Management Portal</p>
                     </div>
                 )}
@@ -199,18 +199,17 @@ const Sidebar = ({ title, tabs, activeTab, onTabChange, footerTitle, footerData,
                             <div key={tab.id} className="space-y-1">
                                 <button
                                     onClick={() => onTabChange(tab.id)}
-                                    className={`w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'px-3'} py-2 text-sm font-medium transition-colors duration-200 relative ${
-                                        (activeTab === tab.id || (tab.subItems?.some(s => s.id === activeTab)))
-                                            ? `${theme.activeBg} ${theme.activeText}`
-                                            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                                    }`}
+                                    className={`w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'px-3'} py-2 text-sm font-medium transition-colors duration-200 relative ${(activeTab === tab.id || (tab.subItems?.some(s => s.id === activeTab)))
+                                        ? `${theme.activeBg} ${theme.activeText}`
+                                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                                        }`}
                                     title={isCollapsed ? tab.label : ''}
                                 >
                                     {/* Active indicator */}
                                     {(activeTab === tab.id || (tab.subItems?.some(s => s.id === activeTab))) && (
                                         <div className="absolute left-0 top-0 bottom-0 w-1 bg-gray-900"></div>
                                     )}
-                                    
+
                                     {/* Icon */}
                                     <div className={isCollapsed ? '' : 'mr-3'}>
                                         {menuIcons[tab.label] ? (
@@ -223,9 +222,9 @@ const Sidebar = ({ title, tabs, activeTab, onTabChange, footerTitle, footerData,
                                             </svg>
                                         )}
                                     </div>
-                                    
+
                                     {!isCollapsed && <span className="flex-1 text-left">{tab.label}</span>}
-                                    
+
                                     {!isCollapsed && hasSubItems && (
                                         <svg className={`w-4 h-4 transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -240,11 +239,10 @@ const Sidebar = ({ title, tabs, activeTab, onTabChange, footerTitle, footerData,
                                             <button
                                                 key={subItem.id}
                                                 onClick={() => onTabChange(subItem.id)}
-                                                className={`w-full flex items-center px-3 py-1.5 text-sm font-medium transition-colors duration-200 ${
-                                                    activeTab === subItem.id
-                                                        ? 'text-gray-900 font-semibold'
-                                                        : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
-                                                }`}
+                                                className={`w-full flex items-center px-3 py-1.5 text-sm font-medium transition-colors duration-200 ${activeTab === subItem.id
+                                                    ? 'text-gray-900 font-semibold'
+                                                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                                                    }`}
                                             >
                                                 {subItem.label}
                                             </button>

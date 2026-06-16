@@ -56,8 +56,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             // Extract token (remove "Bearer " prefix)
             token = authHeader.substring(7);
-        } else if (request.getRequestURI() != null && request.getRequestURI().contains("/ws/")) {
-            // Extract token from query parameter for WebSocket handshake
+        } else {
+            // Fall back to query parameter for WebSockets or secure file download/viewing endpoints
             token = request.getParameter("token");
         }
 

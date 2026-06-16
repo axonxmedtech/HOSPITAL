@@ -33,7 +33,6 @@ export const useViewManager = (apiCall, options = {}) => {
             const errMsg = err.response?.data?.message || "Failed to load data. Please try again.";
             setError(errMsg);
             toast.error(errMsg);
-            console.error("ViewManager Error:", err);
         } finally {
             setLoading(false);
         }

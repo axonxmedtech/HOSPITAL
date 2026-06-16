@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { useViewManager } from '../../../hooks/pharmacy/useViewManager';
 import { ViewLayout, ViewToolbar, SearchInput } from '../../../components/pharmacy/shared/ViewComponents';
 import { useToast } from '../../../context/ToastContext';
@@ -10,7 +10,7 @@ import medicinesApi from '../../../services/pharmacy/medicinesApi';
 import categoriesApi from '../../../services/pharmacy/categoriesApi';
 import manufacturersApi from '../../../services/pharmacy/manufacturersApi';
 
-const MedicineMasterView = () => {
+const MedicineMasterView = ({ refreshKey = 0 }) => {
     const toast = useToast();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalMode, setModalMode] = useState('create');
@@ -35,7 +35,7 @@ const MedicineMasterView = () => {
         handleSearch,
         handlePageChange,
         refresh
-    } = useViewManager(medicinesApi.getAll);
+    } = useViewManager(medicinesApi.getAll, { dependencies: [refreshKey] });
 
     const fetchDropdownData = useCallback(async () => {
         try {

@@ -113,6 +113,11 @@ public class PatientService {
 
         logger.info("Hospital {} creating new patient: {}", hospitalId, patient.getName());
         Patient savedPatient = patientRepository.save(patient);
+
+        // Set sequential customId using the auto-increment id: PAT1, PAT2, PAT3...
+        savedPatient.setCustomId("PAT" + savedPatient.getId());
+        savedPatient = patientRepository.save(savedPatient);
+
         evictStatsCache(hospitalId);
 
         // Create audit log
@@ -708,6 +713,10 @@ public class PatientService {
                                 java.util.Map<String, Object> amMap = new java.util.HashMap<>();
                                 amMap.put("medicineName", im.get("medicineName"));
                                 amMap.put("quantity", im.get("quantity"));
+                                amMap.put("dosage", im.get("dosage"));
+                                amMap.put("frequency", im.get("frequency"));
+                                amMap.put("duration", im.get("duration"));
+                                amMap.put("instructions", im.get("instructions"));
                                 administeredItems.add(amMap);
                             }
                         }
@@ -783,29 +792,57 @@ public class PatientService {
         com.hms.entity.Patient patient = patientRepository.findById(record.getPatientId())
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
 
-        com.hms.entity.Billing bill = billingRepository.findByOpdId(opdId).orElse(null);
+        com.hms.entity.Doctor doctor = (record.getDoctorId() != null) 
+                ? doctorRepository.findById(record.getDoctorId()).orElse(null) 
+                : null;
+        com.hms.entity.Opd opd = opdRepository.findById(opdId).orElse(null);
+        String customNo = (opd != null) ? opd.getCaseId() : "-";
+        java.time.LocalDateTime createdAt = (opd != null) ? opd.getCreatedAt() : record.getCreatedAt();
+
         java.util.List<String[]> itemsList = new java.util.ArrayList<>();
-        if (bill != null) {
-            java.util.List<com.hms.entity.BillingItem> items = billingItemRepository.findByBillingId(bill.getId());
-            for (com.hms.entity.BillingItem it : items) {
-                String desc = it.getDescription();
-                if (desc != null) {
-                    String[] parsed = parseBillingItemDescription(desc);
-                    if (parsed != null) {
-                        String baseName = parsed[0];
-                        String qty = parsed[1];
-                        if (inventoryItemRepository.existsByNameAndHospitalId(baseName, hospitalId)) {
-                            itemsList.add(new String[]{baseName, qty});
+        if (record.getAdministeredItemsJson() != null && !record.getAdministeredItemsJson().isEmpty()) {
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                java.util.List<?> items = mapper.readValue(record.getAdministeredItemsJson(), java.util.List.class);
+                for (Object item : items) {
+                    if (item instanceof java.util.Map) {
+                        java.util.Map<?, ?> im = (java.util.Map<?, ?>) item;
+                        String name = im.get("medicineName") != null ? String.valueOf(im.get("medicineName")) : "";
+                        String dosage = im.get("dosage") != null ? String.valueOf(im.get("dosage")) : "";
+                        String frequency = im.get("frequency") != null ? String.valueOf(im.get("frequency")) : "";
+                        String duration = im.get("duration") != null ? String.valueOf(im.get("duration")) : "";
+                        String instructions = im.get("instructions") != null ? String.valueOf(im.get("instructions")) : "";
+                        String qty = im.get("quantity") != null ? String.valueOf(im.get("quantity")) : "";
+                        itemsList.add(new String[]{name, dosage, frequency, duration, instructions, qty});
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (itemsList.isEmpty()) {
+            com.hms.entity.Billing bill = billingRepository.findByOpdId(opdId).orElse(null);
+            if (bill != null) {
+                java.util.List<com.hms.entity.BillingItem> items = billingItemRepository.findByBillingId(bill.getId());
+                for (com.hms.entity.BillingItem it : items) {
+                    String desc = it.getDescription();
+                    if (desc != null) {
+                        String[] parsed = parseBillingItemDescription(desc);
+                        if (parsed != null) {
+                            String baseName = parsed[0];
+                            String qty = parsed[1];
+                            if (inventoryItemRepository.existsByNameAndHospitalId(baseName, hospitalId)) {
+                                itemsList.add(new String[]{baseName, "", "", "", "", qty});
+                            }
                         }
                     }
                 }
-            }
-            java.util.List<com.hms.entity.BillingMedicine> meds = billingMedicineRepository.findByBillingId(bill.getId());
-            for (com.hms.entity.BillingMedicine me : meds) {
-                itemsList.add(new String[]{me.getMedicineName() != null ? me.getMedicineName() : "Medicine", String.valueOf(me.getQuantity())});
+                java.util.List<com.hms.entity.BillingMedicine> meds = billingMedicineRepository.findByBillingId(bill.getId());
+                for (com.hms.entity.BillingMedicine me : meds) {
+                    itemsList.add(new String[]{me.getMedicineName() != null ? me.getMedicineName() : "Medicine", "", "", "", "", String.valueOf(me.getQuantity())});
+                }
             }
         }
-        return pdfService.generateMedicinesListPdf(hospital, patient, "OPD MEDICINES & ITEMS LIST", itemsList);
+        return pdfService.generateMedicinesListPdf(hospital, doctor, patient, "OPD MEDICINES & ITEMS LIST", customNo, createdAt, itemsList);
     }
 
     public java.io.ByteArrayInputStream getIpdMedicinesPdf(Long ipdId) {
@@ -819,10 +856,38 @@ public class PatientService {
         com.hms.entity.Patient patient = patientRepository.findById(ipd.getPatientId())
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
 
+        com.hms.entity.Doctor doctor = (ipd.getDoctorId() != null)
+                ? doctorRepository.findById(ipd.getDoctorId()).orElse(null)
+                : null;
+        String customNo = ipd.getIpdNumber();
+        java.time.LocalDateTime createdAt = ipd.getAdmissionDatetime();
+
         java.util.List<Billing> bills = billingRepository.findByIpdAdmissionId(ipdId);
         java.util.List<String[]> itemsList = new java.util.ArrayList<>();
         
-        if (bills != null && !bills.isEmpty()) {
+        java.util.List<com.hms.entity.MedicalRecord> records = medicalRecordRepository.findByIpdAdmissionIdOrderByCreatedAtDesc(ipdId);
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        for (com.hms.entity.MedicalRecord record : records) {
+            if (record.getAdministeredItemsJson() != null && !record.getAdministeredItemsJson().isEmpty()) {
+                try {
+                    java.util.List<?> items = mapper.readValue(record.getAdministeredItemsJson(), java.util.List.class);
+                    for (Object item : items) {
+                        if (item instanceof java.util.Map) {
+                            java.util.Map<?, ?> im = (java.util.Map<?, ?>) item;
+                            String name = im.get("medicineName") != null ? String.valueOf(im.get("medicineName")) : "";
+                            String dosage = im.get("dosage") != null ? String.valueOf(im.get("dosage")) : "";
+                            String frequency = im.get("frequency") != null ? String.valueOf(im.get("frequency")) : "";
+                            String duration = im.get("duration") != null ? String.valueOf(im.get("duration")) : "";
+                            String instructions = im.get("instructions") != null ? String.valueOf(im.get("instructions")) : "";
+                            String qty = im.get("quantity") != null ? String.valueOf(im.get("quantity")) : "";
+                            itemsList.add(new String[]{name, dosage, frequency, duration, instructions, qty});
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+
+        if (itemsList.isEmpty() && bills != null && !bills.isEmpty()) {
             Billing bill = bills.get(0);
             java.util.List<com.hms.entity.BillingItem> items = billingItemRepository.findByBillingId(bill.getId());
             for (com.hms.entity.BillingItem it : items) {
@@ -833,37 +898,17 @@ public class PatientService {
                         String baseName = parsed[0];
                         String qty = parsed[1];
                         if (inventoryItemRepository.existsByNameAndHospitalId(baseName, hospitalId)) {
-                            itemsList.add(new String[]{baseName, qty});
+                            itemsList.add(new String[]{baseName, "", "", "", "", qty});
                         }
                     }
                 }
             }
             java.util.List<com.hms.entity.BillingMedicine> meds = billingMedicineRepository.findByBillingId(bill.getId());
             for (com.hms.entity.BillingMedicine me : meds) {
-                itemsList.add(new String[]{me.getMedicineName() != null ? me.getMedicineName() : "Medicine", String.valueOf(me.getQuantity())});
+                itemsList.add(new String[]{me.getMedicineName() != null ? me.getMedicineName() : "Medicine", "", "", "", "", String.valueOf(me.getQuantity())});
             }
         }
-        
-        if (itemsList.isEmpty()) {
-            java.util.List<com.hms.entity.MedicalRecord> records = medicalRecordRepository.findByIpdAdmissionIdOrderByCreatedAtDesc(ipdId);
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            for (com.hms.entity.MedicalRecord record : records) {
-                if (record.getAdministeredItemsJson() != null && !record.getAdministeredItemsJson().isEmpty()) {
-                    try {
-                        java.util.List<?> items = mapper.readValue(record.getAdministeredItemsJson(), java.util.List.class);
-                        for (Object item : items) {
-                            if (item instanceof java.util.Map) {
-                                java.util.Map<?, ?> im = (java.util.Map<?, ?>) item;
-                                String name = String.valueOf(im.get("medicineName"));
-                                String qty = String.valueOf(im.get("quantity"));
-                                itemsList.add(new String[]{name, qty});
-                            }
-                        }
-                    } catch (Exception ignored) {}
-                }
-            }
-        }
-        return pdfService.generateMedicinesListPdf(hospital, patient, "IPD MEDICINES & ADMINISTERED ITEMS", itemsList);
+        return pdfService.generateMedicinesListPdf(hospital, doctor, patient, "IPD MEDICINES & ADMINISTERED ITEMS", customNo, createdAt, itemsList);
     }
 
     private String[] parseBillingItemDescription(String desc) {

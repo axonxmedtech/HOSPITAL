@@ -571,31 +571,8 @@ const DoctorDashboard = () => {
     };
 
     const [docPrintingId, setDocPrintingId] = useState(null);
-    const handlePrintReceipt = async (id) => {
-        if (docPrintingId) return;
-        setDocPrintingId(id);
-        
-        // Pre-open the window synchronously to bypass popup blocker
-        const printWindow = window.open('', '_blank');
-        if (printWindow) {
-            printWindow.document.write('<p style="font-family: sans-serif; text-align: center; margin-top: 20px;">Generating receipt PDF, please wait...</p>');
-        }
-        
-        try {
-            const blob = await hospitalService.downloadReceipt(id);
-            const url = window.URL.createObjectURL(blob);
-            if (printWindow) {
-                printWindow.location.href = url;
-            }
-        } catch (err) {
-            console.error(err);
-            if (printWindow) {
-                printWindow.close();
-            }
-            toastError('Failed to load receipt for printing');
-        } finally {
-            setDocPrintingId(null);
-        }
+    const handlePrintReceipt = (id) => {
+        openPdfInNewTab(`/hospital/billing/${id}/pdf`);
     };
 
     const handleOpenEditBillItems = async (billObj) => {
@@ -755,86 +732,41 @@ const DoctorDashboard = () => {
 
     // Consultation Modal
     const [consultationModal, setConsultationModal] = useState({ isOpen: false, appointment: null, patient: null, opd: null });
+    const [checkoutPrintModal, setCheckoutPrintModal] = useState({
+        isOpen: false,
+        opdId: null,
+        billId: null,
+        appointmentId: null,
+        patientName: '',
+        patientId: ''
+    });
 
     const handleConsultClick = (appointment) => {
         setConsultationModal({ isOpen: true, appointment });
     };
 
-    const printPdfBlob = (blob) => {
-        const fileURL = URL.createObjectURL(blob);
-        const iframe = document.createElement('iframe');
-        iframe.style.position = 'fixed';
-        iframe.style.width = '0px';
-        iframe.style.height = '0px';
-        iframe.style.border = 'none';
-        iframe.src = fileURL;
-        document.body.appendChild(iframe);
-        iframe.onload = () => {
-            iframe.contentWindow.focus();
-            iframe.contentWindow.print();
-            setTimeout(() => {
-                iframe.remove();
-                URL.revokeObjectURL(fileURL);
-            }, 1000);
-        };
+    const openPdfInNewTab = (endpointPath) => {
+        const token = sessionStorage.getItem('token');
+        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+        const separator = endpointPath.includes('?') ? '&' : '?';
+        const url = `${baseUrl}${endpointPath}${separator}token=${encodeURIComponent(token)}`;
+        window.open(url, '_blank');
     };
 
-    const handlePrintPrescription = async (appointmentId) => {
-        try {
-            const blob = await hospitalService.downloadPrescription(appointmentId);
-            printPdfBlob(blob);
-        } catch (err) {
-            // Check if error response is a blob
-            if (err.response?.data instanceof Blob) {
-                err.response.data.text().then(text => {
-                    if (text.toLowerCase().includes('consultation not found')) {
-                        toastError("Prescription not found");
-                    } else {
-                        toastError("Failed to print prescription");
-                    }
-                });
-            } else {
-                const errorMessage = err.response?.data?.message || err.message || '';
-                if (errorMessage.toLowerCase().includes('consultation not found')) {
-                    toastError("Prescription not found");
-                } else {
-                    toastError("Failed to print prescription");
-                }
-            }
-            console.error(err);
-        }
+    const handlePrintPrescription = (appointmentId) => {
+        openPdfInNewTab(`/hospital/doctors/prescription/${appointmentId}/pdf`);
     };
 
-    const handlePrintOpd = async (opd) => {
-        try {
-            const blob = await hospitalService.downloadCasePaper(opd.id);
-            const url = window.URL.createObjectURL(blob);
-            window.open(url, '_blank');
-        } catch (err) {
-            console.error('Failed to download case paper', err);
-            toastError('Failed to download case paper');
-        }
+    const handlePrintOpd = (opd) => {
+        openPdfInNewTab(`/hospital/opd/${opd.id}/pdf`);
     };
 
-    const handlePrintPrescriptionOpd = async (opd) => {
-        try {
-            const blob = await hospitalService.downloadPrescriptionByOpd(opd.id);
-            printPdfBlob(blob);
-        } catch (err) {
-            console.error('Failed to print prescription', err);
-            toastError('Failed to print prescription');
-        }
+    const handlePrintPrescriptionOpd = (opd) => {
+        openPdfInNewTab(`/hospital/doctors/prescription/opd/${opd.id}/pdf`);
     };
 
-    const handleViewPrescriptionOpd = async (opd) => {
-        try {
-            const blob = await hospitalService.downloadPrescriptionByOpd(opd.id);
-            const url = window.URL.createObjectURL(blob);
-            window.open(url, '_blank');
-        } catch (err) {
-            console.error('Failed to open prescription', err);
-            toastError('Failed to open prescription');
-        }
+    const handleViewPrescriptionOpd = (opd) => {
+        openPdfInNewTab(`/hospital/doctors/prescription/opd/${opd.id}/pdf`);
     };
 
     const [startingConsultationId, setStartingConsultationId] = useState(null);
@@ -1558,11 +1490,45 @@ const DoctorDashboard = () => {
                     patient={consultationModal.patient}
                     opd={consultationModal.opd}
                     onClose={() => setConsultationModal({ isOpen: false, appointment: null, patient: null, opd: null })}
-                    onSuccess={(customMsg) => {
+                    onSuccess={async (res) => {
                         setConsultationModal({ isOpen: false, appointment: null, patient: null, opd: null });
-                        success(customMsg || "Consultation completed successfully!");
                         loadData();
+                        
+                        if (res && typeof res === 'object') {
+                            const opdId = res.opdId || res.opd?.id;
+                            const billId = res.billId;
+
+                            if (opdId) {
+                                success("Consultation completed successfully! Printing documents...");
+                                
+                                // 1. Consultation Print (always)
+                                openPdfInNewTab(`/hospital/opd/${opdId}/pdf`);
+
+                                // 2. Prescription Print (only if hasPrescription is true)
+                                if (res.hasPrescription) {
+                                    await new Promise(resolve => setTimeout(resolve, 800));
+                                    openPdfInNewTab(`/hospital/doctors/prescription/opd/${opdId}/pdf`);
+                                }
+
+                                // 3. Bill / Invoice Print (always if billId is present)
+                                if (billId) {
+                                    await new Promise(resolve => setTimeout(resolve, 800));
+                                    openPdfInNewTab(`/hospital/billing/${billId}/pdf`);
+                                }
+
+                                // 4. In-Clinic Medicines Print (only if hasAdministered is true)
+                                if (res.hasAdministered) {
+                                    await new Promise(resolve => setTimeout(resolve, 800));
+                                    openPdfInNewTab(`/hospital/patients/opd/${opdId}/medicines/pdf`);
+                                }
+                            } else {
+                                success("Consultation completed successfully!");
+                            }
+                        } else {
+                            success(res || "Consultation completed successfully!");
+                        }
                     }}
+
                 />
 
                 <PrescriptionViewModal
@@ -1987,12 +1953,15 @@ const DoctorDashboard = () => {
                         </div>
                     </div>
                 )}
+
+                {/* Checkout Print Action Center Modal removed in favor of automatic printing */}
             </>
         </div>
     );
 };
 
 export default DoctorDashboard;
+
 
 // Doctor Appointments Table
 const DoctorAppointmentsTable = ({ appointments, onStatusUpdate, onEdit, onConsult, onPrint, onAuditHistory, onAdmitToIpd, hasIPD, startIndex = 0, pagination }) => {

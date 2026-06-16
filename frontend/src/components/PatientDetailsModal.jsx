@@ -31,94 +31,32 @@ const PatientDetailsModal = ({ patient, onClose }) => {
     const user = authService.getCurrentUser();
     const inClinicEnabled = user?.inClinic !== false;
 
-    const printPdfBlob = (blob) => {
-        const fileURL = URL.createObjectURL(blob);
-        const iframe = document.createElement('iframe');
-        iframe.style.position = 'fixed';
-        iframe.style.width = '0px';
-        iframe.style.height = '0px';
-        iframe.style.border = 'none';
-        iframe.src = fileURL;
-        document.body.appendChild(iframe);
-        iframe.onload = () => {
-            iframe.contentWindow.focus();
-            iframe.contentWindow.print();
-            setTimeout(() => {
-                iframe.remove();
-                URL.revokeObjectURL(fileURL);
-            }, 1000);
-        };
+    const openPdfInNewTab = (endpointPath) => {
+        const token = sessionStorage.getItem('token');
+        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+        const separator = endpointPath.includes('?') ? '&' : '?';
+        const url = `${baseUrl}${endpointPath}${separator}token=${encodeURIComponent(token)}`;
+        window.open(url, '_blank');
     };
 
-    const handlePrintPrescription = async (opdId) => {
-        try {
-            setPrintingPrescriptionId(opdId);
-            const blob = await hospitalService.downloadPrescriptionByOpd(opdId);
-            printPdfBlob(blob);
-        } catch (err) {
-            console.error("Prescription printing failed:", err);
-        } finally {
-            setPrintingPrescriptionId(null);
-        }
+    const handlePrintPrescription = (opdId) => {
+        openPdfInNewTab(`/hospital/doctors/prescription/opd/${opdId}/pdf`);
     };
 
-    const handlePrintOpdMedicines = async (opdId) => {
-        try {
-            setPrintingMedicinesId(opdId);
-            const blob = await hospitalService.downloadOpdMedicinesList(opdId);
-            printPdfBlob(blob);
-        } catch (err) {
-            console.error("OPD Medicines list printing failed:", err);
-        } finally {
-            setPrintingMedicinesId(null);
-        }
+    const handlePrintOpdMedicines = (opdId) => {
+        openPdfInNewTab(`/hospital/patients/opd/${opdId}/medicines/pdf`);
     };
 
-    const handlePrintIpdPrescription = async (ipdId) => {
-        try {
-            setPrintingIpdPrescriptionId(ipdId);
-            const blob = await hospitalService.downloadIpdPrescription(ipdId);
-            printPdfBlob(blob);
-        } catch (err) {
-            console.error("IPD Prescription printing failed:", err);
-        } finally {
-            setPrintingIpdPrescriptionId(null);
-        }
+    const handlePrintIpdPrescription = (ipdId) => {
+        openPdfInNewTab(`/hospital/patients/ipd/${ipdId}/prescription/pdf`);
     };
 
-    const handlePrintIpdMedicines = async (ipdId) => {
-        try {
-            setPrintingIpdMedicinesId(ipdId);
-            const blob = await hospitalService.downloadIpdMedicinesList(ipdId);
-            printPdfBlob(blob);
-        } catch (err) {
-            console.error("IPD Medicines list printing failed:", err);
-        } finally {
-            setPrintingIpdMedicinesId(null);
-        }
+    const handlePrintIpdMedicines = (ipdId) => {
+        openPdfInNewTab(`/hospital/patients/ipd/${ipdId}/medicines/pdf`);
     };
 
-    const handleDownloadCasePaper = async (opdId) => {
-        try {
-            setDownloadingCasePaperId(opdId);
-            const blob = await hospitalService.downloadCasePaper(opdId);
-            const fileURL = URL.createObjectURL(blob);
-            const pdfWindow = window.open();
-            if (pdfWindow) {
-                pdfWindow.location.href = fileURL;
-            } else {
-                const link = document.createElement('a');
-                link.href = fileURL;
-                link.setAttribute('download', `case_paper_opd_${opdId}.pdf`);
-                document.body.appendChild(link);
-                link.click();
-                link.remove();
-            }
-        } catch (err) {
-            console.error("Case paper download failed:", err);
-        } finally {
-            setDownloadingCasePaperId(null);
-        }
+    const handleDownloadCasePaper = (opdId) => {
+        openPdfInNewTab(`/hospital/opd/${opdId}/pdf`);
     };
 
     useEffect(() => {
@@ -174,7 +112,7 @@ const PatientDetailsModal = ({ patient, onClose }) => {
                     <div>
                         <h2 className="text-2xl font-bold text-gray-900">Patient Details</h2>
                         <p className="text-sm text-gray-600 mt-1">
-                            Patient ID: {patient.publicId || patient.id}
+                            Patient ID: {patient.customId || patient.publicId || patient.id}
                         </p>
                     </div>
                     <button
@@ -215,7 +153,7 @@ const PatientDetailsModal = ({ patient, onClose }) => {
                                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <InfoField label="Full Name" value={patient.name} />
-                                    <InfoField label="Patient ID" value={patient.publicId || patient.id} />
+                                    <InfoField label="Patient ID" value={patient.customId || patient.publicId || patient.id} />
                                     <InfoField label="Age" value={patient.age} />
                                     <InfoField label="Gender" value={patient.gender} />
                                     <InfoField label="Phone Number" value={patient.phone} />
@@ -556,6 +494,7 @@ const PatientDetailsModal = ({ patient, onClose }) => {
                                                                                     {entry.administeredItems.map((med, idx) => (
                                                                                         <span key={`admin-med-${idx}`} className="inline-flex px-2 py-0.5 text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-md">
                                                                                             {med.medicineName} x{med.quantity}
+                                                                                            {med.dosage && ` (${med.dosage}${med.frequency ? ` • ${med.frequency}` : ''}${med.duration ? ` • ${med.duration}` : ''})`}
                                                                                         </span>
                                                                                     ))}
                                                                                 </div>
@@ -690,21 +629,10 @@ const PatientDetailsModal = ({ patient, onClose }) => {
                                                         <td className={`px-4 py-3 text-right font-semibold ${bal > 0 ? 'text-red-600' : 'text-gray-500'}`}>₹{bal}</td>
                                                         <td className="px-4 py-3 text-center">
                                                             <button
-                                                                onClick={async () => {
-                                                                    try {
-                                                                        setPrintingBillId(bill.id);
-                                                                        const blob = await hospitalService.downloadReceipt(bill.id);
-                                                                        printPdfBlob(blob);
-                                                                    } catch (err) {
-                                                                        console.error("Print failed:", err);
-                                                                    } finally {
-                                                                        setPrintingBillId(null);
-                                                                    }
-                                                                }}
-                                                                disabled={printingBillId === bill.id}
-                                                                className="px-2.5 py-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 rounded-md transition disabled:opacity-50"
+                                                                onClick={() => openPdfInNewTab(`/hospital/billing/${bill.id}/pdf`)}
+                                                                className="px-2.5 py-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 rounded-md transition"
                                                             >
-                                                                {printingBillId === bill.id ? 'Printing...' : 'Print'}
+                                                                Print
                                                             </button>
                                                         </td>
                                                     </tr>

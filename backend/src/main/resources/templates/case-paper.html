@@ -288,11 +288,11 @@
     <div class="page">
         <!-- Letterhead -->
         <div class="letterhead">
-            <div class="hospital-name">CITY GENERAL HOSPITAL</div>
-            <div class="hospital-tagline">Excellence in Healthcare Since 1985</div>
+            <div class="hospital-name" th:text="${hospital != null ? hospital.name : 'CITY GENERAL HOSPITAL'}">CITY GENERAL HOSPITAL</div>
+            <div class="hospital-tagline" th:text="${hospital != null and hospital.parentOrganization != null and hospital.parentOrganization != '' ? hospital.parentOrganization : 'Excellence in Healthcare'}">Excellence in Healthcare Since 1985</div>
             <div class="hospital-info">
-                123 Medical Center Road, Pune, Maharashtra 411001 | Phone: +91 20 2567 8900<br/>
-                Email: info@citygeneralhospital.com | Reg. No: MH/PNQ/234/1985
+                <span th:text="${hospital != null ? hospital.address : '123 Medical Center Road, Pune, Maharashtra 411001'}">123 Medical Center Road, Pune, Maharashtra 411001</span>
+                <span th:if="${hospital != null and hospital.phone != null and hospital.phone != ''}" th:text="${' | Phone: ' + hospital.phone}"> | Phone: +91 20 2567 8900</span>
             </div>
         </div>
         
@@ -419,6 +419,33 @@
                     </tr>
                 </table>
             </div>
+
+            <!-- Clinical Consultation Summary -->
+            <div class="section" th:if="${record != null}">
+                <div class="section-title">Clinical Consultation Summary</div>
+                <div class="info-box" style="background-color: #FAFAFA;">
+                    <table class="info-table">
+                        <tr th:if="${record.symptoms != null and record.symptoms != ''}">
+                            <td style="padding-bottom: 8px;">
+                                <span class="label">Symptoms / Chief Complaints</span>
+                                <span class="value" th:text="${record.symptoms}">Symptoms notes</span>
+                            </td>
+                        </tr>
+                        <tr th:if="${record.diagnosis != null and record.diagnosis != ''}">
+                            <td style="padding-bottom: 8px;">
+                                <span class="label">Diagnosis</span>
+                                <span class="value" style="font-weight: bold; color: #0047AB;" th:text="${record.diagnosis}">Diagnosis notes</span>
+                            </td>
+                        </tr>
+                        <tr th:if="${record.treatmentNotes != null and record.treatmentNotes != ''}">
+                            <td>
+                                <span class="label">Treatment & Clinical Notes</span>
+                                <span class="value" th:text="${record.treatmentNotes}">Treatment notes</span>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
         </div>
         
         <!-- Signatures -->
@@ -443,7 +470,7 @@
         <div class="footer">
             <table class="footer-table">
                 <tr>
-                    <td style="width: 70%;"><strong>City General Hospital</strong> • This is a computer-generated document</td>
+                    <td style="width: 70%;"><strong th:text="${hospital != null ? hospital.name : 'City General Hospital'}">City General Hospital</strong> • This is a computer-generated document</td>
                     <td class="footer-right" style="width: 30%;">Page 1 of 1</td>
                 </tr>
             </table>

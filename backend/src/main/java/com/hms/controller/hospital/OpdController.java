@@ -2,9 +2,13 @@ package com.hms.controller.hospital;
 
 import com.hms.dto.CreateOpdRequest;
 import com.hms.entity.Opd;
+import com.hms.entity.Hospital;
+import com.hms.entity.MedicalRecord;
 import com.hms.service.hospital.OpdService;
 import com.hms.security.SecurityContextHelper;
 import com.hms.repository.DoctorRepository;
+import com.hms.repository.HospitalRepository;
+import com.hms.repository.MedicalRecordRepository;
 import com.hms.entity.Doctor;
 import java.util.Collections;
 import java.util.Optional;
@@ -18,10 +22,15 @@ import org.springframework.http.ResponseEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @RestController
 @RequestMapping("/hospital/opd")
 public class OpdController {
+
+    @Autowired
+    private com.hms.service.PdfService pdfService;
+
 
     private static final Logger logger = LoggerFactory.getLogger(OpdController.class);
 
@@ -29,13 +38,18 @@ public class OpdController {
     private final SpringTemplateEngine templateEngine;
     private final SecurityContextHelper securityHelper;
     private final DoctorRepository doctorRepository;
+    private final MedicalRecordRepository medicalRecordRepository;
+    private final HospitalRepository hospitalRepository;
 
     public OpdController(OpdService opdService, SpringTemplateEngine templateEngine,
-                         SecurityContextHelper securityHelper, DoctorRepository doctorRepository) {
+                         SecurityContextHelper securityHelper, DoctorRepository doctorRepository,
+                         MedicalRecordRepository medicalRecordRepository, HospitalRepository hospitalRepository) {
         this.opdService = opdService;
         this.templateEngine = templateEngine;
         this.securityHelper = securityHelper;
         this.doctorRepository = doctorRepository;
+        this.medicalRecordRepository = medicalRecordRepository;
+        this.hospitalRepository = hospitalRepository;
     }
 
     @PostMapping
@@ -49,30 +63,26 @@ public class OpdController {
         Opd opd = opdService.getOpdById(id);
         if (opd == null) return ResponseEntity.notFound().build();
 
-        Context ctx = new Context();
-        ctx.setVariable("opd", opd);
-        ctx.setVariable("patient", opd.getPatient());
-        ctx.setVariable("doctor", opd.getDoctor());
-        ctx.setVariable("receptionist", opd.getReceptionist());
+        com.hms.entity.Patient patient = opd.getPatient();
+        Doctor doctor = opd.getDoctor();
+        Hospital hospital = null;
+        if (patient != null && patient.getHospitalId() != null) {
+            hospital = hospitalRepository.findById(patient.getHospitalId()).orElse(null);
+        }
+        MedicalRecord record = medicalRecordRepository.findByOpdId(id).orElse(null);
 
-        String html = templateEngine.process("case-paper", ctx);
-
-        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-            PdfRendererBuilder builder = new PdfRendererBuilder();
-            builder.withHtmlContent(html, "");
-            builder.toStream(baos);
-            builder.run();
-            byte[] pdf = baos.toByteArray();
-
+        try (java.io.ByteArrayInputStream pdfStream = pdfService.generateCasePaperPdf(hospital, doctor, patient, opd, record)) {
+            byte[] pdfBytes = pdfStream.readAllBytes();
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_PDF);
-            headers.setContentDispositionFormData("attachment", "case_" + opd.getCaseId() + ".pdf");
-            return ResponseEntity.ok().headers(headers).body(pdf);
+            headers.add("Content-Disposition", "inline; filename=case_" + opd.getCaseId() + ".pdf");
+            return ResponseEntity.ok().headers(headers).body(pdfBytes);
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(500).build();
         }
     }
+
 
     @GetMapping
     public ResponseEntity<?> listOpds(

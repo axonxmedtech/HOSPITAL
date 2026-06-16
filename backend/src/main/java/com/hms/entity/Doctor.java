@@ -54,10 +54,7 @@ public class Doctor {
         if (this.publicId == null) {
             this.publicId = java.util.UUID.randomUUID().toString();
         }
-        if (this.customId == null) {
-            // Generate simple random readable ID: DOC + 4 random digits
-            this.customId = "DOC" + (1000 + new java.util.Random().nextInt(9000));
-        }
+        // customId is set by DoctorService after save using the auto-increment id
     }
 
     /**

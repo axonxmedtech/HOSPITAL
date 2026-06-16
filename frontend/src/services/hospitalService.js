@@ -141,6 +141,15 @@ const hospitalService = {
         return response.data;
     },
 
+    /**
+     * Reset doctor password
+     */
+    resetDoctorPassword: async (id, newPassword) => {
+        const response = await apiClient.post(`/hospital/doctors/${id}/reset-password`, { newPassword });
+        return response.data;
+    },
+
+
     // ========== Receptionist APIs ==========
 
     /**
@@ -169,6 +178,31 @@ const hospitalService = {
         return response.data;
     },
 
+    /**
+     * Get receptionist by ID
+     */
+    getReceptionistById: async (id) => {
+        const response = await apiClient.get(`/hospital/receptionists/${id}`);
+        return response.data;
+    },
+
+    /**
+     * Update receptionist
+     */
+    updateReceptionist: async (id, data) => {
+        const response = await apiClient.put(`/hospital/receptionists/${id}`, data);
+        return response.data;
+    },
+
+    /**
+     * Reset receptionist password
+     */
+    resetReceptionistPassword: async (id, newPassword) => {
+        const response = await apiClient.post(`/hospital/receptionists/${id}/reset-password`, { newPassword });
+        return response.data;
+    },
+
+
     // ========== Pharmacist APIs ==========
 
     /**
@@ -196,6 +230,31 @@ const hospitalService = {
         const response = await apiClient.delete(`/hospital/pharmacists/${id}${query}`);
         return response.data;
     },
+
+    /**
+     * Get pharmacist by ID
+     */
+    getPharmacistById: async (id) => {
+        const response = await apiClient.get(`/hospital/pharmacists/${id}`);
+        return response.data;
+    },
+
+    /**
+     * Update pharmacist
+     */
+    updatePharmacist: async (id, data) => {
+        const response = await apiClient.put(`/hospital/pharmacists/${id}`, data);
+        return response.data;
+    },
+
+    /**
+     * Reset pharmacist password
+     */
+    resetPharmacistPassword: async (id, newPassword) => {
+        const response = await apiClient.post(`/hospital/pharmacists/${id}/reset-password`, { newPassword });
+        return response.data;
+    },
+
 
     /**
      * Get pending prescriptions for pharmacy

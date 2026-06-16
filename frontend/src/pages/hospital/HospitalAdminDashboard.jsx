@@ -11,7 +11,9 @@ import OverviewDashboard from '../../components/OverviewDashboard';
 import AppointmentModal from '../../components/AppointmentModal';
 import PatientModal from '../../components/PatientModal';
 import PatientDetailsModal from '../../components/PatientDetailsModal';
+import StaffDetailsModal from '../../components/StaffDetailsModal';
 import ProfileModal from '../../components/ProfileModal';
+
 import ActionMenu from '../../components/ActionMenu';
 import StatusBadge from '../../components/StatusBadge';
 import DataTable from '../../components/DataTable';
@@ -144,7 +146,11 @@ const HospitalAdminDashboard = () => {
     const [showModal, setShowModal] = useState(false);
     const [editData, setEditData] = useState(null);
     const [patientDetailsModal, setPatientDetailsModal] = useState({ isOpen: false, patient: null });
+    const [staffDetailsModal, setStaffDetailsModal] = useState({ isOpen: false, staff: null, role: null });
+    const [resetPasswordModal, setResetPasswordModal] = useState({ isOpen: false, staff: null, role: '' });
+    const [resetPasswordForm, setResetPasswordForm] = useState({ newPassword: '', confirmPassword: '', showNew: false, showConfirm: false, submitting: false, error: '' });
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
 
     // OPD Modal State (Admin)
     const [isAdminOpdModalOpen, setIsAdminOpdModalOpen] = useState(false);
@@ -809,17 +815,6 @@ const HospitalAdminDashboard = () => {
         }
     };
 
-    // DEBUG: Log data updates to check for Public IDs
-    useEffect(() => {
-        if (patients.length > 0) console.log("Patients Data:", patients);
-    }, [patients]);
-    useEffect(() => {
-        if (doctors.length > 0) console.log("Doctors Data:", doctors);
-    }, [doctors]);
-    useEffect(() => {
-        if (appointments.length > 0) console.log("Appointments Data:", appointments);
-    }, [appointments]);
-
     const handleLogout = () => {
         authService.logout();
         navigate('/login');
@@ -1008,6 +1003,45 @@ const HospitalAdminDashboard = () => {
     const handleViewDetails = (patient) => {
         setPatientDetailsModal({ isOpen: true, patient });
     };
+
+    const handleViewStaffDetails = (staff, role) => {
+        setStaffDetailsModal({ isOpen: true, staff, role });
+    };
+
+    const handleResetStaffPassword = (staff, role) => {
+        setResetPasswordModal({ isOpen: true, staff, role });
+        setResetPasswordForm({ newPassword: '', confirmPassword: '', showNew: false, showConfirm: false, submitting: false, error: '' });
+    };
+
+    const handleResetPasswordSubmit = async () => {
+        const { newPassword, confirmPassword } = resetPasswordForm;
+        if (!newPassword || newPassword.length < 6) {
+            setResetPasswordForm(f => ({ ...f, error: 'Password must be at least 6 characters.' }));
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            setResetPasswordForm(f => ({ ...f, error: 'Passwords do not match.' }));
+            return;
+        }
+        setResetPasswordForm(f => ({ ...f, submitting: true, error: '' }));
+        try {
+            const { staff, role } = resetPasswordModal;
+            const id = staff.publicId || staff.id;
+            if (role === 'doctor') {
+                await hospitalService.resetDoctorPassword(id, newPassword);
+            } else if (role === 'receptionist') {
+                await hospitalService.resetReceptionistPassword(id, newPassword);
+            } else if (role === 'pharmacist') {
+                await hospitalService.resetPharmacistPassword(id, newPassword);
+            }
+            success('Password reset successfully');
+            setResetPasswordModal({ isOpen: false, staff: null, role: '' });
+        } catch (err) {
+            const errorMsg = err.response?.data?.message || err.response?.data?.error || err.response?.data || 'Failed to reset password';
+            setResetPasswordForm(f => ({ ...f, submitting: false, error: typeof errorMsg === 'string' ? errorMsg : 'Failed to reset password' }));
+        }
+    };
+
 
     const handleAdd = (type = null) => {
         setEditData(null); // Clear previous edit data
@@ -1518,7 +1552,7 @@ const HospitalAdminDashboard = () => {
 
                                     {activeTab === 'doctors' && (
                                     doctors.length > 0 ? (
-                                        <DoctorsTable doctors={doctors} onEdit={handleEdit} onDelete={handleDeleteDoctor} startIndex={page * pageSize} pagination={pagination} />
+                                        <DoctorsTable doctors={doctors} isAdmin={user?.role === 'HOSPITAL_ADMIN'} onEdit={handleEdit} onDelete={handleDeleteDoctor} onViewDetails={(doc) => handleViewStaffDetails(doc, 'doctor')} onResetPassword={(doc) => handleResetStaffPassword(doc, 'doctor')} startIndex={page * pageSize} pagination={pagination} />
                                     ) : (
                                         <EmptyState
                                             icon={null}
@@ -1532,7 +1566,7 @@ const HospitalAdminDashboard = () => {
 
                                 {activeTab === 'pharmacists' && (
                                     pharmacists.length > 0 ? (
-                                        <PharmacistsTable pharmacists={pharmacists} isAdmin={user?.role === 'HOSPITAL_ADMIN'} onDelete={handleDeletePharmacist} startIndex={page * pageSize} pagination={pagination} />
+                                        <PharmacistsTable pharmacists={pharmacists} isAdmin={user?.role === 'HOSPITAL_ADMIN'} onDelete={handleDeletePharmacist} onEdit={(pharm) => handleEdit(pharm, 'pharmacists')} onViewDetails={(pharm) => handleViewStaffDetails(pharm, 'pharmacist')} onResetPassword={(pharm) => handleResetStaffPassword(pharm, 'pharmacist')} startIndex={page * pageSize} pagination={pagination} />
                                     ) : (
                                         <EmptyState
                                             icon={null}
@@ -1544,25 +1578,27 @@ const HospitalAdminDashboard = () => {
                                     )
                                 )}
                                 {activeTab === 'receptionists' && (
-    receptionists.length > 0 ? (
-        <ReceptionistsTable 
-            receptionists={receptionists} 
-            isAdmin={user?.role === 'HOSPITAL_ADMIN'} 
-            onDelete={handleDeleteReceptionist} 
-            onHistory={(r) => handleHistory('RECEPTIONIST', r.publicId || r.id, r.name)}
-            startIndex={page * pageSize} 
-            pagination={pagination} 
-        />
-    ) : (
-        <EmptyState
-            icon={null}
-            title="No Receptionists Found"
-            message="Add receptionists to help manage your hospital operations."
-            actionLabel="Add Receptionist"
-            onAction={user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
-        />
-    )
-)}
+                                    receptionists.length > 0 ? (
+                                        <ReceptionistsTable 
+                                            receptionists={receptionists} 
+                                            isAdmin={user?.role === 'HOSPITAL_ADMIN'} 
+                                            onDelete={handleDeleteReceptionist} 
+                                            onEdit={(rec) => handleEdit(rec, 'receptionists')}
+                                            onViewDetails={(rec) => handleViewStaffDetails(rec, 'receptionist')}
+                                            onResetPassword={(rec) => handleResetStaffPassword(rec, 'receptionist')}
+                                            startIndex={page * pageSize} 
+                                            pagination={pagination} 
+                                        />
+                                    ) : (
+                                        <EmptyState
+                                            icon={null}
+                                            title="No Receptionists Found"
+                                            message="Add receptionists to help manage your hospital operations."
+                                            actionLabel="Add Receptionist"
+                                            onAction={user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
+                                        />
+                                    )
+                                )}
 
                                 {activeTab === 'wards' && (
                                     <div className="p-6">
@@ -2716,6 +2752,97 @@ const HospitalAdminDashboard = () => {
                 />
             )}
 
+            {/* Staff Details Modal */}
+            {staffDetailsModal.isOpen && (
+                <StaffDetailsModal
+                    staff={staffDetailsModal.staff}
+                    role={staffDetailsModal.role}
+                    onClose={() => setStaffDetailsModal({ isOpen: false, staff: null, role: null })}
+                />
+            )}
+
+            {/* Password Reset Result Modal */}
+            {resetPasswordModal.isOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-neutral-100 overflow-hidden">
+                        <div className="p-6 border-b border-neutral-100 flex items-center justify-between">
+                            <div>
+                                <h3 className="text-lg font-bold text-slate-800">Reset Password</h3>
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                    {resetPasswordModal.staff?.name} &middot; <span className="capitalize">{resetPasswordModal.role}</span>
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setResetPasswordModal({ isOpen: false, staff: null, role: '' })}
+                                className="text-gray-400 hover:text-gray-600 transition"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-600 mb-1.5">New Password</label>
+                                <div className="relative">
+                                    <input
+                                        type={resetPasswordForm.showNew ? 'text' : 'password'}
+                                        value={resetPasswordForm.newPassword}
+                                        onChange={e => setResetPasswordForm(f => ({ ...f, newPassword: e.target.value, error: '' }))}
+                                        placeholder="Enter new password"
+                                        className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900"
+                                    />
+                                    <button type="button" onClick={() => setResetPasswordForm(f => ({ ...f, showNew: !f.showNew }))} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                                        {resetPasswordForm.showNew
+                                            ? <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"/></svg>
+                                            : <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clipRule="evenodd"/><path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z"/></svg>
+                                        }
+                                    </button>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Confirm New Password</label>
+                                <div className="relative">
+                                    <input
+                                        type={resetPasswordForm.showConfirm ? 'text' : 'password'}
+                                        value={resetPasswordForm.confirmPassword}
+                                        onChange={e => setResetPasswordForm(f => ({ ...f, confirmPassword: e.target.value, error: '' }))}
+                                        placeholder="Confirm new password"
+                                        className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900"
+                                        onKeyDown={e => e.key === 'Enter' && handleResetPasswordSubmit()}
+                                    />
+                                    <button type="button" onClick={() => setResetPasswordForm(f => ({ ...f, showConfirm: !f.showConfirm }))} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                                        {resetPasswordForm.showConfirm
+                                            ? <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"/></svg>
+                                            : <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clipRule="evenodd"/><path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z"/></svg>
+                                        }
+                                    </button>
+                                </div>
+                            </div>
+                            {resetPasswordForm.error && (
+                                <p className="text-xs text-red-600 font-medium">{resetPasswordForm.error}</p>
+                            )}
+                        </div>
+                        <div className="p-4 bg-neutral-50/50 border-t border-neutral-100 flex justify-end gap-3">
+                            <button
+                                onClick={() => setResetPasswordModal({ isOpen: false, staff: null, role: '' })}
+                                disabled={resetPasswordForm.submitting}
+                                className="px-4 py-2 text-sm font-semibold text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleResetPasswordSubmit}
+                                disabled={resetPasswordForm.submitting}
+                                className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-sm font-semibold shadow-md active:scale-95 transition-all disabled:opacity-60"
+                            >
+                                {resetPasswordForm.submitting ? 'Resetting...' : 'Reset Password'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Payment Modal (Admin Dashboard consistent implementation) */}
             {paymentModal.isOpen && (
                 <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -3156,7 +3283,7 @@ const PatientsTable = ({ patients, isAdmin, onDelete, onEdit, onViewDetails, onH
 };
 
 // Doctors Table Component
-const DoctorsTable = ({ doctors, isAdmin, onDelete, onEdit, onHistory, startIndex = 0, pagination }) => {
+const DoctorsTable = ({ doctors, isAdmin, onDelete, onEdit, onViewDetails, onResetPassword, startIndex = 0, pagination }) => {
     const columnHelper = createColumnHelper();
 
     const columns = [
@@ -3191,9 +3318,19 @@ const DoctorsTable = ({ doctors, isAdmin, onDelete, onEdit, onHistory, startInde
                     <div className="text-right">
                         <ActionMenu actions={[
                             {
+                                label: 'View Details',
+                                onClick: () => onViewDetails(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                            },
+                            {
                                 label: 'Edit',
                                 onClick: () => onEdit(info.row.original),
                                 icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /></svg>
+                            },
+                            {
+                                label: 'Reset Password',
+                                onClick: () => onResetPassword(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v-2l2-2 1-.743A6 6 0 1118 8zm-6-2a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" /></svg>
                             },
                             {
                                 label: 'Delete',
@@ -3360,6 +3497,15 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
             if (!isEdit) {
                 rules.password = ['required', 'password'];
             }
+        } else if (type === 'pharmacists') {
+            Object.assign(rules, {
+                name: ['required', 'name'],
+                email: ['required', 'email'],
+                phone: ['required', 'phone']
+            });
+            if (!isEdit) {
+                rules.password = ['required', 'password'];
+            }
         } else if (type === 'billing') {
             rules.amount = ['required', 'positiveNumber'];
         } else if (type === 'appointments') {
@@ -3398,9 +3544,11 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
                         if (isEdit) await hospitalService.updateDoctor(initialData.publicId || initialData.id, formData);
                         else await hospitalService.addDoctor(formData);
                     } else if (type === 'receptionists') {
-                        await hospitalService.addReceptionist(formData);
+                        if (isEdit) await hospitalService.updateReceptionist(initialData.publicId || initialData.id, formData);
+                        else await hospitalService.addReceptionist(formData);
                     } else if (type === 'pharmacists') {
-                        await hospitalService.addPharmacist(formData);
+                        if (isEdit) await hospitalService.updatePharmacist(initialData.publicId || initialData.id, formData);
+                        else await hospitalService.addPharmacist(formData);
                     } else if (type === 'appointments') {
                         // Appointments editing not supported in this modal yet
                         await hospitalService.createAppointment(formData);
@@ -3418,8 +3566,8 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
 
     const isFieldDisabled = (field) => {
         if (!isEdit) return false;
-        // Disable email/password editing for doctors as per security rules
-        if (type === 'doctors' && (field === 'email' || field === 'password')) return true;
+        // Disable email/password editing for doctors, receptionists, pharmacists as per security rules
+        if ((type === 'doctors' || type === 'receptionists' || type === 'pharmacists') && (field === 'email' || field === 'password')) return true;
         return false;
     };
 
@@ -3579,7 +3727,8 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
                                         placeholder="pharmacist@hospital.com"
                                         value={formData.email || ''}
                                         onChange={(e) => handleChange('email', e.target.value)}
-                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.email ? 'border-red-500' : 'border-gray-300'}`}
+                                        disabled={isFieldDisabled('email')}
+                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.email ? 'border-red-500' : 'border-gray-300'} ${isFieldDisabled('email') ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                                     />
                                     {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
                                 </div>
@@ -3630,7 +3779,8 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
                                         placeholder="receptionist@hospital.com"
                                         value={formData.email || ''}
                                         onChange={(e) => handleChange('email', e.target.value)}
-                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.email ? 'border-red-500' : 'border-gray-300'}`}
+                                        disabled={isFieldDisabled('email')}
+                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.email ? 'border-red-500' : 'border-gray-300'} ${isFieldDisabled('email') ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                                     />
                                     {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
                                 </div>
@@ -3869,7 +4019,7 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
 
 
 // Receptionists Table Component
-const ReceptionistsTable = ({ receptionists, isAdmin, onDelete, onHistory, startIndex = 0, pagination }) => {
+const ReceptionistsTable = ({ receptionists, isAdmin, onDelete, onEdit, onViewDetails, onResetPassword, startIndex = 0, pagination }) => {
     const columnHelper = createColumnHelper();
 
     const columns = [
@@ -3898,9 +4048,19 @@ const ReceptionistsTable = ({ receptionists, isAdmin, onDelete, onHistory, start
                     <div className="text-right">
                         <ActionMenu actions={[
                             {
-                                label: 'History',
-                                onClick: () => onHistory(info.row.original),
-                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" /></svg>
+                                label: 'View Details',
+                                onClick: () => onViewDetails(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                            },
+                            {
+                                label: 'Edit',
+                                onClick: () => onEdit(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /></svg>
+                            },
+                            {
+                                label: 'Reset Password',
+                                onClick: () => onResetPassword(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v-2l2-2 1-.743A6 6 0 1118 8zm-6-2a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" /></svg>
                             },
                             {
                                 label: 'Delete',
@@ -3915,7 +4075,7 @@ const ReceptionistsTable = ({ receptionists, isAdmin, onDelete, onHistory, start
         ] : []),
     ];
 
-    return <DataTable data={receptionists} columns={columns} />;
+    return <DataTable data={receptionists} columns={columns} pagination={pagination} />;
 };
 
 // AuditLogsTable Component
@@ -4016,7 +4176,7 @@ const AuditLogsTable = ({ auditLogs, startIndex = 0 }) => {
 };
 
 // Pharmacists Table Component (Reusing similar structure)
-const PharmacistsTable = ({ pharmacists, isAdmin, onDelete, startIndex = 0, pagination }) => {
+const PharmacistsTable = ({ pharmacists, isAdmin, onDelete, onEdit, onViewDetails, onResetPassword, startIndex = 0, pagination }) => {
     const columnHelper = createColumnHelper();
 
     const columns = [
@@ -4043,12 +4203,29 @@ const PharmacistsTable = ({ pharmacists, isAdmin, onDelete, startIndex = 0, pagi
                 header: () => <div className="text-right">ACTIONS</div>,
                 cell: info => (
                     <div className="text-right">
-                        <button
-                            onClick={() => onDelete(info.row.original.publicId || info.row.original.id)}
-                            className="text-red-500 hover:text-red-700 text-sm font-medium"
-                        >
-                            Delete
-                        </button>
+                        <ActionMenu actions={[
+                            {
+                                label: 'View Details',
+                                onClick: () => onViewDetails(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                            },
+                            {
+                                label: 'Edit',
+                                onClick: () => onEdit(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /></svg>
+                            },
+                            {
+                                label: 'Reset Password',
+                                onClick: () => onResetPassword(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v-2l2-2 1-.743A6 6 0 1118 8zm-6-2a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" /></svg>
+                            },
+                            {
+                                label: 'Delete',
+                                onClick: () => onDelete(info.row.original.publicId || info.row.original.id),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>,
+                                danger: true
+                            }
+                        ]} />
                     </div>
                 ),
             })

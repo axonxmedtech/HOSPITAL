@@ -1,6 +1,8 @@
 package com.hms.service.hospital;
 
+import com.hms.entity.Receptionist;
 import com.hms.entity.User;
+import com.hms.repository.ReceptionistProfileRepository;
 import com.hms.repository.UserRepository;
 import com.hms.security.SecurityContextHelper;
 import com.hms.security.HospitalWebSocketHandler;
@@ -36,6 +38,9 @@ public class ReceptionistService {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private ReceptionistProfileRepository receptionistProfileRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -77,6 +82,23 @@ public class ReceptionistService {
         receptionist.setIsActive(true);
 
         User saved = userRepository.save(receptionist);
+
+        // Set sequential customId: REC1, REC2, REC3...
+        Integer maxSeq = userRepository.findMaxReceptionistSequence();
+        int nextSeq = (maxSeq != null ? maxSeq : 0) + 1;
+        saved.setCustomId("REC" + nextSeq);
+        saved = userRepository.save(saved);
+
+        // Create receptionist profile record
+        Receptionist receptionistProfile = new Receptionist();
+        receptionistProfile.setHospitalId(hospitalId);
+        receptionistProfile.setName(name);
+        receptionistProfile.setEmail(email);
+        receptionistProfile.setPhone("");
+        receptionistProfile.setCustomId(saved.getCustomId());
+        receptionistProfile.setIsActive(true);
+        receptionistProfileRepository.save(receptionistProfile);
+
         logger.info("Created receptionist: {} for hospital: {}", email, hospitalId);
 
         logAction("RECEPTIONIST_CREATED", "Created receptionist: " + email, null, hospitalId);
@@ -149,6 +171,90 @@ public class ReceptionistService {
 
     public void deleteReceptionist(String publicId) {
         deleteReceptionist(publicId, null);
+    }
+
+    /**
+     * Get a receptionist by public ID
+     */
+    public User getReceptionistByPublicId(String publicId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital ID not found in context");
+        }
+
+        User user = userRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new RuntimeException("Receptionist not found"));
+
+        if (!user.getHospitalId().equals(hospitalId)) {
+            throw new RuntimeException("Access denied: User belongs to another hospital");
+        }
+        if (!"RECEPTIONIST".equals(user.getRole())) {
+            throw new RuntimeException("Target user is not a receptionist");
+        }
+        return user;
+    }
+
+
+    /**
+     * Reset a receptionist's password (Hospital Admin only)
+     */
+    @Transactional
+    public void resetReceptionistPassword(String publicId, String newPassword) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital ID not found in context");
+        }
+
+        User user = userRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new RuntimeException("Receptionist not found"));
+
+        if (!user.getHospitalId().equals(hospitalId)) {
+            throw new RuntimeException("Access denied: User belongs to another hospital");
+        }
+        if (!"RECEPTIONIST".equals(user.getRole())) {
+            throw new RuntimeException("Target user is not a receptionist");
+        }
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+
+        logger.info("Reset password for receptionist: {}", user.getEmail());
+        logAction("PASSWORD_RESET", "Reset password for receptionist: " + user.getName() + " (" + user.getEmail() + ")", null, hospitalId);
+    }
+
+    /**
+     * Update a receptionist's name
+     */
+    @Transactional
+    public User updateReceptionist(String publicId, String name) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital ID not found in context");
+        }
+
+        User user = userRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new RuntimeException("Receptionist not found"));
+
+        if (!user.getHospitalId().equals(hospitalId)) {
+            throw new RuntimeException("Access denied: User belongs to another hospital");
+        }
+        if (!"RECEPTIONIST".equals(user.getRole())) {
+            throw new RuntimeException("Target user is not a receptionist");
+        }
+
+        user.setName(name);
+        User saved = userRepository.save(user);
+
+        logger.info("Updated receptionist: {}", user.getEmail());
+        logAction("RECEPTIONIST_UPDATED", "Updated receptionist: " + user.getName(), null, hospitalId);
+
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after receptionist update", e);
+        }
+
+        return saved;
     }
 
     /**

@@ -107,9 +107,10 @@ public class IpdAdmissionService {
             throw new RuntimeException("Bed is not available");
         }
 
-        // Create IPD admission
+        // Create IPD admission with sequential IPD-1, IPD-2, IPD-3...
         IpdAdmission ipd = new IpdAdmission();
-        ipd.setIpdNumber("IPD" + System.currentTimeMillis());
+        int nextIpd = (ipdAdmissionRepository.findMaxIpdSequence() != null ? ipdAdmissionRepository.findMaxIpdSequence() : 0) + 1;
+        ipd.setIpdNumber("IPD-" + nextIpd);
         ipd.setPatientId(opd.getPatient().getId());
         ipd.setDoctorId(opd.getDoctor() != null ? opd.getDoctor().getId() : null);
         ipd.setHospitalId(hospitalId);

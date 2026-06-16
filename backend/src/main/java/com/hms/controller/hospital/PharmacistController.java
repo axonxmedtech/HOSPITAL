@@ -57,4 +57,43 @@ public class PharmacistController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<?> getPharmacistById(@PathVariable String id) {
+        try {
+            User pharmacist = pharmacistService.getPharmacistByPublicId(id);
+            return ResponseEntity.ok(pharmacist);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<?> updatePharmacist(@PathVariable String id, @RequestBody Map<String, String> payload) {
+        try {
+            String name = payload.get("name");
+            if (name == null || name.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body("Name is required");
+            }
+            User updated = pharmacistService.updatePharmacist(id, name);
+            return ResponseEntity.ok(updated);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/{id}/reset-password")
+    public ResponseEntity<?> resetPharmacistPassword(@PathVariable String id, @RequestBody java.util.Map<String, String> body) {
+        try {
+            String newPassword = body.get("newPassword");
+            if (newPassword == null || newPassword.trim().length() < 6) {
+                return ResponseEntity.badRequest().body("Password must be at least 6 characters");
+            }
+            pharmacistService.resetPharmacistPassword(id, newPassword);
+            return ResponseEntity.ok(java.util.Map.of("message", "Password reset successfully"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
 }
+

@@ -52,8 +52,6 @@ public class OpdService {
     @Transactional
     public Opd createOpd(CreateOpdRequest req) {
         Opd opd = new Opd();
-        // Generate case id
-        opd.setCaseId("OPD-" + System.currentTimeMillis());
 
         Patient patient = patientRepository.findById(req.getPatientId())
                 .orElseThrow(() -> new IllegalArgumentException("Invalid patient id"));
@@ -86,6 +84,9 @@ public class OpdService {
         }
 
         Opd saved = opdRepository.save(opd);
+        // Set sequential caseId using auto-increment id: OPD-1, OPD-2, OPD-3...
+        saved.setCaseId("OPD-" + saved.getId());
+        saved = opdRepository.save(saved);
 
         // Create queue entry
         if (saved.getDoctor() != null) {
@@ -220,7 +221,6 @@ public class OpdService {
 
     private void queueFollowUp(com.hms.entity.MedicalRecord record) {
         com.hms.entity.Opd opd = new com.hms.entity.Opd();
-        opd.setCaseId("OPD-" + System.currentTimeMillis());
 
         com.hms.entity.Patient patient = patientRepository.findById(record.getPatientId()).orElse(null);
         if (patient == null) return;
@@ -235,6 +235,8 @@ public class OpdService {
         opd.setStatus(com.hms.entity.Opd.Status.QUEUED);
 
         com.hms.entity.Opd saved = opdRepository.save(opd);
+        saved.setCaseId("OPD-" + saved.getId());
+        saved = opdRepository.save(saved);
 
         com.hms.entity.QueueEntry entry = new com.hms.entity.QueueEntry();
         entry.setOpd(saved);
