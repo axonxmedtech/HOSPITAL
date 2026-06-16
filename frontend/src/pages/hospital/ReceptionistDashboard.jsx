@@ -444,32 +444,16 @@ const ReceptionistDashboard = () => {
         }
     };
 
-    const [recPrintingId, setRecPrintingId] = useState(null);
-    const handlePrintReceipt = async (id) => {
-        if (recPrintingId) return;
-        setRecPrintingId(id);
-        
-        // Pre-open the window synchronously to bypass popup blocker
-        const printWindow = window.open('', '_blank');
-        if (printWindow) {
-            printWindow.document.write('<p style="font-family: sans-serif; text-align: center; margin-top: 20px;">Generating receipt PDF, please wait...</p>');
-        }
-        
-        try {
-            const blob = await hospitalService.downloadReceipt(id);
-            const url = window.URL.createObjectURL(blob);
-            if (printWindow) {
-                printWindow.location.href = url;
-            }
-        } catch (err) {
-            console.error(err);
-            if (printWindow) {
-                printWindow.close();
-            }
-            toastError('Failed to load receipt for printing');
-        } finally {
-            setRecPrintingId(null);
-        }
+    const openPdfInNewTab = (endpointPath) => {
+        const token = sessionStorage.getItem('token');
+        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+        const separator = endpointPath.includes('?') ? '&' : '?';
+        const url = `${baseUrl}${endpointPath}${separator}token=${encodeURIComponent(token)}`;
+        window.open(url, '_blank');
+    };
+
+    const handlePrintReceipt = (id) => {
+        openPdfInNewTab(`/hospital/billing/${id}/pdf`);
     };
 
     const handleOpenEditBillItems = async (billObj) => {
@@ -562,15 +546,9 @@ const ReceptionistDashboard = () => {
         setViewPrescriptionModal({ isOpen: true, patient });
     };
 
-    const handlePrintPrescription = async () => {
+    const handlePrintPrescription = () => {
         if (!prescriptionModal.appointmentId) return;
-        try {
-            const blob = await hospitalService.downloadPrescription(prescriptionModal.appointmentId);
-            const url = window.URL.createObjectURL(blob);
-            window.open(url, '_blank'); // Open in new tab for printing
-        } catch (err) {
-            toastError("Failed to print prescription.");
-        }
+        openPdfInNewTab(`/hospital/doctors/prescription/${prescriptionModal.appointmentId}/pdf`);
     };
 
     const handleHistory = (type, id, name) => {
@@ -652,15 +630,8 @@ const ReceptionistDashboard = () => {
         setPatientDetailsModal({ isOpen: true, patient });
     };
 
-    const handlePrintOpd = async (opd) => {
-        try {
-            const blob = await hospitalService.downloadCasePaper(opd.id);
-            const url = window.URL.createObjectURL(blob);
-            window.open(url, '_blank');
-        } catch (err) {
-            console.error('Failed to download case paper', err);
-            toastError('Failed to download case paper');
-        }
+    const handlePrintOpd = (opd) => {
+        openPdfInNewTab(`/hospital/opd/${opd.id}/pdf`);
     };
 
     const tabs = [
@@ -848,7 +819,7 @@ const ReceptionistDashboard = () => {
                                             />
                                         </div>
                                         <div className="flex bg-gray-100 rounded-xl p-1 border border-gray-200">
-                                            {['today', 'upcoming', 'history'].map(view => (
+                                            {['today', 'upcoming'].map(view => (
                                                 <button
                                                     key={view}
                                                     onClick={() => { setViewFilter(view); setPage(0); }}
@@ -1026,7 +997,7 @@ const ReceptionistDashboard = () => {
                         addLabel={activeTab === 'opd' ? 'New OPD / Case' : `Add ${activeTab.slice(0, -1)}`}
                         filter={activeTab === 'appointments' ? (
                             <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
-                                {['today', 'upcoming', 'history'].map(view => (
+                                {['today', 'upcoming'].map(view => (
                                     <button
                                         key={view}
                                         onClick={() => setViewFilter(view)}
@@ -1914,11 +1885,6 @@ const AppointmentsTable = ({ appointments, doctors, onStatusUpdate, onHistory, o
                             icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" /></svg>,
                             onClick: () => onViewPrescription(info.row.original.publicId || info.row.original.id),
                             hidden: info.row.original.status !== 'COMPLETED'
-                        },
-                        {
-                            label: 'History',
-                            onClick: () => onHistory(info.row.original),
-                            icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" /></svg>
                         },
                         {
                             label: 'Cancel',

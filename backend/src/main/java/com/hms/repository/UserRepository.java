@@ -83,6 +83,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
         org.springframework.data.domain.Page<User> searchReceptionists(Long hospitalId, String role, String search,
                         org.springframework.data.domain.Pageable pageable);
 
+        @Query(value = "SELECT COALESCE(MAX(CAST(SUBSTRING(custom_id, 4) AS UNSIGNED)), 0) FROM users WHERE role = 'RECEPTIONIST' AND custom_id LIKE 'REC%'", nativeQuery = true)
+        Integer findMaxReceptionistSequence();
+
         @org.springframework.data.jpa.repository.Query("SELECT new com.hms.dto.UserSummaryDTO(u, h.name) FROM User u LEFT JOIN Hospital h ON u.hospitalId = h.id "
                         +
                         "WHERE (:role IS NULL OR u.role = :role OR (:role = 'HOSPITAL_ADMIN' AND u.role = 'ADMIN')) " +

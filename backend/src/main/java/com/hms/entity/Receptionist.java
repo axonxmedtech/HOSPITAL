@@ -22,6 +22,9 @@ public class Receptionist {
     @Column(nullable = false, unique = true)
     private String publicId;
 
+    @Column(name = "custom_id")
+    private String customId;
+
     @Column(name = "hospital_id", nullable = false)
     private Long hospitalId;
 

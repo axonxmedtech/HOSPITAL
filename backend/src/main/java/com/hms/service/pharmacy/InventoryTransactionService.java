@@ -4,6 +4,7 @@ import com.hms.entity.pharmacy.InventoryTransaction;
 import com.hms.entity.pharmacy.MedicineBatch;
 import com.hms.repository.pharmacy.InventoryTransactionRepository;
 import com.hms.repository.pharmacy.MedicineBatchRepository;
+import com.hms.security.HospitalWebSocketHandler;
 import com.hms.security.SecurityContextHelper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -24,6 +25,9 @@ public class InventoryTransactionService {
 
     @Autowired
     private SecurityContextHelper securityHelper;
+
+    @Autowired
+    private HospitalWebSocketHandler webSocketHandler;
 
     @Transactional
     public InventoryTransaction recordAdjustment(Long batchId, BigDecimal adjustmentQty, String remarks) {
@@ -54,7 +58,9 @@ public class InventoryTransactionService {
         tx.setRemarks(remarks);
         tx.setCreatedBy(securityHelper.getCurrentUserId());
 
-        return transactionRepository.save(tx);
+        InventoryTransaction saved = transactionRepository.save(tx);
+        try { webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}"); } catch (Exception ignored) {}
+        return saved;
     }
 
     public Page<InventoryTransaction> getTransactionHistory(Long batchId, Pageable pageable) {

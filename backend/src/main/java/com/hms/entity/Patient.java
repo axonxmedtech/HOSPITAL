@@ -53,10 +53,7 @@ public class Patient {
         if (this.publicId == null) {
             this.publicId = java.util.UUID.randomUUID().toString();
         }
-        if (this.customId == null) {
-            // Generate simple random readable ID: PAT + 4 random digits
-            this.customId = "PAT" + (1000 + new java.util.Random().nextInt(9000));
-        }
+        // customId is set by PatientService after save using the auto-increment id
     }
 
     /**

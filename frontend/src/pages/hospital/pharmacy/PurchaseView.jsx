@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../../../context/ToastContext';
 import purchaseApi from '../../../services/pharmacy/purchaseApi';
 import PurchaseForm from './PurchaseForm';
 import { SkeletonTableRow, SkeletonStatsGrid } from '../../../components/Skeleton';
 
-const PurchaseView = () => {
+const PurchaseView = ({ refreshKey = 0 }) => {
     const toast = useToast();
     const [invoices, setInvoices] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -30,6 +30,10 @@ const PurchaseView = () => {
     useEffect(() => {
         fetchInvoices();
     }, [fetchInvoices]);
+
+    useEffect(() => {
+        if (refreshKey > 0) fetchInvoices();
+    }, [refreshKey]);
 
     const handleSavePurchase = async (payload) => {
         try {

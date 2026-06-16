@@ -53,21 +53,17 @@ export default function useWebSocket(user, setUser, loadData) {
             wsUrl += `?token=${encodeURIComponent(token)}`;
         }
 
-        console.log(`Connecting to WebSocket: ${wsUrl}`);
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 
         ws.onopen = () => {
-            console.log('WebSocket connection established.');
-            delayRef.current = 1000; // Reset reconnection delay
+            delayRef.current = 1000;
         };
 
         ws.onmessage = async (event) => {
-            console.log('WebSocket message received:', event.data);
             try {
                 const data = JSON.parse(event.data);
                 if (data.type === 'SETTINGS_UPDATED') {
-                    console.log('Settings changed! Fetching fresh profile...');
                     try {
                         const profile = await authService.getProfile();
                         const updatedUser = authService.updateCurrentUser(profile);
@@ -75,27 +71,24 @@ export default function useWebSocket(user, setUser, loadData) {
                             setUserRef.current(updatedUser);
                         }
                     } catch (err) {
-                        console.error('Failed to sync profile after settings update:', err);
+                        // profile sync failed silently
                     }
                 } else if (data.type === 'REFRESH_DATA') {
-                    console.log('Data change detected! Triggering refresh...');
                     if (loadDataRef.current) {
-                        loadDataRef.current(false); // Call loadData silently without full screen loading
+                        loadDataRef.current(false);
                     }
                 }
             } catch (err) {
-                console.error('Error handling WebSocket message:', err);
+                // message parse failed silently
             }
         };
 
-        ws.onclose = (e) => {
-            console.log(`WebSocket connection closed. Reason: ${e.reason || 'None'}, Code: ${e.code}. Reconnecting...`);
+        ws.onclose = () => {
             wsRef.current = null;
             scheduleReconnect();
         };
 
-        ws.onerror = (err) => {
-            console.error('WebSocket error occurred:', err);
+        ws.onerror = () => {
             ws.close();
         };
     };
@@ -107,7 +100,6 @@ export default function useWebSocket(user, setUser, loadData) {
         const delay = delayRef.current;
         delayRef.current = Math.min(delay * 2, 30000);
 
-        console.log(`Scheduling reconnect in ${delay}ms`);
         reconnectTimeoutRef.current = setTimeout(() => {
             reconnectTimeoutRef.current = null;
             connect();

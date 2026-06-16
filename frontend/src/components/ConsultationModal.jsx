@@ -43,13 +43,12 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                     const initialCharges = [
                         { description: "Consultation Fee", amount: consultFee }
                     ];
-                    // If this is an OPD-based consultation, add Case Paper Fee as well
                     if (opd && casePaperFee > 0) {
                         initialCharges.push({ description: "Case Paper Fee", amount: casePaperFee });
                     }
                     setAppliedCharges(initialCharges);
-                } catch (err) {
-                    console.error("Failed to load fees", err);
+                } catch (e) {
+                    console.error("Failed to fetch fees", e);
                 }
             };
             fetchFees();
@@ -60,7 +59,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     const [hospitalInventoryCatalog, setHospitalInventoryCatalog] = useState([]);
     const [hospitalInvSearch, setHospitalInvSearch] = useState('');
     const [hospitalInvDropdown, setHospitalInvDropdown] = useState(false);
-    const [hospitalInvItems, setHospitalInvItems] = useState([]); // [{stockId, name, qty, linkedFeeId, feeName, feeAmount}]
+    const [hospitalInvItems, setHospitalInvItems] = useState([]);
 
     useEffect(() => {
         if (isOpen) {
@@ -103,9 +102,6 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         }
     }, [isOpen]);
 
-    // Normalize patient prop when modal opens — don't mutate props
-    // We'll compute a patient identifier (publicId or numeric id) when fetching details
-
     const resolvedPatientId = appointment?.patientId || patient?.publicId || patient?.id || (opd && opd.patient && (opd.patient.publicId || opd.patient.id)) || null;
 
     const [formData, setFormData] = useState({
@@ -119,31 +115,9 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         followUpRequired: false,
         labRequired: false,
         labTests: [],
-        prescription: [] // Array of { medicineName, dosage, frequency, duration, instructions }
+        prescription: []
     });
 
-    // Hardcoded lab test options for now
-    const LAB_OPTIONS = ["CBC", "LFT", "RFT", "RBS", "Lipid Profile", "TSH", "HbA1c", "Urine Routine"];
-
-    // Update form data when modal opens or patient changes
-    useEffect(() => {
-        const currentPid = appointment?.patientId || patient?.publicId || patient?.id || (opd && opd.patient && (opd.patient.publicId || opd.patient.id)) || null;
-        if (isOpen && currentPid) {
-            setFormData(prev => ({
-                ...prev,
-                appointmentId: appointment?.id || null,
-                patientId: currentPid,
-                opdId: opd?.id || prev.opdId,
-                symptoms: prev.patientId === currentPid ? prev.symptoms : '',
-                diagnosis: prev.patientId === currentPid ? prev.diagnosis : '',
-                treatmentNotes: prev.patientId === currentPid ? prev.treatmentNotes : '',
-                followUpDate: prev.patientId === currentPid ? prev.followUpDate : '',
-                prescription: prev.patientId === currentPid ? prev.prescription : []
-            }));
-        }
-    }, [isOpen, patient?.id, patient?.publicId, appointment?.id, appointment?.patientId, opd?.id]);
-
-    // Default medicine added row
     const [newMedicine, setNewMedicine] = useState({
         medicineName: '',
         dosage: '',
@@ -152,12 +126,48 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         instructions: ''
     });
 
+    const LAB_OPTIONS = ["CBC", "LFT", "RFT", "RBS", "Lipid Profile", "TSH", "HbA1c", "Urine Routine"];
+
+    useEffect(() => {
+        if (isOpen) {
+            const currentPid = appointment?.patientId || patient?.publicId || patient?.id || (opd && opd.patient && (opd.patient.publicId || opd.patient.id)) || null;
+            setFormData({
+                appointmentId: appointment?.id || null,
+                patientId: currentPid,
+                opdId: opd?.id || null,
+                symptoms: '',
+                diagnosis: '',
+                treatmentNotes: '',
+                followUpDate: '',
+                followUpRequired: false,
+                labRequired: false,
+                labTests: [],
+                prescription: []
+            });
+            setAdministeredList([]);
+            setHospitalInvItems([]);
+            setNewMedicine({
+                medicineName: '',
+                dosage: '',
+                frequency: '',
+                duration: '',
+                instructions: ''
+            });
+            setSearchQuery('');
+            setHospitalInvSearch('');
+            setActiveTab('clinical');
+            setShowIpdAdmitModal(false);
+            setSubmitting(false);
+            setAdmitModalOpd(null);
+            setHospitalInvDropdown(false);
+            setShowSuggestions(false);
+        }
+    }, [isOpen, patient?.id, patient?.publicId, appointment?.id, appointment?.patientId, opd?.id]);
+
     const { success, error: toastError } = useToast();
 
-    // Fetch patient details when modal opens
     useEffect(() => {
         const fetchPatientDetails = async () => {
-            // Determine patient identifier: appointment patientId, then patient.publicId, then patient.id
             const pid = appointment?.patientId || patient?.publicId || patient?.id || (opd && opd.patient && (opd.patient.publicId || opd.patient.id));
             if (isOpen && pid) {
                 setLoadingDetails(true);
@@ -171,7 +181,6 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                     setLoadingDetails(false);
                 }
             } else {
-                // No patient id available yet
                 setPatientDetails(null);
             }
         };
@@ -185,7 +194,6 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     };
 
     const handleAddMedicine = () => {
-        if (!newMedicine.medicineName) return;
         setFormData(prev => ({
             ...prev,
             prescription: [...prev.prescription, newMedicine]
@@ -220,7 +228,11 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         payload.administeredItems = administeredList.map(item => ({
             medicineId: item.medicineId,
             medicineName: item.medicineName,
-            quantity: item.quantity
+            quantity: item.quantity,
+            dosage: item.dosage || '',
+            frequency: item.frequency || '',
+            duration: item.duration || '',
+            instructions: item.instructions || ''
         }));
         // Build charges: standard fees + hospital inventory items (via linked fee)
         const inventoryCharges = hospitalInvItems.map(item => ({
@@ -245,9 +257,9 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
 
         setSubmitting(true);
         try {
-            await hospitalService.submitConsultation(payload);
+            const res = await hospitalService.submitConsultation(payload);
             success('Consultation submitted successfully');
-            onSuccess();
+            onSuccess(res);
             onClose();
         } catch (err) {
             console.error("Consultation failed", err);
@@ -271,7 +283,11 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         payload.administeredItems = administeredList.map(item => ({
             medicineId: item.medicineId,
             medicineName: item.medicineName,
-            quantity: item.quantity
+            quantity: item.quantity,
+            dosage: item.dosage || '',
+            frequency: item.frequency || '',
+            duration: item.duration || '',
+            instructions: item.instructions || ''
         }));
         // Build charges: standard fees + hospital inventory items (via linked fee)
         const inventoryCharges = hospitalInvItems.map(item => ({
@@ -642,7 +658,11 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                                                                 medicineId: item.id,
                                                                                 medicineName: item.name,
                                                                                 quantity: 1,
-                                                                                maxStock: item.stockQuantity
+                                                                                maxStock: item.stockQuantity,
+                                                                                dosage: item.defaultDosage || '',
+                                                                                frequency: item.defaultFrequency || '',
+                                                                                duration: item.defaultDuration || '',
+                                                                                instructions: ''
                                                                             }]);
                                                                         }
                                                                         setSearchQuery('');
@@ -681,7 +701,51 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                                         <tbody className="divide-y divide-gray-100">
                                                             {administeredList.map((item) => (
                                                                 <tr key={item.medicineId} className="hover:bg-slate-50/50">
-                                                                    <td className="px-4 py-3 font-semibold text-gray-800">{item.medicineName}</td>
+                                                                    <td className="px-4 py-3 text-left">
+                                                                        <div className="font-semibold text-gray-800">{item.medicineName}</div>
+                                                                        <div className="grid grid-cols-4 gap-1.5 mt-2">
+                                                                            <input
+                                                                                type="text"
+                                                                                placeholder="Dosage"
+                                                                                value={item.dosage || ''}
+                                                                                onChange={(e) => {
+                                                                                    const val = e.target.value;
+                                                                                    setAdministeredList(prev => prev.map(x => x.medicineId === item.medicineId ? { ...x, dosage: val } : x));
+                                                                                }}
+                                                                                className="border border-gray-300 rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 focus:ring-teal-500 font-normal"
+                                                                            />
+                                                                            <input
+                                                                                type="text"
+                                                                                placeholder="Freq"
+                                                                                value={item.frequency || ''}
+                                                                                onChange={(e) => {
+                                                                                    const val = e.target.value;
+                                                                                    setAdministeredList(prev => prev.map(x => x.medicineId === item.medicineId ? { ...x, frequency: val } : x));
+                                                                                }}
+                                                                                className="border border-gray-300 rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 focus:ring-teal-500 font-normal"
+                                                                            />
+                                                                            <input
+                                                                                type="text"
+                                                                                placeholder="Duration"
+                                                                                value={item.duration || ''}
+                                                                                onChange={(e) => {
+                                                                                    const val = e.target.value;
+                                                                                    setAdministeredList(prev => prev.map(x => x.medicineId === item.medicineId ? { ...x, duration: val } : x));
+                                                                                }}
+                                                                                className="border border-gray-300 rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 focus:ring-teal-500 font-normal"
+                                                                            />
+                                                                            <input
+                                                                                type="text"
+                                                                                placeholder="Instruction"
+                                                                                value={item.instructions || ''}
+                                                                                onChange={(e) => {
+                                                                                    const val = e.target.value;
+                                                                                    setAdministeredList(prev => prev.map(x => x.medicineId === item.medicineId ? { ...x, instructions: val } : x));
+                                                                                }}
+                                                                                className="border border-gray-300 rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 focus:ring-teal-500 font-normal"
+                                                                            />
+                                                                        </div>
+                                                                    </td>
                                                                     <td className="px-4 py-3 text-center">
                                                                         <div className="inline-flex items-center gap-2">
                                                                             <button

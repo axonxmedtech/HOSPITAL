@@ -87,6 +87,10 @@ public class DoctorService {
         // Save doctor record
         doctor = doctorRepository.save(doctor);
 
+        // Set sequential customId using the auto-increment id: DOC1, DOC2, DOC3...
+        doctor.setCustomId("DOC" + doctor.getId());
+        doctor = doctorRepository.save(doctor);
+
         // Create user account for doctor login
         User doctorUser = new User();
         doctorUser.setEmail(doctor.getEmail());
@@ -303,6 +307,43 @@ public class DoctorService {
         }
     }
 
+    /**
+     * Reset a doctor's password (Hospital Admin only)
+     * Generates a new random password, encodes and saves it.
+     *
+     * @param publicId Doctor Public ID
+     * @return Map with email and new password
+     */
+    @Transactional
+    public void resetDoctorPassword(String publicId, String newPassword) {
+        Doctor doctor = getDoctorByPublicId(publicId);
+
+        java.util.Optional<User> userOpt = userRepository.findByEmail(doctor.getEmail());
+        if (userOpt.isEmpty()) {
+            throw new RuntimeException("User account not found for doctor: " + doctor.getEmail());
+        }
+
+        User user = userOpt.get();
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+
+        logger.info("Reset password for doctor: {}", doctor.getEmail());
+
+        try {
+            Long hospitalId = securityHelper.getCurrentHospitalId();
+            auditLogService.logAction(
+                    "PASSWORD_RESET",
+                    "Reset password for doctor: " + doctor.getName() + " (" + doctor.getEmail() + ")",
+                    securityHelper.getCurrentUserEmail(),
+                    hospitalId,
+                    "DOCTOR",
+                    publicId,
+                    null);
+        } catch (Exception e) {
+            logger.warn("Failed to create audit log for doctor password reset", e);
+        }
+    }
+
     @Autowired
     private com.hms.repository.MedicalRecordRepository medicalRecordRepository;
 
@@ -418,13 +459,24 @@ public class DoctorService {
             opd = opdRepository.findById(request.getOpdId()).orElse(null);
         } else if (appointment != null) {
             opd = new com.hms.entity.Opd();
-            opd.setCaseId("OPD-" + System.currentTimeMillis());
             opd.setPatient(patient);
             opd.setDoctor(doctorRepository.findById(resolvedDoctorId).orElse(null));
             opd.setProblem(request.getSymptoms() != null && !request.getSymptoms().isEmpty() ? request.getSymptoms() : appointment.getNotes());
             opd.setStatus(com.hms.entity.Opd.Status.CONSULTED);
             opd = opdRepository.save(opd);
+            opd.setCaseId("OPD-" + opd.getId());
+            opd = opdRepository.save(opd);
+        } else {
+            opd = new com.hms.entity.Opd();
+            opd.setPatient(patient);
+            opd.setDoctor(doctorRepository.findById(resolvedDoctorId).orElse(null));
+            opd.setProblem(request.getSymptoms() != null && !request.getSymptoms().isEmpty() ? request.getSymptoms() : "Direct Patient Consultation");
+            opd.setStatus(com.hms.entity.Opd.Status.CONSULTED);
+            opd = opdRepository.save(opd);
+            opd.setCaseId("OPD-" + opd.getId());
+            opd = opdRepository.save(opd);
         }
+
 
         // 1. Create Medical Record
         com.hms.entity.MedicalRecord record = new com.hms.entity.MedicalRecord();
@@ -582,6 +634,16 @@ public class DoctorService {
             }
             
             // --- Process Administered Items (Stock Billing & Deductions) ---
+            if (request.getAdministeredItems() != null && !request.getAdministeredItems().isEmpty()) {
+                try {
+                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                    savedRecord.setAdministeredItemsJson(mapper.writeValueAsString(request.getAdministeredItems()));
+                    medicalRecordRepository.save(savedRecord);
+                } catch (Exception e) {
+                    logger.error("Failed to serialize administeredItemsJson for OPD medical record", e);
+                }
+            }
+
             if (bill != null && request.getAdministeredItems() != null && !request.getAdministeredItems().isEmpty()) {
                 for (com.hms.dto.ConsultationRequest.AdministeredItem item : request.getAdministeredItems()) {
                     if (item.getMedicineId() != null) {

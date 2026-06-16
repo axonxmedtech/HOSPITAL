@@ -3,6 +3,7 @@ package com.hms.service.pharmacy;
 import com.hms.dto.pharmacy.PurchaseRequest;
 import com.hms.entity.pharmacy.*;
 import com.hms.repository.pharmacy.*;
+import com.hms.security.HospitalWebSocketHandler;
 import com.hms.security.SecurityContextHelper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -29,6 +30,9 @@ public class PurchaseService {
 
     @Autowired
     private SecurityContextHelper securityHelper;
+
+    @Autowired
+    private HospitalWebSocketHandler webSocketHandler;
 
     @Transactional
     public PurchaseInvoice createPurchase(PurchaseRequest req) {
@@ -71,6 +75,7 @@ public class PurchaseService {
 
         if ("POSTED".equalsIgnoreCase(saved.getPostingStatus())) {
             updateInventory(saved);
+            try { webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}"); } catch (Exception ignored) {}
         }
 
         return saved;
@@ -89,6 +94,7 @@ public class PurchaseService {
         invoice.setPostingStatus("POSTED");
         PurchaseInvoice saved = invoiceRepository.save(invoice);
         updateInventory(saved);
+        try { webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}"); } catch (Exception ignored) {}
         return saved;
     }
 

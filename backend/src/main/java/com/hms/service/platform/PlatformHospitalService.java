@@ -3,10 +3,12 @@ package com.hms.service.platform;
 import com.hms.dto.CreateHospitalRequest;
 import com.hms.entity.AuditLog;
 import com.hms.entity.Hospital;
+import com.hms.entity.HospitalAdmin;
 import com.hms.entity.User;
 import com.hms.entity.Doctor;
 import com.hms.entity.HospitalSetting;
 import com.hms.repository.AuditLogRepository;
+import com.hms.repository.HospitalAdminRepository;
 import com.hms.repository.HospitalRepository;
 import com.hms.repository.UserRepository;
 import com.hms.repository.DoctorRepository;
@@ -53,6 +55,9 @@ public class PlatformHospitalService {
 
     @Autowired
     private DoctorRepository doctorRepository;
+
+    @Autowired
+    private HospitalAdminRepository hospitalAdminRepository;
 
     @Autowired
     private HospitalSettingRepository hospitalSettingRepository;
@@ -106,6 +111,15 @@ public class PlatformHospitalService {
         admin.setRole("HOSPITAL_ADMIN");
         admin.setHospitalId(hospital.getId()); // Link to hospital
         userRepository.save(admin);
+
+        // Create hospital admin profile record
+        HospitalAdmin hospitalAdmin = new HospitalAdmin();
+        hospitalAdmin.setHospitalId(hospital.getId());
+        hospitalAdmin.setName(request.getAdminName());
+        hospitalAdmin.setEmail(request.getAdminEmail());
+        hospitalAdmin.setPhone("");
+        hospitalAdmin.setIsActive(true);
+        hospitalAdminRepository.save(hospitalAdmin);
 
         // If Single Doctor Clinic, automatically create a Doctor profile (only if OPD is enabled)
         if (Boolean.TRUE.equals(hospital.getIsSingleDoctor()) && hospital.getModules() != null && hospital.getModules().contains("OPD")) {

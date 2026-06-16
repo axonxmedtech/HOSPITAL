@@ -122,25 +122,27 @@ const HospitalLogin = () => {
 
     return (
         <div className="min-h-screen bg-white flex">
+            <div className="z-10 absolute top-0 left-5 space-y-10">
+                <img src="/company-logo.png" alt="company-logo" className="z-20 w-24 h-12" />
+            </div>
+
             {/* Left Side - Background Image */}
             <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
                 {/* Background Image */}
-                <div 
+                <div
                     className="absolute inset-0 bg-cover bg-center bg-no-repeat"
                     style={{ backgroundImage: 'url(/main-login-page.png)' }}
                 ></div>
-                
+
                 {/* Overlay for better text readability */}
-                <div className="absolute inset-0 bg-black bg-opacity-40"></div>
+                <div className="absolute inset-0 bg-black bg-opacity-40 z-10"></div>
 
                 {/* Content */}
                 <div className="relative z-10 flex flex-col justify-center items-center w-full px-16">
                     {/* Logo/Icon */}
                     <div className="mb-12">
-                        <div className="w-24 h-24 bg-white rounded-2xl shadow-lg flex items-center justify-center mb-8">
-                            <svg className="w-12 h-12 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                            </svg>
+                        <div className="w-[60%] h-[20%] bg-gray-400 shadow-lg flex items-center justify-center mb-8 m-auto">
+                            <img src="/logo.png" alt="Hospital Icon" className="w-full h-full rounded-[30%]" />
                         </div>
                         <h1 className="text-4xl font-bold text-white text-center mb-4">Hospital Management System</h1>
                         <p className="text-xl text-white text-center leading-relaxed opacity-90">
@@ -267,18 +269,6 @@ const HospitalLogin = () => {
                                     </button>
                                 </div>
                             </form>
-                        </div>
-
-                        {/* Footer */}
-                        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
-                            <div className="text-center">
-                                <p className="text-gray-600 text-sm">
-                                    System Administrator?{' '}
-                                    <a href="/platform/login" className="text-gray-900 font-medium hover:underline">
-                                        Platform Access
-                                    </a>
-                                </p>
-                            </div>
                         </div>
                     </div>
                 </div>

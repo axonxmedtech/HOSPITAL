@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../../context/ToastContext';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar';
@@ -6,6 +6,7 @@ import Navbar from '../../components/Navbar';
 import authService from '../../services/authService';
 import MedicineMasterView from './pharmacy/MedicineMasterView';
 import ProfileModal from '../../components/ProfileModal';
+import useWebSocket from '../../hooks/useWebSocket';
 
 // Module Views
 import DashboardView from './pharmacy/DashboardView';
@@ -28,6 +29,10 @@ const PharmacyDashboard = () => {
     // Navigation State for sub-modules
     const [activeTab, setActiveTab] = useState('dashboard');
     const [navData, setNavData] = useState(null);
+    const [refreshKey, setRefreshKey] = useState(0);
+
+    const handleRefresh = useCallback(() => setRefreshKey(k => k + 1), []);
+    useWebSocket(user, null, handleRefresh);
 
     const handleLogout = () => {
         authService.logout();
@@ -65,34 +70,34 @@ const PharmacyDashboard = () => {
     const renderContent = () => {
         switch (activeTab) {
             case 'dashboard':
-                return <DashboardView onNavigate={handleNavigate} />;
+                return <DashboardView onNavigate={handleNavigate} refreshKey={refreshKey} />;
 
             case 'billing':
-                return <BillingCounterView initialData={navData} />;
+                return <BillingCounterView initialData={navData} refreshKey={refreshKey} />;
 
             case 'prescriptions':
-                return <PrescriptionsView onNavigate={handleNavigate} />;
+                return <PrescriptionsView onNavigate={handleNavigate} refreshKey={refreshKey} />;
 
             case 'inventory':
-                return <InventoryView onNavigate={handleNavigate} />;
+                return <InventoryView onNavigate={handleNavigate} refreshKey={refreshKey} />;
 
             case 'purchase':
-                return <PurchaseView />;
+                return <PurchaseView refreshKey={refreshKey} />;
 
             case 'suppliers':
-                return <SuppliersView />;
+                return <SuppliersView refreshKey={refreshKey} />;
 
             case 'medicine_master':
-                return <MedicineMasterView />;
+                return <MedicineMasterView refreshKey={refreshKey} />;
 
             case 'reports':
-                return <ReportsView />;
-                
+                return <ReportsView refreshKey={refreshKey} />;
+
             case 'expiry':
-                return <ExpiryView />;
-                
+                return <ExpiryView refreshKey={refreshKey} />;
+
             case 'returns':
-                return <ReturnsView />;
+                return <ReturnsView refreshKey={refreshKey} />;
 
             default:
                 return (

@@ -55,18 +55,16 @@ public class User {
         if (this.publicId == null) {
             this.publicId = java.util.UUID.randomUUID().toString();
         }
-        if (this.customId == null) {
-            // Generate simple random readable ID: REC/USR + 4 random digits
+        // customId for RECEPTIONIST is set by ReceptionistService after save (sequential)
+        // Other roles retain random generation for now
+        if (this.customId == null && !"RECEPTIONIST".equals(this.role)) {
             String prefix = "USR";
-            if ("RECEPTIONIST".equals(this.role))
-                prefix = "REC";
-            else if ("HOSPITAL_ADMIN".equals(this.role))
+            if ("HOSPITAL_ADMIN".equals(this.role))
                 prefix = "ADM";
             else if ("DOCTOR".equals(this.role))
                 prefix = "DOC";
             else if ("SUPER_ADMIN".equals(this.role))
                 prefix = "SUP";
-
             this.customId = prefix + (1000 + new java.util.Random().nextInt(9000));
         }
     }

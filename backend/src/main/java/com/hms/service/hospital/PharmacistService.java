@@ -1,6 +1,8 @@
 package com.hms.service.hospital;
 
+import com.hms.entity.Pharmacist;
 import com.hms.entity.User;
+import com.hms.repository.PharmacistProfileRepository;
 import com.hms.repository.UserRepository;
 import com.hms.security.SecurityContextHelper;
 import com.hms.security.HospitalWebSocketHandler;
@@ -29,6 +31,9 @@ public class PharmacistService {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private PharmacistProfileRepository pharmacistProfileRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -62,6 +67,16 @@ public class PharmacistService {
         pharmacist.setIsActive(true);
 
         User saved = userRepository.save(pharmacist);
+
+        // Create pharmacist profile record
+        Pharmacist pharmacistProfile = new Pharmacist();
+        pharmacistProfile.setHospitalId(hospitalId);
+        pharmacistProfile.setName(name);
+        pharmacistProfile.setEmail(email);
+        pharmacistProfile.setPhone("");
+        pharmacistProfile.setIsActive(true);
+        pharmacistProfileRepository.save(pharmacistProfile);
+
         logger.info("Created pharmacist: {} for hospital: {}", email, hospitalId);
 
         logAction("PHARMACIST_CREATED", "Created pharmacist: " + email, null, hospitalId);
@@ -116,6 +131,90 @@ public class PharmacistService {
         } catch (Exception e) {
             logger.warn("Failed to broadcast WebSocket refresh after pharmacist deletion", e);
         }
+    }
+
+    /**
+     * Get a pharmacist by public ID
+     */
+    public User getPharmacistByPublicId(String publicId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital ID not found in context");
+        }
+
+        User user = userRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new RuntimeException("Pharmacist not found"));
+
+        if (!user.getHospitalId().equals(hospitalId)) {
+            throw new RuntimeException("Access denied: User belongs to another hospital");
+        }
+        if (!"PHARMACIST".equals(user.getRole())) {
+            throw new RuntimeException("Target user is not a pharmacist");
+        }
+        return user;
+    }
+
+
+    /**
+     * Reset a pharmacist's password (Hospital Admin only)
+     */
+    @Transactional
+    public void resetPharmacistPassword(String publicId, String newPassword) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital ID not found in context");
+        }
+
+        User user = userRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new RuntimeException("Pharmacist not found"));
+
+        if (!user.getHospitalId().equals(hospitalId)) {
+            throw new RuntimeException("Access denied: User belongs to another hospital");
+        }
+        if (!"PHARMACIST".equals(user.getRole())) {
+            throw new RuntimeException("Target user is not a pharmacist");
+        }
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+
+        logger.info("Reset password for pharmacist: {}", user.getEmail());
+        logAction("PASSWORD_RESET", "Reset password for pharmacist: " + user.getName() + " (" + user.getEmail() + ")", null, hospitalId);
+    }
+
+    /**
+     * Update a pharmacist's name
+     */
+    @Transactional
+    public User updatePharmacist(String publicId, String name) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital ID not found in context");
+        }
+
+        User user = userRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new RuntimeException("Pharmacist not found"));
+
+        if (!user.getHospitalId().equals(hospitalId)) {
+            throw new RuntimeException("Access denied: User belongs to another hospital");
+        }
+        if (!"PHARMACIST".equals(user.getRole())) {
+            throw new RuntimeException("Target user is not a pharmacist");
+        }
+
+        user.setName(name);
+        User saved = userRepository.save(user);
+
+        logger.info("Updated pharmacist: {}", user.getEmail());
+        logAction("PHARMACIST_UPDATED", "Updated pharmacist: " + user.getName(), null, hospitalId);
+
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after pharmacist update", e);
+        }
+
+        return saved;
     }
 
     private void logAction(String action, String details, String reason, Long hospitalId) {

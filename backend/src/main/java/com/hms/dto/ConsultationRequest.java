@@ -39,6 +39,10 @@ public class ConsultationRequest {
         private Long medicineId;
         private String medicineName;
         private Integer quantity;
+        private String dosage;
+        private String frequency;
+        private String duration;
+        private String instructions;
     }
 
     private List<ChargeItem> charges;

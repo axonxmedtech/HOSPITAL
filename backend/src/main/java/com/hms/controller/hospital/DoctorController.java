@@ -43,6 +43,9 @@ public class DoctorController {
     private OpdRepository opdRepository;
 
     @Autowired
+    private com.hms.repository.BillingRepository billingRepository;
+
+    @Autowired
     private com.hms.security.SecurityContextHelper securityHelper;
 
     /**
@@ -138,6 +141,26 @@ public class DoctorController {
     }
 
     /**
+     * Reset a doctor's password
+     * Only Hospital Admin can reset passwords
+     */
+    @PostMapping("/{id}/reset-password")
+    @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
+    public ResponseEntity<?> resetDoctorPassword(@PathVariable String id, @RequestBody java.util.Map<String, String> body) {
+        try {
+            String newPassword = body.get("newPassword");
+            if (newPassword == null || newPassword.trim().length() < 6) {
+                return ResponseEntity.badRequest().body("Password must be at least 6 characters");
+            }
+            doctorService.resetDoctorPassword(id, newPassword);
+            return ResponseEntity.ok(java.util.Map.of("message", "Password reset successfully"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+
+    /**
      * Submit a consultation (Diagnosis + Prescription)
      * Only Doctors can submit consultations
      */
@@ -151,12 +174,24 @@ public class DoctorController {
             if (opd != null) {
                 response.put("opdId", opd.getId());
                 response.put("opd", opd);
+                
+                // Fetch generated bill ID
+                java.util.Optional<com.hms.entity.Billing> billOpt = billingRepository.findByOpdId(opd.getId());
+                if (billOpt.isPresent()) {
+                    response.put("billId", billOpt.get().getId());
+                }
             }
+            boolean hasPrescription = request.getPrescription() != null && !request.getPrescription().isEmpty();
+            boolean hasAdministered = (request.getAdministeredItems() != null && !request.getAdministeredItems().isEmpty())
+                    || (request.getHospitalInventoryItems() != null && !request.getHospitalInventoryItems().isEmpty());
+            response.put("hasPrescription", hasPrescription);
+            response.put("hasAdministered", hasAdministered);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+
 
     @GetMapping("/consultation/{appointmentId}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")

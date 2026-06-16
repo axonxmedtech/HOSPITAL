@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+﻿import React, { useState, useCallback, useEffect } from 'react';
 import { useViewManager } from '../../../hooks/pharmacy/useViewManager';
 import { ViewLayout, ViewToolbar, SearchInput } from '../../../components/pharmacy/shared/ViewComponents';
 import inventoryApi from '../../../services/pharmacy/inventoryApi';
@@ -6,7 +6,7 @@ import categoriesApi from '../../../services/pharmacy/categoriesApi';
 import StockAdjustmentModal from '../../../components/StockAdjustmentModal';
 import { SkeletonTableRow, SkeletonFeed } from '../../../components/Skeleton';
 
-const InventoryView = ({ onNavigate }) => {
+const InventoryView = ({ onNavigate, refreshKey = 0 }) => {
     const [categories, setCategories] = useState([]);
     const [selectedItem, setSelectedItem] = useState(null);
     const [transactions, setTransactions] = useState([]);
@@ -37,7 +37,7 @@ const InventoryView = ({ onNavigate }) => {
         handleSearch,
         handlePageChange,
         refresh
-    } = useViewManager(fetchFn, { dependencies: [selectedStatus, selectedCategory] });
+    } = useViewManager(fetchFn, { dependencies: [selectedStatus, selectedCategory, refreshKey] });
 
     useEffect(() => {
         categoriesApi.getAll('', 0, 100).then(res => setCategories(res.content || []));
