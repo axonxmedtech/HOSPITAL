@@ -78,10 +78,10 @@ jobs:
         # Pin to SHA in production: https://github.com/appleboy/ssh-action/releases
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ inputs.ssh_host || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
+          host: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           username: deploy
-          key: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY }}
-          port: ${{ inputs.ssh_port || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
+          key: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
+          port: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
           command_timeout: 25m
           script: |
             set -euo pipefail
@@ -99,8 +99,8 @@ jobs:
               done
             }
 
-            REPO="${{ inputs.repo_path }}"
-            BRANCH="${{ inputs.git_branch }}"
+            REPO="${{ inputs.repo_path || vars.DEPLOY_PATH }}"
+            BRANCH="${{ inputs.git_branch || vars.BRANCH_NAME }}"
 
             # ── Snapshot HEAD for rollback ────────────────────────────────
             if [ "${{ inputs.enable_rollback }}" = "true" ]; then
@@ -129,8 +129,8 @@ jobs:
             retry 2 15 mvn clean package -DskipTests --no-transfer-progress -q
 
             # ── Restart service ───────────────────────────────────────────
-            echo "[$(TS)] Restarting ${{ inputs.service_name }} ..."
-            sudo systemctl restart "${{ inputs.service_name }}"
+            echo "[$(TS)] Restarting ${{ inputs.service_name || vars.SERVICE_NAME }} ..."
+            sudo systemctl restart "${{ inputs.service_name || vars.SERVICE_NAME }}"
 
             # ── Health check ──────────────────────────────────────────────
             MAX=15
@@ -188,7 +188,7 @@ jobs:
               exit 1
             else
               echo "[$(TS)] Health check failed. Rollback disabled."
-              echo "[$(TS)] Hint: check 'journalctl -u ${{ inputs.service_name }} -n 100' on the server."
+              echo "[$(TS)] Hint: check 'journalctl -u ${{ inputs.service_name || vars.SERVICE_NAME }} -n 100' on the server."
               exit 1
             fi
 
@@ -196,9 +196,9 @@ jobs:
       - name: Collect service logs
         if: always()
         env:
-          SSH_KEY: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY }}
-          SSH_HOST: ${{ inputs.ssh_host || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
-          SSH_PORT: ${{ inputs.ssh_port || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
+          SSH_KEY: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
+          SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
+          SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
         run: |
           mkdir -p deployment-logs
 
@@ -210,7 +210,7 @@ jobs:
             -o ConnectTimeout=15 \
             -p "$SSH_PORT" \
             "deploy@$SSH_HOST" \
-            "journalctl -u ${{ inputs.service_name }} --since '30 minutes ago' --no-pager 2>&1" \
+            "journalctl -u ${{ inputs.service_name || vars.SERVICE_NAME }} --since '30 minutes ago' --no-pager 2>&1" \
             > deployment-logs/service.log 2>&1 \
             || echo "[log collection failed]" > deployment-logs/service.log
 
@@ -219,7 +219,7 @@ jobs:
             -o ConnectTimeout=15 \
             -p "$SSH_PORT" \
             "deploy@$SSH_HOST" \
-            "cd ${{ inputs.repo_path }} && git log -1 --format='%H %s' 2>&1" \
+            "cd ${{ inputs.repo_path || vars.DEPLOY_PATH }} && git log -1 --format='%H %s' 2>&1" \
             > deployment-logs/active-commit.txt 2>&1 \
             || echo "[commit collection failed]" > deployment-logs/active-commit.txt
 
