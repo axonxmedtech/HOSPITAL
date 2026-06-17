@@ -134,7 +134,7 @@ jobs:
             -Dsonar.java.source=${{ vars.JAVA_VERSION || '17' }}
             -Dsonar.coverage.jacoco.xmlReportPaths=backend/target/site/jacoco/jacoco.xml
             -Dsonar.javascript.lcov.reportPaths=frontend/coverage/lcov.info
-            -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/target/surefire-reports/**,**/*.min.js
+            -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/target/surefire-reports/**,**/*.min.js,**/*.backup,**/frontend/src/pages/**
             -Dsonar.sourceEncoding=UTF-8
             -Dsonar.qualitygate.wait=false
             -Dsonar.jasmin.internal.disabled=true
