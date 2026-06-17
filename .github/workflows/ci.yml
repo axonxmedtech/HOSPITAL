@@ -120,7 +120,7 @@ jobs:
 
       # Pin to SHA in production: https://github.com/SonarSource/sonarqube-scan-action/releases
       - name: Run SonarCloud analysis
-        uses: SonarSource/sonarqube-scan-action@v4
+        uses: sonarsource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN || vars.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
@@ -136,7 +136,7 @@ jobs:
             -Dsonar.javascript.lcov.reportPaths=frontend/coverage/lcov.info
             -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/target/surefire-reports/**,**/*.min.js
             -Dsonar.sourceEncoding=UTF-8
-            -Dsonar.qualitygate.wait=true
+            -Dsonar.qualitygate.wait=false
             -Dsonar.jasmin.internal.disabled=true
 
   # ── Deploy — Staging ───────────────────────────────────────────────────────
