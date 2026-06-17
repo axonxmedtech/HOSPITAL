@@ -75,6 +75,26 @@ jobs:
           | Started | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |
           EOF
 
+      # ── SSH Connection Diagnostics ───────────────────────────────────────
+      - name: SSH Connection Diagnostics
+        run: |
+          echo "=================== SSH DIAGNOSTICS ==================="
+          echo "Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "Target Host: $SSH_HOST"
+          echo "Target Port: $SSH_PORT"
+          
+          echo "Testing TCP connection to port $SSH_PORT..."
+          if nc -zv -w 5 "$SSH_HOST" "$SSH_PORT" 2>&1; then
+            echo "TCP connection to port $SSH_PORT succeeded!"
+          else
+            echo "WARNING: TCP connection to port $SSH_PORT timed out or was refused."
+            echo "This indicates a network-level issue, firewall block (e.g. fail2ban), or VPS freeze."
+          fi
+          echo "======================================================="
+        env:
+          SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
+          SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
+
       # ── Deploy via SSH ───────────────────────────────────────────────────
       - name: Deploy via SSH
         # Pin to SHA in production: https://github.com/appleboy/ssh-action/releases
