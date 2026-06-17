@@ -1,0 +1,189 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CI — Hospital Management System
+#
+# Two parallel jobs:
+#   • frontend  — type-check, build, upload dist
+#   • backend   — compile, unit-test, package JAR, upload artifact
+#
+# Node version and Java version are read from GitHub Variables so you can
+# bump them from the repo settings without touching this file.
+# Set in Settings → Variables → Actions:
+#   NODE_VERSION  (default fallback: 22)
+#   JAVA_VERSION  (default fallback: 17)
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+  pull_request:
+    branches:
+      - main
+      - staging
+
+# Cancel any in-progress run for the same branch when a new commit is pushed.
+# Prevents wasting runner minutes on stale builds.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────────────
+  # JOB 1: FRONTEND
+  # React + Vite + TypeScript (allowJs — source files are .jsx with TS checks)
+  # ───────────────────────────────────────────────────────────────────────────
+  frontend:
+    name: "Frontend — Type Check & Build"
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        # All steps below run inside the frontend/ subdirectory
+        working-directory: frontend
+
+    steps:
+      # ── 1. Source ──────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Runtime ─────────────────────────────────────────────────────────
+      - name: Set up Node.js ${{ vars.NODE_VERSION || '22' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ vars.NODE_VERSION || '22' }}
+          # Built-in npm cache keyed on frontend/package-lock.json hash.
+          # Cache is restored before install and saved after a successful run.
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # ── 3. Dependencies ────────────────────────────────────────────────────
+      - name: Install dependencies (npm ci)
+        # npm ci is the CI-safe alternative to npm install:
+        #   • uses exact versions from package-lock.json
+        #   • fails if lock file is out of sync with package.json
+        #   • never modifies the lock file
+        run: npm ci
+
+      # ── 4. Lint ────────────────────────────────────────────────────────────
+      # ESLint is not yet configured in this project.
+      # To enable: add eslint + eslint-plugin-react to devDependencies,
+      # create eslint.config.js, add "lint": "eslint src" to package.json scripts,
+      # then uncomment the step below.
+      #
+      # - name: Lint (ESLint)
+      #   run: npm run lint
+
+      # ── 5. Type check ──────────────────────────────────────────────────────
+      - name: TypeScript type check (tsc --noEmit)
+        # Runs the TypeScript compiler in check-only mode.
+        # noEmit is already set in tsconfig.json; --noEmit here is explicit.
+        # allowJs: true in tsconfig means .jsx files are also checked.
+        # This step fails the build on any type error before Vite runs.
+        run: npx tsc --noEmit
+
+      # ── 6. Build ───────────────────────────────────────────────────────────
+      - name: Production build (Vite)
+        # Produces the optimised static bundle in frontend/dist/.
+        # Vite handles code-splitting, asset hashing, and tree-shaking.
+        run: npx vite build
+        env:
+          # Inject the backend API base URL at build time so the bundle is
+          # configured correctly per branch.
+          # Set VITE_API_BASE_URL in Settings → Variables → Actions
+          # (leave unset to fall back to the default in the source code).
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+
+      # ── 7. Artifact ────────────────────────────────────────────────────────
+      - name: Upload frontend dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist-${{ github.sha }}
+          # The compiled static files ready for deployment to CDN / Nginx
+          path: frontend/dist/
+          # Keep artifacts for 7 days — enough for release pipeline to pick up
+          retention-days: 7
+          # Fail loudly if the dist folder is somehow empty
+          if-no-files-found: error
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # JOB 2: BACKEND
+  # Spring Boot 3 / Java 17 / Maven
+  # ───────────────────────────────────────────────────────────────────────────
+  backend:
+    name: "Backend — Compile, Test & Package"
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        # All steps below run inside the backend/ subdirectory
+        working-directory: backend
+
+    steps:
+      # ── 1. Source ──────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Runtime ─────────────────────────────────────────────────────────
+      - name: Set up Java ${{ vars.JAVA_VERSION || '17' }} (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ vars.JAVA_VERSION || '17' }}
+          # Eclipse Temurin is the open, production-grade OpenJDK distribution
+          distribution: temurin
+          # Built-in Maven cache keyed on backend/pom.xml hash.
+          # Caches ~/.m2/repository so dependencies are not re-downloaded.
+          cache: maven
+
+      # ── 3. Compile ─────────────────────────────────────────────────────────
+      - name: Compile (mvn compile)
+        # -q suppresses Maven's verbose output; errors still surface.
+        # Fails fast on any compilation error before running tests.
+        run: mvn compile -q
+
+      # ── 4. Test ────────────────────────────────────────────────────────────
+      - name: Run unit tests (mvn test)
+        # All tests are @WebMvcTest slice tests or pure Mockito unit tests —
+        # no live database required. Tests run against the in-memory Spring
+        # context wired up by MockitoExtension / @MockBean.
+        run: mvn test
+        env:
+          # Provide dummy datasource values so Spring autoconfiguration
+          # doesn't fail at context startup for any future integration tests.
+          SPRING_DATASOURCE_URL: jdbc:h2:mem:testdb
+          SPRING_DATASOURCE_USERNAME: sa
+          SPRING_DATASOURCE_PASSWORD: ""
+          JWT_SECRET: ci-test-secret-not-used-in-real-environment
+
+      # ── 5. Publish test results ────────────────────────────────────────────
+      - name: Publish test results
+        # Always run this step so test results appear even when tests fail.
+        # This uploads Surefire XML reports and renders them in the Actions UI.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ github.sha }}
+          path: backend/target/surefire-reports/
+          retention-days: 14
+          if-no-files-found: warn
+
+      # ── 6. Package ─────────────────────────────────────────────────────────
+      - name: Package Spring Boot JAR (mvn package)
+        # -DskipTests: tests already passed in the previous step.
+        # -q: suppress verbose output.
+        # Produces the fat/uber JAR in backend/target/*.jar.
+        run: mvn package -DskipTests -q
+
+      # ── 7. Artifact ────────────────────────────────────────────────────────
+      - name: Upload backend JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-jar-${{ github.sha }}
+          # The executable Spring Boot uber-JAR
+          path: backend/target/*.jar
+          # Exclude the plain (non-executable) JAR Spring Boot also produces
+          # The executable JAR is the one ending in the version, not *-plain.jar
+          retention-days: 7
+          if-no-files-found: error
