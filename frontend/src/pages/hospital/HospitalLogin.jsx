@@ -122,9 +122,9 @@ const HospitalLogin = () => {
 
     return (
         <div className="min-h-screen bg-white flex">
-            <div className="z-10 absolute top-0 left-5 space-y-10">
+            {/* <div className="z-10 absolute top-0 left-5 space-y-10">
                 <img src="/company-logo.png" alt="company-logo" className="z-20 w-24 h-12" />
-            </div>
+            </div> */}
 
             {/* Left Side - Background Image */}
             <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
