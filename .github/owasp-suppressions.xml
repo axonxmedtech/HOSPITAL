@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+    <!--
+        Add entries here to suppress known false positives from the OWASP scan.
+
+        Example — suppress a specific CVE for a specific package:
+        <suppress>
+            <notes>False positive: CVE does not apply to the jar variant we use.</notes>
+            <packageUrl regex="true">^pkg:maven/com\.example/some\-library@.*$</packageUrl>
+            <cve>CVE-2023-12345</cve>
+        </suppress>
+    -->
+</suppressions>
