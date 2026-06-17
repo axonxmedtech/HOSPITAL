@@ -137,3 +137,62 @@ jobs:
             -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/target/surefire-reports/**,**/*.min.js
             -Dsonar.sourceEncoding=UTF-8
             -Dsonar.qualitygate.wait=true
+
+  # ── Deploy — Staging ───────────────────────────────────────────────────────
+  deploy-staging:
+    name: Deploy — Staging
+    needs: [build-frontend, build-backend, security, sonar]
+    if: >
+      github.ref == 'refs/heads/staging' &&
+      always() &&
+      needs.build-frontend.result == 'success' &&
+      needs.build-backend.result == 'success' &&
+      needs.security.result == 'success' &&
+      (needs.sonar.result == 'success' || needs.sonar.result == 'skipped')
+    uses: ./.github/workflows/_deploy.yml
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      environment: staging
+      repo_path: /var/www/hms/staging/repo_stage
+      service_name: hms-staging
+      git_branch: staging
+      ssh_host: ${{ vars.STAGING_SSH_HOST }}
+      ssh_port: ${{ vars.STAGING_SSH_PORT || '22' }}
+      health_port: ${{ vars.STAGING_HEALTH_PORT || '8080' }}
+      app_url: ${{ vars.STAGING_APP_URL }}
+      enable_rollback: false
+      notify_slack: false
+    secrets:
+      ssh_key: ${{ secrets.STAGING_SSH_KEY }}
+
+  # ── Deploy — Production ────────────────────────────────────────────────────
+  deploy-production:
+    name: Deploy — Production
+    needs: [build-frontend, build-backend, security, sonar]
+    if: >
+      github.ref == 'refs/heads/main' &&
+      always() &&
+      needs.build-frontend.result == 'success' &&
+      needs.build-backend.result == 'success' &&
+      needs.security.result == 'success' &&
+      (needs.sonar.result == 'success' || needs.sonar.result == 'skipped')
+    uses: ./.github/workflows/_deploy.yml
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      environment: production
+      repo_path: /var/www/hms/production/repo_prod
+      service_name: hms-production
+      git_branch: main
+      ssh_host: ${{ vars.PRODUCTION_SSH_HOST }}
+      ssh_port: ${{ vars.PRODUCTION_SSH_PORT || '22' }}
+      health_port: ${{ vars.PRODUCTION_HEALTH_PORT || '8080' }}
+      app_url: ${{ vars.PRODUCTION_APP_URL }}
+      enable_rollback: true
+      notify_slack: true
+    secrets:
+      ssh_key: ${{ secrets.PRODUCTION_SSH_KEY }}
+      slack_webhook: ${{ secrets.PRODUCTION_SLACK_WEBHOOK }}
