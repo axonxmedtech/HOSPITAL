@@ -8,7 +8,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.2.0</version>
+        <version>3.3.5</version>
         <relativePath/>
     </parent>
     
@@ -83,7 +83,7 @@
         <dependency>
     <groupId>org.projectlombok</groupId>
     <artifactId>lombok</artifactId>
-    <version>1.18.32</version>
+    <version>1.18.36</version>
     <scope>provided</scope>
 </dependency>
 
@@ -105,11 +105,10 @@
             <groupId>org.thymeleaf</groupId>
             <artifactId>thymeleaf-spring6</artifactId>
         </dependency>
-        <!-- Thymeleaf core (ensure IContext is available) -->
+        <!-- Thymeleaf core (version managed by Spring Boot BOM) -->
         <dependency>
             <groupId>org.thymeleaf</groupId>
             <artifactId>thymeleaf</artifactId>
-            <version>3.1.1.RELEASE</version>
         </dependency>
 
         <!-- OpenHTMLToPDF (renders HTML -> PDF) -->
@@ -140,7 +139,7 @@
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-            <version>2.3.0</version>
+            <version>2.6.0</version>
         </dependency>
 
         <!-- Actuator (health checks) -->
@@ -175,7 +174,7 @@
                     <path>
                         <groupId>org.projectlombok</groupId>
                         <artifactId>lombok</artifactId>
-                        <version>1.18.32</version>
+                        <version>1.18.36</version>
                     </path>
                 </annotationProcessorPaths>
             </configuration>
