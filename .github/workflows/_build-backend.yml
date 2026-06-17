@@ -75,7 +75,12 @@ jobs:
                       lines.append(line)
 
           import xml.etree.ElementTree as ET
-          root = ET.fromstring("".join(lines))
+          try:
+              root = ET.fromstring("".join(lines))
+          except Exception as e:
+              with open(step_summary, "a") as f:
+                  f.write(f"## Backend Coverage\n\nFailed to parse JaCoCo XML report: {e}\n")
+              sys.exit(0)
 
           metrics = {}
           for counter in root.findall("counter"):

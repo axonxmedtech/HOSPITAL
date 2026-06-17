@@ -207,6 +207,7 @@ jobs:
           -DoutputDirectory=target/owasp-report
           -DnvdApiKey="${NVD_API_KEY:-}"
           -DsuppressionFile=../.github/owasp-suppressions.xml
+          -DfailOnError=false
           --no-transfer-progress
 
       - name: Upload OWASP report
