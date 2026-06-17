@@ -109,6 +109,10 @@ jobs:
           name: backend-jar-${{ github.sha }}
           path: backend/target
 
+      # ── Compress artifacts for deployment ────────────────────────────────
+      - name: Compress artifacts for deployment
+        run: tar -czf deploy.tar.gz frontend/dist backend/target/*.jar
+
       # ── Pull latest code on VPS ──────────────────────────────────────────
       - name: Pull Code on VPS
         uses: appleboy/ssh-action@v1
@@ -146,29 +150,16 @@ jobs:
               echo "$PREV_SHA" > ../rollback_backup/prev_sha.txt
             fi
 
-      # ── Copy Frontend Build via SCP ──────────────────────────────────────
-      - name: Copy Frontend Build via SCP
+      # ── Copy Deployment Package via SCP ──────────────────────────────────
+      - name: Copy Deployment Package via SCP
         uses: appleboy/scp-action@v1
         with:
           host: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           username: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
           key: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
           port: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
-          source: "frontend/dist/**"
-          target: "${{ inputs.repo_path || vars.DEPLOY_PATH }}/frontend/dist"
-          strip_components: 2
-
-      # ── Copy Backend JAR via SCP ─────────────────────────────────────────
-      - name: Copy Backend JAR via SCP
-        uses: appleboy/scp-action@v1
-        with:
-          host: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
-          username: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
-          key: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
-          port: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
-          source: "backend/target/*.jar"
-          target: "${{ inputs.repo_path || vars.DEPLOY_PATH }}/backend/target"
-          strip_components: 2
+          source: "deploy.tar.gz"
+          target: "${{ inputs.repo_path || vars.DEPLOY_PATH }}"
 
       # ── Restart Service and Health Check ─────────────────────────────────
       - name: Restart Service and Health Check
@@ -184,6 +175,14 @@ jobs:
             TS() { date -u '+%Y-%m-%dT%H:%M:%SZ'; }
             
             REPO="${{ inputs.repo_path || vars.DEPLOY_PATH }}"
+            
+            # Extract deployment package
+            echo "[$(TS)] Extracting deployment package on VPS..."
+            cd "$REPO"
+            rm -rf frontend/dist/*
+            rm -f backend/target/*.jar
+            tar -xzf deploy.tar.gz
+            rm -f deploy.tar.gz
             
             # Restart service
             echo "[$(TS)] Restarting ${{ inputs.service_name || vars.SERVICE_NAME }} ..."
