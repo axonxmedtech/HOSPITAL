@@ -78,10 +78,10 @@ jobs:
         # Pin to SHA in production: https://github.com/appleboy/ssh-action/releases
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ inputs.ssh_host }}
+          host: ${{ inputs.ssh_host || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           username: deploy
-          key: ${{ secrets.ssh_key }}
-          port: ${{ inputs.ssh_port }}
+          key: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY }}
+          port: ${{ inputs.ssh_port || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
           command_timeout: 25m
           script: |
             set -euo pipefail
@@ -196,7 +196,9 @@ jobs:
       - name: Collect service logs
         if: always()
         env:
-          SSH_KEY: ${{ secrets.ssh_key }}
+          SSH_KEY: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY }}
+          SSH_HOST: ${{ inputs.ssh_host || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
+          SSH_PORT: ${{ inputs.ssh_port || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
         run: |
           mkdir -p deployment-logs
 
@@ -206,8 +208,8 @@ jobs:
           ssh -i /tmp/deploy_key \
             -o StrictHostKeyChecking=no \
             -o ConnectTimeout=15 \
-            -p "${{ inputs.ssh_port }}" \
-            "deploy@${{ inputs.ssh_host }}" \
+            -p "$SSH_PORT" \
+            "deploy@$SSH_HOST" \
             "journalctl -u ${{ inputs.service_name }} --since '30 minutes ago' --no-pager 2>&1" \
             > deployment-logs/service.log 2>&1 \
             || echo "[log collection failed]" > deployment-logs/service.log
@@ -215,8 +217,8 @@ jobs:
           ssh -i /tmp/deploy_key \
             -o StrictHostKeyChecking=no \
             -o ConnectTimeout=15 \
-            -p "${{ inputs.ssh_port }}" \
-            "deploy@${{ inputs.ssh_host }}" \
+            -p "$SSH_PORT" \
+            "deploy@$SSH_HOST" \
             "cd ${{ inputs.repo_path }} && git log -1 --format='%H %s' 2>&1" \
             > deployment-logs/active-commit.txt 2>&1 \
             || echo "[commit collection failed]" > deployment-logs/active-commit.txt
