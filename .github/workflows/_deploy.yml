@@ -95,69 +95,104 @@ jobs:
           SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
 
-      # ── Deploy via SSH ───────────────────────────────────────────────────
-      - name: Deploy via SSH
-        # Pin to SHA in production: https://github.com/appleboy/ssh-action/releases
+      # ── Download Frontend Build ──────────────────────────────────────────
+      - name: Download Frontend Build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist-${{ github.sha }}
+          path: frontend/dist
+
+      # ── Download Backend JAR ─────────────────────────────────────────────
+      - name: Download Backend JAR
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-jar-${{ github.sha }}
+          path: backend/target
+
+      # ── Pull latest code on VPS ──────────────────────────────────────────
+      - name: Pull Code on VPS
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           username: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
           key: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
           port: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
-          command_timeout: 25m
+          command_timeout: 5m
           script: |
             set -euo pipefail
-
             TS() { date -u '+%Y-%m-%dT%H:%M:%SZ'; }
-
-            retry() {
-              local max="$1" delay="$2"; shift 2
-              local n=1
-              until "$@"; do
-                [ "$n" -ge "$max" ] && return 1
-                echo "[$(TS)] Retry $n/$max in ${delay}s..."
-                sleep "$delay"
-                ((n++))
-              done
-            }
-
+            
             REPO="${{ inputs.repo_path || vars.DEPLOY_PATH }}"
             BRANCH="${{ inputs.git_branch || vars.BRANCH_NAME }}"
-
-            # ── Snapshot HEAD for rollback ────────────────────────────────
-            if [ "${{ inputs.enable_rollback }}" = "true" ]; then
-              cd "$REPO"
-              PREV_SHA=$(git rev-parse HEAD)
-              echo "[$(TS)] Rollback target: $PREV_SHA"
-            fi
-
-            # ── Pull latest code ──────────────────────────────────────────
-            echo "[$(TS)] Pulling $BRANCH ..."
+            
+            echo "[$(TS)] Pulling latest code..."
             cd "$REPO"
             git fetch origin
             git reset --hard "origin/$BRANCH"
             git log -1 --oneline
+            
+            # Ensure build directories exist
+            mkdir -p frontend/dist
+            mkdir -p backend/target
+            
+            # Backup current build artifacts for rollback
+            if [ "${{ inputs.enable_rollback }}" = "true" ]; then
+              echo "[$(TS)] Backing up artifacts for rollback..."
+              mkdir -p ../rollback_backup
+              cp -f backend/target/*.jar ../rollback_backup/prev_backend.jar || true
+              rm -rf ../rollback_backup/prev_frontend_dist
+              cp -r frontend/dist ../rollback_backup/prev_frontend_dist || true
+              PREV_SHA=$(git rev-parse HEAD)
+              echo "$PREV_SHA" > ../rollback_backup/prev_sha.txt
+            fi
 
-            # ── Build frontend ────────────────────────────────────────────
-            echo "[$(TS)] Building frontend ..."
-            cd "$REPO/frontend"
-            retry 2 10 npm ci --prefer-offline --silent
-            npm run build
+      # ── Copy Frontend Build via SCP ──────────────────────────────────────
+      - name: Copy Frontend Build via SCP
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
+          username: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
+          key: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
+          port: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
+          source: "frontend/dist/**"
+          target: "${{ inputs.repo_path || vars.DEPLOY_PATH }}/frontend/dist"
+          strip_components: 2
 
-            # ── Build backend ─────────────────────────────────────────────
-            echo "[$(TS)] Building backend ..."
-            cd "$REPO/backend"
-            set -a; source .env; set +a
-            retry 2 15 mvn clean package -DskipTests --no-transfer-progress -q
+      # ── Copy Backend JAR via SCP ─────────────────────────────────────────
+      - name: Copy Backend JAR via SCP
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
+          username: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
+          key: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
+          port: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
+          source: "backend/target/*.jar"
+          target: "${{ inputs.repo_path || vars.DEPLOY_PATH }}/backend/target"
+          strip_components: 2
 
-            # ── Restart service ───────────────────────────────────────────
+      # ── Restart Service and Health Check ─────────────────────────────────
+      - name: Restart Service and Health Check
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
+          username: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
+          key: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
+          port: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+            TS() { date -u '+%Y-%m-%dT%H:%M:%SZ'; }
+            
+            REPO="${{ inputs.repo_path || vars.DEPLOY_PATH }}"
+            
+            # Restart service
             echo "[$(TS)] Restarting ${{ inputs.service_name || vars.SERVICE_NAME }} ..."
             sudo systemctl restart "${{ inputs.service_name || vars.SERVICE_NAME }}"
-
-            # ── Health check ──────────────────────────────────────────────
+            
+            # Health check
             MAX=15
             DELAY=10
-            URL="http://localhost:${{ inputs.health_port }}/api/public/health"
+            URL="http://localhost:${{ inputs.health_port || vars.PORT || vars.STAGING_HEALTH_PORT || vars.PRODUCTION_HEALTH_PORT || '8080' }}/api/public/health"
             echo "[$(TS)] Health check: $URL"
             HEALTHY=false
             for i in $(seq 1 $MAX); do
@@ -169,14 +204,15 @@ jobs:
               fi
               sleep "$DELAY"
             done
-
+            
             if $HEALTHY; then
               echo "[$(TS)] Service is healthy."
               exit 0
             fi
-
+            
             # ── Health check failed ───────────────────────────────────────
             if [ "${{ inputs.enable_rollback }}" = "true" ]; then
+              PREV_SHA=$(cat ../rollback_backup/prev_sha.txt || echo "")
               echo ""
               echo "============================================"
               echo "  HEALTH CHECK FAILED — INITIATING ROLLBACK"
@@ -184,11 +220,16 @@ jobs:
               echo "============================================"
               cd "$REPO"
               git reset --hard "$PREV_SHA"
-              cd "$REPO/backend"
-              set -a; source .env; set +a
-              mvn clean package -DskipTests --no-transfer-progress -q
-              sudo systemctl restart "${{ inputs.service_name }}"
-
+              
+              # Restore backups
+              echo "Restoring previous build artifacts..."
+              cp -f ../rollback_backup/prev_backend.jar backend/target/hospital-management-system-1.0.0.jar || true
+              rm -rf frontend/dist
+              cp -r ../rollback_backup/prev_frontend_dist frontend/dist || true
+              
+              echo "Restarting service..."
+              sudo systemctl restart "${{ inputs.service_name || vars.SERVICE_NAME }}"
+              
               # Post-rollback health check
               ROLLBACK_HEALTHY=false
               for i in $(seq 1 $MAX); do
@@ -200,7 +241,7 @@ jobs:
                 fi
                 sleep "$DELAY"
               done
-
+              
               if $ROLLBACK_HEALTHY; then
                 echo "[$(TS)] Rollback succeeded. Previous version is live."
               else
