@@ -41,9 +41,4 @@ public class PlatformUserController {
         }
     }
 
-    @GetMapping("/debug-users")
-    @PreAuthorize("permitAll()")
-    public ResponseEntity<java.util.List<com.hms.entity.User>> debugUsers() {
-        return ResponseEntity.ok(userService.debugGetAllUsers());
-    }
 }

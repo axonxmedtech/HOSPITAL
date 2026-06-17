@@ -1,25 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import inventoryApi from '../../../services/pharmacy/inventoryApi';
 import salesApi from '../../../services/pharmacy/salesApi';
 import { SkeletonTableRow } from '../../../components/Skeleton';
 import authService from '../../../services/authService';
-import useWebSocket from '../../../hooks/useWebSocket';
 
-const DashboardView = ({ onNavigate }) => {
+const DashboardView = ({ onNavigate, refreshKey = 0 }) => {
     const user = authService.getCurrentUser();
     const isStandalonePharmacy = user?.modules?.includes('PHARMACY') && !user?.modules?.includes('OPD');
 
     const [loading, setLoading] = useState(true);
     const [lowStockCount, setLowStockCount] = useState(0);
     const [lowStockItems, setLowStockItems] = useState([]);
+    const [nearExpiryCount, setNearExpiryCount] = useState(0);
     const [salesStats, setSalesStats] = useState({ todaySalesTotal: 0, todaySalesCount: 0 });
 
-    const fetchLiveStats = async (showSpinner = true) => {
+    const fetchLiveStats = useCallback(async (showSpinner = true) => {
         if (showSpinner) setLoading(true);
         try {
-            // 1. Fetch Low Stock from ERP Batch Layer
-            const stockResponse = await inventoryApi.getLowStock(0, 10);
-            if (stockResponse && stockResponse.content) {
+            const [stockResponse, expiryResponse, salesData] = await Promise.all([
+                inventoryApi.getLowStock(0, 10),
+                inventoryApi.getExpiring(30, 0, 1),
+                salesApi.getStats()
+            ]);
+
+            if (stockResponse?.content) {
                 setLowStockCount(stockResponse.totalElements || stockResponse.content.length);
                 setLowStockItems(stockResponse.content.map(b => ({
                     id: b.id,
@@ -28,26 +32,22 @@ const DashboardView = ({ onNavigate }) => {
                     category: b.medicine?.category?.categoryName || 'General',
                     available: b.currentQuantity,
                     unit: b.medicine?.unitOfMeasure || 'Units',
-                    threshold: b.medicine?.reorderLevel || 0
+                    threshold: b.medicine?.minStockLevel || 0
                 })));
             }
 
-            // 2. Fetch Today Sales
-            const salesData = await salesApi.getStats();
+            setNearExpiryCount(expiryResponse?.totalElements || 0);
             setSalesStats(salesData);
-
         } catch (err) {
-            console.error("Failed loading pharmacy stats", err);
+            // silent
         } finally {
             if (showSpinner) setLoading(false);
         }
-    };
+    }, []);
 
     useEffect(() => {
         fetchLiveStats(true);
-    }, []);
-
-    useWebSocket(user, null, () => fetchLiveStats(false));
+    }, [fetchLiveStats, refreshKey]);
 
     // Dynamic stats mapping
     const stats = [
@@ -82,10 +82,11 @@ const DashboardView = ({ onNavigate }) => {
                 </svg>
             )
         },
-        { 
-            title: 'Near Expiry', 
-            value: '0', 
-            subtitle: 'Standard View', 
+        {
+            title: 'Near Expiry',
+            value: loading ? '...' : String(nearExpiryCount),
+            subtitle: nearExpiryCount > 0 ? 'Expiring within 30 days' : 'Stock safe',
+            isAlert: nearExpiryCount > 0,
             icon: (
                 <svg className="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />

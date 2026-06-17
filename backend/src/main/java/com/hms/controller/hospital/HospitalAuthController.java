@@ -60,7 +60,7 @@ public class HospitalAuthController {
             LoginResponse response = authService.getProfile(principal.getName());
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            return ResponseEntity.status(403).body(e.getMessage());
+            return ResponseEntity.status(500).body(e.getMessage());
         }
     }
 
@@ -90,7 +90,7 @@ public class HospitalAuthController {
             com.hms.dto.HospitalFeesDTO dto = authService.getHospitalFees(principal.getName());
             return ResponseEntity.ok(dto);
         } catch (Exception e) {
-            return ResponseEntity.status(403).body(e.getMessage());
+            return ResponseEntity.status(500).body(e.getMessage());
         }
     }
 
@@ -107,7 +107,7 @@ public class HospitalAuthController {
             });
             return ResponseEntity.ok(updated);
         } catch (Exception e) {
-            return ResponseEntity.status(403).body(e.getMessage());
+            return ResponseEntity.status(400).body(e.getMessage());
         }
     }
 
@@ -120,7 +120,7 @@ public class HospitalAuthController {
             if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
             return ResponseEntity.ok(authService.getHospitalOperationsSettings(principal.getName()));
         } catch (Exception e) {
-            return ResponseEntity.status(403).body(e.getMessage());
+            return ResponseEntity.status(500).body(e.getMessage());
         }
     }
 
@@ -128,7 +128,7 @@ public class HospitalAuthController {
      * Update operations settings (receptionMode and billingHandler)
      */
     @PutMapping("/hospital/settings/operations")
-    public ResponseEntity<?> updateOperationsSettings(java.security.Principal principal, @Valid @RequestBody com.hms.dto.HospitalSettingDTO dto) {
+    public ResponseEntity<?> updateOperationsSettings(java.security.Principal principal, @RequestBody com.hms.dto.HospitalSettingDTO dto) {
         try {
             if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
             com.hms.dto.HospitalSettingDTO updated = authService.updateHospitalOperationsSettings(principal.getName(), dto);
@@ -137,7 +137,7 @@ public class HospitalAuthController {
             });
             return ResponseEntity.ok(updated);
         } catch (Exception e) {
-            return ResponseEntity.status(403).body(e.getMessage());
+            return ResponseEntity.status(400).body(e.getMessage());
         }
     }
 }

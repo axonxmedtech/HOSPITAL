@@ -7,6 +7,7 @@ import com.hms.repository.PatientRepository;
 import com.hms.security.SecurityContextHelper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -268,6 +269,7 @@ public class AppointmentService {
      * Get all active appointments for the current hospital with pagination,
      * search, and optional view filter
      */
+    @Transactional(readOnly = true)
     public org.springframework.data.domain.Page<Appointment> getAllAppointments(String search,
             org.springframework.data.domain.Pageable pageable, String view) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
@@ -337,6 +339,7 @@ public class AppointmentService {
         return page;
     }
 
+    @Transactional(readOnly = true)
     public List<Appointment> getAllAppointments() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null)
@@ -349,6 +352,7 @@ public class AppointmentService {
     /**
      * Get active appointments for a specific doctor with optional view filter
      */
+    @Transactional(readOnly = true)
     public List<Appointment> getAppointmentsByDoctor(Long doctorId, String view) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
@@ -395,6 +399,7 @@ public class AppointmentService {
     /**
      * Get active appointments for a specific patient (Patient History)
      */
+    @Transactional(readOnly = true)
     public List<Appointment> getAppointmentsByPatient(String patientPublicId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
@@ -434,6 +439,7 @@ public class AppointmentService {
      * @throws RuntimeException if appointment not found, inactive, or doesn't
      *                          belong to the hospital
      */
+    @Transactional(readOnly = true)
     public Appointment getAppointmentByPublicId(String publicId) {
         // Get hospital_id from security context (multi-tenant isolation)
         Long hospitalId = securityHelper.getCurrentHospitalId();
@@ -469,6 +475,7 @@ public class AppointmentService {
      * 
      * @return List of today's appointments
      */
+    @Transactional(readOnly = true)
     public List<Appointment> getTodaysAppointments() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
@@ -483,6 +490,7 @@ public class AppointmentService {
         return populateNames(appointments);
     }
 
+    @Transactional(readOnly = true)
     public long getTodaysAppointmentsCount() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
@@ -696,6 +704,7 @@ public class AppointmentService {
     /**
      * Get dashboard stats (Today, Pending, Total)
      */
+    @Transactional(readOnly = true)
     public Map<String, Long> getDashboardStats() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null)
@@ -718,6 +727,7 @@ public class AppointmentService {
      * Get appointments for the currently logged-in doctor with pagination, search,
      * and optional view filter
      */
+    @Transactional(readOnly = true)
     public org.springframework.data.domain.Page<Appointment> getMyAppointments(String view, String search,
             org.springframework.data.domain.Pageable pageable) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
@@ -735,6 +745,7 @@ public class AppointmentService {
     /**
      * Get paginated appointments for a specific doctor with search and view filter
      */
+    @Transactional(readOnly = true)
     public org.springframework.data.domain.Page<Appointment> getAppointmentsByDoctorPaginated(Long doctorId,
             String view, String search, org.springframework.data.domain.Pageable pageable) {
         Long hospitalId = securityHelper.getCurrentHospitalId();

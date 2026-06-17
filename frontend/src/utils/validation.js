@@ -60,8 +60,19 @@ export const validators = {
         const textRegex = /^[a-zA-Z0-9\s\.\-]+$/;
         if (!textRegex.test(value)) return "Field contains invalid characters";
         return null;
-    }
+    },
+
+    minLength: (min) => (value) => (value && value.length < min) ? `Minimum ${min} characters` : null,
+    maxLength: (max) => (value) => (value && value.length > max) ? `Maximum ${max} characters` : null,
 };
+
+/**
+ * Alias for validateForm — supports the same signature.
+ * Rules values are arrays of validator functions or string keys.
+ */
+export function validate(values, rules) {
+    return validateForm(values, rules);
+}
 
 /**
  * Run validations against a form data object.

@@ -10,6 +10,7 @@ import com.hms.security.HospitalWebSocketHandler;
 import com.hms.service.AuditLogService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -201,6 +202,7 @@ public class PatientService {
      * @param view Optional filter view ('today', 'history')
      * @return Page of active patients
      */
+    @Transactional(readOnly = true)
     public org.springframework.data.domain.Page<Patient> getAllPatients(String search, String view,
             org.springframework.data.domain.Pageable pageable) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
@@ -234,11 +236,13 @@ public class PatientService {
         return patients;
     }
 
+    @Transactional(readOnly = true)
     public org.springframework.data.domain.Page<Patient> getAllPatients(
             org.springframework.data.domain.Pageable pageable) {
         return getAllPatients(null, null, pageable);
     }
 
+    @Transactional(readOnly = true)
     public long getPatientCount() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
@@ -264,6 +268,7 @@ public class PatientService {
     }
 
     // Kept for backward compatibility/internal use (e.g. stats)
+    @Transactional(readOnly = true)
     public List<Patient> getAllPatients() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null)
@@ -282,6 +287,7 @@ public class PatientService {
      * @param query Search term
      * @return List of matching active patients
      */
+    @Transactional(readOnly = true)
     public List<Patient> searchPatients(String query) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
@@ -302,6 +308,7 @@ public class PatientService {
         return patients;
     }
 
+    @Transactional(readOnly = true)
     public Patient getPatientByPublicId(String publicId) {
         // Get hospital_id from security context (multi-tenant isolation)
         Long hospitalId = securityHelper.getCurrentHospitalId();
@@ -315,6 +322,7 @@ public class PatientService {
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
     }
 
+    @Transactional(readOnly = true)
     public Patient getPatientById(Long id) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
@@ -417,6 +425,7 @@ public class PatientService {
      * @param publicId Patient public ID
      * @return Map containing patient details and medical history
      */
+    @Transactional(readOnly = true)
     public java.util.Map<String, Object> getPatientConsultationDetails(String patientIdentifier) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
@@ -462,6 +471,8 @@ public class PatientService {
 
         // Patient demographics
         java.util.Map<String, Object> patientData = new java.util.HashMap<>();
+        patientData.put("id", patient.getId());
+        patientData.put("customId", patient.getCustomId());
         patientData.put("publicId", patient.getPublicId());
         patientData.put("name", patient.getName());
         patientData.put("age", patient.getAge());
@@ -754,6 +765,7 @@ public class PatientService {
     /**
      * Get latest consultation details including prescription
      */
+    @Transactional(readOnly = true)
     public java.util.Map<String, Object> getLatestPrescription(String publicId) {
         com.hms.entity.Patient patient = patientRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
@@ -770,6 +782,7 @@ public class PatientService {
         return result;
     }
 
+    @Transactional(readOnly = true)
     public List<Patient> getPatientsByIds(List<Long> ids) {
         if (ids == null || ids.isEmpty()) return java.util.Collections.emptyList();
         Long hospitalId = securityHelper.getCurrentHospitalId();
@@ -781,6 +794,7 @@ public class PatientService {
                 .collect(java.util.stream.Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public java.io.ByteArrayInputStream getOpdMedicinesPdf(Long opdId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
@@ -845,6 +859,7 @@ public class PatientService {
         return pdfService.generateMedicinesListPdf(hospital, doctor, patient, "OPD MEDICINES & ITEMS LIST", customNo, createdAt, itemsList);
     }
 
+    @Transactional(readOnly = true)
     public java.io.ByteArrayInputStream getIpdMedicinesPdf(Long ipdId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
@@ -930,6 +945,7 @@ public class PatientService {
         return new String[]{baseName, qty};
     }
 
+    @Transactional(readOnly = true)
     public java.io.ByteArrayInputStream getIpdPrescriptionPdf(Long ipdId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)

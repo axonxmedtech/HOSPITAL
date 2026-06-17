@@ -14,6 +14,55 @@ const PrescriptionsView = () => {
     const [error, setError] = useState(null);
     const [sourceFilter, setSourceFilter] = useState('ALL');
 
+    const handlePrintPrescription = (rx) => {
+        if (!rx) return;
+        const medRows = (rx.medicines || []).map(m =>
+            `<tr><td>${m.name || ''}</td><td>${m.dosage || '-'}</td><td>${m.frequency || '-'}</td><td>${m.duration || '-'}</td><td>${m.instructions || ''}</td></tr>`
+        ).join('');
+        const dateStr = rx.createdAt ? new Date(rx.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+
+        const html = `<!DOCTYPE html><html><head><title>Prescription</title>
+        <style>
+            body { font-family: Arial, sans-serif; padding: 28px; color: #111; font-size: 13px; }
+            .header { border-bottom: 2px solid #111; padding-bottom: 10px; margin-bottom: 16px; display: flex; justify-content: space-between; }
+            .hospital { font-size: 18px; font-weight: 900; text-transform: uppercase; letter-spacing: -0.5px; }
+            .facility { font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 2px; font-weight: bold; }
+            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: #f5f5f5; border: 1px solid #e0e0e0; padding: 10px; border-radius: 4px; margin-bottom: 14px; font-size: 12px; }
+            .label { color: #666; font-size: 10px; text-transform: uppercase; }
+            .value { font-weight: 600; }
+            .rx-symbol { font-size: 28px; font-weight: 900; color: #333; margin-bottom: 6px; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            th { background: #f3f4f6; padding: 7px 8px; text-align: left; font-size: 10px; text-transform: uppercase; color: #555; border-bottom: 1px solid #ddd; }
+            td { padding: 7px 8px; border-bottom: 1px solid #f0f0f0; }
+            .sign { margin-top: 40px; text-align: right; border-top: 1px solid #333; width: 150px; float: right; padding-top: 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; }
+            @media print { body { padding: 0; } }
+        </style></head><body>
+        <div class="header">
+            <div><div class="hospital">Hospital HMS</div><div class="facility">Medical Facility</div></div>
+            <div style="text-align:right;font-size:11px;color:#555"><div>${dateStr}</div><div>${rx.prescriptionSource || 'OPD'}</div></div>
+        </div>
+        <div class="info-grid">
+            <div><div class="label">Patient</div><div class="value">${rx.patientName || ''}</div></div>
+            <div><div class="label">Doctor</div><div class="value">Dr. ${rx.doctorName || ''}</div></div>
+            <div><div class="label">Age / Gender</div><div class="value">${rx.patientAge || ''} / ${rx.patientGender || ''}</div></div>
+            <div><div class="label">Diagnosis</div><div class="value">${rx.diagnosis || ''}</div></div>
+        </div>
+        <div class="rx-symbol">&#8478;</div>
+        <table><thead><tr><th>Medicine</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr></thead>
+        <tbody>${medRows || '<tr><td colspan="5" style="text-align:center;color:#888">No medicines prescribed.</td></tr>'}</tbody></table>
+        ${rx.notes && rx.notes !== 'No specific pharmacist notes provided.' ? `<p style="margin-top:12px;font-size:11px;color:#555"><em>Note: ${rx.notes}</em></p>` : ''}
+        <div class="sign">Doctor Sign</div>
+        <script>window.onload = function() { window.print(); };<\/script>
+        </body></html>`;
+
+        const w = window.open('', '_blank');
+        if (w) {
+            w.document.open();
+            w.document.write(html);
+            w.document.close();
+        }
+    };
+
     const fetchData = async (showSpinner = true) => {
         if (showSpinner) setLoading(true);
         setError(null);
@@ -310,11 +359,11 @@ const PrescriptionsView = () => {
                             >
                                 Close
                             </button>
-                            <button 
-                                onClick={() => window.print()}
+                            <button
+                                onClick={() => handlePrintPrescription(selectedPrescription)}
                                 className="px-4 py-2 border border-gray-300 bg-gray-50 text-gray-700 rounded text-sm font-bold hover:bg-gray-100 transition-colors"
                             >
-                                Print 
+                                Print
                             </button>
                             <button 
                                 onClick={() => onNavigate('billing', { 

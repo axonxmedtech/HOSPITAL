@@ -115,6 +115,18 @@ const MedicineMasterView = ({ refreshKey = 0 }) => {
         },
         { header: 'Manufacturer', accessorKey: 'manufacturer.manufacturerName' },
         {
+            header: 'Min Stock',
+            cell: ({ row }) => (
+                <span className={`px-2 py-0.5 rounded text-[10px] font-black border ${
+                    row.original.minStockLevel > 0
+                        ? 'bg-amber-50 text-amber-700 border-amber-100'
+                        : 'bg-red-50 text-red-400 border-red-100'
+                }`}>
+                    {row.original.minStockLevel > 0 ? `${row.original.minStockLevel} units` : 'Not set'}
+                </span>
+            )
+        },
+        {
             header: 'Status',
             cell: ({ row }) => (
                 <div className="flex flex-col gap-1">

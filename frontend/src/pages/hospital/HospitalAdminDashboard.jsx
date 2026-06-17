@@ -165,7 +165,13 @@ const HospitalAdminDashboard = () => {
 
     // Patient tab: Date / All toggle
     const [patientTabView, setPatientTabView] = useState('All');
-    const [patientDateFilter, setPatientDateFilter] = useState(new Date().toISOString().split('T')[0]);
+    const getISTDateString = () => {
+        const now = new Date();
+        const istOffset = 330; // IST = UTC+5:30 in minutes
+        const istDate = new Date(now.getTime() + istOffset * 60000);
+        return istDate.toISOString().split('T')[0];
+    };
+    const [patientDateFilter, setPatientDateFilter] = useState(getISTDateString);
     const [datePatients, setDatePatients] = useState([]);
     const [datePatientsLoading, setDatePatientsLoading] = useState(false);
 
@@ -180,6 +186,23 @@ const HospitalAdminDashboard = () => {
     const [ticketForm, setTicketForm] = useState({ subject: '', message: '', priority: 'LOW' });
 
     const navigate = useNavigate();
+
+    // Reset patientDateFilter at midnight IST
+    useEffect(() => {
+        const msUntilMidnightIST = () => {
+            const now = new Date();
+            const istOffset = 330;
+            const nowIST = new Date(now.getTime() + istOffset * 60000);
+            const nextMidnight = new Date(nowIST);
+            nextMidnight.setUTCHours(0, 0, 0, 0);
+            nextMidnight.setUTCDate(nextMidnight.getUTCDate() + 1);
+            return nextMidnight.getTime() - istOffset * 60000 - now.getTime();
+        };
+        const timer = setTimeout(() => {
+            setPatientDateFilter(getISTDateString());
+        }, msUntilMidnightIST());
+        return () => clearTimeout(timer);
+    }, []);
 
     // Real-time WebSocket sync
     useWebSocket(user, setUser, (silent) => {
@@ -741,14 +764,18 @@ const HospitalAdminDashboard = () => {
 
                 } else if (activeTab === 'billing') {
                     const data = await hospitalService.getBills(searchTerm,page, pageSize, billingStatus);
-                    if (data.content) {
-                        setBilling(data.content);
-                        setTotalPages(data.totalPages);
-                        setTotalElements(data.totalElements);
-                    } else {
+                    if (data && data.content) {
+                        setBilling(Array.isArray(data.content) ? data.content : []);
+                        setTotalPages(data.totalPages || 1);
+                        setTotalElements(data.totalElements || 0);
+                    } else if (Array.isArray(data)) {
                         setBilling(data);
                         setTotalPages(1);
                         setTotalElements(data.length);
+                    } else {
+                        setBilling([]);
+                        setTotalPages(1);
+                        setTotalElements(0);
                     }
                 } else if (activeTab === 'ipd') {
                     try {
@@ -1062,6 +1089,7 @@ const HospitalAdminDashboard = () => {
     const allTabs = [
         { id: 'overview', label: 'Overview', icon: null, requiredModule: 'OPD' },
         { id: 'patients', label: 'Patients', icon: null, requiredModule: 'OPD' },
+        { id: 'appointments', label: 'Appointments', icon: null, requiredModule: 'OPD' },
         { id: 'opd', label: 'OPD', icon: null, requiredModule: 'OPD' },
         { id: 'wards', label: 'Wards & Beds', icon: null, requiredModule: 'IPD' },
         { id: 'doctors', label: 'Doctors', icon: null, requiredModule: 'OPD' },
@@ -1168,7 +1196,14 @@ const HospitalAdminDashboard = () => {
             const blob = await hospitalService.downloadReceipt(id);
             const url = window.URL.createObjectURL(blob);
             if (printWindow) {
-                printWindow.location.href = url;
+                printWindow.document.open();
+                printWindow.document.write(
+                    '<!DOCTYPE html><html><head><title>Receipt</title></head>' +
+                    '<body style="margin:0;padding:0;">' +
+                    '<embed type="application/pdf" src="' + url + '" style="position:fixed;top:0;left:0;width:100%;height:100%;border:none;">' +
+                    '</body></html>'
+                );
+                printWindow.document.close();
             }
         } catch (err) {
             console.error(err);
@@ -1430,13 +1465,13 @@ const HospitalAdminDashboard = () => {
                                                 type="date"
                                                 value={patientDateFilter}
                                                 onChange={(e) => setPatientDateFilter(e.target.value)}
-                                                className="px-3 py-1.5 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-transparent bg-white text-slate-800"
+                                                className="px-4 py-1.5 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-transparent bg-white text-slate-800"
                                             />
                                             <button
                                                 type="button"
                                                 onClick={handleDownloadActivityReport}
                                                 disabled={datePatientsLoading || datePatients.length === 0}
-                                                className="bg-sky-600 hover:bg-sky-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5"
+                                                className="bg-sky-600 hover:bg-sky-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5"
                                             >
                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />

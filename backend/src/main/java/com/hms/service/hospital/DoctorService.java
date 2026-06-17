@@ -138,6 +138,7 @@ public class DoctorService {
      * 
      * @return Page of active doctors for the hospital
      */
+    @Transactional(readOnly = true)
     public org.springframework.data.domain.Page<Doctor> getAllDoctors(
             org.springframework.data.domain.Pageable pageable) {
         // Get hospital_id from security context (multi-tenant isolation)
@@ -157,6 +158,7 @@ public class DoctorService {
      * @param query Search term
      * @return List of matching active doctors
      */
+    @Transactional(readOnly = true)
     public List<Doctor> searchDoctors(String query) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
@@ -250,6 +252,7 @@ public class DoctorService {
      *                          the
      *                          hospital
      */
+    @Transactional(readOnly = true)
     public Doctor getDoctorByPublicId(String publicId) {
         // Get hospital_id from security context (multi-tenant isolation)
         Long hospitalId = securityHelper.getCurrentHospitalId();

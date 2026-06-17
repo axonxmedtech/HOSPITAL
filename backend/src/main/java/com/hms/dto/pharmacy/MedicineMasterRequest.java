@@ -31,7 +31,9 @@ public class MedicineMasterRequest {
     private String unitOfMeasure;
     
     private Integer reorderLevel;
-    
+
+    private Integer minStockLevel;
+
     private BigDecimal gstPercentage;
     
     private Boolean requiresPrescription;

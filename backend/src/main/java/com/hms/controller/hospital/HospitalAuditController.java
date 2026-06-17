@@ -6,6 +6,7 @@ import com.hms.service.AuditLogService;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -17,6 +18,7 @@ import java.util.List;
 @RequestMapping("/hospital/audit-logs")
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*")
+@PreAuthorize("hasRole('HOSPITAL_ADMIN')")
 public class HospitalAuditController {
 
     private final AuditLogService auditLogService;

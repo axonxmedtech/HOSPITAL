@@ -7,8 +7,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/hospital/medicines")
@@ -48,6 +50,17 @@ public class MedicineController {
     public ResponseEntity<?> updateCatalogMedicine(@PathVariable Long id, @RequestBody MedicineList catalog) {
         try {
             return ResponseEntity.ok(medicineService.updateCatalogMedicine(id, catalog));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/catalog/import-csv")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    public ResponseEntity<?> importCatalogCsv(@RequestParam("file") MultipartFile file) {
+        try {
+            Map<String, Object> result = medicineService.importCatalogCsv(file);
+            return ResponseEntity.ok(result);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

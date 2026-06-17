@@ -1,7 +1,7 @@
 import React from 'react';
 import Button from './Button';
 
-const WardCard = ({ ward, onViewBeds, onEdit }) => {
+const WardCard = ({ ward, onViewBeds, onEdit, onDelete, deleting }) => {
     return (
         <div className="bg-white rounded-xl shadow p-4 flex flex-col justify-between">
             <div>
@@ -20,6 +20,16 @@ const WardCard = ({ ward, onViewBeds, onEdit }) => {
                 <Button variant="outline" size="sm" onClick={() => onEdit(ward)}>
                     Edit
                 </Button>
+                {onDelete && (
+                    <Button
+                        variant="alert"
+                        size="sm"
+                        onClick={() => onDelete(ward)}
+                        disabled={deleting}
+                    >
+                        {deleting ? '...' : 'Delete'}
+                    </Button>
+                )}
             </div>
         </div>
     );

@@ -9,9 +9,16 @@ import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 @Service
 public class MedicineService {
@@ -139,6 +146,78 @@ public class MedicineService {
                     null
             );
         } catch (Exception ignored) {}
+    }
+
+    @Transactional
+    public Map<String, Object> importCatalogCsv(MultipartFile file) throws Exception {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        int imported = 0, updated = 0;
+        List<String> errors = new ArrayList<>();
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream(), "UTF-8"))) {
+            String line;
+            int lineNum = 0;
+            while ((line = reader.readLine()) != null) {
+                lineNum++;
+                String trimmed = line.trim();
+                if (trimmed.isEmpty()) continue;
+                // Skip header row
+                if (lineNum == 1 && trimmed.toLowerCase().startsWith("name")) continue;
+
+                String[] cols = trimmed.split(",", -1);
+                String name = stripQuotes(cols[0]);
+                if (name.isEmpty()) continue;
+
+                String type = cols.length > 1 ? stripQuotes(cols[1]) : "";
+                if (type.isEmpty()) type = "Tablet";
+                String dosage = cols.length > 2 ? stripQuotes(cols[2]) : "";
+                String freq = cols.length > 3 ? stripQuotes(cols[3]) : "";
+                String duration = cols.length > 4 ? stripQuotes(cols[4]) : "";
+                String manufacturer = cols.length > 5 ? stripQuotes(cols[5]) : "";
+
+                try {
+                    Optional<MedicineList> existing = medicineListRepository.findByNameIgnoreCaseAndHospitalId(name, hospitalId);
+                    if (existing.isPresent()) {
+                        MedicineList m = existing.get();
+                        if (!type.isEmpty()) m.setType(type);
+                        if (!dosage.isEmpty()) m.setDefaultDosage(dosage);
+                        if (!freq.isEmpty()) m.setDefaultFrequency(freq);
+                        if (!duration.isEmpty()) m.setDefaultDuration(duration);
+                        if (!manufacturer.isEmpty()) m.setManufacturer(manufacturer);
+                        m.setIsActive(true);
+                        medicineListRepository.save(m);
+                        updated++;
+                    } else {
+                        MedicineList m = new MedicineList();
+                        m.setName(name);
+                        m.setType(type);
+                        m.setDefaultDosage(dosage.isEmpty() ? null : dosage);
+                        m.setDefaultFrequency(freq.isEmpty() ? null : freq);
+                        m.setDefaultDuration(duration.isEmpty() ? null : duration);
+                        m.setManufacturer(manufacturer.isEmpty() ? null : manufacturer);
+                        m.setHospitalId(hospitalId);
+                        m.setIsActive(true);
+                        medicineListRepository.save(m);
+                        imported++;
+                    }
+                } catch (Exception e) {
+                    errors.add("Row " + lineNum + " (" + name + "): " + e.getMessage());
+                }
+            }
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("imported", imported);
+        result.put("updated", updated);
+        result.put("errors", errors);
+        return result;
+    }
+
+    private String stripQuotes(String s) {
+        if (s == null) return "";
+        s = s.trim();
+        if (s.startsWith("\"") && s.endsWith("\"")) s = s.substring(1, s.length() - 1);
+        return s.trim();
     }
 
     // --- Active Stock Inventory CRUD ---

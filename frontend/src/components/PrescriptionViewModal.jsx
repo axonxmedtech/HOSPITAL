@@ -23,10 +23,57 @@ const PrescriptionViewModal = ({ isOpen, onClose, patient }) => {
             setData(result);
         } catch (err) {
             console.error("Failed to fetch prescription", err);
-            // Display specific backend error if available, otherwise generic message
             setError(err.response?.data || "No prescription records found for this patient.");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handlePrint = () => {
+        if (!data) return;
+        const { medicalRecord, prescriptions } = data;
+        const rows = (prescriptions || []).map(med =>
+            `<tr>
+                <td>${med.medicineName || ''}</td>
+                <td>${med.dosage || ''}</td>
+                <td>${med.frequency || ''}</td>
+                <td>${med.duration || ''}</td>
+                <td>${med.instructions || ''}</td>
+            </tr>`
+        ).join('') || '<tr><td colspan="5" style="text-align:center;color:#888">No medicines prescribed.</td></tr>';
+
+        const html = `<!DOCTYPE html><html><head><title>Prescription</title>
+        <style>
+            body { font-family: Arial, sans-serif; padding: 24px; color: #333; }
+            h2 { font-size: 18px; margin-bottom: 4px; }
+            .sub { font-size: 13px; color: #666; margin-bottom: 16px; }
+            .section { background: #f9f9f9; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; margin-bottom: 16px; }
+            .label { font-size: 11px; text-transform: uppercase; color: #6b7280; margin-bottom: 2px; }
+            .value { font-size: 14px; font-weight: 600; }
+            table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+            th { background: #f3f4f6; padding: 8px; text-align: left; font-size: 11px; text-transform: uppercase; color: #6b7280; border-bottom: 1px solid #e5e7eb; }
+            td { padding: 8px; border-bottom: 1px solid #f3f4f6; }
+            @media print { body { padding: 0; } }
+        </style></head><body>
+        <h2>Prescription</h2>
+        <div class="sub">Patient: <strong>${patient?.name || ''}</strong> &bull; ID: ${patient?.customId || patient?.publicId || ''}</div>
+        <div class="section">
+            <div class="label">Diagnosis</div><div class="value">${medicalRecord?.diagnosis || '-'}</div>
+            <div class="label" style="margin-top:8px">Symptoms</div><div class="value">${medicalRecord?.symptoms || '-'}</div>
+            ${medicalRecord?.treatmentNotes ? `<div class="label" style="margin-top:8px">Treatment Notes</div><div class="value">${medicalRecord.treatmentNotes}</div>` : ''}
+            ${medicalRecord?.followUpDate ? `<div class="label" style="margin-top:8px">Follow-up</div><div class="value">${medicalRecord.followUpDate}</div>` : ''}
+        </div>
+        <table><thead><tr>
+            <th>Medicine</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th>
+        </tr></thead><tbody>${rows}</tbody></table>
+        <script>window.onload = function() { window.print(); };<\/script>
+        </body></html>`;
+
+        const w = window.open('', '_blank');
+        if (w) {
+            w.document.open();
+            w.document.write(html);
+            w.document.close();
         }
     };
 
@@ -142,7 +189,7 @@ const PrescriptionViewModal = ({ isOpen, onClose, patient }) => {
                     </button>
                     {data && (
                         <button
-                            onClick={() => window.print()}
+                            onClick={handlePrint}
                             className="ml-3 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 font-medium flex items-center gap-2 transition"
                         >
                             <span>Print</span>

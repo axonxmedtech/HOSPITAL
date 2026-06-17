@@ -132,7 +132,7 @@ const DataTable = ({ data, columns, pagination, loading, emptyState, expandedRow
                                             <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
                                         </svg>
                                     </button>
-                                    {[...Array(pagination.pageCount)].map((_, i) => (
+                                    {[...Array(Math.max(0, Number.isFinite(pagination.pageCount) ? pagination.pageCount : 1))].map((_, i) => (
                                         <button
                                             key={i}
                                             onClick={() => pagination.onPageChange(i)}

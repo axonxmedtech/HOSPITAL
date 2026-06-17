@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import WardCard from '../../components/WardCard';
 import BedListDrawer from '../../components/BedListDrawer';
+import WardModal from '../../components/WardModal';
 import WardService from '../../services/wardService';
-import Button from '../../components/Button';
 
 const WardsAndBeds = () => {
     const [wards, setWards] = useState([]);
     const [loading, setLoading] = useState(false);
     const [selectedWard, setSelectedWard] = useState(null);
     const [showBeds, setShowBeds] = useState(false);
+    const [editWard, setEditWard] = useState(null);
+    const [editOpen, setEditOpen] = useState(false);
+    const [deleting, setDeleting] = useState(null);
 
     useEffect(() => { fetchWards(); }, []);
 
@@ -27,15 +30,25 @@ const WardsAndBeds = () => {
     };
 
     const onEdit = (ward) => {
-        // open inline edit modal inside this component
-        // reuse local behaviour: open modal by setting component state
-        // For simplicity keep existing behaviour by opening a small prompt
-        // (detailed edit handled via top-level modal in the dashboard header)
-        window.alert('Edit ward is available via the main header Add/Edit flow.');
+        setEditWard(ward);
+        setEditOpen(true);
+    };
+
+    const onDelete = async (ward) => {
+        if (!window.confirm(`Delete ward "${ward.wardName}"? This will also delete all its unoccupied beds.`)) return;
+        setDeleting(ward.wardId);
+        try {
+            await WardService.deleteWard(ward.wardId);
+            await fetchWards();
+        } catch (err) {
+            alert(err.response?.data || err.message || 'Delete failed');
+        } finally {
+            setDeleting(null);
+        }
     };
 
     return (
-        <div className="p-6">
+        <div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {loading && <div>Loading wards...</div>}
                 {!loading && wards.length === 0 && (
@@ -43,11 +56,25 @@ const WardsAndBeds = () => {
                 )}
 
                 {wards.map(w => (
-                    <WardCard key={w.wardId} ward={w} onViewBeds={onViewBeds} onEdit={onEdit} />
+                    <WardCard
+                        key={w.wardId}
+                        ward={w}
+                        onViewBeds={onViewBeds}
+                        onEdit={onEdit}
+                        onDelete={onDelete}
+                        deleting={deleting === w.wardId}
+                    />
                 ))}
             </div>
 
             <BedListDrawer open={showBeds} ward={selectedWard} onClose={() => setShowBeds(false)} onStatusChange={fetchWards} />
+
+            <WardModal
+                open={editOpen}
+                initial={editWard}
+                onClose={() => { setEditOpen(false); setEditWard(null); }}
+                onSaved={() => { setEditOpen(false); setEditWard(null); fetchWards(); }}
+            />
         </div>
     );
 };

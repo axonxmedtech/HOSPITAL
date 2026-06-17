@@ -433,6 +433,7 @@ CREATE TABLE `medicine_master` (
   `strength` varchar(100) DEFAULT NULL,
   `unit_of_measure` varchar(50) DEFAULT NULL,
   `reorder_level` int DEFAULT '0',
+  `min_stock_level` int DEFAULT '0',
   `gst_percentage` decimal(38,2) DEFAULT NULL,
   `requires_prescription` tinyint(1) DEFAULT '1',
   `is_active` tinyint(1) DEFAULT '1',
@@ -829,3 +830,14 @@ CREATE TABLE `wards` (
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
 -- Dump completed on 2026-05-13 16:27:45
+
+-- Performance indexes: hospital_id scoping + frequently filtered columns
+CREATE INDEX IF NOT EXISTS idx_patients_hospital ON patients(hospital_id);
+CREATE INDEX IF NOT EXISTS idx_appointments_hospital_date ON appointments(hospital_id, appointment_date);
+CREATE INDEX IF NOT EXISTS idx_opd_hospital_created ON opd(hospital_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_billing_hospital_status ON billing(hospital_id, payment_status);
+CREATE INDEX IF NOT EXISTS idx_medicine_batches_expiry ON medicine_batches(hospital_id, expiry_date);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_hospital_ts ON audit_logs(hospital_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_doctors_hospital ON doctors(hospital_id);
+CREATE INDEX IF NOT EXISTS idx_ipd_admissions_hospital ON ipd_admissions(hospital_id, status);

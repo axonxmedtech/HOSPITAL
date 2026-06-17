@@ -25,7 +25,7 @@ public class HospitalSetting {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @OneToOne(fetch = FetchType.LAZY)
+    @OneToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "hospital_id", nullable = false, unique = true)
     @com.fasterxml.jackson.annotation.JsonIgnore
     private Hospital hospital;

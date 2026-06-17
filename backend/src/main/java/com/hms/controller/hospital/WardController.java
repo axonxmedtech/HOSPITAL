@@ -2,6 +2,7 @@ package com.hms.controller.hospital;
 
 import com.hms.dto.*;
 import jakarta.validation.Valid;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import com.hms.service.hospital.WardService;
 import org.springframework.http.ResponseEntity;
@@ -12,6 +13,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/wards")
 @Validated
+@PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','DOCTOR','RECEPTIONIST','PHARMACIST')")
 public class WardController {
 
     private final WardService wardService;
@@ -43,5 +45,11 @@ public class WardController {
     @PutMapping("/{wardId}")
     public ResponseEntity<WardResponse> updateWard(@PathVariable("wardId") Long wardId, @Valid @RequestBody UpdateWardRequest req) {
         return ResponseEntity.ok(wardService.updateWard(wardId, req));
+    }
+
+    @DeleteMapping("/{wardId}")
+    public ResponseEntity<Void> deleteWard(@PathVariable("wardId") Long wardId) {
+        wardService.deleteWard(wardId);
+        return ResponseEntity.noContent().build();
     }
 }

@@ -1,5 +1,6 @@
 package com.hms.config;
 
+import com.hms.filter.RateLimitFilter;
 import com.hms.security.JwtAuthenticationFilter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -12,6 +13,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -42,6 +44,9 @@ public class SecurityConfig {
     @Autowired
     private JwtAuthenticationFilter jwtAuthenticationFilter;
 
+    @Autowired
+    private RateLimitFilter rateLimitFilter;
+
     @Value("${cors.allowed.origins}")
     private String allowedOrigins;
 
@@ -65,11 +70,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Public endpoints - no authentication required
                         .requestMatchers("/platform/login", "/login").permitAll()
-
-                        // Public endpoints - no authentication required
-                        .requestMatchers("/platform/login", "/login").permitAll()
-                        .requestMatchers("/platform/users/debug-users").permitAll()
                         .requestMatchers("/api/public/health").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
 
                         // Platform endpoints - only Super Admin
                         .requestMatchers("/platform/**").hasRole("SUPER_ADMIN")
@@ -83,10 +86,17 @@ public class SecurityConfig {
                         // All other requests require authentication
                         .anyRequest().authenticated())
 
+                // Return 401 (not 403) for unauthenticated requests — Http403ForbiddenEntryPoint is Spring's default
+                .exceptionHandling(e -> e
+                        .authenticationEntryPoint((req, res, ex) ->
+                                res.sendError(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized")))
+
                 // Stateless session management (JWT-based)
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
+                // Rate limit filter (login endpoints) before JWT filter
+                .addFilterBefore(rateLimitFilter, JwtAuthenticationFilter.class)
                 // Add JWT filter before UsernamePasswordAuthenticationFilter
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 

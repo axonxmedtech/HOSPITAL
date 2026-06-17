@@ -37,13 +37,13 @@ const MedicineForm = ({
       manufacturerId: '',
       dosageForm: '',
       medicineType: '',
-    scheduleType: '',
-    strength: '',
-    unitOfMeasure: '',
-    reorderLevel: '0',
-    gstPercentage: '0',
-    requiresPrescription: true,
-    isActive: true,
+      scheduleType: '',
+      strength: '',
+      unitOfMeasure: '',
+      minStockLevel: '',
+      gstPercentage: '0',
+      requiresPrescription: true,
+      isActive: true,
   });
 
   const [errors, setErrors] = useState({});
@@ -64,7 +64,7 @@ const MedicineForm = ({
         scheduleType: initialData.scheduleType || '',
         strength: initialData.strength || '',
         unitOfMeasure: initialData.unitOfMeasure || '',
-        reorderLevel: initialData.reorderLevel != null ? String(initialData.reorderLevel) : '0',
+        minStockLevel: initialData.minStockLevel != null && initialData.minStockLevel > 0 ? String(initialData.minStockLevel) : '',
         gstPercentage: initialData.gstPercentage != null ? String(initialData.gstPercentage) : '0',
         requiresPrescription: initialData.requiresPrescription != null ? initialData.requiresPrescription : true,
         isActive: initialData.isActive != null ? initialData.isActive : true,
@@ -81,7 +81,7 @@ const MedicineForm = ({
         scheduleType: '',
         strength: '',
         unitOfMeasure: '',
-        reorderLevel: '0',
+        minStockLevel: '',
         gstPercentage: '0',
         requiresPrescription: true,
         isActive: true,
@@ -158,15 +158,13 @@ const MedicineForm = ({
         scheduleType: formData.scheduleType.trim() || null,
         strength: formData.strength.trim() || null,
         unitOfMeasure: formData.unitOfMeasure.trim() || null,
-        reorderLevel: formData.reorderLevel === '' ? 0 : parseInt(formData.reorderLevel, 10),
+        minStockLevel: formData.minStockLevel === '' ? 0 : parseInt(formData.minStockLevel, 10),
         gstPercentage: formData.gstPercentage === '' ? 0 : parseFloat(formData.gstPercentage) || 0,
         requiresPrescription: !!formData.requiresPrescription,
         isActive: !!formData.isActive,
       };
-      console.log('Submitting payload:', payload);
       await onSave(payload);
     } catch (err) {
-      console.error('SAVE ERROR', err);
       const message = err?.response?.data?.message || err.message || 'Failed to save medicine';
       toast.error(message);
     } finally {
@@ -371,16 +369,20 @@ const MedicineForm = ({
               Inventory & Tax
             </div>
 
-            {/* Reorder Level */}
+            {/* Minimum Stock Level */}
             <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">
+                Minimum Stock Level <span className="text-red-500">*</span>
+              </label>
               <input
                 type="text"
-                name="reorderLevel"
-                placeholder="Reorder Level (e.g. 50)"
-                value={formData.reorderLevel}
+                name="minStockLevel"
+                placeholder="e.g. 50 — show as low stock when below this"
+                value={formData.minStockLevel}
                 onChange={handleIntegerChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-900 transition-all"
               />
+              <p className="text-[10px] text-gray-400 mt-1">If stock falls below this number, it appears in the Low Stock dashboard.</p>
             </div>
 
             {/* GST Percentage */}

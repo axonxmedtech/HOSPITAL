@@ -1,16 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import hospitalService from '../services/hospitalService';
 import { useToast } from '../context/ToastContext';
 import Skeleton from './Skeleton';
 
 const MedicineInventoryTab = () => {
     const [subTab, setSubTab] = useState('inventory'); // 'inventory' or 'catalog'
-    
+
     // Data states
     const [inventoryList, setInventoryList] = useState([]);
     const [catalogList, setCatalogList] = useState([]);
     const [loading, setLoading] = useState(false);
-    
+    const [csvImporting, setCsvImporting] = useState(false);
+    const csvInputRef = useRef(null);
+
     // Modal states
     const [stockModal, setStockModal] = useState({ isOpen: false, isEdit: false, data: null });
     const [catalogModal, setCatalogModal] = useState({ isOpen: false, isEdit: false, data: null });
@@ -171,6 +173,27 @@ const MedicineInventoryTab = () => {
         }
     };
 
+    const handleCsvImport = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        e.target.value = '';
+        setCsvImporting(true);
+        try {
+            const result = await hospitalService.importCatalogCsv(file);
+            const msg = `Imported ${result.imported} new, updated ${result.updated} existing.`;
+            if (result.errors && result.errors.length > 0) {
+                toastError(`${msg} ${result.errors.length} row(s) had errors.`);
+            } else {
+                success(msg);
+            }
+            loadData();
+        } catch (err) {
+            toastError(err.response?.data || 'CSV import failed.');
+        } finally {
+            setCsvImporting(false);
+        }
+    };
+
     return (
         <div className="p-6 bg-white rounded-2xl border border-gray-200/80 shadow-sm space-y-6">
             
@@ -214,12 +237,28 @@ const MedicineInventoryTab = () => {
                         + Add to Inventory
                     </button>
                 ) : (
-                    <button
-                        onClick={() => setCatalogModal({ isOpen: true, isEdit: false, data: null })}
-                        className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition font-semibold text-sm shadow-md shadow-teal-600/10 active:scale-95"
-                    >
-                        + Add New Medicine
-                    </button>
+                    <div className="flex gap-2">
+                        <input
+                            ref={csvInputRef}
+                            type="file"
+                            accept=".csv"
+                            className="hidden"
+                            onChange={handleCsvImport}
+                        />
+                        <button
+                            onClick={() => csvInputRef.current?.click()}
+                            disabled={csvImporting}
+                            className="px-4 py-2 border border-teal-600 text-teal-700 rounded-lg hover:bg-teal-50 transition font-semibold text-sm active:scale-95 disabled:opacity-50"
+                        >
+                            {csvImporting ? 'Importing...' : 'Import CSV'}
+                        </button>
+                        <button
+                            onClick={() => setCatalogModal({ isOpen: true, isEdit: false, data: null })}
+                            className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition font-semibold text-sm shadow-md shadow-teal-600/10 active:scale-95"
+                        >
+                            + Add New Medicine
+                        </button>
+                    </div>
                 )}
             </div>
 

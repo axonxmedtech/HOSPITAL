@@ -391,7 +391,14 @@ const IpdDetails = () => {
             const blob = await hospitalService.downloadReceipt(billData.billingId);
             const url = window.URL.createObjectURL(blob);
             if (printWindow) {
-                printWindow.location.href = url;
+                printWindow.document.open();
+                printWindow.document.write(
+                    '<!DOCTYPE html><html><head><title>Bill</title></head>' +
+                    '<body style="margin:0;padding:0;">' +
+                    '<embed type="application/pdf" src="' + url + '" style="position:fixed;top:0;left:0;width:100%;height:100%;border:none;">' +
+                    '</body></html>'
+                );
+                printWindow.document.close();
             }
         } catch (err) {
             console.error(err);

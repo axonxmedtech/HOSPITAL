@@ -39,9 +39,10 @@ public interface MedicineBatchRepository extends JpaRepository<MedicineBatch, Lo
 
     @Query("SELECT b FROM MedicineBatch b WHERE b.hospitalId = :hospitalId AND b.id IN (" +
            "  SELECT MIN(sub.id) FROM MedicineBatch sub " +
-           "  WHERE sub.hospitalId = :hospitalId " +
-           "  GROUP BY sub.medicineId " +
-           "  HAVING SUM(sub.currentQuantity) <= (SELECT m.reorderLevel FROM MedicineMaster m WHERE m.id = sub.medicineId)" +
+           "  JOIN sub.medicine m " +
+           "  WHERE sub.hospitalId = :hospitalId AND m.minStockLevel > 0 " +
+           "  GROUP BY sub.medicineId, m.minStockLevel " +
+           "  HAVING SUM(sub.currentQuantity) < m.minStockLevel" +
            ")")
     Page<MedicineBatch> findLowStock(@Param("hospitalId") Long hospitalId, Pageable pageable);
 

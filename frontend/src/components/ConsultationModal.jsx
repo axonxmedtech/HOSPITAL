@@ -333,7 +333,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                         <p className="text-sm text-gray-600 mt-1">
                             <span className="font-semibold text-gray-800">{patientDetails?.patient?.name || 'Unknown'}</span>
                             <span className="mx-2">•</span>
-                            <span className="text-gray-500">ID: {patientDetails?.patient?.customId || patientDetails?.patient?.publicId || patientDetails?.patient?.id}</span>
+                            <span className="text-gray-500">ID: {patientDetails?.patient?.customId || patient?.customId || opd?.patient?.customId || patientDetails?.patient?.id || patient?.id || opd?.patient?.id || ''}</span>
                         </p>
                     </div>
                     <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition">

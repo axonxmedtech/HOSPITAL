@@ -60,10 +60,9 @@ public class PdfService {
     private static final Font FOOTER_FONT = FontFactory.getFont(FontFactory.HELVETICA, 9, Font.NORMAL, Color.GRAY);
     private static final Font SMALL_BOLD_FONT = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Font.BOLD, Color.BLACK);
 
-    private static final Color PRIMARY_RED = new Color(180, 0, 0);
     private static final Color NAVY_BLUE = new Color(0, 51, 102);
-    private static final Font RED_TITLE_FONT = FontFactory.getFont(FontFactory.TIMES_BOLD, 22, Font.BOLD, PRIMARY_RED);
-    private static final Font RED_DOCTOR_FONT = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, Font.BOLD, PRIMARY_RED);
+    private static final Font RED_TITLE_FONT = FontFactory.getFont(FontFactory.TIMES_BOLD, 22, Font.BOLD, NAVY_BLUE);
+    private static final Font RED_DOCTOR_FONT = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, Font.BOLD, NAVY_BLUE);
 
     // Helper: build a dynamic list of charge rows from billing items + medicines
     private java.util.List<Object[]> buildDynamicChargeRows(
@@ -338,7 +337,7 @@ public class PdfService {
             noCell.setBorder(Rectangle.NO_BORDER);
             Paragraph noPara = new Paragraph("No. : ", NORMAL_FONT);
             String rawCustomId = (billing != null && billing.getCustomId() != null) ? billing.getCustomId() : "-";
-            noPara.add(new Chunk(rawCustomId, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12, Font.BOLD, PRIMARY_RED)));
+            noPara.add(new Chunk(rawCustomId, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12, Font.BOLD, NAVY_BLUE)));
             noCell.addElement(noPara);
             patientTable.addCell(noCell);
 
@@ -684,18 +683,9 @@ public class PdfService {
             fTable.setTotalWidth(523f);
             fTable.setWidths(new float[]{3.5f, 2.5f});
             
-            // Remittance section
+            // Empty left cell (bottom-left block removed)
             PdfPCell remCell = new PdfPCell();
             remCell.setBorder(Rectangle.NO_BORDER);
-            remCell.addElement(new Paragraph("SUMMARY / REMITTANCE", SMALL_BOLD_FONT));
-            
-            PdfPTable subRem = new PdfPTable(2);
-            subRem.setWidthPercentage(100);
-            subRem.setSpacingBefore(5f);
-            subRem.setWidths(new float[]{1.2f, 2f});
-            addMetaRow(subRem, "Customer Name", sale.getPatientName() != null ? sale.getPatientName() : "Walk-in Patient");
-            addMetaRow(subRem, "Invoice Ref#", sale.getBillNumber());
-            remCell.addElement(subRem);
             fTable.addCell(remCell);
 
             // Sign line section
@@ -923,8 +913,8 @@ public class PdfService {
         PdfPTable logoBorderTable = new PdfPTable(1);
         logoBorderTable.setWidthPercentage(100);
         
-        PdfPCell borderCell = new PdfPCell(new Phrase(initials, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12, Font.BOLD, PRIMARY_RED)));
-        borderCell.setBorderColor(PRIMARY_RED);
+        PdfPCell borderCell = new PdfPCell(new Phrase(initials, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12, Font.BOLD, NAVY_BLUE)));
+        borderCell.setBorderColor(NAVY_BLUE);
         borderCell.setBorderWidth(1.5f);
         borderCell.setHorizontalAlignment(Element.ALIGN_CENTER);
         borderCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
@@ -1334,7 +1324,7 @@ public class PdfService {
         PdfPCell noCell = new PdfPCell();
         noCell.setBorder(Rectangle.NO_BORDER);
         Paragraph noPara = new Paragraph("No. : ", NORMAL_FONT);
-        noPara.add(new Chunk(customNo != null ? customNo : "-", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12, Font.BOLD, PRIMARY_RED)));
+        noPara.add(new Chunk(customNo != null ? customNo : "-", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12, Font.BOLD, NAVY_BLUE)));
         noCell.addElement(noPara);
         patientTable.addCell(noCell);
 

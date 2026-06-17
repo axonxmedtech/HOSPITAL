@@ -56,6 +56,7 @@ const ReceptionistDashboard = () => {
     const [selectedDoctorForQueue, setSelectedDoctorForQueue] = useState('');
     const [billing, setBilling] = useState([]);
     const [billingStatus, setBillingStatus] = useState('PENDING');
+    const [recPrintingId, setRecPrintingId] = useState(null);
     const [loading, setLoading] = useState(false);
     
     const [customFees, setCustomFees] = useState([]);
@@ -148,7 +149,9 @@ const ReceptionistDashboard = () => {
     const [totalPages, setTotalPages] = useState(1);
     const [totalElements, setTotalElements] = useState(0);
     const [searchTerm, setSearchTerm] = useState('');
-    const [opdDateFilter, setOpdDateFilter] = useState('');
+    const todayStr = (() => { const t = new Date(); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); })();
+    const [opdDateFilter, setOpdDateFilter] = useState(todayStr);
+    const [opdTabView, setOpdTabView] = useState('today');
 
     const [confirmModal, setConfirmModal] = useState({
         isOpen: false,
@@ -638,7 +641,7 @@ const ReceptionistDashboard = () => {
         { id: 'overview', label: 'Overview', icon: null },
         { id: 'patients', label: 'Patients', icon: null },
         { id: 'opd', label: 'OPD', icon: null },
-        { id: 'ipd', label: 'IPD', icon: null },
+        ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
         { id: 'billing', label: 'Billing', icon: null },
         ...(user?.inClinic !== false ? [{ id: 'inventory', label: 'Medicine Inventory', icon: null }] : [])
     ].filter(tab => tab.id !== 'billing' || user?.billingHandler !== 'DOCTOR');
@@ -1035,33 +1038,46 @@ const ReceptionistDashboard = () => {
                                 </div>
                             ) : null
                         ) : activeTab === 'opd' ? (
-                            <div className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 shadow-sm">
-                                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Date:</span>
-                                <div className="relative flex items-center">
-                                    <input
-                                        type="date"
-                                        value={opdDateFilter || ''}
-                                        onChange={(e) => {
-                                            setOpdDateFilter(e.target.value);
-                                            setPage(0);
-                                        }}
-                                        className="pl-1 pr-7 py-0.5 text-xs bg-transparent border-0 focus:ring-0 font-semibold text-gray-700 cursor-pointer focus:outline-none"
-                                    />
-                                    {opdDateFilter && (
+                            <div className="flex items-center gap-2">
+                                <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
+                                    {['Today', 'Date'].map(view => (
                                         <button
+                                            key={view}
+                                            type="button"
                                             onClick={() => {
-                                                setOpdDateFilter('');
-                                                setPage(0);
+                                                setOpdTabView(view);
+                                                if (view === 'Today') { setOpdDateFilter(todayStr); setPage(0); }
                                             }}
-                                            className="absolute right-0 text-gray-400 hover:text-gray-600 focus:outline-none transition-colors"
-                                            title="Clear Date Filter"
+                                            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${opdTabView === view
+                                                ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
+                                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                            }`}
                                         >
-                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                                            </svg>
+                                            {view}
                                         </button>
-                                    )}
+                                    ))}
                                 </div>
+                                {opdTabView === 'Date' && (
+                                    <div className="relative flex items-center gap-1 bg-neutral-50 border border-neutral-300 rounded-xl px-3 py-2 shadow-soft">
+                                        <input
+                                            type="date"
+                                            value={opdDateFilter || ''}
+                                            onChange={(e) => { setOpdDateFilter(e.target.value); setPage(0); }}
+                                            className="text-sm bg-transparent border-0 focus:ring-0 font-semibold text-slate-800 cursor-pointer focus:outline-none pr-5"
+                                        />
+                                        {opdDateFilter && (
+                                            <button
+                                                onClick={() => { setOpdDateFilter(''); setPage(0); }}
+                                                className="absolute right-2 text-gray-400 hover:text-gray-600 focus:outline-none transition-colors"
+                                                title="Clear"
+                                            >
+                                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                                                </svg>
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         ) : null}
                       

@@ -21,7 +21,8 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000, // 30 seconds timeout
+  timeout: 30000,            // 30 second request timeout
+  maxContentLength: 5242880, // 5 MB response cap
 });
 
 // Request interceptor to add JWT token to headers
@@ -49,15 +50,17 @@ apiClient.interceptors.response.use(
     // Don't redirect on login endpoints - let the login page handle errors
     const isLoginEndpoint = error.config?.url?.includes('/login');
 
-    // If 401 Unauthorized or 403 Forbidden (but not on login pages)
-    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+    // Timeout error — surface a clean message instead of network error
+    if (error.code === 'ECONNABORTED') {
+      return Promise.reject(new Error('Request timed out. Please try again.'));
+    }
+
+    // If 401 Unauthorized (token expired/missing), redirect to login
+    if (error.response && error.response.status === 401) {
       if (!isLoginEndpoint) {
-        console.warn('Authentication error:', error.response.status, 'Redirecting to login');
         sessionStorage.removeItem('token');
         sessionStorage.removeItem('user');
         window.location.href = '/login';
-      } else {
-        console.warn('Login failed:', error.response.status, error.response.data);
       }
     }
 

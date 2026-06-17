@@ -317,6 +317,15 @@ const hospitalService = {
         return response.data;
     },
 
+    importCatalogCsv: async (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await apiClient.post('/hospital/medicines/catalog/import-csv', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        return response.data;
+    },
+
     getInventoryMedicines: async () => {
         const response = await apiClient.get('/hospital/medicines/inventory');
         return response.data;

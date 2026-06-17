@@ -31,11 +31,6 @@ public class PlatformUserService {
     private PasswordEncoder passwordEncoder;
 
     public Page<UserSummaryDTO> getAllUsers(String role, String hospitalId, String search, Pageable pageable) {
-        // Enforce Strict SaaS Architecture: Super Admin only sees Hospital Admins
-        // We ignore the requested role and force HOSPITAL_ADMIN
-        // DEBUG LOG
-        System.out
-                .println("PLATFORM USER SERVICE: filtering users with hospitalId=" + hospitalId + ", search=" + search);
         return userRepository.findAllSummary("HOSPITAL_ADMIN", hospitalId, search, pageable);
     }
 
@@ -92,8 +87,4 @@ public class PlatformUserService {
         }
     }
 
-    // DEBUG ONLY
-    public java.util.List<User> debugGetAllUsers() {
-        return userRepository.findAll();
-    }
 }

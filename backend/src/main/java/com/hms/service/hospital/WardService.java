@@ -127,6 +127,26 @@ public class WardService {
         return toResponse(saved);
     }
 
+    @Transactional
+    public void deleteWard(Long wardId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        Ward w = wardRepository.findById(wardId).orElseThrow(() -> new RuntimeException("Ward not found"));
+        if (!w.getHospitalId().equals(hospitalId)) throw new RuntimeException("Access denied");
+
+        List<Bed> beds = bedRepository.findByWardIdAndHospitalId(wardId, hospitalId);
+        boolean hasOccupied = beds.stream().anyMatch(b -> !"available".equalsIgnoreCase(b.getStatus()));
+        if (hasOccupied) throw new RuntimeException("Cannot delete ward with occupied beds");
+
+        bedRepository.deleteAll(beds);
+        wardRepository.delete(w);
+
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after ward deletion", e);
+        }
+    }
+
     private WardResponse toResponse(Ward w) {
         WardResponse r = new WardResponse();
         r.setWardId(w.getWardId());

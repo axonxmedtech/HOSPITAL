@@ -8,6 +8,7 @@ const WardService = {
   updateWard: (wardId, payload) => apiClient.put(`/api/wards/${wardId}`, payload).then(r => r.data),
   updateBedStatus: (bedId, status) => apiClient.put(`/api/beds/${bedId}`, { status }).then(r => r.data),
   getAvailableBeds: (wardId) => apiClient.get('/api/beds/available', { params: { ward_id: wardId } }).then(r => r.data),
+  deleteWard: (wardId) => apiClient.delete(`/api/wards/${wardId}`).then(r => r.data),
 };
 
 export default WardService;

@@ -200,6 +200,9 @@ public class HospitalAuthService {
                 .orElseGet(() -> {
                     HospitalSetting newSettings = new HospitalSetting();
                     newSettings.setHospital(hospital);
+                    newSettings.setReceptionMode("HAS_RECEPTIONIST");
+                    newSettings.setBillingHandler("RECEPTIONIST");
+                    newSettings.setInClinic(Boolean.TRUE);
                     return hospitalSettingRepository.save(newSettings);
                 });
 
@@ -293,6 +296,9 @@ public class HospitalAuthService {
                 .orElseGet(() -> {
                     HospitalSetting newSettings = new HospitalSetting();
                     newSettings.setHospital(hospital);
+                    newSettings.setReceptionMode("HAS_RECEPTIONIST");
+                    newSettings.setBillingHandler("RECEPTIONIST");
+                    newSettings.setInClinic(Boolean.TRUE);
                     return hospitalSettingRepository.save(newSettings);
                 });
 
@@ -473,18 +479,9 @@ public class HospitalAuthService {
     public HospitalSettingDTO getHospitalOperationsSettings(String email) {
         User user = userRepository.findByEmail(email).orElseThrow(() -> new RuntimeException("User not found"));
         if (user.getHospitalId() == null) throw new RuntimeException("Invalid hospital user");
-        HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(user.getHospitalId())
-                .orElseGet(() -> {
-                    Hospital hospital = hospitalRepository.findById(user.getHospitalId()).orElseThrow(() -> new RuntimeException("Hospital not found"));
-                    HospitalSetting newSettings = new HospitalSetting();
-                    newSettings.setHospital(hospital);
-                    return hospitalSettingRepository.save(newSettings);
-                });
-        HospitalSettingDTO responseDto = new HospitalSettingDTO();
-        responseDto.setReceptionMode(settings.getReceptionMode());
-        responseDto.setBillingHandler(settings.getBillingHandler());
-        responseDto.setInClinic(settings.getInClinic());
-        return responseDto;
+        return hospitalSettingRepository.findByHospital_Id(user.getHospitalId())
+                .map(s -> new HospitalSettingDTO(s.getReceptionMode(), s.getBillingHandler(), s.getInClinic()))
+                .orElse(new HospitalSettingDTO("HAS_RECEPTIONIST", "RECEPTIONIST", true));
     }
 
     /**
@@ -516,20 +513,31 @@ public class HospitalAuthService {
             billingHandler = "DOCTOR";
         }
 
+        final String effectiveBillingHandler = billingHandler;
+        Boolean inClinic = dto.getInClinic();
+
+        // Ensure a settings row exists; if not, create one first
         HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(user.getHospitalId())
                 .orElseGet(() -> {
-                    Hospital hospital = hospitalRepository.findById(user.getHospitalId()).orElseThrow(() -> new RuntimeException("Hospital not found"));
+                    Hospital hospital = hospitalRepository.findById(user.getHospitalId())
+                            .orElseThrow(() -> new RuntimeException("Hospital not found"));
                     HospitalSetting newSettings = new HospitalSetting();
                     newSettings.setHospital(hospital);
+                    newSettings.setReceptionMode(receptionMode != null ? receptionMode : "HAS_RECEPTIONIST");
+                    newSettings.setBillingHandler(effectiveBillingHandler != null ? effectiveBillingHandler : "RECEPTIONIST");
+                    newSettings.setInClinic(inClinic != null ? inClinic : Boolean.TRUE);
                     return hospitalSettingRepository.save(newSettings);
                 });
 
-        settings.setReceptionMode(receptionMode);
-        settings.setBillingHandler(billingHandler);
-        if (dto.getInClinic() != null) {
-            settings.setInClinic(dto.getInClinic());
-        }
-        hospitalSettingRepository.save(settings);
-        return new HospitalSettingDTO(settings.getReceptionMode(), settings.getBillingHandler(), settings.getInClinic());
+        // Use a direct JPQL UPDATE — never touches hospital_id, eliminates detached-proxy issues
+        hospitalSettingRepository.updateByHospitalId(
+                user.getHospitalId(),
+                receptionMode,
+                billingHandler,
+                inClinic != null ? inClinic : settings.getInClinic()
+        );
+
+        return new HospitalSettingDTO(receptionMode, billingHandler,
+                inClinic != null ? inClinic : settings.getInClinic());
     }
 }

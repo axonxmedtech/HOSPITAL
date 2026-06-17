@@ -64,6 +64,9 @@ public class MedicineMaster {
     @Column(name = "reorder_level")
     private Integer reorderLevel = 0;
 
+    @Column(name = "min_stock_level")
+    private Integer minStockLevel = 0;
+
     @Column(name = "gst_percentage")
     private BigDecimal gstPercentage;
 

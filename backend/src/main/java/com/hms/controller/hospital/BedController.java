@@ -3,6 +3,7 @@ package com.hms.controller.hospital;
 import com.hms.dto.BedResponse;
 import com.hms.dto.UpdateBedStatusRequest;
 import jakarta.validation.Valid;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import com.hms.service.hospital.BedService;
 import org.springframework.http.ResponseEntity;
@@ -13,6 +14,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/beds")
 @Validated
+@PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','DOCTOR','RECEPTIONIST','PHARMACIST')")
 public class BedController {
 
     private final BedService bedService;

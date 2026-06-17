@@ -190,7 +190,7 @@ const Sidebar = ({ title, tabs, activeTab, onTabChange, footerTitle, footerData,
                 )}
 
                 {/* Navigation */}
-                <nav className="space-y-1">
+                <nav className="">
                     {tabs.map((tab) => {
                         const hasSubItems = tab.subItems && tab.subItems.length > 0;
                         const isExpanded = !isCollapsed && tab.isExpanded; // Could also use internal state if preferred, but this will respect state passed from parent page

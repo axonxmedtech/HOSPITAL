@@ -3,6 +3,7 @@ package com.hms.service.pharmacy;
 import com.hms.dto.pharmacy.MedicineMasterRequest;
 import com.hms.entity.pharmacy.MedicineMaster;
 import com.hms.repository.pharmacy.MedicineMasterRepository;
+import com.hms.security.HospitalWebSocketHandler;
 import com.hms.security.SecurityContextHelper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -21,24 +22,31 @@ public class MedicineMasterService {
     @Autowired
     private SecurityContextHelper securityHelper;
 
+    @Autowired
+    private HospitalWebSocketHandler webSocketHandler;
+
     @Transactional
     public MedicineMaster create(MedicineMasterRequest req) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
         MedicineMaster m = new MedicineMaster();
-        m.setHospitalId(securityHelper.getCurrentHospitalId());
+        m.setHospitalId(hospitalId);
         mapDtoToEntity(req, m);
         m = repository.save(m);
-        
-        // Auto-generate medicine code based on ID to ensure uniqueness
         m.setMedicineCode("MED" + (1000 + m.getId()));
-        return repository.save(m);
+        m = repository.save(m);
+        try { webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}"); } catch (Exception ignored) {}
+        return m;
     }
 
     @Transactional
     public MedicineMaster update(Long id, MedicineMasterRequest req) {
-        MedicineMaster m = repository.findByIdAndHospitalId(id, securityHelper.getCurrentHospitalId())
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        MedicineMaster m = repository.findByIdAndHospitalId(id, hospitalId)
                 .orElseThrow(() -> new RuntimeException("Medicine not found in catalog"));
         mapDtoToEntity(req, m);
-        return repository.save(m);
+        m = repository.save(m);
+        try { webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}"); } catch (Exception ignored) {}
+        return m;
     }
 
     public MedicineMaster getById(Long id) {
@@ -70,6 +78,7 @@ public class MedicineMasterService {
         m.setStrength(req.getStrength());
         m.setUnitOfMeasure(req.getUnitOfMeasure());
         m.setReorderLevel(req.getReorderLevel() != null ? req.getReorderLevel() : 0);
+        m.setMinStockLevel(req.getMinStockLevel() != null ? req.getMinStockLevel() : 0);
         m.setGstPercentage(req.getGstPercentage());
         if (req.getRequiresPrescription() != null) m.setRequiresPrescription(req.getRequiresPrescription());
         if (req.getIsActive() != null) m.setIsActive(req.getIsActive());

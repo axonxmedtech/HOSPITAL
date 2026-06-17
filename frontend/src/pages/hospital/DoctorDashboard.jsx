@@ -123,6 +123,11 @@ const DoctorDashboard = () => {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [profileOpen, setProfileOpen] = useState(false);
 
+    // OPD date filter — default to today
+    const todayStr = (() => { const t = new Date(); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); })();
+    const [opdDateFilter, setOpdDateFilter] = useState(todayStr);
+    const [opdTabView, setOpdTabView] = useState('today');
+
     // Billing specific states
     const [billing, setBilling] = useState([]);
     const [billingStatus, setBillingStatus] = useState('PENDING');
@@ -264,6 +269,7 @@ const DoctorDashboard = () => {
 
     useEffect(() => {
         setPage(1);
+        if (activeTab === 'opd') { setOpdTabView('today'); setOpdDateFilter(todayStr); }
     }, [activeTab, searchTerm, viewFilter, billingStatus]);
 
     useEffect(() => {
@@ -271,7 +277,7 @@ const DoctorDashboard = () => {
             loadData();
         }, 500);
         return () => clearTimeout(timer);
-    }, [activeTab, searchTerm, viewFilter, billingStatus, page]);
+    }, [activeTab, searchTerm, viewFilter, billingStatus, opdDateFilter, page]);
 
     // WebSocket connection will be initialized below loadData definition to avoid ReferenceError
 
@@ -365,7 +371,7 @@ const DoctorDashboard = () => {
             // OPD list for doctor (read-only)
             if (activeTab === 'opd') {
                 try {
-                    const opdsData = await hospitalService.getOpds(searchTerm, page - 1, ITEMS_PER_PAGE);
+                    const opdsData = await hospitalService.getOpds(searchTerm, page - 1, ITEMS_PER_PAGE, opdDateFilter);
                     let opdsArray = Array.isArray(opdsData) ? opdsData : (opdsData.content || []);
                     // In Solo Doctor Mode, show all OPD cases (to allow billing, printing, IPD admission, etc.).
                     // In regular mode, only show active queued patient OPD cases.
@@ -691,11 +697,9 @@ const DoctorDashboard = () => {
 
     const tabs = [
         { id: 'overview', label: 'Overview', icon: null },
-        { id: 'appointments', label: 'My Appointments', icon: null },
-        { id: 'ipd', label: 'IPD', icon: null },
-        { id: 'queue', label: 'Queue', icon: null },
+        ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
         { id: 'opd', label: 'OPD', icon: null },
-        ...(isSolo ? [{ id: 'patients', label: 'Patients', icon: null }] : []),
+        { id: 'patients', label: 'Patients', icon: null },
         ...((isSolo || hasBilling) ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
         ...((isSolo && hasInClinic) ? [{ id: 'inventory', label: 'Medicine Inventory', icon: null }] : []),
         ...(isSolo ? [{ id: 'hospital-inventory', label: 'Hospital Inventory', icon: null }] : []),
@@ -1231,6 +1235,48 @@ const DoctorDashboard = () => {
                                             {status.charAt(0) + status.slice(1).toLowerCase()}
                                         </button>
                                     ))}
+                                </div>
+                            ) : activeTab === 'opd' ? (
+                                <div className="flex items-center gap-2">
+                                    <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
+                                        {['Today', 'Date'].map(view => (
+                                            <button
+                                                key={view}
+                                                type="button"
+                                                onClick={() => {
+                                                    setOpdTabView(view);
+                                                    if (view === 'Today') { setOpdDateFilter(todayStr); setPage(1); }
+                                                }}
+                                                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${opdTabView === view
+                                                    ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
+                                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                                }`}
+                                            >
+                                                {view}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {opdTabView === 'Date' && (
+                                        <div className="relative flex items-center gap-1 bg-neutral-50 border border-neutral-300 rounded-xl px-3 py-2 shadow-soft">
+                                            <input
+                                                type="date"
+                                                value={opdDateFilter || ''}
+                                                onChange={(e) => { setOpdDateFilter(e.target.value); setPage(1); }}
+                                                className="text-sm bg-transparent border-0 focus:ring-0 font-semibold text-slate-800 cursor-pointer focus:outline-none pr-5"
+                                            />
+                                            {opdDateFilter && (
+                                                <button
+                                                    onClick={() => { setOpdDateFilter(''); setPage(1); }}
+                                                    className="absolute right-2 text-gray-400 hover:text-gray-600 focus:outline-none transition-colors"
+                                                    title="Clear"
+                                                >
+                                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                                                    </svg>
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             ) : null
                         }

@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface MedicineListRepository extends JpaRepository<MedicineList, Long> {
@@ -18,4 +19,6 @@ public interface MedicineListRepository extends JpaRepository<MedicineList, Long
     List<MedicineList> findByHospitalId(Long hospitalId);
 
     boolean existsByNameAndHospitalId(String name, Long hospitalId);
+
+    Optional<MedicineList> findByNameIgnoreCaseAndHospitalId(String name, Long hospitalId);
 }
