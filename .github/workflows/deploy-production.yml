@@ -1,23 +1,15 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Deploy — Production
 #
-# Fires only after the CI workflow completes successfully on main.
-# The GitHub "production" Environment gate (required reviewers, wait timer)
-# provides a human approval checkpoint before any code reaches production.
+# Triggers only when the CI workflow completes successfully on the main branch.
+# The GitHub "production" Environment approval gate (required reviewers, wait
+# timer) provides a human checkpoint before any code reaches production.
 #
-# Deployment flow:
-#   1. Pull latest main
-#   2. Build frontend  (npm ci → npm run build)
-#   3. Build backend   (source .env → mvn clean package -DskipTests)
-#   4. Restart service (sudo systemctl restart hms-production)
-#   5. Health check    (polls /actuator/health — 150 s window)
-#   6. Auto-rollback   (if health check fails: reset to PREV_SHA, rebuild, restart)
-#   7. Collect logs    (journalctl → artifact, retained 90 days)
+# Auto-rollback is enabled: if the post-deploy health check fails, the service
+# is automatically reverted to the previously deployed commit, rebuilt, and
+# restarted. The job still exits with failure so the team is alerted.
 #
-# GitHub Environment  (Settings → Environments → production):
-#   ► Add required reviewers so every production deploy needs explicit approval.
-#   ► Optionally set a wait timer (e.g. 5 min) as an extra safety window.
-#   ► Scope PRODUCTION_SSH_KEY to this environment only.
+# Optional Slack notifications are sent on every deployment outcome.
 #
 # GitHub Variables  (Actions Variables or scoped to production environment):
 #   PRODUCTION_SSH_HOST     Hostname or IP of the production server
@@ -26,245 +18,43 @@
 #   PRODUCTION_APP_URL      Public URL shown on the Environments page
 #
 # GitHub Secrets  (scoped to the production environment):
-#   PRODUCTION_SSH_KEY      PEM private key for the deploy user
+#   PRODUCTION_SSH_KEY       PEM private key for the deploy user
+#   PRODUCTION_SLACK_WEBHOOK (optional) Slack incoming webhook URL
 # ─────────────────────────────────────────────────────────────────────────────
 
 name: Deploy — Production
 
 on:
   workflow_run:
-    # Only fires after the CI workflow — tests, security scans, and quality gate
+    # Only fires after the CI workflow — tests, security scans, quality gate
     # must all pass before this workflow is even considered.
     workflows: ["CI"]
     types: [completed]
     branches: [main]
-
-# Never cancel an in-progress production deployment.
-# Killing a deploy mid-flight can leave the server in a broken state.
-concurrency:
-  group: deploy-production
-  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
 
-  # ───────────────────────────────────────────────────────────────────────────
-  # DEPLOY
-  # ───────────────────────────────────────────────────────────────────────────
   deploy:
-    name: "Deploy → Production"
-    runs-on: ubuntu-latest
-
     # Hard gate: only proceed when CI succeeded.
     if: github.event.workflow_run.conclusion == 'success'
-
-    # Links to the "production" GitHub Environment.
-    # Protection rules (required reviewers, wait timer) are enforced here —
-    # the job pauses until all approvals are granted before the runner starts.
-    environment:
-      name: production
-      url: ${{ vars.PRODUCTION_APP_URL }}
-
-    # Production deployments include a potential rollback rebuild.
-    # 30 min covers: deploy (~8 min) + health check (~2 min) +
-    # rollback rebuild (~8 min) + rollback health check (~2 min).
-    timeout-minutes: 30
-
-    steps:
-
-      # ── Summary header ─────────────────────────────────────────────────────
-      - name: Write deployment header
-        run: |
-          {
-            echo "## Production Deployment"
-            echo ""
-            echo "| | |"
-            echo "|---|---|"
-            echo "| **CI run** | [#${{ github.event.workflow_run.run_number }}](${{ github.event.workflow_run.html_url }}) |"
-            echo "| **Commit** | \`${{ github.event.workflow_run.head_sha }}\` |"
-            echo "| **Author** | ${{ github.event.workflow_run.head_commit.author.name }} |"
-            echo "| **Message** | ${{ github.event.workflow_run.head_commit.message }} |"
-            echo "| **Started** | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      # ── Deploy with auto-rollback ──────────────────────────────────────────
-      # The entire deploy + health check + rollback logic runs in a single SSH
-      # session so shell state (PREV_SHA, functions) is shared across all phases.
-      #
-      # Rollback strategy:
-      #   Before pulling, record the current HEAD as PREV_SHA.
-      #   If the post-deploy health check fails, reset to PREV_SHA, rebuild
-      #   the backend from that commit, and restart the service.
-      #   A second health check verifies the rollback is stable.
-      #   The step always exits non-zero when a rollback was needed — a rollback
-      #   means the deployment itself failed, even if production is now stable.
-      - name: Deploy with rollback guard
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ vars.PRODUCTION_SSH_HOST }}
-          username: deploy
-          key: ${{ secrets.PRODUCTION_SSH_KEY }}
-          port: ${{ vars.PRODUCTION_SSH_PORT || 22 }}
-          command_timeout: 25m
-          script: |
-            set -euo pipefail
-            TS()    { date -u '+%Y-%m-%dT%H:%M:%SZ'; }
-            REPO="/var/www/hms/production/repo_prod"
-
-            # Health check configuration
-            PORT="${{ vars.PRODUCTION_HEALTH_PORT }}"
-            PORT="${PORT:-8080}"
-            HEALTH_URL="http://localhost:${PORT}/actuator/health"
-            MAX=15   # 15 attempts × 10 s = 150 s maximum wait
-            DELAY=10
-
-            # ── Save rollback point ──────────────────────────────────────────
-            # Record the last known-good SHA before touching anything.
-            cd "$REPO"
-            PREV_SHA=$(git rev-parse HEAD)
-            echo "[$(TS)] Rollback point saved: $PREV_SHA"
-            echo "[$(TS)] Current HEAD: $(git log -1 --oneline)"
-
-            # ── Shared helpers ───────────────────────────────────────────────
-
-            # poll_health <label> — returns 0 if service is healthy, 1 if not.
-            poll_health() {
-              local label="$1"
-              echo "[$(TS)] ── Health check ($label) ───────────────────────"
-              for i in $(seq 1 $MAX); do
-                CODE=$(curl -sf -o /dev/null -w "%{http_code}" "$HEALTH_URL" 2>/dev/null || echo "000")
-                echo "[$(TS)] Attempt $i/$MAX → HTTP $CODE"
-                if [ "$CODE" = "200" ]; then
-                  echo "[$(TS)] ✓ Service healthy ($label)."
-                  return 0
-                fi
-                [ "$i" -lt "$MAX" ] && sleep "$DELAY"
-              done
-              echo "[$(TS)] ✗ Health check failed ($label) after $((MAX * DELAY))s"
-              return 1
-            }
-
-            # build_backend — rebuilds the backend JAR from whatever is in $REPO.
-            build_backend() {
-              cd "$REPO/backend"
-              set -a; source .env; set +a
-              mvn clean package -DskipTests --no-transfer-progress -q
-            }
-
-            # ── Pull ─────────────────────────────────────────────────────────
-            echo "[$(TS)] ── Pulling latest main ──────────────────────────"
-            git fetch origin
-            git reset --hard origin/main
-            echo "[$(TS)] HEAD → $(git log -1 --oneline)"
-
-            # ── Build frontend ────────────────────────────────────────────────
-            echo "[$(TS)] ── Building frontend ───────────────────────────"
-            cd "$REPO/frontend"
-            npm ci --prefer-offline --silent
-            npm run build
-
-            # ── Build backend ─────────────────────────────────────────────────
-            echo "[$(TS)] ── Building backend ────────────────────────────"
-            build_backend
-
-            # ── Restart service ───────────────────────────────────────────────
-            echo "[$(TS)] ── Restarting hms-production ───────────────────"
-            sudo systemctl restart hms-production
-
-            # ── Health check ──────────────────────────────────────────────────
-            if poll_health "post-deploy"; then
-              echo "[$(TS)] ✓ Production deployment successful."
-              exit 0
-            fi
-
-            # ── Auto-rollback ─────────────────────────────────────────────────
-            # Health check failed — revert to the last known-good commit.
-            echo "[$(TS)] ════════════════════════════════════════════════"
-            echo "[$(TS)]  DEPLOYMENT FAILED — INITIATING AUTO-ROLLBACK"
-            echo "[$(TS)]  Rolling back to: $PREV_SHA"
-            echo "[$(TS)] ════════════════════════════════════════════════"
-
-            cd "$REPO"
-            git reset --hard "$PREV_SHA"
-            echo "[$(TS)] Reset to: $(git log -1 --oneline)"
-
-            echo "[$(TS)] ── Rebuilding previous backend ──────────────────"
-            build_backend
-
-            echo "[$(TS)] ── Restarting service (rollback) ────────────────"
-            sudo systemctl restart hms-production
-
-            if poll_health "post-rollback"; then
-              echo "[$(TS)] ✓ Rollback successful — production is stable on $PREV_SHA"
-              echo "[$(TS)] ACTION REQUIRED: investigate the failed deployment before retrying."
-            else
-              echo "[$(TS)] ✗ ROLLBACK HEALTH CHECK ALSO FAILED — MANUAL INTERVENTION REQUIRED"
-              echo "[$(TS)] Diagnostics: sudo systemctl status hms-production"
-              echo "[$(TS)]              journalctl -u hms-production -n 100 --no-pager"
-            fi
-
-            # Exit non-zero — deployment failed regardless of rollback outcome.
-            exit 1
-
-      # ── Collect service logs ───────────────────────────────────────────────
-      # Runs even on failure so logs from a failed deploy are always captured.
-      # Uses raw SSH (not appleboy/ssh-action) to pipe remote stdout to a local
-      # file that can be uploaded as an artifact.
-      - name: Collect service logs
-        if: always()
-        run: |
-          mkdir -p deployment-logs
-
-          # Write the SSH private key to a temp file scoped to this step.
-          echo "${{ secrets.PRODUCTION_SSH_KEY }}" > /tmp/prod_key
-          chmod 600 /tmp/prod_key
-
-          # Capture the last 30 min of systemd journal for the production service.
-          ssh -i /tmp/prod_key \
-              -o StrictHostKeyChecking=no \
-              -o ConnectTimeout=15 \
-              -p "${{ vars.PRODUCTION_SSH_PORT || 22 }}" \
-              "deploy@${{ vars.PRODUCTION_SSH_HOST }}" \
-              "journalctl -u hms-production --since '30 minutes ago' --no-pager 2>&1" \
-              > deployment-logs/hms-production.log 2>&1 \
-              || echo "[log collection failed — check SSH connectivity]" \
-                 > deployment-logs/hms-production.log
-
-          # Record which commit is actually running after the deploy (or rollback).
-          ssh -i /tmp/prod_key \
-              -o StrictHostKeyChecking=no \
-              -o ConnectTimeout=15 \
-              -p "${{ vars.PRODUCTION_SSH_PORT || 22 }}" \
-              "deploy@${{ vars.PRODUCTION_SSH_HOST }}" \
-              "cd /var/www/hms/production/repo_prod && git log -1 --format='%H %s' 2>&1" \
-              > deployment-logs/active-commit.txt 2>&1 || true
-
-          # Remove the key immediately after use — never leave credentials on disk.
-          rm -f /tmp/prod_key
-
-      # ── Upload logs ────────────────────────────────────────────────────────
-      # Retained for 90 days to satisfy audit and incident-review requirements.
-      - name: Upload deployment logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: production-deploy-logs-${{ github.run_id }}
-          path: deployment-logs/
-          retention-days: 90
-          if-no-files-found: warn
-
-      # ── Summary result ─────────────────────────────────────────────────────
-      - name: Write deployment result
-        if: always()
-        run: |
-          if [ "${{ job.status }}" = "success" ]; then
-            ICON="✅"; LABEL="Success"
-          else
-            ICON="❌"; LABEL="${{ job.status }} — check logs artifact for details"
-          fi
-          {
-            echo "| **Status** | $ICON $LABEL |"
-            echo "| **Finished** | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |"
-          } >> "$GITHUB_STEP_SUMMARY"
+    uses: ./.github/workflows/_deploy.yml
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      environment: production
+      repo_path: /var/www/hms/production/repo_prod
+      service_name: hms-production
+      git_branch: main
+      ssh_host: ${{ vars.PRODUCTION_SSH_HOST }}
+      ssh_port: ${{ vars.PRODUCTION_SSH_PORT || '22' }}
+      health_port: ${{ vars.PRODUCTION_HEALTH_PORT || '8080' }}
+      app_url: ${{ vars.PRODUCTION_APP_URL }}
+      enable_rollback: true
+      notify_slack: true
+    secrets:
+      ssh_key: ${{ secrets.PRODUCTION_SSH_KEY }}
+      slack_webhook: ${{ secrets.PRODUCTION_SLACK_WEBHOOK }}

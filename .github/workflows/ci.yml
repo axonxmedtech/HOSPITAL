@@ -1,15 +1,11 @@
-# ─────────────────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────
 # CI — Hospital Management System
+# Orchestrator: delegates to reusable workflows
 #
-# ┌─────────────────────────────────────────────────────────────────────────────┐
-# │  BUILD + QUALITY (parallel)               SECURITY (parallel)              │
-# │  ──────────────────────────               ──────────────────────           │
-# │  frontend  — type-check, build, coverage  codeql         — SAST            │
-# │  backend   — compile, test, JaCoCo, JAR   dependency-review — PR dep. CVE │
-# │  sonar     — SonarCloud + Quality Gate    secret-scan    — Gitleaks        │
-# │  (waits for frontend + backend)           npm-audit      — frontend CVE    │
-# │                                           owasp-check    — backend CVE     │
-# └─────────────────────────────────────────────────────────────────────────────┘
+# build-frontend ──┐
+# build-backend  ──┤──► sonar (quality gate)
+# security       ──┘
+# ────────────────────────────────────────────
 #
 # GitHub Variables  (Settings → Variables → Actions):
 #   NODE_VERSION         Node.js version              (default: 22)
@@ -19,18 +15,9 @@
 #   SONAR_PROJECT_KEY    SonarCloud project key       (e.g. axonxmedtech_HOSPITAL)
 #
 # GitHub Secrets  (Settings → Secrets → Actions):
-#   SONAR_TOKEN   SonarCloud user token — generate at
-#                 SonarCloud → My Account → Security → Generate Token
-#   NVD_API_KEY   (optional) NIST NVD key — speeds up OWASP scans dramatically
-#
-# Prerequisites:
-#   • Create the SonarCloud project at https://sonarcloud.io before the first
-#     run (Settings → Administration → Analysis Method → "With GitHub Actions").
-#   • Optionally add a sonar-project.properties to the repository root to
-#     manage Sonar settings in source control instead of inline here.
-#   • CodeQL / Gitleaks SARIF upload require GitHub Advanced Security
-#     (free on public repos, paid add-on on private repos).
-# ─────────────────────────────────────────────────────────────────────────────
+#   SONAR_TOKEN   SonarCloud user token
+#   NVD_API_KEY   (optional) NIST NVD key — speeds up OWASP scans
+# ────────────────────────────────────────────
 
 name: CI
 
@@ -44,362 +31,55 @@ on:
       - main
       - staging
 
-# Cancel any in-progress run for the same branch/PR when a new commit is pushed.
-# Prevents wasting runner minutes on stale builds.
+# Cancel in-progress run for the same branch/PR when a new commit is pushed.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 # Minimum permissions at the workflow level.
-# Each job grants only the additional permissions it actually needs.
 permissions:
   contents: read
 
-# ═════════════════════════════════════════════════════════════════════════════
-# BUILD JOBS
-# ═════════════════════════════════════════════════════════════════════════════
-
 jobs:
 
-  # ───────────────────────────────────────────────────────────────────────────
-  # BUILD — FRONTEND
-  # React + Vite + TypeScript (allowJs — source files are .jsx with TS checks)
-  #
-  # Also collects code coverage using Vitest + @vitest/coverage-v8.
-  # Coverage is informational — the step uses continue-on-error so a project
-  # with no test files yet does not fail the build. Once tests are added,
-  # remove continue-on-error to enforce the gate.
-  # ───────────────────────────────────────────────────────────────────────────
-  frontend:
-    name: "Frontend — Type Check, Build & Coverage"
-    runs-on: ubuntu-latest
+  # ── Frontend build, type-check, coverage ────────────────────────────────
+  build-frontend:
+    uses: ./.github/workflows/_build-frontend.yml
+    with:
+      node-version: ${{ vars.NODE_VERSION || '22' }}
+      vite-api-base-url: ${{ vars.VITE_API_BASE_URL }}
 
-    defaults:
-      run:
-        working-directory: frontend
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js ${{ vars.NODE_VERSION || '22' }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ vars.NODE_VERSION || '22' }}
-          # Built-in npm cache keyed on frontend/package-lock.json hash.
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies (npm ci)
-        # npm ci uses exact versions from package-lock.json and never modifies it.
-        run: npm ci
-
-      - name: TypeScript type check (tsc --noEmit)
-        # Runs the TS compiler in check-only mode before spending time on the
-        # Vite build. allowJs: true in tsconfig means .jsx files are covered too.
-        run: npx tsc --noEmit
-
-      - name: Production build (Vite)
-        run: npx vite build
-        env:
-          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
-
-      # ── Coverage ──────────────────────────────────────────────────────────
-      # Install vitest + v8 coverage provider if they are not already
-      # devDependencies. --no-save keeps package.json unchanged in CI.
-      - name: Install Vitest + coverage provider
-        run: |
-          NEED_VITEST=0
-          NEED_COV=0
-          npm ls vitest          --depth=0 2>/dev/null | grep -q vitest          || NEED_VITEST=1
-          npm ls @vitest/coverage-v8 --depth=0 2>/dev/null | grep -q coverage-v8 || NEED_COV=1
-          if [ "$NEED_VITEST" = "1" ] || [ "$NEED_COV" = "1" ]; then
-            npm install --no-save vitest @vitest/coverage-v8
-          fi
-
-      - name: Run frontend tests with coverage (Vitest)
-        # --passWithNoTests: succeed even when no test files exist yet.
-        # lcov          → consumed by SonarCloud (frontend/coverage/lcov.info).
-        # json-summary  → consumed by the summary step below.
-        run: |
-          npx vitest run \
-            --coverage \
-            --coverage.provider v8 \
-            --coverage.reporter lcov \
-            --coverage.reporter json-summary \
-            --passWithNoTests \
-            --reporter verbose
-        # Non-blocking until the project has meaningful test coverage.
-        # Remove this line once tests are in place to enforce coverage gates.
-        continue-on-error: true
-
-      - name: Write frontend coverage to GitHub Summary
-        # Parses coverage-summary.json and appends a markdown table to the
-        # GitHub Actions job summary visible on the workflow run page.
-        if: always()
-        run: |
-          FILE="coverage/coverage-summary.json"
-          if [ -f "$FILE" ]; then
-            python3 - <<'PYEOF'
-          import json, os
-
-          with open("coverage/coverage-summary.json") as f:
-              data = json.load(f)
-
-          total = data.get("total", {})
-          rows = [
-              ("Statements", total.get("statements", {})),
-              ("Branches",   total.get("branches",   {})),
-              ("Functions",  total.get("functions",  {})),
-              ("Lines",      total.get("lines",      {})),
-          ]
-
-          out  = "## Frontend Coverage\n\n"
-          out += "| Metric     | Coverage  | Covered | Total |\n"
-          out += "|------------|-----------|---------|-------|\n"
-          for name, d in rows:
-              pct     = f"{d.get('pct', 0):.1f}%"
-              covered = d.get("covered", 0)
-              tot     = d.get("total",   0)
-              out    += f"| {name:<10} | {pct:<9} | {covered:<7} | {tot} |\n"
-
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
-              f.write(out + "\n")
-          PYEOF
-          else
-            {
-              echo "## Frontend Coverage"
-              echo ""
-              echo "> No tests found — coverage will appear here once tests are added."
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Upload frontend coverage artifacts
-        # lcov.info is consumed by SonarCloud in the sonar job.
-        # coverage-summary.json is consumed by the summary step above.
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-coverage-${{ github.sha }}
-          path: |
-            frontend/coverage/lcov.info
-            frontend/coverage/coverage-summary.json
-          retention-days: 7
-          if-no-files-found: warn
-
-      - name: Upload frontend dist artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-dist-${{ github.sha }}
-          path: frontend/dist/
-          retention-days: 7
-          if-no-files-found: error
-
-  # ───────────────────────────────────────────────────────────────────────────
-  # BUILD — BACKEND
-  # Spring Boot 3 / Java 17 / Maven
-  #
-  # JaCoCo is invoked via CLI goals in a single Maven session — no pom.xml
-  # changes are required:
-  #   1. jacoco:prepare-agent — injects the JaCoCo Java agent into Surefire's
-  #      forked JVM and writes the agent path to the 'argLine' property.
-  #   2. test                 — Surefire runs tests; the agent records coverage
-  #      into target/jacoco.exec.
-  #   3. jacoco:report        — converts target/jacoco.exec into XML + HTML.
-  #
-  # Outputs:
-  #   target/site/jacoco/jacoco.xml   — machine-readable; consumed by SonarCloud
-  #   target/site/jacoco/index.html   — human-readable coverage browser
-  # ───────────────────────────────────────────────────────────────────────────
-  backend:
-    name: "Backend — Compile, Test, Coverage & Package"
-    runs-on: ubuntu-latest
+  # ── Backend compile, test (JaCoCo), package ──────────────────────────────
+  build-backend:
+    uses: ./.github/workflows/_build-backend.yml
     permissions:
       contents: read
-      checks: write        # dorny/test-reporter creates a native GitHub Check
-      pull-requests: write # dorny/test-reporter annotates PRs with failure lines
+      checks: write
+      pull-requests: write
+    with:
+      java-version: ${{ vars.JAVA_VERSION || '17' }}
 
-    defaults:
-      run:
-        working-directory: backend
+  # ── Security: CodeQL, dependency-review, Gitleaks, npm audit, OWASP ─────
+  security:
+    uses: ./.github/workflows/_security.yml
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+    with:
+      node-version: ${{ vars.NODE_VERSION || '22' }}
+      java-version: ${{ vars.JAVA_VERSION || '17' }}
+    secrets: inherit
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Java ${{ vars.JAVA_VERSION || '17' }} (Temurin)
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ vars.JAVA_VERSION || '17' }}
-          distribution: temurin
-          # Built-in Maven cache keyed on backend/pom.xml hash.
-          cache: maven
-
-      - name: Compile (mvn compile)
-        # Fails fast on compilation errors before spending time on tests.
-        run: mvn compile -q
-
-      - name: Run unit tests with JaCoCo coverage
-        # Single Maven invocation: prepare-agent → test → report.
-        # Running all three goals in one session is required so JaCoCo's argLine
-        # property (set by prepare-agent) is available when Surefire forks the JVM.
-        run: |
-          mvn -B \
-            org.jacoco:jacoco-maven-plugin:0.8.12:prepare-agent \
-            test \
-            org.jacoco:jacoco-maven-plugin:0.8.12:report \
-            --no-transfer-progress
-        env:
-          # Dummy datasource — all tests use Mockito or H2; no real DB needed.
-          SPRING_DATASOURCE_URL: jdbc:h2:mem:testdb
-          SPRING_DATASOURCE_USERNAME: sa
-          SPRING_DATASOURCE_PASSWORD: ""
-          JWT_SECRET: ci-test-secret-not-used-in-real-environment
-
-      # ── JUnit Test Report ─────────────────────────────────────────────────
-      # Publishes Surefire JUnit XML results as a native GitHub Check run.
-      # The check appears in the PR checks panel with per-test pass/fail status
-      # and inline failure annotations pointing to the exact source line.
-      - name: Publish JUnit test report
-        if: always()
-        uses: dorny/test-reporter@v1
-        with:
-          name: "JUnit — Backend"
-          # Path is relative to $GITHUB_WORKSPACE (repository root), not working-dir.
-          path: backend/target/surefire-reports/TEST-*.xml
-          reporter: java-junit
-          # Fail the step (and the job) if the reporter finds any test failures.
-          fail-on-error: true
-
-      # ── Coverage Summary ──────────────────────────────────────────────────
-      # Parse jacoco.xml and write a markdown coverage table to the GitHub
-      # Actions job summary. Visible on the workflow run page and in the PR
-      # checks panel without needing to download any artifact.
-      - name: Write backend coverage to GitHub Summary
-        if: always()
-        run: |
-          JACOCO="target/site/jacoco/jacoco.xml"
-          if [ -f "$JACOCO" ]; then
-            python3 - <<'PYEOF'
-          import xml.etree.ElementTree as ET, os
-
-          # Strip the external DTD declaration so ElementTree can parse offline.
-          with open("target/site/jacoco/jacoco.xml") as f:
-              xml = "".join(
-                  line for line in f if not line.strip().startswith("<!DOCTYPE")
-              )
-          root = ET.fromstring(xml)
-
-          # Top-level <counter> elements hold the project-wide totals.
-          counters = {c.get("type"): c for c in root.findall("counter")}
-
-          order = ["INSTRUCTION", "BRANCH", "LINE", "METHOD", "CLASS"]
-          labels = {
-              "INSTRUCTION": "Instructions",
-              "BRANCH":      "Branches",
-              "LINE":        "Lines",
-              "METHOD":      "Methods",
-              "CLASS":       "Classes",
-          }
-
-          out  = "## Backend Coverage (JaCoCo)\n\n"
-          out += "| Metric       | Coverage  | Covered | Total  |\n"
-          out += "|--------------|-----------|---------|--------|\n"
-          for ctype in order:
-              c = counters.get(ctype)
-              if not c:
-                  continue
-              missed  = int(c.get("missed",  0))
-              covered = int(c.get("covered", 0))
-              total   = missed + covered
-              pct     = covered / total * 100 if total else 0
-              label   = labels[ctype]
-              out    += f"| {label:<12} | {pct:>6.1f}%  | {covered:<7} | {total} |\n"
-
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
-              f.write(out + "\n")
-          PYEOF
-          else
-            {
-              echo "## Backend Coverage (JaCoCo)"
-              echo ""
-              echo "> JaCoCo XML not found — tests may not have run."
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Upload Surefire test results
-        # Always upload so test results are available even on test failure.
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results-${{ github.sha }}
-          path: backend/target/surefire-reports/
-          retention-days: 14
-          if-no-files-found: warn
-
-      - name: Upload JaCoCo XML coverage report
-        # Machine-readable format — downloaded and consumed by the sonar job.
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: jacoco-xml-${{ github.sha }}
-          path: backend/target/site/jacoco/jacoco.xml
-          retention-days: 7
-          if-no-files-found: warn
-
-      - name: Upload JaCoCo HTML coverage report
-        # Human-readable report — download and open index.html to browse coverage
-        # by package, class, and method with line-level highlighting.
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: jacoco-html-${{ github.sha }}
-          path: backend/target/site/jacoco/
-          retention-days: 14
-          if-no-files-found: warn
-
-      - name: Package Spring Boot JAR (mvn package)
-        # -DskipTests: tests already passed above.
-        run: mvn package -DskipTests -q
-
-      - name: Upload backend JAR artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-jar-${{ github.sha }}
-          path: backend/target/*.jar
-          retention-days: 7
-          if-no-files-found: error
-
-# ═════════════════════════════════════════════════════════════════════════════
-# QUALITY GATE
-# Runs after both build jobs complete so it has access to their coverage
-# artifacts. Blocks the PR merge if SonarCloud's Quality Gate is not met.
-# ═════════════════════════════════════════════════════════════════════════════
-
-  # ───────────────────────────────────────────────────────────────────────────
-  # QUALITY — SonarCloud Analysis & Gate
-  #
-  # Analyses the full codebase (Java backend + JS/JSX frontend) and enforces
-  # the Quality Gate configured in SonarCloud. The default gate requires:
-  #   • New code coverage ≥ 80 %
-  #   • New code duplications ≤ 3 %
-  #   • Zero new Blocker/Critical bugs, vulnerabilities, or security hotspots
-  #
-  # sonar.qualitygate.wait=true polls SonarCloud (up to 5 min) until the gate
-  # result is available, then exits non-zero on failure — this is the step that
-  # blocks the merge.
-  #
-  # The job is skipped on fork pull requests because SONAR_TOKEN is not
-  # available in untrusted fork contexts. A maintainer's follow-up push will
-  # trigger the analysis. See sonar docs on "pull_request_target" if you want
-  # to enable analysis for trusted fork contributors.
-  # ───────────────────────────────────────────────────────────────────────────
+  # ── SonarCloud quality gate ───────────────────────────────────────────────
+  # Direct job (not reusable) — needs artifacts produced by build jobs.
   sonar:
-    name: "Quality — SonarCloud Analysis & Gate"
+    name: Quality — SonarCloud Analysis & Gate
     runs-on: ubuntu-latest
-    needs: [backend, frontend]
+    needs: [build-frontend, build-backend]
 
-    # Skip on fork PRs — secrets are unavailable in fork pull_request events.
+    # Skip on fork PRs — secrets unavailable in untrusted fork contexts.
     if: >
       github.event_name == 'push' ||
       (github.event_name == 'pull_request' &&
@@ -407,42 +87,30 @@ jobs:
 
     permissions:
       contents: read
-      # Required for SonarCloud to post inline PR decoration comments.
       pull-requests: write
 
     steps:
-      # Full history is required — SonarCloud uses git blame to assign issues
-      # to the correct commit/author and to identify "new code" vs. existing.
-      - name: Checkout repository (full history)
-        uses: actions/checkout@v4
+      # Pin to SHA in production: https://github.com/actions/checkout/releases
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up Java ${{ vars.JAVA_VERSION || '17' }} (Temurin)
-        uses: actions/setup-java@v4
+      - name: Setup Java
+        uses: ./.github/actions/setup-java
         with:
           java-version: ${{ vars.JAVA_VERSION || '17' }}
-          distribution: temurin
-          cache: maven
 
-      # SonarCloud needs compiled bytecode (.class files) to analyse Java source.
-      # Tests are NOT re-run here — coverage data comes from the artifacts below.
-      - name: Compile backend (bytecode only, no tests)
+      - name: Compile backend (bytecode for Sonar)
         run: mvn compile -q -f backend/pom.xml
 
-      # Download the JaCoCo XML produced by the backend job.
-      # SonarCloud reads jacoco.xml to report per-class and per-method coverage.
+      # Pin to SHA in production: https://github.com/actions/download-artifact/releases
       - name: Download JaCoCo coverage report
         uses: actions/download-artifact@v4
         with:
           name: jacoco-xml-${{ github.sha }}
-          # Restore to the exact path the backend job generated it so the
-          # sonar.coverage.jacoco.xmlReportPaths property resolves correctly.
           path: backend/target/site/jacoco/
 
-      # Download the LCOV report produced by the frontend job.
-      # SonarCloud reads lcov.info to report coverage on JS/JSX source files.
-      # continue-on-error: absence of frontend tests must not block SonarCloud.
+      # Pin to SHA in production: https://github.com/actions/download-artifact/releases
       - name: Download frontend LCOV coverage report
         uses: actions/download-artifact@v4
         with:
@@ -450,18 +118,8 @@ jobs:
           path: frontend/coverage/
         continue-on-error: true
 
+      # Pin to SHA in production: https://github.com/SonarSource/sonarqube-scan-action/releases
       - name: Run SonarCloud analysis
-        # sonarqube-scan-action downloads the Sonar Scanner CLI and runs it
-        # from $GITHUB_WORKSPACE (the repository root). All paths below are
-        # relative to the repository root.
-        #
-        # Key properties:
-        #   sonar.sources              — Java backend + JSX frontend sources
-        #   sonar.tests                — backend test sources (excluded from metrics)
-        #   sonar.java.binaries        — compiled .class files for bytecode analysis
-        #   sonar.coverage.jacoco.*    — backend coverage XML from JaCoCo
-        #   sonar.javascript.lcov.*    — frontend coverage LCOV from Vitest
-        #   sonar.qualitygate.wait     — block until gate result is known
         uses: SonarSource/sonarqube-scan-action@v4
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -479,337 +137,3 @@ jobs:
             -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/target/surefire-reports/**,**/*.min.js
             -Dsonar.sourceEncoding=UTF-8
             -Dsonar.qualitygate.wait=true
-
-# ═════════════════════════════════════════════════════════════════════════════
-# SECURITY JOBS
-# All security jobs run in parallel with each other and with the build jobs.
-# None depend on the build jobs succeeding — security is checked even if a
-# build fails.
-# ═════════════════════════════════════════════════════════════════════════════
-
-  # ───────────────────────────────────────────────────────────────────────────
-  # SECURITY — CodeQL SAST
-  #
-  # Performs Static Application Security Testing on both Java (backend) and
-  # JavaScript (frontend) using GitHub's CodeQL engine.
-  #
-  # A matrix strategy runs both language analyses in parallel — a Java failure
-  # does not cancel the JavaScript analysis (fail-fast: false).
-  #
-  # Results appear in the GitHub Security tab → Code scanning alerts.
-  # Requires GitHub Advanced Security (free for public repos).
-  # ───────────────────────────────────────────────────────────────────────────
-  codeql:
-    name: "Security — CodeQL SAST (${{ matrix.language }})"
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read
-      # Required to upload SARIF results to the GitHub Security tab
-      security-events: write
-
-    strategy:
-      # Do not cancel the JS analysis if the Java analysis fails, and vice versa
-      fail-fast: false
-      matrix:
-        include:
-          # Java backend — CodeQL must compile the source to instrument it
-          - language: java-kotlin
-            needs-java: true
-          # JavaScript / JSX frontend — no compilation step required
-          - language: javascript-typescript
-            needs-java: false
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # CodeQL must build Java source to instrument it for analysis.
-      # This step is skipped for the JavaScript matrix entry.
-      - name: Set up Java (required for Java analysis only)
-        if: matrix.needs-java
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ vars.JAVA_VERSION || '17' }}
-          distribution: temurin
-          cache: maven
-
-      # Initialise CodeQL tools and select the query suite.
-      # security-and-quality includes all security queries plus additional
-      # code quality checks (injection, path traversal, SSRF, XSS, etc.).
-      - name: Initialise CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: ${{ matrix.language }}
-          queries: security-and-quality
-
-      # autobuild detects the build system (Maven for Java, nothing for JS)
-      # and compiles the project so CodeQL can instrument the bytecode/AST.
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
-
-      # Run the analysis and upload the SARIF file to the Security tab.
-      - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: /language:${{ matrix.language }}
-          # Always upload results, even if the analysis finds issues
-          upload: always
-
-  # ───────────────────────────────────────────────────────────────────────────
-  # SECURITY — Dependency Review
-  #
-  # Compares the dependency changes introduced by a pull request against the
-  # GitHub Advisory Database. Fails the PR if any newly added or updated
-  # dependency has a High or Critical CVE.
-  #
-  # Only runs on pull_request events — push events have no base to compare
-  # against. Posts an inline review comment on the PR with a full summary.
-  #
-  # Also blocks licences that are incompatible with commercial use (GPL, AGPL).
-  # Update the deny-licenses list to match your organisation's legal policy.
-  # ───────────────────────────────────────────────────────────────────────────
-  dependency-review:
-    name: "Security — Dependency Review (PR only)"
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    permissions:
-      contents: read
-      # Required to post the vulnerability summary as a PR review comment
-      pull-requests: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Dependency Review
-        uses: actions/dependency-review-action@v4
-        with:
-          # Fail if any newly introduced dependency has severity High or Critical
-          fail-on-severity: high
-          # Always post a summary comment on the PR, even when no issues are found
-          comment-summary-in-pr: always
-          # Block packages with licences that are incompatible with commercial use.
-          # Adjust this list to match your organisation's legal requirements.
-          deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0, LGPL-2.1
-
-  # ───────────────────────────────────────────────────────────────────────────
-  # SECURITY — Gitleaks Secret Scanning
-  #
-  # Scans the ENTIRE git history for accidentally committed secrets — API keys,
-  # tokens, database passwords, private keys, JWT secrets, etc.
-  #
-  # Scanning full history (fetch-depth: 0) is critical: a secret deleted in a
-  # later commit is still accessible in git history and must be rotated.
-  #
-  # If Gitleaks finds a legitimate false positive, add an allowlist entry to
-  # a .gitleaks.toml file in the repository root.
-  #
-  # The SARIF report is uploaded to GitHub Security tab (requires Advanced
-  # Security). The report artifact is always uploaded as a fallback.
-  # ───────────────────────────────────────────────────────────────────────────
-  secret-scan:
-    name: "Security — Gitleaks Secret Scan"
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      # Required to upload SARIF results to GitHub Security tab
-      security-events: write
-
-    steps:
-      - name: Checkout repository (full history)
-        uses: actions/checkout@v4
-        with:
-          # Full git history is required — Gitleaks must scan every commit,
-          # not just the working tree. Shallow clones miss historical secrets.
-          fetch-depth: 0
-
-      - name: Install Gitleaks
-        run: |
-          # Pin to a specific version for reproducible security scans.
-          # Check for newer releases at https://github.com/gitleaks/gitleaks/releases
-          GITLEAKS_VERSION="8.21.2"
-          curl -sSfL \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
-            | tar -xz -C /usr/local/bin gitleaks
-          gitleaks version
-
-      - name: Scan for secrets (Gitleaks)
-        # --exit-code 1 : fail the job if any secrets are detected
-        # --redact      : replace detected values with REDACTED in output/reports
-        # --report-format sarif : produce a SARIF file for the Security tab
-        # --log-level warn  : suppress verbose debug output, keep warnings
-        # Create .gitleaks.toml in the repo root to allowlist false positives
-        run: |
-          gitleaks detect \
-            --source . \
-            --exit-code 1 \
-            --redact \
-            --report-format sarif \
-            --report-path gitleaks-report.sarif \
-            --log-level warn
-
-      - name: Upload SARIF to GitHub Security tab
-        # Run even if the scan found secrets so the alert appears in the Security tab
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        # Degrade gracefully if Advanced Security is not enabled on this repo
-        continue-on-error: true
-        with:
-          sarif_file: gitleaks-report.sarif
-          category: gitleaks
-
-      - name: Upload Gitleaks report artifact
-        # Backup: always upload the raw SARIF file as a downloadable artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: gitleaks-report-${{ github.sha }}
-          path: gitleaks-report.sarif
-          retention-days: 30
-          if-no-files-found: warn
-
-  # ───────────────────────────────────────────────────────────────────────────
-  # SECURITY — npm Audit (Frontend)
-  #
-  # Scans all npm dependencies (direct and transitive) against the npm advisory
-  # database for known CVEs.
-  #
-  # Two-step approach:
-  #   1. Generate a full JSON report regardless of outcome (always an artifact)
-  #   2. Enforce the severity gate — fails the job on High or Critical findings
-  #
-  # To suppress a false positive: npm audit fix, or add an entry to .npmrc:
-  #   audit-level=critical
-  # ───────────────────────────────────────────────────────────────────────────
-  npm-audit:
-    name: "Security — npm Audit (Frontend)"
-    runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: frontend
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js ${{ vars.NODE_VERSION || '22' }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ vars.NODE_VERSION || '22' }}
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies (npm ci)
-        # Audit reads the installed node_modules, not just the lock file
-        run: npm ci
-
-      - name: Generate full audit report (JSON)
-        # Capture the complete report unconditionally so it is always available
-        # as a downloadable artifact — even when no vulnerabilities are found.
-        # || true prevents this step from failing; enforcement is in the next step.
-        run: npm audit --json > npm-audit-report.json 2>&1 || true
-
-      - name: Enforce — fail on High / Critical vulnerabilities
-        # --audit-level=high exits non-zero if any vulnerability with severity
-        # High or Critical is present in the dependency tree.
-        # This is the gate that blocks the merge.
-        run: npm audit --audit-level=high
-
-      - name: Upload npm audit report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: npm-audit-report-${{ github.sha }}
-          path: frontend/npm-audit-report.json
-          retention-days: 30
-          if-no-files-found: warn
-
-  # ───────────────────────────────────────────────────────────────────────────
-  # SECURITY — OWASP Dependency Check (Backend / Maven)
-  #
-  # Scans all Java runtime and compile-scope dependencies against the NIST
-  # National Vulnerability Database (NVD). Fails the build if any dependency
-  # has a CVSS score >= 7.0 (High or Critical).
-  #
-  # ⚠ First run is slow (~10–30 min) because the NVD database (~100 MB)
-  #   must be downloaded. The cache step below saves it between runs.
-  #
-  # 📋 To significantly speed up NVD syncs, add a free NVD API key:
-  #   1. Register at https://nvd.nist.gov/developers/request-an-api-key
-  #   2. Add it as a repository secret named NVD_API_KEY
-  #   The authenticated rate limit is 50 req/30 s vs 5 req/30 s unauthenticated.
-  #
-  # 📄 Reports (HTML + JSON + XML) are uploaded as an artifact.
-  #   Retain them for 90 days for compliance and audit trail purposes.
-  #
-  # To suppress a known false positive, create .github/owasp-suppressions.xml.
-  # ───────────────────────────────────────────────────────────────────────────
-  owasp-check:
-    name: "Security — OWASP Dependency Check (Backend)"
-    runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: backend
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Java ${{ vars.JAVA_VERSION || '17' }} (Temurin)
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ vars.JAVA_VERSION || '17' }}
-          distribution: temurin
-          cache: maven
-
-      # Cache the NVD database between runs — saves 10–30 minutes on every run
-      # after the first. The cache is invalidated when pom.xml changes (new deps
-      # may introduce new CVEs that require a fresh NVD sync).
-      - name: Cache OWASP NVD database
-        uses: actions/cache@v4
-        with:
-          # OWASP Maven plugin stores the NVD data in ~/.m2/repository/org/owasp
-          path: ~/.m2/repository/org/owasp/dependency-check-data
-          key: owasp-nvd-${{ runner.os }}-${{ hashFiles('backend/pom.xml') }}
-          restore-keys: |
-            owasp-nvd-${{ runner.os }}-
-
-      - name: Run OWASP Dependency Check
-        # Invokes the OWASP plugin directly — no pom.xml changes required.
-        #
-        # -DfailBuildOnCVSS=7    : fail on High (7.0+) and Critical (9.0+)
-        # -DskipTestScope=true   : ignore test-only dependencies
-        # -Dformat=ALL           : generate HTML (human), JSON (machine), XML (CI)
-        # -DoutputDirectory      : where to write the reports
-        # -DnvdApiKey            : optional — speeds up NVD sync 10x
-        # -DsuppressionFile      : optional — suppress known false positives
-        #
-        # JAVA_OPTS: increase heap for large dependency trees
-        run: |
-          mvn -B org.owasp:dependency-check-maven:9.0.9:check \
-            -DfailBuildOnCVSS=7 \
-            -DskipTestScope=true \
-            -Dformat=ALL \
-            -DoutputDirectory=target/owasp-report \
-            -DnvdApiKey="${NVD_API_KEY:-}" \
-            -DsuppressionFile=../.github/owasp-suppressions.xml \
-            --no-transfer-progress
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-          JAVA_OPTS: "-Xmx2g"
-
-      - name: Upload OWASP report
-        # Always upload so the report is available for review even when the
-        # build fails due to a detected CVE.
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: owasp-report-${{ github.sha }}
-          # Includes dependency-check-report.html, .json, .xml
-          path: backend/target/owasp-report/
-          # Keep OWASP reports for 90 days for compliance / audit trail
-          retention-days: 90
-          if-no-files-found: warn

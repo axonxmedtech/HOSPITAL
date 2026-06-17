@@ -1,0 +1,278 @@
+name: Deploy (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+        description: GitHub Environment name (staging | production)
+      repo_path:
+        type: string
+        required: true
+        description: Absolute path to the git repo on the server
+      service_name:
+        type: string
+        required: true
+        description: systemd service name (e.g. hms-staging)
+      git_branch:
+        type: string
+        required: true
+        description: Branch to deploy (e.g. staging | main)
+      ssh_host:
+        type: string
+        required: true
+      ssh_port:
+        type: string
+        default: '22'
+      health_port:
+        type: string
+        default: '8080'
+      app_url:
+        type: string
+        default: ''
+      enable_rollback:
+        type: boolean
+        default: false
+      notify_slack:
+        type: boolean
+        default: false
+    secrets:
+      ssh_key:
+        required: true
+      slack_webhook:
+        required: false
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ inputs.app_url }}
+
+    concurrency:
+      group: deploy-${{ inputs.environment }}
+      cancel-in-progress: false
+
+    steps:
+      # ── Deployment header ────────────────────────────────────────────────
+      - name: Write deployment header
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## Deployment — ${{ inputs.environment }}
+
+          | Field | Value |
+          | --- | --- |
+          | Environment | \`${{ inputs.environment }}\` |
+          | CI run | [${{ github.event.workflow_run.run_number }}](${{ github.event.workflow_run.html_url }}) |
+          | Commit SHA | \`${{ github.sha }}\` |
+          | Author | ${{ github.actor }} |
+          | Started | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |
+          EOF
+
+      # ── Deploy via SSH ───────────────────────────────────────────────────
+      - name: Deploy via SSH
+        # Pin to SHA in production: https://github.com/appleboy/ssh-action/releases
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ inputs.ssh_host }}
+          username: deploy
+          key: ${{ secrets.ssh_key }}
+          port: ${{ inputs.ssh_port }}
+          command_timeout: 25m
+          script: |
+            set -euo pipefail
+
+            TS() { date -u '+%Y-%m-%dT%H:%M:%SZ'; }
+
+            retry() {
+              local max="$1" delay="$2"; shift 2
+              local n=1
+              until "$@"; do
+                [ "$n" -ge "$max" ] && return 1
+                echo "[$(TS)] Retry $n/$max in ${delay}s..."
+                sleep "$delay"
+                ((n++))
+              done
+            }
+
+            REPO="${{ inputs.repo_path }}"
+            BRANCH="${{ inputs.git_branch }}"
+
+            # ── Snapshot HEAD for rollback ────────────────────────────────
+            if [ "${{ inputs.enable_rollback }}" = "true" ]; then
+              cd "$REPO"
+              PREV_SHA=$(git rev-parse HEAD)
+              echo "[$(TS)] Rollback target: $PREV_SHA"
+            fi
+
+            # ── Pull latest code ──────────────────────────────────────────
+            echo "[$(TS)] Pulling $BRANCH ..."
+            cd "$REPO"
+            git fetch origin
+            git reset --hard "origin/$BRANCH"
+            git log -1 --oneline
+
+            # ── Build frontend ────────────────────────────────────────────
+            echo "[$(TS)] Building frontend ..."
+            cd "$REPO/frontend"
+            retry 2 10 npm ci --prefer-offline --silent
+            npm run build
+
+            # ── Build backend ─────────────────────────────────────────────
+            echo "[$(TS)] Building backend ..."
+            cd "$REPO/backend"
+            set -a; source .env; set +a
+            retry 2 15 mvn clean package -DskipTests --no-transfer-progress -q
+
+            # ── Restart service ───────────────────────────────────────────
+            echo "[$(TS)] Restarting ${{ inputs.service_name }} ..."
+            sudo systemctl restart "${{ inputs.service_name }}"
+
+            # ── Health check ──────────────────────────────────────────────
+            MAX=15
+            DELAY=10
+            URL="http://localhost:${{ inputs.health_port }}/actuator/health"
+            echo "[$(TS)] Health check: $URL"
+            HEALTHY=false
+            for i in $(seq 1 $MAX); do
+              STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$URL" || echo 000)
+              echo "[$(TS)] Attempt $i/$MAX — HTTP $STATUS"
+              if [ "$STATUS" = "200" ]; then
+                HEALTHY=true
+                break
+              fi
+              sleep "$DELAY"
+            done
+
+            if $HEALTHY; then
+              echo "[$(TS)] Service is healthy."
+              exit 0
+            fi
+
+            # ── Health check failed ───────────────────────────────────────
+            if [ "${{ inputs.enable_rollback }}" = "true" ]; then
+              echo ""
+              echo "============================================"
+              echo "  HEALTH CHECK FAILED — INITIATING ROLLBACK"
+              echo "  Rolling back to: $PREV_SHA"
+              echo "============================================"
+              cd "$REPO"
+              git reset --hard "$PREV_SHA"
+              cd "$REPO/backend"
+              set -a; source .env; set +a
+              mvn clean package -DskipTests --no-transfer-progress -q
+              sudo systemctl restart "${{ inputs.service_name }}"
+
+              # Post-rollback health check
+              ROLLBACK_HEALTHY=false
+              for i in $(seq 1 $MAX); do
+                STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$URL" || echo 000)
+                echo "[$(TS)] Rollback health $i/$MAX — HTTP $STATUS"
+                if [ "$STATUS" = "200" ]; then
+                  ROLLBACK_HEALTHY=true
+                  break
+                fi
+                sleep "$DELAY"
+              done
+
+              if $ROLLBACK_HEALTHY; then
+                echo "[$(TS)] Rollback succeeded. Previous version is live."
+              else
+                echo "[$(TS)] Rollback health check also failed. Manual intervention required."
+              fi
+              echo "[$(TS)] Deployment FAILED — exiting with error."
+              exit 1
+            else
+              echo "[$(TS)] Health check failed. Rollback disabled."
+              echo "[$(TS)] Hint: check 'journalctl -u ${{ inputs.service_name }} -n 100' on the server."
+              exit 1
+            fi
+
+      # ── Collect service logs ─────────────────────────────────────────────
+      - name: Collect service logs
+        if: always()
+        env:
+          SSH_KEY: ${{ secrets.ssh_key }}
+        run: |
+          mkdir -p deployment-logs
+
+          echo "$SSH_KEY" > /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+
+          ssh -i /tmp/deploy_key \
+            -o StrictHostKeyChecking=no \
+            -o ConnectTimeout=15 \
+            -p "${{ inputs.ssh_port }}" \
+            "deploy@${{ inputs.ssh_host }}" \
+            "journalctl -u ${{ inputs.service_name }} --since '30 minutes ago' --no-pager 2>&1" \
+            > deployment-logs/service.log 2>&1 \
+            || echo "[log collection failed]" > deployment-logs/service.log
+
+          ssh -i /tmp/deploy_key \
+            -o StrictHostKeyChecking=no \
+            -o ConnectTimeout=15 \
+            -p "${{ inputs.ssh_port }}" \
+            "deploy@${{ inputs.ssh_host }}" \
+            "cd ${{ inputs.repo_path }} && git log -1 --format='%H %s' 2>&1" \
+            > deployment-logs/active-commit.txt 2>&1 \
+            || echo "[commit collection failed]" > deployment-logs/active-commit.txt
+
+          rm -f /tmp/deploy_key
+
+      # ── Upload deployment logs ───────────────────────────────────────────
+      - name: Upload deployment logs
+        if: always()
+        # Pin to SHA in production: https://github.com/actions/upload-artifact/releases
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.environment }}-deploy-logs-${{ github.run_id }}
+          path: deployment-logs/
+          retention-days: 90
+          if-no-files-found: warn
+
+      # ── Slack notification ───────────────────────────────────────────────
+      - name: Notify Slack
+        if: always() && inputs.notify_slack
+        continue-on-error: true
+        env:
+          STATUS: ${{ job.status }}
+        run: |
+          if [ "$STATUS" = "success" ]; then
+            ICON=":white_check_mark:"
+          elif [ "$STATUS" = "failure" ]; then
+            ICON=":x:"
+          else
+            ICON=":warning:"
+          fi
+
+          curl -sSf -X POST "${{ secrets.slack_webhook }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"text\": \"${ICON} *${{ inputs.environment }}* deployment *${STATUS}*\",
+              \"attachments\": [{
+                \"color\": \"$([ \"$STATUS\" = \"success\" ] && echo good || echo danger)\",
+                \"fields\": [
+                  {\"title\": \"Environment\", \"value\": \"${{ inputs.environment }}\", \"short\": true},
+                  {\"title\": \"Status\", \"value\": \"${STATUS}\", \"short\": true},
+                  {\"title\": \"Commit\", \"value\": \"\`${{ github.sha }}\`\", \"short\": true},
+                  {\"title\": \"Run\", \"value\": \"<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>\", \"short\": true}
+                ]
+              }]
+            }"
+
+      # ── Deployment result ────────────────────────────────────────────────
+      - name: Write deployment result
+        if: always()
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+
+          ---
+
+          | Result | Finished |
+          | --- | --- |
+          | ${{ job.status }} | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |
+          EOF
