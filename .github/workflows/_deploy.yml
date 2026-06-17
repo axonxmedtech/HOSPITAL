@@ -137,7 +137,7 @@ jobs:
             # ── Health check ──────────────────────────────────────────────
             MAX=15
             DELAY=10
-            URL="http://localhost:${{ inputs.health_port }}/actuator/health"
+            URL="http://localhost:${{ inputs.health_port }}/api/public/health"
             echo "[$(TS)] Health check: $URL"
             HEALTHY=false
             for i in $(seq 1 $MAX); do
