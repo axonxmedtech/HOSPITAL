@@ -1,0 +1,189 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Deploy — Staging
+#
+# Triggered automatically when the CI workflow completes successfully on the
+# staging branch. Never runs on a failed CI — the gate is enforced by the
+# `if:` condition on the job, not just the trigger.
+#
+# Deployment flow:
+#   1. Pull latest staging onto the server
+#   2. Build frontend  (npm ci → npm run build)
+#   3. Build backend   (source .env → mvn clean package -DskipTests)
+#   4. Restart service (sudo systemctl restart hms-staging)
+#   5. Health check    (polls /actuator/health on localhost until 200 or timeout)
+#
+# GitHub Environment  (Settings → Environments → staging):
+#   Configure protection rules, required reviewers, and wait timers here.
+#   Secrets scoped to this environment take precedence over repository secrets.
+#
+# GitHub Variables  (Settings → Variables → Actions, or scoped to staging env):
+#   STAGING_SSH_HOST     Hostname or IP of the staging server
+#   STAGING_SSH_PORT     SSH port                          (default: 22)
+#   STAGING_HEALTH_PORT  Spring Boot port to health-check  (default: 8080)
+#   STAGING_APP_URL      Public URL shown on the GitHub Environments page
+#
+# GitHub Secrets  (scoped to the staging environment):
+#   STAGING_SSH_KEY      PEM private key for the deploy user
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Deploy — Staging
+
+on:
+  workflow_run:
+    # Only fires after the CI workflow — guarantees tests and security scans passed.
+    workflows: ["CI"]
+    types: [completed]
+    branches: [staging]
+
+# Prevent overlapping deployments.
+# cancel-in-progress: false — wait for the running deploy to finish rather than
+# killing it mid-flight, which could leave the server in a broken state.
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # DEPLOY
+  # ───────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: "Deploy → Staging"
+    runs-on: ubuntu-latest
+
+    # Hard gate: skip if CI did not pass (e.g. cancelled, failed).
+    if: github.event.workflow_run.conclusion == 'success'
+
+    # Links this job to the GitHub "staging" Environment.
+    # Enables: deployment history, protection rules, environment secrets,
+    # and the URL badge on the repository's Environments page.
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_APP_URL }}
+
+    # Absolute ceiling — kills the job if a build or network hang stalls it.
+    timeout-minutes: 20
+
+    steps:
+
+      # ── Summary header ─────────────────────────────────────────────────────
+      # Written first so the summary is visible even if a later step fails.
+      - name: Write deployment header
+        run: |
+          {
+            echo "## Staging Deployment"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| **CI run** | [#${{ github.event.workflow_run.run_number }}](${{ github.event.workflow_run.html_url }}) |"
+            echo "| **Commit** | \`${{ github.event.workflow_run.head_sha }}\` |"
+            echo "| **Author** | ${{ github.event.workflow_run.head_commit.author.name }} |"
+            echo "| **Started** | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ── Pull → Build → Restart ─────────────────────────────────────────────
+      # Runs the full deployment script on the server over SSH.
+      # set -euo pipefail: any command failure immediately aborts the script
+      # so a broken build never restarts the service with stale artifacts.
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ vars.STAGING_SSH_HOST }}
+          username: deploy
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          port: ${{ vars.STAGING_SSH_PORT || 22 }}
+          # Per-command timeout inside the SSH session (separate from job timeout).
+          command_timeout: 15m
+          script: |
+            set -euo pipefail
+            TS() { date -u '+%Y-%m-%dT%H:%M:%SZ'; }
+
+            REPO="/var/www/hms/staging/repo_stage"
+
+            # ── 1. Pull ──────────────────────────────────────────────────────
+            echo "[$(TS)] ── Pulling latest staging ──────────────────────────"
+            cd "$REPO"
+            git fetch origin
+            git reset --hard origin/staging
+            echo "[$(TS)] HEAD → $(git log -1 --oneline)"
+
+            # ── 2. Frontend ──────────────────────────────────────────────────
+            echo "[$(TS)] ── Building frontend ──────────────────────────────"
+            cd "$REPO/frontend"
+            # --prefer-offline: use cached node_modules tarballs where possible.
+            npm ci --prefer-offline --silent
+            npm run build
+
+            # ── 3. Backend ───────────────────────────────────────────────────
+            echo "[$(TS)] ── Building backend ───────────────────────────────"
+            cd "$REPO/backend"
+            # Source the server .env so DB credentials and JWT secret are available
+            # during packaging (Spring Boot config validation at build time).
+            set -a; source .env; set +a
+            mvn clean package -DskipTests --no-transfer-progress -q
+
+            # ── 4. Restart ───────────────────────────────────────────────────
+            echo "[$(TS)] ── Restarting hms-staging ──────────────────────────"
+            sudo systemctl restart hms-staging
+            echo "[$(TS)] ✓ Restart command issued."
+
+      # ── Health check ───────────────────────────────────────────────────────
+      # Polls the Spring Boot Actuator health endpoint on the server itself
+      # (localhost) — no public ingress required.
+      # 12 attempts × 10 s = 2 minutes max wait before failing the deployment.
+      - name: Health check
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ vars.STAGING_SSH_HOST }}
+          username: deploy
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          port: ${{ vars.STAGING_SSH_PORT || 22 }}
+          command_timeout: 3m
+          script: |
+            set -euo pipefail
+            TS() { date -u '+%Y-%m-%dT%H:%M:%SZ'; }
+
+            # Use STAGING_HEALTH_PORT variable if set; fall back to 8080.
+            PORT="${{ vars.STAGING_HEALTH_PORT }}"
+            PORT="${PORT:-8080}"
+            URL="http://localhost:${PORT}/actuator/health"
+
+            MAX=12
+            DELAY=10
+            echo "[$(TS)] Polling $URL — up to $((MAX * DELAY))s"
+
+            for i in $(seq 1 $MAX); do
+              CODE=$(curl -sf -o /dev/null -w "%{http_code}" "$URL" 2>/dev/null || echo "000")
+              echo "[$(TS)] Attempt $i/$MAX → HTTP $CODE"
+
+              if [ "$CODE" = "200" ]; then
+                echo "[$(TS)] ✓ hms-staging is healthy."
+                exit 0
+              fi
+
+              # Sleep between attempts but not after the final one.
+              [ "$i" -lt "$MAX" ] && sleep "$DELAY"
+            done
+
+            echo "[$(TS)] ✗ Health check failed — service did not respond with HTTP 200"
+            echo "[$(TS)] Run: sudo systemctl status hms-staging && journalctl -u hms-staging -n 50"
+            exit 1
+
+      # ── Summary result ─────────────────────────────────────────────────────
+      # Always runs so the summary is complete even when the deploy or health
+      # check step fails. The job.status reflects the outcome of all prior steps.
+      - name: Write deployment result
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            ICON="✅"; LABEL="Success"
+          else
+            ICON="❌"; LABEL="${{ job.status }}"
+          fi
+          {
+            echo "| **Status** | $ICON $LABEL |"
+            echo "| **Finished** | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |"
+          } >> "$GITHUB_STEP_SUMMARY"
