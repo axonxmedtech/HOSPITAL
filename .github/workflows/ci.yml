@@ -80,10 +80,12 @@ jobs:
     needs: [build-frontend, build-backend]
 
     # Skip on fork PRs — secrets unavailable in untrusted fork contexts.
+    # Also skip if SONAR_TOKEN is not configured in GitHub Secrets.
     if: >
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+      (github.event_name == 'push' ||
+       (github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository)) &&
+      secrets.SONAR_TOKEN != ''
 
     permissions:
       contents: read
