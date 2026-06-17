@@ -39,6 +39,8 @@ on:
         default: false
     secrets:
       ssh_key:
+        required: true
+      ssh_user:
         required: false
       slack_webhook:
         required: false
@@ -79,7 +81,7 @@ jobs:
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
-          username: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
+          username: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
           key: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
           port: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
           command_timeout: 25m
@@ -199,7 +201,7 @@ jobs:
           SSH_KEY: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
           SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
-          SSH_USER: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
+          SSH_USER: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
         run: |
           mkdir -p deployment-logs
 

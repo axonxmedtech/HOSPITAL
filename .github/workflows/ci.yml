@@ -165,7 +165,9 @@ jobs:
       app_url: ${{ vars.STAGING_APP_URL }}
       enable_rollback: false
       notify_slack: false
-    secrets: inherit
+    secrets:
+      ssh_key: ${{ secrets.SSH_PRIVATE_KEY }}
+      ssh_user: ${{ secrets.SSH_USERNAME }}
 
   # ── Deploy — Production ────────────────────────────────────────────────────
   deploy-production:
@@ -193,4 +195,7 @@ jobs:
       app_url: ${{ vars.PRODUCTION_APP_URL }}
       enable_rollback: true
       notify_slack: true
-    secrets: inherit
+    secrets:
+      ssh_key: ${{ secrets.SSH_PRIVATE_KEY }}
+      ssh_user: ${{ secrets.SSH_USERNAME }}
+      slack_webhook: ${{ secrets.PRODUCTION_SLACK_WEBHOOK }}
