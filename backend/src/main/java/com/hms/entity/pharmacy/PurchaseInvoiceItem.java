@@ -30,7 +30,7 @@ public class PurchaseInvoiceItem {
     @Column(name = "medicine_id", nullable = false)
     private Long medicineId;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "medicine_id", insertable = false, updatable = false)
     private MedicineMaster medicine;
 

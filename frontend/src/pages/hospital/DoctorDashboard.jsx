@@ -508,7 +508,6 @@ const DoctorDashboard = () => {
                 'Are you sure you want to cancel this appointment? This action cannot be undone.',
                 async (reason) => {
                     try {
-                        console.log(`Cancelling appointment ${id} with reason: ${reason}`);
                         await hospitalService.updateAppointmentStatus(id, newStatus);
                         success('Appointment cancelled successfully');
                         loadData();
@@ -778,7 +777,6 @@ const DoctorDashboard = () => {
     // Patient consultation handlers
     const handleStartConsultation = async (patient) => {
         if (startingConsultationId) return;
-        console.log("handleStartConsultation called for:", patient);
         setStartingConsultationId(patient.publicId || patient.id);
         try {
             // Update status to CONSULTING
@@ -802,7 +800,6 @@ const DoctorDashboard = () => {
     };
 
     const handleStartOpdConsultation = async (opd) => {
-        console.log('handleStartOpdConsultation called for OPD:', opd);
         try {
             // Open consultation modal with OPD context
             setConsultationModal({ isOpen: true, appointment: null, patient: opd.patient, opd });
@@ -814,10 +811,7 @@ const DoctorDashboard = () => {
     };
 
     const handleCompleteConsultation = (patient) => {
-        console.log("handleCompleteConsultation called for:", patient);
-        // Open consultation modal for this patient
         setConsultationModal({ isOpen: true, patient });
-        console.log("setConsultationModal called with isOpen: true");
     };
 
     const handleViewPrescription = (patient) => {

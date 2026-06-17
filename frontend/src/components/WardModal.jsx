@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import WardService from '../services/wardService';
 import Button from './Button';
+import { useToast } from '../context/ToastContext';
 
 const WardModal = ({ open, initial, onClose, onSaved }) => {
+  const { error: toastError } = useToast();
   const [wardName, setWardName] = useState('');
   const [bedPrice, setBedPrice] = useState('');
   const [totalBeds, setTotalBeds] = useState('');
@@ -25,8 +27,8 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
   const onSubmit = async (e) => {
     e.preventDefault();
     // basic client-side validation
-    if (!wardName || wardName.trim() === '') return alert('Please enter ward name');
-    if (!bedPrice || Number.isNaN(Number(bedPrice))) return alert('Enter valid bed price');
+    if (!wardName || wardName.trim() === '') { toastError('Please enter ward name'); return; }
+    if (!bedPrice || Number.isNaN(Number(bedPrice))) { toastError('Enter valid bed price'); return; }
 
     setSaving(true);
     try {
@@ -41,7 +43,7 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
       onClose && onClose();
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.error || 'Save failed');
+      toastError(err.response?.data?.error || 'Save failed');
     } finally { setSaving(false); }
   };
 

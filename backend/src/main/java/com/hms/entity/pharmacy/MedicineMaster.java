@@ -36,14 +36,14 @@ public class MedicineMaster {
     @Column(name = "category_id")
     private Long categoryId;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id", insertable = false, updatable = false)
     private MedicineCategory category;
 
     @Column(name = "manufacturer_id")
     private Long manufacturerId;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "manufacturer_id", insertable = false, updatable = false)
     private Manufacturer manufacturer;
 

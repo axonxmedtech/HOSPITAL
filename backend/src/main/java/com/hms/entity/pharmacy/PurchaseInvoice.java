@@ -28,7 +28,7 @@ public class PurchaseInvoice {
     @Column(name = "supplier_id", nullable = false)
     private Long supplierId;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "supplier_id", insertable = false, updatable = false)
     private Supplier supplier;
 
@@ -63,6 +63,6 @@ public class PurchaseInvoice {
     private LocalDateTime createdAt;
 
     @com.fasterxml.jackson.annotation.JsonManagedReference
-    @OneToMany(mappedBy = "purchaseInvoice", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "purchaseInvoice", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PurchaseInvoiceItem> items;
 }

@@ -388,8 +388,6 @@ const ReceptionistDashboard = () => {
                 'Are you sure you want to cancel this appointment? This action cannot be undone.',
                 async (reason) => {
                     try {
-                        // Assuming the API might support reason in the future, or we just log it for now
-                        console.log(`Cancelling appointment ${id} with reason: ${reason}`);
                         await hospitalService.updateAppointmentStatus(id, newStatus);
                         success('Appointment cancelled successfully');
                         loadData();

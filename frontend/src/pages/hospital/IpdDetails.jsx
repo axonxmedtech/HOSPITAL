@@ -1240,7 +1240,7 @@ const IpdDetails = () => {
                                                 return toastError('Enter a valid amount');
                                             }
                                             if (amountVal > billModal.bill.balance) {
-                                                alert('The bill is less than the payment amount');
+                                                toastError('Payment amount exceeds the outstanding balance');
                                                 return;
                                             }
                                             setPayment(prev => ({ ...prev, saving: true }));

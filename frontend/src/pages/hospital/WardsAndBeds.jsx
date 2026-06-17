@@ -3,8 +3,10 @@ import WardCard from '../../components/WardCard';
 import BedListDrawer from '../../components/BedListDrawer';
 import WardModal from '../../components/WardModal';
 import WardService from '../../services/wardService';
+import { useToast } from '../../context/ToastContext';
 
 const WardsAndBeds = () => {
+    const { error: toastError } = useToast();
     const [wards, setWards] = useState([]);
     const [loading, setLoading] = useState(false);
     const [selectedWard, setSelectedWard] = useState(null);
@@ -41,7 +43,7 @@ const WardsAndBeds = () => {
             await WardService.deleteWard(ward.wardId);
             await fetchWards();
         } catch (err) {
-            alert(err.response?.data || err.message || 'Delete failed');
+            toastError(err.response?.data || err.message || 'Delete failed');
         } finally {
             setDeleting(null);
         }

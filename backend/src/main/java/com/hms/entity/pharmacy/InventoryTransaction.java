@@ -26,7 +26,7 @@ public class InventoryTransaction {
     @Column(name = "medicine_batch_id", nullable = false)
     private Long medicineBatchId;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "medicine_batch_id", insertable = false, updatable = false)
     private MedicineBatch medicineBatch;
 

@@ -60,7 +60,7 @@ public class MedicineBatch {
     @Column(name = "supplier_id")
     private Long supplierId;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "supplier_id", insertable = false, updatable = false)
     private Supplier supplier;
 
