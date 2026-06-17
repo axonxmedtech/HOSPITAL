@@ -137,6 +137,7 @@ jobs:
             -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/target/surefire-reports/**,**/*.min.js
             -Dsonar.sourceEncoding=UTF-8
             -Dsonar.qualitygate.wait=true
+            -Dsonar.jasmin.internal.disabled=true
 
   # ── Deploy — Staging ───────────────────────────────────────────────────────
   deploy-staging:
