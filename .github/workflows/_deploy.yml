@@ -80,7 +80,7 @@ jobs:
         with:
           host: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           username: deploy
-          key: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
+          key: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
           port: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
           command_timeout: 25m
           script: |
@@ -196,7 +196,7 @@ jobs:
       - name: Collect service logs
         if: always()
         env:
-          SSH_KEY: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
+          SSH_KEY: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
           SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
         run: |
