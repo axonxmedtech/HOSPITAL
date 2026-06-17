@@ -155,7 +155,7 @@ jobs:
       contents: read
       pull-requests: write
     with:
-      environment: staging
+      environment: Staging
       repo_path: /var/www/hms/staging/repo_stage
       service_name: hms-staging
       git_branch: staging
@@ -184,7 +184,7 @@ jobs:
       contents: read
       pull-requests: write
     with:
-      environment: production
+      environment: Production
       repo_path: /var/www/hms/production/repo_prod
       service_name: hms-production
       git_branch: main
