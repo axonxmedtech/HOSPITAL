@@ -75,7 +75,11 @@ jobs:
 
           def pct(key):
               v = total.get(key, {})
-              return f"{v.get('pct', 0):.1f}%"
+              val = v.get('pct', 0)
+              try:
+                  return f"{float(val):.1f}%"
+              except (ValueError, TypeError):
+                  return f"{val}"
 
           table = (
               "## Frontend Coverage\n\n"
