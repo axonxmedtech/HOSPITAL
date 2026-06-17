@@ -146,7 +146,7 @@ const HospitalLogin = () => {
                         </div>
                         <h1 className="text-4xl font-bold text-white text-center mb-4">Hospital Management System</h1>
                         <p className="text-xl text-white text-center leading-relaxed opacity-90">
-                            Comprehensive Patient Care Platform
+                            Comprehensive Patient Care & Management Platform
                         </p>
                     </div>
                 </div>
