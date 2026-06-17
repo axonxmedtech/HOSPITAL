@@ -4,6 +4,7 @@ import BedListDrawer from '../../components/BedListDrawer';
 import WardModal from '../../components/WardModal';
 import WardService from '../../services/wardService';
 import { useToast } from '../../context/ToastContext';
+import ConfirmationModal from '../../components/ConfirmationModal';
 
 const WardsAndBeds = () => {
     const { error: toastError } = useToast();
@@ -14,6 +15,7 @@ const WardsAndBeds = () => {
     const [editWard, setEditWard] = useState(null);
     const [editOpen, setEditOpen] = useState(false);
     const [deleting, setDeleting] = useState(null);
+    const [confirmState, setConfirmState] = useState({ open: false, title: '', message: '', onConfirm: null });
 
     useEffect(() => { fetchWards(); }, []);
 
@@ -36,17 +38,21 @@ const WardsAndBeds = () => {
         setEditOpen(true);
     };
 
-    const onDelete = async (ward) => {
-        if (!window.confirm(`Delete ward "${ward.wardName}"? This will also delete all its unoccupied beds.`)) return;
-        setDeleting(ward.wardId);
-        try {
-            await WardService.deleteWard(ward.wardId);
-            await fetchWards();
-        } catch (err) {
-            toastError(err.response?.data || err.message || 'Delete failed');
-        } finally {
-            setDeleting(null);
-        }
+    const onDelete = (ward) => {
+        setConfirmState({
+            open: true,
+            title: 'Delete Ward',
+            message: `Delete ward "${ward.wardName}"? This will also delete all its unoccupied beds.`,
+            onConfirm: async () => {
+                setDeleting(ward.wardId);
+                try {
+                    await WardService.deleteWard(ward.wardId);
+                    await fetchWards();
+                } finally {
+                    setDeleting(null);
+                }
+            }
+        });
     };
 
     return (
@@ -76,6 +82,14 @@ const WardsAndBeds = () => {
                 initial={editWard}
                 onClose={() => { setEditOpen(false); setEditWard(null); }}
                 onSaved={() => { setEditOpen(false); setEditWard(null); fetchWards(); }}
+            />
+
+            <ConfirmationModal
+                isOpen={confirmState.open}
+                title={confirmState.title}
+                message={confirmState.message}
+                onConfirm={confirmState.onConfirm}
+                onCancel={() => setConfirmState({ open: false })}
             />
         </div>
     );

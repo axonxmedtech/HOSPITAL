@@ -101,7 +101,7 @@ jobs:
           java-version: ${{ vars.JAVA_VERSION || '17' }}
 
       - name: Compile backend (bytecode for Sonar)
-        run: mvn compile -q -f backend/pom.xml
+        run: mvn test-compile -q -f backend/pom.xml
 
       # Pin to SHA in production: https://github.com/actions/download-artifact/releases
       - name: Download JaCoCo coverage report
@@ -131,7 +131,7 @@ jobs:
             -Dsonar.sources=backend/src/main/java,frontend/src
             -Dsonar.tests=backend/src/test/java
             -Dsonar.java.binaries=backend/target/classes
-            -Dsonar.java.source=17
+            -Dsonar.java.source=${{ vars.JAVA_VERSION || '17' }}
             -Dsonar.coverage.jacoco.xmlReportPaths=backend/target/site/jacoco/jacoco.xml
             -Dsonar.javascript.lcov.reportPaths=frontend/coverage/lcov.info
             -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/target/surefire-reports/**,**/*.min.js

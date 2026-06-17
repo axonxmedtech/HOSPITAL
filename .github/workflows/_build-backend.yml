@@ -39,7 +39,7 @@ jobs:
         run: >
           mvn -B
           org.jacoco:jacoco-maven-plugin:0.8.12:prepare-agent
-          test
+          verify
           org.jacoco:jacoco-maven-plugin:0.8.12:report
           --no-transfer-progress
 
