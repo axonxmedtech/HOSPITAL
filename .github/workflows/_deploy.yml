@@ -39,7 +39,7 @@ on:
         default: false
     secrets:
       ssh_key:
-        required: true
+        required: false
       slack_webhook:
         required: false
 
