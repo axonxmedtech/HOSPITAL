@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import hospitalService from '../services/hospitalService';
 import { useToast } from '../context/ToastContext';
 import Skeleton from './Skeleton';
+import ConfirmationModal from './ConfirmationModal';
 
 const MedicineInventoryTab = () => {
     const [subTab, setSubTab] = useState('inventory'); // 'inventory' or 'catalog'
@@ -18,6 +19,8 @@ const MedicineInventoryTab = () => {
     const [catalogModal, setCatalogModal] = useState({ isOpen: false, isEdit: false, data: null });
 
     const { success, error: toastError } = useToast();
+
+    const [confirmState, setConfirmState] = useState({ open: false, title: '', message: '', onConfirm: null });
 
     const [stockMedicineQuery, setStockMedicineQuery] = useState('');
     const [showStockSuggestions, setShowStockSuggestions] = useState(false);
@@ -151,26 +154,38 @@ const MedicineInventoryTab = () => {
         }
     };
 
-    const handleDeactivateStock = async (id) => {
-        if (!window.confirm('Are you sure you want to remove this item from active stock inventory?')) return;
-        try {
-            await hospitalService.deleteInventoryMedicine(id);
-            success('Item removed from inventory.');
-            loadData();
-        } catch (err) {
-            toastError('Failed to delete inventory record.');
-        }
+    const handleDeactivateStock = (id) => {
+        setConfirmState({
+            open: true,
+            title: 'Remove from Inventory',
+            message: 'Are you sure you want to remove this item from active stock inventory?',
+            onConfirm: async () => {
+                try {
+                    await hospitalService.deleteInventoryMedicine(id);
+                    success('Item removed from inventory.');
+                    loadData();
+                } catch (err) {
+                    toastError('Failed to delete inventory record.');
+                }
+            }
+        });
     };
 
-    const handleDeactivateCatalog = async (id) => {
-        if (!window.confirm('Are you sure you want to deactivate this item in the catalog directory?')) return;
-        try {
-            await hospitalService.deleteCatalogMedicine(id);
-            success('Item deactivated in catalog.');
-            loadData();
-        } catch (err) {
-            toastError('Failed to delete catalog record.');
-        }
+    const handleDeactivateCatalog = (id) => {
+        setConfirmState({
+            open: true,
+            title: 'Deactivate Catalog Item',
+            message: 'Are you sure you want to deactivate this item in the catalog directory?',
+            onConfirm: async () => {
+                try {
+                    await hospitalService.deleteCatalogMedicine(id);
+                    success('Item deactivated in catalog.');
+                    loadData();
+                } catch (err) {
+                    toastError('Failed to delete catalog record.');
+                }
+            }
+        });
     };
 
     const handleCsvImport = async (e) => {
@@ -551,6 +566,14 @@ const MedicineInventoryTab = () => {
             )}
 
             {/* MODAL 2: ADD/EDIT CATALOG DICTIONARY MEDICINE */}
+            <ConfirmationModal
+                isOpen={confirmState.open}
+                title={confirmState.title}
+                message={confirmState.message}
+                onConfirm={confirmState.onConfirm}
+                onCancel={() => setConfirmState({ open: false })}
+            />
+
             {catalogModal.isOpen && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in-up" onClick={e => e.stopPropagation()}>

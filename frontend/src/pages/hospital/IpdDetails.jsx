@@ -11,6 +11,7 @@ import useWebSocket from '../../hooks/useWebSocket';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import ProfileModal from '../../components/ProfileModal';
+import ConfirmationModal from '../../components/ConfirmationModal';
 
 const IpdDetails = () => {
     const { id } = useParams();
@@ -114,6 +115,8 @@ const IpdDetails = () => {
         isAdmin ||
         (isDoctor && (user?.billingHandler === 'DOCTOR' || user?.billingHandler === 'BOTH')) ||
         (isReceptionist && (user?.billingHandler === 'RECEPTIONIST' || user?.billingHandler === 'BOTH'));
+
+    const [confirmState, setConfirmState] = useState({ open: false, title: '', message: '', onConfirm: null });
 
     const [followupModal, setFollowupModal] = useState({ isOpen: false, diagnosis: '', notes: '', saving: false });
     const [dischargeModal, setDischargeModal] = useState({ isOpen: false, finalDiagnosis: '', treatmentGiven: '', dischargeNotes: '', followUpDate: '', saving: false });
@@ -298,20 +301,26 @@ const IpdDetails = () => {
         setMedicineModal({ isOpen: true, medicineName: '', type: 'TABLET', route: 'ORAL', dose: '', frequency: '', durationDays: 0, startDate: '', saving: false });
     };
 
-    const onStopMedicine = async (prescriptionId) => {
-        if (!window.confirm('Stop this medicine?')) return;
-        try {
-            await hospitalService.stopPrescription(prescriptionId);
-            success('Medicine stopped');
-            setLoading(true);
-            const resp = await hospitalService.getIpdDetails(id);
-            setData(resp);
-        } catch (err) {
-            console.error('Failed to stop medicine', err);
-            toastError(err.response?.data || err.message || 'Failed to stop medicine');
-        } finally {
-            setLoading(false);
-        }
+    const onStopMedicine = (prescriptionId) => {
+        setConfirmState({
+            open: true,
+            title: 'Stop Medicine',
+            message: 'Stop this medicine? This will mark it as discontinued.',
+            onConfirm: async () => {
+                try {
+                    await hospitalService.stopPrescription(prescriptionId);
+                    success('Medicine stopped');
+                    setLoading(true);
+                    const resp = await hospitalService.getIpdDetails(id);
+                    setData(resp);
+                } catch (err) {
+                    console.error('Failed to stop medicine', err);
+                    toastError(err.response?.data || err.message || 'Failed to stop medicine');
+                } finally {
+                    setLoading(false);
+                }
+            }
+        });
     };
 
     const onPlanDischarge = () => {
@@ -343,21 +352,26 @@ const IpdDetails = () => {
         }
     };
 
-    const onConfirmDischarge = async () => {
-        if (!window.confirm('Confirm discharge? This will finalize and free the bed.')) return;
-        try {
-            setLoading(true);
-            await hospitalService.confirmDischarge(id);
-            success('Discharge completed');
-            // navigate back to list
-            navigate('/');
-        } catch (err) {
-            console.error('Failed to confirm discharge', err);
-            const msg = err.response?.data || err.message || 'Failed to confirm discharge';
-            toastError(msg);
-        } finally {
-            setLoading(false);
-        }
+    const onConfirmDischarge = () => {
+        setConfirmState({
+            open: true,
+            title: 'Confirm Discharge',
+            message: 'Confirm discharge? This will finalize the admission and free the bed.',
+            onConfirm: async () => {
+                try {
+                    setLoading(true);
+                    await hospitalService.confirmDischarge(id);
+                    success('Discharge completed');
+                    navigate('/');
+                } catch (err) {
+                    console.error('Failed to confirm discharge', err);
+                    const msg = err.response?.data || err.message || 'Failed to confirm discharge';
+                    toastError(msg);
+                } finally {
+                    setLoading(false);
+                }
+            }
+        });
     };
 
     const openBillModal = async () => {
@@ -1282,6 +1296,14 @@ const IpdDetails = () => {
 
             {/* Profile Settings Modal */}
             <ProfileModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
+
+            <ConfirmationModal
+                isOpen={confirmState.open}
+                title={confirmState.title}
+                message={confirmState.message}
+                onConfirm={confirmState.onConfirm}
+                onCancel={() => setConfirmState({ open: false })}
+            />
         </div>
     );
 };

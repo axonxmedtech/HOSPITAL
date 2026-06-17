@@ -3,12 +3,15 @@ import salesApi from '../../../services/pharmacy/salesApi';
 import suppliersApi from '../../../services/pharmacy/suppliersApi';
 import inventoryApi from '../../../services/pharmacy/inventoryApi';
 import { useToast } from '../../../context/ToastContext';
+import ConfirmationModal from '../../../components/ConfirmationModal';
 
 const ReturnsView = () => {
     const { success, error: toastError } = useToast();
 
     // Tab state: PATIENT, SUPPLIER
     const [activeTab, setActiveTab] = useState('PATIENT');
+
+    const [confirmState, setConfirmState] = useState({ open: false, title: '', message: '', onConfirm: null });
 
     // --- 1. PATIENT RETURN STATE ---
     const [billSearch, setBillSearch] = useState('');
@@ -139,7 +142,7 @@ const ReturnsView = () => {
         return total;
     }, [patientReturns]);
 
-    const handleProcessRefund = async () => {
+    const handleProcessRefund = () => {
         if (!originalSale) return;
 
         // Compile items with positive return quantities
@@ -156,21 +159,26 @@ const ReturnsView = () => {
             return;
         }
 
-        if (!window.confirm(`Are you sure you want to process this refund of ₹${patientRefundTotal.toLocaleString()}? This will create stock reversal entries.`)) return;
-
-        setProcessingRefund(true);
-        try {
-            await salesApi.processReturn(originalSale.id, items);
-            success(`Refund processed successfully! ₹${patientRefundTotal.toLocaleString()} refunded.`);
-            setOriginalSale(null);
-            setBillSearch('');
-            setPatientReturns({});
-        } catch (err) {
-            console.error("Refund failed", err);
-            toastError(err.response?.data?.message || "Failed to process patient refund.");
-        } finally {
-            setProcessingRefund(false);
-        }
+        setConfirmState({
+            open: true,
+            title: 'Process Patient Refund',
+            message: `Are you sure you want to process this refund of ₹${patientRefundTotal.toLocaleString()}? This will create stock reversal entries.`,
+            onConfirm: async () => {
+                setProcessingRefund(true);
+                try {
+                    await salesApi.processReturn(originalSale.id, items);
+                    success(`Refund processed successfully! ₹${patientRefundTotal.toLocaleString()} refunded.`);
+                    setOriginalSale(null);
+                    setBillSearch('');
+                    setPatientReturns({});
+                } catch (err) {
+                    console.error("Refund failed", err);
+                    toastError(err.response?.data?.message || "Failed to process patient refund.");
+                } finally {
+                    setProcessingRefund(false);
+                }
+            }
+        });
     };
 
 
@@ -233,7 +241,7 @@ const ReturnsView = () => {
         return total;
     }, [supplierReturnItems]);
 
-    const handleProcessSupplierReturn = async () => {
+    const handleProcessSupplierReturn = () => {
         if (!selectedSupplierId) {
             toastError("Please select a supplier first.");
             return;
@@ -251,20 +259,25 @@ const ReturnsView = () => {
             return;
         }
 
-        if (!window.confirm(`Are you sure you want to finalize this Supplier Return dispatch of ₹${supplierRefundTotal.toLocaleString()}? This will deduct stocks from active inventory immediately.`)) return;
-
-        setProcessingSupplierReturn(true);
-        try {
-            await inventoryApi.processSupplierReturn(selectedSupplierId, items);
-            success(`Supplier return dispatched successfully! Total claim value: ₹${supplierRefundTotal.toLocaleString()}`);
-            setSupplierReturnItems([]);
-            setSelectedSupplierId('');
-        } catch (err) {
-            console.error("Supplier return dispatch failed", err);
-            toastError(err.response?.data?.message || "Failed to process supplier return.");
-        } finally {
-            setProcessingSupplierReturn(false);
-        }
+        setConfirmState({
+            open: true,
+            title: 'Finalize Supplier Return',
+            message: `Are you sure you want to finalize this Supplier Return dispatch of ₹${supplierRefundTotal.toLocaleString()}? This will deduct stocks from active inventory immediately.`,
+            onConfirm: async () => {
+                setProcessingSupplierReturn(true);
+                try {
+                    await inventoryApi.processSupplierReturn(selectedSupplierId, items);
+                    success(`Supplier return dispatched successfully! Total claim value: ₹${supplierRefundTotal.toLocaleString()}`);
+                    setSupplierReturnItems([]);
+                    setSelectedSupplierId('');
+                } catch (err) {
+                    console.error("Supplier return dispatch failed", err);
+                    toastError(err.response?.data?.message || "Failed to process supplier return.");
+                } finally {
+                    setProcessingSupplierReturn(false);
+                }
+            }
+        });
     };
 
     return (
@@ -665,6 +678,14 @@ const ReturnsView = () => {
                 </div>
 
             )}
+
+            <ConfirmationModal
+                isOpen={confirmState.open}
+                title={confirmState.title}
+                message={confirmState.message}
+                onConfirm={confirmState.onConfirm}
+                onCancel={() => setConfirmState({ open: false })}
+            />
 
             {/* --- RETURNS HISTORY OVERLAY MODAL --- */}
             {showHistoryModal && (

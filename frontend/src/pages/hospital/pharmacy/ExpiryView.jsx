@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import inventoryApi from '../../../services/pharmacy/inventoryApi';
 import { useToast } from '../../../context/ToastContext';
+import ConfirmationModal from '../../../components/ConfirmationModal';
 
 const ExpiryView = () => {
     const { success, error: toastError } = useToast();
@@ -125,22 +126,30 @@ const ExpiryView = () => {
         return { label: `Near Expiry (${diffDays} Days)`, color: 'bg-blue-50 text-blue-700 border-blue-200' };
     };
 
+    const [confirmState, setConfirmState] = useState({ open: false, title: '', message: '', onConfirm: null });
+
     // 🚫 Block batch operation
     const [blockingId, setBlockingId] = useState(null);
-    const handleBlockBatch = async (batchId) => {
+    const handleBlockBatch = (batchId) => {
         if (blockingId) return;
-        if (!window.confirm("Are you sure you want to FREEZE this batch? This immediately blocks it from being sold or dispensed at the POS billing counter!")) return;
-        setBlockingId(batchId);
-        try {
-            await inventoryApi.blockBatch(batchId);
-            success("Batch status successfully updated to BLOCKED!");
-            fetchExpiryAlerts();
-        } catch (err) {
-            console.error("Block failed", err);
-            toastError("Failed to block batch.");
-        } finally {
-            setBlockingId(null);
-        }
+        setConfirmState({
+            open: true,
+            title: 'Freeze Batch',
+            message: 'Are you sure you want to FREEZE this batch? This immediately blocks it from being sold or dispensed at the POS billing counter!',
+            onConfirm: async () => {
+                setBlockingId(batchId);
+                try {
+                    await inventoryApi.blockBatch(batchId);
+                    success("Batch status successfully updated to BLOCKED!");
+                    fetchExpiryAlerts();
+                } catch (err) {
+                    console.error("Block failed", err);
+                    toastError("Failed to block batch.");
+                } finally {
+                    setBlockingId(null);
+                }
+            }
+        });
     };
 
     // 🗑️ Dispose batch write-off operation
@@ -366,6 +375,14 @@ const ExpiryView = () => {
                     </table>
                 </div>
             </div>
+
+            <ConfirmationModal
+                isOpen={confirmState.open}
+                title={confirmState.title}
+                message={confirmState.message}
+                onConfirm={confirmState.onConfirm}
+                onCancel={() => setConfirmState({ open: false })}
+            />
 
             {/* Disposal remarks Modal overlay */}
             {isDisposalModalOpen && selectedBatch && (
