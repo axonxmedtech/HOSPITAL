@@ -41,12 +41,8 @@ public class AppointmentController {
     @PostMapping
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
     public ResponseEntity<?> createAppointment(@Valid @RequestBody Appointment appointment) {
-        try {
-            Appointment createdAppointment = appointmentService.createAppointment(appointment);
-            return ResponseEntity.ok(createdAppointment);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        Appointment createdAppointment = appointmentService.createAppointment(appointment);
+        return ResponseEntity.ok(createdAppointment);
     }
 
     /**
@@ -85,14 +81,10 @@ public class AppointmentController {
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        try {
-            Pageable pageable = PageRequest.of(page, size);
-            org.springframework.data.domain.Page<Appointment> appointments = appointmentService.getMyAppointments(view,
-                    search, pageable);
-            return ResponseEntity.ok(appointments);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        Pageable pageable = PageRequest.of(page, size);
+        org.springframework.data.domain.Page<Appointment> appointments = appointmentService.getMyAppointments(view,
+                search, pageable);
+        return ResponseEntity.ok(appointments);
     }
 
     /**
@@ -107,12 +99,8 @@ public class AppointmentController {
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> getAppointmentsByDoctor(@PathVariable Long doctorId,
             @RequestParam(required = false) String view) {
-        try {
-            List<Appointment> appointments = appointmentService.getAppointmentsByDoctor(doctorId, view);
-            return ResponseEntity.ok(appointments);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        List<Appointment> appointments = appointmentService.getAppointmentsByDoctor(doctorId, view);
+        return ResponseEntity.ok(appointments);
     }
 
     /**
@@ -122,12 +110,8 @@ public class AppointmentController {
     @GetMapping("/patient/{patientId}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> getAppointmentsByPatient(@PathVariable String patientId) {
-        try {
-            List<Appointment> appointments = appointmentService.getAppointmentsByPatient(patientId);
-            return ResponseEntity.ok(appointments);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        List<Appointment> appointments = appointmentService.getAppointmentsByPatient(patientId);
+        return ResponseEntity.ok(appointments);
     }
 
     /**
@@ -137,12 +121,8 @@ public class AppointmentController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> getAppointmentById(@PathVariable String id) {
-        try {
-            Appointment appointment = appointmentService.getAppointmentByPublicId(id);
-            return ResponseEntity.ok(appointment);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        Appointment appointment = appointmentService.getAppointmentByPublicId(id);
+        return ResponseEntity.ok(appointment);
     }
 
     /**
@@ -152,12 +132,8 @@ public class AppointmentController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<?> deleteAppointment(@PathVariable String id, @RequestParam(required = false) String reason) {
-        try {
-            appointmentService.deleteAppointment(id, reason);
-            return ResponseEntity.ok("Appointment deleted successfully");
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        appointmentService.deleteAppointment(id, reason);
+        return ResponseEntity.ok("Appointment deleted successfully");
     }
 
     /**
@@ -166,13 +142,8 @@ public class AppointmentController {
     @GetMapping("/stats")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> getDashboardStats() {
-        try {
-            java.util.Map<String, Long> stats = appointmentService.getDashboardStats();
-            return ResponseEntity.ok(stats);
-        } catch (Exception e) {
-            e.printStackTrace(); // Log to console
-            return ResponseEntity.badRequest().body("Error: " + e.getClass().getName() + ": " + e.getMessage());
-        }
+        java.util.Map<String, Long> stats = appointmentService.getDashboardStats();
+        return ResponseEntity.ok(stats);
     }
 
     /**
@@ -185,15 +156,11 @@ public class AppointmentController {
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> updateAppointment(@PathVariable String id,
             @RequestBody java.util.Map<String, String> payload) {
-        try {
-            String status = payload.get("status");
-            String notes = payload.get("notes");
+        String status = payload.get("status");
+        String notes = payload.get("notes");
 
-            Appointment updatedAppointment = appointmentService.updateDetails(id, status, notes);
-            return ResponseEntity.ok(updatedAppointment);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        Appointment updatedAppointment = appointmentService.updateDetails(id, status, notes);
+        return ResponseEntity.ok(updatedAppointment);
     }
 
     /**
@@ -203,16 +170,12 @@ public class AppointmentController {
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> updateAppointmentStatus(@PathVariable String id,
             @RequestBody java.util.Map<String, String> payload) {
-        try {
-            String status = payload.get("status");
-            String reason = payload.get("reason");
-            if (status == null) {
-                throw new RuntimeException("Status is required");
-            }
-            Appointment updatedAppointment = appointmentService.updateStatus(id, status, reason);
-            return ResponseEntity.ok(updatedAppointment);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+        String status = payload.get("status");
+        String reason = payload.get("reason");
+        if (status == null) {
+            throw new RuntimeException("Status is required");
         }
+        Appointment updatedAppointment = appointmentService.updateStatus(id, status, reason);
+        return ResponseEntity.ok(updatedAppointment);
     }
 }

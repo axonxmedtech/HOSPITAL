@@ -16,19 +16,6 @@ import org.springframework.http.MediaType;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
-/**
- * DoctorController - REST controller for doctor management
- * 
- * This controller provides endpoints for:
- * - Adding new doctors (Hospital Admin only)
- * - Listing doctors (Hospital Admin and Doctor)
- * - Getting doctor details (Hospital Admin and Doctor)
- * 
- * All operations are automatically filtered by hospital_id.
- * 
- * @author HMS Team
- * @version Phase-1
- */
 @RestController
 @RequestMapping("/hospital/doctors")
 @CrossOrigin(origins = { "http://localhost:3000", "http://localhost:5173" })
@@ -48,14 +35,6 @@ public class DoctorController {
     @Autowired
     private com.hms.security.SecurityContextHelper securityHelper;
 
-    /**
-     * Add a new doctor
-     * Only Hospital Admin can add doctors
-     * Creates both Doctor record and User account
-     * 
-     * @param request AddDoctorRequest containing doctor details and password
-     * @return Created Doctor entity
-     */
     @PostMapping
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<?> addDoctor(@Valid @RequestBody AddDoctorRequest request) {
@@ -70,30 +49,14 @@ public class DoctorController {
         return ResponseEntity.ok(createdDoctor);
     }
 
-    /**
-     * Update an existing doctor
-     * Only Hospital Admin can update doctors (Name, Spec, Phone)
-     * 
-     * @param id     Doctor ID
-     * @param doctor Updated doctor details
-     * @return Updated Doctor entity
-     */
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<?> updateDoctor(@PathVariable String id, @RequestBody Doctor doctor) {
-        try {
-            // Note: Not validating full request as password/email might not be sent
-            Doctor updatedDoctor = doctorService.updateDoctor(id, doctor);
-            return ResponseEntity.ok(updatedDoctor);
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        // Note: Not validating full request as password/email might not be sent
+        Doctor updatedDoctor = doctorService.updateDoctor(id, doctor);
+        return ResponseEntity.ok(updatedDoctor);
     }
 
-    /**
-     * Get all doctors for the current hospital
-     * Accessible by Hospital Admin, Doctor, and Receptionist
-     */
     @GetMapping
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> getAllDoctors(
@@ -107,124 +70,85 @@ public class DoctorController {
         return ResponseEntity.ok(doctorService.getAllDoctors(pageable));
     }
 
-    /**
-     * Get doctor by ID
-     * Accessible by Hospital Admin, Doctor, and Receptionist
-     */
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> getDoctorById(@PathVariable String id) {
-        try {
-            Doctor doctor = doctorService.getDoctorByPublicId(id);
-            return ResponseEntity.ok(doctor);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        Doctor doctor = doctorService.getDoctorByPublicId(id);
+        return ResponseEntity.ok(doctor);
     }
 
-    /**
-     * Delete (Soft Delete) a doctor
-     * Only Hospital Admin can delete doctors
-     * 
-     * @param id Doctor ID
-     * @return Success message
-     */
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<?> deleteDoctor(@PathVariable String id, @RequestParam(required = false) String reason) {
-        try {
-            doctorService.deleteDoctor(id, reason);
-            return ResponseEntity.ok("Doctor deleted successfully");
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        doctorService.deleteDoctor(id, reason);
+        return ResponseEntity.ok("Doctor deleted successfully");
     }
 
-    /**
-     * Reset a doctor's password
-     * Only Hospital Admin can reset passwords
-     */
     @PostMapping("/{id}/reset-password")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<?> resetDoctorPassword(@PathVariable String id, @RequestBody java.util.Map<String, String> body) {
-        try {
-            String newPassword = body.get("newPassword");
-            if (newPassword == null || newPassword.trim().length() < 6) {
-                return ResponseEntity.badRequest().body("Password must be at least 6 characters");
-            }
-            doctorService.resetDoctorPassword(id, newPassword);
-            return ResponseEntity.ok(java.util.Map.of("message", "Password reset successfully"));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+        String newPassword = body.get("newPassword");
+        if (newPassword == null || newPassword.trim().length() < 6) {
+            return ResponseEntity.badRequest().body("Password must be at least 6 characters");
         }
+        doctorService.resetDoctorPassword(id, newPassword);
+        return ResponseEntity.ok(java.util.Map.of("message", "Password reset successfully"));
     }
 
 
-    /**
-     * Submit a consultation (Diagnosis + Prescription)
-     * Only Doctors can submit consultations
-     */
     @PostMapping("/consultation")
     @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> submitConsultation(@RequestBody com.hms.dto.ConsultationRequest request) {
-        try {
-            com.hms.entity.Opd opd = doctorService.submitConsultation(request);
-            java.util.Map<String, Object> response = new java.util.HashMap<>();
-            response.put("message", "Consultation submitted successfully");
-            if (opd != null) {
-                response.put("opdId", opd.getId());
-                response.put("opd", opd);
-                
-                // Fetch generated bill ID
-                java.util.Optional<com.hms.entity.Billing> billOpt = billingRepository.findByOpdId(opd.getId());
-                if (billOpt.isPresent()) {
-                    response.put("billId", billOpt.get().getId());
-                }
+        com.hms.entity.Opd opd = doctorService.submitConsultation(request);
+        java.util.Map<String, Object> response = new java.util.HashMap<>();
+        response.put("message", "Consultation submitted successfully");
+        if (opd != null) {
+            response.put("opdId", opd.getId());
+            response.put("opd", opd);
+
+            // Fetch generated bill ID
+            java.util.Optional<com.hms.entity.Billing> billOpt = billingRepository.findByOpdId(opd.getId());
+            if (billOpt.isPresent()) {
+                response.put("billId", billOpt.get().getId());
             }
-            boolean hasPrescription = request.getPrescription() != null && !request.getPrescription().isEmpty();
-            boolean hasAdministered = (request.getAdministeredItems() != null && !request.getAdministeredItems().isEmpty())
-                    || (request.getHospitalInventoryItems() != null && !request.getHospitalInventoryItems().isEmpty());
-            response.put("hasPrescription", hasPrescription);
-            response.put("hasAdministered", hasAdministered);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
         }
+        boolean hasPrescription = request.getPrescription() != null && !request.getPrescription().isEmpty();
+        boolean hasAdministered = (request.getAdministeredItems() != null && !request.getAdministeredItems().isEmpty())
+                || (request.getHospitalInventoryItems() != null && !request.getHospitalInventoryItems().isEmpty());
+        response.put("hasPrescription", hasPrescription);
+        response.put("hasAdministered", hasAdministered);
+        return ResponseEntity.ok(response);
     }
 
 
     @GetMapping("/consultation/{appointmentId}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> getConsultationDetails(@PathVariable String appointmentId) {
-        try {
-            Long hospitalId = securityHelper.getCurrentHospitalId();
-            // Resolve Appointment ID
-            java.util.Optional<com.hms.entity.Appointment> apptOpt = appointmentRepository
-                    .findByPublicIdAndHospitalIdAndIsActiveTrue(appointmentId, hospitalId);
-            if (apptOpt.isEmpty()) {
-                try {
-                    Long id = Long.parseLong(appointmentId);
-                    apptOpt = appointmentRepository.findByIdAndHospitalIdAndIsActiveTrue(id, hospitalId);
-                } catch (NumberFormatException e) {
-                }
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        // Resolve Appointment ID
+        java.util.Optional<com.hms.entity.Appointment> apptOpt = appointmentRepository
+                .findByPublicIdAndHospitalIdAndIsActiveTrue(appointmentId, hospitalId);
+        if (apptOpt.isEmpty()) {
+            try {
+                Long id = Long.parseLong(appointmentId);
+                apptOpt = appointmentRepository.findByIdAndHospitalIdAndIsActiveTrue(id, hospitalId);
+            } catch (NumberFormatException e) {
             }
-            com.hms.entity.Appointment appointment = apptOpt
-                    .orElseThrow(() -> new RuntimeException("Appointment not found"));
-
-            com.hms.entity.MedicalRecord record = medicalRecordRepository.findByAppointmentId(appointment.getId())
-                    .orElseThrow(() -> new RuntimeException("Consultation record not found"));
-
-            java.util.List<com.hms.entity.Prescription> prescriptions = prescriptionRepository
-                    .findByMedicalRecordId(record.getId());
-
-            java.util.Map<String, Object> response = new java.util.HashMap<>();
-            response.put("medicalRecord", record);
-            response.put("prescriptions", prescriptions);
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
         }
+        com.hms.entity.Appointment appointment = apptOpt
+                .orElseThrow(() -> new RuntimeException("Appointment not found"));
+
+        com.hms.entity.MedicalRecord record = medicalRecordRepository.findByAppointmentId(appointment.getId())
+                .orElseThrow(() -> new RuntimeException("Consultation record not found"));
+
+        java.util.List<com.hms.entity.Prescription> prescriptions = prescriptionRepository
+                .findByMedicalRecordId(record.getId());
+
+        java.util.Map<String, Object> response = new java.util.HashMap<>();
+        response.put("medicalRecord", record);
+        response.put("prescriptions", prescriptions);
+
+        return ResponseEntity.ok(response);
     }
 
     @Autowired
@@ -286,8 +210,8 @@ public class DoctorController {
                     .contentType(MediaType.APPLICATION_PDF)
                     .body(new InputStreamResource(pdf));
         } catch (Exception e) {
-            logger.error("Error downloading prescription for appointment {}: {}", appointmentId, e.getMessage(), e);
-            return ResponseEntity.badRequest().body(e.getMessage());
+            logger.error("Error downloading prescription for appointment {}", appointmentId, e);
+            return ResponseEntity.status(500).body("Failed to generate PDF");
         }
     }
 
@@ -324,8 +248,8 @@ public class DoctorController {
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(new InputStreamResource(pdf));
         } catch (Exception e) {
-            logger.error("Error downloading prescription for opd {}: {}", opdId, e.getMessage(), e);
-            return ResponseEntity.badRequest().body(e.getMessage());
+            logger.error("Error downloading prescription for opd {}", opdId, e);
+            return ResponseEntity.status(500).body("Failed to generate PDF");
         }
         }
 }

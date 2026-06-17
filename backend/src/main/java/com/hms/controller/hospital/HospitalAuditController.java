@@ -5,6 +5,8 @@ import com.hms.entity.AuditLog;
 import com.hms.service.AuditLogService;
 
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -21,6 +23,8 @@ import java.util.List;
 @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
 public class HospitalAuditController {
 
+    private static final Logger log = LoggerFactory.getLogger(HospitalAuditController.class);
+
     private final AuditLogService auditLogService;
     private final com.hms.security.SecurityContextHelper securityHelper;
 
@@ -36,7 +40,7 @@ public class HospitalAuditController {
             Long hospitalId = securityHelper.getCurrentHospitalId();
 
             if (hospitalId == null) {
-                System.err.println("WARN: Hospital ID is null - returning empty activity feed");
+                log.warn("Hospital ID is null for current user - returning empty activity feed");
                 return ResponseEntity.ok(java.util.Collections.emptyList());
             }
 
@@ -51,8 +55,7 @@ public class HospitalAuditController {
             }
             return ResponseEntity.ok(logs);
         } catch (Exception e) {
-            System.err.println("WARN: Could not retrieve hospital context - returning empty activity feed");
-            System.err.println("Error: " + e.getMessage());
+            log.warn("Could not retrieve hospital context - returning empty activity feed", e);
             return ResponseEntity.ok(java.util.Collections.emptyList());
         }
     }

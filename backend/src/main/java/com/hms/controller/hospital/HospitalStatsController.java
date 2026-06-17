@@ -70,16 +70,12 @@ public class HospitalStatsController {
     @GetMapping("/patient-activity")
     public ResponseEntity<?> getPatientActivityByDate(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        try {
-            Long hospitalId = securityHelper.getCurrentHospitalId();
-            if (hospitalId == null) {
-                throw new RuntimeException("Hospital context not found");
-            }
-            List<Map<String, Object>> activities = statsService.getPatientActivityByDate(hospitalId, date);
-            return ResponseEntity.ok(activities);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital context not found");
         }
+        List<Map<String, Object>> activities = statsService.getPatientActivityByDate(hospitalId, date);
+        return ResponseEntity.ok(activities);
     }
 
     /**
@@ -88,26 +84,22 @@ public class HospitalStatsController {
     @GetMapping("/patient-activity/pdf")
     public ResponseEntity<?> downloadPatientActivityPdf(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        try {
-            Long hospitalId = securityHelper.getCurrentHospitalId();
-            if (hospitalId == null) {
-                throw new RuntimeException("Hospital context not found");
-            }
-            List<Map<String, Object>> activities = statsService.getPatientActivityByDate(hospitalId, date);
-            
-            com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
-                    .orElseThrow(() -> new RuntimeException("Hospital not found"));
-            
-            ByteArrayInputStream pdfStream = pdfService.generatePatientActivityPdf(hospital, date, activities);
-            org.springframework.core.io.InputStreamResource resource = new org.springframework.core.io.InputStreamResource(pdfStream);
-            
-            String filename = "Patient_Activity_Report_" + date.toString() + ".pdf";
-            return ResponseEntity.ok()
-                    .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)
-                    .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
-                    .body(resource);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital context not found");
         }
+        List<Map<String, Object>> activities = statsService.getPatientActivityByDate(hospitalId, date);
+
+        com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
+                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+
+        ByteArrayInputStream pdfStream = pdfService.generatePatientActivityPdf(hospital, date, activities);
+        org.springframework.core.io.InputStreamResource resource = new org.springframework.core.io.InputStreamResource(pdfStream);
+
+        String filename = "Patient_Activity_Report_" + date.toString() + ".pdf";
+        return ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)
+                .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                .body(resource);
     }
 }

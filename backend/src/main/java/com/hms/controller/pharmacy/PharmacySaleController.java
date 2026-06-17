@@ -37,13 +37,7 @@ public class PharmacySaleController {
     @PostMapping
     @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> createSale(@RequestBody PharmacySaleRequest request) {
-        try {
-            return ResponseEntity.ok(saleService.createSale(request));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(new java.util.HashMap<String, String>() {{
-                put("message", e.getMessage());
-            }});
-        }
+        return ResponseEntity.ok(saleService.createSale(request));
     }
  
     @GetMapping
@@ -63,30 +57,26 @@ public class PharmacySaleController {
     @GetMapping("/{id}/pdf")
     @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> downloadReceipt(@PathVariable Long id) {
-        try {
-            PharmacySale sale = saleService.getSaleDetails(id);
+        PharmacySale sale = saleService.getSaleDetails(id);
 
-            Hospital hospital = hospitalRepository.findById(sale.getHospitalId())
-                    .orElseThrow(() -> new RuntimeException("Hospital not found"));
+        Hospital hospital = hospitalRepository.findById(sale.getHospitalId())
+                .orElseThrow(() -> new RuntimeException("Hospital not found"));
 
-            Patient patient = null;
-            if (sale.getPatientId() != null) {
-                patient = patientService.getPatientById(sale.getPatientId());
-            }
-
-            java.io.ByteArrayInputStream pdf = pdfService.generatePharmacySaleReceiptPdf(hospital, patient, sale);
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.add("Content-Disposition", "inline; filename=receipt_" + sale.getBillNumber() + ".pdf");
-
-            return ResponseEntity
-                    .ok()
-                    .headers(headers)
-                    .contentType(MediaType.APPLICATION_PDF)
-                    .body(new InputStreamResource(pdf));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+        Patient patient = null;
+        if (sale.getPatientId() != null) {
+            patient = patientService.getPatientById(sale.getPatientId());
         }
+
+        java.io.ByteArrayInputStream pdf = pdfService.generatePharmacySaleReceiptPdf(hospital, patient, sale);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("Content-Disposition", "inline; filename=receipt_" + sale.getBillNumber() + ".pdf");
+
+        return ResponseEntity
+                .ok()
+                .headers(headers)
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(new InputStreamResource(pdf));
     }
 
     @Autowired

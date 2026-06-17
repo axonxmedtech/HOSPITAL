@@ -18,28 +18,20 @@ public class PlatformFaqController {
 
     @PostMapping
     public ResponseEntity<?> addFaq(@RequestBody Faq faq) {
-        try {
-            if (faq.getQuestion() == null || faq.getQuestion().trim().isEmpty() ||
-                faq.getAnswer() == null || faq.getAnswer().trim().isEmpty()) {
-                return ResponseEntity.badRequest().body("Question and answer are required.");
-            }
-            Faq saved = faqRepository.save(faq);
-            return ResponseEntity.ok(saved);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+        if (faq.getQuestion() == null || faq.getQuestion().trim().isEmpty() ||
+            faq.getAnswer() == null || faq.getAnswer().trim().isEmpty()) {
+            return ResponseEntity.badRequest().body("Question and answer are required.");
         }
+        Faq saved = faqRepository.save(faq);
+        return ResponseEntity.ok(saved);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteFaq(@PathVariable Long id) {
-        try {
-            if (!faqRepository.existsById(id)) {
-                return ResponseEntity.notFound().build();
-            }
-            faqRepository.deleteById(id);
-            return ResponseEntity.ok().build();
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+        if (!faqRepository.existsById(id)) {
+            return ResponseEntity.notFound().build();
         }
+        faqRepository.deleteById(id);
+        return ResponseEntity.ok().build();
     }
 }

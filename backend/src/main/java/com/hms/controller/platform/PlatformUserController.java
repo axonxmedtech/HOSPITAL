@@ -33,12 +33,8 @@ public class PlatformUserController {
 
     @PostMapping("/{id}/reset-password")
     public ResponseEntity<?> resetUserPassword(@PathVariable String id) {
-        try {
-            Map<String, String> credentials = userService.resetUserPassword(id);
-            return ResponseEntity.ok(credentials);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        Map<String, String> credentials = userService.resetUserPassword(id);
+        return ResponseEntity.ok(credentials);
     }
 
 }

@@ -26,73 +26,57 @@ public class HospitalFeeController {
     @GetMapping
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> getCustomFees() {
-        try {
-            Long hospitalId = securityHelper.getCurrentHospitalId();
-            List<HospitalFee> fees = hospitalFeeRepository.findByHospitalIdAndIsActiveTrue(hospitalId);
-            List<HospitalFeeDTO> dtos = fees.stream()
-                    .map(f -> new HospitalFeeDTO(f.getId(), f.getName(), f.getDefaultAmount()))
-                    .collect(Collectors.toList());
-            return ResponseEntity.ok(dtos);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        List<HospitalFee> fees = hospitalFeeRepository.findByHospitalIdAndIsActiveTrue(hospitalId);
+        List<HospitalFeeDTO> dtos = fees.stream()
+                .map(f -> new HospitalFeeDTO(f.getId(), f.getName(), f.getDefaultAmount()))
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(dtos);
     }
 
     @PostMapping
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<?> addCustomFee(@RequestBody HospitalFeeDTO dto) {
-        try {
-            Long hospitalId = securityHelper.getCurrentHospitalId();
-            if (dto.getName() == null || dto.getName().trim().isEmpty()) {
-                return ResponseEntity.badRequest().body("Fee name is required");
-            }
-
-            HospitalFee fee = new HospitalFee();
-            fee.setHospitalId(hospitalId);
-            fee.setName(dto.getName().trim());
-            fee.setDefaultAmount(dto.getDefaultAmount());
-            fee.setIsActive(true);
-
-            HospitalFee saved = hospitalFeeRepository.save(fee);
-            return ResponseEntity.ok(new HospitalFeeDTO(saved.getId(), saved.getName(), saved.getDefaultAmount()));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (dto.getName() == null || dto.getName().trim().isEmpty()) {
+            return ResponseEntity.badRequest().body("Fee name is required");
         }
+
+        HospitalFee fee = new HospitalFee();
+        fee.setHospitalId(hospitalId);
+        fee.setName(dto.getName().trim());
+        fee.setDefaultAmount(dto.getDefaultAmount());
+        fee.setIsActive(true);
+
+        HospitalFee saved = hospitalFeeRepository.save(fee);
+        return ResponseEntity.ok(new HospitalFeeDTO(saved.getId(), saved.getName(), saved.getDefaultAmount()));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<?> updateCustomFee(@PathVariable Long id, @RequestBody HospitalFeeDTO dto) {
-        try {
-            Long hospitalId = securityHelper.getCurrentHospitalId();
-            HospitalFee fee = hospitalFeeRepository.findByIdAndHospitalId(id, hospitalId)
-                    .orElseThrow(() -> new RuntimeException("Fee not found"));
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        HospitalFee fee = hospitalFeeRepository.findByIdAndHospitalId(id, hospitalId)
+                .orElseThrow(() -> new RuntimeException("Fee not found"));
 
-            if (dto.getName() != null && !dto.getName().trim().isEmpty()) {
-                fee.setName(dto.getName().trim());
-            }
-            fee.setDefaultAmount(dto.getDefaultAmount());
-
-            HospitalFee saved = hospitalFeeRepository.save(fee);
-            return ResponseEntity.ok(new HospitalFeeDTO(saved.getId(), saved.getName(), saved.getDefaultAmount()));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+        if (dto.getName() != null && !dto.getName().trim().isEmpty()) {
+            fee.setName(dto.getName().trim());
         }
+        fee.setDefaultAmount(dto.getDefaultAmount());
+
+        HospitalFee saved = hospitalFeeRepository.save(fee);
+        return ResponseEntity.ok(new HospitalFeeDTO(saved.getId(), saved.getName(), saved.getDefaultAmount()));
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<?> deleteCustomFee(@PathVariable Long id) {
-        try {
-            Long hospitalId = securityHelper.getCurrentHospitalId();
-            HospitalFee fee = hospitalFeeRepository.findByIdAndHospitalId(id, hospitalId)
-                    .orElseThrow(() -> new RuntimeException("Fee not found"));
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        HospitalFee fee = hospitalFeeRepository.findByIdAndHospitalId(id, hospitalId)
+                .orElseThrow(() -> new RuntimeException("Fee not found"));
 
-            fee.setIsActive(false);
-            hospitalFeeRepository.save(fee);
-            return ResponseEntity.ok("Fee deleted successfully");
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        fee.setIsActive(false);
+        hospitalFeeRepository.save(fee);
+        return ResponseEntity.ok("Fee deleted successfully");
     }
 }

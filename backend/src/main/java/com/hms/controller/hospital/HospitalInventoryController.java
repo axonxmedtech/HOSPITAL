@@ -36,32 +36,20 @@ public class HospitalInventoryController {
     @PostMapping("/catalog")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> addCatalogItem(@RequestBody InventoryItem catalog) {
-        try {
-            return ResponseEntity.ok(hospitalInventoryService.addCatalogItem(catalog));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        return ResponseEntity.ok(hospitalInventoryService.addCatalogItem(catalog));
     }
 
     @PutMapping("/catalog/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> updateCatalogItem(@PathVariable Long id, @RequestBody InventoryItem catalog) {
-        try {
-            return ResponseEntity.ok(hospitalInventoryService.updateCatalogItem(id, catalog));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        return ResponseEntity.ok(hospitalInventoryService.updateCatalogItem(id, catalog));
     }
 
     @DeleteMapping("/catalog/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> deleteCatalogItem(@PathVariable Long id) {
-        try {
-            hospitalInventoryService.deleteCatalogItem(id);
-            return ResponseEntity.ok().build();
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        hospitalInventoryService.deleteCatalogItem(id);
+        return ResponseEntity.ok().build();
     }
 
     // --- Active Stock Inventory CRUD ---
@@ -75,31 +63,19 @@ public class HospitalInventoryController {
     @PostMapping("/inventory")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> addInventoryItem(@RequestBody HospitalInventory stock) {
-        try {
-            return ResponseEntity.ok(hospitalInventoryService.addInventoryItem(stock));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        return ResponseEntity.ok(hospitalInventoryService.addInventoryItem(stock));
     }
 
     @PutMapping("/inventory/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> updateInventoryItem(@PathVariable Long id, @RequestBody HospitalInventory stock) {
-        try {
-            return ResponseEntity.ok(hospitalInventoryService.updateInventoryItem(id, stock));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        return ResponseEntity.ok(hospitalInventoryService.updateInventoryItem(id, stock));
     }
 
     @DeleteMapping("/inventory/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> deleteInventoryItem(@PathVariable Long id) {
-        try {
-            hospitalInventoryService.deleteInventoryItem(id);
-            return ResponseEntity.ok().build();
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        hospitalInventoryService.deleteInventoryItem(id);
+        return ResponseEntity.ok().build();
     }
 }
