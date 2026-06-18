@@ -13,6 +13,7 @@ import org.springframework.data.domain.Pageable;
 
 @RestController
 @RequestMapping("/hospital/receptionists")
+@CrossOrigin(origins = { "http://localhost:3000", "http://localhost:5173" })
 @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
 public class ReceptionistController {
 

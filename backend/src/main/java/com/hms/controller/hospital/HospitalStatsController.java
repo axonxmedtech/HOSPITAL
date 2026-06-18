@@ -32,6 +32,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/hospital/stats")
+@CrossOrigin(origins = { "http://localhost:3000", "http://localhost:5173" })
 @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
 public class HospitalStatsController {
 

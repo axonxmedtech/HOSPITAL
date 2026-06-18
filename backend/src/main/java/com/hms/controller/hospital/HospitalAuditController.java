@@ -19,6 +19,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/hospital/audit-logs")
 @RequiredArgsConstructor
+@CrossOrigin(origins = "*")
 @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
 public class HospitalAuditController {
 

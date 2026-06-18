@@ -18,6 +18,7 @@ import org.springframework.data.domain.Pageable;
 
 @RestController
 @RequestMapping("/hospital/doctors")
+@CrossOrigin(origins = { "http://localhost:3000", "http://localhost:5173" })
 public class DoctorController {
 
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(DoctorController.class);

@@ -13,6 +13,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/hospital/pharmacists")
+@CrossOrigin(origins = { "http://localhost:3000", "http://localhost:5173" })
 @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
 public class PharmacistController {
 

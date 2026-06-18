@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/hospital/settings/fees/custom")
+@CrossOrigin(origins = { "http://localhost:3000", "http://localhost:5173" })
 public class HospitalFeeController {
 
     @Autowired
