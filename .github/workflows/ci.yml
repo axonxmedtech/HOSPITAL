@@ -10,7 +10,8 @@
 # GitHub Variables  (Settings → Variables → Actions):
 #   NODE_VERSION         Node.js version              (default: 22)
 #   JAVA_VERSION         JDK version                  (default: 17)
-#   VITE_API_BASE_URL    Backend API URL baked into the frontend bundle
+#   STAGE_API_BASE_URL   Backend API URL baked into the staging frontend bundle
+#   PROD_API_BASE_URL    Backend API URL baked into the production frontend bundle
 #   SONAR_ORGANIZATION   SonarCloud organisation key  (e.g. axonxmedtech)
 #   SONAR_PROJECT_KEY    SonarCloud project key       (e.g. axonxmedtech_HOSPITAL)
 #
@@ -47,7 +48,7 @@ jobs:
     uses: ./.github/workflows/_build-frontend.yml
     with:
       node-version: ${{ vars.NODE_VERSION || '22' }}
-      vite-api-base-url: ${{ vars.VITE_API_BASE_URL }}
+      vite-api-base-url: ${{ github.ref == 'refs/heads/main' && vars.PROD_API_BASE_URL || vars.STAGE_API_BASE_URL }}
 
   # ── Backend compile, test (JaCoCo), package ──────────────────────────────
   build-backend:
