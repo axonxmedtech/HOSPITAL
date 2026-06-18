@@ -3,6 +3,7 @@ package com.hms.service.platform;
 import com.hms.dto.LoginRequest;
 import com.hms.dto.LoginResponse;
 import com.hms.entity.User;
+import com.hms.exception.UnauthorizedException;
 import com.hms.repository.UserRepository;
 import com.hms.security.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,17 +48,17 @@ public class PlatformAuthService {
     public LoginResponse login(LoginRequest request) {
         logger.info("Platform login attempt for email: {}", request.getEmail());
 
-        // Find user by email
+        // Find user by email — same message as wrong password to prevent user enumeration
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> {
                     logger.warn("Login failed - user not found: {}", request.getEmail());
-                    return new RuntimeException("Invalid credentials");
+                    return new UnauthorizedException("Invalid credentials");
                 });
 
         // Verify password
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             logger.warn("Login failed - invalid password for user: {}", request.getEmail());
-            throw new RuntimeException("Invalid credentials");
+            throw new UnauthorizedException("Invalid credentials");
         }
 
         logger.debug("Password verified for user: {}", request.getEmail());
@@ -66,21 +67,20 @@ public class PlatformAuthService {
         if (!"SUPER_ADMIN".equals(user.getRole())) {
             logger.warn("Login failed - non-Super Admin tried to login via platform endpoint: {} (role: {})",
                     request.getEmail(), user.getRole());
-            throw new RuntimeException("Access denied. Super Admin only.");
+            throw new UnauthorizedException("Access denied. Super Admin only.");
         }
 
         // Verify hospital_id is null (Super Admin should not belong to any hospital)
         if (user.getHospitalId() != null) {
             logger.error("Login failed - Super Admin has non-null hospital_id: {} (hospital_id: {})",
                     request.getEmail(), user.getHospitalId());
-            throw new RuntimeException("Invalid Super Admin account");
+            throw new UnauthorizedException("Invalid Super Admin account");
         }
 
-        // Verify user account is active (handle null as active for backward
-        // compatibility)
+        // Verify user account is active (handle null as active for backward compatibility)
         if (user.getIsActive() != null && !user.getIsActive()) {
             logger.warn("Login failed - Super Admin account is inactive: {}", request.getEmail());
-            throw new RuntimeException("User account is inactive. Please contact administrator.");
+            throw new UnauthorizedException("User account is inactive. Please contact administrator.");
         }
 
         logger.info("Login successful for Super Admin: {}", request.getEmail());

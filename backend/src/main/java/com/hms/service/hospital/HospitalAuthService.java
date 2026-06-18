@@ -3,6 +3,7 @@ package com.hms.service.hospital;
 import com.hms.dto.LoginRequest;
 import com.hms.dto.LoginResponse;
 import com.hms.dto.ProfileUpdateRequest;
+import com.hms.exception.UnauthorizedException;
 import com.hms.entity.Hospital;
 import com.hms.entity.HospitalSetting;
 import com.hms.entity.User;
@@ -154,17 +155,17 @@ public class HospitalAuthService {
     public LoginResponse login(LoginRequest request) {
         logger.info("Hospital login attempt for email: {}", request.getEmail());
 
-        // Find user by email
+        // Find user by email — same message as wrong password to prevent user enumeration
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> {
                     logger.warn("Login failed - user not found: {}", request.getEmail());
-                    return new RuntimeException("Invalid credentials");
+                    return new UnauthorizedException("Invalid credentials");
                 });
 
         // Verify password
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             logger.warn("Login failed - invalid password for user: {}", request.getEmail());
-            throw new RuntimeException("Invalid credentials");
+            throw new UnauthorizedException("Invalid credentials");
         }
 
         logger.debug("Password verified for user: {}", request.getEmail());
@@ -172,13 +173,13 @@ public class HospitalAuthService {
         // Verify user is a hospital user (not Super Admin)
         if ("SUPER_ADMIN".equals(user.getRole())) {
             logger.warn("Login failed - Super Admin tried to login via hospital endpoint: {}", request.getEmail());
-            throw new RuntimeException("Access denied. Please use platform login.");
+            throw new UnauthorizedException("Access denied. Please use platform login.");
         }
 
         // Verify user has a hospital_id
         if (user.getHospitalId() == null) {
             logger.error("Login failed - hospital user has null hospital_id: {}", request.getEmail());
-            throw new RuntimeException("Invalid hospital user account");
+            throw new UnauthorizedException("Invalid hospital user account");
         }
 
         logger.debug("User role and hospital_id validated for: {}", request.getEmail());
@@ -192,7 +193,7 @@ public class HospitalAuthService {
 
         if (hospital.getIsActive() == null || !hospital.getIsActive()) {
             logger.warn("Login failed - hospital is inactive: {} (ID: {})", hospital.getName(), hospital.getId());
-            throw new RuntimeException("Hospital is inactive. Please contact support.");
+            throw new UnauthorizedException("Hospital is inactive. Please contact support.");
         }
 
         // Fetch hospital settings (or auto-create default row if not exist)
@@ -209,14 +210,13 @@ public class HospitalAuthService {
         // Restrict receptionist login if Solo Doctor mode is active
         if ("RECEPTIONIST".equals(user.getRole()) && "SOLO".equals(settings.getReceptionMode())) {
             logger.warn("Login failed - Receptionist login restricted under Solo Doctor mode: {}", request.getEmail());
-            throw new RuntimeException("Solo Doctor Mode is active. Receptionist login is restricted.");
+            throw new UnauthorizedException("Solo Doctor Mode is active. Receptionist login is restricted.");
         }
 
-        // Verify user account is active (handle null as active for backward
-        // compatibility)
+        // Verify user account is active (handle null as active for backward compatibility)
         if (user.getIsActive() != null && !user.getIsActive()) {
             logger.warn("Login failed - user account is inactive: {}", request.getEmail());
-            throw new RuntimeException("User account is inactive. Please contact administrator.");
+            throw new UnauthorizedException("User account is inactive. Please contact administrator.");
         }
 
         logger.info("Login successful for user: {} at hospital: {}", request.getEmail(), hospital.getName());

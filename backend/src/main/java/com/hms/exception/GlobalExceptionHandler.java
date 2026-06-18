@@ -96,13 +96,16 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Handle generic RuntimeException — 400 Bad Request (legacy behaviour preserved)
+     * Handle unexpected RuntimeException — 500 Internal Server Error.
+     * Auth and business failures must be thrown as typed exceptions (UnauthorizedException,
+     * ResourceNotFoundException, IllegalArgumentException) so they reach their specific
+     * handlers above. A bare RuntimeException reaching here means something unhandled
+     * broke — that is a server fault, not a client fault.
      */
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ApiResponse<Void>> handleRuntimeException(RuntimeException ex) {
-        String message = ex.getMessage() == null ? "unexpected error" : ex.getMessage();
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponse.error(message));
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error("An unexpected error occurred. Please contact support."));
     }
 
     /**
