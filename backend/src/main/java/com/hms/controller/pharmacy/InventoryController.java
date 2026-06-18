@@ -13,7 +13,6 @@ import java.math.BigDecimal;
 
 @RestController
 @RequestMapping("/api/pharmacy/inventory")
-@CrossOrigin
 public class InventoryController {
 
     @Autowired

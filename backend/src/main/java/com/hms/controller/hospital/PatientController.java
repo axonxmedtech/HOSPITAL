@@ -13,7 +13,6 @@ import org.springframework.data.domain.Pageable;
 
 @RestController
 @RequestMapping("/hospital/patients")
-@CrossOrigin(origins = { "http://localhost:3000", "http://localhost:5173" })
 public class PatientController {
 
     @Autowired

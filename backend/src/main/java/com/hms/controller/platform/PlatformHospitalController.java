@@ -17,7 +17,6 @@ import org.springframework.data.domain.Pageable;
 
 @RestController
 @RequestMapping("/platform/hospitals")
-@CrossOrigin(origins = { "http://localhost:3000", "http://localhost:5173" })
 @PreAuthorize("hasRole('SUPER_ADMIN')")
 public class PlatformHospitalController {
 

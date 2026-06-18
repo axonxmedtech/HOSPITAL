@@ -27,7 +27,6 @@ import com.hms.service.PdfService;
 
 @RestController
 @RequestMapping("/hospital/billing")
-@CrossOrigin(origins = { "http://localhost:3000", "http://localhost:5173" })
 public class BillingController {
 
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(BillingController.class);

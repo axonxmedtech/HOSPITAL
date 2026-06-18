@@ -12,7 +12,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/hospital/hospital-inventory")
-@CrossOrigin(origins = "*")
 public class HospitalInventoryController {
 
     @Autowired

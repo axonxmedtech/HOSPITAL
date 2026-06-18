@@ -19,7 +19,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/pharmacy/reports")
-@CrossOrigin
 public class PharmacyReportsController {
 
     @Autowired

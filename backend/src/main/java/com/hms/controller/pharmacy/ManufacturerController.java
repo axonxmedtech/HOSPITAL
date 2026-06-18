@@ -12,7 +12,6 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/pharmacy/manufacturers")
-@CrossOrigin
 public class ManufacturerController {
 
     @Autowired
