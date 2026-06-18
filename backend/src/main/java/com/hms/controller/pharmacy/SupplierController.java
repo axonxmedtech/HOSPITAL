@@ -15,7 +15,6 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/pharmacy/suppliers")
-@CrossOrigin
 public class SupplierController {
 
     @Autowired

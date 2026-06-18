@@ -12,7 +12,6 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/pharmacy/categories")
-@CrossOrigin
 public class MedicineCategoryController {
 
     @Autowired

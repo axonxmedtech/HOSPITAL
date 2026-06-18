@@ -202,15 +202,23 @@ jobs:
             tar -xzf deploy.tar.gz
             rm -f deploy.tar.gz
             
-            # Inject FRONTEND_URL into systemd so Spring Boot CORS allows the frontend origin
+            # Inject FRONTEND_URL and SPRING_PROFILES_ACTIVE into systemd
             SERVICE="${{ inputs.service_name || vars.SERVICE_NAME }}"
             APP_URL="${{ inputs.app_url }}"
+            ENV_NAME="${{ inputs.environment }}"
+            # Map environment label to Spring profile: Staging→staging, Production→prod
+            case "${ENV_NAME,,}" in
+              staging)    SPRING_PROFILE="staging" ;;
+              production) SPRING_PROFILE="prod"    ;;
+              *)          SPRING_PROFILE="${ENV_NAME,,}" ;;
+            esac
             if [ -n "$APP_URL" ]; then
               CLEAN_URL="${APP_URL%/}"
               sudo mkdir -p /etc/systemd/system/${SERVICE}.service.d/
-              printf '[Service]\nEnvironment="FRONTEND_URL=%s"\n' "$CLEAN_URL" \
+              printf '[Service]\nEnvironment="FRONTEND_URL=%s"\nEnvironment="SPRING_PROFILES_ACTIVE=%s"\n' \
+                "$CLEAN_URL" "$SPRING_PROFILE" \
                 | sudo tee /etc/systemd/system/${SERVICE}.service.d/frontend-url.conf > /dev/null
-              echo "[$(TS)] Set FRONTEND_URL=$CLEAN_URL for $SERVICE"
+              echo "[$(TS)] Set FRONTEND_URL=$CLEAN_URL and SPRING_PROFILES_ACTIVE=$SPRING_PROFILE for $SERVICE"
               sudo systemctl daemon-reload
             fi
 
