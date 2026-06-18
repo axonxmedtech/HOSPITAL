@@ -76,19 +76,34 @@ jobs:
           EOF
 
       # ── SSH Connection Diagnostics ───────────────────────────────────────
+      # Retries TCP check 5 times before failing — surfaces Hostinger hPanel
+      # firewall or network blocks early instead of letting ssh-action hang.
       - name: SSH Connection Diagnostics
         run: |
           echo "=================== SSH DIAGNOSTICS ==================="
           echo "Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "Target Host: $SSH_HOST"
-          echo "Target Port: $SSH_PORT"
-          
-          echo "Testing TCP connection to port $SSH_PORT..."
-          if nc -zv -w 5 "$SSH_HOST" "$SSH_PORT" 2>&1; then
-            echo "TCP connection to port $SSH_PORT succeeded!"
-          else
-            echo "WARNING: TCP connection to port $SSH_PORT timed out or was refused."
-            echo "This indicates a network-level issue, firewall block (e.g. fail2ban), or VPS freeze."
+          echo "Target Host: $SSH_HOST  Port: $SSH_PORT"
+
+          CONNECTED=false
+          for attempt in 1 2 3 4 5; do
+            echo "TCP probe attempt $attempt/5..."
+            if nc -zv -w 10 "$SSH_HOST" "$SSH_PORT" 2>&1; then
+              CONNECTED=true
+              echo "TCP connection succeeded on attempt $attempt."
+              break
+            fi
+            [ $attempt -lt 5 ] && sleep 5
+          done
+
+          if [ "$CONNECTED" = "false" ]; then
+            echo ""
+            echo "ERROR: Cannot reach $SSH_HOST:$SSH_PORT after 5 attempts."
+            echo "Check: 1) Hostinger hPanel Firewall (allow port 22 from 0.0.0.0/0)"
+            echo "       2) VPS is powered on"
+            echo "       3) UFW: sudo ufw allow 22/tcp"
+            echo "       4) TCP wrappers: /etc/hosts.deny must not block GitHub IPs"
+            echo "======================================================="
+            exit 1
           fi
           echo "======================================================="
         env:
@@ -121,6 +136,7 @@ jobs:
           username: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
           key: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
           port: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
+          timeout: 60s
           command_timeout: 5m
           script: |
             set -euo pipefail
@@ -158,6 +174,7 @@ jobs:
           username: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
           key: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
           port: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
+          timeout: 60s
           source: "deploy.tar.gz"
           target: "${{ inputs.repo_path || vars.DEPLOY_PATH }}"
 
@@ -169,6 +186,7 @@ jobs:
           username: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
           key: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
           port: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
+          timeout: 60s
           command_timeout: 10m
           script: |
             set -euo pipefail
