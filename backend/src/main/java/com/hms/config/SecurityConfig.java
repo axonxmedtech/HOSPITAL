@@ -95,9 +95,10 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
-                // Rate limit filter (login endpoints) before JWT filter
-                .addFilterBefore(rateLimitFilter, JwtAuthenticationFilter.class)
-                // Add JWT filter before UsernamePasswordAuthenticationFilter
+                // RateLimitFilter → JwtAuthenticationFilter → UsernamePasswordAuthenticationFilter
+                // Both custom filters reference the same built-in anchor. Java's stable sort
+                // preserves insertion order, so rateLimitFilter executes first.
+                .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
