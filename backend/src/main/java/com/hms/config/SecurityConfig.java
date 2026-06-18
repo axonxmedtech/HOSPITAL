@@ -112,9 +112,11 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // Dynamically split by comma and trim to allow multiple origins
+        // Dynamically split by comma, trim, and strip trailing slashes
         List<String> origins = Arrays.stream(allowedOrigins.split(","))
                 .map(String::trim)
+                .map(o -> o.replaceAll("/+$", ""))
+                .filter(o -> !o.isEmpty())
                 .collect(Collectors.toList());
 
         // Always ensure standard localhost is added for safety in dev, plus the production link
