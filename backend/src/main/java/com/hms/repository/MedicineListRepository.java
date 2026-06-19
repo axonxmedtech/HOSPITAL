@@ -21,4 +21,7 @@ public interface MedicineListRepository extends JpaRepository<MedicineList, Long
     boolean existsByNameAndHospitalId(String name, Long hospitalId);
 
     Optional<MedicineList> findByNameIgnoreCaseAndHospitalId(String name, Long hospitalId);
+
+    @Query("SELECT m FROM MedicineList m WHERE lower(m.name) = lower(:name) AND (m.hospitalId = :hospitalId OR m.hospitalId IS NULL) AND m.isActive = true")
+    List<MedicineList> findByNameIgnoreCaseAndHospitalOrGlobal(String name, Long hospitalId);
 }

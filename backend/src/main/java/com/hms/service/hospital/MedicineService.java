@@ -106,6 +106,14 @@ public class MedicineService {
 
         MedicineList saved = medicineListRepository.save(catalog);
 
+        // Sync catalog updates to existing active stock inventory
+        medicineRepository.findByNameIgnoreCaseAndHospitalId(saved.getName(), hospitalId).ifPresent(stock -> {
+            stock.setDefaultDosage(saved.getDefaultDosage());
+            stock.setDefaultFrequency(saved.getDefaultFrequency());
+            stock.setDefaultDuration(saved.getDefaultDuration());
+            medicineRepository.save(stock);
+        });
+
         // Audit Log
         try {
             auditLogService.logAction(
@@ -220,6 +228,21 @@ public class MedicineService {
         return s.trim();
     }
 
+    private Optional<MedicineList> getCatalogMatch(String name, Long hospitalId) {
+        if (name == null || hospitalId == null) {
+            return Optional.empty();
+        }
+        List<MedicineList> matches = medicineListRepository.findByNameIgnoreCaseAndHospitalOrGlobal(name.trim(), hospitalId);
+        if (matches.isEmpty()) {
+            return Optional.empty();
+        }
+        // Prefer hospital-specific over global fallback
+        return matches.stream()
+                .filter(m -> m.getHospitalId() != null)
+                .findFirst()
+                .or(() -> matches.stream().findFirst());
+    }
+
     // --- Active Stock Inventory CRUD ---
 
     public List<Medicine> getInventoryMedicines() {
@@ -227,7 +250,26 @@ public class MedicineService {
         if (hospitalId == null) {
             throw new RuntimeException("Hospital ID not found in context");
         }
-        return medicineRepository.findByHospitalId(hospitalId);
+        List<Medicine> list = medicineRepository.findByHospitalId(hospitalId);
+        for (Medicine m : list) {
+            if (m.getDefaultDosage() == null || m.getDefaultDosage().trim().isEmpty() ||
+                m.getDefaultFrequency() == null || m.getDefaultFrequency().trim().isEmpty() ||
+                m.getDefaultDuration() == null || m.getDefaultDuration().trim().isEmpty()) {
+                
+                getCatalogMatch(m.getName(), hospitalId).ifPresent(catalog -> {
+                    if (m.getDefaultDosage() == null || m.getDefaultDosage().trim().isEmpty()) {
+                        m.setDefaultDosage(catalog.getDefaultDosage());
+                    }
+                    if (m.getDefaultFrequency() == null || m.getDefaultFrequency().trim().isEmpty()) {
+                        m.setDefaultFrequency(catalog.getDefaultFrequency());
+                    }
+                    if (m.getDefaultDuration() == null || m.getDefaultDuration().trim().isEmpty()) {
+                        m.setDefaultDuration(catalog.getDefaultDuration());
+                    }
+                });
+            }
+        }
+        return list;
     }
 
     @Transactional
@@ -253,6 +295,19 @@ public class MedicineService {
             newCatalog.setManufacturer(medicine.getManufacturer());
             newCatalog.setHospitalId(hospitalId);
             medicineListRepository.save(newCatalog);
+        } else {
+            // Copy defaults from catalog if medicine defaults are blank
+            getCatalogMatch(medicine.getName(), hospitalId).ifPresent(catalog -> {
+                if (medicine.getDefaultDosage() == null || medicine.getDefaultDosage().trim().isEmpty()) {
+                    medicine.setDefaultDosage(catalog.getDefaultDosage());
+                }
+                if (medicine.getDefaultFrequency() == null || medicine.getDefaultFrequency().trim().isEmpty()) {
+                    medicine.setDefaultFrequency(catalog.getDefaultFrequency());
+                }
+                if (medicine.getDefaultDuration() == null || medicine.getDefaultDuration().trim().isEmpty()) {
+                    medicine.setDefaultDuration(catalog.getDefaultDuration());
+                }
+            });
         }
 
         medicine.setHospitalId(hospitalId);
@@ -297,9 +352,32 @@ public class MedicineService {
         medicine.setMinStockLevel(request.getMinStockLevel());
         medicine.setExpiryDate(request.getExpiryDate());
         medicine.setType(request.getType());
-        medicine.setDefaultDosage(request.getDefaultDosage());
-        medicine.setDefaultFrequency(request.getDefaultFrequency());
-        medicine.setDefaultDuration(request.getDefaultDuration());
+        
+        String dosage = request.getDefaultDosage();
+        String freq = request.getDefaultFrequency();
+        String dur = request.getDefaultDuration();
+
+        if (dosage == null || dosage.trim().isEmpty() ||
+            freq == null || freq.trim().isEmpty() ||
+            dur == null || dur.trim().isEmpty()) {
+            Optional<MedicineList> catalogOpt = getCatalogMatch(request.getName(), hospitalId);
+            if (catalogOpt.isPresent()) {
+                MedicineList catalog = catalogOpt.get();
+                if (dosage == null || dosage.trim().isEmpty()) {
+                    dosage = catalog.getDefaultDosage();
+                }
+                if (freq == null || freq.trim().isEmpty()) {
+                    freq = catalog.getDefaultFrequency();
+                }
+                if (dur == null || dur.trim().isEmpty()) {
+                    dur = catalog.getDefaultDuration();
+                }
+            }
+        }
+
+        medicine.setDefaultDosage(dosage);
+        medicine.setDefaultFrequency(freq);
+        medicine.setDefaultDuration(dur);
         medicine.setManufacturer(request.getManufacturer());
         if (request.getIsActive() != null) {
             medicine.setIsActive(request.getIsActive());

@@ -105,17 +105,9 @@ public class PdfLayoutHelper {
         fTable.setWidthPercentage(100);
         fTable.setSpacingBefore(10f);
 
-        // Remittance section
+        // Remittance section (Removed as per user request)
         PdfPCell remCell = new PdfPCell();
         remCell.setBorder(Rectangle.NO_BORDER);
-        remCell.addElement(new Paragraph("SUMMARY / REMITTANCE", SMALL_BOLD_FONT));
-
-        PdfPTable subRem = new PdfPTable(2);
-        subRem.setWidthPercentage(100);
-        subRem.setSpacingBefore(5f);
-        addMetaRow(subRem, "Customer Name", patient != null ? patient.getName() : "Walk-in Patient");
-        addMetaRow(subRem, "Invoice Ref#", refNum);
-        remCell.addElement(subRem);
         fTable.addCell(remCell);
 
         // Sign line section
@@ -239,18 +231,9 @@ public class PdfLayoutHelper {
         fTable.setWidthPercentage(100);
         fTable.setSpacingBefore(10f);
 
-        // Remittance section
+        // Remittance section (Removed as per user request)
         PdfPCell remCell = new PdfPCell();
         remCell.setBorder(Rectangle.NO_BORDER);
-        remCell.addElement(new Paragraph("SUMMARY / REMITTANCE", SMALL_BOLD_FONT));
-
-        PdfPTable subRem = new PdfPTable(2);
-        subRem.setWidthPercentage(100);
-        subRem.setSpacingBefore(5f);
-        String patName = (patient != null && patient.getName() != null) ? patient.getName() : "Unknown";
-        addMetaRow(subRem, "Patient Name", patName);
-        addMetaRow(subRem, "Ref No#", refNum);
-        remCell.addElement(subRem);
         fTable.addCell(remCell);
 
         // Sign line section
@@ -322,19 +305,9 @@ public class PdfLayoutHelper {
         fTable.setTotalWidth(523f);
         fTable.setWidths(new float[]{3.5f, 2.5f});
 
-        // Remittance section
+        // Remittance section (Removed as per user request)
         PdfPCell remCell = new PdfPCell();
         remCell.setBorder(Rectangle.NO_BORDER);
-        remCell.addElement(new Paragraph("SUMMARY / REMITTANCE", SMALL_BOLD_FONT));
-
-        PdfPTable subRem = new PdfPTable(2);
-        subRem.setWidthPercentage(100);
-        subRem.setSpacingBefore(5f);
-        subRem.setWidths(new float[]{1.2f, 2f});
-        String patName = (patient != null && patient.getName() != null) ? patient.getName() : "Unknown";
-        addMetaRow(subRem, "Patient Name", patName);
-        addMetaRow(subRem, "Ref No#", refNum);
-        remCell.addElement(subRem);
         fTable.addCell(remCell);
 
         // Sign line section
@@ -531,18 +504,9 @@ public class PdfLayoutHelper {
         footerTable.setTotalWidth(523f);
         footerTable.setWidths(new float[]{3.5f, 2.5f});
 
+        // Remittance section (Removed as per user request)
         PdfPCell footerLeft = new PdfPCell();
         footerLeft.setBorder(Rectangle.NO_BORDER);
-        footerLeft.addElement(new Paragraph("SUMMARY / REMITTANCE", SMALL_BOLD_FONT));
-
-        PdfPTable subRem = new PdfPTable(2);
-        subRem.setWidthPercentage(100);
-        subRem.setSpacingBefore(5f);
-        subRem.setWidths(new float[]{1.2f, 2f});
-        String patName = (patient != null && patient.getName() != null) ? patient.getName().toUpperCase() : "PATIENT";
-        addMetaRow(subRem, "Patient Name", patName);
-        addMetaRow(subRem, "Ref No#", refNum != null ? refNum : "-");
-        footerLeft.addElement(subRem);
         footerTable.addCell(footerLeft);
 
         PdfPCell footerRight = new PdfPCell();
