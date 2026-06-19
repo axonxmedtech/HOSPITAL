@@ -175,6 +175,10 @@ const HospitalAdminDashboard = () => {
     const [datePatients, setDatePatients] = useState([]);
     const [datePatientsLoading, setDatePatientsLoading] = useState(false);
 
+    // OPD tab: Live / Date toggle
+    const [opdTabView, setOpdTabView] = useState('Live');
+    const [opdDateFilter, setOpdDateFilter] = useState(getISTDateString);
+
 
     // Help & Support state variables
     const [faqs, setFaqs] = useState([]);
@@ -227,7 +231,7 @@ const HospitalAdminDashboard = () => {
         } else {
             fetchImmediate();
         }
-    }, [activeTab, searchTerm, page, billingStatus, auditLogRoleFilter, patientTabView, patientDateFilter]);
+    }, [activeTab, searchTerm, page, billingStatus, auditLogRoleFilter, patientTabView, patientDateFilter, opdTabView, opdDateFilter]);
 
     // Periodic background polling replaced with WebSocket real-time sync
 
@@ -682,20 +686,17 @@ const HospitalAdminDashboard = () => {
                 setStats(statsData);
 
                 if (activeTab === 'patients') {
-                    if (patientTabView === 'All') {
-                        const data = await hospitalService.getPatients(searchTerm, page, pageSize);
-                        if (data.content) {
-                            setPatients(data.content);
-                            setTotalPages(data.totalPages);
-                            setTotalElements(data.totalElements);
-                        } else {
-                            // Fallback for list
-                            setPatients(data);
-                            setTotalPages(1);
-                            setTotalElements(data.length);
-                        }
+                    const dateParam = patientTabView === 'Date' ? patientDateFilter : '';
+                    const data = await hospitalService.getPatients(searchTerm, page, pageSize, dateParam);
+                    if (data.content) {
+                        setPatients(data.content);
+                        setTotalPages(data.totalPages);
+                        setTotalElements(data.totalElements);
                     } else {
-                        await loadDatePatients(patientDateFilter);
+                        // Fallback for list
+                        setPatients(data);
+                        setTotalPages(1);
+                        setTotalElements(data.length);
                     }
                 } else if (activeTab === 'doctors') {
                     const data = await hospitalService.getDoctors(searchTerm, page, pageSize);
@@ -801,25 +802,30 @@ const HospitalAdminDashboard = () => {
                     }
                 } else if (activeTab === 'opd') {
                     try {
+                        let dateParam = '';
+                        let statusParam = '';
+                        if (opdTabView === 'Live') {
+                            dateParam = getISTDateString();
+                            statusParam = 'QUEUED';
+                        } else {
+                            dateParam = opdDateFilter;
+                            statusParam = ''; // show all statuses
+                        }
                         const [data, docData, patData] = await Promise.all([
-                            hospitalService.getOpds(searchTerm, page, pageSize),
+                            hospitalService.getOpds(searchTerm, page, pageSize, dateParam, statusParam),
                             hospitalService.getDoctors('', 0, 100),
                             hospitalService.getPatients('', 0, 1000)
                         ]);
-                        let opdArr = [];
                         if (data.content) {
-                            opdArr = data.content;
+                            setOpds(data.content);
                             setTotalPages(data.totalPages);
                             setTotalElements(data.totalElements);
                         } else {
-                            opdArr = Array.isArray(data) ? data : [];
+                            const arr = Array.isArray(data) ? data : [];
+                            setOpds(arr);
                             setTotalPages(1);
-                            setTotalElements(opdArr.length);
+                            setTotalElements(arr.length);
                         }
-                        // Show only active patients: QUEUED or CONSULTING status
-                        const activeOpds = opdArr.filter(o => o.status === 'QUEUED' || o.status === 'CONSULTING');
-                        setOpds(activeOpds);
-                        setTotalElements(activeOpds.length);
                         // Also set doctors and patients for the modal dropdowns
                         setDoctors(docData.content || (Array.isArray(docData) ? docData : []));
                         setPatients(patData.content || (Array.isArray(patData) ? patData : []));
@@ -957,6 +963,41 @@ const HospitalAdminDashboard = () => {
             console.error('Failed to generate report', err);
             toastError('Failed to generate PDF report');
         }
+    };
+
+    const openPdfInNewTab = (endpointPath) => {
+        const token = sessionStorage.getItem('token');
+        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+        const separator = endpointPath.includes('?') ? '&' : '?';
+        const url = `${baseUrl}${endpointPath}${separator}token=${encodeURIComponent(token)}`;
+        window.open(url, '_blank');
+    };
+
+    const handleDownloadPatientsReport = () => {
+        let endpoint = `/hospital/patients/report/pdf`;
+        if (patientTabView === 'Date' && patientDateFilter) {
+            endpoint += `?date=${patientDateFilter}`;
+        }
+        openPdfInNewTab(endpoint);
+    };
+
+    const handleDownloadOpdReport = () => {
+        let endpoint = `/hospital/opd/report/pdf`;
+        const params = [];
+        if (opdTabView === 'Live') {
+            params.push(`date=${getISTDateString()}`);
+            params.push(`status=QUEUED`);
+            params.push(`reportType=LIVE`);
+        } else {
+            if (opdDateFilter) {
+                params.push(`date=${opdDateFilter}`);
+            }
+            params.push(`reportType=DATE`);
+        }
+        if (params.length > 0) {
+            endpoint += `?${params.join('&')}`;
+        }
+        openPdfInNewTab(endpoint);
     };
 
 
@@ -1440,7 +1481,7 @@ const HospitalAdminDashboard = () => {
                             addLabel={activeTab === 'opd' ? 'New OPD' : (activeTab === 'fees' || activeTab === 'settings') ? '' : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`}
                             filter={activeTab === 'patients' ? (
                                 <div className="flex items-center gap-2">
-                                    <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
+                                    <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 h-[38px] items-center">
                                         {['All', 'Date'].map(view => (
                                             <button
                                                 key={view}
@@ -1450,7 +1491,7 @@ const HospitalAdminDashboard = () => {
                                                     setPage(0);
                                                     setSearchTerm('');
                                                 }}
-                                                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${patientTabView === view
+                                                className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${patientTabView === view
                                                     ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
                                                     : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
                                                     }`}
@@ -1460,26 +1501,65 @@ const HospitalAdminDashboard = () => {
                                         ))}
                                     </div>
                                     {patientTabView === 'Date' && (
-                                        <div className="flex items-center gap-2">
-                                            <input
-                                                type="date"
-                                                value={patientDateFilter}
-                                                onChange={(e) => setPatientDateFilter(e.target.value)}
-                                                className="px-4 py-1.5 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-transparent bg-white text-slate-800"
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={handleDownloadActivityReport}
-                                                disabled={datePatientsLoading || datePatients.length === 0}
-                                                className="bg-sky-600 hover:bg-sky-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5"
-                                            >
-                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                                </svg>
-                                                <span>Download PDF</span>
-                                            </button>
-                                        </div>
+                                        <input
+                                            type="date"
+                                            value={patientDateFilter}
+                                            onChange={(e) => setPatientDateFilter(e.target.value)}
+                                            className="px-4 py-1.5 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-transparent bg-white text-slate-800 h-[38px]"
+                                        />
                                     )}
+                                    <button
+                                        type="button"
+                                        onClick={handleDownloadPatientsReport}
+                                        disabled={loading}
+                                        className="bg-sky-600 hover:bg-sky-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                        </svg>
+                                        <span>Download PDF</span>
+                                    </button>
+                                </div>
+                            ) : activeTab === 'opd' ? (
+                                <div className="flex items-center gap-2">
+                                    <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 h-[38px] items-center">
+                                        {['Live', 'Date'].map(view => (
+                                            <button
+                                                key={view}
+                                                type="button"
+                                                onClick={() => {
+                                                    setOpdTabView(view);
+                                                    setPage(0);
+                                                    setSearchTerm('');
+                                                }}
+                                                className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${opdTabView === view
+                                                    ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
+                                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                                    }`}
+                                            >
+                                                {view}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {opdTabView === 'Date' && (
+                                        <input
+                                            type="date"
+                                            value={opdDateFilter}
+                                            onChange={(e) => setOpdDateFilter(e.target.value)}
+                                            className="px-4 py-1.5 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-transparent bg-white text-slate-800 h-[38px]"
+                                        />
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={handleDownloadOpdReport}
+                                        disabled={loading}
+                                        className="bg-sky-600 hover:bg-sky-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                        </svg>
+                                        <span>Download PDF</span>
+                                    </button>
                                 </div>
                             ) : activeTab === 'billing' ? (
                                 <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
@@ -1539,49 +1619,25 @@ const HospitalAdminDashboard = () => {
                             {(activeTab === 'patients' || activeTab === 'doctors' || activeTab === 'pharmacists' || activeTab === 'receptionists' || activeTab === 'wards' || activeTab === 'billing' || activeTab === 'fees' || activeTab === 'opd') && (
                                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
                                     {activeTab === 'patients' && (
-                                        patientTabView === 'All' ? (
-                                            patients.length > 0 ? (
-                                                <PatientsTable 
-                                                    patients={patients} 
-                                                    onEdit={(item) => handleEdit(item, 'patients')} 
-                                                    onViewDetails={handleViewDetails} 
-                                                    onDelete={handleDeletePatient} 
-                                                    onHistory={(p) => setPatientDetailsModal({ isOpen: true, patient: p })} 
-                                                    startIndex={page * pageSize} 
-                                                    pagination={pagination} 
-                                                    isAdmin={user?.role === 'HOSPITAL_ADMIN'} 
-                                                />
-                                            ) : (
-                                                <EmptyState
-                                                    icon={null}
-                                                    title="No Patients Found"
-                                                    message="Add patients to start scheduling appointments."
-                                                    actionLabel="Add Patient"
-                                                    onAction={user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
-                                                />
-                                            )
+                                        patients.length > 0 ? (
+                                            <PatientsTable 
+                                                patients={patients} 
+                                                onEdit={(item) => handleEdit(item, 'patients')} 
+                                                onViewDetails={handleViewDetails} 
+                                                onDelete={handleDeletePatient} 
+                                                onHistory={(p) => setPatientDetailsModal({ isOpen: true, patient: p })} 
+                                                startIndex={page * pageSize} 
+                                                pagination={pagination} 
+                                                isAdmin={user?.role === 'HOSPITAL_ADMIN'} 
+                                            />
                                         ) : (
-                                            (() => {
-                                                const filteredDatePatients = datePatients.filter(item => {
-                                                    if (!searchTerm) return true;
-                                                    const query = searchTerm.toLowerCase();
-                                                    return (item.patientName || '').toLowerCase().includes(query) ||
-                                                           (item.patientId || '').toLowerCase().includes(query) ||
-                                                           (item.phone || '').toLowerCase().includes(query) ||
-                                                           (item.doctorName || '').toLowerCase().includes(query) ||
-                                                           (item.details || '').toLowerCase().includes(query) ||
-                                                           (item.activityType || '').toLowerCase().includes(query);
-                                                });
-                                                return filteredDatePatients.length > 0 ? (
-                                                    <PatientActivityTable activities={filteredDatePatients} />
-                                                ) : (
-                                                    <EmptyState
-                                                        icon={null}
-                                                        title="No Patient Activity"
-                                                        message={searchTerm ? `No activity matching "${searchTerm}" found on ${patientDateFilter}.` : `No patient activity (OPD, Appointment, IPD) found on ${patientDateFilter}.`}
-                                                    />
-                                                );
-                                            })()
+                                            <EmptyState
+                                                icon={null}
+                                                title={patientTabView === 'Date' ? "No Registered Patients" : "No Patients Found"}
+                                                message={patientTabView === 'Date' ? `No patients registered on ${patientDateFilter}.` : "Add patients to start scheduling appointments."}
+                                                actionLabel={patientTabView === 'Date' ? null : (user?.role === 'HOSPITAL_ADMIN' ? "Add Patient" : null)}
+                                                onAction={patientTabView === 'Date' ? null : (user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null)}
+                                            />
                                         )
                                     )}
 
@@ -1793,8 +1849,8 @@ const HospitalAdminDashboard = () => {
                                     ) : (
                                         <EmptyState
                                             icon={null}
-                                            title="No Active OPD Patients"
-                                            message="No patients are currently in the queue or being consulted."
+                                            title={opdTabView === 'Live' ? "No Active OPD Patients" : "No OPD Records Found"}
+                                            message={opdTabView === 'Live' ? "No patients are currently in the queue or being consulted." : `No OPD registrations found on ${opdDateFilter}.`}
                                         />
                                     )
                                 )}

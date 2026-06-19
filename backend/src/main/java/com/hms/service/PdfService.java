@@ -80,4 +80,19 @@ public class PdfService {
             MedicalRecord medicalRecord) {
         return clinicalPdfService.generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord);
     }
+
+    public ByteArrayInputStream generatePatientsReportPdf(
+            Hospital hospital,
+            java.time.LocalDate date,
+            java.util.List<Patient> patients) {
+        return reportPdfService.generatePatientsReportPdf(hospital, date, patients);
+    }
+
+    public ByteArrayInputStream generateOpdReportPdf(
+            Hospital hospital,
+            java.time.LocalDate date,
+            java.util.List<Opd> opds,
+            String reportType) {
+        return reportPdfService.generateOpdReportPdf(hospital, date, opds, reportType);
+    }
 }

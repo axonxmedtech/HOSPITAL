@@ -16,6 +16,7 @@ public interface OpdRepository extends JpaRepository<Opd, Long> {
 			"LEFT JOIN FETCH o.doctor d " +
 			"LEFT JOIN FETCH o.receptionist " +
 			"WHERE p.hospitalId = :hospitalId " +
+			"AND (:status IS NULL OR o.status = :status) " +
 			"AND (:search IS NULL OR LOWER(o.caseId) LIKE LOWER(CONCAT('%',:search,'%')) " +
 			"OR LOWER(p.name) LIKE LOWER(CONCAT('%',:search,'%')) " +
 			"OR LOWER(d.name) LIKE LOWER(CONCAT('%',:search,'%'))) " +
@@ -25,6 +26,7 @@ public interface OpdRepository extends JpaRepository<Opd, Long> {
 			"INNER JOIN o.patient p " +
 			"LEFT JOIN o.doctor d " +
 			"WHERE p.hospitalId = :hospitalId " +
+			"AND (:status IS NULL OR o.status = :status) " +
 			"AND (:search IS NULL OR LOWER(o.caseId) LIKE LOWER(CONCAT('%',:search,'%')) " +
 			"OR LOWER(p.name) LIKE LOWER(CONCAT('%',:search,'%')) " +
 			"OR LOWER(d.name) LIKE LOWER(CONCAT('%',:search,'%'))) " +
@@ -35,6 +37,7 @@ public interface OpdRepository extends JpaRepository<Opd, Long> {
 			@Param("search") String search,
 			@Param("startDate") java.time.LocalDateTime startDate,
 			@Param("endDate") java.time.LocalDateTime endDate,
+			@Param("status") com.hms.entity.Opd.Status status,
 			Pageable pageable);
 
 	boolean existsByPatientIdAndVisitTypeAndCreatedAtGreaterThanEqual(

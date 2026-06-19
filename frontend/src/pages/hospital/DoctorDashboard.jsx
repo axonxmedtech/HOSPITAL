@@ -126,7 +126,11 @@ const DoctorDashboard = () => {
     // OPD date filter — default to today
     const todayStr = (() => { const t = new Date(); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); })();
     const [opdDateFilter, setOpdDateFilter] = useState(todayStr);
-    const [opdTabView, setOpdTabView] = useState('today');
+    const [opdTabView, setOpdTabView] = useState('Live');
+
+    // Patient tab: All / Date toggle
+    const [patientTabView, setPatientTabView] = useState('All');
+    const [patientDateFilter, setPatientDateFilter] = useState(todayStr);
 
     // Billing specific states
     const [billing, setBilling] = useState([]);
@@ -269,7 +273,8 @@ const DoctorDashboard = () => {
 
     useEffect(() => {
         setPage(1);
-        if (activeTab === 'opd') { setOpdTabView('today'); setOpdDateFilter(todayStr); }
+        if (activeTab === 'opd') { setOpdTabView('Live'); setOpdDateFilter(todayStr); }
+        if (activeTab === 'patients') { setPatientTabView('All'); setPatientDateFilter(todayStr); }
     }, [activeTab, searchTerm, viewFilter, billingStatus]);
 
     useEffect(() => {
@@ -277,7 +282,7 @@ const DoctorDashboard = () => {
             loadData();
         }, 500);
         return () => clearTimeout(timer);
-    }, [activeTab, searchTerm, viewFilter, billingStatus, opdDateFilter, page]);
+    }, [activeTab, searchTerm, viewFilter, billingStatus, opdDateFilter, opdTabView, patientTabView, patientDateFilter, page]);
 
     // WebSocket connection will be initialized below loadData definition to avoid ReferenceError
 
@@ -331,10 +336,12 @@ const DoctorDashboard = () => {
                     console.error('Failed to load overview appointments and followups', err);
                 }
             } else if (activeTab === 'patients') {
+                const dateParam = patientTabView === 'Date' ? patientDateFilter : '';
                 const data = await hospitalService.getPatients(
                     searchTerm, 
                     page - 1, 
-                    ITEMS_PER_PAGE
+                    ITEMS_PER_PAGE,
+                    dateParam
                 );
                 const patientsArray = Array.isArray(data) ? data : (data.content || []);
                 setPatients(patientsArray);
@@ -371,11 +378,19 @@ const DoctorDashboard = () => {
             // OPD list for doctor (read-only)
             if (activeTab === 'opd') {
                 try {
-                    const opdsData = await hospitalService.getOpds(searchTerm, page - 1, ITEMS_PER_PAGE, opdDateFilter);
+                    let dateParam = '';
+                    let statusParam = '';
+                    if (opdTabView === 'Live') {
+                        dateParam = todayStr;
+                        statusParam = 'QUEUED';
+                    } else {
+                        dateParam = opdDateFilter;
+                        statusParam = ''; // all statuses on that date
+                    }
+                    const opdsData = await hospitalService.getOpds(searchTerm, page - 1, ITEMS_PER_PAGE, dateParam, statusParam);
                     let opdsArray = Array.isArray(opdsData) ? opdsData : (opdsData.content || []);
-                    // In Solo Doctor Mode, show all OPD cases (to allow billing, printing, IPD admission, etc.).
-                    // In regular mode, only show active queued patient OPD cases.
-                    if (user?.receptionMode !== 'SOLO') {
+                    // In regular mode for Live view, we only show QUEUED anyway, but let's keep the local safety fallback
+                    if (user?.receptionMode !== 'SOLO' && opdTabView === 'Live') {
                         opdsArray = opdsArray.filter(o => o.status === 'QUEUED');
                     }
                     setOpds(opdsArray);
@@ -762,6 +777,33 @@ const DoctorDashboard = () => {
 
     const handlePrintOpd = (opd) => {
         openPdfInNewTab(`/hospital/opd/${opd.id}/pdf`);
+    };
+
+    const handleDownloadPatientsReport = () => {
+        let endpoint = `/hospital/patients/report/pdf`;
+        if (patientTabView === 'Date' && patientDateFilter) {
+            endpoint += `?date=${patientDateFilter}`;
+        }
+        openPdfInNewTab(endpoint);
+    };
+
+    const handleDownloadOpdReport = () => {
+        let endpoint = `/hospital/opd/report/pdf`;
+        const params = [];
+        if (opdTabView === 'Live') {
+            params.push(`date=${todayStr}`);
+            params.push(`status=QUEUED`);
+            params.push(`reportType=LIVE`);
+        } else {
+            if (opdDateFilter) {
+                params.push(`date=${opdDateFilter}`);
+            }
+            params.push(`reportType=DATE`);
+        }
+        if (params.length > 0) {
+            endpoint += `?${params.join('&')}`;
+        }
+        openPdfInNewTab(endpoint);
     };
 
     const handlePrintPrescriptionOpd = (opd) => {
@@ -1230,47 +1272,87 @@ const DoctorDashboard = () => {
                                         </button>
                                     ))}
                                 </div>
+                            ) : activeTab === 'patients' ? (
+                                <div className="flex items-center gap-2">
+                                    <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 h-[38px] items-center">
+                                        {['All', 'Date'].map(view => (
+                                            <button
+                                                key={view}
+                                                type="button"
+                                                onClick={() => {
+                                                    setPatientTabView(view);
+                                                    setPage(1);
+                                                    setSearchTerm('');
+                                                }}
+                                                className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${patientTabView === view
+                                                    ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
+                                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                                    }`}
+                                            >
+                                                {view}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {patientTabView === 'Date' && (
+                                        <input
+                                            type="date"
+                                            value={patientDateFilter}
+                                            onChange={(e) => { setPatientDateFilter(e.target.value); setPage(1); }}
+                                            className="px-4 py-1.5 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-transparent bg-white text-slate-800 h-[38px]"
+                                        />
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={handleDownloadPatientsReport}
+                                        disabled={loading}
+                                        className="bg-sky-600 hover:bg-sky-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                        </svg>
+                                        <span>Download PDF</span>
+                                    </button>
+                                </div>
                             ) : activeTab === 'opd' ? (
                                 <div className="flex items-center gap-2">
-                                    <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
-                                        {['Today', 'Date'].map(view => (
+                                    <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 h-[38px] items-center">
+                                        {['Live', 'Date'].map(view => (
                                             <button
                                                 key={view}
                                                 type="button"
                                                 onClick={() => {
                                                     setOpdTabView(view);
-                                                    if (view === 'Today') { setOpdDateFilter(todayStr); setPage(1); }
+                                                    setPage(1);
+                                                    setSearchTerm('');
                                                 }}
-                                                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${opdTabView === view
+                                                className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${opdTabView === view
                                                     ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
                                                     : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
-                                                }`}
+                                                    }`}
                                             >
                                                 {view}
                                             </button>
                                         ))}
                                     </div>
                                     {opdTabView === 'Date' && (
-                                        <div className="relative flex items-center gap-1 bg-neutral-50 border border-neutral-300 rounded-xl px-3 py-2 shadow-soft">
-                                            <input
-                                                type="date"
-                                                value={opdDateFilter || ''}
-                                                onChange={(e) => { setOpdDateFilter(e.target.value); setPage(1); }}
-                                                className="text-sm bg-transparent border-0 focus:ring-0 font-semibold text-slate-800 cursor-pointer focus:outline-none pr-5"
-                                            />
-                                            {opdDateFilter && (
-                                                <button
-                                                    onClick={() => { setOpdDateFilter(''); setPage(1); }}
-                                                    className="absolute right-2 text-gray-400 hover:text-gray-600 focus:outline-none transition-colors"
-                                                    title="Clear"
-                                                >
-                                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                                                    </svg>
-                                                </button>
-                                            )}
-                                        </div>
+                                        <input
+                                            type="date"
+                                            value={opdDateFilter}
+                                            onChange={(e) => { setOpdDateFilter(e.target.value); setPage(1); }}
+                                            className="px-4 py-1.5 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-transparent bg-white text-slate-800 h-[38px]"
+                                        />
                                     )}
+                                    <button
+                                        type="button"
+                                        onClick={handleDownloadOpdReport}
+                                        disabled={loading}
+                                        className="bg-sky-600 hover:bg-sky-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                        </svg>
+                                        <span>Download PDF</span>
+                                    </button>
                                 </div>
                             ) : null
                         }
@@ -1333,8 +1415,8 @@ const DoctorDashboard = () => {
                                     ) : (
                                         <EmptyState
                                             icon={null}
-                                            title="No OPD Cases"
-                                            message="No OPD cases for today."
+                                            title={opdTabView === 'Live' ? "No Active OPD Patients" : "No OPD Records Found"}
+                                            message={opdTabView === 'Live' ? "No patients are currently in the queue or being consulted." : `No OPD registrations found on ${opdDateFilter}.`}
                                         />
                                     )
                                 )}
@@ -1437,8 +1519,8 @@ const DoctorDashboard = () => {
                                     ) : (
                                         <EmptyState
                                             icon={null}
-                                            title="No Patients"
-                                            message="No patients found."
+                                            title={patientTabView === 'Date' ? "No Registered Patients" : "No Patients"}
+                                            message={patientTabView === 'Date' ? `No patients registered on ${patientDateFilter}.` : "No patients found."}
                                         />
                                     )
                                 )}

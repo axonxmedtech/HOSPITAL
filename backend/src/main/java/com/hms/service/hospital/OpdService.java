@@ -145,7 +145,7 @@ public class OpdService {
         return opdRepository.findById(id).orElse(null);
     }
 
-    public org.springframework.data.domain.Page<Opd> getOpds(String search, String dateStr, org.springframework.data.domain.Pageable pageable) {
+    public org.springframework.data.domain.Page<Opd> getOpds(String search, String dateStr, com.hms.entity.Opd.Status status, org.springframework.data.domain.Pageable pageable) {
         Long hospitalId = null;
         try {
             hospitalId = securityHelper.getCurrentHospitalId();
@@ -168,7 +168,11 @@ public class OpdService {
 
         String searchVal = (search != null && !search.trim().isEmpty()) ? search.trim() : null;
 
-        return opdRepository.searchByHospitalAndDateRange(hospitalId, searchVal, startDate, endDate, pageable);
+        return opdRepository.searchByHospitalAndDateRange(hospitalId, searchVal, startDate, endDate, status, pageable);
+    }
+
+    public org.springframework.data.domain.Page<Opd> getOpds(String search, String dateStr, org.springframework.data.domain.Pageable pageable) {
+        return getOpds(search, dateStr, null, pageable);
     }
 
     public java.util.List<QueueEntry> getHospitalQueue() {

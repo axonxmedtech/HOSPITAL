@@ -88,10 +88,11 @@ public class OpdController {
     public ResponseEntity<?> listOpds(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String date,
+            @RequestParam(required = false) com.hms.entity.Opd.Status status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
-        var result = opdService.getOpds(search, date, pageable);
+        var result = opdService.getOpds(search, date, status, pageable);
         return ResponseEntity.ok(result);
     }
 
@@ -188,5 +189,32 @@ public class OpdController {
             logger.error("Failed to fetch today's followups", e);
             return ResponseEntity.ok(java.util.List.of());
         }
+    }
+
+    @GetMapping("/report/pdf")
+    public ResponseEntity<?> downloadOpdReportPdf(
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date,
+            @RequestParam(required = false) com.hms.entity.Opd.Status status,
+            @RequestParam(required = false) String reportType) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital context not found");
+        }
+
+        String dateStr = (date != null) ? date.toString() : null;
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 1000);
+        java.util.List<Opd> opds = opdService.getOpds(null, dateStr, status, pageable).getContent();
+
+        com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
+                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+
+        java.io.ByteArrayInputStream pdfStream = pdfService.generateOpdReportPdf(hospital, date, opds, reportType);
+        org.springframework.core.io.InputStreamResource resource = new org.springframework.core.io.InputStreamResource(pdfStream);
+
+        String filename = "OPD_Report_" + (date != null ? date.toString() : "AllTime") + ".pdf";
+        return ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)
+                .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                .body(resource);
     }
 }

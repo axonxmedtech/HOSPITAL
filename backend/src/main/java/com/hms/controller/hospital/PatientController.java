@@ -18,6 +18,15 @@ public class PatientController {
     @Autowired
     private PatientService patientService;
 
+    @Autowired
+    private com.hms.security.SecurityContextHelper securityHelper;
+
+    @Autowired
+    private com.hms.repository.HospitalRepository hospitalRepository;
+
+    @Autowired
+    private com.hms.service.PdfService pdfService;
+
     @PostMapping
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
     public ResponseEntity<?> addPatient(@Valid @RequestBody Patient patient) {
@@ -37,13 +46,14 @@ public class PatientController {
     public ResponseEntity<?> getAllPatients(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String view,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         if (search != null && !search.trim().isEmpty()) {
             return ResponseEntity.ok(patientService.searchPatients(search));
         }
         Pageable pageable = PageRequest.of(page, size);
-        return ResponseEntity.ok(patientService.getAllPatients(null, view, pageable));
+        return ResponseEntity.ok(patientService.getAllPatients(null, view, date, pageable));
     }
 
     @GetMapping("/{id}")
@@ -128,5 +138,31 @@ public class PatientController {
                 .headers(headers)
                 .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
                 .body(new org.springframework.core.io.InputStreamResource(pdf));
+    }
+
+    @GetMapping("/report/pdf")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    public ResponseEntity<?> downloadPatientsReportPdf(
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital context not found");
+        }
+
+        // Fetch patients without pagination (up to 1000)
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 1000);
+        java.util.List<Patient> patients = patientService.getAllPatients(null, null, date, pageable).getContent();
+
+        com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
+                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+
+        java.io.ByteArrayInputStream pdfStream = pdfService.generatePatientsReportPdf(hospital, date, patients);
+        org.springframework.core.io.InputStreamResource resource = new org.springframework.core.io.InputStreamResource(pdfStream);
+
+        String filename = "Patients_Report_" + (date != null ? date.toString() : "AllTime") + ".pdf";
+        return ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)
+                .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                .body(resource);
     }
 }

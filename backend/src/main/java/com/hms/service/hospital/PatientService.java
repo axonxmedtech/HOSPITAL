@@ -203,7 +203,7 @@ public class PatientService {
      * @return Page of active patients
      */
     @Transactional(readOnly = true)
-    public org.springframework.data.domain.Page<Patient> getAllPatients(String search, String view,
+    public org.springframework.data.domain.Page<Patient> getAllPatients(String search, String view, java.time.LocalDate date,
             org.springframework.data.domain.Pageable pageable) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
@@ -212,8 +212,19 @@ public class PatientService {
 
         org.springframework.data.domain.Page<Patient> patients;
 
-        // Handle 'today' view
-        if ("today".equalsIgnoreCase(view)) {
+        if (date != null) {
+            java.time.LocalDateTime localStart = date.atStartOfDay();
+            java.time.LocalDateTime localEnd = date.atTime(java.time.LocalTime.MAX);
+
+            java.time.ZoneId sysZone = java.time.ZoneId.systemDefault();
+            java.time.ZoneOffset utcOffset = java.time.ZoneOffset.UTC;
+
+            java.time.LocalDateTime startOfDay = localStart.atZone(sysZone).withZoneSameInstant(utcOffset).toLocalDateTime();
+            java.time.LocalDateTime endOfDay = localEnd.atZone(sysZone).withZoneSameInstant(utcOffset).toLocalDateTime();
+
+            patients = patientRepository.findByHospitalIdAndIsActiveTrueAndCreatedAtBetweenOrderByCreatedAtDesc(
+                    hospitalId, startOfDay, endOfDay, pageable);
+        } else if ("today".equalsIgnoreCase(view)) {
             java.time.LocalDateTime localStart = java.time.LocalDate.now().atStartOfDay();
             java.time.LocalDateTime localEnd = java.time.LocalDate.now().atTime(java.time.LocalTime.MAX);
 
@@ -237,9 +248,15 @@ public class PatientService {
     }
 
     @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<Patient> getAllPatients(String search, String view,
+            org.springframework.data.domain.Pageable pageable) {
+        return getAllPatients(search, view, null, pageable);
+    }
+
+    @Transactional(readOnly = true)
     public org.springframework.data.domain.Page<Patient> getAllPatients(
             org.springframework.data.domain.Pageable pageable) {
-        return getAllPatients(null, null, pageable);
+        return getAllPatients(null, null, null, pageable);
     }
 
     @Transactional(readOnly = true)

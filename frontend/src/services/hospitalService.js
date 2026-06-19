@@ -18,14 +18,11 @@ import apiClient from './apiService';
 const hospitalService = {
     // ========== Patient APIs ==========
 
-    /**
-     * Get all patients for the current hospital
-     * Supports optional search query
-     */
-    getPatients: async (search, page = 0, size = 10, view = '') => {
+    getPatients: async (search, page = 0, size = 10, date = '', view = '') => {
         let query = `?page=${page}&size=${size}`;
         if (search) query += `&search=${search}`;
         if (view) query += `&view=${view}`;
+        if (date) query += `&date=${date}`;
         const response = await apiClient.get(`/hospital/patients${query}`);
         return response.data; // Now returns { content: [...], totalElements: ..., totalPages: ... }
     },
@@ -437,10 +434,11 @@ const hospitalService = {
     /**
      * Get paginated OPD / cases (Receptionist view)
      */
-    getOpds: async (search = '', page = 0, size = 10, date = '') => {
+    getOpds: async (search = '', page = 0, size = 10, date = '', status = '') => {
         let url = `/hospital/opd?page=${page}&size=${size}`;
         if (search) url += `&search=${encodeURIComponent(search)}`;
         if (date) url += `&date=${encodeURIComponent(date)}`;
+        if (status) url += `&status=${encodeURIComponent(status)}`;
         const response = await apiClient.get(url);
         return response.data;
     },
@@ -833,6 +831,30 @@ const hospitalService = {
 
     downloadIpdMedicinesList: async (ipdId) => {
         const response = await apiClient.get(`/hospital/patients/ipd/${ipdId}/medicines/pdf`, {
+            responseType: 'blob',
+            timeout: 60000
+        });
+        return response.data;
+    },
+
+    downloadPatientsReportPdf: async (date = '') => {
+        let url = `/hospital/patients/report/pdf`;
+        if (date) url += `?date=${encodeURIComponent(date)}`;
+        const response = await apiClient.get(url, {
+            responseType: 'blob',
+            timeout: 60000
+        });
+        return response.data;
+    },
+
+    downloadOpdReportPdf: async (date = '', status = '', reportType = '') => {
+        let url = `/hospital/opd/report/pdf?`;
+        const params = [];
+        if (date) params.push(`date=${encodeURIComponent(date)}`);
+        if (status) params.push(`status=${encodeURIComponent(status)}`);
+        if (reportType) params.push(`reportType=${encodeURIComponent(reportType)}`);
+        url += params.join('&');
+        const response = await apiClient.get(url, {
             responseType: 'blob',
             timeout: 60000
         });

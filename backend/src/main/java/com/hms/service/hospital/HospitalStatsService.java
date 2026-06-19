@@ -112,7 +112,7 @@ public class HospitalStatsService {
 
         // 1. OPD records for this date
         List<Opd> opds = opdRepository.searchByHospitalAndDateRange(
-                hospitalId, null, startOfDay, endOfDay, PageRequest.of(0, 1000)).getContent();
+                hospitalId, null, startOfDay, endOfDay, null, PageRequest.of(0, 1000)).getContent();
         for (Opd opd : opds) {
             if (opd.getDoctor() != null) doctorIds.add(opd.getDoctor().getId());
             if (opd.getPatient() != null) patientIds.add(opd.getPatient().getId());
@@ -155,7 +155,8 @@ public class HospitalStatsService {
         for (Opd opd : opds) {
             Map<String, Object> entry = new HashMap<>();
             Patient pat = opd.getPatient() != null ? patientMap.get(opd.getPatient().getId()) : null;
-            entry.put("patientId", pat != null ? pat.getPublicId() : null);
+            entry.put("patientId", pat != null ? (pat.getCustomId() != null ? pat.getCustomId() : pat.getPublicId()) : null);
+            entry.put("patientPublicId", pat != null ? pat.getPublicId() : null);
             entry.put("patientName", pat != null ? pat.getName() : "Unknown");
             entry.put("phone", pat != null ? pat.getPhone() : null);
             entry.put("activityType", "OPD");
@@ -170,7 +171,8 @@ public class HospitalStatsService {
         for (Appointment appt : appointments) {
             Map<String, Object> entry = new HashMap<>();
             Patient pat = appt.getPatientId() != null ? patientMap.get(appt.getPatientId()) : null;
-            entry.put("patientId", pat != null ? pat.getPublicId() : null);
+            entry.put("patientId", pat != null ? (pat.getCustomId() != null ? pat.getCustomId() : pat.getPublicId()) : null);
+            entry.put("patientPublicId", pat != null ? pat.getPublicId() : null);
             entry.put("patientName", appt.getPatientName() != null ? appt.getPatientName() : (pat != null ? pat.getName() : "Unknown"));
             entry.put("phone", pat != null ? pat.getPhone() : appt.getPatientPhone());
             entry.put("activityType", "APPOINTMENT");
@@ -189,7 +191,8 @@ public class HospitalStatsService {
         for (IpdAdmission ipd : ipdAdmissions) {
             Map<String, Object> entry = new HashMap<>();
             Patient pat = patientMap.get(ipd.getPatientId());
-            entry.put("patientId", pat != null ? pat.getPublicId() : null);
+            entry.put("patientId", pat != null ? (pat.getCustomId() != null ? pat.getCustomId() : pat.getPublicId()) : null);
+            entry.put("patientPublicId", pat != null ? pat.getPublicId() : null);
             entry.put("patientName", pat != null ? pat.getName() : "Unknown");
             entry.put("phone", pat != null ? pat.getPhone() : null);
             entry.put("activityType", "IPD");
