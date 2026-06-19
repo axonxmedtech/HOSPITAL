@@ -263,7 +263,8 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
             onClose();
         } catch (err) {
             console.error("Consultation failed", err);
-            toastError(err.response?.data || 'Failed to submit consultation');
+            const errorMsg = err.response?.data?.error || err.response?.data?.message || (typeof err.response?.data === 'string' ? err.response.data : null) || 'Failed to submit consultation';
+            toastError(errorMsg);
         } finally {
             setSubmitting(false);
         }
@@ -316,7 +317,8 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
             setShowIpdAdmitModal(true);
         } catch (err) {
             console.error("Consultation submit for IPD failed", err);
-            toastError(err.response?.data?.message || err.response?.data || 'Failed to submit consultation before IPD admission');
+            const errorMsg = err.response?.data?.error || err.response?.data?.message || (typeof err.response?.data === 'string' ? err.response.data : null) || 'Failed to submit consultation before IPD admission';
+            toastError(errorMsg);
         } finally {
             setSubmitting(false);
         }
