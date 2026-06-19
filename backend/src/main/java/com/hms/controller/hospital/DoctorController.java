@@ -103,10 +103,20 @@ public class DoctorController {
         response.put("message", "Consultation submitted successfully");
         if (opd != null) {
             response.put("opdId", opd.getId());
-            response.put("opd", opd);
+            
+            // Return a clean map representation of OPD to prevent lazy initialization exception during Jackson serialization
+            java.util.Map<String, Object> opdMap = new java.util.HashMap<>();
+            opdMap.put("id", opd.getId());
+            opdMap.put("caseId", opd.getCaseId());
+            opdMap.put("problem", opd.getProblem());
+            opdMap.put("status", opd.getStatus());
+            response.put("opd", opdMap);
 
-            // Fetch generated bill ID
+            // Fetch generated bill ID (by opdId or by appointmentId fallback)
             java.util.Optional<com.hms.entity.Billing> billOpt = billingRepository.findByOpdId(opd.getId());
+            if (billOpt.isEmpty() && request.getAppointmentId() != null) {
+                billOpt = billingRepository.findByAppointmentId(request.getAppointmentId());
+            }
             if (billOpt.isPresent()) {
                 response.put("billId", billOpt.get().getId());
             }

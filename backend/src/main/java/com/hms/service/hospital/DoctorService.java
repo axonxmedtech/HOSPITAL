@@ -618,6 +618,11 @@ public class DoctorService {
                 }
             }
 
+            if (bill != null && bill.getOpdId() == null && opdIdToUse != null) {
+                bill.setOpdId(opdIdToUse);
+                billingRepository.save(bill);
+            }
+
             if (bill != null && request.getCharges() != null && "PENDING".equalsIgnoreCase(bill.getPaymentStatus())) {
                 java.util.List<com.hms.entity.BillingItem> existingItems = billingItemRepository.findByBillingId(bill.getId());
                 billingItemRepository.deleteAll(existingItems);
