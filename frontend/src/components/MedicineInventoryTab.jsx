@@ -253,22 +253,22 @@ const MedicineInventoryTab = () => {
                 </div>
                 
                 {/* Segmented Top-Tab Toggle */}
-                <div className="flex bg-gray-100 p-1 rounded-xl w-full sm:w-auto">
+                <div className="flex bg-gray-100 p-1 rounded-xl w-full sm:w-auto overflow-x-auto whitespace-nowrap scrollbar-none">
                     <button
                         onClick={() => setSubTab('inventory')}
-                        className={`flex-1 sm:flex-none px-5 py-2 text-sm font-semibold rounded-lg transition-all ${subTab === 'inventory' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                        className={`flex-1 sm:flex-none px-3 sm:px-5 py-2 text-sm font-semibold rounded-lg transition-all whitespace-nowrap ${subTab === 'inventory' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                     >
                         Inventory
                     </button>
                     <button
                         onClick={() => setSubTab('purchase')}
-                        className={`flex-1 sm:flex-none px-5 py-2 text-sm font-semibold rounded-lg transition-all ${subTab === 'purchase' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                        className={`flex-1 sm:flex-none px-3 sm:px-5 py-2 text-sm font-semibold rounded-lg transition-all whitespace-nowrap ${subTab === 'purchase' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                     >
                         Purchase History
                     </button>
                     <button
                         onClick={() => setSubTab('catalog')}
-                        className={`flex-1 sm:flex-none px-5 py-2 text-sm font-semibold rounded-lg transition-all ${subTab === 'catalog' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                        className={`flex-1 sm:flex-none px-3 sm:px-5 py-2 text-sm font-semibold rounded-lg transition-all whitespace-nowrap ${subTab === 'catalog' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                     >
                         Medicines
                     </button>

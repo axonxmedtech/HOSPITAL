@@ -186,79 +186,79 @@ const Sidebar = ({ title, tabs, activeTab, onTabChange, footerTitle, footerData,
     return (
         <aside className={`${isCollapsed ? 'w-16' : 'w-72'} bg-white z-20 ${showOnMobile ? 'flex' : 'hidden md:flex'} flex-col h-full border-r border-gray-200 overflow-hidden transition-all duration-300`}>
             {/* Header Section */}
-            <div className={`${isCollapsed ? 'p-3' : 'p-6'} border-b border-gray-200 transition-all duration-300`}>
+            <div className={`${isCollapsed ? 'p-3' : 'p-6'} border-b border-gray-200 transition-all duration-300 flex-shrink-0`}>
                 {!isCollapsed && (
-                    <div className="mb-6">
+                    <div>
                         <img src="/logo.png" alt="logo" className="h-full w-[70%]" />
                         <p className="text-sm text-gray-600 mt-1">Management Portal</p>
                     </div>
                 )}
+            </div>
 
-                {/* Navigation */}
-                <nav className="">
-                    {tabs.map((tab) => {
-                        const hasSubItems = tab.subItems && tab.subItems.length > 0;
-                        const isExpanded = !isCollapsed && tab.isExpanded; // Could also use internal state if preferred, but this will respect state passed from parent page
+            {/* Navigation */}
+            <nav className={`flex-1 overflow-y-auto ${isCollapsed ? 'p-2' : 'p-6'} space-y-1`}>
+                {tabs.map((tab) => {
+                    const hasSubItems = tab.subItems && tab.subItems.length > 0;
+                    const isExpanded = !isCollapsed && tab.isExpanded; // Could also use internal state if preferred, but this will respect state passed from parent page
 
-                        return (
-                            <div key={tab.id} className="space-y-1">
-                                <button
-                                    onClick={() => onTabChange(tab.id)}
-                                    className={`w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'px-3'} py-2 text-sm font-medium transition-colors duration-200 relative ${(activeTab === tab.id || (tab.subItems?.some(s => s.id === activeTab)))
-                                        ? `${theme.activeBg} ${theme.activeText}`
-                                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                                        }`}
-                                    title={isCollapsed ? tab.label : ''}
-                                >
-                                    {/* Active indicator */}
-                                    {(activeTab === tab.id || (tab.subItems?.some(s => s.id === activeTab))) && (
-                                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-gray-900"></div>
-                                    )}
+                    return (
+                        <div key={tab.id} className="space-y-1">
+                            <button
+                                onClick={() => onTabChange(tab.id)}
+                                className={`w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'px-3'} py-2 text-sm font-medium transition-colors duration-200 relative ${(activeTab === tab.id || (tab.subItems?.some(s => s.id === activeTab)))
+                                    ? `${theme.activeBg} ${theme.activeText}`
+                                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                                    }`}
+                                title={isCollapsed ? tab.label : ''}
+                            >
+                                {/* Active indicator */}
+                                {(activeTab === tab.id || (tab.subItems?.some(s => s.id === activeTab))) && (
+                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-gray-900"></div>
+                                )}
 
-                                    {/* Icon */}
-                                    <div className={isCollapsed ? '' : 'mr-3'}>
-                                        {menuIcons[tab.label] ? (
-                                            React.cloneElement(menuIcons[tab.label], {
-                                                className: `w-5 h-5 ${isCollapsed ? '' : 'mr-0'}`
-                                            })
-                                        ) : (
-                                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                            </svg>
-                                        )}
-                                    </div>
-
-                                    {!isCollapsed && <span className="flex-1 text-left">{tab.label}</span>}
-
-                                    {!isCollapsed && hasSubItems && (
-                                        <svg className={`w-4 h-4 transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                {/* Icon */}
+                                <div className={isCollapsed ? '' : 'mr-3'}>
+                                    {menuIcons[tab.label] ? (
+                                        React.cloneElement(menuIcons[tab.label], {
+                                            className: `w-5 h-5 ${isCollapsed ? '' : 'mr-0'}`
+                                        })
+                                    ) : (
+                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                         </svg>
                                     )}
-                                </button>
+                                </div>
 
-                                {/* Sub Items */}
-                                {!isCollapsed && hasSubItems && isExpanded && (
-                                    <div className="pl-8 space-y-1">
-                                        {tab.subItems.map((subItem) => (
-                                            <button
-                                                key={subItem.id}
-                                                onClick={() => onTabChange(subItem.id)}
-                                                className={`w-full flex items-center px-3 py-1.5 text-sm font-medium transition-colors duration-200 ${activeTab === subItem.id
-                                                    ? 'text-gray-900 font-semibold'
-                                                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
-                                                    }`}
-                                            >
-                                                {subItem.label}
-                                            </button>
-                                        ))}
-                                    </div>
+                                {!isCollapsed && <span className="flex-1 text-left">{tab.label}</span>}
+
+                                {!isCollapsed && hasSubItems && (
+                                    <svg className={`w-4 h-4 transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                    </svg>
                                 )}
-                            </div>
-                        );
-                    })}
-                </nav>
-            </div>
+                            </button>
+
+                            {/* Sub Items */}
+                            {!isCollapsed && hasSubItems && isExpanded && (
+                                <div className="pl-8 space-y-1">
+                                    {tab.subItems.map((subItem) => (
+                                        <button
+                                            key={subItem.id}
+                                            onClick={() => onTabChange(subItem.id)}
+                                            className={`w-full flex items-center px-3 py-1.5 text-sm font-medium transition-colors duration-200 ${activeTab === subItem.id
+                                                ? 'text-gray-900 font-semibold'
+                                                : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                                                }`}
+                                        >
+                                            {subItem.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </nav>
 
             {/* Footer Section */}
             {!isCollapsed && (
