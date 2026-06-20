@@ -768,7 +768,11 @@ const DoctorDashboard = () => {
         const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
         const separator = endpointPath.includes('?') ? '&' : '?';
         const url = `${baseUrl}${endpointPath}${separator}token=${encodeURIComponent(token)}`;
-        window.open(url, '_blank');
+        const win = window.open(url, '_blank');
+        if (!win || win.closed || typeof win.closed === 'undefined') {
+            return false;
+        }
+        return true;
     };
 
     const handlePrintPrescription = (appointmentId) => {
@@ -1621,27 +1625,34 @@ const DoctorDashboard = () => {
                             const billId = res.billId;
 
                             if (opdId) {
-                                success("Consultation completed successfully! Printing documents...");
-                                
-                                // 1. Consultation Print (always)
-                                openPdfInNewTab(`/hospital/opd/${opdId}/pdf`);
+                                let blockedCount = 0;
+
+                                // 1. Case Paper / Consultation Print (always)
+                                const p1 = openPdfInNewTab(`/hospital/opd/${opdId}/pdf`);
+                                if (!p1) blockedCount++;
 
                                 // 2. Prescription Print (only if hasPrescription is true)
                                 if (res.hasPrescription) {
-                                    await new Promise(resolve => setTimeout(resolve, 800));
-                                    openPdfInNewTab(`/hospital/doctors/prescription/opd/${opdId}/pdf`);
+                                    const p2 = openPdfInNewTab(`/hospital/doctors/prescription/opd/${opdId}/pdf`);
+                                    if (!p2) blockedCount++;
                                 }
 
                                 // 3. Bill / Invoice Print (always if billId is present)
                                 if (billId) {
-                                    await new Promise(resolve => setTimeout(resolve, 800));
-                                    openPdfInNewTab(`/hospital/billing/${billId}/pdf`);
+                                    const p3 = openPdfInNewTab(`/hospital/billing/${billId}/pdf`);
+                                    if (!p3) blockedCount++;
                                 }
 
                                 // 4. In-Clinic Medicines Print (only if hasAdministered is true)
                                 if (res.hasAdministered) {
-                                    await new Promise(resolve => setTimeout(resolve, 800));
-                                    openPdfInNewTab(`/hospital/patients/opd/${opdId}/medicines/pdf`);
+                                    const p4 = openPdfInNewTab(`/hospital/patients/opd/${opdId}/medicines/pdf`);
+                                    if (!p4) blockedCount++;
+                                }
+
+                                if (blockedCount > 0) {
+                                    toastError("Some print windows were blocked. Please select 'Always allow pop-ups' in your browser address bar to enable automatic printing of all documents.");
+                                } else {
+                                    success("Consultation completed successfully! Documents sent to print.");
                                 }
                             } else {
                                 success("Consultation completed successfully!");
