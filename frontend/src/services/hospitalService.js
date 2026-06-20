@@ -818,6 +818,26 @@ const hospitalService = {
         return response.data;
     },
 
+    getHospitalInventoryPurchases: async () => {
+        const response = await apiClient.get('/hospital/hospital-inventory/purchases');
+        return response.data;
+    },
+
+    addHospitalInventoryPurchase: async (purchase) => {
+        const response = await apiClient.post('/hospital/hospital-inventory/purchases', purchase);
+        return response.data;
+    },
+
+    getMedicinePurchases: async () => {
+        const response = await apiClient.get('/hospital/medicines/purchases');
+        return response.data;
+    },
+
+    addMedicinePurchase: async (purchase) => {
+        const response = await apiClient.post('/hospital/medicines/purchases', purchase);
+        return response.data;
+    },
+
     downloadOpdMedicinesList: async (opdId) => {
         const response = await apiClient.get(`/hospital/patients/opd/${opdId}/medicines/pdf`, {
             responseType: 'blob',

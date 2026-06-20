@@ -5,10 +5,11 @@ import Skeleton from './Skeleton';
 import ConfirmationModal from './ConfirmationModal';
 
 const MedicineInventoryTab = () => {
-    const [subTab, setSubTab] = useState('inventory'); // 'inventory' or 'catalog'
+    const [subTab, setSubTab] = useState('inventory'); // 'inventory', 'purchase', or 'catalog'
 
     // Data states
     const [inventoryList, setInventoryList] = useState([]);
+    const [purchaseList, setPurchaseList] = useState([]);
     const [catalogList, setCatalogList] = useState([]);
     const [loading, setLoading] = useState(false);
     const [csvImporting, setCsvImporting] = useState(false);
@@ -24,10 +25,26 @@ const MedicineInventoryTab = () => {
 
     const [stockMedicineQuery, setStockMedicineQuery] = useState('');
     const [showStockSuggestions, setShowStockSuggestions] = useState(false);
+    const [stockFormState, setStockFormState] = useState({
+        type: 'Tablet',
+        manufacturer: '',
+        minStockLevel: '10',
+        defaultDosage: '',
+        defaultFrequency: '',
+        defaultDuration: ''
+    });
 
     useEffect(() => {
         if (stockModal.isOpen) {
             setStockMedicineQuery(stockModal.data?.name || '');
+            setStockFormState({
+                type: stockModal.data?.type || 'Tablet',
+                manufacturer: stockModal.data?.manufacturer || '',
+                minStockLevel: stockModal.data?.minStockLevel?.toString() || '10',
+                defaultDosage: stockModal.data?.defaultDosage || '',
+                defaultFrequency: stockModal.data?.defaultFrequency || '',
+                defaultDuration: stockModal.data?.defaultDuration || ''
+            });
         } else {
             setStockMedicineQuery('');
         }
@@ -54,12 +71,25 @@ const MedicineInventoryTab = () => {
         }
     };
 
+    // Fetch purchases history
+    const fetchPurchases = async () => {
+        try {
+            const res = await hospitalService.getMedicinePurchases();
+            setPurchaseList(res || []);
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
     const loadData = async () => {
         setLoading(true);
         try {
             if (subTab === 'inventory') {
                 await fetchInventory();
                 await fetchCatalog(); // Load catalog to populate options in stock intake modal
+            } else if (subTab === 'purchase') {
+                await fetchPurchases();
+                await fetchCatalog(); // For autocomplete in add stock
             } else {
                 await fetchCatalog();
             }
@@ -74,7 +104,7 @@ const MedicineInventoryTab = () => {
         loadData();
     }, [subTab]);
 
-    // Handle Active Stock Save
+    // Handle Stock Intake / Purchase Save
     const handleStockSubmit = async (e) => {
         e.preventDefault();
         const form = e.target;
@@ -84,31 +114,34 @@ const MedicineInventoryTab = () => {
         const unitPrice = parseFloat(form.unitPrice.value);
         const minStockLevel = parseInt(form.minStockLevel.value);
         const expiryDate = form.expiryDate.value;
+        const manufacturer = form.manufacturer?.value?.trim() || '';
+        const defaultDosage = form.defaultDosage?.value?.trim() || '';
+        const defaultFrequency = form.defaultFrequency?.value?.trim() || '';
+        const defaultDuration = form.defaultDuration?.value?.trim() || '';
 
         if (!medicineName) return;
 
         const payload = {
             name: medicineName,
             type,
-            stockQuantity,
+            quantity: stockQuantity, // mapped to quantity in purchase schema
             unitPrice,
             minStockLevel,
-            expiryDate: expiryDate ? expiryDate : null
+            expiryDate: expiryDate ? expiryDate : null,
+            manufacturer: manufacturer || null,
+            defaultDosage: defaultDosage || null,
+            defaultFrequency: defaultFrequency || null,
+            defaultDuration: defaultDuration || null
         };
 
         try {
             setLoading(true);
-            if (stockModal.isEdit) {
-                await hospitalService.updateInventoryMedicine(stockModal.data.id, payload);
-                success('Stock details updated successfully.');
-            } else {
-                await hospitalService.addInventoryMedicine(payload);
-                success('Medicine added to stock inventory.');
-            }
+            await hospitalService.addMedicinePurchase(payload);
+            success('Purchase recorded and stock inventory updated.');
             setStockModal({ isOpen: false, isEdit: false, data: null });
             loadData();
         } catch (err) {
-            toastError(err.response?.data || 'Failed to save inventory record.');
+            toastError(err.response?.data || 'Failed to record medicine purchase.');
         } finally {
             setLoading(false);
         }
@@ -228,6 +261,12 @@ const MedicineInventoryTab = () => {
                         Inventory
                     </button>
                     <button
+                        onClick={() => setSubTab('purchase')}
+                        className={`flex-1 sm:flex-none px-5 py-2 text-sm font-semibold rounded-lg transition-all ${subTab === 'purchase' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                    >
+                        Purchase History
+                    </button>
+                    <button
                         onClick={() => setSubTab('catalog')}
                         className={`flex-1 sm:flex-none px-5 py-2 text-sm font-semibold rounded-lg transition-all ${subTab === 'catalog' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                     >
@@ -239,19 +278,18 @@ const MedicineInventoryTab = () => {
             {/* Quick Actions Panel */}
             <div className="flex justify-between items-center bg-teal-50/40 p-4 rounded-xl border border-teal-100/60">
                 <div className="text-sm text-teal-800 font-medium">
-                    {subTab === 'inventory' 
-                        ? `Displaying ${inventoryList.filter(x => x.isActive !== false).length} active stock items in-clinic`
-                        : `Displaying ${catalogList.filter(x => x.isActive !== false).length} catalog lookup dictionary names`
-                    }
+                    {subTab === 'inventory' && `Displaying ${inventoryList.filter(x => x.isActive !== false).length} active stock items in-clinic`}
+                    {subTab === 'purchase' && `Displaying ${purchaseList.length} purchase ledger entries`}
+                    {subTab === 'catalog' && `Displaying ${catalogList.filter(x => x.isActive !== false).length} catalog lookup dictionary names`}
                 </div>
-                {subTab === 'inventory' ? (
+                {subTab === 'purchase' ? (
                     <button
                         onClick={() => setStockModal({ isOpen: true, isEdit: false, data: null })}
                         className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition font-semibold text-sm shadow-md shadow-teal-600/10 active:scale-95"
                     >
-                        + Add to Inventory
+                        + Add Stock (Purchase Intake)
                     </button>
-                ) : (
+                ) : subTab === 'catalog' ? (
                     <div className="flex gap-2">
                         <input
                             ref={csvInputRef}
@@ -274,11 +312,11 @@ const MedicineInventoryTab = () => {
                             + Add New Medicine
                         </button>
                     </div>
-                )}
+                ) : null}
             </div>
 
             {/* Main Tables */}
-            {loading && inventoryList.length === 0 && catalogList.length === 0 ? (
+            {loading && inventoryList.length === 0 && purchaseList.length === 0 && catalogList.length === 0 ? (
                 <div className="space-y-3">
                     <div className="h-10 bg-slate-100 rounded-lg animate-pulse" />
                     <div className="h-10 bg-slate-100 rounded-lg animate-pulse" />
@@ -296,7 +334,6 @@ const MedicineInventoryTab = () => {
                                 <th className="pb-3 text-right">Unit Price</th>
                                 <th className="pb-3 text-center">Expiry Date</th>
                                 <th className="pb-3 text-center">Stock Level</th>
-                                <th className="pb-3 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
@@ -322,27 +359,65 @@ const MedicineInventoryTab = () => {
                                                 </span>
                                             )}
                                         </td>
-                                        <td className="py-3 text-right space-x-2">
-                                            <button
-                                                onClick={() => setStockModal({ isOpen: true, isEdit: true, data: item })}
-                                                className="text-teal-600 hover:text-teal-800 font-semibold"
-                                            >
-                                                Edit Stock
-                                            </button>
-                                            <button
-                                                onClick={() => handleDeactivateStock(item.id)}
-                                                className="text-red-500 hover:text-red-700 font-semibold"
-                                            >
-                                                Remove
-                                            </button>
-                                        </td>
                                     </tr>
                                 );
                             })}
                             {inventoryList.filter(x => x.isActive !== false).length === 0 && (
                                 <tr>
-                                    <td colSpan={7} className="py-8 text-center text-gray-400">
-                                        No stock items in inventory. Click "+ Add to Inventory" to stock items.
+                                    <td colSpan={6} className="py-8 text-center text-gray-400">
+                                        No stock items in inventory. Record purchases in the "Purchase History" tab to add stock.
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            ) : subTab === 'purchase' ? (
+                /* PURCHASE HISTORY TAB LIST */
+                <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm text-left">
+                        <thead>
+                            <tr className="border-b border-gray-200 text-gray-500 font-medium">
+                                <th className="pb-3 text-left">Medicine Name</th>
+                                <th className="pb-3 text-center">Type</th>
+                                <th className="pb-3 text-center">Quantity Purchased</th>
+                                <th className="pb-3 text-right">Unit Price</th>
+                                <th className="pb-3 text-right">Total Cost</th>
+                                <th className="pb-3 text-center">Expiry Date</th>
+                                <th className="pb-3 text-left">Dosage</th>
+                                <th className="pb-3 text-left">Frequency</th>
+                                <th className="pb-3 text-left">Duration</th>
+                                <th className="pb-3 text-left">Manufacturer</th>
+                                <th className="pb-3 text-center">Purchase Date</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {purchaseList.map((item) => {
+                                const totalCost = item.quantity * item.unitPrice;
+                                return (
+                                    <tr key={item.id} className="hover:bg-slate-50/50 transition">
+                                        <td className="py-3 font-semibold text-gray-800">{item.name}</td>
+                                        <td className="py-3 text-center text-gray-600">
+                                            <span className="px-2 py-0.5 text-xs bg-slate-100 rounded-full font-medium">{item.type || 'Tablet'}</span>
+                                        </td>
+                                        <td className="py-3 text-center font-bold text-gray-900">{item.quantity}</td>
+                                        <td className="py-3 text-right text-gray-900 font-medium">₹{item.unitPrice?.toFixed(2)}</td>
+                                        <td className="py-3 text-right text-teal-700 font-semibold">₹{totalCost.toFixed(2)}</td>
+                                        <td className="py-3 text-center text-gray-500">{item.expiryDate ? new Date(item.expiryDate).toLocaleDateString() : '-'}</td>
+                                        <td className="py-3 text-left text-gray-600">{item.defaultDosage || '-'}</td>
+                                        <td className="py-3 text-left text-gray-600">{item.defaultFrequency || '-'}</td>
+                                        <td className="py-3 text-left text-gray-600">{item.defaultDuration || '-'}</td>
+                                        <td className="py-3 text-left text-gray-500">{item.manufacturer || '-'}</td>
+                                        <td className="py-3 text-center text-gray-500">
+                                            {item.purchaseDate ? new Date(item.purchaseDate).toLocaleString() : '-'}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                            {purchaseList.length === 0 && (
+                                <tr>
+                                    <td colSpan={11} className="py-8 text-center text-gray-400">
+                                        No purchase history found. Click "+ Add Stock (Purchase Intake)" to record a purchase.
                                     </td>
                                 </tr>
                             )}
@@ -458,6 +533,14 @@ const MedicineInventoryTab = () => {
                                                     onMouseDown={() => {
                                                         setStockMedicineQuery(c.name);
                                                         setShowStockSuggestions(false);
+                                                        setStockFormState({
+                                                            type: c.type || 'Tablet',
+                                                            manufacturer: c.manufacturer || '',
+                                                            minStockLevel: '10',
+                                                            defaultDosage: c.defaultDosage || '',
+                                                            defaultFrequency: c.defaultFrequency || '',
+                                                            defaultDuration: c.defaultDuration || ''
+                                                        });
                                                         const hint = document.getElementById('catalog-hint');
                                                         if (hint) hint.classList.add('hidden');
                                                     }}
@@ -480,7 +563,8 @@ const MedicineInventoryTab = () => {
                                 <select
                                     name="type"
                                     required
-                                    defaultValue={stockModal.data?.type || 'Tablet'}
+                                    value={stockFormState.type}
+                                    onChange={(e) => setStockFormState(prev => ({ ...prev, type: e.target.value }))}
                                     className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
                                 >
                                     <option value="Tablet">Tablet</option>
@@ -499,7 +583,7 @@ const MedicineInventoryTab = () => {
                                     <input
                                         type="number"
                                         name="stockQuantity"
-                                        min="0"
+                                        min="1"
                                         required
                                         placeholder="0"
                                         defaultValue={stockModal.data?.stockQuantity !== undefined ? stockModal.data.stockQuantity : ''}
@@ -530,7 +614,8 @@ const MedicineInventoryTab = () => {
                                         min="0"
                                         required
                                         placeholder="10"
-                                        defaultValue={stockModal.data?.minStockLevel !== undefined ? stockModal.data.minStockLevel : '10'}
+                                        value={stockFormState.minStockLevel}
+                                        onChange={(e) => setStockFormState(prev => ({ ...prev, minStockLevel: e.target.value }))}
                                         className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
                                     />
                                 </div>
@@ -540,6 +625,56 @@ const MedicineInventoryTab = () => {
                                         type="date"
                                         name="expiryDate"
                                         defaultValue={stockModal.data?.expiryDate || ''}
+                                        className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-1">Manufacturer</label>
+                                    <input
+                                        type="text"
+                                        name="manufacturer"
+                                        placeholder="e.g. Generic"
+                                        value={stockFormState.manufacturer}
+                                        onChange={(e) => setStockFormState(prev => ({ ...prev, manufacturer: e.target.value }))}
+                                        className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-1">Default Dosage</label>
+                                    <input
+                                        type="text"
+                                        name="defaultDosage"
+                                        placeholder="e.g. 500mg"
+                                        value={stockFormState.defaultDosage}
+                                        onChange={(e) => setStockFormState(prev => ({ ...prev, defaultDosage: e.target.value }))}
+                                        className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-1">Default Frequency</label>
+                                    <input
+                                        type="text"
+                                        name="defaultFrequency"
+                                        placeholder="e.g. 1-0-1"
+                                        value={stockFormState.defaultFrequency}
+                                        onChange={(e) => setStockFormState(prev => ({ ...prev, defaultFrequency: e.target.value }))}
+                                        className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-1">Default Duration</label>
+                                    <input
+                                        type="text"
+                                        name="defaultDuration"
+                                        placeholder="e.g. 5 Days"
+                                        value={stockFormState.defaultDuration}
+                                        onChange={(e) => setStockFormState(prev => ({ ...prev, defaultDuration: e.target.value }))}
                                         className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
                                     />
                                 </div>

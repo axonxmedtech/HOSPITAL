@@ -51,6 +51,20 @@ public class HospitalInventoryController {
         return ResponseEntity.ok().build();
     }
 
+    // --- Purchase History Management ---
+
+    @GetMapping("/purchases")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    public ResponseEntity<List<com.hms.entity.HospitalInventoryPurchase>> getHospitalInventoryPurchases() {
+        return ResponseEntity.ok(hospitalInventoryService.getHospitalInventoryPurchases());
+    }
+
+    @PostMapping("/purchases")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    public ResponseEntity<?> addHospitalInventoryPurchase(@RequestBody com.hms.entity.HospitalInventoryPurchase purchase) {
+        return ResponseEntity.ok(hospitalInventoryService.addHospitalInventoryPurchase(purchase));
+    }
+
     // --- Active Stock Inventory CRUD ---
 
     @GetMapping("/inventory")

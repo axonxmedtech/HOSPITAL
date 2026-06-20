@@ -30,6 +30,9 @@ public class MedicineService {
     private MedicineListRepository medicineListRepository;
 
     @Autowired
+    private com.hms.repository.MedicinePurchaseRepository medicinePurchaseRepository;
+
+    @Autowired
     private SecurityContextHelper securityHelper;
 
     @Autowired
@@ -241,6 +244,92 @@ public class MedicineService {
                 .filter(m -> m.getHospitalId() != null)
                 .findFirst()
                 .or(() -> matches.stream().findFirst());
+    }
+
+    // --- Purchase History Management ---
+
+    public List<com.hms.entity.MedicinePurchase> getMedicinePurchases() {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital ID not found in context");
+        }
+        return medicinePurchaseRepository.findByHospitalIdOrderByPurchaseDateDesc(hospitalId);
+    }
+
+    @Transactional
+    public com.hms.entity.MedicinePurchase addMedicinePurchase(com.hms.entity.MedicinePurchase purchase) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital ID not found in context");
+        }
+
+        purchase.setHospitalId(hospitalId);
+        com.hms.entity.MedicinePurchase savedPurchase = medicinePurchaseRepository.save(purchase);
+
+        // Find existing active stock by name
+        Optional<Medicine> existingOpt = medicineRepository.findByNameIgnoreCaseAndHospitalId(purchase.getName(), hospitalId);
+        
+        Medicine stock;
+        if (existingOpt.isPresent()) {
+            stock = existingOpt.get();
+            stock.setStockQuantity(stock.getStockQuantity() + purchase.getQuantity());
+            stock.setUnitPrice(purchase.getUnitPrice());
+            stock.setExpiryDate(purchase.getExpiryDate());
+            stock.setManufacturer(purchase.getManufacturer());
+            stock.setMinStockLevel(purchase.getMinStockLevel());
+            stock.setType(purchase.getType());
+            stock.setDefaultDosage(purchase.getDefaultDosage());
+            stock.setDefaultFrequency(purchase.getDefaultFrequency());
+            stock.setDefaultDuration(purchase.getDefaultDuration());
+            stock.setIsActive(true);
+        } else {
+            stock = new Medicine();
+            stock.setName(purchase.getName());
+            stock.setStockQuantity(purchase.getQuantity());
+            stock.setUnitPrice(purchase.getUnitPrice());
+            stock.setExpiryDate(purchase.getExpiryDate());
+            stock.setMinStockLevel(purchase.getMinStockLevel());
+            stock.setType(purchase.getType());
+            stock.setManufacturer(purchase.getManufacturer());
+            stock.setDefaultDosage(purchase.getDefaultDosage());
+            stock.setDefaultFrequency(purchase.getDefaultFrequency());
+            stock.setDefaultDuration(purchase.getDefaultDuration());
+            stock.setHospitalId(hospitalId);
+            stock.setIsActive(true);
+        }
+        medicineRepository.save(stock);
+
+        // Auto-catalog medicine in lookup dictionary if it does not exist
+        if (!medicineListRepository.existsByNameAndHospitalId(purchase.getName(), hospitalId)) {
+            MedicineList newCatalog = new MedicineList();
+            newCatalog.setName(purchase.getName());
+            newCatalog.setType(purchase.getType() != null ? purchase.getType() : "Tablet");
+            newCatalog.setDefaultDosage(purchase.getDefaultDosage());
+            newCatalog.setDefaultFrequency(purchase.getDefaultFrequency());
+            newCatalog.setDefaultDuration(purchase.getDefaultDuration());
+            newCatalog.setManufacturer(purchase.getManufacturer());
+            newCatalog.setHospitalId(hospitalId);
+            medicineListRepository.save(newCatalog);
+        }
+
+        // Audit Log
+        try {
+            auditLogService.logAction(
+                    "MEDICINE_PURCHASE_ADDED",
+                    "Recorded purchase of " + savedPurchase.getName() + " (Qty: " + savedPurchase.getQuantity() + ", Cost: ₹" + savedPurchase.getUnitPrice() + ")",
+                    securityHelper.getCurrentUserEmail(),
+                    hospitalId,
+                    "MEDICINE",
+                    savedPurchase.getId().toString(),
+                    null
+            );
+        } catch (Exception ignored) {}
+
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception ignored) {}
+
+        return savedPurchase;
     }
 
     // --- Active Stock Inventory CRUD ---

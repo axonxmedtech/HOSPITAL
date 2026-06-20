@@ -25,6 +25,9 @@ public class HospitalInventoryService {
     private InventoryItemRepository inventoryItemRepository;
 
     @Autowired
+    private com.hms.repository.HospitalInventoryPurchaseRepository hospitalInventoryPurchaseRepository;
+
+    @Autowired
     private SecurityContextHelper securityHelper;
 
     @Autowired
@@ -141,6 +144,83 @@ public class HospitalInventoryService {
                     null
             );
         } catch (Exception ignored) {}
+    }
+
+    // --- Purchase History Management ---
+
+    public List<com.hms.entity.HospitalInventoryPurchase> getHospitalInventoryPurchases() {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital ID not found in context");
+        }
+        return hospitalInventoryPurchaseRepository.findByHospitalIdOrderByPurchaseDateDesc(hospitalId);
+    }
+
+    @Transactional
+    public com.hms.entity.HospitalInventoryPurchase addHospitalInventoryPurchase(com.hms.entity.HospitalInventoryPurchase purchase) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital ID not found in context");
+        }
+
+        purchase.setHospitalId(hospitalId);
+        com.hms.entity.HospitalInventoryPurchase savedPurchase = hospitalInventoryPurchaseRepository.save(purchase);
+
+        // Find existing active stock by name
+        List<HospitalInventory> activeStocks = hospitalInventoryRepository.findByNameAndHospitalIdAndIsActiveTrue(purchase.getName(), hospitalId);
+        
+        HospitalInventory stock;
+        if (!activeStocks.isEmpty()) {
+            stock = activeStocks.get(0);
+            stock.setStockQuantity(stock.getStockQuantity() + purchase.getQuantity());
+            stock.setUnitPrice(purchase.getUnitPrice());
+            stock.setExpiryDate(purchase.getExpiryDate());
+            stock.setManufacturer(purchase.getManufacturer());
+            stock.setMinStockLevel(purchase.getMinStockLevel());
+            stock.setType(purchase.getType());
+            stock.setIsActive(true);
+        } else {
+            stock = new HospitalInventory();
+            stock.setName(purchase.getName());
+            stock.setStockQuantity(purchase.getQuantity());
+            stock.setUnitPrice(purchase.getUnitPrice());
+            stock.setExpiryDate(purchase.getExpiryDate());
+            stock.setMinStockLevel(purchase.getMinStockLevel());
+            stock.setType(purchase.getType());
+            stock.setManufacturer(purchase.getManufacturer());
+            stock.setHospitalId(hospitalId);
+            stock.setIsActive(true);
+        }
+        hospitalInventoryRepository.save(stock);
+
+        // Auto-catalog item in lookup dictionary if it does not exist
+        if (!inventoryItemRepository.existsByNameAndHospitalId(purchase.getName(), hospitalId)) {
+            InventoryItem newCatalog = new InventoryItem();
+            newCatalog.setName(purchase.getName());
+            newCatalog.setType(purchase.getType() != null ? purchase.getType() : "Consumable");
+            newCatalog.setManufacturer(purchase.getManufacturer());
+            newCatalog.setHospitalId(hospitalId);
+            inventoryItemRepository.save(newCatalog);
+        }
+
+        // Audit Log
+        try {
+            auditLogService.logAction(
+                    "INVENTORY_PURCHASE_ADDED",
+                    "Recorded purchase of " + savedPurchase.getName() + " (Qty: " + savedPurchase.getQuantity() + ", Cost: ₹" + savedPurchase.getUnitPrice() + ")",
+                    securityHelper.getCurrentUserEmail(),
+                    hospitalId,
+                    "INVENTORY",
+                    savedPurchase.getId().toString(),
+                    null
+            );
+        } catch (Exception ignored) {}
+
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception ignored) {}
+
+        return savedPurchase;
     }
 
     // --- Active Stock Inventory CRUD ---

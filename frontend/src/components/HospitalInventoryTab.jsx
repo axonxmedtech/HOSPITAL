@@ -4,10 +4,11 @@ import { useToast } from '../context/ToastContext';
 import ConfirmationModal from './ConfirmationModal';
 
 const HospitalInventoryTab = () => {
-    const [subTab, setSubTab] = useState('inventory'); // 'inventory' or 'catalog'
+    const [subTab, setSubTab] = useState('inventory'); // 'inventory', 'purchase', or 'catalog'
     
     // Data states
     const [inventoryList, setInventoryList] = useState([]);
+    const [purchaseList, setPurchaseList] = useState([]);
     const [catalogList, setCatalogList] = useState([]);
     const [loading, setLoading] = useState(false);
     
@@ -24,6 +25,11 @@ const HospitalInventoryTab = () => {
 
     const [stockItemQuery, setStockItemQuery] = useState('');
     const [showStockSuggestions, setShowStockSuggestions] = useState(false);
+    const [stockFormState, setStockFormState] = useState({
+        type: 'Consumable',
+        manufacturer: '',
+        minStockLevel: '10'
+    });
 
     // Relative items states for catalog item
     const [selectedRelativeItems, setSelectedRelativeItems] = useState([]);
@@ -33,6 +39,11 @@ const HospitalInventoryTab = () => {
     useEffect(() => {
         if (stockModal.isOpen) {
             setStockItemQuery(stockModal.data?.name || '');
+            setStockFormState({
+                type: stockModal.data?.type || 'Consumable',
+                manufacturer: stockModal.data?.manufacturer || '',
+                minStockLevel: stockModal.data?.minStockLevel?.toString() || '10'
+            });
         } else {
             setStockItemQuery('');
         }
@@ -95,12 +106,25 @@ const HospitalInventoryTab = () => {
         }
     };
 
+    // Fetch purchases
+    const fetchPurchases = async () => {
+        try {
+            const res = await hospitalService.getHospitalInventoryPurchases();
+            setPurchaseList(res || []);
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
     const loadData = async () => {
         setLoading(true);
         try {
             if (subTab === 'inventory') {
                 await fetchInventory();
                 await fetchCatalog(); // Load catalog to populate options
+            } else if (subTab === 'purchase') {
+                await fetchPurchases();
+                await fetchCatalog(); // For autocomplete in add stock
             } else {
                 await Promise.all([fetchCatalog(), fetchFees()]);
             }
@@ -115,7 +139,7 @@ const HospitalInventoryTab = () => {
         loadData();
     }, [subTab]);
 
-    // Handle Active Stock Save
+    // Handle Stock Intake / Purchase Save
     const handleStockSubmit = async (e) => {
         e.preventDefault();
         const form = e.target;
@@ -132,7 +156,7 @@ const HospitalInventoryTab = () => {
         const payload = {
             name: itemName,
             type,
-            stockQuantity,
+            quantity: stockQuantity, // mapped to quantity in purchase schema
             unitPrice,
             minStockLevel,
             expiryDate: expiryDate ? expiryDate : null,
@@ -141,17 +165,12 @@ const HospitalInventoryTab = () => {
 
         try {
             setLoading(true);
-            if (stockModal.isEdit) {
-                await hospitalService.updateHospitalInventory(stockModal.data.id, payload);
-                success('Stock details updated successfully.');
-            } else {
-                await hospitalService.addHospitalInventory(payload);
-                success('Item added to stock inventory.');
-            }
+            await hospitalService.addHospitalInventoryPurchase(payload);
+            success('Purchase recorded and stock inventory updated.');
             setStockModal({ isOpen: false, isEdit: false, data: null });
             loadData();
         } catch (err) {
-            toastError(err.response?.data || 'Failed to save inventory record.');
+            toastError(err.response?.data || 'Failed to record purchase.');
         } finally {
             setLoading(false);
         }
@@ -240,6 +259,12 @@ const HospitalInventoryTab = () => {
                         Active Stock
                     </button>
                     <button
+                        onClick={() => setSubTab('purchase')}
+                        className={`flex-1 sm:flex-none px-5 py-2 text-sm font-semibold rounded-lg transition-all ${subTab === 'purchase' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                    >
+                        Purchase History
+                    </button>
+                    <button
                         onClick={() => setSubTab('catalog')}
                         className={`flex-1 sm:flex-none px-5 py-2 text-sm font-semibold rounded-lg transition-all ${subTab === 'catalog' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                     >
@@ -251,19 +276,19 @@ const HospitalInventoryTab = () => {
             {/* Quick Actions Panel */}
             <div className="flex justify-between items-center bg-teal-50/40 p-4 rounded-xl border border-teal-100/60">
                 <div className="text-sm text-teal-800 font-medium">
-                    {subTab === 'inventory' 
-                        ? `Displaying ${inventoryList.filter(x => x.isActive !== false).length} active stock items in-clinic`
-                        : `Displaying ${catalogList.filter(x => x.isActive !== false).length} catalog lookup dictionary names`
-                    }
+                    {subTab === 'inventory' && `Displaying ${inventoryList.filter(x => x.isActive !== false).length} active stock items in-clinic`}
+                    {subTab === 'purchase' && `Displaying ${purchaseList.length} purchase ledger entries`}
+                    {subTab === 'catalog' && `Displaying ${catalogList.filter(x => x.isActive !== false).length} catalog lookup dictionary names`}
                 </div>
-                {subTab === 'inventory' ? (
+                {subTab === 'purchase' && (
                     <button
                         onClick={() => setStockModal({ isOpen: true, isEdit: false, data: null })}
                         className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition font-semibold text-sm shadow-md shadow-teal-600/10 active:scale-95"
                     >
-                        + Add Stock
+                        + Add Stock (Purchase Intake)
                     </button>
-                ) : (
+                )}
+                {subTab === 'catalog' && (
                     <button
                         onClick={() => setCatalogModal({ isOpen: true, isEdit: false, data: null })}
                         className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition font-semibold text-sm shadow-md shadow-teal-600/10 active:scale-95"
@@ -274,7 +299,7 @@ const HospitalInventoryTab = () => {
             </div>
 
             {/* Main Tables */}
-            {loading && inventoryList.length === 0 && catalogList.length === 0 ? (
+            {loading && inventoryList.length === 0 && purchaseList.length === 0 && catalogList.length === 0 ? (
                 <div className="space-y-3">
                     <div className="h-10 bg-slate-100 rounded-lg animate-pulse" />
                     <div className="h-10 bg-slate-100 rounded-lg animate-pulse" />
@@ -292,7 +317,6 @@ const HospitalInventoryTab = () => {
                                 <th className="pb-3 text-right">Unit Cost</th>
                                 <th className="pb-3 text-center">Expiry Date</th>
                                 <th className="pb-3 text-center">Stock Level</th>
-                                <th className="pb-3 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
@@ -318,27 +342,59 @@ const HospitalInventoryTab = () => {
                                                 </span>
                                             )}
                                         </td>
-                                        <td className="py-3 text-right space-x-2">
-                                            <button
-                                                onClick={() => setStockModal({ isOpen: true, isEdit: true, data: item })}
-                                                className="text-teal-600 hover:text-teal-800 font-semibold"
-                                            >
-                                                Edit Stock
-                                            </button>
-                                            <button
-                                                onClick={() => handleDeactivateStock(item.id)}
-                                                className="text-red-500 hover:text-red-700 font-semibold"
-                                            >
-                                                Remove
-                                            </button>
-                                        </td>
                                     </tr>
                                 );
                             })}
                             {inventoryList.filter(x => x.isActive !== false).length === 0 && (
                                 <tr>
-                                    <td colSpan={7} className="py-8 text-center text-gray-400">
-                                        No stock items in inventory. Click "+ Add Stock" to stock items.
+                                    <td colSpan={6} className="py-8 text-center text-gray-400">
+                                        No stock items in inventory. Record purchases in the "Purchase History" tab to add stock.
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            ) : subTab === 'purchase' ? (
+                /* PURCHASE HISTORY TAB LIST */
+                <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm text-left">
+                        <thead>
+                            <tr className="border-b border-gray-200 text-gray-500 font-medium">
+                                <th className="pb-3 text-left">Item Name</th>
+                                <th className="pb-3 text-center">Type</th>
+                                <th className="pb-3 text-center">Quantity Purchased</th>
+                                <th className="pb-3 text-right">Unit Price</th>
+                                <th className="pb-3 text-right">Total Cost</th>
+                                <th className="pb-3 text-center">Expiry Date</th>
+                                <th className="pb-3 text-left">Manufacturer</th>
+                                <th className="pb-3 text-center">Purchase Date</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {purchaseList.map((item) => {
+                                const totalCost = item.quantity * item.unitPrice;
+                                return (
+                                    <tr key={item.id} className="hover:bg-slate-50/50 transition">
+                                        <td className="py-3 font-semibold text-gray-800">{item.name}</td>
+                                        <td className="py-3 text-center text-gray-600">
+                                            <span className="px-2 py-0.5 text-xs bg-slate-100 rounded-full font-medium">{item.type || 'Consumable'}</span>
+                                        </td>
+                                        <td className="py-3 text-center font-bold text-gray-900">{item.quantity}</td>
+                                        <td className="py-3 text-right text-gray-900 font-medium">₹{item.unitPrice?.toFixed(2)}</td>
+                                        <td className="py-3 text-right text-teal-700 font-semibold">₹{totalCost.toFixed(2)}</td>
+                                        <td className="py-3 text-center text-gray-500">{item.expiryDate ? new Date(item.expiryDate).toLocaleDateString() : '-'}</td>
+                                        <td className="py-3 text-left text-gray-500">{item.manufacturer || '-'}</td>
+                                        <td className="py-3 text-center text-gray-500">
+                                            {item.purchaseDate ? new Date(item.purchaseDate).toLocaleString() : '-'}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                            {purchaseList.length === 0 && (
+                                <tr>
+                                    <td colSpan={8} className="py-8 text-center text-gray-400">
+                                        No purchase history found. Click "+ Add Stock (Purchase Intake)" to record a purchase.
                                     </td>
                                 </tr>
                             )}
@@ -458,6 +514,11 @@ const HospitalInventoryTab = () => {
                                                     onMouseDown={() => {
                                                         setStockItemQuery(c.name);
                                                         setShowStockSuggestions(false);
+                                                        setStockFormState({
+                                                            type: c.type || 'Consumable',
+                                                            manufacturer: c.manufacturer || '',
+                                                            minStockLevel: '10'
+                                                        });
                                                         const hint = document.getElementById('catalog-hint');
                                                         if (hint) hint.classList.add('hidden');
                                                     }}
@@ -480,7 +541,8 @@ const HospitalInventoryTab = () => {
                                 <select
                                     name="type"
                                     required
-                                    defaultValue={stockModal.data?.type || 'Consumable'}
+                                    value={stockFormState.type}
+                                    onChange={(e) => setStockFormState(prev => ({ ...prev, type: e.target.value }))}
                                     className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none bg-white text-gray-800"
                                 >
                                     <option value="Consumable">Consumable (Gloves, Swabs)</option>
@@ -497,7 +559,7 @@ const HospitalInventoryTab = () => {
                                     <input
                                         type="number"
                                         name="stockQuantity"
-                                        min="0"
+                                        min="1"
                                         required
                                         placeholder="0"
                                         defaultValue={stockModal.data?.stockQuantity !== undefined ? stockModal.data.stockQuantity : ''}
@@ -528,7 +590,8 @@ const HospitalInventoryTab = () => {
                                         min="0"
                                         required
                                         placeholder="10"
-                                        defaultValue={stockModal.data?.minStockLevel !== undefined ? stockModal.data.minStockLevel : '10'}
+                                        value={stockFormState.minStockLevel}
+                                        onChange={(e) => setStockFormState(prev => ({ ...prev, minStockLevel: e.target.value }))}
                                         className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
                                     />
                                 </div>
@@ -549,7 +612,8 @@ const HospitalInventoryTab = () => {
                                     type="text"
                                     name="manufacturer"
                                     placeholder="e.g. Generic Co."
-                                    defaultValue={stockModal.data?.manufacturer || ''}
+                                    value={stockFormState.manufacturer}
+                                    onChange={(e) => setStockFormState(prev => ({ ...prev, manufacturer: e.target.value }))}
                                     className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
                                 />
                             </div>

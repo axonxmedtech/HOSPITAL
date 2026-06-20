@@ -60,6 +60,20 @@ public class MedicineController {
         return ResponseEntity.ok().build();
     }
 
+    // --- Purchase History Management ---
+
+    @GetMapping("/purchases")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    public ResponseEntity<List<com.hms.entity.MedicinePurchase>> getMedicinePurchases() {
+        return ResponseEntity.ok(medicineService.getMedicinePurchases());
+    }
+
+    @PostMapping("/purchases")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    public ResponseEntity<?> addMedicinePurchase(@RequestBody com.hms.entity.MedicinePurchase purchase) {
+        return ResponseEntity.ok(medicineService.addMedicinePurchase(purchase));
+    }
+
     // --- Active Stock Inventory CRUD ---
 
     @GetMapping("/inventory")
