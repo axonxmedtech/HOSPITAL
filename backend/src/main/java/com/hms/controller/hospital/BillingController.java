@@ -316,7 +316,6 @@ public class BillingController {
     @GetMapping("/{id}/pdf")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> downloadReceipt(@PathVariable Long id) {
-        validateBillingAccess();
         Billing billing = billingRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Bill not found"));
 

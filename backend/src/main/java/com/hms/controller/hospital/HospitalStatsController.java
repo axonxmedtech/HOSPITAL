@@ -62,6 +62,19 @@ public class HospitalStatsController {
     }
 
     /**
+     * Get detailed analytics for Hospital Admin
+     */
+    @GetMapping("/analytics")
+    @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
+    public ResponseEntity<?> getAnalytics() {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new RuntimeException("Hospital context not found");
+        }
+        return ResponseEntity.ok(statsService.getAnalytics(hospitalId));
+    }
+
+    /**
      * Get patient activity for a specific date.
      * Returns list of patients who had OPD, Appointment, or IPD activity on that date,
      * sorted by activity time descending (latest first).

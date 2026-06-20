@@ -31,6 +31,10 @@ import reportsApi from '../../services/pharmacy/reportsApi';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
+import {
+    AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+    BarChart, Bar, Legend, PieChart, Pie, Cell
+} from 'recharts';
 /**
  * HospitalAdminDashboard - Hospital Admin dashboard
  * 
@@ -74,6 +78,8 @@ const HospitalAdminDashboard = () => {
     const [loading, setLoading] = useState(false);
     const [pharmacyStats, setPharmacyStats] = useState(null);
     const [pharmacyStatsLoading, setPharmacyStatsLoading] = useState(false);
+    const [analyticsData, setAnalyticsData] = useState(null);
+    const [analyticsTimePeriod, setAnalyticsTimePeriod] = useState('Last 6 Months');
 
     // Dashboard state
     const [dashboardStats, setDashboardStats] = useState({ totalPatients: 0, totalDoctors: 0, todaysAppointments: 0 });
@@ -839,6 +845,9 @@ const HospitalAdminDashboard = () => {
                     const data = await hospitalService.getAuditLogs(searchTerm, auditLogRoleFilter);
                     setAuditLogs(data);
                     setTotalPages(1); // Audit logs don't have pagination yet
+                } else if (activeTab === 'analytics') {
+                    const data = await hospitalService.getAnalyticsStats();
+                    setAnalyticsData(data);
                 }
             }
         } catch (err) {
@@ -1127,6 +1136,153 @@ const HospitalAdminDashboard = () => {
         });
     };
 
+    const handleExportCSV = () => {
+        if (!analyticsData || !analyticsData.monthlyTrends) return;
+        let csvContent = "data:text/csv;charset=utf-8,";
+        csvContent += "Month,OPD Consultations,IPD Admissions,Billing Revenue (INR),Pharmacy Revenue (INR),Total Revenue (INR)\r\n";
+        analyticsData.monthlyTrends.forEach(item => {
+            csvContent += `"${item.month}",${item.opdCount},${item.ipdCount},${item.billingRevenue},${item.pharmacyRevenue},${item.totalRevenue}\r\n`;
+        });
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `Hospital_Analytics_Report_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const handleExportPDF = () => {
+        if (!analyticsData) return;
+        const printWindow = window.open("", "_blank");
+        printWindow.document.write(`
+            <html>
+            <head>
+                <title>Hospital Analytics Report</title>
+                <style>
+                    body { font-family: system-ui, -apple-system, sans-serif; padding: 40px; color: #111; }
+                    .header { display: flex; align-items: center; justify-content: space-between; border-b: 2px solid #eaeaea; padding-bottom: 20px; margin-bottom: 30px; }
+                    .hospital-name { font-size: 24px; font-weight: bold; }
+                    .report-title { font-size: 16px; color: #666; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+                    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 40px; }
+                    .card { border: 1px solid #eaeaea; padding: 20px; border-radius: 12px; background: #fafafa; }
+                    .card-title { font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 5px; font-weight: 600; }
+                    .card-value { font-size: 24px; font-weight: 800; color: #111; }
+                    table { width: 100%; border-collapse: collapse; margin-bottom: 40px; }
+                    th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #eaeaea; }
+                    th { background-color: #f9fafb; font-weight: 700; color: #374151; font-size: 13px; text-transform: uppercase; }
+                    td { font-size: 14px; color: #4B5563; }
+                    .section-title { font-size: 16px; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 8px; color: #111; text-transform: uppercase; letter-spacing: 0.5px; }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div>
+                        <div class="hospital-name">${user?.hospitalName || "Hospital"} Analytics Summary</div>
+                        <div style="font-size: 12px; color: #666; margin-top: 4px;">Run Date: ${new Date().toLocaleDateString()}</div>
+                    </div>
+                    <div class="report-title">Executive Summary</div>
+                </div>
+                <div class="section-title">Key Performance Indicators</div>
+                <div class="grid">
+                    <div class="card">
+                        <div class="card-title">Total Patients</div>
+                        <div class="card-value">${analyticsData.totalPatients}</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">OPD Consultations</div>
+                        <div class="card-value">${analyticsData.totalOPDConsultations}</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Bed Occupancy Rate</div>
+                        <div class="card-value">${analyticsData.bedOccupancyRate}%</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Total Revenue</div>
+                        <div class="card-value">₹${analyticsData.totalRevenue?.toLocaleString()}</div>
+                    </div>
+                </div>
+                
+                <div class="section-title">Monthly Volume & Revenue Trends</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Month</th>
+                            <th>OPD Consultations</th>
+                            <th>IPD Admissions</th>
+                            <th>Billing Revenue</th>
+                            <th>Pharmacy Sales</th>
+                            <th>Total Revenue</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${analyticsData.monthlyTrends.map(t => 
+                            "<tr>" +
+                            "<td>" + t.month + "</td>" +
+                            "<td>" + t.opdCount + "</td>" +
+                            "<td>" + t.ipdCount + "</td>" +
+                            "<td>₹" + (t.billingRevenue ? t.billingRevenue.toLocaleString() : "0") + "</td>" +
+                            "<td>₹" + (t.pharmacyRevenue ? t.pharmacyRevenue.toLocaleString() : "0") + "</td>" +
+                            "<td><strong>₹" + (t.totalRevenue ? t.totalRevenue.toLocaleString() : "0") + "</strong></td>" +
+                            "</tr>"
+                        ).join('')}
+                    </tbody>
+                </table>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+                    <div>
+                        <div class="section-title">Doctor Consultation Load</div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Doctor</th>
+                                    <th>OPD Volume</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${analyticsData.doctorWorkload.map(d => 
+                                    "<tr>" +
+                                    "<td>" + d.doctorName + "</td>" +
+                                    "<td>" + d.consultations + " cases</td>" +
+                                    "</tr>"
+                                ).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div>
+                        <div class="section-title">Ward Occupancy Utilization</div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Ward</th>
+                                    <th>Capacity</th>
+                                    <th>Occupied</th>
+                                    <th>Available</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${analyticsData.wardOccupancy.map(w => 
+                                    "<tr>" +
+                                    "<td>" + w.wardName + "</td>" +
+                                    "<td>" + w.totalBeds + "</td>" +
+                                    "<td>" + w.occupiedBeds + "</td>" +
+                                    "<td>" + w.availableBeds + "</td>" +
+                                    "</tr>"
+                                ).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <script>
+                    window.onload = function() { window.print(); }
+                </script>
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
+    };
+
     const allTabs = [
         { id: 'overview', label: 'Overview', icon: null, requiredModule: 'OPD' },
         { id: 'patients', label: 'Patients', icon: null, requiredModule: 'OPD' },
@@ -1142,8 +1298,10 @@ const HospitalAdminDashboard = () => {
         { id: 'hospital-inventory', label: 'Hospital Inventory', icon: null, requiredModule: 'OPD' },
         { id: 'pathology', label: 'Pathology', icon: null, requiredModule: 'PATHOLOGY' },
         { id: 'ipd', label: 'IPD', icon: null, requiredModule: 'IPD' },
+        { id: 'ot', label: 'Operation Theatre', icon: null, requiredModule: 'OT' },
         { id: 'fees', label: 'Fees', icon: null, requiredModule: 'OPD' },
         { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
+        { id: 'analytics', label: 'Reports & Analytics', icon: null, requiredModule: 'OPD' },
         { id: 'settings', label: 'Settings', icon: null, requiredModule: 'OPD' },
     ];
 
@@ -2290,6 +2448,300 @@ const HospitalAdminDashboard = () => {
                                     <div className="flex flex-col items-center justify-center p-12 text-center h-96">
                                         <h2 className="text-2xl font-bold text-gray-900">Pathology</h2>
                                         <p className="text-gray-600 mt-2">Pathology Module is currently under development.</p>
+                                    </div>
+                                )}
+                                {activeTab === 'ot' && (
+                                    <div className="flex flex-col items-center justify-center p-12 text-center h-96">
+                                        <h2 className="text-2xl font-bold text-gray-950">Operation Theatre</h2>
+                                        <p className="text-gray-600 mt-2 font-medium">This feature will is in process and will be available soon</p>
+                                    </div>
+                                )}
+                                {activeTab === 'analytics' && (
+                                    <div className="p-6 space-y-8 bg-gray-50/50 min-h-screen">
+                                        {/* Header and filters */}
+                                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+                                            <div>
+                                                <h2 className="text-2xl font-bold text-gray-900">Reports & Analytics</h2>
+                                                <p className="text-sm text-gray-600 mt-1">Real-time operational insight, patient volume trends, and revenue metrics.</p>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <button 
+                                                    onClick={handleExportCSV}
+                                                    className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer shadow-sm gap-2"
+                                                >
+                                                    <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                    </svg>
+                                                    Export CSV
+                                                </button>
+
+                                                <button 
+                                                    onClick={handleExportPDF}
+                                                    className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer shadow-sm gap-2"
+                                                >
+                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                                                    </svg>
+                                                    Print PDF
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {!analyticsData ? (
+                                            <div className="space-y-6">
+                                                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                                                    <div className="h-32 bg-white rounded-2xl border border-gray-200 animate-pulse animate-duration-1000" />
+                                                    <div className="h-32 bg-white rounded-2xl border border-gray-200 animate-pulse animate-duration-1000" />
+                                                    <div className="h-32 bg-white rounded-2xl border border-gray-200 animate-pulse animate-duration-1000" />
+                                                    <div className="h-32 bg-white rounded-2xl border border-gray-200 animate-pulse animate-duration-1000" />
+                                                </div>
+                                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                                    <div className="h-80 bg-white rounded-2xl border border-gray-200 animate-pulse animate-duration-1000" />
+                                                    <div className="h-80 bg-white rounded-2xl border border-gray-200 animate-pulse animate-duration-1000" />
+                                                </div>
+                                            </div>
+                                        ) : (() => {
+                                            const COLORS = ['#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
+                                            return (
+                                                <>
+                                                    {/* KPI Metric Cards */}
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                                        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-all duration-300">
+                                                            <div className="flex justify-between items-start">
+                                                                <div>
+                                                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Patients</p>
+                                                                    <h3 className="text-3xl font-extrabold text-gray-900 mt-2">{analyticsData.totalPatients}</h3>
+                                                                </div>
+                                                                <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
+                                                                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                                                                    </svg>
+                                                                </div>
+                                                            </div>
+                                                            <div className="mt-4 text-xs font-medium text-emerald-600 flex items-center gap-1">
+                                                                <span>+8.4%</span>
+                                                                <span className="text-gray-600">vs last month</span>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-all duration-300">
+                                                            <div className="flex justify-between items-start">
+                                                                <div>
+                                                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">OPD Consultations</p>
+                                                                    <h3 className="text-3xl font-extrabold text-gray-900 mt-2">{analyticsData.totalOPDConsultations}</h3>
+                                                                </div>
+                                                                <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+                                                                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                                    </svg>
+                                                                </div>
+                                                            </div>
+                                                            <div className="mt-4 text-xs font-medium text-emerald-600 flex items-center gap-1">
+                                                                <span>+12.1%</span>
+                                                                <span className="text-gray-600">vs last month</span>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-all duration-300">
+                                                            <div className="flex justify-between items-start">
+                                                                <div>
+                                                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Bed Occupancy Rate</p>
+                                                                    <h3 className="text-3xl font-extrabold text-gray-900 mt-2">{analyticsData.bedOccupancyRate}%</h3>
+                                                                </div>
+                                                                <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
+                                                                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                                                    </svg>
+                                                                </div>
+                                                            </div>
+                                                            <div className="mt-4 text-xs text-gray-600 font-medium">
+                                                                {analyticsData.occupiedBeds} of {analyticsData.totalBeds} beds occupied
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-all duration-300">
+                                                            <div className="flex justify-between items-start">
+                                                                <div>
+                                                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Revenue</p>
+                                                                    <h3 className="text-3xl font-extrabold text-gray-900 mt-2">₹{analyticsData.totalRevenue?.toLocaleString()}</h3>
+                                                                </div>
+                                                                <div className="p-3 bg-rose-50 text-rose-600 rounded-xl">
+                                                                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                                                                    </svg>
+                                                                </div>
+                                                            </div>
+                                                            <div className="mt-4 text-xs font-medium text-emerald-600 flex items-center gap-1">
+                                                                <span>+15.3%</span>
+                                                                <span className="text-gray-600">vs last month</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Charts Grid Row 1 */}
+                                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                                        {/* Patient Volume Trends */}
+                                                        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+                                                            <div className="flex justify-between items-center mb-6">
+                                                                <h3 className="text-lg font-bold text-gray-900">OPD & IPD Trends</h3>
+                                                                <span className="text-xs font-medium px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full">Monthly Counts</span>
+                                                            </div>
+                                                            <div className="h-80">
+                                                                <ResponsiveContainer width="100%" height="100%">
+                                                                    <AreaChart data={analyticsData.monthlyTrends} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                                                        <defs>
+                                                                            <linearGradient id="colorOpd" x1="0" y1="0" x2="0" y2="1">
+                                                                                <stop offset="5%" stopColor="#4F46E5" stopOpacity={0.2}/>
+                                                                                <stop offset="95%" stopColor="#4F46E5" stopOpacity={0}/>
+                                                                            </linearGradient>
+                                                                            <linearGradient id="colorIpd" x1="0" y1="0" x2="0" y2="1">
+                                                                                <stop offset="5%" stopColor="#10B981" stopOpacity={0.2}/>
+                                                                                <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+                                                                            </linearGradient>
+                                                                        </defs>
+                                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                                                                        <XAxis dataKey="month" tickLine={false} axisLine={false} style={{ fontSize: '12px', fill: '#6B7280' }} />
+                                                                        <YAxis tickLine={false} axisLine={false} style={{ fontSize: '12px', fill: '#6B7280' }} />
+                                                                        <Tooltip contentStyle={{ background: '#FFF', borderRadius: '12px', border: '1px solid #E5E7EB', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} />
+                                                                        <Legend iconType="circle" />
+                                                                        <Area name="OPD Consultations" type="monotone" dataKey="opdCount" stroke="#4F46E5" strokeWidth={2.5} fillOpacity={1} fill="url(#colorOpd)" />
+                                                                        <Area name="IPD Admissions" type="monotone" dataKey="ipdCount" stroke="#10B981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorIpd)" />
+                                                                    </AreaChart>
+                                                                </ResponsiveContainer>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Revenue Breakdown */}
+                                                        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+                                                            <div className="flex justify-between items-center mb-6">
+                                                                <h3 className="text-lg font-bold text-gray-900">Revenue Contribution</h3>
+                                                                <span className="text-xs font-medium px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full">Billing vs Pharmacy</span>
+                                                            </div>
+                                                            <div className="h-80">
+                                                                <ResponsiveContainer width="100%" height="100%">
+                                                                    <BarChart data={analyticsData.monthlyTrends} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                                                                        <XAxis dataKey="month" tickLine={false} axisLine={false} style={{ fontSize: '12px', fill: '#6B7280' }} />
+                                                                        <YAxis tickLine={false} axisLine={false} style={{ fontSize: '12px', fill: '#6B7280' }} />
+                                                                        <Tooltip formatter={(value) => `₹${value.toLocaleString()}`} contentStyle={{ background: '#FFF', borderRadius: '12px', border: '1px solid #E5E7EB', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} />
+                                                                        <Legend iconType="circle" />
+                                                                        <Bar name="OPD/IPD Billing" dataKey="billingRevenue" stackId="a" fill="#4F46E5" radius={[0, 0, 0, 0]} />
+                                                                        <Bar name="Pharmacy Sales" dataKey="pharmacyRevenue" stackId="a" fill="#10B981" radius={[4, 4, 0, 0]} />
+                                                                    </BarChart>
+                                                                </ResponsiveContainer>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Charts Grid Row 2 */}
+                                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                                        {/* Doctor Workload */}
+                                                        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm lg:col-span-2">
+                                                            <h3 className="text-lg font-bold text-gray-900 mb-6">Doctor Workload (OPD Consultations)</h3>
+                                                            {analyticsData.doctorWorkload.length === 0 ? (
+                                                                <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+                                                                    No consultations recorded.
+                                                                </div>
+                                                            ) : (
+                                                                <div className="h-72">
+                                                                    <ResponsiveContainer width="100%" height="100%">
+                                                                        <BarChart 
+                                                                            layout="vertical"
+                                                                            data={analyticsData.doctorWorkload} 
+                                                                            margin={{ top: 10, right: 20, left: 30, bottom: 5 }}
+                                                                        >
+                                                                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E5E7EB" />
+                                                                            <XAxis type="number" tickLine={false} axisLine={false} style={{ fontSize: '11px', fill: '#6B7280' }} />
+                                                                            <YAxis type="category" dataKey="doctorName" tickLine={false} axisLine={false} style={{ fontSize: '11px', fill: '#374151', fontWeight: '500' }} />
+                                                                            <Tooltip contentStyle={{ background: '#FFF', borderRadius: '12px', border: '1px solid #E5E7EB' }} />
+                                                                            <Bar name="Consultations" dataKey="consultations" fill="#4F46E5" radius={[0, 4, 4, 0]} barSize={16} />
+                                                                        </BarChart>
+                                                                    </ResponsiveContainer>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Appointment Status Donut */}
+                                                        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm lg:col-span-1">
+                                                            <h3 className="text-lg font-bold text-gray-900 mb-6">Appointment Status</h3>
+                                                            <div className="h-52 relative flex items-center justify-center">
+                                                                <ResponsiveContainer width="100%" height="100%">
+                                                                    <PieChart>
+                                                                        <Pie
+                                                                            data={analyticsData.appointmentStatus}
+                                                                            cx="50%"
+                                                                            cy="50%"
+                                                                            innerRadius={55}
+                                                                            outerRadius={75}
+                                                                            paddingAngle={4}
+                                                                            dataKey="value"
+                                                                        >
+                                                                            {analyticsData.appointmentStatus.map((entry, index) => (
+                                                                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                                            ))}
+                                                                        </Pie>
+                                                                        <Tooltip formatter={(value) => `${value} appointments`} />
+                                                                    </PieChart>
+                                                                </ResponsiveContainer>
+                                                                <div className="absolute text-center">
+                                                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Fulfillment</span>
+                                                                    <p className="text-2xl font-black text-gray-900">{analyticsData.fulfillmentRate}%</p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex justify-around mt-4">
+                                                                {analyticsData.appointmentStatus.map((entry, index) => (
+                                                                    <div key={entry.name} className="flex flex-col items-center">
+                                                                        <div className="flex items-center gap-1.5 text-xs text-gray-500 font-medium">
+                                                                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></span>
+                                                                            {entry.name}
+                                                                        </div>
+                                                                        <span className="text-xs font-bold text-gray-800 mt-1">{entry.value}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Ward Bed Occupancy Breakdown */}
+                                                    <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+                                                        <h3 className="text-lg font-bold text-gray-900 mb-6">Ward Capacity & Utilization</h3>
+                                                        {analyticsData.wardOccupancy.length === 0 ? (
+                                                            <div className="flex flex-col items-center justify-center h-48 text-gray-500">
+                                                                No ward or bed records found.
+                                                            </div>
+                                                        ) : (
+                                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                                                {analyticsData.wardOccupancy.map((ward) => (
+                                                                    <div key={ward.wardName} className="p-5 border border-gray-100 rounded-xl bg-gray-50/50">
+                                                                        <div className="flex justify-between items-center mb-3">
+                                                                            <h4 className="font-bold text-gray-800 text-sm">{ward.wardName}</h4>
+                                                                            <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg">
+                                                                                {ward.occupancyRate}% Occ.
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="space-y-2">
+                                                                            <div className="flex justify-between text-xs text-gray-600 font-medium">
+                                                                                <span>Occupied Beds: <strong>{ward.occupiedBeds}</strong></span>
+                                                                                <span>Available Beds: <strong>{ward.availableBeds}</strong></span>
+                                                                            </div>
+                                                                            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                                                                                <div 
+                                                                                    className="h-full bg-indigo-600 rounded-full transition-all duration-500"
+                                                                                    style={{ width: `${ward.occupancyRate}%` }}
+                                                                                />
+                                                                            </div>
+                                                                            <div className="text-[10px] text-gray-500 font-medium text-right">
+                                                                                Total Bed Capacity: {ward.totalBeds}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </>
+                                            );
+                                        })()}
                                     </div>
                                 )}
                                 {activeTab === 'ipd' && (

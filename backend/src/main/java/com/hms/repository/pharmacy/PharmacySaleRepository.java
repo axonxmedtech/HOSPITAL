@@ -18,4 +18,6 @@ public interface PharmacySaleRepository extends JpaRepository<PharmacySale, Long
     java.math.BigDecimal getSumOfSalesBetween(Long hospitalId, java.time.LocalDateTime start, java.time.LocalDateTime end);
 
     long countByHospitalIdAndCreatedAtBetween(Long hospitalId, java.time.LocalDateTime start, java.time.LocalDateTime end);
+
+    java.util.List<PharmacySale> findByHospitalIdAndCreatedAtAfter(Long hospitalId, java.time.LocalDateTime createdAt);
 }

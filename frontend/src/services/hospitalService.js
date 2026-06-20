@@ -649,6 +649,11 @@ const hospitalService = {
         return response.data;
     },
 
+    getAnalyticsStats: async () => {
+        const response = await apiClient.get('/hospital/stats/analytics');
+        return response.data;
+    },
+
     /**
      * Get today's appointments for Overview dashboard
      */

@@ -16,10 +16,19 @@ import com.hms.repository.IpdAdmissionRepository;
 import com.hms.repository.OpdRepository;
 import com.hms.repository.PatientRepository;
 import com.hms.repository.DoctorRepository;
+import com.hms.repository.BillingRepository;
+import com.hms.repository.pharmacy.PharmacySaleRepository;
+import com.hms.repository.WardRepository;
+import com.hms.repository.BedRepository;
+import com.hms.entity.Billing;
+import com.hms.entity.pharmacy.PharmacySale;
+import com.hms.entity.Ward;
+import com.hms.entity.Bed;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -52,6 +61,18 @@ public class HospitalStatsService {
 
     @Autowired
     private DoctorRepository doctorRepository;
+    
+    @Autowired
+    private BillingRepository billingRepository;
+
+    @Autowired
+    private PharmacySaleRepository pharmacySaleRepository;
+
+    @Autowired
+    private WardRepository wardRepository;
+
+    @Autowired
+    private BedRepository bedRepository;
 
     @Cacheable(value = "hospitalStats", key = "#hospitalId")
     public Map<String, Long> getStats(Long hospitalId) {
@@ -216,6 +237,156 @@ public class HospitalStatsService {
         });
 
         return activities;
+    }
+
+    public Map<String, Object> getAnalytics(Long hospitalId) {
+        Map<String, Object> analytics = new HashMap<>();
+
+        // 1. KPI cards:
+        long totalPatients = patientRepository.countByHospitalIdAndIsActiveTrue(hospitalId);
+        analytics.put("totalPatients", totalPatients);
+
+        long totalDoctors = doctorRepository.findByHospitalIdAndIsActiveTrueOrderByCreatedAtDesc(hospitalId).size();
+        analytics.put("totalDoctors", totalDoctors);
+
+        List<Bed> beds = bedRepository.findByHospitalId(hospitalId);
+        long totalBeds = beds.size();
+        long occupiedBeds = beds.stream().filter(b -> "occupied".equalsIgnoreCase(b.getStatus())).count();
+        double bedOccupancyRate = totalBeds > 0 ? ((double) occupiedBeds / totalBeds) * 100.0 : 0.0;
+        analytics.put("totalBeds", totalBeds);
+        analytics.put("occupiedBeds", occupiedBeds);
+        analytics.put("bedOccupancyRate", Math.round(bedOccupancyRate * 10.0) / 10.0);
+
+        LocalDate today = LocalDate.now();
+        LocalDate startMonthDate = today.minusMonths(5).withDayOfMonth(1);
+        LocalDateTime rangeStart = startMonthDate.atStartOfDay();
+        LocalDateTime rangeEnd = LocalDateTime.now();
+
+        List<Opd> opdList = opdRepository.searchByHospitalAndDateRange(
+                hospitalId, null, rangeStart, rangeEnd, null, PageRequest.of(0, 100000)).getContent();
+        analytics.put("totalOPDConsultations", opdList.size());
+
+        List<IpdAdmission> ipdList = ipdAdmissionRepository.findByHospitalIdAndAdmissionDatetimeBetween(hospitalId, rangeStart, rangeEnd);
+        analytics.put("totalIPDAdmissions", ipdList.size());
+
+        List<Billing> billingList = billingRepository.findByHospitalIdAndCreatedAtAfter(hospitalId, rangeStart);
+        double totalBillingRevenue = billingList.stream()
+                .filter(b -> "PAID".equalsIgnoreCase(b.getPaymentStatus()))
+                .mapToDouble(b -> b.getAmount() != null ? b.getAmount().doubleValue() : 0.0)
+                .sum();
+
+        List<PharmacySale> pharmacySalesList = pharmacySaleRepository.findByHospitalIdAndCreatedAtAfter(hospitalId, rangeStart);
+        double totalPharmacyRevenue = pharmacySalesList.stream()
+                .filter(s -> "PAID".equalsIgnoreCase(s.getPaymentStatus()))
+                .mapToDouble(s -> s.getNetAmount() != null ? s.getNetAmount().doubleValue() : 0.0)
+                .sum();
+
+        analytics.put("totalBillingRevenue", totalBillingRevenue);
+        analytics.put("totalPharmacyRevenue", totalPharmacyRevenue);
+        analytics.put("totalRevenue", Math.round((totalBillingRevenue + totalPharmacyRevenue) * 100.0) / 100.0);
+
+        List<Appointment> appointmentList = appointmentRepository.findByHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(hospitalId);
+        List<Appointment> appointmentsInRange = appointmentList.stream()
+                .filter(a -> !a.getAppointmentDate().isBefore(startMonthDate))
+                .collect(Collectors.toList());
+
+        long completedAppts = appointmentsInRange.stream().filter(a -> "COMPLETED".equalsIgnoreCase(a.getStatus())).count();
+        long pendingAppts = appointmentsInRange.stream().filter(a -> "PENDING".equalsIgnoreCase(a.getStatus()) || "CONFIRMED".equalsIgnoreCase(a.getStatus())).count();
+        long cancelledAppts = appointmentsInRange.stream().filter(a -> "CANCELLED".equalsIgnoreCase(a.getStatus())).count();
+
+        List<Map<String, Object>> appointmentStatusData = new ArrayList<>();
+        Map<String, Object> compMap = new HashMap<>(); compMap.put("name", "Completed"); compMap.put("value", completedAppts); appointmentStatusData.add(compMap);
+        Map<String, Object> pendMap = new HashMap<>(); pendMap.put("name", "Pending"); pendMap.put("value", pendingAppts); appointmentStatusData.add(pendMap);
+        Map<String, Object> cancMap = new HashMap<>(); cancMap.put("name", "Cancelled"); cancMap.put("value", cancelledAppts); appointmentStatusData.add(cancMap);
+        analytics.put("appointmentStatus", appointmentStatusData);
+
+        long totalAppts = completedAppts + pendingAppts + cancelledAppts;
+        double fulfillmentRate = totalAppts > 0 ? ((double) completedAppts / totalAppts) * 100.0 : 0.0;
+        analytics.put("fulfillmentRate", Math.round(fulfillmentRate * 10.0) / 10.0);
+
+        List<Map<String, Object>> monthlyTrends = new ArrayList<>();
+        DateTimeFormatter trendMonthFormatter = DateTimeFormatter.ofPattern("yyyy-MM");
+        DateTimeFormatter displayMonthFormatter = DateTimeFormatter.ofPattern("MMM yyyy");
+
+        for (int i = 5; i >= 0; i--) {
+            LocalDate mDate = today.minusMonths(i);
+            String yyyyMM = mDate.format(trendMonthFormatter);
+            String displayMonth = mDate.format(displayMonthFormatter);
+
+            long opdCount = opdList.stream()
+                    .filter(o -> o.getCreatedAt() != null && o.getCreatedAt().format(trendMonthFormatter).equals(yyyyMM))
+                    .count();
+
+            long ipdCount = ipdList.stream()
+                    .filter(ipd -> ipd.getAdmissionDatetime() != null && ipd.getAdmissionDatetime().format(trendMonthFormatter).equals(yyyyMM))
+                    .count();
+
+            double billRev = billingList.stream()
+                    .filter(b -> "PAID".equalsIgnoreCase(b.getPaymentStatus()) && b.getCreatedAt() != null && b.getCreatedAt().format(trendMonthFormatter).equals(yyyyMM))
+                    .mapToDouble(b -> b.getAmount() != null ? b.getAmount().doubleValue() : 0.0)
+                    .sum();
+
+            double pharmRev = pharmacySalesList.stream()
+                    .filter(s -> "PAID".equalsIgnoreCase(s.getPaymentStatus()) && s.getCreatedAt() != null && s.getCreatedAt().format(trendMonthFormatter).equals(yyyyMM))
+                    .mapToDouble(s -> s.getNetAmount() != null ? s.getNetAmount().doubleValue() : 0.0)
+                    .sum();
+
+            Map<String, Object> trendItem = new HashMap<>();
+            trendItem.put("month", displayMonth);
+            trendItem.put("opdCount", opdCount);
+            trendItem.put("ipdCount", ipdCount);
+            trendItem.put("billingRevenue", Math.round(billRev * 100.0) / 100.0);
+            trendItem.put("pharmacyRevenue", Math.round(pharmRev * 100.0) / 100.0);
+            trendItem.put("totalRevenue", Math.round((billRev + pharmRev) * 100.0) / 100.0);
+            monthlyTrends.add(trendItem);
+        }
+        analytics.put("monthlyTrends", monthlyTrends);
+
+        Map<Long, String> doctorNameMap = new HashMap<>();
+        List<Doctor> activeDoctors = doctorRepository.findByHospitalIdAndIsActiveTrueOrderByCreatedAtDesc(hospitalId);
+        for (Doctor doc : activeDoctors) {
+            doctorNameMap.put(doc.getId(), doc.getName());
+        }
+
+        Map<String, Long> docCounts = new HashMap<>();
+        for (Opd opd : opdList) {
+            if (opd.getDoctor() != null) {
+                String docName = doctorNameMap.getOrDefault(opd.getDoctor().getId(), opd.getDoctor().getName());
+                docCounts.put(docName, docCounts.getOrDefault(docName, 0L) + 1);
+            }
+        }
+
+        List<Map<String, Object>> doctorWorkload = new ArrayList<>();
+        docCounts.entrySet().stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                .limit(10)
+                .forEach(entry -> {
+                    Map<String, Object> item = new HashMap<>();
+                    item.put("doctorName", entry.getKey());
+                    item.put("consultations", entry.getValue());
+                    doctorWorkload.add(item);
+                });
+        analytics.put("doctorWorkload", doctorWorkload);
+
+        List<Ward> wards = wardRepository.findByHospitalId(hospitalId);
+        List<Map<String, Object>> wardOccupancyInfo = new ArrayList<>();
+        for (Ward ward : wards) {
+            long totalWardBeds = beds.stream().filter(b -> b.getWardId().equals(ward.getWardId())).count();
+            long occupiedWardBeds = beds.stream()
+                    .filter(b -> b.getWardId().equals(ward.getWardId()) && "occupied".equalsIgnoreCase(b.getStatus()))
+                    .count();
+
+            Map<String, Object> wMap = new HashMap<>();
+            wMap.put("wardName", ward.getWardName());
+            wMap.put("totalBeds", totalWardBeds);
+            wMap.put("occupiedBeds", occupiedWardBeds);
+            wMap.put("availableBeds", totalWardBeds - occupiedWardBeds);
+            wMap.put("occupancyRate", totalWardBeds > 0 ? Math.round(((double) occupiedWardBeds / totalWardBeds) * 100.0 * 10.0) / 10.0 : 0.0);
+            wardOccupancyInfo.add(wMap);
+        }
+        analytics.put("wardOccupancy", wardOccupancyInfo);
+
+        return analytics;
     }
 
     @CacheEvict(value = "hospitalStats", key = "#hospitalId")

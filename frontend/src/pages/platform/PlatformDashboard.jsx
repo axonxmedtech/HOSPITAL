@@ -26,7 +26,7 @@ import { SkeletonTable, SkeletonDashboard, SkeletonStatsGrid } from '../../compo
  * @author HMS Team
  * @version Phase-1
  */
-const AVAILABLE_MODULES = ['OPD', 'BILLING', 'PHARMACY', 'PATHOLOGY', 'IPD'];
+const AVAILABLE_MODULES = ['OPD', 'BILLING', 'PHARMACY', 'PATHOLOGY', 'IPD', 'OT'];
 
 const PlatformDashboard = () => {
     const navigate = useNavigate();
@@ -268,7 +268,7 @@ const PlatformDashboard = () => {
         });
     };
 
-    const AVAILABLE_MODULES = ['OPD', 'IPD', 'PHARMACY', 'PATHOLOGY', 'BILLING'];
+    const AVAILABLE_MODULES = ['OPD', 'IPD', 'PHARMACY', 'PATHOLOGY', 'BILLING', 'OT'];
 
     const handleCreateHospital = async (e) => {
         e.preventDefault();
