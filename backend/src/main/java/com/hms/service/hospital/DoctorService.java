@@ -456,6 +456,13 @@ public class DoctorService {
             }
         }
 
+        if (resolvedDoctorId != null) {
+            java.util.Optional<com.hms.entity.Doctor> docOpt = doctorRepository.findByIdOrUserId(resolvedDoctorId, userRepository);
+            if (docOpt.isPresent()) {
+                resolvedDoctorId = docOpt.get().getId();
+            }
+        }
+
         // Create OPD if it's an appointment consultation
         com.hms.entity.Opd opd = null;
         if (request.getOpdId() != null) {
@@ -572,6 +579,9 @@ public class DoctorService {
                 if (opdOpt.isPresent()) {
                     com.hms.entity.Opd o = opdOpt.get();
                     o.setStatus(com.hms.entity.Opd.Status.CONSULTED);
+                    if (o.getDoctor() == null && resolvedDoctorId != null) {
+                        doctorRepository.findById(resolvedDoctorId).ifPresent(o::setDoctor);
+                    }
                     opdRepository.save(o);
 
                     // Audit log for OPD status change

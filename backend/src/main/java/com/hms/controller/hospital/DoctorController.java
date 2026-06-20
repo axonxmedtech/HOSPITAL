@@ -34,6 +34,9 @@ public class DoctorController {
     @Autowired
     private com.hms.security.SecurityContextHelper securityHelper;
 
+    @Autowired
+    private com.hms.repository.UserRepository userRepository;
+
     @PostMapping
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<?> addDoctor(@Valid @RequestBody AddDoctorRequest request) {
@@ -200,7 +203,7 @@ public class DoctorController {
             java.util.List<com.hms.entity.Prescription> prescriptions = prescriptionRepository
                     .findByMedicalRecordId(record.getId());
 
-            Doctor doctor = doctorRepository.findById(record.getDoctorId())
+            Doctor doctor = doctorRepository.findByIdOrUserId(record.getDoctorId(), userRepository)
                     .orElseThrow(() -> new RuntimeException("Doctor not found"));
 
             com.hms.entity.Patient patient = patientService.getPatientById(record.getPatientId());
@@ -238,7 +241,7 @@ public class DoctorController {
             java.util.List<com.hms.entity.Prescription> prescriptions = prescriptionRepository
                 .findByMedicalRecordId(record.getId());
 
-            Doctor doctor = doctorRepository.findById(record.getDoctorId())
+            Doctor doctor = doctorRepository.findByIdOrUserId(record.getDoctorId(), userRepository)
                 .orElseThrow(() -> new RuntimeException("Doctor not found"));
 
             com.hms.entity.Patient patient = patientService.getPatientById(record.getPatientId());

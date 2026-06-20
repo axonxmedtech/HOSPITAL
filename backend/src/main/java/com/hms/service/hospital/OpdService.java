@@ -68,7 +68,7 @@ public class OpdService {
         }
 
         if (req.getDoctorId() != null) {
-            doctorRepository.findById(req.getDoctorId()).ifPresent(opd::setDoctor);
+            doctorRepository.findByIdOrUserId(req.getDoctorId(), userRepository).ifPresent(opd::setDoctor);
         }
 
         opd.setBp(req.getBp());

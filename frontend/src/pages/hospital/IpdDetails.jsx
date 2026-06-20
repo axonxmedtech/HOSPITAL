@@ -24,6 +24,18 @@ const IpdDetails = () => {
     const isSoloDoctor = isDoctor && user?.receptionMode === 'SOLO';
     const { success, error: toastError } = useToast();
 
+    const parseError = (err, fallback) => {
+        if (!err) return fallback;
+        if (err.response?.data) {
+            const data = err.response.data;
+            if (typeof data === 'object') {
+                return data.error || data.message || JSON.stringify(data);
+            }
+            return data;
+        }
+        return err.message || fallback;
+    };
+
     // Layout States
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [profileOpen, setProfileOpen] = useState(false);
@@ -233,7 +245,7 @@ const IpdDetails = () => {
             const resp = await hospitalService.getIpdDetails(id);
             setData(resp);
         } catch (e) {
-            toastError(e.response?.data || 'Failed to change bed');
+            toastError(parseError(e, 'Failed to change bed'));
         } finally {
             setBedModal(p => ({ ...p, saving: false }));
             setLoading(false);
@@ -290,7 +302,7 @@ const IpdDetails = () => {
             setData(resp);
         } catch (err) {
             console.error('Failed to save follow-up', err);
-            toastError(err.response?.data || err.message || 'Failed to save follow-up');
+            toastError(parseError(err, 'Failed to save follow-up'));
         } finally {
             setFollowupModal(prev => ({ ...prev, saving: false }));
             setLoading(false);
@@ -315,7 +327,7 @@ const IpdDetails = () => {
                     setData(resp);
                 } catch (err) {
                     console.error('Failed to stop medicine', err);
-                    toastError(err.response?.data || err.message || 'Failed to stop medicine');
+                    toastError(parseError(err, 'Failed to stop medicine'));
                 } finally {
                     setLoading(false);
                 }
@@ -345,7 +357,7 @@ const IpdDetails = () => {
             setData(resp);
         } catch (err) {
             console.error('Failed to plan discharge', err);
-            toastError(err.response?.data || err.message || 'Failed to plan discharge');
+            toastError(parseError(err, 'Failed to plan discharge'));
         } finally {
             setDischargeModal(prev => ({ ...prev, saving: false }));
             setLoading(false);
@@ -365,8 +377,7 @@ const IpdDetails = () => {
                     navigate('/');
                 } catch (err) {
                     console.error('Failed to confirm discharge', err);
-                    const msg = err.response?.data || err.message || 'Failed to confirm discharge';
-                    toastError(msg);
+                    toastError(parseError(err, 'Failed to confirm discharge'));
                 } finally {
                     setLoading(false);
                 }
@@ -673,7 +684,7 @@ const IpdDetails = () => {
                                                         await load(false); // Silent reload to show updated prescriptions
                                                     } catch (err) {
                                                         console.error('Failed to add medicine', err);
-                                                        toastError(err.response?.data || err.message || 'Failed to add medicine');
+                                                        toastError(parseError(err, 'Failed to add medicine'));
                                                     } finally {
                                                         setMedicineModal(prev => ({ ...prev, saving: false }));
                                                     }
@@ -828,7 +839,7 @@ const IpdDetails = () => {
                                                         setData(resp);
                                                     } catch (err) {
                                                         console.error('Failed to administer items', err);
-                                                        toastError(err.response?.data || err.message || 'Failed to administer items');
+                                                        toastError(parseError(err, 'Failed to administer items'));
                                                     } finally {
                                                         setMedicineModal(prev => ({ ...prev, saving: false }));
                                                         setLoading(false);
@@ -1005,7 +1016,7 @@ const IpdDetails = () => {
                                                             setData(resp);
                                                         } catch (err) {
                                                             console.error('Failed to administer hospital items', err);
-                                                            toastError(err.response?.data || err.message || 'Failed to administer hospital items');
+                                                            toastError(parseError(err, 'Failed to administer hospital items'));
                                                         } finally {
                                                             setMedicineModal(prev => ({ ...prev, saving: false }));
                                                             setLoading(false);
@@ -1269,7 +1280,7 @@ const IpdDetails = () => {
                                                 setData(resp2);
                                             } catch (err) {
                                                 console.error(err);
-                                                toastError(err.response?.data || 'Failed to record payment');
+                                                toastError(parseError(err, 'Failed to record payment'));
                                             } finally {
                                                 setPayment(prev => ({ ...prev, saving: false }));
                                                 setLoading(false);

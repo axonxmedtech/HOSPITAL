@@ -941,7 +941,7 @@ public class IpdAdmissionService {
 
         java.math.BigDecimal balance = total.subtract(paid);
         if (balance.compareTo(java.math.BigDecimal.ZERO) > 0) {
-            throw new RuntimeException("Outstanding balance: ₹" + balance + ". Please collect payment before discharge.");
+            throw new IllegalArgumentException("Outstanding balance: ₹" + balance + ". Please collect payment before discharge.");
         }
 
         // Stop all active prescriptions for this IPD

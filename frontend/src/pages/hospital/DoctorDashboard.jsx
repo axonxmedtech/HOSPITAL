@@ -182,7 +182,7 @@ const DoctorDashboard = () => {
             try {
                 const docs = await hospitalService.getDoctors('', 0, 100);
                 const docsList = Array.isArray(docs) ? docs : (docs.content || []);
-                const currentDoc = docsList.find(d => d.email === user?.email);
+                const currentDoc = docsList.find(d => d.email?.toLowerCase() === user?.email?.toLowerCase());
                 if (currentDoc) {
                     setDoctorRecord(currentDoc);
                     setOpdForm(prev => ({ ...prev, doctorId: currentDoc.id }));
