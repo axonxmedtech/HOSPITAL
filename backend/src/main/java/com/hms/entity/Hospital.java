@@ -51,9 +51,12 @@ public class Hospital {
             this.publicId = java.util.UUID.randomUUID().toString();
         }
         if (this.customId == null) {
-            // Generate simple random readable ID: HSP + 4 random digits
-            // Note: In production, check for uniqueness or use a sequence
-            this.customId = "HSP" + (1000 + new java.util.Random().nextInt(9000));
+            String prefix = switch (this.type != null ? this.type : HospitalType.HOSPITAL) {
+                case CLINIC   -> "CLN";
+                case PHARMACY -> "PHR";
+                default       -> "HSP";
+            };
+            this.customId = prefix + (1000 + new java.util.Random().nextInt(9000));
         }
     }
 
@@ -82,12 +85,12 @@ public class Hospital {
     @Column(nullable = false)
     private Boolean isActive = true;
 
-    /**
-     * Subscription plan for the hospital (FREE or PAID)
-     * Manual management in Phase-1, no automated billing
-     */
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private String plan = "FREE";
+    private HospitalType type = HospitalType.HOSPITAL;
+
+    @Column(name = "subscription_status", nullable = false, length = 20)
+    private String subscriptionStatus = "ACTIVE";
 
     /**
      * CMS: Standard consultation fee for OPD
@@ -185,13 +188,11 @@ public class Hospital {
         this.isActive = isActive;
     }
 
-    public String getPlan() {
-        return plan;
-    }
+    public HospitalType getType() { return type; }
+    public void setType(HospitalType type) { this.type = type; }
 
-    public void setPlan(String plan) {
-        this.plan = plan;
-    }
+    public String getSubscriptionStatus() { return subscriptionStatus; }
+    public void setSubscriptionStatus(String subscriptionStatus) { this.subscriptionStatus = subscriptionStatus; }
 
     public java.math.BigDecimal getConsultationFee() {
         return consultationFee;

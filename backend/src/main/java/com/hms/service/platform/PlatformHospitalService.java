@@ -86,7 +86,7 @@ public class PlatformHospitalService {
         Hospital hospital = new Hospital();
         hospital.setName(request.getHospitalName());
         hospital.setIsActive(true);
-        hospital.setPlan("FREE"); // Default plan
+        // hospital.setPlan("FREE"); // Removed - plan management handled via subscription (Task 12)
         if (request.getModules() != null && !request.getModules().isEmpty()) {
             hospital.setModules(request.getModules());
         }
@@ -195,7 +195,7 @@ public class PlatformHospitalService {
         dto.setCustomId(hospital.getCustomId());
         dto.setName(hospital.getName());
         dto.setIsActive(hospital.getIsActive());
-        dto.setPlan(hospital.getPlan());
+        // dto.setPlan(hospital.getPlan()); // Removed - plan field replaced with subscription info (Task 12)
         dto.setModules(hospital.getModules());
         dto.setAddress(hospital.getAddress());
         dto.setPhone(hospital.getPhone());
@@ -251,14 +251,14 @@ public class PlatformHospitalService {
         Hospital hospital = hospitalRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new RuntimeException("Hospital not found"));
 
-        String oldPlan = hospital.getPlan();
-        hospital.setPlan(plan);
+        // String oldPlan = hospital.getPlan(); // Removed - plan management replaced by subscription (Task 12)
+        // hospital.setPlan(plan);
         Hospital savedHospital = hospitalRepository.save(hospital);
 
-        if (!oldPlan.equals(plan)) {
-            logAction("PLAN_UPDATED",
-                    "Updated plan for hospital: " + hospital.getName() + " from " + oldPlan + " to " + plan, reason);
-        }
+        // if (!oldPlan.equals(plan)) {
+        //     logAction("PLAN_UPDATED",
+        //             "Updated plan for hospital: " + hospital.getName() + " from " + oldPlan + " to " + plan, reason);
+        // }
 
         return savedHospital;
     }

@@ -58,4 +58,13 @@ public class CreateHospitalRequest {
      * Whether the hospital is a single doctor hospital.
      */
     private Boolean isSingleDoctor = false;
+
+    @NotBlank(message = "Entity type is required")
+    private String type; // HOSPITAL | CLINIC | PHARMACY
+
+    @NotBlank(message = "Plan is required")
+    private String planPublicId;
+
+    @NotBlank(message = "Billing period is required")
+    private String billingPeriod; // MONTHLY | YEARLY
 }
