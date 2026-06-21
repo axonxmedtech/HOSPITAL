@@ -1,5 +1,6 @@
 package com.hms.repository;
 
+import com.hms.entity.Hospital;
 import com.hms.entity.HospitalSetting;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -11,6 +12,8 @@ import java.util.Optional;
 
 @Repository
 public interface HospitalSettingRepository extends JpaRepository<HospitalSetting, Long> {
+
+    Optional<HospitalSetting> findByHospital(Hospital hospital);
 
     Optional<HospitalSetting> findByHospital_Id(Long hospitalId);
 
