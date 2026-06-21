@@ -14,20 +14,19 @@ import { useToast } from '../../context/ToastContext';
 import { createColumnHelper } from '@tanstack/react-table';
 import ProfileModal from '../../components/ProfileModal';
 import { SkeletonTable, SkeletonDashboard, SkeletonStatsGrid } from '../../components/Skeleton';
+import PlansTab from '../../components/PlansTab';
 
 /**
  * PlatformDashboard - Super Admin dashboard
- * 
+ *
  * This page allows Super Admin to:
  * - View all hospitals
  * - Create new hospitals
  * - Activate/deactivate hospitals
- * 
+ *
  * @author HMS Team
  * @version Phase-1
  */
-const AVAILABLE_MODULES = ['OPD', 'BILLING', 'PHARMACY', 'PATHOLOGY', 'IPD', 'OT'];
-
 const PlatformDashboard = () => {
     const navigate = useNavigate();
     const { success } = useToast();
@@ -60,13 +59,18 @@ const PlatformDashboard = () => {
         onConfirm: null
     });
 
+    const [entitySubTab, setEntitySubTab] = useState('HOSPITAL');
+    const [availablePlans, setAvailablePlans] = useState([]);
+
     const [formData, setFormData] = useState({
         hospitalName: '',
         adminName: '',
         adminEmail: '',
         adminPassword: '',
-        modules: ['OPD', 'BILLING'], // Default modules
-        isSingleDoctor: false
+        type: 'HOSPITAL',
+        planPublicId: '',
+        billingPeriod: 'MONTHLY',
+        isSingleDoctor: false,
     });
     const [errors, setErrors] = useState({}); // Field-level errors
 
@@ -86,12 +90,18 @@ const PlatformDashboard = () => {
     const [editHospitalModal, setEditHospitalModal] = useState({
         isOpen: false,
         hospital: null,
-        plan: '',
-        modules: [],
         name: '',
         adminEmail: '',
         adminName: '',
-        isSingleDoctor: false
+        isSingleDoctor: false,
+        planName: '',
+        billingPeriod: '',
+        assignedAt: null,
+        expiresAt: null,
+        subscriptionStatus: '',
+        newPlanPublicId: '',
+        newBillingPeriod: 'MONTHLY',
+        availablePlansForEdit: [],
     });
 
     // Password Reset Modal State
@@ -134,11 +144,16 @@ const PlatformDashboard = () => {
         }
     }, [activeTab]);
 
-    const loadHospitals = async (page = 0, size = 10) => {
+    useEffect(() => {
+        if (activeTab === 'hospitals') {
+            loadHospitals(0, 10, entitySubTab);
+        }
+    }, [entitySubTab]);
+
+    const loadHospitals = async (page = 0, size = 10, type = entitySubTab) => {
         try {
             setLoading(true);
-            const data = await platformService.getHospitals(page, size);
-            // Handle both Page object and legacy list response
+            const data = await platformService.getHospitals(page, size, type);
             if (data.content) {
                 setHospitals(data.content);
                 setHospitalPage(data);
@@ -268,8 +283,6 @@ const PlatformDashboard = () => {
         });
     };
 
-    const AVAILABLE_MODULES = ['OPD', 'IPD', 'PHARMACY', 'PATHOLOGY', 'BILLING', 'OT'];
-
     const handleCreateHospital = async (e) => {
         e.preventDefault();
         setError('');
@@ -279,7 +292,7 @@ const PlatformDashboard = () => {
             hospitalName: ['required'],
             adminName: ['required', 'name'],
             adminEmail: ['required', 'email'],
-            adminPassword: ['required', 'password']
+            adminPassword: ['required', 'password'],
         };
 
         const validationErrors = validateForm(formData, rules);
@@ -300,8 +313,10 @@ const PlatformDashboard = () => {
                         adminName: '',
                         adminEmail: '',
                         adminPassword: '',
-                        modules: ['OPD', 'BILLING'], // Reset to defaults
-                        isSingleDoctor: false
+                        type: entitySubTab,
+                        planPublicId: '',
+                        billingPeriod: 'MONTHLY',
+                        isSingleDoctor: false,
                     });
                     loadHospitals(); // Reload hospitals list
                 } catch (err) {
@@ -333,57 +348,50 @@ const PlatformDashboard = () => {
         try {
             const hospitalId = editHospitalModal.hospital.publicId || editHospitalModal.hospital.id;
 
-            // Update Details (Name & Email & Admin Name & Single Doctor status)
-            if (editHospitalModal.name !== editHospitalModal.hospital.name ||
-                editHospitalModal.adminEmail !== editHospitalModal.hospital.adminEmail ||
-                editHospitalModal.adminName !== editHospitalModal.hospital.adminName ||
-                editHospitalModal.isSingleDoctor !== editHospitalModal.hospital.isSingleDoctor) {
-                await platformService.updateHospitalDetails(
+            await platformService.updateHospitalDetails(
+                hospitalId,
+                editHospitalModal.name,
+                editHospitalModal.adminEmail,
+                editHospitalModal.adminName,
+                '',
+                editHospitalModal.isSingleDoctor
+            );
+
+            if (editHospitalModal.newPlanPublicId) {
+                await platformService.assignPlan(
+                    editHospitalModal.newPlanPublicId,
                     hospitalId,
-                    editHospitalModal.name,
-                    editHospitalModal.adminEmail,
-                    editHospitalModal.adminName,
-                    '', // reason
-                    editHospitalModal.isSingleDoctor
+                    editHospitalModal.newBillingPeriod
                 );
             }
 
-            // Update Plan
-            if (editHospitalModal.plan !== editHospitalModal.hospital.plan) {
-                await platformService.updateHospitalPlan(hospitalId, editHospitalModal.plan);
-            }
-
-            // Update Modules
-            // Simple array comparison (assuming order might differ, so sort)
-            const oldModules = [...(editHospitalModal.hospital.modules || [])].sort().join(',');
-            const newModules = [...editHospitalModal.modules].sort().join(',');
-
-            if (oldModules !== newModules) {
-                await platformService.updateHospitalModules(hospitalId, editHospitalModal.modules);
-            }
-
-            success('Hospital updated successfully');
-            setEditHospitalModal({ isOpen: false, hospital: null, plan: '', modules: [], name: '', adminEmail: '', adminName: '' });
-            loadHospitals(hospitalPage.number, hospitalPage.size);
+            success('Updated successfully');
+            setEditHospitalModal(prev => ({ ...prev, isOpen: false }));
+            loadHospitals(hospitalPage.number, hospitalPage.size, entitySubTab);
         } catch (err) {
-            console.error(err);
-            setError(err.response?.data || 'Failed to update hospital details');
+            setError(err.response?.data || 'Failed to update');
         }
     };
 
     const openEditHospitalModal = async (hospital) => {
         try {
-            // Fetch fresh details for Admin Email
             const details = await platformService.getHospitalById(hospital.publicId || hospital.id);
+            const plans = await platformService.getPlans(details.type || entitySubTab);
             setEditHospitalModal({
                 isOpen: true,
                 hospital: details,
-                plan: details.plan || 'FREE',
-                modules: details.modules || [],
                 name: details.name,
                 adminEmail: details.adminEmail || '',
                 adminName: details.adminName || '',
-                isSingleDoctor: details.isSingleDoctor || false
+                isSingleDoctor: details.isSingleDoctor || false,
+                planName: details.planName || '—',
+                billingPeriod: details.billingPeriod || '—',
+                assignedAt: details.assignedAt,
+                expiresAt: details.expiresAt,
+                subscriptionStatus: details.subscriptionStatus || 'ACTIVE',
+                newPlanPublicId: '',
+                newBillingPeriod: 'MONTHLY',
+                availablePlansForEdit: plans.filter(p => p.isActive !== false),
             });
         } catch (err) {
             setError('Failed to fetch hospital details');
@@ -391,6 +399,20 @@ const PlatformDashboard = () => {
     };
 
 
+
+    const openCreateModal = async () => {
+        const type = entitySubTab;
+        setFormData(prev => ({ ...prev, type, planPublicId: '', billingPeriod: 'MONTHLY' }));
+        setError('');
+        setErrors({});
+        try {
+            const plans = await platformService.getPlans(type);
+            setAvailablePlans(plans.filter(p => p.isActive !== false));
+        } catch {
+            setAvailablePlans([]);
+        }
+        setShowCreateModal(true);
+    };
 
     const handleResetPassword = (id) => {
         setResetPwModal({ isOpen: true, hospitalId: id });
@@ -425,6 +447,7 @@ const PlatformDashboard = () => {
     const tabs = [
         { id: 'dashboard', label: 'Dashboard' },
         { id: 'hospitals', label: 'Hospitals' },
+        { id: 'plans', label: 'Plans' },
         { id: 'audit_logs', label: 'Audit Logs' },
         { id: 'tickets', label: 'Tickets' },
         { id: 'faqs', label: 'FAQs' },
@@ -473,7 +496,7 @@ const PlatformDashboard = () => {
                                 }
                                 onAdd={
                                     activeTab === 'hospitals'
-                                        ? () => setShowCreateModal(true)
+                                        ? openCreateModal
                                         : activeTab === 'faqs'
                                         ? () => {
                                             setFaqForm({ question: '', answer: '' });
@@ -638,7 +661,7 @@ const PlatformDashboard = () => {
                                         <h3 className="text-lg font-medium text-gray-900 mb-2">No hospitals yet</h3>
                                         <p className="text-gray-600 mb-6">Get started by creating your first hospital</p>
                                         <button
-                                            onClick={() => setShowCreateModal(true)}
+                                            onClick={openCreateModal}
                                             className="px-6 py-2 bg-gray-900 text-white font-medium hover:bg-gray-700 transition-colors duration-200"
                                         >
                                             Create Hospital
@@ -673,11 +696,36 @@ const PlatformDashboard = () => {
                         </div>
                     )}
 
+                    {/* Plans Tab */}
+                    {activeTab === 'plans' && (
+                        <PlansTab />
+                    )}
+
                     {/* Content Sections */}
                     {loading ? (
-                        <SkeletonDashboard statCount={3} tableRows={6} tableCols={7} />
+                        activeTab !== 'plans' ? <SkeletonDashboard statCount={3} tableRows={6} tableCols={7} /> : null
                     ) : activeTab === 'hospitals' ? (
                         <div className="bg-white border border-gray-200">
+                            {/* Entity Type Sub-tabs */}
+                            <div className="flex gap-0 mb-0 border-b border-gray-200 px-0">
+                                {[
+                                    { key: 'HOSPITAL', label: 'Hospitals' },
+                                    { key: 'CLINIC', label: 'Clinics' },
+                                    { key: 'PHARMACY', label: 'Pharmacies' },
+                                ].map(({ key, label }) => (
+                                    <button
+                                        key={key}
+                                        onClick={() => setEntitySubTab(key)}
+                                        className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+                                            entitySubTab === key
+                                                ? 'border-gray-900 text-gray-900'
+                                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                        }`}
+                                    >
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
                             <HospitalsTable
                                 hospitals={hospitals}
                                 hospitalPage={hospitalPage}
@@ -685,6 +733,7 @@ const PlatformDashboard = () => {
                                 openEditHospitalModal={openEditHospitalModal}
                                 onResetPassword={handleResetPassword}
                                 loadHospitals={loadHospitals}
+                                entitySubTab={entitySubTab}
                             />
                         </div>
                     ) : activeTab === 'audit_logs' ? (
@@ -826,30 +875,45 @@ const PlatformDashboard = () => {
                                     {errors.adminPassword && <p className="text-red-600 text-sm font-medium mt-1">{errors.adminPassword}</p>}
                                 </div>
 
+                                {/* Plan Selection */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-900 mb-3">Enabled Modules</label>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {AVAILABLE_MODULES.map(module => (
-                                            <label key={module} className="flex items-center space-x-2 p-2 border border-gray-200 hover:bg-gray-50 cursor-pointer">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Plan *</label>
+                                    <select
+                                        value={formData.planPublicId}
+                                        onChange={e => setFormData(p => ({ ...p, planPublicId: e.target.value }))}
+                                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                                    >
+                                        <option value="">-- Select a plan --</option>
+                                        {availablePlans.map(p => (
+                                            <option key={p.publicId} value={p.publicId}>
+                                                {p.name} — ₹{formData.billingPeriod === 'MONTHLY' ? p.monthlyPrice : p.yearlyPrice}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {availablePlans.length === 0 && (
+                                        <p className="text-xs text-amber-600 mt-1">
+                                            No plans found for {formData.type}. Create one in the Plans tab first.
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* Billing Period */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Billing Period *</label>
+                                    <div className="flex gap-4">
+                                        {['MONTHLY', 'YEARLY'].map(period => (
+                                            <label key={period} className="flex items-center gap-2 cursor-pointer">
                                                 <input
-                                                    type="checkbox"
-                                                    checked={formData.modules.includes(module)}
-                                                    onChange={(e) => {
-                                                        const checked = e.target.checked;
-                                                        setFormData(prev => ({
-                                                            ...prev,
-                                                            modules: checked
-                                                                ? [...prev.modules, module]
-                                                                : prev.modules.filter(m => m !== module)
-                                                        }));
-                                                    }}
-                                                    className="w-4 h-4"
+                                                    type="radio"
+                                                    name="billingPeriod"
+                                                    value={period}
+                                                    checked={formData.billingPeriod === period}
+                                                    onChange={() => setFormData(p => ({ ...p, billingPeriod: period }))}
                                                 />
-                                                <span className="text-sm font-medium text-gray-900">{module}</span>
+                                                <span className="text-sm text-gray-700">{period === 'MONTHLY' ? 'Monthly' : 'Yearly'}</span>
                                             </label>
                                         ))}
                                     </div>
-                                    {formData.modules.length === 0 && <p className="mt-2 text-xs text-gray-600 font-medium">At least one module should be enabled.</p>}
                                 </div>
 
                                 <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
@@ -1009,44 +1073,52 @@ const PlatformDashboard = () => {
                                     />
                                 </div>
 
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Subscription Plan</label>
-                                    <select
-                                        value={editHospitalModal.plan}
-                                        onChange={(e) => setEditHospitalModal({ ...editHospitalModal, plan: e.target.value })}
-                                        className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-900 focus:bg-white focus:border-gray-900 focus:ring-4 focus:ring-gray-100 transition-all duration-200"
-                                    >
-                                        <option value="FREE">FREE</option>
-                                        <option value="BASIC">BASIC</option>
-                                        <option value="PREMIUM">PREMIUM</option>
-                                        <option value="ENTERPRISE">ENTERPRISE</option>
-                                    </select>
+                                {/* Current Subscription (read-only) */}
+                                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Current Subscription</h4>
+                                    <div className="grid grid-cols-2 gap-2 text-sm">
+                                        <div><span className="text-gray-500">Plan:</span> <span className="font-medium">{editHospitalModal.planName}</span></div>
+                                        <div><span className="text-gray-500">Period:</span> <span className="font-medium">{editHospitalModal.billingPeriod}</span></div>
+                                        <div><span className="text-gray-500">Assigned:</span> <span className="font-medium">{editHospitalModal.assignedAt ? new Date(editHospitalModal.assignedAt).toLocaleDateString('en-IN') : '—'}</span></div>
+                                        <div><span className="text-gray-500">Expires:</span> <span className="font-medium">{editHospitalModal.expiresAt ? new Date(editHospitalModal.expiresAt).toLocaleDateString('en-IN') : '—'}</span></div>
+                                    </div>
+                                    {editHospitalModal.subscriptionStatus === 'WARNING' && (
+                                        <p className="mt-2 text-xs text-amber-600 font-medium">⚠ Plan expires within 7 days</p>
+                                    )}
+                                    {editHospitalModal.subscriptionStatus === 'EXPIRED' && (
+                                        <p className="mt-2 text-xs text-red-600 font-medium">✕ Plan expired — entity is locked</p>
+                                    )}
                                 </div>
 
+                                {/* Reassign Plan (optional) */}
                                 <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-3">Enabled Modules</label>
-                                    <div className="grid grid-cols-2 gap-3 max-h-48 overflow-y-auto">
-                                        {AVAILABLE_MODULES.map(module => (
-                                            <label key={module} className="flex items-center space-x-3 p-3 border-2 border-gray-200 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors duration-200">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={editHospitalModal.modules.includes(module)}
-                                                    onChange={(e) => {
-                                                        const checked = e.target.checked;
-                                                        setEditHospitalModal(prev => ({
-                                                            ...prev,
-                                                            modules: checked
-                                                                ? [...prev.modules, module]
-                                                                : prev.modules.filter(m => m !== module)
-                                                        }));
-                                                    }}
-                                                    className="w-4 h-4 text-gray-900 bg-gray-100 border-gray-300 rounded focus:ring-gray-900 focus:ring-2"
-                                                />
-                                                <span className="text-sm font-medium text-gray-700">{module}</span>
-                                            </label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Reassign Plan (optional)</label>
+                                    <select
+                                        value={editHospitalModal.newPlanPublicId}
+                                        onChange={e => setEditHospitalModal(p => ({ ...p, newPlanPublicId: e.target.value }))}
+                                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                                    >
+                                        <option value="">-- Keep current plan --</option>
+                                        {editHospitalModal.availablePlansForEdit.map(p => (
+                                            <option key={p.publicId} value={p.publicId}>{p.name}</option>
                                         ))}
-                                    </div>
-                                    {editHospitalModal.modules.length === 0 && <p className="mt-2 text-xs text-amber-600 font-medium">Warning: Disabling all modules may restrict access.</p>}
+                                    </select>
+                                    {editHospitalModal.newPlanPublicId && (
+                                        <div className="flex gap-4 mt-2">
+                                            {['MONTHLY', 'YEARLY'].map(period => (
+                                                <label key={period} className="flex items-center gap-2 cursor-pointer">
+                                                    <input
+                                                        type="radio"
+                                                        name="newBillingPeriod"
+                                                        value={period}
+                                                        checked={editHospitalModal.newBillingPeriod === period}
+                                                        onChange={() => setEditHospitalModal(p => ({ ...p, newBillingPeriod: period }))}
+                                                    />
+                                                    <span className="text-sm text-gray-700">{period === 'MONTHLY' ? 'Monthly' : 'Yearly'}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="p-4 bg-gray-50 border border-gray-200 rounded-2xl">
@@ -1665,7 +1737,7 @@ const FaqsTable = ({ faqs, loading, onDelete }) => {
 };
 
 // Hospitals Table Component using DataTable
-const HospitalsTable = ({ hospitals, hospitalPage, handleToggleStatus, openEditHospitalModal, onResetPassword, loadHospitals }) => {
+const HospitalsTable = ({ hospitals, hospitalPage, handleToggleStatus, openEditHospitalModal, onResetPassword, loadHospitals, entitySubTab }) => {
     const columnHelper = createColumnHelper();
 
     const columns = [
@@ -1678,6 +1750,22 @@ const HospitalsTable = ({ hospitals, hospitalPage, handleToggleStatus, openEditH
             id: 'id',
             header: 'ID',
             cell: info => <span title="Serial Number">{info.getValue()}</span>,
+        }),
+        columnHelper.accessor('type', {
+            header: 'Type',
+            cell: info => {
+                const type = info.getValue() || 'HOSPITAL';
+                const colors = {
+                    HOSPITAL: 'bg-blue-100 text-blue-700',
+                    CLINIC: 'bg-green-100 text-green-700',
+                    PHARMACY: 'bg-purple-100 text-purple-700',
+                };
+                return (
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${colors[type] || 'bg-gray-100'}`}>
+                        {type}
+                    </span>
+                );
+            },
         }),
         columnHelper.accessor('name', {
             header: 'Name',
@@ -1771,7 +1859,7 @@ const HospitalsTable = ({ hospitals, hospitalPage, handleToggleStatus, openEditH
         pageSize: hospitalPage.size,
         totalItems: hospitalPage.totalElements,
         pageCount: hospitalPage.totalPages,
-        onPageChange: (newPage) => loadHospitals(newPage, hospitalPage.size)
+        onPageChange: (newPage) => loadHospitals(newPage, hospitalPage.size, entitySubTab)
     };
 
     return (
