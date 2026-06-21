@@ -25,7 +25,7 @@ public class PlatformStatsVerifier implements CommandLineRunner {
             System.out.println("Inactive: " + stats.get("inactive"));
 
             System.out.println("\nChecking individual hospitals:");
-            hospitalService.getAllHospitals(org.springframework.data.domain.Pageable.unpaged())
+            hospitalService.getAllHospitals(org.springframework.data.domain.Pageable.unpaged(), null)
                     .forEach(h -> System.out.println("Hospital: " + h.getName() + " | isActive: " + h.getIsActive()));
 
         } catch (Exception e) {

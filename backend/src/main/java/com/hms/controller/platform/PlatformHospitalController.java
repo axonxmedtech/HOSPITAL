@@ -9,7 +9,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.Map;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -32,9 +31,10 @@ public class PlatformHospitalController {
     @GetMapping
     public ResponseEntity<Page<Hospital>> getAllHospitals(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String type) {
         Pageable pageable = PageRequest.of(page, size);
-        Page<Hospital> hospitals = hospitalService.getAllHospitals(pageable);
+        Page<Hospital> hospitals = hospitalService.getAllHospitals(pageable, type);
         return ResponseEntity.ok(hospitals);
     }
 
@@ -60,33 +60,6 @@ public class PlatformHospitalController {
             return ResponseEntity.badRequest().body("isActive field is required");
         }
         Hospital hospital = hospitalService.updateHospitalStatus(id, isActive, reason);
-        return ResponseEntity.ok(hospital);
-    }
-
-    @PutMapping("/{id}/plan")
-    public ResponseEntity<?> updateHospitalPlan(
-            @PathVariable String id,
-            @RequestBody Map<String, String> request) {
-        String plan = request.get("plan");
-        String reason = request.get("reason");
-        if (plan == null) {
-            return ResponseEntity.badRequest().body("plan field is required");
-        }
-        Hospital hospital = hospitalService.updateHospitalPlan(id, plan, reason);
-        return ResponseEntity.ok(hospital);
-    }
-
-    @PutMapping("/{id}/modules")
-    public ResponseEntity<?> updateHospitalModules(
-            @PathVariable String id,
-            @RequestBody Map<String, Object> request) {
-        @SuppressWarnings("unchecked")
-        List<String> modules = (List<String>) request.get("modules");
-        String reason = (String) request.get("reason");
-        if (modules == null || modules.isEmpty()) {
-            return ResponseEntity.badRequest().body("modules list is required");
-        }
-        Hospital hospital = hospitalService.updateHospitalModules(id, modules, reason);
         return ResponseEntity.ok(hospital);
     }
 

@@ -4,11 +4,13 @@ import com.hms.dto.CreateHospitalRequest;
 import com.hms.entity.AuditLog;
 import com.hms.entity.Hospital;
 import com.hms.entity.HospitalAdmin;
+import com.hms.entity.HospitalType;
 import com.hms.entity.User;
 import com.hms.entity.Doctor;
 import com.hms.entity.HospitalSetting;
 import com.hms.repository.AuditLogRepository;
 import com.hms.repository.HospitalAdminRepository;
+import com.hms.repository.HospitalPlanSubscriptionRepository;
 import com.hms.repository.HospitalRepository;
 import com.hms.repository.UserRepository;
 import com.hms.repository.DoctorRepository;
@@ -62,6 +64,12 @@ public class PlatformHospitalService {
     @Autowired
     private HospitalSettingRepository hospitalSettingRepository;
 
+    @Autowired
+    private PlatformPlanService planService;
+
+    @Autowired
+    private HospitalPlanSubscriptionRepository subscriptionRepository;
+
     /**
      * Create a new hospital with hospital admin user
      * 
@@ -77,42 +85,38 @@ public class PlatformHospitalService {
      */
     @Transactional
     public Hospital createHospital(CreateHospitalRequest request) {
-        // Check if admin email already exists
         if (userRepository.existsByEmail(request.getAdminEmail())) {
             throw new RuntimeException("Email already exists");
         }
 
-        // Create hospital
+        HospitalType type = HospitalType.valueOf(request.getType());
+
         Hospital hospital = new Hospital();
         hospital.setName(request.getHospitalName());
         hospital.setIsActive(true);
-        // hospital.setPlan("FREE"); // Removed - plan management handled via subscription (Task 12)
-        if (request.getModules() != null && !request.getModules().isEmpty()) {
-            hospital.setModules(request.getModules());
-        }
-        if (request.getIsSingleDoctor() != null) {
+        hospital.setType(type);
+        if (type != HospitalType.PHARMACY && request.getIsSingleDoctor() != null) {
             hospital.setIsSingleDoctor(request.getIsSingleDoctor());
+        } else {
+            hospital.setIsSingleDoctor(false);
         }
         hospital = hospitalRepository.save(hospital);
 
-        // Create default settings (HAS_RECEPTIONIST, RECEPTIONIST billing, inClinic enabled)
         HospitalSetting settings = new HospitalSetting();
         settings.setHospital(hospital);
         settings.setReceptionMode("HAS_RECEPTIONIST");
         settings.setBillingHandler("RECEPTIONIST");
-        settings.setInClinic(true);
+        settings.setInClinic(false);
         hospitalSettingRepository.save(settings);
 
-        // Create hospital admin user
         User admin = new User();
         admin.setEmail(request.getAdminEmail());
         admin.setPassword(passwordEncoder.encode(request.getAdminPassword()));
         admin.setName(request.getAdminName());
         admin.setRole("HOSPITAL_ADMIN");
-        admin.setHospitalId(hospital.getId()); // Link to hospital
+        admin.setHospitalId(hospital.getId());
         userRepository.save(admin);
 
-        // Create hospital admin profile record
         HospitalAdmin hospitalAdmin = new HospitalAdmin();
         hospitalAdmin.setHospitalId(hospital.getId());
         hospitalAdmin.setName(request.getAdminName());
@@ -121,8 +125,7 @@ public class PlatformHospitalService {
         hospitalAdmin.setIsActive(true);
         hospitalAdminRepository.save(hospitalAdmin);
 
-        // If Single Doctor Clinic, automatically create a Doctor profile (only if OPD is enabled)
-        if (Boolean.TRUE.equals(hospital.getIsSingleDoctor()) && hospital.getModules() != null && hospital.getModules().contains("OPD")) {
+        if (type != HospitalType.PHARMACY && Boolean.TRUE.equals(hospital.getIsSingleDoctor())) {
             Doctor doctor = new Doctor();
             doctor.setHospitalId(hospital.getId());
             doctor.setEmail(admin.getEmail());
@@ -133,10 +136,15 @@ public class PlatformHospitalService {
             doctorRepository.save(doctor);
         }
 
-        // Log action
-        logAction("HOSPITAL_CREATED", "Created hospital: " + hospital.getName() + " with admin: " + admin.getEmail());
+        com.hms.dto.AssignPlanRequest assignReq = new com.hms.dto.AssignPlanRequest();
+        assignReq.setHospitalPublicId(hospital.getPublicId());
+        assignReq.setBillingPeriod(request.getBillingPeriod());
+        planService.assignPlan(request.getPlanPublicId(), assignReq);
 
-        return hospital;
+        logAction("HOSPITAL_CREATED",
+            "Created " + type + ": " + hospital.getName() + " with admin: " + admin.getEmail());
+
+        return hospitalRepository.findById(hospital.getId()).orElse(hospital);
     }
 
     /**
@@ -146,7 +154,11 @@ public class PlatformHospitalService {
      * @return Page of hospitals
      */
     public org.springframework.data.domain.Page<Hospital> getAllHospitals(
-            org.springframework.data.domain.Pageable pageable) {
+            org.springframework.data.domain.Pageable pageable,
+            String type) {
+        if (type != null && !type.isBlank()) {
+            return hospitalRepository.findByTypeOrderByCreatedAtDesc(HospitalType.valueOf(type), pageable);
+        }
         return hospitalRepository.findAllByOrderByCreatedAtDesc(pageable);
     }
 
@@ -200,6 +212,15 @@ public class PlatformHospitalService {
         dto.setAddress(hospital.getAddress());
         dto.setPhone(hospital.getPhone());
         dto.setIsSingleDoctor(hospital.getIsSingleDoctor());
+        dto.setType(hospital.getType() != null ? hospital.getType().name() : "HOSPITAL");
+        dto.setSubscriptionStatus(hospital.getSubscriptionStatus());
+
+        subscriptionRepository.findByHospitalIdAndIsCurrentTrue(hospital.getId()).ifPresent(sub -> {
+            dto.setPlanName(sub.getPlan().getName());
+            dto.setBillingPeriod(sub.getBillingPeriod().name());
+            dto.setAssignedAt(sub.getAssignedAt());
+            dto.setExpiresAt(sub.getExpiresAt());
+        });
 
         // Fetch Admin Email
         List<User> admins = userRepository.findByHospitalIdAndRole(hospital.getId(), "HOSPITAL_ADMIN");
@@ -236,53 +257,6 @@ public class PlatformHospitalService {
                     "Updated status for hospital: " + hospital.getName() + " to " + (isActive ? "Active" : "Inactive"),
                     reason);
         }
-
-        return savedHospital;
-    }
-
-    /**
-     * Update hospital subscription plan
-     * 
-     * @param publicId Hospital Public ID
-     * @param plan     New plan (FREE, BASIC, PREMIUM, ENTERPRISE)
-     * @return Updated Hospital entity
-     */
-    public Hospital updateHospitalPlan(String publicId, String plan, String reason) {
-        Hospital hospital = hospitalRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
-
-        // String oldPlan = hospital.getPlan(); // Removed - plan management replaced by subscription (Task 12)
-        // hospital.setPlan(plan);
-        Hospital savedHospital = hospitalRepository.save(hospital);
-
-        // if (!oldPlan.equals(plan)) {
-        //     logAction("PLAN_UPDATED",
-        //             "Updated plan for hospital: " + hospital.getName() + " from " + oldPlan + " to " + plan, reason);
-        // }
-
-        return savedHospital;
-    }
-
-    /**
-     * Update hospital enabled modules
-     * 
-     * @param publicId Hospital Public ID
-     * @param modules  List of enabled modules
-     * @return Updated Hospital entity
-     */
-    public Hospital updateHospitalModules(String publicId, List<String> modules, String reason) {
-        Hospital hospital = hospitalRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
-
-        if (modules == null || modules.isEmpty()) {
-            throw new RuntimeException("At least one module must be enabled");
-        }
-
-        hospital.setModules(modules);
-        Hospital savedHospital = hospitalRepository.save(hospital);
-
-        logAction("MODULES_UPDATED",
-                "Updated modules for hospital: " + hospital.getName() + " to " + modules, reason);
 
         return savedHospital;
     }
