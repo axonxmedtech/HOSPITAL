@@ -5,6 +5,9 @@ import com.hms.repository.AppointmentRepository;
 import com.hms.repository.DoctorRepository;
 import com.hms.repository.PatientRepository;
 import com.hms.security.SecurityContextHelper;
+
+import com.hms.exception.ResourceNotFoundException;
+import com.hms.exception.UnauthorizedException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -78,7 +81,7 @@ public class AppointmentService {
         validateOpdAccess(hospitalId);
 
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         // Handle patient - either find existing or create new
@@ -95,7 +98,7 @@ public class AppointmentService {
             String patientGender = appointment.getPatientGender();
 
             if (patientName == null || patientPhone == null) {
-                throw new RuntimeException("Either patientId or patient details (name, phone) must be provided");
+                throw new IllegalArgumentException("Either patientId or patient details (name, phone) must be provided");
             }
 
             // Check if patient already exists by phone
@@ -157,7 +160,7 @@ public class AppointmentService {
         // Time Slot Validation (New Feature)
         // -----------------------------------------------------------
         if (appointment.getAppointmentTime() == null) {
-            throw new RuntimeException("Appointment time is required");
+            throw new IllegalArgumentException("Appointment time is required");
         }
 
         // Strict 30-minute slot enforcement logic
@@ -169,7 +172,7 @@ public class AppointmentService {
         for (Appointment existing : existingAppointments) {
             // Check for exact time match (assuming strict 30 min slots)
             if (existing.getAppointmentTime().equals(appointment.getAppointmentTime())) {
-                throw new RuntimeException("Slot " + appointment.getAppointmentTime() + " is already booked.");
+                throw new IllegalArgumentException("Slot " + appointment.getAppointmentTime() + " is already booked.");
             }
 
             // Optional: Advanced overlap check if we allowed flexible durations later
@@ -275,7 +278,7 @@ public class AppointmentService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         org.springframework.data.domain.Page<Appointment> page;
@@ -343,7 +346,7 @@ public class AppointmentService {
     public List<Appointment> getAllAppointments() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null)
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         List<Appointment> list = appointmentRepository
                 .findByHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(hospitalId);
         return populateNames(list);
@@ -357,7 +360,7 @@ public class AppointmentService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         // Verify doctor belongs to this hospital and is active
@@ -403,7 +406,7 @@ public class AppointmentService {
     public List<Appointment> getAppointmentsByPatient(String patientPublicId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         // Resolve Patient Public ID to Long ID
@@ -445,7 +448,7 @@ public class AppointmentService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         // Find appointment only if it belongs to this hospital and is active
@@ -479,7 +482,7 @@ public class AppointmentService {
     public List<Appointment> getTodaysAppointments() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         LocalDate today = LocalDate.now();
@@ -494,7 +497,7 @@ public class AppointmentService {
     public long getTodaysAppointmentsCount() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
         LocalDate today = LocalDate.now();
         return appointmentRepository.countByHospitalIdAndIsActiveTrueAndAppointmentDate(hospitalId, today);
@@ -510,7 +513,7 @@ public class AppointmentService {
     public void deleteAppointment(String publicId, String reason) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null)
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
 
         Optional<Appointment> apptOpt = appointmentRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(publicId,
                 hospitalId);
@@ -558,7 +561,7 @@ public class AppointmentService {
     public Appointment updateStatus(String publicId, String status, String reason) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null)
-            throw new RuntimeException("Hospital ID not found");
+            throw new UnauthorizedException("Hospital ID not found");
 
         Optional<Appointment> apptOpt = appointmentRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(publicId,
                 hospitalId);
@@ -578,7 +581,7 @@ public class AppointmentService {
 
         // Basic validation
         if (!status.equals("SCHEDULED") && !status.equals("COMPLETED") && !status.equals("CANCELLED")) {
-            throw new RuntimeException("Invalid status. Allowed: SCHEDULED, COMPLETED, CANCELLED");
+            throw new IllegalArgumentException("Invalid status. Allowed: SCHEDULED, COMPLETED, CANCELLED");
         }
 
         String oldStatus = appointment.getStatus();
@@ -634,7 +637,7 @@ public class AppointmentService {
     public Appointment updateDetails(String publicId, String status, String notes) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null)
-            throw new RuntimeException("Hospital ID not found");
+            throw new UnauthorizedException("Hospital ID not found");
 
         Optional<Appointment> apptOpt = appointmentRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(publicId,
                 hospitalId);
@@ -654,7 +657,7 @@ public class AppointmentService {
         if (status != null && !status.isEmpty()) {
             // Basic validation
             if (!status.equals("SCHEDULED") && !status.equals("COMPLETED") && !status.equals("CANCELLED")) {
-                throw new RuntimeException("Invalid status. Allowed: SCHEDULED, COMPLETED, CANCELLED");
+                throw new IllegalArgumentException("Invalid status. Allowed: SCHEDULED, COMPLETED, CANCELLED");
             }
             appointment.setStatus(status);
         }
@@ -665,7 +668,7 @@ public class AppointmentService {
 
         Appointment saved = appointmentRepository.save(appointment);
         if (saved == null) {
-            throw new RuntimeException("Failed to save appointment");
+            throw new IllegalArgumentException("Failed to save appointment");
         }
 
         // Trigger Billing if Completed and previously wasn't
@@ -708,7 +711,7 @@ public class AppointmentService {
     public Map<String, Long> getDashboardStats() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null)
-            throw new RuntimeException("Hospital ID not found");
+            throw new UnauthorizedException("Hospital ID not found");
         LocalDate today = LocalDate.now();
 
         long todayCount = appointmentRepository.countByHospitalIdAndIsActiveTrueAndAppointmentDate(hospitalId, today);
@@ -732,7 +735,7 @@ public class AppointmentService {
             org.springframework.data.domain.Pageable pageable) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
         String email = securityHelper.getCurrentUserEmail();
 
@@ -751,7 +754,7 @@ public class AppointmentService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         // Verify doctor belongs to this hospital and is active
@@ -826,7 +829,8 @@ public class AppointmentService {
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
                 .orElseThrow(() -> new RuntimeException("Hospital not found"));
         if (hospital.getModules() == null || !hospital.getModules().contains("OPD")) {
-            throw new RuntimeException("OPD module is disabled for your hospital.");
+            throw new IllegalArgumentException("OPD module is disabled for your hospital.");
         }
     }
 }
+

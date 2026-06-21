@@ -56,7 +56,7 @@ public class HospitalStatsController {
     public ResponseEntity<Map<String, Long>> getDashboardStats() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital context not found");
+            throw new com.hms.exception.UnauthorizedException("Hospital context not found");
         }
         return ResponseEntity.ok(statsService.getStats(hospitalId));
     }
@@ -69,7 +69,7 @@ public class HospitalStatsController {
     public ResponseEntity<?> getAnalytics() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital context not found");
+            throw new com.hms.exception.UnauthorizedException("Hospital context not found");
         }
         return ResponseEntity.ok(statsService.getAnalytics(hospitalId));
     }
@@ -84,7 +84,7 @@ public class HospitalStatsController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital context not found");
+            throw new com.hms.exception.UnauthorizedException("Hospital context not found");
         }
         List<Map<String, Object>> activities = statsService.getPatientActivityByDate(hospitalId, date);
         return ResponseEntity.ok(activities);
@@ -98,7 +98,7 @@ public class HospitalStatsController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital context not found");
+            throw new com.hms.exception.UnauthorizedException("Hospital context not found");
         }
         List<Map<String, Object>> activities = statsService.getPatientActivityByDate(hospitalId, date);
 
@@ -115,3 +115,4 @@ public class HospitalStatsController {
                 .body(resource);
     }
 }
+

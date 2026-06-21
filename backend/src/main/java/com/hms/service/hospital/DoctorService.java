@@ -5,6 +5,9 @@ import com.hms.entity.User;
 import com.hms.repository.DoctorRepository;
 import com.hms.repository.UserRepository;
 import com.hms.security.SecurityContextHelper;
+
+import com.hms.exception.ResourceNotFoundException;
+import com.hms.exception.UnauthorizedException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -68,17 +71,17 @@ public class DoctorService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         // Check if doctor email already exists in this hospital
         if (doctorRepository.findByEmailAndHospitalId(doctor.getEmail(), hospitalId).isPresent()) {
-            throw new RuntimeException("Doctor with this email already exists in your hospital");
+            throw new IllegalArgumentException("Doctor with this email already exists in your hospital");
         }
 
         // Check if email is already used as a user account
         if (userRepository.existsByEmail(doctor.getEmail())) {
-            throw new RuntimeException("Email already exists in the system");
+            throw new IllegalArgumentException("Email already exists in the system");
         }
 
         // Set hospital_id to ensure multi-tenant isolation
@@ -145,7 +148,7 @@ public class DoctorService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         // Return only active doctors belonging to this hospital
@@ -162,7 +165,7 @@ public class DoctorService {
     public List<Doctor> searchDoctors(String query) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         if (query == null || query.trim().isEmpty()) {
@@ -258,7 +261,7 @@ public class DoctorService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         // Find doctor only if it belongs to this hospital and is active
@@ -323,7 +326,7 @@ public class DoctorService {
 
         java.util.Optional<User> userOpt = userRepository.findByEmail(doctor.getEmail());
         if (userOpt.isEmpty()) {
-            throw new RuntimeException("User account not found for doctor: " + doctor.getEmail());
+            throw new ResourceNotFoundException("User account not found for doctor: " + doctor.getEmail());
         }
 
         User user = userOpt.get();
@@ -425,7 +428,7 @@ public class DoctorService {
                         .orElseThrow(() -> new RuntimeException("Patient not found"));
             }
         } else {
-            throw new RuntimeException("Patient ID is required");
+            throw new IllegalArgumentException("Patient ID is required");
         }
 
         // Get appointment (optional - for appointment-based consultations)
@@ -435,7 +438,7 @@ public class DoctorService {
                     .orElseThrow(() -> new RuntimeException("Appointment not found"));
 
             if (!appointment.getHospitalId().equals(hospitalId)) {
-                throw new RuntimeException("Appointment does not belong to this hospital");
+                throw new UnauthorizedException("Appointment does not belong to this hospital");
             }
         }
 
@@ -449,10 +452,10 @@ public class DoctorService {
                 if (dopt.isPresent()) {
                     resolvedDoctorId = dopt.get().getId();
                 } else {
-                    throw new RuntimeException("Doctor Not found");
+                    throw new ResourceNotFoundException("Doctor not found");
                 }
             } catch (Exception e) {
-                throw new RuntimeException("Doctor Not found");
+                throw new ResourceNotFoundException("Doctor not found");
             }
         }
 
@@ -728,7 +731,7 @@ public class DoctorService {
                             .orElseThrow(() -> new RuntimeException("Hospital item not found in active inventory: ID " + item.getStockId()));
 
                         if (stock.getStockQuantity() < item.getQuantity()) {
-                            throw new RuntimeException("Insufficient stock for: " + stock.getName() + " (Requested: " + item.getQuantity() + ", Available: " + stock.getStockQuantity() + ")");
+                            throw new IllegalArgumentException("Insufficient stock for: " + stock.getName() + " (Requested: " + item.getQuantity() + ", Available: " + stock.getStockQuantity() + ")");
                         }
 
                         // Deduct Stock
@@ -812,3 +815,4 @@ public class DoctorService {
         return opd;
     }
 }
+

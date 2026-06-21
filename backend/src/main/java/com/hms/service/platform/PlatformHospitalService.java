@@ -8,6 +8,7 @@ import com.hms.entity.HospitalType;
 import com.hms.entity.User;
 import com.hms.entity.Doctor;
 import com.hms.entity.HospitalSetting;
+import com.hms.exception.ResourceNotFoundException;
 import com.hms.repository.AuditLogRepository;
 import com.hms.repository.HospitalAdminRepository;
 import com.hms.repository.HospitalPlanSubscriptionRepository;
@@ -86,7 +87,7 @@ public class PlatformHospitalService {
     @Transactional
     public Hospital createHospital(CreateHospitalRequest request) {
         if (userRepository.existsByEmail(request.getAdminEmail())) {
-            throw new RuntimeException("Email already exists");
+            throw new IllegalArgumentException("Email already exists: " + request.getAdminEmail());
         }
 
         HospitalType type = HospitalType.valueOf(request.getType());
@@ -136,10 +137,14 @@ public class PlatformHospitalService {
             doctorRepository.save(doctor);
         }
 
-        com.hms.dto.AssignPlanRequest assignReq = new com.hms.dto.AssignPlanRequest();
-        assignReq.setHospitalPublicId(hospital.getPublicId());
-        assignReq.setBillingPeriod(request.getBillingPeriod());
-        planService.assignPlan(request.getPlanPublicId(), assignReq);
+        if (request.getPlanPublicId() != null && !request.getPlanPublicId().isBlank()) {
+            String billingPeriod = (request.getBillingPeriod() != null && !request.getBillingPeriod().isBlank())
+                    ? request.getBillingPeriod() : "MONTHLY";
+            com.hms.dto.AssignPlanRequest assignReq = new com.hms.dto.AssignPlanRequest();
+            assignReq.setHospitalPublicId(hospital.getPublicId());
+            assignReq.setBillingPeriod(billingPeriod);
+            planService.assignPlan(request.getPlanPublicId(), assignReq);
+        }
 
         logAction("HOSPITAL_CREATED",
             "Created " + type + ": " + hospital.getName() + " with admin: " + admin.getEmail());
@@ -190,10 +195,10 @@ public class PlatformHospitalService {
      */
     public Hospital getHospitalByPublicId(String publicId) {
         if (publicId == null) {
-            throw new RuntimeException("Hospital ID cannot be null");
+            throw new IllegalArgumentException("Hospital ID cannot be null");
         }
         return hospitalRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found: " + publicId));
     }
 
     /**
@@ -245,7 +250,7 @@ public class PlatformHospitalService {
      */
     public Hospital updateHospitalStatus(String publicId, Boolean isActive, String reason) {
         Hospital hospital = hospitalRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found: " + publicId));
 
         boolean oldStatus = hospital.getIsActive();
         hospital.setIsActive(isActive);
@@ -272,18 +277,18 @@ public class PlatformHospitalService {
      */
     public Map<String, String> resetTenantAdminPassword(String publicId, String newPassword, String reason) {
         if (newPassword == null || newPassword.trim().isEmpty()) {
-            throw new RuntimeException("Password cannot be empty");
+            throw new IllegalArgumentException("Password cannot be empty");
         }
         if (newPassword.length() < 6) {
-            throw new RuntimeException("Password must be at least 6 characters");
+            throw new IllegalArgumentException("Password must be at least 6 characters");
         }
 
         Hospital hospital = hospitalRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found: " + publicId));
 
         List<User> admins = userRepository.findByHospitalIdAndRole(hospital.getId(), "HOSPITAL_ADMIN");
         if (admins.isEmpty()) {
-            throw new RuntimeException("No admin found for this hospital");
+            throw new ResourceNotFoundException("No admin found for this hospital");
         }
 
         User admin = admins.get(0);
@@ -305,7 +310,7 @@ public class PlatformHospitalService {
     public Hospital updateHospitalDetails(String publicId, String name, String adminEmail, String adminName,
             String reason, Boolean isSingleDoctor) {
         Hospital hospital = hospitalRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found: " + publicId));
 
         boolean nameChanged = !hospital.getName().equals(name);
         String oldName = hospital.getName();
@@ -330,7 +335,7 @@ public class PlatformHospitalService {
             // Update Email
             if (adminEmail != null && !adminEmail.trim().isEmpty() && !admin.getEmail().equals(adminEmail)) {
                 if (userRepository.existsByEmail(adminEmail)) {
-                    throw new RuntimeException("Email already exists");
+                    throw new IllegalArgumentException("Email already exists: " + adminEmail);
                 }
                 oldEmail = admin.getEmail();
                 admin.setEmail(adminEmail);

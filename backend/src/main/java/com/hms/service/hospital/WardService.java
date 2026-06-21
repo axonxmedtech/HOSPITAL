@@ -7,6 +7,9 @@ import com.hms.repository.BedRepository;
 import com.hms.repository.WardRepository;
 import com.hms.security.SecurityContextHelper;
 import com.hms.security.HospitalWebSocketHandler;
+
+import com.hms.exception.ResourceNotFoundException;
+import com.hms.exception.UnauthorizedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
@@ -109,7 +112,7 @@ public class WardService {
     public WardResponse updateWard(Long wardId, UpdateWardRequest req) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Ward w = wardRepository.findById(wardId).orElseThrow(() -> new RuntimeException("Ward not found"));
-        if (!w.getHospitalId().equals(hospitalId)) throw new RuntimeException("Access denied");
+        if (!w.getHospitalId().equals(hospitalId)) throw new UnauthorizedException("Access denied");
 
         if (req.getWardName() != null) w.setWardName(req.getWardName());
         if (req.getBedPrice() != null) w.setBedPrice(req.getBedPrice());
@@ -131,11 +134,11 @@ public class WardService {
     public void deleteWard(Long wardId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Ward w = wardRepository.findById(wardId).orElseThrow(() -> new RuntimeException("Ward not found"));
-        if (!w.getHospitalId().equals(hospitalId)) throw new RuntimeException("Access denied");
+        if (!w.getHospitalId().equals(hospitalId)) throw new UnauthorizedException("Access denied");
 
         List<Bed> beds = bedRepository.findByWardIdAndHospitalId(wardId, hospitalId);
         boolean hasOccupied = beds.stream().anyMatch(b -> !"available".equalsIgnoreCase(b.getStatus()));
-        if (hasOccupied) throw new RuntimeException("Cannot delete ward with occupied beds");
+        if (hasOccupied) throw new IllegalArgumentException("Cannot delete ward with occupied beds");
 
         bedRepository.deleteAll(beds);
         wardRepository.delete(w);
@@ -157,3 +160,4 @@ public class WardService {
         return r;
     }
 }
+

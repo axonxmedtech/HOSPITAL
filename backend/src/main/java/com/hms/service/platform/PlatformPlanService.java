@@ -4,6 +4,7 @@ import com.hms.dto.AssignPlanRequest;
 import com.hms.dto.CreatePlanRequest;
 import com.hms.dto.SubscriptionInfoDTO;
 import com.hms.entity.*;
+import com.hms.exception.ResourceNotFoundException;
 import com.hms.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -45,7 +46,7 @@ public class PlatformPlanService {
     @Transactional
     public Plan updatePlan(String publicId, CreatePlanRequest req) {
         Plan plan = planRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new RuntimeException("Plan not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Plan not found: " + publicId));
 
         plan.setName(req.getName());
         plan.setMonthlyPrice(req.getMonthlyPrice());
@@ -70,11 +71,11 @@ public class PlatformPlanService {
     @Transactional
     public void deletePlan(String publicId) {
         Plan plan = planRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new RuntimeException("Plan not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Plan not found: " + publicId));
 
         long activeCount = subscriptionRepository.countByPlan_IdAndIsCurrentTrue(plan.getId());
         if (activeCount > 0) {
-            throw new RuntimeException(
+            throw new IllegalArgumentException(
                 "This plan is assigned to " + activeCount + " active entities. Reassign them before deleting.");
         }
 
@@ -95,13 +96,13 @@ public class PlatformPlanService {
     @Transactional
     public HospitalPlanSubscription assignPlan(String planPublicId, AssignPlanRequest req) {
         Plan plan = planRepository.findByPublicId(planPublicId)
-                .orElseThrow(() -> new RuntimeException("Plan not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Plan not found: " + planPublicId));
 
         Hospital hospital = hospitalRepository.findByPublicId(req.getHospitalPublicId())
-                .orElseThrow(() -> new RuntimeException("Hospital/Clinic/Pharmacy not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital/Clinic/Pharmacy not found"));
 
         if (plan.getType() != hospital.getType()) {
-            throw new RuntimeException(
+            throw new IllegalArgumentException(
                 "Plan type '" + plan.getType() + "' does not match entity type '" + hospital.getType() + "'");
         }
 
@@ -133,10 +134,10 @@ public class PlatformPlanService {
     public SubscriptionInfoDTO getSubscriptionInfo(Long hospitalId) {
         HospitalPlanSubscription sub = subscriptionRepository
                 .findByHospitalIdAndIsCurrentTrue(hospitalId)
-                .orElseThrow(() -> new RuntimeException("No active subscription found"));
+                .orElseThrow(() -> new ResourceNotFoundException("No active subscription found"));
 
         Hospital hospital = hospitalRepository.findById(hospitalId)
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
         SubscriptionInfoDTO dto = new SubscriptionInfoDTO();
         dto.setPlanName(sub.getPlan().getName());

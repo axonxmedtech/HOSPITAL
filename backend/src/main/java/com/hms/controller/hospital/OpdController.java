@@ -198,7 +198,7 @@ public class OpdController {
             @RequestParam(required = false) String reportType) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital context not found");
+            throw new com.hms.exception.UnauthorizedException("Hospital context not found");
         }
 
         String dateStr = (date != null) ? date.toString() : null;
@@ -218,3 +218,4 @@ public class OpdController {
                 .body(resource);
     }
 }
+

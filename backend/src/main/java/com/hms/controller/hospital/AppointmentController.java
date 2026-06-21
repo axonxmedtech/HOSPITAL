@@ -172,9 +172,10 @@ public class AppointmentController {
         String status = payload.get("status");
         String reason = payload.get("reason");
         if (status == null) {
-            throw new RuntimeException("Status is required");
+            throw new IllegalArgumentException("Status is required");
         }
         Appointment updatedAppointment = appointmentService.updateStatus(id, status, reason);
         return ResponseEntity.ok(updatedAppointment);
     }
 }
+

@@ -3,6 +3,9 @@ package com.hms.service.hospital;
 import com.hms.entity.Medicine;
 import com.hms.repository.MedicineRepository;
 import com.hms.security.SecurityContextHelper;
+
+import com.hms.exception.ResourceNotFoundException;
+import com.hms.exception.UnauthorizedException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,7 +46,7 @@ public class InventoryService {
             // inventory on first use,
             // OR allow hospital to track stock for it.
             // For now, simple check.
-            throw new RuntimeException("Unauthorized access to medicine");
+            throw new UnauthorizedException("Unauthorized access to medicine");
         }
 
         medicine.setStockQuantity(medicine.getStockQuantity() + quantityAdded);
@@ -56,7 +59,7 @@ public class InventoryService {
                 .orElseThrow(() -> new RuntimeException("Medicine not found"));
 
         if (medicine.getStockQuantity() < quantityDeducted) {
-            throw new RuntimeException("Insufficient stock for: " + medicine.getName());
+            throw new IllegalArgumentException("Insufficient stock for: " + medicine.getName());
         }
 
         medicine.setStockQuantity(medicine.getStockQuantity() - quantityDeducted);
@@ -71,10 +74,11 @@ public class InventoryService {
         // Optimistic: Assuming unique names or taking first match
         List<Medicine> meds = medicineRepository.searchByName(medicineName, hospitalId);
         if (meds.isEmpty()) {
-            throw new RuntimeException("Medicine not found in inventory: " + medicineName);
+            throw new ResourceNotFoundException("Medicine not found in inventory: " + medicineName);
         }
         Medicine med = meds.get(0);
 
         deductStock(med.getId(), quantity);
     }
 }
+

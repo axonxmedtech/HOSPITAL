@@ -1,5 +1,6 @@
 package com.hms.security;
 
+import com.hms.exception.UnauthorizedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -32,12 +33,12 @@ public class SecurityContextHelper {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
         if (authentication == null || !authentication.isAuthenticated()) {
-            throw new RuntimeException("User not authenticated");
+            throw new UnauthorizedException("User not authenticated");
         }
 
         Object details = authentication.getDetails();
         if (!(details instanceof UserAuthenticationDetails)) {
-            throw new RuntimeException("Invalid authentication details");
+            throw new UnauthorizedException("Invalid authentication details");
         }
 
         return (UserAuthenticationDetails) details;
@@ -82,7 +83,7 @@ public class SecurityContextHelper {
     public String getCurrentUserEmail() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !authentication.isAuthenticated()) {
-            throw new RuntimeException("User not authenticated");
+            throw new UnauthorizedException("User not authenticated");
         }
         return authentication.getName();
     }

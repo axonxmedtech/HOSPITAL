@@ -5,6 +5,9 @@ import com.hms.entity.InventoryItem;
 import com.hms.repository.HospitalInventoryRepository;
 import com.hms.repository.InventoryItemRepository;
 import com.hms.security.SecurityContextHelper;
+
+import com.hms.exception.ResourceNotFoundException;
+import com.hms.exception.UnauthorizedException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,7 +44,7 @@ public class HospitalInventoryService {
     public List<InventoryItem> searchInventoryCatalog(String query) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
         return inventoryItemRepository.searchByName(query, hospitalId);
     }
@@ -49,7 +52,7 @@ public class HospitalInventoryService {
     public List<InventoryItem> getCatalogItems() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
         return inventoryItemRepository.findByHospitalId(hospitalId);
     }
@@ -57,11 +60,11 @@ public class HospitalInventoryService {
     public InventoryItem addCatalogItem(InventoryItem item) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         if (inventoryItemRepository.existsByNameAndHospitalId(item.getName(), hospitalId)) {
-            throw new RuntimeException("Item already exists in catalog");
+            throw new IllegalArgumentException("Item already exists in catalog");
         }
 
         item.setHospitalId(hospitalId);
@@ -90,7 +93,7 @@ public class HospitalInventoryService {
                 .orElseThrow(() -> new RuntimeException("Catalog item not found"));
 
         if (catalog.getHospitalId() != null && !catalog.getHospitalId().equals(hospitalId)) {
-            throw new RuntimeException("Unauthorized access to catalog item");
+            throw new UnauthorizedException("Unauthorized access to catalog item");
         }
 
         catalog.setName(request.getName());
@@ -126,7 +129,7 @@ public class HospitalInventoryService {
                 .orElseThrow(() -> new RuntimeException("Catalog item not found"));
 
         if (catalog.getHospitalId() != null && !catalog.getHospitalId().equals(hospitalId)) {
-            throw new RuntimeException("Unauthorized access to catalog item");
+            throw new UnauthorizedException("Unauthorized access to catalog item");
         }
 
         catalog.setIsActive(false);
@@ -151,7 +154,7 @@ public class HospitalInventoryService {
     public List<com.hms.entity.HospitalInventoryPurchase> getHospitalInventoryPurchases() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
         return hospitalInventoryPurchaseRepository.findByHospitalIdOrderByPurchaseDateDesc(hospitalId);
     }
@@ -160,7 +163,7 @@ public class HospitalInventoryService {
     public com.hms.entity.HospitalInventoryPurchase addHospitalInventoryPurchase(com.hms.entity.HospitalInventoryPurchase purchase) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         purchase.setHospitalId(hospitalId);
@@ -228,7 +231,7 @@ public class HospitalInventoryService {
     public List<HospitalInventory> getInventoryItems() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
         return hospitalInventoryRepository.findByHospitalId(hospitalId);
     }
@@ -237,11 +240,11 @@ public class HospitalInventoryService {
     public HospitalInventory addInventoryItem(HospitalInventory stock) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         if (hospitalInventoryRepository.existsByNameAndHospitalId(stock.getName(), hospitalId)) {
-            throw new RuntimeException("Item already exists in stock inventory");
+            throw new IllegalArgumentException("Item already exists in stock inventory");
         }
 
         // Auto-catalog if it doesn't exist
@@ -284,7 +287,7 @@ public class HospitalInventoryService {
                 .orElseThrow(() -> new RuntimeException("Stock inventory record not found"));
 
         if (!stock.getHospitalId().equals(hospitalId)) {
-            throw new RuntimeException("Unauthorized access to stock inventory");
+            throw new UnauthorizedException("Unauthorized access to stock inventory");
         }
 
         Integer oldStock = stock.getStockQuantity();
@@ -328,7 +331,7 @@ public class HospitalInventoryService {
                 .orElseThrow(() -> new RuntimeException("Stock inventory record not found"));
 
         if (!stock.getHospitalId().equals(hospitalId)) {
-            throw new RuntimeException("Unauthorized access to stock inventory");
+            throw new UnauthorizedException("Unauthorized access to stock inventory");
         }
 
         stock.setIsActive(false);
@@ -421,3 +424,4 @@ public class HospitalInventoryService {
         }
     }
 }
+

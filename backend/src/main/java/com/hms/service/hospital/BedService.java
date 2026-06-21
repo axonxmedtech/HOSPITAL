@@ -4,6 +4,9 @@ import com.hms.dto.BedResponse;
 import com.hms.entity.Bed;
 import com.hms.repository.BedRepository;
 import com.hms.security.SecurityContextHelper;
+
+import com.hms.exception.ResourceNotFoundException;
+import com.hms.exception.UnauthorizedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,8 +40,8 @@ public class BedService {
     public BedResponse updateStatus(Long bedId, String status, boolean systemInitiated) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Bed b = bedRepository.findById(bedId).orElseThrow(() -> new RuntimeException("Bed not found"));
-        if (b.getHospitalId() == null || !b.getHospitalId().equals(hospitalId)) throw new RuntimeException("Access denied");
-        if (!isValidStatus(status)) throw new RuntimeException("Invalid status");
+        if (b.getHospitalId() == null || !b.getHospitalId().equals(hospitalId)) throw new UnauthorizedException("Access denied");
+        if (!isValidStatus(status)) throw new IllegalArgumentException("Invalid status");
 
         String current = b.getStatus();
 
@@ -46,10 +49,10 @@ public class BedService {
             // UI requests: only allow transition from maintenance -> available
             if ("maintenance".equals(current)) {
                 if (!"available".equals(status)) {
-                    throw new RuntimeException("UI can only change maintenance -> available");
+                    throw new IllegalArgumentException("UI can only change maintenance -> available");
                 }
             } else {
-                throw new RuntimeException("Manual status change not allowed. Use admission/discharge flows.");
+                throw new IllegalArgumentException("Manual status change not allowed. Use admission/discharge flows.");
             }
         }
 
@@ -84,3 +87,4 @@ public class BedService {
         return "available".equals(s) || "occupied".equals(s) || "maintenance".equals(s);
     }
 }
+

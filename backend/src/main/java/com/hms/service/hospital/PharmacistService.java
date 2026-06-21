@@ -6,6 +6,9 @@ import com.hms.repository.PharmacistProfileRepository;
 import com.hms.repository.UserRepository;
 import com.hms.security.SecurityContextHelper;
 import com.hms.security.HospitalWebSocketHandler;
+
+import com.hms.exception.ResourceNotFoundException;
+import com.hms.exception.UnauthorizedException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -17,6 +20,9 @@ import java.util.List;
 
 import com.hms.entity.AuditLog;
 import com.hms.repository.AuditLogRepository;
+
+import com.hms.exception.ResourceNotFoundException;
+import com.hms.exception.UnauthorizedException;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
@@ -51,11 +57,11 @@ public class PharmacistService {
     public User createPharmacist(String name, String email, String password) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         if (userRepository.existsByEmail(email)) {
-            throw new RuntimeException("Email already exists");
+            throw new IllegalArgumentException("Email already exists");
         }
 
         User pharmacist = new User();
@@ -95,7 +101,7 @@ public class PharmacistService {
             org.springframework.data.domain.Pageable pageable) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
         if (org.springframework.util.StringUtils.hasText(search)) {
             return userRepository.searchPharmacists(hospitalId, "PHARMACIST", search, pageable);
@@ -106,17 +112,17 @@ public class PharmacistService {
     public void deletePharmacist(String publicId, String reason) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         User user = userRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new RuntimeException("Pharmacist not found"));
 
         if (!user.getHospitalId().equals(hospitalId)) {
-            throw new RuntimeException("Access denied: User belongs to another hospital");
+            throw new UnauthorizedException("Access denied: User belongs to another hospital");
         }
         if (!"PHARMACIST".equals(user.getRole())) {
-            throw new RuntimeException("Target user is not a pharmacist");
+            throw new UnauthorizedException("Target user is not a pharmacist");
         }
 
         user.setIsActive(false);
@@ -139,17 +145,17 @@ public class PharmacistService {
     public User getPharmacistByPublicId(String publicId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         User user = userRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new RuntimeException("Pharmacist not found"));
 
         if (!user.getHospitalId().equals(hospitalId)) {
-            throw new RuntimeException("Access denied: User belongs to another hospital");
+            throw new UnauthorizedException("Access denied: User belongs to another hospital");
         }
         if (!"PHARMACIST".equals(user.getRole())) {
-            throw new RuntimeException("Target user is not a pharmacist");
+            throw new UnauthorizedException("Target user is not a pharmacist");
         }
         return user;
     }
@@ -162,17 +168,17 @@ public class PharmacistService {
     public void resetPharmacistPassword(String publicId, String newPassword) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         User user = userRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new RuntimeException("Pharmacist not found"));
 
         if (!user.getHospitalId().equals(hospitalId)) {
-            throw new RuntimeException("Access denied: User belongs to another hospital");
+            throw new UnauthorizedException("Access denied: User belongs to another hospital");
         }
         if (!"PHARMACIST".equals(user.getRole())) {
-            throw new RuntimeException("Target user is not a pharmacist");
+            throw new UnauthorizedException("Target user is not a pharmacist");
         }
 
         user.setPassword(passwordEncoder.encode(newPassword));
@@ -189,17 +195,17 @@ public class PharmacistService {
     public User updatePharmacist(String publicId, String name) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         User user = userRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new RuntimeException("Pharmacist not found"));
 
         if (!user.getHospitalId().equals(hospitalId)) {
-            throw new RuntimeException("Access denied: User belongs to another hospital");
+            throw new UnauthorizedException("Access denied: User belongs to another hospital");
         }
         if (!"PHARMACIST".equals(user.getRole())) {
-            throw new RuntimeException("Target user is not a pharmacist");
+            throw new UnauthorizedException("Target user is not a pharmacist");
         }
 
         user.setName(name);
@@ -232,3 +238,4 @@ public class PharmacistService {
         }
     }
 }
+

@@ -38,6 +38,22 @@ const PlatformDashboard = () => {
         setSearchParams({ tab });
     };
 
+    const getEntityType = (tab) => {
+        if (tab === 'clinics') return 'CLINIC';
+        if (tab === 'pharmacies') return 'PHARMACY';
+        return 'HOSPITAL';
+    };
+
+    const extractError = (err, fallback) => {
+        const d = err?.response?.data;
+        if (!d) return fallback;
+        if (typeof d === 'string') return d;
+        if (d.errors && typeof d.errors === 'object') {
+            return Object.values(d.errors).join(', ');
+        }
+        return d.message || d.error || d.detail || fallback;
+    };
+
     const [hospitals, setHospitals] = useState([]);
     const [hospitalPage, setHospitalPage] = useState({
         content: [],
@@ -59,7 +75,6 @@ const PlatformDashboard = () => {
         onConfirm: null
     });
 
-    const [entitySubTab, setEntitySubTab] = useState('HOSPITAL');
     const [availablePlans, setAvailablePlans] = useState([]);
 
     const [formData, setFormData] = useState({
@@ -133,8 +148,8 @@ const PlatformDashboard = () => {
         if (activeTab === 'dashboard') {
             loadHospitals();
             loadHospitalStats();
-        } else if (activeTab === 'hospitals') {
-            loadHospitals();
+        } else if (activeTab === 'hospitals' || activeTab === 'clinics' || activeTab === 'pharmacies') {
+            loadHospitals(0, 10, getEntityType(activeTab));
         } else if (activeTab === 'audit_logs') {
             loadAuditLogs();
         } else if (activeTab === 'tickets') {
@@ -144,13 +159,7 @@ const PlatformDashboard = () => {
         }
     }, [activeTab]);
 
-    useEffect(() => {
-        if (activeTab === 'hospitals') {
-            loadHospitals(0, 10, entitySubTab);
-        }
-    }, [entitySubTab]);
-
-    const loadHospitals = async (page = 0, size = 10, type = entitySubTab) => {
+    const loadHospitals = async (page = 0, size = 10, type = 'HOSPITAL') => {
         try {
             setLoading(true);
             const data = await platformService.getHospitals(page, size, type);
@@ -243,7 +252,7 @@ const PlatformDashboard = () => {
             setFaqForm({ question: '', answer: '' });
             loadFaqs();
         } catch (err) {
-            setError(err.response?.data?.message || err.response?.data || 'Failed to add FAQ');
+            setError(extractError(err, 'Failed to add FAQ'));
         } finally {
             setFaqSubmitting(false);
         }
@@ -301,9 +310,10 @@ const PlatformDashboard = () => {
             return;
         }
 
+        const entityLabel = activeTab === 'clinics' ? 'Clinic' : activeTab === 'pharmacies' ? 'Pharmacy' : 'Hospital';
         openConfirmation(
-            'Create Hospital',
-            'Are you sure you want to create this new hospital?',
+            `Create ${entityLabel}`,
+            `Are you sure you want to create this new ${entityLabel.toLowerCase()}?`,
             async () => {
                 try {
                     await platformService.createHospital(formData);
@@ -313,14 +323,14 @@ const PlatformDashboard = () => {
                         adminName: '',
                         adminEmail: '',
                         adminPassword: '',
-                        type: entitySubTab,
+                        type: getEntityType(activeTab),
                         planPublicId: '',
                         billingPeriod: 'MONTHLY',
                         isSingleDoctor: false,
                     });
-                    loadHospitals(); // Reload hospitals list
+                    loadHospitals(0, 10, getEntityType(activeTab));
                 } catch (err) {
-                    setError(err.response?.data || 'Failed to create hospital');
+                    setError(extractError(err, 'Failed to create hospital'));
                 }
             }
         );
@@ -334,7 +344,7 @@ const PlatformDashboard = () => {
             async (reason) => {
                 try {
                     await platformService.updateHospitalStatus(id, !currentStatus, reason);
-                    loadHospitals();
+                    loadHospitals(0, 10, getEntityType(activeTab));
                 } catch (err) {
                     setError('Failed to update hospital status');
                 }
@@ -367,16 +377,16 @@ const PlatformDashboard = () => {
 
             success('Updated successfully');
             setEditHospitalModal(prev => ({ ...prev, isOpen: false }));
-            loadHospitals(hospitalPage.number, hospitalPage.size, entitySubTab);
+            loadHospitals(hospitalPage.number, hospitalPage.size, getEntityType(activeTab));
         } catch (err) {
-            setError(err.response?.data || 'Failed to update');
+            setError(extractError(err, 'Failed to update'));
         }
     };
 
     const openEditHospitalModal = async (hospital) => {
         try {
             const details = await platformService.getHospitalById(hospital.publicId || hospital.id);
-            const plans = await platformService.getPlans(details.type || entitySubTab);
+            const plans = await platformService.getPlans(details.type || getEntityType(activeTab));
             setEditHospitalModal({
                 isOpen: true,
                 hospital: details,
@@ -401,7 +411,7 @@ const PlatformDashboard = () => {
 
 
     const openCreateModal = async () => {
-        const type = entitySubTab;
+        const type = getEntityType(activeTab);
         setFormData(prev => ({ ...prev, type, planPublicId: '', billingPeriod: 'MONTHLY' }));
         setError('');
         setErrors({});
@@ -447,6 +457,8 @@ const PlatformDashboard = () => {
     const tabs = [
         { id: 'dashboard', label: 'Dashboard' },
         { id: 'hospitals', label: 'Hospitals' },
+        { id: 'clinics', label: 'Clinics' },
+        { id: 'pharmacies', label: 'Pharmacies' },
         { id: 'plans', label: 'Plans' },
         { id: 'audit_logs', label: 'Audit Logs' },
         { id: 'tickets', label: 'Tickets' },
@@ -488,6 +500,10 @@ const PlatformDashboard = () => {
                                 subtitle={
                                     activeTab === 'hospitals'
                                         ? 'Manage and monitor all registered hospitals on the platform.'
+                                        : activeTab === 'clinics'
+                                        ? 'Manage and monitor all registered clinics on the platform.'
+                                        : activeTab === 'pharmacies'
+                                        ? 'Manage and monitor all registered pharmacies on the platform.'
                                         : activeTab === 'tickets'
                                         ? 'View and resolve support tickets submitted by hospital admins.'
                                         : activeTab === 'faqs'
@@ -495,7 +511,7 @@ const PlatformDashboard = () => {
                                         : 'Track system activities and administrative actions across the platform.'
                                 }
                                 onAdd={
-                                    activeTab === 'hospitals'
+                                    (activeTab === 'hospitals' || activeTab === 'clinics' || activeTab === 'pharmacies')
                                         ? openCreateModal
                                         : activeTab === 'faqs'
                                         ? () => {
@@ -507,6 +523,10 @@ const PlatformDashboard = () => {
                                 addLabel={
                                     activeTab === 'hospitals'
                                         ? 'Create Hospital'
+                                        : activeTab === 'clinics'
+                                        ? 'Create Clinic'
+                                        : activeTab === 'pharmacies'
+                                        ? 'Create Pharmacy'
                                         : activeTab === 'faqs'
                                         ? 'Add FAQ'
                                         : ''
@@ -682,7 +702,7 @@ const PlatformDashboard = () => {
                                     <span className="text-red-700 font-medium">Error:</span>
                                 </div>
                                 <div className="ml-3">
-                                    <p className="text-sm text-red-700">{error}</p>
+                                    <p className="text-sm text-red-700">{typeof error === 'string' ? error : JSON.stringify(error)}</p>
                                 </div>
                                 <div className="ml-auto pl-3">
                                     <button
@@ -704,28 +724,8 @@ const PlatformDashboard = () => {
                     {/* Content Sections */}
                     {loading ? (
                         activeTab !== 'plans' ? <SkeletonDashboard statCount={3} tableRows={6} tableCols={7} /> : null
-                    ) : activeTab === 'hospitals' ? (
+                    ) : (activeTab === 'hospitals' || activeTab === 'clinics' || activeTab === 'pharmacies') ? (
                         <div className="bg-white border border-gray-200">
-                            {/* Entity Type Sub-tabs */}
-                            <div className="flex gap-0 mb-0 border-b border-gray-200 px-0">
-                                {[
-                                    { key: 'HOSPITAL', label: 'Hospitals' },
-                                    { key: 'CLINIC', label: 'Clinics' },
-                                    { key: 'PHARMACY', label: 'Pharmacies' },
-                                ].map(({ key, label }) => (
-                                    <button
-                                        key={key}
-                                        onClick={() => setEntitySubTab(key)}
-                                        className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
-                                            entitySubTab === key
-                                                ? 'border-gray-900 text-gray-900'
-                                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                        }`}
-                                    >
-                                        {label}
-                                    </button>
-                                ))}
-                            </div>
                             <HospitalsTable
                                 hospitals={hospitals}
                                 hospitalPage={hospitalPage}
@@ -733,7 +733,7 @@ const PlatformDashboard = () => {
                                 openEditHospitalModal={openEditHospitalModal}
                                 onResetPassword={handleResetPassword}
                                 loadHospitals={loadHospitals}
-                                entitySubTab={entitySubTab}
+                                entityType={getEntityType(activeTab)}
                             />
                         </div>
                     ) : activeTab === 'audit_logs' ? (
@@ -810,8 +810,10 @@ const PlatformDashboard = () => {
                     <div className="bg-white border border-gray-200 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                         <div className="p-6">
                             <div className="mb-6">
-                                <h2 className="text-xl font-bold text-gray-900 mb-2">Create New Hospital</h2>
-                                <p className="text-gray-600">Add a new hospital to the platform with admin credentials</p>
+                                <h2 className="text-xl font-bold text-gray-900 mb-2">
+                                    {activeTab === 'clinics' ? 'Create New Clinic' : activeTab === 'pharmacies' ? 'Create New Pharmacy' : 'Create New Hospital'}
+                                </h2>
+                                <p className="text-gray-600">Add a new {activeTab === 'clinics' ? 'clinic' : activeTab === 'pharmacies' ? 'pharmacy' : 'hospital'} to the platform with admin credentials</p>
                             </div>
                             
                             <form onSubmit={handleCreateHospital} className="space-y-4">
@@ -877,13 +879,13 @@ const PlatformDashboard = () => {
 
                                 {/* Plan Selection */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Plan *</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Plan <span className="text-gray-400 font-normal">(optional)</span></label>
                                     <select
                                         value={formData.planPublicId}
                                         onChange={e => setFormData(p => ({ ...p, planPublicId: e.target.value }))}
                                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
                                     >
-                                        <option value="">-- Select a plan --</option>
+                                        <option value="">-- No plan (assign later) --</option>
                                         {availablePlans.map(p => (
                                             <option key={p.publicId} value={p.publicId}>
                                                 {p.name} — ₹{formData.billingPeriod === 'MONTHLY' ? p.monthlyPrice : p.yearlyPrice}
@@ -891,15 +893,16 @@ const PlatformDashboard = () => {
                                         ))}
                                     </select>
                                     {availablePlans.length === 0 && (
-                                        <p className="text-xs text-amber-600 mt-1">
-                                            No plans found for {formData.type}. Create one in the Plans tab first.
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            No plans found for {formData.type} — you can assign one later from the Plans tab.
                                         </p>
                                     )}
                                 </div>
 
-                                {/* Billing Period */}
+                                {/* Billing Period — only shown when a plan is selected */}
+                                {formData.planPublicId && (
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Billing Period *</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Billing Period</label>
                                     <div className="flex gap-4">
                                         {['MONTHLY', 'YEARLY'].map(period => (
                                             <label key={period} className="flex items-center gap-2 cursor-pointer">
@@ -915,6 +918,7 @@ const PlatformDashboard = () => {
                                         ))}
                                     </div>
                                 </div>
+                                )}
 
                                 <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
                                     <label className="flex items-center space-x-2.5 cursor-pointer">
@@ -945,7 +949,7 @@ const PlatformDashboard = () => {
                                         type="submit"
                                         className="flex-1 bg-gray-900 text-white px-4 py-2 font-medium hover:bg-gray-700"
                                     >
-                                        Create Hospital
+                                        {activeTab === 'clinics' ? 'Create Clinic' : activeTab === 'pharmacies' ? 'Create Pharmacy' : 'Create Hospital'}
                                     </button>
                                 </div>
                             </form>
@@ -1737,7 +1741,7 @@ const FaqsTable = ({ faqs, loading, onDelete }) => {
 };
 
 // Hospitals Table Component using DataTable
-const HospitalsTable = ({ hospitals, hospitalPage, handleToggleStatus, openEditHospitalModal, onResetPassword, loadHospitals, entitySubTab }) => {
+const HospitalsTable = ({ hospitals, hospitalPage, handleToggleStatus, openEditHospitalModal, onResetPassword, loadHospitals, entityType }) => {
     const columnHelper = createColumnHelper();
 
     const columns = [
@@ -1859,7 +1863,7 @@ const HospitalsTable = ({ hospitals, hospitalPage, handleToggleStatus, openEditH
         pageSize: hospitalPage.size,
         totalItems: hospitalPage.totalElements,
         pageCount: hospitalPage.totalPages,
-        onPageChange: (newPage) => loadHospitals(newPage, hospitalPage.size, entitySubTab)
+        onPageChange: (newPage) => loadHospitals(newPage, hospitalPage.size, entityType)
     };
 
     return (

@@ -62,9 +62,7 @@ public class CreateHospitalRequest {
     @NotBlank(message = "Entity type is required")
     private String type; // HOSPITAL | CLINIC | PHARMACY
 
-    @NotBlank(message = "Plan is required")
-    private String planPublicId;
+    private String planPublicId; // optional — plan can be assigned later
 
-    @NotBlank(message = "Billing period is required")
-    private String billingPeriod; // MONTHLY | YEARLY
+    private String billingPeriod; // MONTHLY | YEARLY — required only when planPublicId is set
 }

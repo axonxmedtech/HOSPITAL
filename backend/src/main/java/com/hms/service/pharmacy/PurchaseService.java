@@ -5,6 +5,8 @@ import com.hms.entity.pharmacy.*;
 import com.hms.repository.pharmacy.*;
 import com.hms.security.HospitalWebSocketHandler;
 import com.hms.security.SecurityContextHelper;
+import com.hms.exception.ResourceNotFoundException;
+import com.hms.exception.UnauthorizedException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -88,7 +90,7 @@ public class PurchaseService {
                 .orElseThrow(() -> new RuntimeException("Invoice not found"));
 
         if ("POSTED".equalsIgnoreCase(invoice.getPostingStatus())) {
-            throw new RuntimeException("Invoice already posted");
+            throw new IllegalArgumentException("Invoice already posted");
         }
 
         invoice.setPostingStatus("POSTED");
@@ -156,3 +158,4 @@ public class PurchaseService {
                 .orElseThrow(() -> new RuntimeException("Invoice not found"));
     }
 }
+

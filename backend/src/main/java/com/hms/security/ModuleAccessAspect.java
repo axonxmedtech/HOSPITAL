@@ -7,6 +7,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
+import com.hms.exception.UnauthorizedException;
 import java.util.List;
 
 /**
@@ -38,7 +39,7 @@ public class ModuleAccessAspect {
             }
 
             if (enabledModules == null || !enabledModules.contains(requiredModule)) {
-                throw new RuntimeException(
+                throw new UnauthorizedException(
                         "Access Denied: Module '" + requiredModule + "' is not enabled for your hospital.");
             }
         }

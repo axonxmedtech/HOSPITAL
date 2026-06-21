@@ -5,6 +5,8 @@ import com.hms.entity.pharmacy.MedicineBatch;
 import com.hms.repository.pharmacy.InventoryTransactionRepository;
 import com.hms.repository.pharmacy.MedicineBatchRepository;
 import com.hms.security.SecurityContextHelper;
+import com.hms.exception.ResourceNotFoundException;
+import com.hms.exception.UnauthorizedException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -67,7 +69,7 @@ public class MedicineBatchService {
             hid, batch.getMedicineId(), batch.getBatchNumber());
         
         if (existing.isPresent()) {
-            throw new RuntimeException("Batch with this number already exists for this medicine. Please use adjustment instead.");
+            throw new IllegalArgumentException("Batch with this number already exists for this medicine. Please use adjustment instead.");
         }
         
         MedicineBatch saved = repository.save(batch);
@@ -143,14 +145,14 @@ public class MedicineBatchService {
             java.math.BigDecimal qtyToReturn = new java.math.BigDecimal(item.get("quantityToReturn").toString());
             
             if (qtyToReturn.compareTo(java.math.BigDecimal.ZERO) <= 0) {
-                throw new RuntimeException("Return quantity must be positive");
+                throw new IllegalArgumentException("Return quantity must be positive");
             }
             
             MedicineBatch batch = repository.findByIdAndHospitalIdForUpdate(batchId, hid)
                     .orElseThrow(() -> new RuntimeException("Batch not found or unauthorized"));
             
             if (batch.getCurrentQuantity().compareTo(qtyToReturn) < 0) {
-                throw new RuntimeException("Insufficient stock in batch " + batch.getBatchNumber() + " to return. Available: " + batch.getCurrentQuantity());
+                throw new IllegalArgumentException("Insufficient stock in batch " + batch.getBatchNumber() + " to return. Available: " + batch.getCurrentQuantity());
             }
             
             java.math.BigDecimal qtyBefore = batch.getCurrentQuantity();
@@ -182,3 +184,4 @@ public class MedicineBatchService {
         return res;
     }
 }
+

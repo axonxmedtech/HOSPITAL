@@ -146,7 +146,7 @@ public class PatientController {
             @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital context not found");
+            throw new com.hms.exception.UnauthorizedException("Hospital context not found");
         }
 
         // Fetch patients without pagination (up to 1000)
@@ -166,3 +166,4 @@ public class PatientController {
                 .body(resource);
     }
 }
+

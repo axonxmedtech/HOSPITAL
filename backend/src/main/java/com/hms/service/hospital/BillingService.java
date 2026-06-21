@@ -6,6 +6,9 @@ import com.hms.entity.Appointment;
 import com.hms.repository.BillingRepository;
 import com.hms.repository.HospitalRepository;
 import com.hms.security.SecurityContextHelper;
+
+import com.hms.exception.ResourceNotFoundException;
+import com.hms.exception.UnauthorizedException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -283,7 +286,7 @@ public class BillingService {
         Hospital hospital = hospitalRepository.findById(hospitalId)
                 .orElseThrow(() -> new RuntimeException("Hospital not found"));
         if (hospital.getModules() == null || !hospital.getModules().contains("BILLING")) {
-            throw new RuntimeException("BILLING module is disabled for your hospital.");
+            throw new IllegalArgumentException("BILLING module is disabled for your hospital.");
         }
     }
 
@@ -436,3 +439,4 @@ public class BillingService {
         }
     }
 }
+

@@ -6,6 +6,9 @@ import com.hms.repository.ReceptionistProfileRepository;
 import com.hms.repository.UserRepository;
 import com.hms.security.SecurityContextHelper;
 import com.hms.security.HospitalWebSocketHandler;
+
+import com.hms.exception.ResourceNotFoundException;
+import com.hms.exception.UnauthorizedException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -18,6 +21,9 @@ import java.util.List;
 
 import com.hms.entity.AuditLog;
 import com.hms.repository.AuditLogRepository;
+
+import com.hms.exception.ResourceNotFoundException;
+import com.hms.exception.UnauthorizedException;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
@@ -66,11 +72,11 @@ public class ReceptionistService {
     public User createReceptionist(String name, String email, String password) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         if (userRepository.existsByEmail(email)) {
-            throw new RuntimeException("Email already exists");
+            throw new IllegalArgumentException("Email already exists");
         }
 
         User receptionist = new User();
@@ -121,7 +127,7 @@ public class ReceptionistService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
             logger.error("getAllReceptionists: Hospital ID not found in context");
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
         if (org.springframework.util.StringUtils.hasText(search)) {
             return userRepository.searchReceptionists(hospitalId, "RECEPTIONIST", search, pageable);
@@ -132,7 +138,7 @@ public class ReceptionistService {
     public List<User> getAllReceptionists() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null)
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         return userRepository.findByHospitalIdAndRoleAndIsActiveTrue(hospitalId, "RECEPTIONIST");
     }
 
@@ -142,17 +148,17 @@ public class ReceptionistService {
     public void deleteReceptionist(String publicId, String reason) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         User user = userRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new RuntimeException("Receptionist not found"));
 
         if (!user.getHospitalId().equals(hospitalId)) {
-            throw new RuntimeException("Access denied: User belongs to another hospital");
+            throw new UnauthorizedException("Access denied: User belongs to another hospital");
         }
         if (!"RECEPTIONIST".equals(user.getRole())) {
-            throw new RuntimeException("Target user is not a receptionist");
+            throw new UnauthorizedException("Target user is not a receptionist");
         }
 
         user.setIsActive(false);
@@ -179,17 +185,17 @@ public class ReceptionistService {
     public User getReceptionistByPublicId(String publicId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         User user = userRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new RuntimeException("Receptionist not found"));
 
         if (!user.getHospitalId().equals(hospitalId)) {
-            throw new RuntimeException("Access denied: User belongs to another hospital");
+            throw new UnauthorizedException("Access denied: User belongs to another hospital");
         }
         if (!"RECEPTIONIST".equals(user.getRole())) {
-            throw new RuntimeException("Target user is not a receptionist");
+            throw new UnauthorizedException("Target user is not a receptionist");
         }
         return user;
     }
@@ -202,17 +208,17 @@ public class ReceptionistService {
     public void resetReceptionistPassword(String publicId, String newPassword) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         User user = userRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new RuntimeException("Receptionist not found"));
 
         if (!user.getHospitalId().equals(hospitalId)) {
-            throw new RuntimeException("Access denied: User belongs to another hospital");
+            throw new UnauthorizedException("Access denied: User belongs to another hospital");
         }
         if (!"RECEPTIONIST".equals(user.getRole())) {
-            throw new RuntimeException("Target user is not a receptionist");
+            throw new UnauthorizedException("Target user is not a receptionist");
         }
 
         user.setPassword(passwordEncoder.encode(newPassword));
@@ -229,17 +235,17 @@ public class ReceptionistService {
     public User updateReceptionist(String publicId, String name) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         User user = userRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new RuntimeException("Receptionist not found"));
 
         if (!user.getHospitalId().equals(hospitalId)) {
-            throw new RuntimeException("Access denied: User belongs to another hospital");
+            throw new UnauthorizedException("Access denied: User belongs to another hospital");
         }
         if (!"RECEPTIONIST".equals(user.getRole())) {
-            throw new RuntimeException("Target user is not a receptionist");
+            throw new UnauthorizedException("Target user is not a receptionist");
         }
 
         user.setName(name);
@@ -275,3 +281,4 @@ public class ReceptionistService {
         }
     }
 }
+

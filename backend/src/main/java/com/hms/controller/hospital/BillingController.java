@@ -231,7 +231,7 @@ public class BillingController {
                 .orElseThrow(() -> new RuntimeException("Bill not found"));
 
         if ("PAID".equalsIgnoreCase(billing.getPaymentStatus()) || "CLOSED".equalsIgnoreCase(billing.getPaymentStatus())) {
-            throw new RuntimeException("Cannot edit items of a paid or closed bill");
+            throw new IllegalArgumentException("Cannot edit items of a paid or closed bill");
         }
 
         // Delete existing billing items
@@ -532,7 +532,7 @@ public class BillingController {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         com.hms.entity.Patient patient = patientService.getPatientByPublicId(patientPublicId);
         if (patient == null || !patient.getHospitalId().equals(hospitalId)) {
-            throw new RuntimeException("Patient not found or unauthorized");
+            throw new com.hms.exception.ResourceNotFoundException("Patient not found or unauthorized");
         }
 
         java.util.List<Billing> patientBills = billingRepository.findByPatientIdOrderByCreatedAtDesc(patient.getId());
@@ -581,3 +581,4 @@ public class BillingController {
         return ResponseEntity.ok(mapped);
     }
 }
+

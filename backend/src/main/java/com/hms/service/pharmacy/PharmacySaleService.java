@@ -4,6 +4,8 @@ import com.hms.dto.pharmacy.PharmacySaleRequest;
 import com.hms.entity.pharmacy.*;
 import com.hms.repository.pharmacy.*;
 import com.hms.security.SecurityContextHelper;
+import com.hms.exception.ResourceNotFoundException;
+import com.hms.exception.UnauthorizedException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -69,7 +71,7 @@ public class PharmacySaleService {
         for (PharmacySaleRequest.SaleItemRequest itemReq : request.getItems()) {
             // Validation: Prevent negative or zero quantity theft
             if (itemReq.getQuantity().compareTo(BigDecimal.ZERO) <= 0) {
-                throw new RuntimeException("Sale quantity must be positive");
+                throw new IllegalArgumentException("Sale quantity must be positive");
             }
 
             // 1. Fetch and update batch with Pessimistic Lock (Prevents Race Conditions)
@@ -78,7 +80,7 @@ public class PharmacySaleService {
                     .orElseThrow(() -> new RuntimeException("Batch not found or unauthorized: " + itemReq.getMedicineBatchId()));
 
             if (batch.getCurrentQuantity().compareTo(itemReq.getQuantity()) < 0) {
-                throw new RuntimeException("Insufficient stock for batch: " + batch.getBatchNumber());
+                throw new IllegalArgumentException("Insufficient stock for batch: " + batch.getBatchNumber());
             }
 
             BigDecimal qtyBefore = batch.getCurrentQuantity();
@@ -190,7 +192,7 @@ public class PharmacySaleService {
             boolean restock = (boolean) item.get("restock");
 
             if (qtyToReturn.compareTo(BigDecimal.ZERO) <= 0) {
-                throw new RuntimeException("Return quantity must be positive");
+                throw new IllegalArgumentException("Return quantity must be positive");
             }
 
             // Find matching sold item in original sale to validate
@@ -200,14 +202,14 @@ public class PharmacySaleService {
                     .orElseThrow(() -> new RuntimeException("Medicine batch was not part of original invoice"));
 
             if (soldItem.getQuantity().compareTo(qtyToReturn) < 0) {
-                throw new RuntimeException("Cannot return more quantity than originally purchased for batch " + batchId);
+                throw new IllegalArgumentException("Cannot return more quantity than originally purchased for batch " + batchId);
             }
 
             // Expiry safety check: Reject returns if the medicine batch has expired
             MedicineBatch batchToCheck = batchRepository.findById(batchId)
                     .orElseThrow(() -> new RuntimeException("Batch not found or unauthorized"));
             if (batchToCheck.getExpiryDate() != null && batchToCheck.getExpiryDate().isBefore(java.time.LocalDate.now())) {
-                throw new RuntimeException("Cannot return medicine '" + 
+                throw new IllegalArgumentException("Cannot return medicine '" + 
                     (batchToCheck.getMedicine() != null ? batchToCheck.getMedicine().getMedicineName() : batchToCheck.getBatchNumber()) + 
                     "' because the batch has already expired on " + batchToCheck.getExpiryDate() + "!");
             }
@@ -262,3 +264,4 @@ public class PharmacySaleService {
         return result;
     }
 }
+

@@ -3,6 +3,7 @@ package com.hms.service.hospital;
 import com.hms.dto.LoginRequest;
 import com.hms.dto.LoginResponse;
 import com.hms.dto.ProfileUpdateRequest;
+import com.hms.exception.ResourceNotFoundException;
 import com.hms.exception.UnauthorizedException;
 import com.hms.entity.Hospital;
 import com.hms.entity.HospitalSetting;
@@ -136,7 +137,7 @@ public class HospitalAuthService {
             response.setSpecialization(null);
         } else if ("DOCTOR".equals(user.getRole())) {
             Doctor doctor = doctorRepository.findByEmailAndHospitalId(user.getEmail(), user.getHospitalId())
-                    .orElseThrow(() -> new RuntimeException("Doctor profile not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Doctor profile not found"));
             response.setPhone(doctor.getPhone());
             response.setSpecialization(doctor.getSpecialization());
             response.setAge(null);
@@ -188,7 +189,7 @@ public class HospitalAuthService {
         Hospital hospital = hospitalRepository.findById(user.getHospitalId())
                 .orElseThrow(() -> {
                     logger.error("Login failed - hospital not found for ID: {}", user.getHospitalId());
-                    return new RuntimeException("Hospital not found");
+                    return new ResourceNotFoundException("Hospital not found");
                 });
 
         if (hospital.getIsActive() == null || !hospital.getIsActive()) {
@@ -258,7 +259,7 @@ public class HospitalAuthService {
      */
     public LoginResponse getProfile(String email) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         LoginResponse response = new LoginResponse();
         response.setToken(null);
@@ -282,14 +283,14 @@ public class HospitalAuthService {
         }
 
         if (user.getHospitalId() == null) {
-            throw new RuntimeException("Invalid hospital user");
+            throw new UnauthorizedException("Invalid hospital user account");
         }
 
         Hospital hospital = hospitalRepository.findById(user.getHospitalId())
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
         if (hospital.getIsActive() == null || !hospital.getIsActive()) {
-            throw new RuntimeException("Hospital is inactive");
+            throw new UnauthorizedException("Hospital is inactive. Please contact support.");
         }
 
         HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(hospital.getId())
@@ -304,7 +305,7 @@ public class HospitalAuthService {
 
         // Restrict receptionist profile access if Solo Doctor mode is active
         if ("RECEPTIONIST".equals(user.getRole()) && "SOLO".equals(settings.getReceptionMode())) {
-            throw new RuntimeException("Solo Doctor Mode is active. Access restricted.");
+            throw new UnauthorizedException("Solo Doctor Mode is active. Receptionist access is restricted.");
         }
 
         response.setHospitalId(user.getHospitalId());
@@ -331,15 +332,15 @@ public class HospitalAuthService {
     @Transactional
     public LoginResponse updateProfile(String email, ProfileUpdateRequest request) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         // Password change handling
         if (request.getNewPassword() != null && !request.getNewPassword().trim().isEmpty()) {
             if (request.getCurrentPassword() == null || request.getCurrentPassword().trim().isEmpty()) {
-                throw new RuntimeException("Current password is required to change password");
+                throw new IllegalArgumentException("Current password is required to change password");
             }
             if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
-                throw new RuntimeException("Incorrect current password");
+                throw new IllegalArgumentException("Incorrect current password");
             }
             user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         }
@@ -429,7 +430,7 @@ public class HospitalAuthService {
                 pharmacistProfileRepository.save(pharmacist);
             } else if ("DOCTOR".equals(user.getRole())) {
                 Doctor doctor = doctorRepository.findByEmailAndHospitalId(user.getEmail(), user.getHospitalId())
-                        .orElseThrow(() -> new RuntimeException("Doctor profile not found"));
+                        .orElseThrow(() -> new ResourceNotFoundException("Doctor profile not found"));
                 doctor.setName(user.getName());
                 doctor.setPhone(request.getPhone());
                 if (request.getSpecialization() != null && !request.getSpecialization().trim().isEmpty()) {
@@ -447,9 +448,9 @@ public class HospitalAuthService {
      * authenticated user.
      */
     public com.hms.dto.HospitalFeesDTO getHospitalFees(String email) {
-        User user = userRepository.findByEmail(email).orElseThrow(() -> new RuntimeException("User not found"));
-        if (user.getHospitalId() == null) throw new RuntimeException("Invalid hospital user");
-        Hospital hospital = hospitalRepository.findById(user.getHospitalId()).orElseThrow(() -> new RuntimeException("Hospital not found"));
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (user.getHospitalId() == null) throw new UnauthorizedException("Invalid hospital user account");
+        Hospital hospital = hospitalRepository.findById(user.getHospitalId()).orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
         com.hms.dto.HospitalFeesDTO dto = new com.hms.dto.HospitalFeesDTO();
         dto.setConsultationFee(hospital.getConsultationFee());
         dto.setCasePaperFee(hospital.getCasePaperFee());
@@ -460,12 +461,12 @@ public class HospitalAuthService {
      * Update hospital fees. Only `HOSPITAL_ADMIN` role is allowed to update.
      */
     public com.hms.dto.HospitalFeesDTO updateHospitalFees(String email, com.hms.dto.HospitalFeesDTO fees) {
-        User user = userRepository.findByEmail(email).orElseThrow(() -> new RuntimeException("User not found"));
-        if (user.getHospitalId() == null) throw new RuntimeException("Invalid hospital user");
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (user.getHospitalId() == null) throw new UnauthorizedException("Invalid hospital user account");
         if (!"HOSPITAL_ADMIN".equals(user.getRole())) {
-            throw new RuntimeException("Access denied: requires HOSPITAL_ADMIN role");
+            throw new UnauthorizedException("Access denied: requires HOSPITAL_ADMIN role");
         }
-        Hospital hospital = hospitalRepository.findById(user.getHospitalId()).orElseThrow(() -> new RuntimeException("Hospital not found"));
+        Hospital hospital = hospitalRepository.findById(user.getHospitalId()).orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
         hospital.setConsultationFee(fees.getConsultationFee());
         hospital.setCasePaperFee(fees.getCasePaperFee());
         hospitalRepository.save(hospital);
@@ -477,8 +478,8 @@ public class HospitalAuthService {
      * Get operational settings (receptionMode and billingHandler) for the hospital of the authenticated user.
      */
     public HospitalSettingDTO getHospitalOperationsSettings(String email) {
-        User user = userRepository.findByEmail(email).orElseThrow(() -> new RuntimeException("User not found"));
-        if (user.getHospitalId() == null) throw new RuntimeException("Invalid hospital user");
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (user.getHospitalId() == null) throw new UnauthorizedException("Invalid hospital user account");
         return hospitalSettingRepository.findByHospital_Id(user.getHospitalId())
                 .map(s -> new HospitalSettingDTO(s.getReceptionMode(), s.getBillingHandler(), s.getInClinic()))
                 .orElse(new HospitalSettingDTO("HAS_RECEPTIONIST", "RECEPTIONIST", true));
@@ -489,10 +490,10 @@ public class HospitalAuthService {
      */
     @Transactional
     public HospitalSettingDTO updateHospitalOperationsSettings(String email, HospitalSettingDTO dto) {
-        User user = userRepository.findByEmail(email).orElseThrow(() -> new RuntimeException("User not found"));
-        if (user.getHospitalId() == null) throw new RuntimeException("Invalid hospital user");
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (user.getHospitalId() == null) throw new UnauthorizedException("Invalid hospital user account");
         if (!"HOSPITAL_ADMIN".equals(user.getRole())) {
-            throw new RuntimeException("Access denied: requires HOSPITAL_ADMIN role");
+            throw new UnauthorizedException("Access denied: requires HOSPITAL_ADMIN role");
         }
 
         // Normalize: trim whitespace and uppercase to be tolerant of minor client variations

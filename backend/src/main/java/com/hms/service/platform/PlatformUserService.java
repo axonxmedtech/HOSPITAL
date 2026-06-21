@@ -3,6 +3,7 @@ package com.hms.service.platform;
 import com.hms.dto.UserSummaryDTO;
 import com.hms.entity.User;
 import com.hms.entity.AuditLog;
+import com.hms.exception.ResourceNotFoundException;
 import com.hms.repository.UserRepository;
 import com.hms.repository.AuditLogRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -59,7 +60,7 @@ public class PlatformUserService {
         }
 
         if (user == null) {
-            throw new RuntimeException("User not found with ID: " + idStr);
+            throw new ResourceNotFoundException("User not found with ID: " + idStr);
         }
 
         String newPassword = java.util.UUID.randomUUID().toString().substring(0, 8);

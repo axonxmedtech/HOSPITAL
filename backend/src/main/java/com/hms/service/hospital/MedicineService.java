@@ -5,6 +5,9 @@ import com.hms.entity.MedicineList;
 import com.hms.repository.MedicineRepository;
 import com.hms.repository.MedicineListRepository;
 import com.hms.security.SecurityContextHelper;
+
+import com.hms.exception.ResourceNotFoundException;
+import com.hms.exception.UnauthorizedException;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -46,7 +49,7 @@ public class MedicineService {
     public List<MedicineList> searchMedicines(String query) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
         return medicineListRepository.searchByName("%" + query + "%", hospitalId);
     }
@@ -54,7 +57,7 @@ public class MedicineService {
     public List<MedicineList> getCatalogMedicines() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
         return medicineListRepository.findByHospitalId(hospitalId);
     }
@@ -62,11 +65,11 @@ public class MedicineService {
     public MedicineList addCatalogMedicine(MedicineList medicine) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         if (medicineListRepository.existsByNameAndHospitalId(medicine.getName(), hospitalId)) {
-            throw new RuntimeException("Medicine already exists in catalog");
+            throw new IllegalArgumentException("Medicine already exists in catalog");
         }
 
         medicine.setHospitalId(hospitalId);
@@ -94,7 +97,7 @@ public class MedicineService {
                 .orElseThrow(() -> new RuntimeException("Catalog medicine not found"));
 
         if (catalog.getHospitalId() != null && !catalog.getHospitalId().equals(hospitalId)) {
-            throw new RuntimeException("Unauthorized access to catalog medicine");
+            throw new UnauthorizedException("Unauthorized access to catalog medicine");
         }
 
         catalog.setName(request.getName());
@@ -139,7 +142,7 @@ public class MedicineService {
                 .orElseThrow(() -> new RuntimeException("Catalog medicine not found"));
 
         if (catalog.getHospitalId() != null && !catalog.getHospitalId().equals(hospitalId)) {
-            throw new RuntimeException("Unauthorized access to catalog medicine");
+            throw new UnauthorizedException("Unauthorized access to catalog medicine");
         }
 
         catalog.setIsActive(false);
@@ -251,7 +254,7 @@ public class MedicineService {
     public List<com.hms.entity.MedicinePurchase> getMedicinePurchases() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
         return medicinePurchaseRepository.findByHospitalIdOrderByPurchaseDateDesc(hospitalId);
     }
@@ -260,7 +263,7 @@ public class MedicineService {
     public com.hms.entity.MedicinePurchase addMedicinePurchase(com.hms.entity.MedicinePurchase purchase) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         purchase.setHospitalId(hospitalId);
@@ -337,7 +340,7 @@ public class MedicineService {
     public List<Medicine> getInventoryMedicines() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
         List<Medicine> list = medicineRepository.findByHospitalId(hospitalId);
         for (Medicine m : list) {
@@ -365,12 +368,12 @@ public class MedicineService {
     public Medicine addInventoryMedicine(Medicine medicine) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         // Prevent duplicates in active physical stock inventory
         if (medicineRepository.existsByNameAndHospitalId(medicine.getName(), hospitalId)) {
-            throw new RuntimeException("Medicine already exists in stock inventory");
+            throw new IllegalArgumentException("Medicine already exists in stock inventory");
         }
 
         // --- Suggestion 2: Auto-catalog if it doesn't exist ---
@@ -431,7 +434,7 @@ public class MedicineService {
                 .orElseThrow(() -> new RuntimeException("Stock inventory record not found"));
 
         if (!medicine.getHospitalId().equals(hospitalId)) {
-            throw new RuntimeException("Unauthorized access to stock inventory");
+            throw new UnauthorizedException("Unauthorized access to stock inventory");
         }
 
         Integer oldStock = medicine.getStockQuantity();
@@ -503,7 +506,7 @@ public class MedicineService {
                 .orElseThrow(() -> new RuntimeException("Stock inventory record not found"));
 
         if (!medicine.getHospitalId().equals(hospitalId)) {
-            throw new RuntimeException("Unauthorized access to stock inventory");
+            throw new UnauthorizedException("Unauthorized access to stock inventory");
         }
 
         medicine.setIsActive(false);
@@ -572,3 +575,4 @@ public class MedicineService {
         return m;
     }
 }
+

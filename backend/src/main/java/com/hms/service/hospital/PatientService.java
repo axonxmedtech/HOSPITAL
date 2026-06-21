@@ -8,6 +8,9 @@ import com.hms.repository.PatientRepository;
 import com.hms.security.SecurityContextHelper;
 import com.hms.security.HospitalWebSocketHandler;
 import com.hms.service.AuditLogService;
+
+import com.hms.exception.ResourceNotFoundException;
+import com.hms.exception.UnauthorizedException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -106,7 +109,7 @@ public class PatientService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         // Set hospital_id to ensure multi-tenant isolation
@@ -207,7 +210,7 @@ public class PatientService {
             org.springframework.data.domain.Pageable pageable) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         org.springframework.data.domain.Page<Patient> patients;
@@ -263,7 +266,7 @@ public class PatientService {
     public long getPatientCount() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
         return patientRepository.countByHospitalIdAndIsActiveTrue(hospitalId);
     }
@@ -289,7 +292,7 @@ public class PatientService {
     public List<Patient> getAllPatients() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null)
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         List<Patient> patients = patientRepository.findByHospitalIdAndIsActiveTrueOrderByCreatedAtDesc(hospitalId);
 
         // Populate latest bill
@@ -308,7 +311,7 @@ public class PatientService {
     public List<Patient> searchPatients(String query) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         if (query == null || query.trim().isEmpty()) {
@@ -331,7 +334,7 @@ public class PatientService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         // Find patient only if it belongs to this hospital and is active
@@ -343,7 +346,7 @@ public class PatientService {
     public Patient getPatientById(Long id) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
         return patientRepository.findById(id)
                 .filter(p -> p.getHospitalId().equals(hospitalId))
@@ -358,7 +361,7 @@ public class PatientService {
     public void deletePatient(String publicId, String reason) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null)
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
 
         Patient patient = patientRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(publicId, hospitalId)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
@@ -400,7 +403,7 @@ public class PatientService {
     public Patient updatePatientStatus(String publicId, com.hms.entity.PatientStatus status) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         Patient patient = patientRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(publicId, hospitalId)
@@ -446,7 +449,7 @@ public class PatientService {
     public java.util.Map<String, Object> getPatientConsultationDetails(String patientIdentifier) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         // Resolve patient by numeric id or publicId
@@ -804,7 +807,7 @@ public class PatientService {
         if (ids == null || ids.isEmpty()) return java.util.Collections.emptyList();
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
         return patientRepository.findAllById(ids).stream()
                 .filter(p -> p.getHospitalId().equals(hospitalId))
@@ -979,3 +982,4 @@ public class PatientService {
         return pdfService.generateIpdPrescriptionPdf(hospital, patient, ipd, prescriptions);
     }
 }
+

@@ -6,6 +6,8 @@ import com.hms.repository.pharmacy.InventoryTransactionRepository;
 import com.hms.repository.pharmacy.MedicineBatchRepository;
 import com.hms.security.HospitalWebSocketHandler;
 import com.hms.security.SecurityContextHelper;
+import com.hms.exception.ResourceNotFoundException;
+import com.hms.exception.UnauthorizedException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -41,7 +43,7 @@ public class InventoryTransactionService {
         BigDecimal qtyAfter = qtyBefore.add(adjustmentQty);
 
         if (qtyAfter.compareTo(BigDecimal.ZERO) < 0) {
-            throw new RuntimeException("Inventory cannot be negative");
+            throw new IllegalArgumentException("Inventory cannot be negative");
         }
 
         batch.setCurrentQuantity(qtyAfter);
@@ -70,7 +72,7 @@ public class InventoryTransactionService {
                 .orElseThrow(() -> new RuntimeException("Medicine batch not found"));
         
         if (!batch.getHospitalId().equals(hospitalId)) {
-            throw new RuntimeException("Unauthorized access to medicine batch");
+            throw new UnauthorizedException("Unauthorized access to medicine batch");
         }
 
         return transactionRepository.findByMedicineBatchIdOrderByCreatedAtDesc(batchId, pageable);
@@ -81,3 +83,4 @@ public class InventoryTransactionService {
         return transactionRepository.findByHospitalIdAndTransactionTypeOrderByCreatedAtDesc(hospitalId, "RETURN", pageable);
     }
 }
+
