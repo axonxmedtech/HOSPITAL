@@ -20,9 +20,11 @@ const platformService = {
     /**
      * Get all hospitals
      */
-    getHospitals: async (page = 0, size = 10) => {
-        const response = await apiClient.get(`/platform/hospitals?page=${page}&size=${size}`);
-        return response.data; // Returns { content: [...], totalElements: ..., totalPages: ... }
+    getHospitals: async (page = 0, size = 10, type = '') => {
+        const params = { page, size };
+        if (type) params.type = type;
+        const response = await apiClient.get('/platform/hospitals', { params });
+        return response.data;
     },
 
     /**
@@ -54,19 +56,6 @@ const platformService = {
      */
     updateHospitalDetails: async (id, name, adminEmail, adminName, reason, isSingleDoctor) => {
         const response = await apiClient.put(`/platform/hospitals/${id}/details`, { name, adminEmail, adminName, reason, isSingleDoctor });
-        return response.data;
-    },
-
-    updateHospitalPlan: async (id, plan, reason) => {
-        const response = await apiClient.put(`/platform/hospitals/${id}/plan`, { plan, reason });
-        return response.data;
-    },
-
-    /**
-     * Update hospital enabled modules
-     */
-    updateHospitalModules: async (id, modules, reason) => {
-        const response = await apiClient.put(`/platform/hospitals/${id}/modules`, { modules, reason });
         return response.data;
     },
 
@@ -153,6 +142,37 @@ const platformService = {
      */
     deleteFaq: async (id) => {
         const response = await apiClient.delete(`/platform/faqs/${id}`);
+        return response.data;
+    },
+
+    // ─── Plan Management ─────────────────────────────────────────────────────
+
+    getPlans: async (type = '') => {
+        const params = type ? { type } : {};
+        const response = await apiClient.get('/platform/plans', { params });
+        return response.data;
+    },
+
+    createPlan: async (planData) => {
+        const response = await apiClient.post('/platform/plans', planData);
+        return response.data;
+    },
+
+    updatePlan: async (publicId, planData) => {
+        const response = await apiClient.put(`/platform/plans/${publicId}`, planData);
+        return response.data;
+    },
+
+    deletePlan: async (publicId) => {
+        const response = await apiClient.delete(`/platform/plans/${publicId}`);
+        return response.data;
+    },
+
+    assignPlan: async (planPublicId, hospitalPublicId, billingPeriod) => {
+        const response = await apiClient.post(`/platform/plans/${planPublicId}/assign`, {
+            hospitalPublicId,
+            billingPeriod,
+        });
         return response.data;
     },
 };
