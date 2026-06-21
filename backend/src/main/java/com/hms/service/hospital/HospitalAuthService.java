@@ -5,15 +5,20 @@ import com.hms.dto.LoginResponse;
 import com.hms.dto.ProfileUpdateRequest;
 import com.hms.exception.ResourceNotFoundException;
 import com.hms.exception.UnauthorizedException;
+import com.hms.entity.ClinicAdmin;
 import com.hms.entity.Hospital;
 import com.hms.entity.HospitalSetting;
+import com.hms.entity.HospitalType;
+import com.hms.entity.PharmacyAdmin;
 import com.hms.entity.User;
 import com.hms.entity.HospitalAdmin;
 import com.hms.entity.Receptionist;
 import com.hms.entity.Pharmacist;
 import com.hms.entity.Doctor;
+import com.hms.repository.ClinicAdminRepository;
 import com.hms.repository.HospitalRepository;
 import com.hms.repository.HospitalSettingRepository;
+import com.hms.repository.PharmacyAdminRepository;
 import com.hms.repository.UserRepository;
 import com.hms.repository.HospitalAdminRepository;
 import com.hms.repository.ReceptionistProfileRepository;
@@ -64,6 +69,12 @@ public class HospitalAuthService {
     private HospitalAdminRepository hospitalAdminRepository;
 
     @Autowired
+    private ClinicAdminRepository clinicAdminRepository;
+
+    @Autowired
+    private PharmacyAdminRepository pharmacyAdminRepository;
+
+    @Autowired
     private ReceptionistProfileRepository receptionistProfileRepository;
 
     @Autowired
@@ -73,28 +84,68 @@ public class HospitalAuthService {
     private DoctorRepository doctorRepository;
 
     /**
-     * Helper to populate detailed profile fields on LoginResponse
+     * Helper to populate detailed profile fields on LoginResponse.
+     * Routes HOSPITAL_ADMIN to the correct admin table based on hospital type.
      */
-    private void populateProfileDetails(User user, LoginResponse response) {
+    private void populateProfileDetails(User user, LoginResponse response, Hospital hospital) {
         if ("SUPER_ADMIN".equals(user.getRole())) {
             return;
         }
         if ("HOSPITAL_ADMIN".equals(user.getRole())) {
-            HospitalAdmin admin = hospitalAdminRepository.findByEmail(user.getEmail())
-                    .orElseGet(() -> {
-                        HospitalAdmin newAdmin = new HospitalAdmin();
-                        newAdmin.setHospitalId(user.getHospitalId());
-                        newAdmin.setName(user.getName());
-                        newAdmin.setEmail(user.getEmail());
-                        newAdmin.setPhone("");
-                        newAdmin.setAge(null);
-                        newAdmin.setGender(null);
-                        newAdmin.setIsActive(true);
-                        return hospitalAdminRepository.save(newAdmin);
-                    });
-            response.setPhone(admin.getPhone());
-            response.setAge(admin.getAge());
-            response.setGender(admin.getGender());
+            HospitalType entityType = hospital != null && hospital.getType() != null
+                    ? hospital.getType() : HospitalType.HOSPITAL;
+
+            String phone = "";
+            Integer age = null;
+            String gender = null;
+
+            if (entityType == HospitalType.CLINIC) {
+                ClinicAdmin admin = clinicAdminRepository.findByEmail(user.getEmail())
+                        .orElseGet(() -> {
+                            ClinicAdmin a = new ClinicAdmin();
+                            a.setHospitalId(user.getHospitalId());
+                            a.setName(user.getName());
+                            a.setEmail(user.getEmail());
+                            a.setPhone("");
+                            a.setIsActive(true);
+                            return clinicAdminRepository.save(a);
+                        });
+                phone = admin.getPhone();
+                age = admin.getAge();
+                gender = admin.getGender();
+            } else if (entityType == HospitalType.PHARMACY) {
+                PharmacyAdmin admin = pharmacyAdminRepository.findByEmail(user.getEmail())
+                        .orElseGet(() -> {
+                            PharmacyAdmin a = new PharmacyAdmin();
+                            a.setHospitalId(user.getHospitalId());
+                            a.setName(user.getName());
+                            a.setEmail(user.getEmail());
+                            a.setPhone("");
+                            a.setIsActive(true);
+                            return pharmacyAdminRepository.save(a);
+                        });
+                phone = admin.getPhone();
+                age = admin.getAge();
+                gender = admin.getGender();
+            } else {
+                HospitalAdmin admin = hospitalAdminRepository.findByEmail(user.getEmail())
+                        .orElseGet(() -> {
+                            HospitalAdmin a = new HospitalAdmin();
+                            a.setHospitalId(user.getHospitalId());
+                            a.setName(user.getName());
+                            a.setEmail(user.getEmail());
+                            a.setPhone("");
+                            a.setIsActive(true);
+                            return hospitalAdminRepository.save(a);
+                        });
+                phone = admin.getPhone();
+                age = admin.getAge();
+                gender = admin.getGender();
+            }
+
+            response.setPhone(phone);
+            response.setAge(age);
+            response.setGender(gender);
             if (Boolean.TRUE.equals(response.getIsSingleDoctor())) {
                 doctorRepository.findByEmailAndHospitalId(user.getEmail(), user.getHospitalId())
                         .ifPresent(doc -> response.setSpecialization(doc.getSpecialization()));
@@ -197,6 +248,27 @@ public class HospitalAuthService {
             throw new UnauthorizedException("Hospital is inactive. Please contact support.");
         }
 
+        // Validate that the user is logging into the correct portal
+        if (request.getEntityType() != null && !request.getEntityType().isBlank()) {
+            HospitalType expectedType;
+            try {
+                expectedType = HospitalType.valueOf(request.getEntityType().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw new UnauthorizedException("Invalid entity type: " + request.getEntityType());
+            }
+            HospitalType actualType = hospital.getType() != null ? hospital.getType() : HospitalType.HOSPITAL;
+            if (actualType != expectedType) {
+                String portalName = expectedType == HospitalType.CLINIC ? "Clinic" :
+                                    expectedType == HospitalType.PHARMACY ? "Pharmacy" : "Hospital";
+                logger.warn("Login failed - wrong portal: user belongs to {} but tried {} portal: {}",
+                        actualType, expectedType, request.getEmail());
+                throw new UnauthorizedException(
+                    "This account belongs to a " + actualType.name().toLowerCase() +
+                    ". Please use the " + actualType.name().charAt(0) +
+                    actualType.name().substring(1).toLowerCase() + " login portal.");
+            }
+        }
+
         // Fetch hospital settings (or auto-create default row if not exist)
         HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(hospital.getId())
                 .orElseGet(() -> {
@@ -243,10 +315,12 @@ public class HospitalAuthService {
         response.setReceptionMode(settings.getReceptionMode());
         response.setBillingHandler(settings.getBillingHandler());
         response.setIsSingleDoctor(hospital.getIsSingleDoctor());
-        response.setInClinic(settings.getInClinic());
+        boolean inClinicAllowed = hospital.getModules() != null && hospital.getModules().contains("IN_CLINIC");
+        response.setInClinic(inClinicAllowed && Boolean.TRUE.equals(settings.getInClinic()));
+        response.setHospitalType(hospital.getType() != null ? hospital.getType().name() : "HOSPITAL");
 
         // Populate profile details
-        populateProfileDetails(user, response);
+        populateProfileDetails(user, response, hospital);
 
         return response;
     }
@@ -314,14 +388,16 @@ public class HospitalAuthService {
         response.setReceptionMode(settings.getReceptionMode());
         response.setBillingHandler(settings.getBillingHandler());
         response.setIsSingleDoctor(hospital.getIsSingleDoctor());
-        response.setInClinic(settings.getInClinic());
+        boolean inClinicAllowed = hospital.getModules() != null && hospital.getModules().contains("IN_CLINIC");
+        response.setInClinic(inClinicAllowed && Boolean.TRUE.equals(settings.getInClinic()));
         response.setLogoUrl(hospital.getLogoUrl());
         response.setParentOrganization(hospital.getParentOrganization());
         response.setHospitalAddress(hospital.getAddress());
         response.setHospitalPhone(hospital.getPhone());
+        response.setHospitalType(hospital.getType() != null ? hospital.getType().name() : "HOSPITAL");
 
         // Populate profile details
-        populateProfileDetails(user, response);
+        populateProfileDetails(user, response, hospital);
 
         return response;
     }
@@ -354,21 +430,53 @@ public class HospitalAuthService {
         // Update profile in respective detailed actor tables
         if (!"SUPER_ADMIN".equals(user.getRole())) {
             if ("HOSPITAL_ADMIN".equals(user.getRole())) {
-                HospitalAdmin admin = hospitalAdminRepository.findByEmail(user.getEmail())
-                        .orElseGet(() -> {
-                            HospitalAdmin newAdmin = new HospitalAdmin();
-                            newAdmin.setHospitalId(user.getHospitalId());
-                            newAdmin.setEmail(user.getEmail());
-                            newAdmin.setIsActive(true);
-                            return newAdmin;
-                        });
-                admin.setName(user.getName());
-                admin.setPhone(request.getPhone());
-                admin.setAge(request.getAge());
-                admin.setGender(request.getGender());
-                hospitalAdminRepository.save(admin);
-
                 Hospital hospital = hospitalRepository.findById(user.getHospitalId()).orElse(null);
+                HospitalType entityType = hospital != null && hospital.getType() != null
+                        ? hospital.getType() : HospitalType.HOSPITAL;
+
+                if (entityType == HospitalType.CLINIC) {
+                    ClinicAdmin admin = clinicAdminRepository.findByEmail(user.getEmail())
+                            .orElseGet(() -> {
+                                ClinicAdmin a = new ClinicAdmin();
+                                a.setHospitalId(user.getHospitalId());
+                                a.setEmail(user.getEmail());
+                                a.setIsActive(true);
+                                return a;
+                            });
+                    admin.setName(user.getName());
+                    admin.setPhone(request.getPhone());
+                    admin.setAge(request.getAge());
+                    admin.setGender(request.getGender());
+                    clinicAdminRepository.save(admin);
+                } else if (entityType == HospitalType.PHARMACY) {
+                    PharmacyAdmin admin = pharmacyAdminRepository.findByEmail(user.getEmail())
+                            .orElseGet(() -> {
+                                PharmacyAdmin a = new PharmacyAdmin();
+                                a.setHospitalId(user.getHospitalId());
+                                a.setEmail(user.getEmail());
+                                a.setIsActive(true);
+                                return a;
+                            });
+                    admin.setName(user.getName());
+                    admin.setPhone(request.getPhone());
+                    admin.setAge(request.getAge());
+                    admin.setGender(request.getGender());
+                    pharmacyAdminRepository.save(admin);
+                } else {
+                    HospitalAdmin admin = hospitalAdminRepository.findByEmail(user.getEmail())
+                            .orElseGet(() -> {
+                                HospitalAdmin newAdmin = new HospitalAdmin();
+                                newAdmin.setHospitalId(user.getHospitalId());
+                                newAdmin.setEmail(user.getEmail());
+                                newAdmin.setIsActive(true);
+                                return newAdmin;
+                            });
+                    admin.setName(user.getName());
+                    admin.setPhone(request.getPhone());
+                    admin.setAge(request.getAge());
+                    admin.setGender(request.getGender());
+                    hospitalAdminRepository.save(admin);
+                }
                 if (hospital != null) {
                     if (request.getHospitalName() != null && !request.getHospitalName().trim().isEmpty()) {
                         hospital.setName(request.getHospitalName());
@@ -515,18 +623,22 @@ public class HospitalAuthService {
         }
 
         final String effectiveBillingHandler = billingHandler;
-        Boolean inClinic = dto.getInClinic();
+        Boolean inClinicRequested = dto.getInClinic();
+
+        // Enforce plan gate: only allow inClinic=true if IN_CLINIC module is in hospital modules
+        Hospital hospital = hospitalRepository.findById(user.getHospitalId())
+                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+        boolean inClinicModuleEnabled = hospital.getModules() != null && hospital.getModules().contains("IN_CLINIC");
+        Boolean inClinic = inClinicModuleEnabled ? inClinicRequested : Boolean.FALSE;
 
         // Ensure a settings row exists; if not, create one first
         HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(user.getHospitalId())
                 .orElseGet(() -> {
-                    Hospital hospital = hospitalRepository.findById(user.getHospitalId())
-                            .orElseThrow(() -> new RuntimeException("Hospital not found"));
                     HospitalSetting newSettings = new HospitalSetting();
                     newSettings.setHospital(hospital);
                     newSettings.setReceptionMode(receptionMode != null ? receptionMode : "HAS_RECEPTIONIST");
                     newSettings.setBillingHandler(effectiveBillingHandler != null ? effectiveBillingHandler : "RECEPTIONIST");
-                    newSettings.setInClinic(inClinic != null ? inClinic : Boolean.TRUE);
+                    newSettings.setInClinic(inClinic != null ? inClinic : Boolean.FALSE);
                     return hospitalSettingRepository.save(newSettings);
                 });
 

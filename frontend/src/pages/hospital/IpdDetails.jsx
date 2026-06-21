@@ -41,8 +41,9 @@ const IpdDetails = () => {
     const [profileOpen, setProfileOpen] = useState(false);
 
     const handleLogout = () => {
+        const loginUrl = authService.getLoginUrl();
         authService.logout();
-        navigate('/login');
+        navigate(loginUrl);
     };
 
     const isSolo = user?.receptionMode === 'SOLO';

@@ -50,10 +50,10 @@ import {
 const HospitalAdminDashboard = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const [user, setUser] = useState(authService.getCurrentUser());
-    const modules = user?.modules || ['OPD', 'BILLING'];
+    const modules = user?.modules || [];
     const hasOPD = modules.includes('OPD');
     const hasIPD = modules.includes('IPD');
-    const defaultTab = hasOPD ? 'overview' : 'pharmacy';
+    const defaultTab = 'overview';
     const activeTab = searchParams.get('tab') || defaultTab;
 
     // Helper to switch tabs
@@ -858,8 +858,9 @@ const HospitalAdminDashboard = () => {
     };
 
     const handleLogout = () => {
+        const loginUrl = authService.getLoginUrl();
         authService.logout();
-        navigate('/login');
+        navigate(loginUrl);
     };
 
     // Generic confirmation handler
@@ -1284,9 +1285,9 @@ const HospitalAdminDashboard = () => {
     };
 
     const allTabs = [
-        { id: 'overview', label: 'Overview', icon: null, requiredModule: 'OPD' },
+        { id: 'overview', label: 'Overview', icon: null, requiredModule: null },
         { id: 'patients', label: 'Patients', icon: null, requiredModule: 'OPD' },
-        { id: 'appointments', label: 'Appointments', icon: null, requiredModule: 'OPD' },
+        { id: 'appointments', label: 'Appointments', icon: null, requiredModule: 'APPOINTMENTS' },
         { id: 'opd', label: 'OPD', icon: null, requiredModule: 'OPD' },
         { id: 'wards', label: 'Wards & Beds', icon: null, requiredModule: 'IPD' },
         { id: 'doctors', label: 'Doctors', icon: null, requiredModule: 'OPD' },
@@ -1294,15 +1295,15 @@ const HospitalAdminDashboard = () => {
         { id: 'billing', label: 'Billing', icon: null, requiredModule: 'BILLING' },
         { id: 'pharmacy', label: 'Pharmacy', icon: null, requiredModule: 'PHARMACY' },
         { id: 'pharmacists', label: 'Pharmacists', icon: null, requiredModule: 'PHARMACY' },
-        { id: 'inventory', label: 'Medicine Inventory', icon: null, requiredModule: 'OPD' },
-        { id: 'hospital-inventory', label: 'Hospital Inventory', icon: null, requiredModule: 'OPD' },
+        { id: 'inventory', label: 'Medicine Inventory', icon: null, requiredModule: 'MEDICAL_INVENTORY' },
+        { id: 'hospital-inventory', label: 'Hospital Inventory', icon: null, requiredModule: 'HOSPITAL_INVENTORY' },
         { id: 'pathology', label: 'Pathology', icon: null, requiredModule: 'PATHOLOGY' },
         { id: 'ipd', label: 'IPD', icon: null, requiredModule: 'IPD' },
         { id: 'ot', label: 'Operation Theatre', icon: null, requiredModule: 'OT' },
-        { id: 'fees', label: 'Fees', icon: null, requiredModule: 'OPD' },
+        { id: 'fees', label: 'Fees', icon: null, requiredModule: 'BILLING' },
         { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
-        { id: 'analytics', label: 'Reports & Analytics', icon: null, requiredModule: 'OPD' },
-        { id: 'settings', label: 'Settings', icon: null, requiredModule: 'OPD' },
+        { id: 'analytics', label: 'Reports & Analytics', icon: null, requiredModule: 'REPORTS' },
+        { id: 'settings', label: 'Settings', icon: null, requiredModule: null },
     ];
 
     const tabs = allTabs.filter(tab =>
@@ -2116,8 +2117,8 @@ const HospitalAdminDashboard = () => {
                                                     </div>
                                                 </div>
 
-                                                {/* In-Clinic Mode Card */}
-                                                <div className="bg-slate-50/50 rounded-2xl border border-gray-200 p-6 flex flex-col justify-between hover:shadow-md transition-all duration-300">
+                                                {/* In-Clinic Mode Card — only shown when IN_CLINIC module is in plan */}
+                                                {modules.includes('IN_CLINIC') && <div className="bg-slate-50/50 rounded-2xl border border-gray-200 p-6 flex flex-col justify-between hover:shadow-md transition-all duration-300">
                                                     <div>
                                                         <div className="flex items-center justify-between mb-4">
                                                             <div className="p-3 bg-teal-50 rounded-xl text-teal-600">
@@ -2152,7 +2153,7 @@ const HospitalAdminDashboard = () => {
                                                             />
                                                         </button>
                                                     </div>
-                                                </div>
+                                                </div>}
                                             </div>
                                         )}
                                     </div>

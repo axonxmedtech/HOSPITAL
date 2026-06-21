@@ -124,7 +124,7 @@ public class Hospital {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "hospital_modules", joinColumns = @JoinColumn(name = "hospital_id"))
     @Column(name = "module_name")
-    private java.util.List<String> modules = new java.util.ArrayList<>(java.util.Arrays.asList("OPD", "BILLING"));
+    private java.util.List<String> modules = new java.util.ArrayList<>();
 
     /**
      * Whether this hospital is a single doctor hospital.

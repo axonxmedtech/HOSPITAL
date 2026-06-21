@@ -1,7 +1,9 @@
 package com.hms.controller.hospital;
 
 import com.hms.security.HospitalWebSocketHandler;
+import com.hms.security.SecurityContextHelper;
 import com.hms.service.hospital.HospitalAuthService;
+import com.hms.service.platform.PlatformPlanService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -35,6 +37,12 @@ class HospitalAuthControllerIT {
 
     @MockBean
     JwtUtil jwtUtil;
+
+    @MockBean
+    PlatformPlanService planService;
+
+    @MockBean
+    SecurityContextHelper securityHelper;
 
     @Test
     void updateOperationsSettings_withNoPrincipal_returns401() throws Exception {

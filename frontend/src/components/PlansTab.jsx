@@ -3,7 +3,7 @@ import platformService from '../services/platformService';
 import { useToast } from '../context/ToastContext';
 
 const ENTITY_TYPES = ['HOSPITAL', 'CLINIC', 'PHARMACY'];
-const AVAILABLE_MODULES = ['OPD', 'IPD', 'PHARMACY', 'BILLING', 'OT', 'PATHOLOGY'];
+const AVAILABLE_MODULES = ['OPD', 'IPD', 'PHARMACY', 'BILLING', 'APPOINTMENTS', 'MEDICAL_INVENTORY', 'HOSPITAL_INVENTORY', 'REPORTS', 'OT', 'PATHOLOGY'];
 
 const emptyForm = {
     name: '',

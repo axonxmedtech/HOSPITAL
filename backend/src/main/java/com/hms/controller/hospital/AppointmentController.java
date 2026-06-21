@@ -8,26 +8,28 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import com.hms.security.RequireModule;
 import java.util.List;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
 /**
  * AppointmentController - REST controller for appointment management
- * 
+ *
  * This controller provides endpoints for:
  * - Creating appointments (Hospital Admin only)
  * - Listing all appointments (Hospital Admin)
  * - Listing doctor's own appointments (Doctor)
  * - Getting appointment details (Hospital Admin and Doctor)
- * 
+ *
  * All operations are automatically filtered by hospital_id.
- * 
+ *
  * @author HMS Team
  * @version Phase-1
  */
 @RestController
 @RequestMapping("/hospital/appointments")
+@RequireModule("APPOINTMENTS")
 public class AppointmentController {
 
     @Autowired

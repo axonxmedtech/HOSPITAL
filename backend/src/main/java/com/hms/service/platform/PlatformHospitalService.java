@@ -2,17 +2,21 @@ package com.hms.service.platform;
 
 import com.hms.dto.CreateHospitalRequest;
 import com.hms.entity.AuditLog;
+import com.hms.entity.ClinicAdmin;
 import com.hms.entity.Hospital;
 import com.hms.entity.HospitalAdmin;
 import com.hms.entity.HospitalType;
+import com.hms.entity.PharmacyAdmin;
 import com.hms.entity.User;
 import com.hms.entity.Doctor;
 import com.hms.entity.HospitalSetting;
 import com.hms.exception.ResourceNotFoundException;
 import com.hms.repository.AuditLogRepository;
+import com.hms.repository.ClinicAdminRepository;
 import com.hms.repository.HospitalAdminRepository;
 import com.hms.repository.HospitalPlanSubscriptionRepository;
 import com.hms.repository.HospitalRepository;
+import com.hms.repository.PharmacyAdminRepository;
 import com.hms.repository.UserRepository;
 import com.hms.repository.DoctorRepository;
 import com.hms.repository.HospitalSettingRepository;
@@ -63,6 +67,12 @@ public class PlatformHospitalService {
     private HospitalAdminRepository hospitalAdminRepository;
 
     @Autowired
+    private ClinicAdminRepository clinicAdminRepository;
+
+    @Autowired
+    private PharmacyAdminRepository pharmacyAdminRepository;
+
+    @Autowired
     private HospitalSettingRepository hospitalSettingRepository;
 
     @Autowired
@@ -70,6 +80,9 @@ public class PlatformHospitalService {
 
     @Autowired
     private HospitalPlanSubscriptionRepository subscriptionRepository;
+
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     /**
      * Create a new hospital with hospital admin user
@@ -118,13 +131,31 @@ public class PlatformHospitalService {
         admin.setHospitalId(hospital.getId());
         userRepository.save(admin);
 
-        HospitalAdmin hospitalAdmin = new HospitalAdmin();
-        hospitalAdmin.setHospitalId(hospital.getId());
-        hospitalAdmin.setName(request.getAdminName());
-        hospitalAdmin.setEmail(request.getAdminEmail());
-        hospitalAdmin.setPhone("");
-        hospitalAdmin.setIsActive(true);
-        hospitalAdminRepository.save(hospitalAdmin);
+        if (type == HospitalType.CLINIC) {
+            ClinicAdmin clinicAdmin = new ClinicAdmin();
+            clinicAdmin.setHospitalId(hospital.getId());
+            clinicAdmin.setName(request.getAdminName());
+            clinicAdmin.setEmail(request.getAdminEmail());
+            clinicAdmin.setPhone("");
+            clinicAdmin.setIsActive(true);
+            clinicAdminRepository.save(clinicAdmin);
+        } else if (type == HospitalType.PHARMACY) {
+            PharmacyAdmin pharmacyAdmin = new PharmacyAdmin();
+            pharmacyAdmin.setHospitalId(hospital.getId());
+            pharmacyAdmin.setName(request.getAdminName());
+            pharmacyAdmin.setEmail(request.getAdminEmail());
+            pharmacyAdmin.setPhone("");
+            pharmacyAdmin.setIsActive(true);
+            pharmacyAdminRepository.save(pharmacyAdmin);
+        } else {
+            HospitalAdmin hospitalAdmin = new HospitalAdmin();
+            hospitalAdmin.setHospitalId(hospital.getId());
+            hospitalAdmin.setName(request.getAdminName());
+            hospitalAdmin.setEmail(request.getAdminEmail());
+            hospitalAdmin.setPhone("");
+            hospitalAdmin.setIsActive(true);
+            hospitalAdminRepository.save(hospitalAdmin);
+        }
 
         if (type != HospitalType.PHARMACY && Boolean.TRUE.equals(hospital.getIsSingleDoctor())) {
             Doctor doctor = new Doctor();
@@ -137,14 +168,13 @@ public class PlatformHospitalService {
             doctorRepository.save(doctor);
         }
 
-        if (request.getPlanPublicId() != null && !request.getPlanPublicId().isBlank()) {
-            String billingPeriod = (request.getBillingPeriod() != null && !request.getBillingPeriod().isBlank())
-                    ? request.getBillingPeriod() : "MONTHLY";
-            com.hms.dto.AssignPlanRequest assignReq = new com.hms.dto.AssignPlanRequest();
-            assignReq.setHospitalPublicId(hospital.getPublicId());
-            assignReq.setBillingPeriod(billingPeriod);
-            planService.assignPlan(request.getPlanPublicId(), assignReq);
-        }
+        com.hms.dto.AssignPlanRequest assignReq = new com.hms.dto.AssignPlanRequest();
+        assignReq.setHospitalPublicId(hospital.getPublicId());
+        assignReq.setBillingPeriod(request.getBillingPeriod());
+        com.hms.entity.HospitalPlanSubscription trialSub = planService.assignPlan(request.getPlanPublicId(), assignReq);
+        // Apply 7-day free trial to all newly created entities
+        trialSub.setExpiresAt(trialSub.getExpiresAt().plusDays(7));
+        subscriptionRepository.save(trialSub);
 
         logAction("HOSPITAL_CREATED",
             "Created " + type + ": " + hospital.getName() + " with admin: " + admin.getEmail());
@@ -395,8 +425,94 @@ public class PlatformHospitalService {
     }
 
     /**
+     * Delete a hospital and all its related data in FK dependency order.
+     */
+    @Transactional
+    public void deleteHospital(String publicId) {
+        Hospital hospital = hospitalRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found: " + publicId));
+        Long id = hospital.getId();
+        String name = hospital.getName();
+
+        // Billing children
+        jdbcTemplate.update("DELETE FROM billing_payments WHERE billing_id IN (SELECT id FROM billing WHERE hospital_id = ?)", id);
+        jdbcTemplate.update("DELETE FROM billing_medicines WHERE billing_id IN (SELECT id FROM billing WHERE hospital_id = ?)", id);
+        jdbcTemplate.update("DELETE FROM billing_items WHERE billing_id IN (SELECT id FROM billing WHERE hospital_id = ?)", id);
+        jdbcTemplate.update("DELETE FROM billing WHERE hospital_id = ?", id);
+
+        // IPD children
+        jdbcTemplate.update("DELETE FROM discharge_summary WHERE ipd_admission_id IN (SELECT id FROM ipd_admission WHERE hospital_id = ?)", id);
+        jdbcTemplate.update("DELETE FROM ipd_bed_history WHERE ipd_admission_id IN (SELECT id FROM ipd_admission WHERE hospital_id = ?)", id);
+        jdbcTemplate.update("DELETE FROM ipd_admission WHERE hospital_id = ?", id);
+
+        // OPD children
+        jdbcTemplate.update("DELETE FROM queue_entry WHERE opd_id IN (SELECT id FROM opd WHERE hospital_id = ?)", id);
+        jdbcTemplate.update("DELETE FROM opd WHERE hospital_id = ?", id);
+
+        // Records
+        jdbcTemplate.update("DELETE FROM prescriptions WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM medical_records WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM lab_orders WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM appointments WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM patients WHERE hospital_id = ?", id);
+
+        // Pharmacy module
+        jdbcTemplate.update("DELETE FROM pharmacy_sale_items WHERE sale_id IN (SELECT id FROM pharmacy_sales WHERE hospital_id = ?)", id);
+        jdbcTemplate.update("DELETE FROM pharmacy_sales WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM purchase_invoice_items WHERE purchase_invoice_id IN (SELECT id FROM purchase_invoices WHERE hospital_id = ?)", id);
+        jdbcTemplate.update("DELETE FROM purchase_invoices WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM inventory_transactions WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM medicine_batches WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM medicine_master WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM suppliers WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM manufacturers WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM medicine_categories WHERE hospital_id = ?", id);
+
+        // Hospital inventory module
+        jdbcTemplate.update("DELETE FROM hospital_inventory_purchase WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM hospital_inventory WHERE hospital_id = ?", id);
+
+        // Clinic medicine module
+        jdbcTemplate.update("DELETE FROM medicine_purchase WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM medicines WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM medicine_list WHERE hospital_id = ?", id);
+
+        // Inventory items
+        jdbcTemplate.update("DELETE FROM inventory_items WHERE hospital_id = ?", id);
+
+        // Beds & wards
+        jdbcTemplate.update("DELETE FROM beds WHERE ward_id IN (SELECT id FROM wards WHERE hospital_id = ?)", id);
+        jdbcTemplate.update("DELETE FROM wards WHERE hospital_id = ?", id);
+
+        // Staff
+        jdbcTemplate.update("DELETE FROM doctors WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM receptionists WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM pharmacists WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM hospital_admins WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM clinic_admins WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM pharmacy_admins WHERE hospital_id = ?", id);
+
+        // Settings & fees
+        jdbcTemplate.update("DELETE FROM hospital_fees WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM hospital_settings WHERE hospital_id = ?", id);
+
+        // Subscriptions & modules
+        jdbcTemplate.update("DELETE FROM hospital_plan_subscriptions WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM hospital_modules WHERE hospital_id = ?", id);
+
+        // Users & audit data
+        jdbcTemplate.update("DELETE FROM users WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM audit_logs WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM support_tickets WHERE hospital_id = ?", id);
+
+        hospitalRepository.deleteById(id);
+
+        logAction("HOSPITAL_DELETED", "Permanently deleted hospital: " + name + " (publicId: " + publicId + ")");
+    }
+
+    /**
      * Get all audit logs
-     * 
+     *
      * @return List of audit logs
      */
     public List<AuditLog> getAuditLogs() {

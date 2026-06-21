@@ -28,7 +28,11 @@ import MedicineInventoryTab from '../../components/MedicineInventoryTab';
 const ReceptionistDashboard = () => {
     const [user, setUser] = useState(() => authService.getCurrentUser());
     const modules = user?.modules || [];
+    const hasOPD = modules.includes('OPD');
     const hasIPD = modules.includes('IPD');
+    const hasBilling = modules.includes('BILLING');
+    const hasAppointments = modules.includes('APPOINTMENTS');
+    const hasMedicalInventory = modules.includes('MEDICAL_INVENTORY');
     const [searchParams, setSearchParams] = useSearchParams();
     const activeTab = searchParams.get('tab') || 'overview';
     const viewFilter = searchParams.get('appointmentFilter') || 'today';
@@ -604,8 +608,9 @@ const ReceptionistDashboard = () => {
     };
 
     const handleLogout = () => {
+        const loginUrl = authService.getLoginUrl();
         authService.logout();
-        navigate('/login');
+        navigate(loginUrl);
     };
 
     const handlePatientStatusUpdate = async (patientId, newStatus) => {
@@ -679,11 +684,12 @@ const ReceptionistDashboard = () => {
 
     const tabs = [
         { id: 'overview', label: 'Overview', icon: null },
-        { id: 'patients', label: 'Patients', icon: null },
-        { id: 'opd', label: 'OPD', icon: null },
+        ...(hasOPD ? [{ id: 'patients', label: 'Patients', icon: null }] : []),
+        ...(hasAppointments ? [{ id: 'appointments', label: 'Appointments', icon: null }] : []),
+        ...(hasOPD ? [{ id: 'opd', label: 'OPD', icon: null }] : []),
         ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
-        { id: 'billing', label: 'Billing', icon: null },
-        ...(user?.inClinic !== false ? [{ id: 'inventory', label: 'Medicine Inventory', icon: null }] : [])
+        ...(hasBilling ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
+        ...(hasMedicalInventory && user?.inClinic !== false ? [{ id: 'inventory', label: 'Medicine Inventory', icon: null }] : []),
     ].filter(tab => tab.id !== 'billing' || user?.billingHandler !== 'DOCTOR');
 
     // Fallback if the URL parameter tab is not currently valid/visible

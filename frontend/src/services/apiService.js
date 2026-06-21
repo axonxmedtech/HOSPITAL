@@ -58,9 +58,19 @@ apiClient.interceptors.response.use(
     // If 401 Unauthorized (token expired/missing), redirect to login
     if (error.response && error.response.status === 401) {
       if (!isLoginEndpoint) {
-        sessionStorage.removeItem('token');
-        sessionStorage.removeItem('user');
-        window.location.href = '/login';
+        try {
+          const userStr = sessionStorage.getItem('user');
+          const hospitalType = userStr ? JSON.parse(userStr)?.hospitalType : null;
+          sessionStorage.removeItem('token');
+          sessionStorage.removeItem('user');
+          if (hospitalType === 'CLINIC') window.location.href = '/login/clinic';
+          else if (hospitalType === 'PHARMACY') window.location.href = '/login/pharmacy';
+          else window.location.href = '/login/hospital';
+        } catch (_) {
+          sessionStorage.removeItem('token');
+          sessionStorage.removeItem('user');
+          window.location.href = '/login/hospital';
+        }
       }
     }
 

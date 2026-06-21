@@ -163,12 +163,19 @@ public class PlatformPlanService {
     }
 
     private void applyPlanToHospital(Hospital hospital, Plan plan) {
-        hospital.setModules(new ArrayList<>(plan.getModules()));
+        ArrayList<String> modules = new ArrayList<>(plan.getModules());
+        if (Boolean.TRUE.equals(plan.getInClinic())) {
+            if (!modules.contains("IN_CLINIC")) modules.add("IN_CLINIC");
+        } else {
+            modules.remove("IN_CLINIC");
+        }
+        hospital.setModules(modules);
         hospital.setSubscriptionStatus("ACTIVE");
         hospitalRepository.save(hospital);
 
+        boolean inClinicEnabled = Boolean.TRUE.equals(plan.getInClinic());
         hospitalSettingRepository.findByHospital(hospital).ifPresent(setting -> {
-            setting.setInClinic(plan.getInClinic());
+            setting.setInClinic(inClinicEnabled);
             hospitalSettingRepository.save(setting);
         });
     }

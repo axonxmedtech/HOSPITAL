@@ -68,6 +68,14 @@ const platformService = {
     },
 
     /**
+     * Permanently delete a hospital and all its data
+     */
+    deleteHospital: async (id) => {
+        const response = await apiClient.delete(`/platform/hospitals/${id}`);
+        return response.data;
+    },
+
+    /**
      * Get audit logs
      */
     getAuditLogs: async () => {

@@ -87,6 +87,12 @@ public class PlatformHospitalController {
         return ResponseEntity.ok(hospital);
     }
 
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deleteHospital(@PathVariable String id) {
+        hospitalService.deleteHospital(id);
+        return ResponseEntity.ok(Map.of("message", "Hospital deleted successfully"));
+    }
+
     @PostMapping("/{id}/reset-password")
     public ResponseEntity<?> resetTenantAdminPassword(@PathVariable String id,
             @RequestBody(required = false) Map<String, String> body) {

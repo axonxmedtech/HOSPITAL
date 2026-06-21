@@ -2,6 +2,7 @@ package com.hms.controller.hospital;
 
 import com.hms.entity.HospitalInventory;
 import com.hms.entity.InventoryItem;
+import com.hms.security.RequireModule;
 import com.hms.service.hospital.HospitalInventoryService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -12,6 +13,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/hospital/hospital-inventory")
+@RequireModule("HOSPITAL_INVENTORY")
 public class HospitalInventoryController {
 
     @Autowired

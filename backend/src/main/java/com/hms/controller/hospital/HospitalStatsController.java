@@ -1,5 +1,6 @@
 package com.hms.controller.hospital;
 
+import com.hms.security.RequireModule;
 import com.hms.service.hospital.AppointmentService;
 import com.hms.service.hospital.DoctorService;
 import com.hms.service.hospital.PatientService;
@@ -66,6 +67,7 @@ public class HospitalStatsController {
      */
     @GetMapping("/analytics")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
+    @RequireModule("REPORTS")
     public ResponseEntity<?> getAnalytics() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {

@@ -15,7 +15,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
     const user = authService.getCurrentUser();
     
     if (!user || !authService.isAuthenticated()) {
-        return <Navigate to="/login" replace />;
+        return <Navigate to="/login/hospital" replace />;
     }
     
     // In Single Doctor Hospital mode, the Hospital Admin role can access BOTH doctor and admin routes
@@ -38,7 +38,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 const LandingRedirect = () => {
     const user = authService.getCurrentUser();
     if (!user) {
-        return <Navigate to="/login" replace />;
+        return <Navigate to="/login/hospital" replace />;
     }
     switch (user.role) {
         case 'SUPER_ADMIN':
@@ -67,7 +67,7 @@ const LandingRedirect = () => {
         case 'PHARMACIST':
             return <Navigate to="/hospital/pharmacy" replace />;
         default:
-            return <Navigate to="/login" replace />;
+            return <Navigate to="/login/hospital" replace />;
     }
 };
 
@@ -87,11 +87,31 @@ function App() {
                         }
                     />
 
+                    <Route path="/login" element={<Navigate to="/login/hospital" replace />} />
+
                     <Route
-                        path="/login"
+                        path="/login/hospital"
                         element={
-                            <PageMeta title="HMS - Staff Login">
-                                <HospitalLogin />
+                            <PageMeta title="HMS - Hospital Login">
+                                <HospitalLogin portalType="HOSPITAL" />
+                            </PageMeta>
+                        }
+                    />
+
+                    <Route
+                        path="/login/clinic"
+                        element={
+                            <PageMeta title="HMS - Clinic Login">
+                                <HospitalLogin portalType="CLINIC" />
+                            </PageMeta>
+                        }
+                    />
+
+                    <Route
+                        path="/login/pharmacy"
+                        element={
+                            <PageMeta title="HMS - Pharmacy Login">
+                                <HospitalLogin portalType="PHARMACY" />
                             </PageMeta>
                         }
                     />

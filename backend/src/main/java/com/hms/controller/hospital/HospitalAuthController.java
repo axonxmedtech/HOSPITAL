@@ -2,6 +2,7 @@ package com.hms.controller.hospital;
 
 import com.hms.dto.LoginRequest;
 import com.hms.dto.LoginResponse;
+import com.hms.security.RequireModule;
 import com.hms.service.hospital.HospitalAuthService;
 import com.hms.service.platform.PlatformPlanService;
 import jakarta.validation.Valid;
@@ -57,6 +58,7 @@ public class HospitalAuthController {
     }
 
     @GetMapping("/hospital/settings/fees")
+    @RequireModule("BILLING")
     public ResponseEntity<?> getHospitalFees(java.security.Principal principal) {
         if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
         com.hms.dto.HospitalFeesDTO dto = authService.getHospitalFees(principal.getName());
@@ -64,6 +66,7 @@ public class HospitalAuthController {
     }
 
     @PutMapping("/hospital/settings/fees")
+    @RequireModule("BILLING")
     public ResponseEntity<?> updateHospitalFees(java.security.Principal principal, @RequestBody com.hms.dto.HospitalFeesDTO fees) {
         if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
         com.hms.dto.HospitalFeesDTO updated = authService.updateHospitalFees(principal.getName(), fees);

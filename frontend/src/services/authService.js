@@ -41,8 +41,8 @@ const authService = {
      * @param {string} password - Password
      * @returns {Promise} Login response with token and user details
      */
-    hospitalLogin: async (email, password) => {
-        const response = await apiClient.post('/login', { email, password });
+    hospitalLogin: async (email, password, entityType = 'HOSPITAL') => {
+        const response = await apiClient.post('/login', { email, password, entityType });
 
         // Store token and user info in sessionStorage (Tab specific)
         if (response.data.token) {
@@ -51,6 +51,20 @@ const authService = {
         }
 
         return response.data;
+    },
+
+    /**
+     * Returns the login page URL for the current user's portal type.
+     * Must be called BEFORE logout() clears sessionStorage.
+     */
+    getLoginUrl: () => {
+        try {
+            const userStr = sessionStorage.getItem('user');
+            const hospitalType = userStr ? JSON.parse(userStr)?.hospitalType : null;
+            if (hospitalType === 'CLINIC') return '/login/clinic';
+            if (hospitalType === 'PHARMACY') return '/login/pharmacy';
+        } catch (_) {}
+        return '/login/hospital';
     },
 
     /**

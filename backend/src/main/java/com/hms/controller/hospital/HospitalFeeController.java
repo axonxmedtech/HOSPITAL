@@ -3,6 +3,7 @@ package com.hms.controller.hospital;
 import com.hms.dto.HospitalFeeDTO;
 import com.hms.entity.HospitalFee;
 import com.hms.repository.HospitalFeeRepository;
+import com.hms.security.RequireModule;
 import com.hms.security.SecurityContextHelper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -14,6 +15,7 @@ import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/hospital/settings/fees/custom")
+@RequireModule("BILLING")
 public class HospitalFeeController {
 
     @Autowired

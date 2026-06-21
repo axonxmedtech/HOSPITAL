@@ -701,13 +701,16 @@ const DoctorDashboard = () => {
     };
 
     const handleLogout = () => {
+        const loginUrl = authService.getLoginUrl();
         authService.logout();
-        navigate('/login');
+        navigate(loginUrl);
     };
 
     const isSolo = user?.receptionMode === 'SOLO';
     const hasBilling = user?.billingHandler === 'DOCTOR' || user?.billingHandler === 'BOTH';
     const hasInClinic = user?.inClinic !== false;
+    const hasMedicalInventory = modules.includes('MEDICAL_INVENTORY');
+    const hasHospitalInventory = modules.includes('HOSPITAL_INVENTORY');
 
     const tabs = [
         { id: 'overview', label: 'Overview', icon: null },
@@ -715,8 +718,8 @@ const DoctorDashboard = () => {
         { id: 'opd', label: 'OPD', icon: null },
         { id: 'patients', label: 'Patients', icon: null },
         ...((isSolo || hasBilling) ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
-        ...((isSolo && hasInClinic) ? [{ id: 'inventory', label: 'Medicine Inventory', icon: null }] : []),
-        ...(isSolo ? [{ id: 'hospital-inventory', label: 'Hospital Inventory', icon: null }] : []),
+        ...((isSolo && hasInClinic && hasMedicalInventory) ? [{ id: 'inventory', label: 'Medicine Inventory', icon: null }] : []),
+        ...(isSolo && hasHospitalInventory ? [{ id: 'hospital-inventory', label: 'Hospital Inventory', icon: null }] : []),
     ];
 
     // Fallback if the URL parameter tab is not currently valid/visible

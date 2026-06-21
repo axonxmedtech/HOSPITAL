@@ -2,6 +2,7 @@ package com.hms.controller.hospital;
 
 import com.hms.entity.Medicine;
 import com.hms.entity.MedicineList;
+import com.hms.security.RequireModule;
 import com.hms.service.hospital.MedicineService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -64,12 +65,14 @@ public class MedicineController {
 
     @GetMapping("/purchases")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    @RequireModule("MEDICAL_INVENTORY")
     public ResponseEntity<List<com.hms.entity.MedicinePurchase>> getMedicinePurchases() {
         return ResponseEntity.ok(medicineService.getMedicinePurchases());
     }
 
     @PostMapping("/purchases")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    @RequireModule("MEDICAL_INVENTORY")
     public ResponseEntity<?> addMedicinePurchase(@RequestBody com.hms.entity.MedicinePurchase purchase) {
         return ResponseEntity.ok(medicineService.addMedicinePurchase(purchase));
     }
@@ -78,24 +81,28 @@ public class MedicineController {
 
     @GetMapping("/inventory")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    @RequireModule("MEDICAL_INVENTORY")
     public ResponseEntity<List<Medicine>> getInventoryMedicines() {
         return ResponseEntity.ok(medicineService.getInventoryMedicines());
     }
 
     @PostMapping("/inventory")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    @RequireModule("MEDICAL_INVENTORY")
     public ResponseEntity<?> addInventoryMedicine(@RequestBody Medicine stock) {
         return ResponseEntity.ok(medicineService.addInventoryMedicine(stock));
     }
 
     @PutMapping("/inventory/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    @RequireModule("MEDICAL_INVENTORY")
     public ResponseEntity<?> updateInventoryMedicine(@PathVariable Long id, @RequestBody Medicine stock) {
         return ResponseEntity.ok(medicineService.updateInventoryMedicine(id, stock));
     }
 
     @DeleteMapping("/inventory/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    @RequireModule("MEDICAL_INVENTORY")
     public ResponseEntity<?> deleteInventoryMedicine(@PathVariable Long id) {
         medicineService.deleteInventoryMedicine(id);
         return ResponseEntity.ok().build();

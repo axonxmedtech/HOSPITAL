@@ -35,8 +35,9 @@ const PharmacyDashboard = () => {
     useWebSocket(user, null, handleRefresh);
 
     const handleLogout = () => {
+        const loginUrl = authService.getLoginUrl();
         authService.logout();
-        navigate('/login');
+        navigate(loginUrl);
     };
 
     // Handle sidebar state toggle

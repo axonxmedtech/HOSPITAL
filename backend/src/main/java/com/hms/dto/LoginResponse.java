@@ -84,4 +84,7 @@ public class LoginResponse {
     private String parentOrganization;
     private String hospitalAddress;
     private String hospitalPhone;
+
+    /** HOSPITAL | CLINIC | PHARMACY — entity type this user belongs to */
+    private String hospitalType;
 }
