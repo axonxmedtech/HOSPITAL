@@ -56,6 +56,10 @@ class HospitalAuthServiceTest {
 
     @Test
     void updateSettings_soloMode_forcesBillingHandlerToDoctor() {
+        Hospital h = new Hospital();
+        h.setId(1L);
+        h.setModules(java.util.List.of("IN_CLINIC"));
+        when(hospitalRepository.findById(1L)).thenReturn(Optional.of(h));
         when(userRepository.findByEmail("admin@test.com")).thenReturn(Optional.of(adminUser));
         when(hospitalSettingRepository.findByHospital_Id(1L)).thenReturn(Optional.of(existingSetting));
 
@@ -68,6 +72,10 @@ class HospitalAuthServiceTest {
 
     @Test
     void updateSettings_nullInClinic_preservesExistingValue() {
+        Hospital h = new Hospital();
+        h.setId(1L);
+        // No IN_CLINIC module — null DTO value should still preserve the existing setting
+        when(hospitalRepository.findById(1L)).thenReturn(Optional.of(h));
         when(userRepository.findByEmail("admin@test.com")).thenReturn(Optional.of(adminUser));
         when(hospitalSettingRepository.findByHospital_Id(1L)).thenReturn(Optional.of(existingSetting));
 

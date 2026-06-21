@@ -107,6 +107,10 @@ class IpdAdmissionServiceTest {
         savedIpd.setPatientId(5L);
         savedIpd.setHospitalId(1L);
 
+        com.hms.entity.Hospital hospital = new com.hms.entity.Hospital();
+        hospital.setId(1L);
+        hospital.setModules(java.util.List.of("BILLING"));
+        when(hospitalRepository.findById(1L)).thenReturn(Optional.of(hospital));
         when(ipdAdmissionRepository.save(any(IpdAdmission.class))).thenReturn(savedIpd);
         when(billingRepository.save(any(Billing.class))).thenAnswer(i -> i.getArguments()[0]);
         when(ipdBedHistoryRepository.save(any(com.hms.entity.IpdBedHistory.class))).thenAnswer(i -> i.getArguments()[0]);

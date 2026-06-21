@@ -625,11 +625,17 @@ public class HospitalAuthService {
         final String effectiveBillingHandler = billingHandler;
         Boolean inClinicRequested = dto.getInClinic();
 
-        // Enforce plan gate: only allow inClinic=true if IN_CLINIC module is in hospital modules
+        // Enforce plan gate: only allow inClinic=true if IN_CLINIC module is in hospital modules.
+        // null means "don't change" — preserve the existing value in that case.
         Hospital hospital = hospitalRepository.findById(user.getHospitalId())
                 .orElseThrow(() -> new RuntimeException("Hospital not found"));
         boolean inClinicModuleEnabled = hospital.getModules() != null && hospital.getModules().contains("IN_CLINIC");
-        Boolean inClinic = inClinicModuleEnabled ? inClinicRequested : Boolean.FALSE;
+        Boolean inClinic;
+        if (inClinicRequested == null) {
+            inClinic = null; // preserve existing value downstream
+        } else {
+            inClinic = inClinicModuleEnabled ? inClinicRequested : Boolean.FALSE;
+        }
 
         // Ensure a settings row exists; if not, create one first
         HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(user.getHospitalId())
