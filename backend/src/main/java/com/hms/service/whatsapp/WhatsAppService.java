@@ -118,6 +118,28 @@ public class WhatsAppService {
     }
 
     /**
+     * Test WhatsApp credentials by calling the Meta Graph API for the given phoneNumberId.
+     * Reuses the shared RestTemplate rather than creating a new one per request.
+     */
+    public Map<String, Object> testCredentials(String phoneNumberId, String plainAccessToken) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setBearerAuth(plainAccessToken);
+            ResponseEntity<String> resp = restTemplate.exchange(
+                    "https://graph.facebook.com/" + apiVersion + "/" + phoneNumberId,
+                    HttpMethod.GET,
+                    new HttpEntity<>(headers),
+                    String.class);
+            if (resp.getStatusCode().is2xxSuccessful()) {
+                return Map.of("success", true, "message", "Credentials valid");
+            }
+        } catch (Exception e) {
+            return Map.of("success", false, "message", e.getMessage());
+        }
+        return Map.of("success", false, "message", "Unexpected response");
+    }
+
+    /**
      * Retry a previously failed log entry. Called by WhatsAppRetryScheduler.
      */
     public void retry(WhatsAppMessageLog entry) {

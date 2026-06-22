@@ -88,7 +88,7 @@ public class WhatsAppController {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Optional<WhatsAppConfig> opt = configRepository.findByHospitalId(hospitalId);
         if (opt.isEmpty()) return ResponseEntity.noContent().build();
-        return ResponseEntity.ok(toConfigDTO(opt.get(), true));
+        return ResponseEntity.ok(toConfigDTO(opt.get()));
     }
 
     @PostMapping("/config")
@@ -98,7 +98,10 @@ public class WhatsAppController {
         WhatsAppConfig cfg = configRepository.findByHospitalId(hospitalId)
                 .orElseGet(WhatsAppConfig::new);
         cfg.setHospitalId(hospitalId);
-        cfg.setAccessToken(whatsAppService.encrypt(dto.getAccessToken()));
+        if (dto.getAccessToken() != null && !dto.getAccessToken().isBlank()) {
+            cfg.setAccessToken(whatsAppService.encrypt(dto.getAccessToken()));
+        }
+        // else: leave stored encrypted token unchanged
         cfg.setPhoneNumberId(dto.getPhoneNumberId());
         cfg.setWabaId(dto.getWabaId());
         cfg.setIsActive(dto.getActive() != null ? dto.getActive() : Boolean.TRUE);
@@ -108,7 +111,7 @@ public class WhatsAppController {
         cfg.setSendPrescription(dto.getSendPrescription() != null ? dto.getSendPrescription() : true);
         cfg.setSendMedicineList(dto.getSendMedicineList() != null ? dto.getSendMedicineList() : true);
         configRepository.save(cfg);
-        return ResponseEntity.ok(toConfigDTO(cfg, true));
+        return ResponseEntity.ok(toConfigDTO(cfg));
     }
 
     @DeleteMapping("/config")
@@ -122,23 +125,11 @@ public class WhatsAppController {
     @PostMapping("/config/test")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<Map<String, Object>> testConfig(@RequestBody WhatsAppConfigDTO dto) {
-        try {
-            String token = whatsAppService.decrypt(whatsAppService.encrypt(dto.getAccessToken()));
-            org.springframework.web.client.RestTemplate rt = new org.springframework.web.client.RestTemplate();
-            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
-            headers.setBearerAuth(token);
-            org.springframework.http.ResponseEntity<String> resp = rt.exchange(
-                    "https://graph.facebook.com/v19.0/" + dto.getPhoneNumberId(),
-                    org.springframework.http.HttpMethod.GET,
-                    new org.springframework.http.HttpEntity<>(headers),
-                    String.class);
-            if (resp.getStatusCode().is2xxSuccessful()) {
-                return ResponseEntity.ok(Map.of("success", true, "message", "Credentials valid"));
-            }
-        } catch (Exception e) {
-            return ResponseEntity.ok(Map.of("success", false, "message", e.getMessage()));
+        String phoneId = dto.getPhoneNumberId();
+        if (phoneId == null || !phoneId.matches("\\d{10,20}")) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Invalid phone number ID"));
         }
-        return ResponseEntity.ok(Map.of("success", false, "message", "Unexpected response"));
+        return ResponseEntity.ok(whatsAppService.testCredentials(phoneId, dto.getAccessToken()));
     }
 
     private WhatsAppLogDTO toLogDTO(WhatsAppMessageLog log) {
@@ -155,14 +146,10 @@ public class WhatsAppController {
         return dto;
     }
 
-    private WhatsAppConfigDTO toConfigDTO(WhatsAppConfig cfg, boolean maskToken) {
+    private WhatsAppConfigDTO toConfigDTO(WhatsAppConfig cfg) {
         WhatsAppConfigDTO dto = new WhatsAppConfigDTO();
         String token = cfg.getAccessToken();
-        if (maskToken && token != null && token.length() > 4) {
-            dto.setAccessToken("••••••••" + token.substring(token.length() - 4));
-        } else {
-            dto.setAccessToken(token);
-        }
+        dto.setAccessToken(token != null ? "••••••••" : null);
         dto.setPhoneNumberId(cfg.getPhoneNumberId());
         dto.setWabaId(cfg.getWabaId());
         dto.setActive(cfg.getIsActive());
