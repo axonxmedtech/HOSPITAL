@@ -83,12 +83,11 @@ public class WhatsAppEventListener {
             if (hospital == null) return;
             List<String> modules = hospital.getModules();
 
-            Patient patient = patientRepository.findById(event.getPatientId()).orElse(null);
-            if (patient == null || patient.getPhone() == null || patient.getPhone().isBlank()) return;
-
             if (whatsAppService.isEnabled(event.getHospitalId(), modules,
                     WhatsAppTemplateConstants.MODULE_WA_BILLING)
                     && isCustomSendEnabled(event.getHospitalId(), modules, "billing")) {
+                Patient patient = patientRepository.findById(event.getPatientId()).orElse(null);
+                if (patient == null || patient.getPhone() == null || patient.getPhone().isBlank()) return;
                 whatsAppService.sendDocument(event.getHospitalId(), patient.getId(),
                         patient.getPhone(), patient.getName(),
                         hospital.getName(), "Billing Receipt", null,
