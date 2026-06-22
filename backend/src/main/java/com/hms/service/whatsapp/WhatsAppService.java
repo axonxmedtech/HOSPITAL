@@ -220,7 +220,7 @@ public class WhatsAppService {
                 Map<String, Object> template = new LinkedHashMap<>();
                 template.put("name", templateName);
                 Map<String, Object> language = new LinkedHashMap<>();
-                language.put("code", "en");
+                language.put("code", "en_US");
                 template.put("language", language);
 
                 List<Map<String, Object>> components = new ArrayList<>();
