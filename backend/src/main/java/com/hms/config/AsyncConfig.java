@@ -1,13 +1,27 @@
 package com.hms.config;
 
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.task.TaskExecutor;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 @Configuration
 @EnableAsync
 @EnableScheduling
 public class AsyncConfig {
-    // Spring Boot's default SimpleAsyncTaskExecutor handles @Async methods.
-    // @EnableScheduling enables @Scheduled — WhatsApp reminder and retry schedulers use it.
+
+    @Bean(name = "whatsAppTaskExecutor")
+    public TaskExecutor whatsAppTaskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(4);
+        executor.setMaxPoolSize(10);
+        executor.setQueueCapacity(500);
+        executor.setThreadNamePrefix("whatsapp-");
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(30);
+        executor.initialize();
+        return executor;
+    }
 }
