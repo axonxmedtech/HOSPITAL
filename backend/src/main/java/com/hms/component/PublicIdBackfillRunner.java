@@ -33,8 +33,6 @@ public class PublicIdBackfillRunner implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        System.out.println("Checking for records with missing Public IDs...");
-
         backfillHospitals();
         backfillUsers();
         backfillDoctors();
@@ -42,8 +40,6 @@ public class PublicIdBackfillRunner implements CommandLineRunner {
         backfillAppointments();
         backfillBillings();
         backfillAuditLogs();
-
-        System.out.println("Public ID check completed.");
     }
 
     private void backfillHospitals() {
@@ -76,8 +72,6 @@ public class PublicIdBackfillRunner implements CommandLineRunner {
                 updated = true;
             }
         }
-        if (updated)
-            System.out.println("Backfilled Hospitals.");
     }
 
     private void backfillUsers() {
@@ -89,7 +83,6 @@ public class PublicIdBackfillRunner implements CommandLineRunner {
             // Robust check for missing Public ID
             if (e.getPublicId() == null || e.getPublicId().trim().isEmpty() || "null".equals(e.getPublicId())) {
                 e.setPublicId(java.util.UUID.randomUUID().toString());
-                System.out.println("Generating PublicId for User: " + e.getEmail());
                 changed = true;
             }
             if (e.getCustomId() == null) {
@@ -101,8 +94,6 @@ public class PublicIdBackfillRunner implements CommandLineRunner {
                 updated = true;
             }
         }
-        if (updated)
-            System.out.println("Backfilled Users.");
     }
 
     private void backfillDoctors() {
@@ -115,8 +106,6 @@ public class PublicIdBackfillRunner implements CommandLineRunner {
                 updated = true;
             }
         }
-        if (updated)
-            System.out.println("Backfilled Doctors.");
     }
 
     private void backfillPatients() {
@@ -138,8 +127,6 @@ public class PublicIdBackfillRunner implements CommandLineRunner {
                 updated = true;
             }
         }
-        if (updated)
-            System.out.println("Backfilled Patients.");
     }
 
     private void backfillAppointments() {
@@ -152,8 +139,6 @@ public class PublicIdBackfillRunner implements CommandLineRunner {
                 updated = true;
             }
         }
-        if (updated)
-            System.out.println("Backfilled Appointments.");
     }
 
     private void backfillBillings() {
@@ -166,8 +151,6 @@ public class PublicIdBackfillRunner implements CommandLineRunner {
                 updated = true;
             }
         }
-        if (updated)
-            System.out.println("Backfilled Billings.");
     }
 
     private void backfillAuditLogs() {
@@ -181,7 +164,5 @@ public class PublicIdBackfillRunner implements CommandLineRunner {
                 updated = true;
             }
         }
-        if (updated)
-            System.out.println("Backfilled AuditLogs.");
     }
 }
