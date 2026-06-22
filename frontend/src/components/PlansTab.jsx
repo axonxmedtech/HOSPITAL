@@ -116,6 +116,9 @@ export default function PlansTab() {
         }
     };
 
+    const waMode = form.modules.includes('WHATSAPP_PLATFORM') ? 'platform'
+        : form.modules.includes('WHATSAPP_CUSTOM') ? 'custom' : 'none';
+
     const typeBadge = (type) => {
         const colors = {
             HOSPITAL: 'bg-blue-100 text-blue-700',
@@ -283,6 +286,78 @@ export default function PlansTab() {
                                         </button>
                                     ))}
                                 </div>
+                            </div>
+
+                            {/* WhatsApp */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">WhatsApp Messaging</label>
+                                <div className="flex gap-4 mb-2">
+                                    {[['none', 'None'], ['platform', 'Platform (Shared)'], ['custom', 'Custom (Own Number)']].map(([val, label]) => (
+                                        <label key={val} className="flex items-center gap-1.5 cursor-pointer">
+                                            <input
+                                                type="radio"
+                                                name="waMode"
+                                                checked={waMode === val}
+                                                onChange={() => {
+                                                    if (val === 'none') {
+                                                        setForm(p => ({
+                                                            ...p,
+                                                            modules: p.modules.filter(m =>
+                                                                !['WHATSAPP_PLATFORM','WHATSAPP_CUSTOM','WA_APPOINTMENTS','WA_BILLING','WA_CASE_PAPERS','WA_PRESCRIPTION','WA_MEDICINE_LIST'].includes(m)
+                                                            ),
+                                                        }));
+                                                    } else if (val === 'platform') {
+                                                        setForm(p => ({
+                                                            ...p,
+                                                            modules: [
+                                                                ...p.modules.filter(m => m !== 'WHATSAPP_CUSTOM' && m !== 'WHATSAPP_PLATFORM'),
+                                                                'WHATSAPP_PLATFORM',
+                                                            ],
+                                                        }));
+                                                    } else {
+                                                        setForm(p => ({
+                                                            ...p,
+                                                            modules: [
+                                                                ...p.modules.filter(m =>
+                                                                    !['WHATSAPP_PLATFORM','WA_APPOINTMENTS','WA_BILLING','WA_CASE_PAPERS','WA_PRESCRIPTION','WA_MEDICINE_LIST'].includes(m)
+                                                                ),
+                                                                'WHATSAPP_CUSTOM',
+                                                            ],
+                                                        }));
+                                                    }
+                                                }}
+                                                className="accent-gray-900"
+                                            />
+                                            <span className="text-sm text-gray-700">{label}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                                {waMode === 'platform' && (
+                                    <div className="ml-4 flex flex-col gap-1">
+                                        {[
+                                            ['WA_APPOINTMENTS', 'Appointments'],
+                                            ['WA_BILLING', 'Billing'],
+                                            ['WA_CASE_PAPERS', 'Case Papers'],
+                                            ['WA_PRESCRIPTION', 'Prescriptions'],
+                                            ['WA_MEDICINE_LIST', 'In-Clinic Medicine List'],
+                                        ].map(([mod, label]) => (
+                                            <label key={mod} className="flex items-center gap-2 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={form.modules.includes(mod)}
+                                                    onChange={() => setForm(p => ({
+                                                        ...p,
+                                                        modules: p.modules.includes(mod)
+                                                            ? p.modules.filter(m => m !== mod)
+                                                            : [...p.modules, mod],
+                                                    }))}
+                                                    className="rounded"
+                                                />
+                                                <span className="text-sm text-gray-600">{label}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
 
                             <div>
