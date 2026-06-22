@@ -4,7 +4,7 @@
 
 CREATE TABLE IF NOT EXISTS whatsapp_config (
   id                   BIGINT       NOT NULL AUTO_INCREMENT,
-  hospital_id          BIGINT       NOT NULL UNIQUE,
+  hospital_id          BIGINT       NOT NULL,
   access_token         VARCHAR(500) NOT NULL,
   phone_number_id      VARCHAR(100) NOT NULL,
   waba_id              VARCHAR(100) DEFAULT NULL,
@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS whatsapp_config (
   created_at           DATETIME(6)  NOT NULL,
   updated_at           DATETIME(6)  DEFAULT NULL,
   PRIMARY KEY (id),
-  FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+  CONSTRAINT uq_wc_hospital UNIQUE (hospital_id),
+  FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS whatsapp_message_log (

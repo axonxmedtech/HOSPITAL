@@ -96,6 +96,11 @@ public class DatabaseMigrationRunner {
         }
     }
 
+    /**
+     * Creates the whatsapp_config table if it does not exist.
+     * Stores hospital-specific Meta WhatsApp credentials for WHATSAPP_CUSTOM mode.
+     * ddl-auto=update cannot create tables from scratch — this runner bridges that gap.
+     */
     private void ensureWhatsAppConfigTable() {
         try {
             Integer count = jdbcTemplate.queryForObject(
@@ -107,7 +112,7 @@ public class DatabaseMigrationRunner {
                 jdbcTemplate.execute(
                     "CREATE TABLE whatsapp_config (" +
                     "  id BIGINT NOT NULL AUTO_INCREMENT," +
-                    "  hospital_id BIGINT NOT NULL UNIQUE," +
+                    "  hospital_id BIGINT NOT NULL," +
                     "  access_token VARCHAR(500) NOT NULL," +
                     "  phone_number_id VARCHAR(100) NOT NULL," +
                     "  waba_id VARCHAR(100) DEFAULT NULL," +
@@ -120,7 +125,8 @@ public class DatabaseMigrationRunner {
                     "  created_at DATETIME(6) NOT NULL," +
                     "  updated_at DATETIME(6) DEFAULT NULL," +
                     "  PRIMARY KEY (id)," +
-                    "  FOREIGN KEY (hospital_id) REFERENCES hospitals(id)" +
+                    "  CONSTRAINT uq_wc_hospital UNIQUE (hospital_id)," +
+                    "  FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
                     ")"
                 );
                 log.info("DB migration applied: whatsapp_config table created");
@@ -130,6 +136,12 @@ public class DatabaseMigrationRunner {
         }
     }
 
+    /**
+     * Creates the whatsapp_message_log table if it does not exist.
+     * Logs every WhatsApp send attempt (automated and broadcast) for retry tracking
+     * and hospital admin visibility. No FK on hospital_id/patient_id intentionally —
+     * log rows must survive hospital/patient hard deletes for audit purposes.
+     */
     private void ensureWhatsAppMessageLogTable() {
         try {
             Integer count = jdbcTemplate.queryForObject(
