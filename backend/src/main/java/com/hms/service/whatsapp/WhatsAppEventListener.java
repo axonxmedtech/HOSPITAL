@@ -51,7 +51,7 @@ public class WhatsAppEventListener {
 
             if (modules.contains(WhatsAppTemplateConstants.MODULE_WHATSAPP_CUSTOM)) {
                 Optional<WhatsAppConfig> cfg = configRepository.findByHospitalId(event.getHospitalId());
-                if (cfg.isPresent() && !cfg.get().isSendAppointments()) return;
+                if (cfg.isEmpty() || !cfg.get().isSendAppointments()) return;
             }
 
             Patient patient = patientRepository.findById(event.getPatientId()).orElse(null);
@@ -111,7 +111,7 @@ public class WhatsAppEventListener {
                     WhatsAppTemplateConstants.MODULE_WA_MEDICINE_LIST)) return;
             if (modules.contains(WhatsAppTemplateConstants.MODULE_WHATSAPP_CUSTOM)) {
                 Optional<WhatsAppConfig> cfg = configRepository.findByHospitalId(event.getHospitalId());
-                if (cfg.isPresent() && !cfg.get().isSendMedicineList()) return;
+                if (cfg.isEmpty() || !cfg.get().isSendMedicineList()) return;
             }
             Patient patient = patientRepository.findById(event.getPatientId()).orElse(null);
             if (patient == null || patient.getPhone() == null || patient.getPhone().isBlank()) return;
@@ -129,7 +129,7 @@ public class WhatsAppEventListener {
     private boolean isCustomSendEnabled(Long hospitalId, List<String> modules, String type) {
         if (!modules.contains(WhatsAppTemplateConstants.MODULE_WHATSAPP_CUSTOM)) return true;
         Optional<WhatsAppConfig> cfg = configRepository.findByHospitalId(hospitalId);
-        if (cfg.isEmpty()) return true;
+        if (cfg.isEmpty()) return false;
         return switch (type) {
             case "billing"      -> cfg.get().isSendBilling();
             case "casePaper"    -> cfg.get().isSendCasePapers();

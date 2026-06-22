@@ -57,7 +57,7 @@ public class AppointmentReminderScheduler {
         for (Hospital hospital : hospitals) {
             if (hospital.getModules().contains(WhatsAppTemplateConstants.MODULE_WHATSAPP_CUSTOM)) {
                 Optional<WhatsAppConfig> cfg = configRepository.findByHospitalId(hospital.getId());
-                if (cfg.isPresent() && !cfg.get().isSendAppointments()) continue;
+                if (cfg.isEmpty() || !cfg.get().isSendAppointments()) continue;
             }
 
             List<Appointment> appointments = appointmentRepository
