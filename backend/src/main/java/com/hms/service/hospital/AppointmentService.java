@@ -436,11 +436,9 @@ public class AppointmentService {
         }
 
         com.hms.entity.Patient patient = patientOpt.orElseThrow(() -> new RuntimeException("Patient not found"));
-        System.out.println("DEBUG: Resolved Patient ID: " + patient.getId() + " from PublicID: " + patientPublicId);
 
         List<Appointment> appointments = appointmentRepository
                 .findByPatientIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(patient.getId(), hospitalId);
-        System.out.println("DEBUG: Found " + appointments.size() + " appointments for patientId: " + patient.getId());
 
         return populateNames(appointments);
     }
@@ -603,12 +601,10 @@ public class AppointmentService {
 
         // Trigger Billing if Completed
         if ("COMPLETED".equals(status) && !oldStatus.equals("COMPLETED")) {
-            System.out.println("DEBUG: Triggering auto-billing for appointment " + saved.getPublicId());
             try {
                 billingService.autoGenerateOpdBill(saved);
             } catch (Exception e) {
                 logger.error("Failed to auto-generate bill for appointment {}", publicId, e);
-                System.out.println("DEBUG: Billing generation failed: " + e.getMessage());
             }
         }
 

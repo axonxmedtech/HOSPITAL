@@ -78,22 +78,10 @@ public class PublicIdBackfillRunner implements CommandLineRunner {
         }
         if (updated)
             System.out.println("Backfilled Hospitals.");
-
-        // Debug: Print all hospitals and their fees
-        for (Hospital h : list) {
-            System.out.println(
-                    "Hospital: " + h.getName() + ", Fee: " + h.getConsultationFee() + ", Modules: " + h.getModules());
-        }
     }
 
     private void backfillUsers() {
         List<User> list = userRepository.findAll();
-        System.out.println("------ USER DATA DUMP ------");
-        for (User u : list) {
-            System.out.println("USER: ID=" + u.getId() + ", Role='" + u.getRole() + "', HospitalId=" + u.getHospitalId()
-                    + ", Email=" + u.getEmail());
-        }
-        System.out.println("----------------------------");
 
         boolean updated = false;
         for (User e : list) {
