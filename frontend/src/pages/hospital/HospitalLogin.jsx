@@ -54,7 +54,7 @@ const HospitalLogin = () => {
 
             if (!isValidRole) {
                 authService.logout(); // Clear the successful session
-                setErrors({ submit: `Access Denied: You are not registered as a ${selectedRole === 'HOSPITAL_ADMIN' ? 'Hospital Admin' : selectedRole === 'DOCTOR' ? 'Doctor' : selectedRole === 'PHARMACIST' ? 'Pharmacist' : 'Receptionist'}.` });
+                setErrors({ submit: `Access Denied: You are not registered as a ${selectedRole === 'HOSPITAL_ADMIN' ? 'Hospital Admin' : selectedRole === 'DOCTOR' ? 'Doctor' : selectedRole === 'PHARMACIST' ? 'Pharmacist' : selectedRole === 'OT_ADMIN' ? 'OT Admin' : 'Receptionist'}.` });
                 return;
             }
 
@@ -78,6 +78,8 @@ const HospitalLogin = () => {
                 navigate('/hospital/receptionist');
             } else if (response.role === 'PHARMACIST') {
                 navigate('/hospital/pharmacy');
+            } else if (response.role === 'OT_ADMIN') {
+                navigate('/ot/dashboard');
             } else {
                 setErrors({ submit: 'Invalid user role' });
             }
@@ -201,6 +203,7 @@ const HospitalLogin = () => {
                                         <option value="DOCTOR">Medical Staff</option>
                                         <option value="RECEPTIONIST">Reception & Registration</option>
                                         <option value="PHARMACIST">Pharmacy Services</option>
+                                        <option value="OT_ADMIN">Operation Theatre</option>
                                     </select>
                                 </div>
 

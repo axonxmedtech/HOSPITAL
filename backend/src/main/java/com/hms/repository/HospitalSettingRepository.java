@@ -25,7 +25,7 @@ public interface HospitalSettingRepository extends JpaRepository<HospitalSetting
      * @param hospitalId database ID of the hospital
      * @return Optional containing the settings if found
      */
-    @Cacheable(value = "hospitalSettings", key = "#hospitalId")
+    @Cacheable(value = "hospitalSettings", key = "#hospitalId", unless = "#result == null")
     Optional<HospitalSetting> findByHospital_Id(Long hospitalId);
 
     @Override

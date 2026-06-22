@@ -31,6 +31,7 @@ import reportsApi from '../../services/pharmacy/reportsApi';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
+import otService from '../../services/otService';
 /**
  * HospitalAdminDashboard - Hospital Admin dashboard
  * 
@@ -74,6 +75,8 @@ const HospitalAdminDashboard = () => {
     const [loading, setLoading] = useState(false);
     const [pharmacyStats, setPharmacyStats] = useState(null);
     const [pharmacyStatsLoading, setPharmacyStatsLoading] = useState(false);
+    const [otStats, setOtStats] = useState(null);
+    const [otStatsLoading, setOtStatsLoading] = useState(false);
 
     // Dashboard state
     const [dashboardStats, setDashboardStats] = useState({ totalPatients: 0, totalDoctors: 0, todaysAppointments: 0 });
@@ -205,6 +208,22 @@ const HospitalAdminDashboard = () => {
             fetchImmediate();
         }
     }, [activeTab, searchTerm, page, billingStatus, auditLogRoleFilter, patientTabView, patientDateFilter]);
+
+    useEffect(() => {
+        const loadOtStats = async () => {
+            if (activeTab !== 'operation-theatre') return;
+            setOtStatsLoading(true);
+            try {
+                const data = await otService.dashboard();
+                setOtStats(data || {});
+            } catch (err) {
+                toastError('Failed to load OT dashboard');
+            } finally {
+                setOtStatsLoading(false);
+            }
+        };
+        loadOtStats();
+    }, [activeTab]);
 
     // Periodic background polling replaced with WebSocket real-time sync
 
@@ -1072,6 +1091,7 @@ const HospitalAdminDashboard = () => {
         { id: 'inventory', label: 'Medicine Inventory', icon: null, requiredModule: 'OPD' },
         { id: 'hospital-inventory', label: 'Hospital Inventory', icon: null, requiredModule: 'OPD' },
         { id: 'pathology', label: 'Pathology', icon: null, requiredModule: 'PATHOLOGY' },
+        { id: 'operation-theatre', label: 'Operation Theatre', icon: null, requiredModule: null },
         { id: 'ipd', label: 'IPD', icon: null, requiredModule: 'IPD' },
         { id: 'fees', label: 'Fees', icon: null, requiredModule: 'OPD' },
         { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
@@ -1237,6 +1257,78 @@ const HospitalAdminDashboard = () => {
 
                 {/* Main Content Area */}
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
+
+                    {activeTab === 'operation-theatre' && (
+                        <div className="space-y-6">
+                            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                                <div>
+                                    <h2 className="text-2xl font-bold text-gray-900">Operation Theatre</h2>
+                                    <p className="text-sm text-gray-500 mt-1">Admin view for OT activity, clearance, rooms, and utilization. Full OT booking opens only from OT staff login.</p>
+                                </div>
+                            </div>
+
+                            {otStatsLoading ? (
+                                <SkeletonStatsGrid />
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+                                    {[
+                                        ['todaysSurgeries', "Today's Surgeries"],
+                                        ['ongoingSurgeries', 'Ongoing'],
+                                        ['completedSurgeries', 'Completed'],
+                                        ['emergencySurgeries', 'Emergency'],
+                                        ['availableOtRooms', 'Available Rooms'],
+                                        ['otUtilization', 'Utilization %'],
+                                        ['pendingClearances', 'Pending Clearance'],
+                                        ['otStaffOnDuty', 'Staff On Duty'],
+                                        ['equipmentAvailable', 'Equipment Available'],
+                                        ['sterilizedInstrumentSets', 'Sterilized Sets'],
+                                    ].map(([key, label]) => (
+                                        <div key={key} className="bg-white border border-gray-200 p-5">
+                                            <p className="text-xs font-semibold uppercase text-gray-500">{label}</p>
+                                            <p className="text-2xl font-bold text-gray-900 mt-2">{otStats?.[key] ?? 0}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                <div className="bg-white border border-gray-200 p-5">
+                                    <h3 className="font-semibold text-gray-900">OT Admin Scope</h3>
+                                    <div className="mt-4 space-y-3">
+                                        <div className="border border-gray-200 bg-gray-50 p-3">
+                                            <p className="text-sm font-semibold text-gray-900">Dashboard</p>
+                                            <p className="text-xs text-gray-600 mt-1">Monitor OT workload and pending clearance.</p>
+                                        </div>
+                                        <div className="border border-gray-200 bg-gray-50 p-3">
+                                            <p className="text-sm font-semibold text-gray-900">Add OT Entry</p>
+                                            <p className="text-xs text-gray-600 mt-1">Use Operation Theatre login for booking and live OT actions.</p>
+                                        </div>
+                                        <div className="border border-gray-200 bg-gray-50 p-3">
+                                            <p className="text-sm font-semibold text-gray-900">Rooms and Instruments</p>
+                                            <p className="text-xs text-gray-600 mt-1">Detailed allocation remains in the OT staff workspace.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="bg-white border border-gray-200 p-5 lg:col-span-2">
+                                    <h3 className="font-semibold text-gray-900">Admin Notes</h3>
+                                    <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        <div className="border border-gray-200 bg-gray-50 p-4">
+                                            <p className="text-sm font-semibold text-gray-900">Clearance</p>
+                                            <p className="text-sm text-gray-600 mt-1">Monitor pending pre-op clearance before confirming OT cases.</p>
+                                        </div>
+                                        <div className="border border-gray-200 bg-gray-50 p-4">
+                                            <p className="text-sm font-semibold text-gray-900">Capacity</p>
+                                            <p className="text-sm text-gray-600 mt-1">Watch OT utilization and available room counts from this page.</p>
+                                        </div>
+                                        <div className="border border-gray-200 bg-gray-50 p-4">
+                                            <p className="text-sm font-semibold text-gray-900">Inventory</p>
+                                            <p className="text-sm text-gray-600 mt-1">Consumables and implants are deducted from the full OT workspace.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Overview Tab - Stats & Inline Tables Split Grid */}
                     {activeTab === 'overview' && !loading && (

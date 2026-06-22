@@ -38,6 +38,8 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
                 return <Navigate to="/hospital/admin" replace />;
             } else if (user.role === 'DOCTOR') {
                 return <Navigate to="/hospital/doctor" replace />;
+            } else if (user.role === 'OT_ADMIN') {
+                return <Navigate to="/ot/dashboard" replace />;
             } else {
                 return <Navigate to="/login" replace />;
             }

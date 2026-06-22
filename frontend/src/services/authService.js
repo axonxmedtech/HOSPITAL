@@ -131,6 +131,11 @@ const authService = {
         return user && user.role === 'PHARMACIST';
     },
 
+    isOtAdmin: () => {
+        const user = authService.getCurrentUser();
+        return user && user.role === 'OT_ADMIN';
+    },
+
     /**
      * Get fresh user profile from server
      */
