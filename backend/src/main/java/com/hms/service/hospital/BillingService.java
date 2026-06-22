@@ -3,6 +3,7 @@ package com.hms.service.hospital;
 import com.hms.entity.Billing;
 import com.hms.entity.Hospital;
 import com.hms.entity.Appointment;
+import com.hms.event.ConsultationCompletedEvent;
 import com.hms.repository.BillingRepository;
 import com.hms.repository.HospitalRepository;
 import com.hms.security.SecurityContextHelper;
@@ -10,6 +11,7 @@ import com.hms.security.SecurityContextHelper;
 import com.hms.exception.ResourceNotFoundException;
 import com.hms.exception.UnauthorizedException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -58,6 +60,9 @@ public class BillingService {
 
     @Autowired
     private com.hms.repository.MedicalRecordRepository medicalRecordRepository;
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
 
     /**
      * Auto-generate a bill for a completed appointment
@@ -109,6 +114,13 @@ public class BillingService {
                 billingItemRepository.save(item);
             } catch (Exception e) {
                 logger.warn("Failed to create Consultation Fee billing item for auto-bill {}", saved.getId(), e);
+            }
+
+            try {
+                eventPublisher.publishEvent(new ConsultationCompletedEvent(
+                        hospital.getId(), appointment.getPatientId(), appointment.getId()));
+            } catch (Exception e) {
+                logger.warn("Failed to publish ConsultationCompletedEvent", e);
             }
 
             logger.info("Auto-generated bill for appointment: {} with amount: {}", appointment.getId(), fee);

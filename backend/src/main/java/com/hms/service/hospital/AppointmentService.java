@@ -1,6 +1,7 @@
 package com.hms.service.hospital;
 
 import com.hms.entity.Appointment;
+import com.hms.event.AppointmentCreatedEvent;
 import com.hms.repository.AppointmentRepository;
 import com.hms.repository.DoctorRepository;
 import com.hms.repository.PatientRepository;
@@ -9,6 +10,7 @@ import com.hms.security.SecurityContextHelper;
 import com.hms.exception.ResourceNotFoundException;
 import com.hms.exception.UnauthorizedException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
@@ -63,6 +65,9 @@ public class AppointmentService {
 
     @Autowired
     private com.hms.security.HospitalWebSocketHandler webSocketHandler;
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
 
     /**
      * Create a new appointment
@@ -219,6 +224,13 @@ public class AppointmentService {
             webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
         } catch (Exception e) {
             // ignore
+        }
+
+        try {
+            eventPublisher.publishEvent(new AppointmentCreatedEvent(
+                    hospitalId, savedAppointment.getPatientId(), savedAppointment.getId()));
+        } catch (Exception e) {
+            logger.warn("Failed to publish AppointmentCreatedEvent", e);
         }
 
         return savedAppointment;
