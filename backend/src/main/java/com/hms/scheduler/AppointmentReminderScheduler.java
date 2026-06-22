@@ -52,7 +52,8 @@ public class AppointmentReminderScheduler {
 
         List<Hospital> hospitals = hospitalRepository.findByAnyModule(
                 List.of(WhatsAppTemplateConstants.MODULE_WA_APPOINTMENTS,
-                        WhatsAppTemplateConstants.MODULE_WHATSAPP_CUSTOM));
+                        WhatsAppTemplateConstants.MODULE_WHATSAPP_CUSTOM,
+                        WhatsAppTemplateConstants.MODULE_WHATSAPP_PLATFORM));
 
         for (Hospital hospital : hospitals) {
             if (hospital.getModules().contains(WhatsAppTemplateConstants.MODULE_WHATSAPP_CUSTOM)) {
