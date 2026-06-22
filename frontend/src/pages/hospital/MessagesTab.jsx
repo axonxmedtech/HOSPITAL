@@ -98,9 +98,8 @@ export default function MessagesTab({ modules }) {
 
     useEffect(() => {
         loadFailedCount();
-        loadLogs(0, '', '');
         loadConfig();
-    }, [loadFailedCount, loadLogs, loadConfig]);
+    }, [loadFailedCount, loadConfig]);
 
     // Reload logs when filter/page changes
     useEffect(() => {
