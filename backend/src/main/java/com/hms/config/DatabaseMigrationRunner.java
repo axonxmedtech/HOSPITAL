@@ -28,6 +28,8 @@ public class DatabaseMigrationRunner {
         fixHospitalsPlanColumn();
         ensureHospitalSettingsInClinic();
         ensureHospitalsIsSingleDoctor();
+        ensureWhatsAppConfigTable();      // NEW
+        ensureWhatsAppMessageLogTable();  // NEW
     }
 
     /**
@@ -91,6 +93,73 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped (hospitals.is_single_doctor): {}", e.getMessage());
+        }
+    }
+
+    private void ensureWhatsAppConfigTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'whatsapp_config'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE whatsapp_config (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  hospital_id BIGINT NOT NULL UNIQUE," +
+                    "  access_token VARCHAR(500) NOT NULL," +
+                    "  phone_number_id VARCHAR(100) NOT NULL," +
+                    "  waba_id VARCHAR(100) DEFAULT NULL," +
+                    "  is_active TINYINT(1) NOT NULL DEFAULT 1," +
+                    "  send_appointments TINYINT(1) NOT NULL DEFAULT 1," +
+                    "  send_billing TINYINT(1) NOT NULL DEFAULT 1," +
+                    "  send_case_papers TINYINT(1) NOT NULL DEFAULT 1," +
+                    "  send_prescription TINYINT(1) NOT NULL DEFAULT 1," +
+                    "  send_medicine_list TINYINT(1) NOT NULL DEFAULT 1," +
+                    "  created_at DATETIME(6) NOT NULL," +
+                    "  updated_at DATETIME(6) DEFAULT NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  FOREIGN KEY (hospital_id) REFERENCES hospitals(id)" +
+                    ")"
+                );
+                log.info("DB migration applied: whatsapp_config table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (whatsapp_config): {}", e.getMessage());
+        }
+    }
+
+    private void ensureWhatsAppMessageLogTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'whatsapp_message_log'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE whatsapp_message_log (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  patient_id BIGINT DEFAULT NULL," +
+                    "  patient_phone VARCHAR(20) NOT NULL," +
+                    "  message_type VARCHAR(50) NOT NULL," +
+                    "  status VARCHAR(25) NOT NULL," +
+                    "  error_message VARCHAR(500) DEFAULT NULL," +
+                    "  retry_count INT NOT NULL DEFAULT 0," +
+                    "  next_retry_at DATETIME(6) DEFAULT NULL," +
+                    "  sent_at DATETIME(6) DEFAULT NULL," +
+                    "  created_at DATETIME(6) NOT NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  KEY idx_wml_hospital_status (hospital_id, status)," +
+                    "  KEY idx_wml_retry (status, next_retry_at)" +
+                    ")"
+                );
+                log.info("DB migration applied: whatsapp_message_log table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (whatsapp_message_log): {}", e.getMessage());
         }
     }
 }
