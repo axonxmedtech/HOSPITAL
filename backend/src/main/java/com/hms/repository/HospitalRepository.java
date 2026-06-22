@@ -5,6 +5,8 @@ import com.hms.entity.HospitalType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -28,4 +30,7 @@ public interface HospitalRepository extends JpaRepository<Hospital, Long> {
     long countByTypeAndIsActive(HospitalType type, boolean isActive);
 
     List<Hospital> findBySubscriptionStatusIn(List<String> statuses);
+
+    @Query("SELECT DISTINCT h FROM Hospital h JOIN h.modules m WHERE m IN :moduleNames")
+    List<Hospital> findByAnyModule(@Param("moduleNames") List<String> moduleNames);
 }
