@@ -1,4 +1,5 @@
 import BillingTable from './BillingTable';
+import MessagesTab from './MessagesTab';
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import authService from '../../services/authService';
@@ -1303,6 +1304,7 @@ const HospitalAdminDashboard = () => {
         { id: 'fees', label: 'Fees', icon: null, requiredModule: 'BILLING' },
         { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
         { id: 'analytics', label: 'Reports & Analytics', icon: null, requiredModule: 'REPORTS' },
+        { id: 'messages', label: 'Messages', icon: null, requiredModule: null },
         { id: 'settings', label: 'Settings', icon: null, requiredModule: null },
     ];
 
@@ -1629,7 +1631,7 @@ const HospitalAdminDashboard = () => {
                     )}
 
                     {/* Standardized Header */}
-                    {activeTab !== 'overview' && activeTab !== 'pharmacy' &&  activeTab !== 'ipd' &&  activeTab !== 'pathology' && activeTab !== 'support' && activeTab !== 'inventory' && activeTab !== 'hospital-inventory' && (
+                    {activeTab !== 'overview' && activeTab !== 'pharmacy' &&  activeTab !== 'ipd' &&  activeTab !== 'pathology' && activeTab !== 'support' && activeTab !== 'inventory' && activeTab !== 'hospital-inventory' && activeTab !== 'messages' && (
                         <PageHeader
                             title={tabs.find(t => t.id === activeTab)?.label}
                             subtitle={activeTab === 'settings' ? 'Configure operational settings and permissions' : activeTab === 'opd' ? 'Active patients currently in queue or being consulted' : `Manage hospital ${activeTab} records`}
@@ -2744,6 +2746,9 @@ const HospitalAdminDashboard = () => {
                                             );
                                         })()}
                                     </div>
+                                )}
+                                {activeTab === 'messages' && (
+                                    <MessagesTab modules={modules} />
                                 )}
                                 {activeTab === 'ipd' && (
                                     ipds.length > 0 ? (
