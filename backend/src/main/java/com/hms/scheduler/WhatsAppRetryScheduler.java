@@ -29,8 +29,9 @@ public class WhatsAppRetryScheduler {
     @Scheduled(fixedDelay = 300000) // every 5 minutes
     public void retryFailed() {
         List<WhatsAppMessageLog> eligible = logRepository
-                .findByStatusAndNextRetryAtBeforeAndRetryCountLessThan(
-                        WhatsAppMessageLog.STATUS_FAILED, LocalDateTime.now(), MAX_RETRIES);
+                .findByStatusInAndNextRetryAtBeforeAndRetryCountLessThan(
+                        List.of(WhatsAppMessageLog.STATUS_FAILED, WhatsAppMessageLog.STATUS_RETRYING),
+                        LocalDateTime.now(), MAX_RETRIES);
 
         if (!eligible.isEmpty()) {
             log.info("WhatsAppRetryScheduler: retrying {} failed messages", eligible.size());

@@ -27,6 +27,9 @@ public interface WhatsAppMessageLogRepository extends JpaRepository<WhatsAppMess
     List<WhatsAppMessageLog> findByStatusAndNextRetryAtBeforeAndRetryCountLessThan(
             String status, LocalDateTime now, int maxRetries);
 
+    List<WhatsAppMessageLog> findByStatusInAndNextRetryAtBeforeAndRetryCountLessThan(
+            List<String> statuses, LocalDateTime now, int maxRetries);
+
     @Query("SELECT COUNT(l) FROM WhatsAppMessageLog l WHERE l.status = :status AND l.createdAt >= :since")
     long countByStatusSince(@Param("status") String status, @Param("since") LocalDateTime since);
 

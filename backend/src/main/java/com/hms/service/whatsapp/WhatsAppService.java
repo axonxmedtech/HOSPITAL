@@ -161,12 +161,12 @@ public class WhatsAppService {
             entry.setSentAt(LocalDateTime.now());
             entry.setErrorMessage(null);
         } else {
+            entry.setRetryCount(entry.getRetryCount() + 1);
             if (entry.getRetryCount() >= MAX_RETRIES) {
                 entry.setStatus(WhatsAppMessageLog.STATUS_PERMANENTLY_FAILED);
                 entry.setErrorMessage("Max retries exceeded");
             } else {
                 entry.setStatus(WhatsAppMessageLog.STATUS_RETRYING);
-                entry.setRetryCount(entry.getRetryCount() + 1);
                 entry.setNextRetryAt(LocalDateTime.now().plusMinutes(15));
             }
         }
