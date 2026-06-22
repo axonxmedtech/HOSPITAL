@@ -24,7 +24,7 @@ public class WhatsAppConfig {
     private String wabaId;
 
     @Column(name = "is_active", nullable = false)
-    private boolean isActive = true;
+    private Boolean isActive = true;
 
     @Column(name = "send_appointments", nullable = false)
     private boolean sendAppointments = true;
@@ -64,8 +64,8 @@ public class WhatsAppConfig {
     public void setPhoneNumberId(String phoneNumberId) { this.phoneNumberId = phoneNumberId; }
     public String getWabaId() { return wabaId; }
     public void setWabaId(String wabaId) { this.wabaId = wabaId; }
-    public boolean isActive() { return isActive; }
-    public void setActive(boolean active) { isActive = active; }
+    public Boolean getIsActive() { return isActive; }
+    public void setIsActive(Boolean isActive) { this.isActive = isActive; }
     public boolean isSendAppointments() { return sendAppointments; }
     public void setSendAppointments(boolean sendAppointments) { this.sendAppointments = sendAppointments; }
     public boolean isSendBilling() { return sendBilling; }

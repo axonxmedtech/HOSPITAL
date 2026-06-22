@@ -9,6 +9,7 @@ public class WhatsAppMessageLog {
 
     public static final String STATUS_SENT = "SENT";
     public static final String STATUS_FAILED = "FAILED";
+    public static final String STATUS_RETRYING = "RETRYING";
     public static final String STATUS_PERMANENTLY_FAILED = "PERMANENTLY_FAILED";
 
     @Id
