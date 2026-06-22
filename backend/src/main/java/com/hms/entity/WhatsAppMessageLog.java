@@ -34,6 +34,15 @@ public class WhatsAppMessageLog {
     @Column(name = "error_message", length = 500)
     private String errorMessage;
 
+    @Column(name = "template_name", length = 100)
+    private String templateName;
+
+    @Column(name = "template_params_json", length = 1000)
+    private String templateParamsJson;
+
+    @Column(name = "media_url", length = 500)
+    private String mediaUrl;
+
     @Column(name = "retry_count", nullable = false)
     private int retryCount = 0;
 
@@ -71,4 +80,10 @@ public class WhatsAppMessageLog {
     public LocalDateTime getSentAt() { return sentAt; }
     public void setSentAt(LocalDateTime sentAt) { this.sentAt = sentAt; }
     public LocalDateTime getCreatedAt() { return createdAt; }
+    public String getTemplateName() { return templateName; }
+    public void setTemplateName(String templateName) { this.templateName = templateName; }
+    public String getTemplateParamsJson() { return templateParamsJson; }
+    public void setTemplateParamsJson(String templateParamsJson) { this.templateParamsJson = templateParamsJson; }
+    public String getMediaUrl() { return mediaUrl; }
+    public void setMediaUrl(String mediaUrl) { this.mediaUrl = mediaUrl; }
 }

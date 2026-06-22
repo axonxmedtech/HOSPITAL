@@ -30,6 +30,7 @@ public class DatabaseMigrationRunner {
         ensureHospitalsIsSingleDoctor();
         ensureWhatsAppConfigTable();      // NEW
         ensureWhatsAppMessageLogTable();  // NEW
+        ensureWhatsAppMessageLogRetryColumns();
     }
 
     /**
@@ -172,6 +173,25 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped (whatsapp_message_log): {}", e.getMessage());
+        }
+    }
+
+    private void ensureWhatsAppMessageLogRetryColumns() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'whatsapp_message_log' AND COLUMN_NAME = 'template_name'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute("ALTER TABLE whatsapp_message_log " +
+                    "ADD COLUMN template_name VARCHAR(100) DEFAULT NULL, " +
+                    "ADD COLUMN template_params_json VARCHAR(1000) DEFAULT NULL, " +
+                    "ADD COLUMN media_url VARCHAR(500) DEFAULT NULL");
+                log.info("DB migration applied: whatsapp_message_log retry columns added");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (whatsapp_message_log retry columns): {}", e.getMessage());
         }
     }
 }

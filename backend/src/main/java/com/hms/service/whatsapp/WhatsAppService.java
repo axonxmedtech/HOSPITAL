@@ -150,11 +150,12 @@ public class WhatsAppService {
             logRepository.save(entry);
             return;
         }
-        // Best-effort retry: attempt a minimal API ping. Full template rebuild
-        // would require storing original template params — this is intentionally
-        // simple as retries cover transient network failures, not content issues.
+        List<String> params = null;
+        if (entry.getTemplateParamsJson() != null && !entry.getTemplateParamsJson().isBlank()) {
+            params = Arrays.asList(entry.getTemplateParamsJson().split("\\|\\|", -1));
+        }
         boolean success = callMetaApi(creds[0], creds[1], entry.getPatientPhone(),
-                null, null, null);
+                entry.getTemplateName(), params, entry.getMediaUrl());
         if (success) {
             entry.setStatus(WhatsAppMessageLog.STATUS_SENT);
             entry.setSentAt(LocalDateTime.now());
@@ -185,6 +186,11 @@ public class WhatsAppService {
         entry.setPatientId(patientId);
         entry.setPatientPhone(phone);
         entry.setMessageType(msgType);
+        entry.setTemplateName(templateName);
+        if (templateParams != null && !templateParams.isEmpty()) {
+            entry.setTemplateParamsJson(String.join("||", templateParams));
+        }
+        entry.setMediaUrl(mediaUrl);
 
         if (creds == null) {
             entry.setStatus(WhatsAppMessageLog.STATUS_FAILED);
