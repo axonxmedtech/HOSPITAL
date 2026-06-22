@@ -106,6 +106,7 @@ CREATE TABLE `billing` (
   `patient_id` bigint NOT NULL,
   `payment_method` varchar(50) DEFAULT NULL,
   `payment_reference` varchar(100) DEFAULT NULL,
+  `marked_paid_by` varchar(100) DEFAULT NULL,
   `payment_status` varchar(20) NOT NULL,
   `public_id` varchar(255) NOT NULL,
   PRIMARY KEY (`id`),
@@ -223,11 +224,16 @@ CREATE TABLE `hospitals` (
   `created_at` datetime(6) NOT NULL,
   `custom_id` varchar(255) DEFAULT NULL,
   `is_active` bit(1) NOT NULL,
+  `logo_url` varchar(500) DEFAULT NULL,
   `name` varchar(200) NOT NULL,
   `opd_timings` varchar(100) DEFAULT NULL,
+  `parent_organization` varchar(200) DEFAULT NULL,
   `phone` varchar(20) DEFAULT NULL,
-  `plan` varchar(20) NOT NULL,
+  `plan` varchar(20) DEFAULT NULL,
   `public_id` varchar(255) NOT NULL,
+  `subscription_status` varchar(20) NOT NULL DEFAULT 'ACTIVE',
+  `type` varchar(20) NOT NULL DEFAULT 'HOSPITAL',
+  `is_single_doctor` tinyint(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_dre74r9dx5tme2mvsmu33ur77` (`public_id`),
   UNIQUE KEY `UK_snisvhrc8x0rcmph9cwiuqxvt` (`custom_id`)
@@ -349,6 +355,7 @@ CREATE TABLE `medical_records` (
   `opd_id` bigint DEFAULT NULL,
   `patient_id` bigint NOT NULL,
   `public_id` varchar(255) NOT NULL,
+  `administered_items_json` varchar(3000) DEFAULT NULL,
   `symptoms` varchar(1000) DEFAULT NULL,
   `treatment_notes` varchar(2000) DEFAULT NULL,
   `visit_type` varchar(255) NOT NULL,
@@ -381,6 +388,8 @@ CREATE TABLE `medicine_batches` (
   `location_id` bigint DEFAULT NULL,
   `supplier_id` bigint DEFAULT NULL,
   `purchase_invoice_item_id` bigint DEFAULT NULL,
+  `gst_percentage` decimal(38,2) DEFAULT NULL,
+  `remarks` text,
   `status` varchar(30) DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -841,3 +850,132 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_hospital_ts ON audit_logs(hospital_id,
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_doctors_hospital ON doctors(hospital_id);
 CREATE INDEX IF NOT EXISTS idx_ipd_admissions_hospital ON ipd_admissions(hospital_id, status);
+
+--
+-- Table structure for table `plans`
+-- (Platform-level subscription plans for hospitals)
+--
+
+DROP TABLE IF EXISTS `plans`;
+CREATE TABLE `plans` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `type` varchar(20) NOT NULL,
+  `monthly_price` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `yearly_price` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `in_clinic` tinyint(1) NOT NULL DEFAULT 0,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `created_at` datetime(6) NOT NULL,
+  `updated_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_plans_public_id` (`public_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Table structure for table `plan_modules`
+-- (Element collection for Plan.modules)
+--
+
+DROP TABLE IF EXISTS `plan_modules`;
+CREATE TABLE `plan_modules` (
+  `plan_id` bigint NOT NULL,
+  `module_name` varchar(255) DEFAULT NULL,
+  KEY `FK_plan_modules_plan_id` (`plan_id`),
+  CONSTRAINT `FK_plan_modules_plan_id` FOREIGN KEY (`plan_id`) REFERENCES `plans` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Table structure for table `plan_features`
+-- (Element collection for Plan.features)
+--
+
+DROP TABLE IF EXISTS `plan_features`;
+CREATE TABLE `plan_features` (
+  `plan_id` bigint NOT NULL,
+  `feature_name` varchar(255) DEFAULT NULL,
+  KEY `FK_plan_features_plan_id` (`plan_id`),
+  CONSTRAINT `FK_plan_features_plan_id` FOREIGN KEY (`plan_id`) REFERENCES `plans` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Table structure for table `hospital_plan_subscriptions`
+-- (Tracks which plan each hospital is subscribed to)
+--
+
+DROP TABLE IF EXISTS `hospital_plan_subscriptions`;
+CREATE TABLE `hospital_plan_subscriptions` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `plan_id` bigint NOT NULL,
+  `billing_period` varchar(20) NOT NULL,
+  `assigned_at` datetime(6) NOT NULL,
+  `expires_at` datetime(6) NOT NULL,
+  `assigned_by` bigint DEFAULT NULL,
+  `is_current` tinyint(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  KEY `FK_hps_hospital_id` (`hospital_id`),
+  KEY `FK_hps_plan_id` (`plan_id`),
+  CONSTRAINT `FK_hps_hospital_id` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`),
+  CONSTRAINT `FK_hps_plan_id` FOREIGN KEY (`plan_id`) REFERENCES `plans` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Table structure for table `hospital_settings`
+-- (Per-hospital operational toggles: reception mode, billing handler, etc.)
+--
+
+DROP TABLE IF EXISTS `hospital_settings`;
+CREATE TABLE `hospital_settings` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `reception_mode` varchar(20) NOT NULL DEFAULT 'HAS_RECEPTIONIST',
+  `billing_handler` varchar(20) NOT NULL DEFAULT 'RECEPTIONIST',
+  `in_clinic` tinyint(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_hospital_settings_hospital_id` (`hospital_id`),
+  CONSTRAINT `FK_hospital_settings_hospital_id` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- WhatsApp integration tables (added with V4 migration)
+--
+
+CREATE TABLE IF NOT EXISTS `whatsapp_config` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `access_token` varchar(500) NOT NULL,
+  `phone_number_id` varchar(100) NOT NULL,
+  `waba_id` varchar(100) DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `send_appointments` tinyint(1) NOT NULL DEFAULT 1,
+  `send_billing` tinyint(1) NOT NULL DEFAULT 1,
+  `send_case_papers` tinyint(1) NOT NULL DEFAULT 1,
+  `send_prescription` tinyint(1) NOT NULL DEFAULT 1,
+  `send_medicine_list` tinyint(1) NOT NULL DEFAULT 1,
+  `created_at` datetime(6) NOT NULL,
+  `updated_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  CONSTRAINT `uq_wc_hospital` UNIQUE (`hospital_id`),
+  CONSTRAINT `FK_whatsapp_config_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `whatsapp_message_log` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `patient_id` bigint DEFAULT NULL,
+  `patient_phone` varchar(20) NOT NULL,
+  `message_type` varchar(50) NOT NULL,
+  `status` varchar(25) NOT NULL,
+  `error_message` varchar(500) DEFAULT NULL,
+  `template_name` varchar(100) DEFAULT NULL,
+  `template_params_json` varchar(1000) DEFAULT NULL,
+  `media_url` varchar(500) DEFAULT NULL,
+  `retry_count` int NOT NULL DEFAULT 0,
+  `next_retry_at` datetime(6) DEFAULT NULL,
+  `sent_at` datetime(6) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_wml_hospital_status` (`hospital_id`, `status`),
+  KEY `idx_wml_retry` (`status`, `next_retry_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
