@@ -21,6 +21,7 @@ import java.io.ByteArrayOutputStream;
 import org.springframework.http.ResponseEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -52,12 +53,14 @@ public class OpdController {
         this.hospitalRepository = hospitalRepository;
     }
 
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     @PostMapping
     public ResponseEntity<Opd> createOpd(@RequestBody CreateOpdRequest req) {
         Opd opd = opdService.createOpd(req);
         return ResponseEntity.ok(opd);
     }
 
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     @GetMapping("/{id}/pdf")
     public ResponseEntity<byte[]> getOpdPdf(@PathVariable Long id) {
         Opd opd = opdService.getOpdById(id);
@@ -84,6 +87,7 @@ public class OpdController {
     }
 
 
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     @GetMapping
     public ResponseEntity<?> listOpds(
             @RequestParam(required = false) String search,
@@ -96,6 +100,7 @@ public class OpdController {
         return ResponseEntity.ok(result);
     }
 
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     @GetMapping("/queue/doctor/{doctorId}")
     public ResponseEntity<java.util.List<?>> getDoctorQueue(@PathVariable Long doctorId) {
         java.util.List<?> queue = opdService.getQueueForDoctor(doctorId);
@@ -108,6 +113,7 @@ public class OpdController {
      * and returns that doctor's queue. Useful for doctor clients that only have
      * the user authentication context.
      */
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR')")
     @GetMapping("/queue/my")
     public ResponseEntity<java.util.List<?>> getMyQueue() {
         try {
@@ -129,6 +135,7 @@ public class OpdController {
         }
     }
 
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     @GetMapping("/{id}")
     public ResponseEntity<Opd> getOpd(@PathVariable Long id) {
         Opd opd = opdService.getOpdById(id);
@@ -136,12 +143,14 @@ public class OpdController {
         return ResponseEntity.ok(opd);
     }
 
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     @GetMapping("/queue")
     public ResponseEntity<java.util.List<?>> getHospitalQueue() {
         java.util.List<?> queue = opdService.getHospitalQueue();
         return ResponseEntity.ok(queue);
     }
 
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     @GetMapping("/today-followups")
     public ResponseEntity<java.util.List<?>> getTodayFollowUps() {
         try {
@@ -191,6 +200,7 @@ public class OpdController {
         }
     }
 
+    @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     @GetMapping("/report/pdf")
     public ResponseEntity<?> downloadOpdReportPdf(
             @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date,
