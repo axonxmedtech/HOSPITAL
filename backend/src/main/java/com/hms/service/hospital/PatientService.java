@@ -787,7 +787,8 @@ public class PatientService {
      */
     @Transactional(readOnly = true)
     public java.util.Map<String, Object> getLatestPrescription(String publicId) {
-        com.hms.entity.Patient patient = patientRepository.findByPublicId(publicId)
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        com.hms.entity.Patient patient = patientRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(publicId, hospitalId)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
 
         com.hms.entity.MedicalRecord record = medicalRecordRepository

@@ -319,6 +319,11 @@ public class BillingController {
         Billing billing = billingRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Bill not found"));
 
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (!billing.getHospitalId().equals(hospitalId)) {
+            throw new org.springframework.security.access.AccessDeniedException("Access denied");
+        }
+
         Hospital hospital = hospitalRepository.findById(billing.getHospitalId())
                 .orElseThrow(() -> new RuntimeException("Hospital not found"));
 
