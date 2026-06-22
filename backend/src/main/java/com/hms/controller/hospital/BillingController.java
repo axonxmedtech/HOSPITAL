@@ -320,7 +320,7 @@ public class BillingController {
                 .orElseThrow(() -> new RuntimeException("Bill not found"));
 
         Long hospitalId = securityHelper.getCurrentHospitalId();
-        if (!billing.getHospitalId().equals(hospitalId)) {
+        if (hospitalId == null || !hospitalId.equals(billing.getHospitalId())) {
             throw new org.springframework.security.access.AccessDeniedException("Access denied");
         }
 
