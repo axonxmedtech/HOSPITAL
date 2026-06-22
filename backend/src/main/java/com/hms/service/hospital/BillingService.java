@@ -15,6 +15,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -67,6 +68,7 @@ public class BillingService {
     /**
      * Auto-generate a bill for a completed appointment
      */
+    @Transactional
     public void autoGenerateOpdBill(Appointment appointment) {
         if (billingRepository.existsByAppointmentId(appointment.getId())) {
             logger.warn("Skipping bill auto-generation: Bill already exists for appointment {}", appointment.getId());

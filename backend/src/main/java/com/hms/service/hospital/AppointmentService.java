@@ -74,10 +74,11 @@ public class AppointmentService {
      * Validates that patient and doctor belong to the same hospital
      * Automatically sets hospital_id from the authenticated user's context
      * If patientId is null but patient details are provided, creates a new patient
-     * 
+     *
      * @param appointment Appointment entity to create
      * @return Created Appointment entity
      */
+    @Transactional
     public Appointment createAppointment(Appointment appointment) {
         // Get hospital_id from security context (multi-tenant isolation)
         Long hospitalId = securityHelper.getCurrentHospitalId();
