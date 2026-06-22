@@ -31,6 +31,7 @@ public class DatabaseMigrationRunner {
         ensureWhatsAppConfigTable();      // NEW
         ensureWhatsAppMessageLogTable();  // NEW
         ensureWhatsAppMessageLogRetryColumns();
+        ensureMissingIndexes();
     }
 
     /**
@@ -192,6 +193,30 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped (whatsapp_message_log retry columns): {}", e.getMessage());
+        }
+    }
+
+    private void ensureMissingIndexes() {
+        addIndexIfMissing("appointments", "idx_appt_date", "appointment_date");
+        addIndexIfMissing("patients",     "idx_patient_hospital", "hospital_id");
+        addIndexIfMissing("doctors",      "idx_doctor_hospital",  "hospital_id");
+    }
+
+    private void addIndexIfMissing(String table, String indexName, String column) {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.STATISTICS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?",
+                Integer.class, table, indexName
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "ALTER TABLE `" + table + "` ADD INDEX `" + indexName + "` (`" + column + "`)"
+                );
+                log.info("DB migration applied: index {} added on {}.{}", indexName, table, column);
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (index {} on {}): {}", indexName, table, e.getMessage());
         }
     }
 }
