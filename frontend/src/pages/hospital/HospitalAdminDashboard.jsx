@@ -1306,6 +1306,7 @@ const HospitalAdminDashboard = () => {
         { id: 'analytics', label: 'Reports & Analytics', icon: null, requiredModule: 'REPORTS' },
         { id: 'messages', label: 'Messages', icon: null, requiredModule: null },
         { id: 'settings', label: 'Settings', icon: null, requiredModule: null },
+        { id: 'support', label: 'Support', icon: null, requiredModule: null },
     ];
 
     const tabs = allTabs.filter(tab =>
