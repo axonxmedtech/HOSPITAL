@@ -35,31 +35,6 @@ public class MedicineController {
         return ResponseEntity.ok(medicineService.getCatalogMedicines());
     }
 
-    @PostMapping("/catalog")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> addCatalogMedicine(@RequestBody MedicineList catalog) {
-        return ResponseEntity.ok(medicineService.addCatalogMedicine(catalog));
-    }
-
-    @PutMapping("/catalog/{id}")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> updateCatalogMedicine(@PathVariable Long id, @RequestBody MedicineList catalog) {
-        return ResponseEntity.ok(medicineService.updateCatalogMedicine(id, catalog));
-    }
-
-    @PostMapping("/catalog/import-csv")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> importCatalogCsv(@RequestParam("file") MultipartFile file) throws Exception {
-        Map<String, Object> result = medicineService.importCatalogCsv(file);
-        return ResponseEntity.ok(result);
-    }
-
-    @DeleteMapping("/catalog/{id}")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> deleteCatalogMedicine(@PathVariable Long id) {
-        medicineService.deleteCatalogMedicine(id);
-        return ResponseEntity.ok().build();
-    }
 
     // --- Purchase History Management ---
 

@@ -532,17 +532,12 @@ public class DoctorService {
                 p.setInstructions(item.getInstructions());
                 prescriptionRepository.save(p);
 
-                // --- Dynamic Learning: Auto-add to Master Catalog ---
+                // --- Dynamic Learning: Auto-add to Global Catalog ---
                 try {
-                    if (!medicineListRepository.existsByNameAndHospitalId(item.getMedicineName(), hospitalId)) {
+                    if (!medicineListRepository.existsByNameIgnoreCase(item.getMedicineName())) {
                         com.hms.entity.MedicineList newMed = new com.hms.entity.MedicineList();
                         newMed.setName(item.getMedicineName());
                         newMed.setType("Tablet"); // Default type
-                        newMed.setDefaultDosage(item.getDosage());
-                        newMed.setDefaultFrequency(item.getFrequency());
-                        newMed.setDefaultDuration(item.getDuration());
-                        newMed.setHospitalId(hospitalId);
-                        newMed.setIsActive(true);
                         medicineListRepository.save(newMed);
                     }
                 } catch (Exception e) {

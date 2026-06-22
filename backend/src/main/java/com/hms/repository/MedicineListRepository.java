@@ -1,8 +1,9 @@
 package com.hms.repository;
 
 import com.hms.entity.MedicineList;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -11,17 +12,13 @@ import java.util.Optional;
 @Repository
 public interface MedicineListRepository extends JpaRepository<MedicineList, Long> {
 
-    @Query("SELECT m FROM MedicineList m WHERE lower(m.name) LIKE lower(:query) AND (m.hospitalId IS NULL OR m.hospitalId = :hospitalId) AND m.isActive = true")
-    List<MedicineList> searchByName(String query, Long hospitalId);
+    List<MedicineList> findByNameContainingIgnoreCase(String query);
 
-    List<MedicineList> findByHospitalIdAndIsActiveTrue(Long hospitalId);
+    Page<MedicineList> findByNameContainingIgnoreCase(String query, Pageable pageable);
 
-    List<MedicineList> findByHospitalId(Long hospitalId);
+    boolean existsByNameIgnoreCase(String name);
 
-    boolean existsByNameAndHospitalId(String name, Long hospitalId);
+    boolean existsByNameIgnoreCaseAndIdNot(String name, Long id);
 
-    Optional<MedicineList> findByNameIgnoreCaseAndHospitalId(String name, Long hospitalId);
-
-    @Query("SELECT m FROM MedicineList m WHERE lower(m.name) = lower(:name) AND (m.hospitalId = :hospitalId OR m.hospitalId IS NULL) AND m.isActive = true")
-    List<MedicineList> findByNameIgnoreCaseAndHospitalOrGlobal(String name, Long hospitalId);
+    Optional<MedicineList> findByNameIgnoreCase(String name);
 }

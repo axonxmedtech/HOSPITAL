@@ -183,6 +183,38 @@ const platformService = {
         });
         return response.data;
     },
+
+    // ─── Medicine Catalog Management (Global) ──────────────────────────────
+    getPlatformMedicines: async (search = '', page = 0, size = 10) => {
+        const params = { page, size };
+        if (search) params.search = search;
+        const response = await apiClient.get('/platform/medicines', { params });
+        return response.data;
+    },
+
+    createPlatformMedicine: async (data) => {
+        const response = await apiClient.post('/platform/medicines', data);
+        return response.data;
+    },
+
+    updatePlatformMedicine: async (id, data) => {
+        const response = await apiClient.put(`/platform/medicines/${id}`, data);
+        return response.data;
+    },
+
+    deletePlatformMedicine: async (id) => {
+        const response = await apiClient.delete(`/platform/medicines/${id}`);
+        return response.data;
+    },
+
+    importPlatformMedicinesCsv: async (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await apiClient.post('/platform/medicines/import-csv', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        return response.data;
+    },
 };
 
 export default platformService;

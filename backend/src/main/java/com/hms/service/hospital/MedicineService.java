@@ -52,124 +52,42 @@ public class MedicineService {
     // --- Master Catalog Search & CRUD ---
 
     public List<MedicineList> searchMedicines(String query) {
-        Long hospitalId = securityHelper.getCurrentHospitalId();
-        if (hospitalId == null) {
-            throw new UnauthorizedException("Hospital ID not found in context");
-        }
-        return medicineListRepository.searchByName("%" + query + "%", hospitalId);
+        return medicineListRepository.findByNameContainingIgnoreCase(query);
     }
 
     public List<MedicineList> getCatalogMedicines() {
-        Long hospitalId = securityHelper.getCurrentHospitalId();
-        if (hospitalId == null) {
-            throw new UnauthorizedException("Hospital ID not found in context");
-        }
-        return medicineListRepository.findByHospitalId(hospitalId);
+        return medicineListRepository.findAll();
     }
 
     public MedicineList addCatalogMedicine(MedicineList medicine) {
-        Long hospitalId = securityHelper.getCurrentHospitalId();
-        if (hospitalId == null) {
-            throw new UnauthorizedException("Hospital ID not found in context");
-        }
-
-        if (medicineListRepository.existsByNameAndHospitalId(medicine.getName(), hospitalId)) {
+        if (medicineListRepository.existsByNameIgnoreCase(medicine.getName())) {
             throw new IllegalArgumentException("Medicine already exists in catalog");
         }
-
-        medicine.setHospitalId(hospitalId);
-        MedicineList saved = medicineListRepository.save(medicine);
-
-        // Audit Log
-        try {
-            auditLogService.logAction(
-                    "CATALOG_MEDICINE_ADDED",
-                    "Added " + saved.getName() + " to master catalog",
-                    securityHelper.getCurrentUserEmail(),
-                    hospitalId,
-                    "MEDICINE",
-                    saved.getId().toString(),
-                    null
-            );
-        } catch (Exception ignored) {}
-
-        return saved;
+        return medicineListRepository.save(medicine);
     }
 
     public MedicineList updateCatalogMedicine(Long id, MedicineList request) {
-        Long hospitalId = securityHelper.getCurrentHospitalId();
         MedicineList catalog = medicineListRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Catalog medicine not found"));
 
-        if (catalog.getHospitalId() != null && !catalog.getHospitalId().equals(hospitalId)) {
-            throw new UnauthorizedException("Unauthorized access to catalog medicine");
+        if (medicineListRepository.existsByNameIgnoreCaseAndIdNot(request.getName(), id)) {
+            throw new IllegalArgumentException("Medicine with this name already exists");
         }
 
         catalog.setName(request.getName());
         catalog.setType(request.getType());
-        catalog.setDefaultDosage(request.getDefaultDosage());
-        catalog.setDefaultFrequency(request.getDefaultFrequency());
-        catalog.setDefaultDuration(request.getDefaultDuration());
-        catalog.setManufacturer(request.getManufacturer());
-        if (request.getIsActive() != null) {
-            catalog.setIsActive(request.getIsActive());
-        }
 
-        MedicineList saved = medicineListRepository.save(catalog);
-
-        // Sync catalog updates to existing active stock inventory
-        medicineRepository.findByNameIgnoreCaseAndHospitalId(saved.getName(), hospitalId).ifPresent(stock -> {
-            stock.setDefaultDosage(saved.getDefaultDosage());
-            stock.setDefaultFrequency(saved.getDefaultFrequency());
-            stock.setDefaultDuration(saved.getDefaultDuration());
-            medicineRepository.save(stock);
-        });
-
-        // Audit Log
-        try {
-            auditLogService.logAction(
-                    "CATALOG_MEDICINE_UPDATED",
-                    "Updated catalog medicine " + saved.getName(),
-                    securityHelper.getCurrentUserEmail(),
-                    hospitalId,
-                    "MEDICINE",
-                    saved.getId().toString(),
-                    null
-            );
-        } catch (Exception ignored) {}
-
-        return saved;
+        return medicineListRepository.save(catalog);
     }
 
     public void deleteCatalogMedicine(Long id) {
-        Long hospitalId = securityHelper.getCurrentHospitalId();
         MedicineList catalog = medicineListRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Catalog medicine not found"));
-
-        if (catalog.getHospitalId() != null && !catalog.getHospitalId().equals(hospitalId)) {
-            throw new UnauthorizedException("Unauthorized access to catalog medicine");
-        }
-
-        catalog.setIsActive(false);
-        medicineListRepository.save(catalog);
-
-        // Audit Log
-        try {
-            auditLogService.logAction(
-                    "CATALOG_MEDICINE_DEACTIVATED",
-                    "Deactivated catalog medicine " + catalog.getName(),
-                    securityHelper.getCurrentUserEmail(),
-                    hospitalId,
-                    "MEDICINE",
-                    catalog.getId().toString(),
-                    null
-            );
-        } catch (Exception ignored) {}
+        medicineListRepository.delete(catalog);
     }
 
     @Transactional
     public Map<String, Object> importCatalogCsv(MultipartFile file) throws Exception {
-        Long hospitalId = securityHelper.getCurrentHospitalId();
         int imported = 0, updated = 0;
         List<String> errors = new ArrayList<>();
 
@@ -189,33 +107,18 @@ public class MedicineService {
 
                 String type = cols.length > 1 ? stripQuotes(cols[1]) : "";
                 if (type.isEmpty()) type = "Tablet";
-                String dosage = cols.length > 2 ? stripQuotes(cols[2]) : "";
-                String freq = cols.length > 3 ? stripQuotes(cols[3]) : "";
-                String duration = cols.length > 4 ? stripQuotes(cols[4]) : "";
-                String manufacturer = cols.length > 5 ? stripQuotes(cols[5]) : "";
 
                 try {
-                    Optional<MedicineList> existing = medicineListRepository.findByNameIgnoreCaseAndHospitalId(name, hospitalId);
+                    Optional<MedicineList> existing = medicineListRepository.findByNameIgnoreCase(name);
                     if (existing.isPresent()) {
                         MedicineList m = existing.get();
-                        if (!type.isEmpty()) m.setType(type);
-                        if (!dosage.isEmpty()) m.setDefaultDosage(dosage);
-                        if (!freq.isEmpty()) m.setDefaultFrequency(freq);
-                        if (!duration.isEmpty()) m.setDefaultDuration(duration);
-                        if (!manufacturer.isEmpty()) m.setManufacturer(manufacturer);
-                        m.setIsActive(true);
+                        m.setType(type);
                         medicineListRepository.save(m);
                         updated++;
                     } else {
                         MedicineList m = new MedicineList();
                         m.setName(name);
                         m.setType(type);
-                        m.setDefaultDosage(dosage.isEmpty() ? null : dosage);
-                        m.setDefaultFrequency(freq.isEmpty() ? null : freq);
-                        m.setDefaultDuration(duration.isEmpty() ? null : duration);
-                        m.setManufacturer(manufacturer.isEmpty() ? null : manufacturer);
-                        m.setHospitalId(hospitalId);
-                        m.setIsActive(true);
                         medicineListRepository.save(m);
                         imported++;
                     }
@@ -239,19 +142,18 @@ public class MedicineService {
         return s.trim();
     }
 
-    private Optional<MedicineList> getCatalogMatch(String name, Long hospitalId) {
-        if (name == null || hospitalId == null) {
+    private Optional<MedicineList> getCatalogMatch(String name) {
+        if (name == null) {
             return Optional.empty();
         }
-        List<MedicineList> matches = medicineListRepository.findByNameIgnoreCaseAndHospitalOrGlobal(name.trim(), hospitalId);
-        if (matches.isEmpty()) {
-            return Optional.empty();
+        return medicineListRepository.findByNameIgnoreCase(name.trim());
+    }
+
+    public org.springframework.data.domain.Page<MedicineList> getPlatformMedicines(String query, org.springframework.data.domain.Pageable pageable) {
+        if (query != null && !query.trim().isEmpty()) {
+            return medicineListRepository.findByNameContainingIgnoreCase(query, pageable);
         }
-        // Prefer hospital-specific over global fallback
-        return matches.stream()
-                .filter(m -> m.getHospitalId() != null)
-                .findFirst()
-                .or(() -> matches.stream().findFirst());
+        return medicineListRepository.findAll(pageable);
     }
 
     // --- Purchase History Management ---
@@ -308,15 +210,10 @@ public class MedicineService {
         medicineRepository.save(stock);
 
         // Auto-catalog medicine in lookup dictionary if it does not exist
-        if (!medicineListRepository.existsByNameAndHospitalId(purchase.getName(), hospitalId)) {
+        if (!medicineListRepository.existsByNameIgnoreCase(purchase.getName())) {
             MedicineList newCatalog = new MedicineList();
             newCatalog.setName(purchase.getName());
             newCatalog.setType(purchase.getType() != null ? purchase.getType() : "Tablet");
-            newCatalog.setDefaultDosage(purchase.getDefaultDosage());
-            newCatalog.setDefaultFrequency(purchase.getDefaultFrequency());
-            newCatalog.setDefaultDuration(purchase.getDefaultDuration());
-            newCatalog.setManufacturer(purchase.getManufacturer());
-            newCatalog.setHospitalId(hospitalId);
             medicineListRepository.save(newCatalog);
         }
 
@@ -354,26 +251,7 @@ public class MedicineService {
         if (hospitalId == null) {
             throw new UnauthorizedException("Hospital ID not found in context");
         }
-        List<Medicine> list = medicineRepository.findByHospitalId(hospitalId);
-        for (Medicine m : list) {
-            if (m.getDefaultDosage() == null || m.getDefaultDosage().trim().isEmpty() ||
-                m.getDefaultFrequency() == null || m.getDefaultFrequency().trim().isEmpty() ||
-                m.getDefaultDuration() == null || m.getDefaultDuration().trim().isEmpty()) {
-                
-                getCatalogMatch(m.getName(), hospitalId).ifPresent(catalog -> {
-                    if (m.getDefaultDosage() == null || m.getDefaultDosage().trim().isEmpty()) {
-                        m.setDefaultDosage(catalog.getDefaultDosage());
-                    }
-                    if (m.getDefaultFrequency() == null || m.getDefaultFrequency().trim().isEmpty()) {
-                        m.setDefaultFrequency(catalog.getDefaultFrequency());
-                    }
-                    if (m.getDefaultDuration() == null || m.getDefaultDuration().trim().isEmpty()) {
-                        m.setDefaultDuration(catalog.getDefaultDuration());
-                    }
-                });
-            }
-        }
-        return list;
+        return medicineRepository.findByHospitalId(hospitalId);
     }
 
     @Transactional
@@ -389,29 +267,11 @@ public class MedicineService {
         }
 
         // --- Suggestion 2: Auto-catalog if it doesn't exist ---
-        if (!medicineListRepository.existsByNameAndHospitalId(medicine.getName(), hospitalId)) {
+        if (!medicineListRepository.existsByNameIgnoreCase(medicine.getName())) {
             MedicineList newCatalog = new MedicineList();
             newCatalog.setName(medicine.getName());
             newCatalog.setType(medicine.getType() != null ? medicine.getType() : "Tablet");
-            newCatalog.setDefaultDosage(medicine.getDefaultDosage());
-            newCatalog.setDefaultFrequency(medicine.getDefaultFrequency());
-            newCatalog.setDefaultDuration(medicine.getDefaultDuration());
-            newCatalog.setManufacturer(medicine.getManufacturer());
-            newCatalog.setHospitalId(hospitalId);
             medicineListRepository.save(newCatalog);
-        } else {
-            // Copy defaults from catalog if medicine defaults are blank
-            getCatalogMatch(medicine.getName(), hospitalId).ifPresent(catalog -> {
-                if (medicine.getDefaultDosage() == null || medicine.getDefaultDosage().trim().isEmpty()) {
-                    medicine.setDefaultDosage(catalog.getDefaultDosage());
-                }
-                if (medicine.getDefaultFrequency() == null || medicine.getDefaultFrequency().trim().isEmpty()) {
-                    medicine.setDefaultFrequency(catalog.getDefaultFrequency());
-                }
-                if (medicine.getDefaultDuration() == null || medicine.getDefaultDuration().trim().isEmpty()) {
-                    medicine.setDefaultDuration(catalog.getDefaultDuration());
-                }
-            });
         }
 
         medicine.setHospitalId(hospitalId);
@@ -461,23 +321,7 @@ public class MedicineService {
         String freq = request.getDefaultFrequency();
         String dur = request.getDefaultDuration();
 
-        if (dosage == null || dosage.trim().isEmpty() ||
-            freq == null || freq.trim().isEmpty() ||
-            dur == null || dur.trim().isEmpty()) {
-            Optional<MedicineList> catalogOpt = getCatalogMatch(request.getName(), hospitalId);
-            if (catalogOpt.isPresent()) {
-                MedicineList catalog = catalogOpt.get();
-                if (dosage == null || dosage.trim().isEmpty()) {
-                    dosage = catalog.getDefaultDosage();
-                }
-                if (freq == null || freq.trim().isEmpty()) {
-                    freq = catalog.getDefaultFrequency();
-                }
-                if (dur == null || dur.trim().isEmpty()) {
-                    dur = catalog.getDefaultDuration();
-                }
-            }
-        }
+        // No catalog defaults lookup since catalog is global and has only name/type.
 
         medicine.setDefaultDosage(dosage);
         medicine.setDefaultFrequency(freq);
@@ -557,33 +401,28 @@ public class MedicineService {
         if (medicineListRepository.count() == 0) {
             System.out.println("Seeding initial medicines into catalog...");
             List<MedicineList> initialCatalog = Arrays.asList(
-                    createMedicineCatalog("Paracetamol", "Tablet", "500mg", "1-0-1", "3 Days", "Generic"),
-                    createMedicineCatalog("Amoxicillin", "Capsule", "500mg", "1-1-1", "5 Days", "Generic"),
-                    createMedicineCatalog("Ibuprofen", "Tablet", "400mg", "1-0-1", "3 Days", "Generic"),
-                    createMedicineCatalog("Cetirizine", "Tablet", "10mg", "0-0-1", "3 Days", "Generic"),
-                    createMedicineCatalog("Cough Syrup", "Syrup", "10ml", "1-1-1", "5 Days", "Generic"),
-                    createMedicineCatalog("Azithromycin", "Tablet", "500mg", "1-0-0", "3 Days", "Generic"),
-                    createMedicineCatalog("Metformin", "Tablet", "500mg", "1-0-1", "30 Days", "Generic"),
-                    createMedicineCatalog("Amlodipine", "Tablet", "5mg", "1-0-0", "30 Days", "Generic"),
-                    createMedicineCatalog("Omeprazole", "Capsule", "20mg", "1-0-0", "7 Days", "Generic"),
-                    createMedicineCatalog("Pantoprazole", "Tablet", "40mg", "1-0-0", "7 Days", "Generic"),
-                    createMedicineCatalog("Normal Saline 500ml", "Saline", "500ml", "Once", "1 Day", "Generic"),
-                    createMedicineCatalog("Ringer Lactate 500ml", "Saline", "500ml", "Once", "1 Day", "Generic"),
-                    createMedicineCatalog("Diclofenac Injection", "Injection", "75mg/3ml", "Once", "1 Day", "Generic")
+                    createMedicineCatalog("Paracetamol", "Tablet"),
+                    createMedicineCatalog("Amoxicillin", "Capsule"),
+                    createMedicineCatalog("Ibuprofen", "Tablet"),
+                    createMedicineCatalog("Cetirizine", "Tablet"),
+                    createMedicineCatalog("Cough Syrup", "Syrup"),
+                    createMedicineCatalog("Azithromycin", "Tablet"),
+                    createMedicineCatalog("Metformin", "Tablet"),
+                    createMedicineCatalog("Amlodipine", "Tablet"),
+                    createMedicineCatalog("Omeprazole", "Capsule"),
+                    createMedicineCatalog("Pantoprazole", "Tablet"),
+                    createMedicineCatalog("Normal Saline 500ml", "Saline"),
+                    createMedicineCatalog("Ringer Lactate 500ml", "Saline"),
+                    createMedicineCatalog("Diclofenac Injection", "Injection")
             );
             medicineListRepository.saveAll(initialCatalog);
         }
     }
 
-    private MedicineList createMedicineCatalog(String name, String type, String dosage, String freq, String duration, String manufacturer) {
+    private MedicineList createMedicineCatalog(String name, String type) {
         MedicineList m = new MedicineList();
         m.setName(name);
         m.setType(type);
-        m.setDefaultDosage(dosage);
-        m.setDefaultFrequency(freq);
-        m.setDefaultDuration(duration);
-        m.setManufacturer(manufacturer);
-        m.setIsActive(true);
         return m;
     }
 }

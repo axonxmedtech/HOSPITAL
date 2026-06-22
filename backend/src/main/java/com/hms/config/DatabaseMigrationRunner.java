@@ -32,6 +32,7 @@ public class DatabaseMigrationRunner {
         ensureWhatsAppMessageLogTable();  // NEW
         ensureWhatsAppMessageLogRetryColumns();
         ensureMissingIndexes();
+        simplifyMedicineListTable();
     }
 
     /**
@@ -217,6 +218,35 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped (index {} on {}): {}", indexName, table, e.getMessage());
+        }
+    }
+
+    private void simplifyMedicineListTable() {
+        try {
+            // 1. Deduplicate by name and type, keeping only the first id
+            jdbcTemplate.execute(
+                "DELETE m1 FROM medicine_list m1 " +
+                "INNER JOIN medicine_list m2 " +
+                "ON LOWER(m1.name) = LOWER(m2.name) AND LOWER(m1.type) = LOWER(m2.type) " +
+                "WHERE m1.id > m2.id"
+            );
+            log.info("DB migration applied: deduplicated medicine_list table");
+
+            // 2. Drop columns if they exist
+            String[] colsToDrop = {"default_dosage", "default_frequency", "default_duration", "manufacturer", "hospital_id", "is_active", "created_at"};
+            for (String col : colsToDrop) {
+                Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'medicine_list' AND COLUMN_NAME = ?",
+                    Integer.class, col
+                );
+                if (count != null && count > 0) {
+                    jdbcTemplate.execute("ALTER TABLE medicine_list DROP COLUMN `" + col + "`");
+                    log.info("DB migration applied: dropped column medicine_list." + col);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (simplifyMedicineListTable): {}", e.getMessage());
         }
     }
 }

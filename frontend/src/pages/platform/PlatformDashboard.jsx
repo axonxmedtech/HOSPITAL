@@ -16,6 +16,7 @@ import { createColumnHelper } from '@tanstack/react-table';
 import ProfileModal from '../../components/ProfileModal';
 import { SkeletonTable, SkeletonDashboard, SkeletonStatsGrid } from '../../components/Skeleton';
 import PlansTab from '../../components/PlansTab';
+import PlatformMedicinesTab from '../../components/PlatformMedicinesTab';
 
 /**
  * PlatformDashboard - Super Admin dashboard
@@ -483,6 +484,7 @@ const PlatformDashboard = () => {
         { id: 'audit_logs', label: 'Audit Logs' },
         { id: 'tickets', label: 'Tickets' },
         { id: 'faqs', label: 'FAQs' },
+        { id: 'medicines', label: 'Medicines' },
     ];
 
     return (
@@ -528,6 +530,8 @@ const PlatformDashboard = () => {
                                         ? 'View and resolve support tickets submitted by hospital admins.'
                                         : activeTab === 'faqs'
                                         ? 'Manage global frequently asked questions for hospital admins.'
+                                        : activeTab === 'medicines'
+                                        ? 'Manage the central unified global medicine catalog directory.'
                                         : 'Track system activities and administrative actions across the platform.'
                                 }
                                 onAdd={
@@ -757,6 +761,11 @@ const PlatformDashboard = () => {
                     {/* Plans Tab */}
                     {activeTab === 'plans' && (
                         <PlansTab />
+                    )}
+
+                    {/* Medicines Tab */}
+                    {activeTab === 'medicines' && (
+                        <PlatformMedicinesTab />
                     )}
 
                     {/* Content Sections */}
