@@ -43,6 +43,8 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
 
         List<Patient> findByHospitalIdAndIsActiveTrueOrderByCreatedAtDesc(Long hospitalId);
 
+        List<Patient> findByHospitalIdAndIsActiveTrue(Long hospitalId);
+
         /**
          * Find an active patient by ID and hospital ID
          * Ensures multi-tenant isolation - patient must belong to the hospital
