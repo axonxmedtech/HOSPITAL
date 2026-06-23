@@ -413,7 +413,15 @@ public class PatientService {
                 hospitalId, publicId, patient.getStatus(), status);
 
         patient.setStatus(status);
-        return patientRepository.save(patient);
+        Patient saved = patientRepository.save(patient);
+
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after patient status update", e);
+        }
+
+        return saved;
     }
 
     /**

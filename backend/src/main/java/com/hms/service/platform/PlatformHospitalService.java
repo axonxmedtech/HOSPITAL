@@ -165,6 +165,8 @@ public class PlatformHospitalService {
             doctor.setSpecialization("General Physician");
             doctor.setPhone("0000000055");
             doctor.setIsActive(true);
+            doctor = doctorRepository.save(doctor);
+            doctor.setCustomId("DOC" + doctor.getId());
             doctorRepository.save(doctor);
         }
 
@@ -403,6 +405,8 @@ public class PlatformHospitalService {
                     doctor.setSpecialization("General Physician");
                     doctor.setPhone("0000000055");
                     doctor.setIsActive(true);
+                    doctor = doctorRepository.save(doctor);
+                    doctor.setCustomId("DOC" + doctor.getId());
                     doctorRepository.save(doctor);
                 }
             }

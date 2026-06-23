@@ -1817,6 +1817,29 @@ const HospitalAdminDashboard = () => {
                                     )
                                 )}
 
+                                {activeTab === 'appointments' && (
+                                    appointments.length > 0 ? (
+                                        <AppointmentsTable
+                                            appointments={appointments}
+                                            doctors={doctors}
+                                            isAdmin={user?.role === 'HOSPITAL_ADMIN'}
+                                            onDelete={handleDeleteAppointment}
+                                            onStatusUpdate={onAppointmentStatusUpdate}
+                                            onHistory={(item) => handleHistory('APPOINTMENT', item.publicId || item.id, "Appointment")}
+                                            startIndex={page * pageSize}
+                                            pagination={pagination}
+                                        />
+                                    ) : (
+                                        <EmptyState
+                                            icon={null}
+                                            title="No Appointments Found"
+                                            message="No appointment records match your search."
+                                            actionLabel="Schedule Appointment"
+                                            onAction={user?.role === 'HOSPITAL_ADMIN' ? () => handleAdd('appointments') : null}
+                                        />
+                                    )
+                                )}
+
                                 {activeTab === 'pharmacists' && (
                                     pharmacists.length > 0 ? (
                                         <PharmacistsTable pharmacists={pharmacists} isAdmin={user?.role === 'HOSPITAL_ADMIN'} onDelete={handleDeletePharmacist} onEdit={(pharm) => handleEdit(pharm, 'pharmacists')} onViewDetails={(pharm) => handleViewStaffDetails(pharm, 'pharmacist')} onResetPassword={(pharm) => handleResetStaffPassword(pharm, 'pharmacist')} startIndex={page * pageSize} pagination={pagination} />
@@ -3088,7 +3111,7 @@ const HospitalAdminDashboard = () => {
                         setShowModal(false);
                         setModalType(null);
                         success('Record saved successfully');
-                        loadData();
+                        loadData(page, pageSize, false);
                     }}
                     doctors={doctors}
                     patients={patients}

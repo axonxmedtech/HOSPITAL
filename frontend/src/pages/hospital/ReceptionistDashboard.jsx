@@ -973,11 +973,6 @@ const ReceptionistDashboard = () => {
                                                     <option value="">All Doctors</option>
                                                     {doctors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                                                 </select>
-                                                <div className="absolute inset-y-0 right-0 flex items-center pr-2.5 pointer-events-none text-gray-400">
-                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                                    </svg>
-                                                </div>
                                             </div>
                                         )}
                                     </div>
@@ -1406,7 +1401,7 @@ const ReceptionistDashboard = () => {
                 <AppointmentModal
                     isOpen={isAddModalOpen}
                     onClose={() => setIsAddModalOpen(false)}
-                    onSuccess={loadData}
+                    onSuccess={() => loadData(false)}
                     doctors={doctors}
                     patients={patients}
                 />

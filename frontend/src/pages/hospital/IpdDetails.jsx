@@ -51,8 +51,13 @@ const IpdDetails = () => {
     const hasInClinic = user?.inClinic !== false;
     const modules = user?.modules || [];
 
+    const activeDashboard = sessionStorage.getItem('activeDashboard');
+    const effectiveRole = (user?.role === 'HOSPITAL_ADMIN' && user?.isSingleDoctor && activeDashboard !== 'admin')
+        ? 'DOCTOR'
+        : user?.role;
+
     const getSidebarTabs = () => {
-        if (user?.role === 'HOSPITAL_ADMIN') {
+        if (effectiveRole === 'HOSPITAL_ADMIN') {
             const adminAllTabs = [
                 { id: 'overview', label: 'Overview', requiredModule: 'OPD' },
                 { id: 'patients', label: 'Patients', requiredModule: 'OPD' },
@@ -72,7 +77,7 @@ const IpdDetails = () => {
                 { id: 'settings', label: 'Settings', requiredModule: 'OPD' },
             ];
             return adminAllTabs.filter(tab => !tab.requiredModule || modules.includes(tab.requiredModule));
-        } else if (user?.role === 'DOCTOR') {
+        } else if (effectiveRole === 'DOCTOR') {
             return [
                 { id: 'overview', label: 'Overview' },
                 { id: 'appointments', label: 'My Appointments' },
@@ -84,7 +89,7 @@ const IpdDetails = () => {
                 ...((isSolo && hasInClinic) ? [{ id: 'inventory', label: 'Medicine Inventory' }] : []),
                 ...(isSolo ? [{ id: 'hospital-inventory', label: 'Hospital Inventory' }] : []),
             ];
-        } else if (user?.role === 'RECEPTIONIST') {
+        } else if (effectiveRole === 'RECEPTIONIST') {
             return [
                 { id: 'overview', label: 'Overview' },
                 { id: 'patients', label: 'Patients' },
@@ -93,7 +98,7 @@ const IpdDetails = () => {
                 { id: 'billing', label: 'Billing' },
                 ...(user?.inClinic !== false ? [{ id: 'inventory', label: 'Medicine Inventory' }] : [])
             ].filter(tab => tab.id !== 'billing' || user?.billingHandler !== 'DOCTOR');
-        } else if (user?.role === 'PHARMACIST') {
+        } else if (effectiveRole === 'PHARMACIST') {
             const isStandalonePharmacy = modules.includes('PHARMACY') && !modules.includes('OPD');
             return [
                 { id: 'dashboard', label: 'Dashboard' },
@@ -112,13 +117,13 @@ const IpdDetails = () => {
     };
 
     const handleTabChange = (tabId) => {
-        if (user?.role === 'HOSPITAL_ADMIN') {
+        if (effectiveRole === 'HOSPITAL_ADMIN') {
             navigate(`/hospital/admin?tab=${tabId}`);
-        } else if (user?.role === 'DOCTOR') {
+        } else if (effectiveRole === 'DOCTOR') {
             navigate(`/hospital/doctor?tab=${tabId}`);
-        } else if (user?.role === 'RECEPTIONIST') {
+        } else if (effectiveRole === 'RECEPTIONIST') {
             navigate(`/hospital/receptionist?tab=${tabId}`);
-        } else if (user?.role === 'PHARMACIST') {
+        } else if (effectiveRole === 'PHARMACIST') {
             navigate(`/hospital/pharmacy?tab=${tabId}`);
         }
     };
