@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import nurseService from '../../services/nurseService';
 import PatientClinicalRecord from '../../components/nurse/PatientClinicalRecord';
+import MedicationAdministrationModal from '../../components/nurse/MedicationAdministrationModal';
 
 export default function NurseDashboard() {
   const [tab, setTab] = useState('patients');
@@ -9,6 +10,7 @@ export default function NurseDashboard() {
   const [selectedAdmission, setSelectedAdmission] = useState(null);
   const [wardFilter, setWardFilter] = useState('');
   const [loading, setLoading] = useState(false);
+  const [administerTarget, setAdministerTarget] = useState(null);
 
   useEffect(() => {
     if (tab === 'patients') loadPatients();
@@ -162,24 +164,29 @@ export default function NurseDashboard() {
                     {isOverdue && <span className="ml-2 text-red-600 font-semibold">OVERDUE</span>}
                   </p>
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleExecuteTask(task, 'DONE')}
-                    className="px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700"
-                  >
-                    Done
-                  </button>
-                  <button
-                    onClick={() => handleExecuteTask(task, 'SKIPPED')}
-                    className="px-3 py-1.5 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300"
-                  >
-                    Skip
-                  </button>
-                </div>
-              </div>
+                 <div className="flex gap-2">
+                   <button
+                     onClick={() => setAdministerTarget(task)}
+                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl shadow-sm transition-all active:scale-95"
+                   >
+                     {task.orderType === 'MEDICATION' ? '💊 Administer' : '📋 Execute'}
+                   </button>
+                 </div>
+               </div>
             );
           })}
         </div>
+      )}
+      {administerTarget && (
+        <MedicationAdministrationModal
+          task={administerTarget}
+          onClose={() => setAdministerTarget(null)}
+          onSave={async (payload) => {
+            await nurseService.executeTask(administerTarget.ipdAdmissionId, administerTarget.id, payload);
+            setAdministerTarget(null);
+            loadTasks();
+          }}
+        />
       )}
     </div>
   );

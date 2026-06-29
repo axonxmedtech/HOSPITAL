@@ -45,8 +45,8 @@ const nurseService = {
     apiService.get(`/api/ipd/${admissionId}/tasks`),
   getPendingTasks: (admissionId) =>
     apiService.get(`/api/ipd/${admissionId}/tasks/pending`),
-  executeTask: (admissionId, taskId, status, notes = '') =>
-    apiService.put(`/api/ipd/${admissionId}/tasks/${taskId}/execute`, { status, notes }),
+  executeTask: (admissionId, taskId, payload) =>
+    apiService.put(`/api/ipd/${admissionId}/tasks/${taskId}/execute`, payload),
 };
 
 export default nurseService;

@@ -29,12 +29,13 @@ public class NurseTaskService {
     }
 
     @Transactional
-    public NurseTask executeTask(Long admissionId, Long taskId, String status, String notes) {
+    public NurseTask executeTask(Long admissionId, Long taskId, String status, String notes,
+                                 Double administeredQuantity, String route, String injectionSite, String preVitals) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
 
-        if (!"DONE".equals(status) && !"SKIPPED".equals(status)) {
-            throw new IllegalArgumentException("status must be DONE or SKIPPED");
+        if (!"DONE".equals(status) && !"SKIPPED".equals(status) && !"REFUSED".equals(status) && !"HELD".equals(status)) {
+            throw new IllegalArgumentException("status must be DONE, SKIPPED, REFUSED, or HELD");
         }
 
         NurseTask task = taskRepository.findById(taskId)
@@ -51,6 +52,10 @@ public class NurseTaskService {
         task.setExecutedAt(LocalDateTime.now());
         task.setExecutedByName(securityHelper.getCurrentUserEmail());
         task.setNotes(notes);
+        task.setAdministeredQuantity(administeredQuantity);
+        task.setRoute(route);
+        task.setInjectionSite(injectionSite);
+        task.setPreVitals(preVitals);
         return taskRepository.save(task);
     }
 }

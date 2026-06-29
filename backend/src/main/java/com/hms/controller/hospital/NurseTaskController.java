@@ -30,12 +30,22 @@ public class NurseTaskController {
     @PreAuthorize("hasAnyRole('NURSE', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> executeTask(@PathVariable Long admissionId,
                                           @PathVariable Long taskId,
-                                          @RequestBody Map<String, String> body) {
-        String status = body.getOrDefault("status", "DONE");
-        if (!"DONE".equals(status) && !"SKIPPED".equals(status))
-            return ResponseEntity.badRequest().body("status must be DONE or SKIPPED");
+                                          @RequestBody Map<String, Object> body) {
+        String status = (String) body.getOrDefault("status", "DONE");
+        if (!"DONE".equals(status) && !"SKIPPED".equals(status) && !"REFUSED".equals(status) && !"HELD".equals(status))
+            return ResponseEntity.badRequest().body("status must be DONE, SKIPPED, REFUSED, or HELD");
+
+        String notes = (String) body.get("notes");
+        Double administeredQuantity = body.get("administeredQuantity") != null
+                ? Double.valueOf(body.get("administeredQuantity").toString())
+                : null;
+        String route = (String) body.get("route");
+        String injectionSite = (String) body.get("injectionSite");
+        String preVitals = (String) body.get("preVitals");
+
         try {
-            return ResponseEntity.ok(taskService.executeTask(admissionId, taskId, status, body.get("notes")));
+            return ResponseEntity.ok(taskService.executeTask(
+                    admissionId, taskId, status, notes, administeredQuantity, route, injectionSite, preVitals));
         } catch (IllegalStateException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         } catch (IllegalArgumentException | UnauthorizedException e) {

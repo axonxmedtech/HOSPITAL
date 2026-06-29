@@ -38,10 +38,22 @@ public class NurseTask {
     @Column(name = "executed_by_name", length = 100)
     private String executedByName;
 
-    // PENDING, DONE, SKIPPED
+    // PENDING, DONE, SKIPPED, REFUSED, HELD
     @Column(nullable = false, length = 20)
     private String status = "PENDING";
 
     @Column(columnDefinition = "TEXT")
     private String notes;
+
+    @Column(name = "administered_quantity")
+    private Double administeredQuantity;
+
+    @Column(length = 50)
+    private String route;
+
+    @Column(name = "injection_site", length = 100)
+    private String injectionSite;
+
+    @Column(name = "pre_vitals", length = 255)
+    private String preVitals;
 }

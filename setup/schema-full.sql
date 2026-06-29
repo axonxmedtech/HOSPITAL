@@ -1071,6 +1071,10 @@ CREATE TABLE IF NOT EXISTS nurse_tasks (
     executed_by_name VARCHAR(100),
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
     notes TEXT,
+    administered_quantity DECIMAL(5,2) NULL,
+    route VARCHAR(50) NULL,
+    injection_site VARCHAR(100) NULL,
+    pre_vitals VARCHAR(255) NULL,
     CONSTRAINT fk_nt_order FOREIGN KEY (doctor_order_id) REFERENCES doctor_orders(id)
 );
 
