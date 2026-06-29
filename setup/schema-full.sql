@@ -979,3 +979,96 @@ CREATE TABLE IF NOT EXISTS `whatsapp_message_log` (
   KEY `idx_wml_hospital_status` (`hospital_id`, `status`),
   KEY `idx_wml_retry` (`status`, `next_retry_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- =============================================
+-- NURSE IPD WORKFLOW (Phase 1)
+-- =============================================
+
+CREATE TABLE IF NOT EXISTS nurses (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    public_id VARCHAR(36) NOT NULL UNIQUE,
+    custom_id VARCHAR(20),
+    hospital_id BIGINT NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) NOT NULL,
+    phone VARCHAR(15),
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_nurse_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+);
+
+CREATE TABLE IF NOT EXISTS nurse_ward_assignments (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    nurse_id BIGINT NOT NULL,
+    ward_id BIGINT NOT NULL,
+    UNIQUE KEY uq_nurse_ward (nurse_id, ward_id),
+    CONSTRAINT fk_nwa_nurse FOREIGN KEY (nurse_id) REFERENCES nurses(id),
+    CONSTRAINT fk_nwa_ward FOREIGN KEY (ward_id) REFERENCES wards(id)
+);
+
+CREATE TABLE IF NOT EXISTS nurse_assessments (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    ipd_admission_id BIGINT NOT NULL UNIQUE,
+    hospital_id BIGINT NOT NULL,
+    blood_pressure VARCHAR(20),
+    pulse INT,
+    temperature DECIMAL(4,1),
+    spo2 INT,
+    height DECIMAL(5,1),
+    weight DECIMAL(5,1),
+    pain_score INT,
+    allergies TEXT,
+    fall_risk VARCHAR(10),
+    general_condition TEXT,
+    chief_complaint_on_admission TEXT,
+    assessed_by BIGINT,
+    assessed_by_name VARCHAR(100),
+    assessed_at DATETIME,
+    CONSTRAINT fk_na_ipd FOREIGN KEY (ipd_admission_id) REFERENCES ipd_admission(id)
+);
+
+CREATE TABLE IF NOT EXISTS vital_signs (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    ipd_admission_id BIGINT NOT NULL,
+    hospital_id BIGINT NOT NULL,
+    blood_pressure VARCHAR(20),
+    pulse INT,
+    temperature DECIMAL(4,1),
+    spo2 INT,
+    recorded_by BIGINT,
+    recorded_by_name VARCHAR(100),
+    recorded_at DATETIME NOT NULL,
+    CONSTRAINT fk_vs_ipd FOREIGN KEY (ipd_admission_id) REFERENCES ipd_admission(id)
+);
+
+CREATE TABLE IF NOT EXISTS doctor_orders (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    public_id VARCHAR(36) NOT NULL UNIQUE,
+    ipd_admission_id BIGINT NOT NULL,
+    hospital_id BIGINT NOT NULL,
+    order_type VARCHAR(20) NOT NULL,
+    description TEXT NOT NULL,
+    frequency VARCHAR(20),
+    start_date DATE,
+    end_date DATE,
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    created_by BIGINT,
+    created_by_name VARCHAR(100),
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    notes TEXT,
+    CONSTRAINT fk_do_ipd FOREIGN KEY (ipd_admission_id) REFERENCES ipd_admission(id)
+);
+
+CREATE TABLE IF NOT EXISTS nurse_tasks (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    doctor_order_id BIGINT NOT NULL,
+    ipd_admission_id BIGINT NOT NULL,
+    hospital_id BIGINT NOT NULL,
+    scheduled_at DATETIME,
+    executed_at DATETIME,
+    executed_by BIGINT,
+    executed_by_name VARCHAR(100),
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    notes TEXT,
+    CONSTRAINT fk_nt_order FOREIGN KEY (doctor_order_id) REFERENCES doctor_orders(id)
+);
