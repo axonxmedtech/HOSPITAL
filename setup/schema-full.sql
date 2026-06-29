@@ -850,6 +850,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_hospital_ts ON audit_logs(hospital_id,
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_doctors_hospital ON doctors(hospital_id);
 CREATE INDEX IF NOT EXISTS idx_ipd_admissions_hospital ON ipd_admissions(hospital_id, status);
+CREATE INDEX IF NOT EXISTS idx_nurses_hospital_id ON nurses(hospital_id);
 
 --
 -- Table structure for table `plans`
