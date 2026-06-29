@@ -10,6 +10,7 @@ import com.hms.security.SecurityContextHelper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -36,8 +37,8 @@ public class NurseDashboardService {
         List<NurseWardAssignment> assignments = wardAssignmentRepository.findByNurseId(nurse.getId());
         if (assignments.isEmpty()) return allAdmitted;
 
-        List<Long> wardIds = assignments.stream()
-                .map(NurseWardAssignment::getWardId).collect(Collectors.toList());
+        Set<Long> wardIds = assignments.stream()
+                .map(NurseWardAssignment::getWardId).collect(Collectors.toSet());
         return allAdmitted.stream()
                 .filter(a -> a.getWardId() != null && wardIds.contains(a.getWardId()))
                 .collect(Collectors.toList());

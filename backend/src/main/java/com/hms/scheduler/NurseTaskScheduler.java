@@ -22,6 +22,8 @@ public class NurseTaskScheduler {
     @Scheduled(cron = "0 0 6 * * *")
     public void generateDailyTasks() {
         logger.info("NurseTaskScheduler: generating daily tasks");
+        // Intentionally fetches across all hospitals — scheduler runs outside request context.
+        // hospitalId is preserved on each DoctorOrder and propagated to created NurseTask.
         List<DoctorOrder> recurringOrders = orderRepository
                 .findByStatusAndFrequencyNot("ACTIVE", "SOS");
         for (DoctorOrder order : recurringOrders) {
