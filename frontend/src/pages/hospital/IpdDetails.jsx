@@ -12,6 +12,7 @@ import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import ProfileModal from '../../components/ProfileModal';
 import ConfirmationModal from '../../components/ConfirmationModal';
+import DoctorOrdersPanel from '../../components/nurse/DoctorOrdersPanel';
 
 const IpdDetails = () => {
     const { id } = useParams();
@@ -527,6 +528,12 @@ const IpdDetails = () => {
                             <button className="px-3 py-1 bg-green-600 text-white rounded" onClick={onAddFollowUp}>+ Add Follow-up</button>
                         )}
                     </div>
+
+                    <hr className="my-4" />
+
+                    {(isDoctor || isAdmin) && (
+                        <DoctorOrdersPanel admissionId={id} />
+                    )}
 
                     {followupModal.isOpen && (
                         <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
