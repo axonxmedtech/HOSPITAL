@@ -486,6 +486,13 @@ const hospitalService = {
         const response = await apiClient.post(`/api/ipd/${id}/confirm-discharge`);
         return response.data;
     },
+    downloadDischargeSummaryPdf: async (id) => {
+        const response = await apiClient.get(`/api/ipd/${id}/discharge-summary/pdf`, {
+            responseType: 'blob',
+            timeout: 60000
+        });
+        return response.data;
+    },
     getIpdBill: async (ipdId) => {
         const response = await apiClient.get(`/hospital/billing/ipd/${ipdId}/bill`);
         return response.data;

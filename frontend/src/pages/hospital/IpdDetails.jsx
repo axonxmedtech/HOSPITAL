@@ -227,6 +227,7 @@ const IpdDetails = () => {
     }, [medicineModal.medicineName, medicineModal.medicineId]);
     const [billModal, setBillModal] = useState({ isOpen: false, loading: false, bill: null });
     const [printingBill, setPrintingBill] = useState(false);
+    const [downloadingPdf, setDownloadingPdf] = useState(false);
     const [payment, setPayment] = useState({ amount: '', mode: 'CASH', saving: false });
     const [bedModal, setBedModal] = useState({ isOpen: false, wards: [], selectedWard: '', beds: [], selectedBed: '', saving: false });
 
@@ -394,6 +395,28 @@ const IpdDetails = () => {
                 }
             }
         });
+    };
+
+    const handleDownloadDischargeSummaryPdf = async () => {
+        if (downloadingPdf) return;
+        setDownloadingPdf(true);
+        try {
+            const blob = await hospitalService.downloadDischargeSummaryPdf(id);
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `discharge_summary_${data?.ipdNumber || id}.pdf`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+            success('Discharge summary PDF downloaded successfully!');
+        } catch (err) {
+            console.error('Failed to download discharge summary PDF', err);
+            toastError('Failed to download discharge summary PDF');
+        } finally {
+            setDownloadingPdf(false);
+        }
     };
 
     const openBillModal = async () => {
@@ -1167,6 +1190,21 @@ const IpdDetails = () => {
                     <hr className="my-4" />
 
                     <h3 className="font-semibold mb-2">Discharge</h3>
+                    {data?.dischargeSummary && (
+                        <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 mb-3 text-xs space-y-2">
+                            <div><strong>Diagnosis:</strong> {data.dischargeSummary.finalDiagnosis}</div>
+                            {data.dischargeSummary.treatmentGiven && <div><strong>Treatment:</strong> {data.dischargeSummary.treatmentGiven}</div>}
+                            {data.dischargeSummary.dischargeNotes && <div><strong>Instructions:</strong> {data.dischargeSummary.dischargeNotes}</div>}
+                            {data.dischargeSummary.followUpDate && <div><strong>Follow-up:</strong> {new Date(data.dischargeSummary.followUpDate).toLocaleDateString()}</div>}
+                            <button
+                                onClick={handleDownloadDischargeSummaryPdf}
+                                disabled={downloadingPdf}
+                                className="w-full mt-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-center transition-all disabled:opacity-50 text-[10px] font-bold"
+                            >
+                                {downloadingPdf ? 'Downloading...' : '📥 Download Summary PDF'}
+                            </button>
+                        </div>
+                    )}
                     {isDoctor && data.status === 'ADMITTED' && (
                         <button className="px-3 py-1 bg-yellow-600 text-white rounded" onClick={onPlanDischarge}>📝 Plan Discharge</button>
                     )}

@@ -63,6 +63,15 @@ public class IpdAdmissionDetailsDTO {
 
     private List<AdministeredItemDTO> administeredItems;
 
+    public static class DischargeSummaryDTO {
+        public String finalDiagnosis;
+        public String treatmentGiven;
+        public String dischargeNotes;
+        public String followUpDate;
+    }
+
+    private DischargeSummaryDTO dischargeSummary;
+
     public String getIpdNumber() { return ipdNumber; }
     public void setIpdNumber(String ipdNumber) { this.ipdNumber = ipdNumber; }
 
@@ -89,4 +98,7 @@ public class IpdAdmissionDetailsDTO {
 
     public List<AdministeredItemDTO> getAdministeredItems() { return administeredItems; }
     public void setAdministeredItems(List<AdministeredItemDTO> administeredItems) { this.administeredItems = administeredItems; }
+
+    public DischargeSummaryDTO getDischargeSummary() { return dischargeSummary; }
+    public void setDischargeSummary(DischargeSummaryDTO dischargeSummary) { this.dischargeSummary = dischargeSummary; }
 }

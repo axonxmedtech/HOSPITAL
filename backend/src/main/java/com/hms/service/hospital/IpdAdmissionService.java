@@ -495,6 +495,18 @@ public class IpdAdmissionService {
         }
         dto.setAdministeredItems(administeredDtos);
 
+        // discharge summary
+        try {
+            dischargeSummaryRepository.findByIpdAdmissionId(ipdId).ifPresent(ds -> {
+                com.hms.dto.IpdAdmissionDetailsDTO.DischargeSummaryDTO dsd = new com.hms.dto.IpdAdmissionDetailsDTO.DischargeSummaryDTO();
+                dsd.finalDiagnosis = ds.getFinalDiagnosis();
+                dsd.treatmentGiven = ds.getTreatmentGiven();
+                dsd.dischargeNotes = ds.getDischargeNotes();
+                dsd.followUpDate = ds.getFollowUpDate() != null ? ds.getFollowUpDate().toString() : null;
+                dto.setDischargeSummary(dsd);
+            });
+        } catch (Exception ignored) {}
+
         return dto;
     }
 

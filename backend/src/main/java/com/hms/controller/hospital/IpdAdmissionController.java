@@ -123,4 +123,64 @@ public class IpdAdmissionController {
         IpdAdmission updated = ipdAdmissionService.changeBed(id, newBedId);
         return ResponseEntity.ok(updated);
     }
+
+    @Autowired
+    private com.hms.repository.HospitalRepository hospitalRepository;
+
+    @Autowired
+    private com.hms.service.hospital.PatientService patientService;
+
+    @Autowired
+    private com.hms.repository.DischargeSummaryRepository dischargeSummaryRepository;
+
+    @Autowired
+    private com.hms.repository.DoctorRepository doctorRepository;
+
+    @Autowired
+    private com.hms.service.PdfService pdfService;
+
+    @Autowired
+    private com.hms.repository.IpdAdmissionRepository ipdAdmissionRepository;
+
+    @GetMapping("/{id}/discharge-summary/pdf")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'NURSE', 'RECEPTIONIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> getDischargeSummaryPdf(@PathVariable("id") Long id) {
+        try {
+            Long hospitalId = securityHelper.getCurrentHospitalId();
+            
+            IpdAdmission ipd = ipdAdmissionRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("IPD admission not found"));
+            if (!ipd.getHospitalId().equals(hospitalId)) {
+                throw new org.springframework.security.access.AccessDeniedException("Access denied: Tenant mismatch");
+            }
+            
+            com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
+                    .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                    
+            com.hms.entity.Patient patient = patientService.getPatientById(ipd.getPatientId());
+            
+            com.hms.entity.DischargeSummary summary = dischargeSummaryRepository.findByIpdAdmissionId(id)
+                    .orElseThrow(() -> new RuntimeException("Discharge summary not found for IPD: " + id));
+                    
+            com.hms.entity.Doctor doctor = null;
+            if (ipd.getDoctorId() != null) {
+                try {
+                    doctor = doctorRepository.findById(ipd.getDoctorId()).orElse(null);
+                } catch (Exception ignored) {}
+            }
+            
+            java.io.ByteArrayInputStream pdf = pdfService.generateDischargeSummaryPdf(hospital, patient, ipd, summary, doctor);
+            
+            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            headers.add("Content-Disposition", "inline; filename=discharge_summary_" + ipd.getIpdNumber() + ".pdf");
+            
+            return ResponseEntity
+                    .ok()
+                    .headers(headers)
+                    .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                    .body(new org.springframework.core.io.InputStreamResource(pdf));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
 }

@@ -95,4 +95,13 @@ public class PdfService {
             String reportType) {
         return reportPdfService.generateOpdReportPdf(hospital, date, opds, reportType);
     }
+
+    public ByteArrayInputStream generateDischargeSummaryPdf(
+            Hospital hospital,
+            Patient patient,
+            IpdAdmission ipd,
+            DischargeSummary summary,
+            Doctor doctor) {
+        return clinicalPdfService.generateDischargeSummaryPdf(hospital, patient, ipd, summary, doctor);
+    }
 }
