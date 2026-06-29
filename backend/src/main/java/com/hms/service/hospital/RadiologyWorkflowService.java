@@ -27,6 +27,7 @@ public class RadiologyWorkflowService {
     @Autowired private AuditLogRepository auditLogRepository;
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private HospitalWebSocketHandler webSocketHandler;
+    @Autowired private BillingService billingService;
 
     // ─── Order placement ──────────────────────────────────────────────────────
 
@@ -50,6 +51,19 @@ public class RadiologyWorkflowService {
         RadiologyOrder saved = radiologyOrderRepository.save(order);
         audit("RADIOLOGY_ORDER_PLACED", "Radiology order placed: " + req.getTestName() +
               (req.getIpdAdmissionId() != null ? " (IPD " + req.getIpdAdmissionId() + ")" : ""), hospitalId);
+
+        // Auto-Billing
+        if (saved.getIpdAdmissionId() != null) {
+            try {
+                java.math.BigDecimal fee = "STAT".equalsIgnoreCase(saved.getPriority())
+                        ? new java.math.BigDecimal("1200.00")
+                        : new java.math.BigDecimal("800.00");
+                billingService.postIpdCharge(saved.getIpdAdmissionId(), "Radiology scan - " + saved.getTestName(), fee);
+            } catch (Exception e) {
+                log.warn("Failed to auto-bill radiology order: {}", e.getMessage());
+            }
+        }
+
         broadcast(hospitalId);
         return saved;
     }

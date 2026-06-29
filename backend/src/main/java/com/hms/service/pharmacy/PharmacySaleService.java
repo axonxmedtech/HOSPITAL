@@ -20,6 +20,8 @@ import java.util.List;
 @Service
 public class PharmacySaleService {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PharmacySaleService.class);
+
     @Autowired
     private PharmacySaleRepository saleRepository;
 
@@ -34,6 +36,12 @@ public class PharmacySaleService {
 
     @Autowired
     private com.hms.repository.PrescriptionRepository prescriptionRepository;
+
+    @Autowired
+    private com.hms.repository.IpdAdmissionRepository ipdAdmissionRepository;
+
+    @Autowired
+    private com.hms.service.hospital.BillingService billingService;
 
     @Transactional
     public PharmacySale createSale(PharmacySaleRequest request) {
@@ -100,7 +108,7 @@ public class PharmacySaleService {
             tx.setCreatedBy(userId);
             transactionRepository.save(tx);
 
-            // 3. Create Sale Item
+            // 3. Populate Sale Item
             PharmacySaleItem item = new PharmacySaleItem();
             item.setPharmacySale(sale);
             item.setMedicineId(itemReq.getMedicineId());
@@ -131,6 +139,30 @@ public class PharmacySaleService {
                 }
             } catch (Exception e) {
                 // Ensure prescription update failure does not crash the sale transaction
+            }
+        }
+
+        // Auto-post to IPD Bill if isIpdBill is true
+        if (savedSale.getIsIpdBill() != null && savedSale.getIsIpdBill()) {
+            try {
+                Long ipdId = savedSale.getIpdAdmissionId();
+                if (ipdId == null) {
+                    List<com.hms.entity.IpdAdmission> activeAdmissions = ipdAdmissionRepository.findByHospitalIdAndStatus(hospitalId, "ADMITTED");
+                    java.util.Optional<com.hms.entity.IpdAdmission> activeIpd = activeAdmissions.stream()
+                        .filter(a -> a.getPatientId().equals(savedSale.getPatientId()))
+                        .findFirst();
+                    if (activeIpd.isPresent()) {
+                        ipdId = activeIpd.get().getId();
+                        savedSale.setIpdAdmissionId(ipdId);
+                        saleRepository.save(savedSale);
+                    }
+                }
+                
+                if (ipdId != null) {
+                    billingService.postIpdCharge(ipdId, "Pharmacy Sale Bill - #" + savedSale.getBillNumber(), savedSale.getNetAmount());
+                }
+            } catch (Exception e) {
+                log.warn("Failed to auto-post pharmacy sale to IPD bill: {}", e.getMessage());
             }
         }
 

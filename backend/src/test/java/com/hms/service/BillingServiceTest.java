@@ -140,4 +140,40 @@ class BillingServiceTest {
         verify(billingRepository).save(captor.capture());
         assertThat(captor.getValue().getAmount()).isEqualByComparingTo(new BigDecimal("400.00"));
     }
+
+    @Test
+    void postIpdCharge_createsBillingItemAndRecalculates() {
+        Long hospitalId = 1L;
+        Long ipdAdmissionId = 100L;
+        
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+
+        Hospital hospital = new Hospital();
+        hospital.setId(hospitalId);
+        hospital.setModules(List.of("BILLING"));
+        when(hospitalRepository.findById(hospitalId)).thenReturn(Optional.of(hospital));
+
+        com.hms.entity.IpdAdmission admission = new com.hms.entity.IpdAdmission();
+        admission.setId(ipdAdmissionId);
+        admission.setPatientId(10L);
+        admission.setDoctorId(20L);
+        admission.setIpdNumber("IPD-999");
+        admission.setHospitalId(hospitalId);
+
+        // Mock returning empty list of bills initially
+        when(billingRepository.findByIpdAdmissionId(ipdAdmissionId)).thenReturn(new ArrayList<>());
+        when(ipdAdmissionRepository.findById(ipdAdmissionId)).thenReturn(Optional.of(admission));
+
+        Billing savedBill = new Billing();
+        savedBill.setId(500L);
+        savedBill.setIpdAdmissionId(ipdAdmissionId);
+        savedBill.setHospitalId(hospitalId);
+        when(billingRepository.save(any(Billing.class))).thenReturn(savedBill);
+        when(billingRepository.findById(500L)).thenReturn(Optional.of(savedBill));
+
+        billingService.postIpdCharge(ipdAdmissionId, "Test Charge", new BigDecimal("150.00"));
+
+        verify(billingRepository, times(2)).save(any(Billing.class));
+        verify(billingItemRepository, times(1)).save(any(BillingItem.class));
+    }
 }

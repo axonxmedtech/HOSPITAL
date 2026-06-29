@@ -41,6 +41,7 @@ public class LabWorkflowService {
     @Autowired private AuditLogRepository auditLogRepository;
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private HospitalWebSocketHandler webSocketHandler;
+    @Autowired private BillingService billingService;
 
     // ─── Order placement ──────────────────────────────────────────────────────
 
@@ -67,6 +68,19 @@ public class LabWorkflowService {
         LabOrder saved = labOrderRepository.save(order);
         audit("LAB_ORDER_PLACED", "Lab order placed: " + req.getTestName() +
               (req.getIpdAdmissionId() != null ? " (IPD " + req.getIpdAdmissionId() + ")" : ""), hospitalId);
+
+        // Auto-Billing
+        if (saved.getIpdAdmissionId() != null) {
+            try {
+                java.math.BigDecimal fee = "STAT".equalsIgnoreCase(saved.getPriority())
+                        ? new java.math.BigDecimal("500.00")
+                        : new java.math.BigDecimal("300.00");
+                billingService.postIpdCharge(saved.getIpdAdmissionId(), "Laboratory test - " + saved.getTestName(), fee);
+            } catch (Exception e) {
+                log.warn("Failed to auto-bill lab order: {}", e.getMessage());
+            }
+        }
+
         broadcast(hospitalId);
         return saved;
     }

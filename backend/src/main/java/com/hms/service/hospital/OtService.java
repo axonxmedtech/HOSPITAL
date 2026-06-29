@@ -41,6 +41,9 @@ public class OtService {
     @Autowired
     private HospitalWebSocketHandler webSocketHandler;
 
+    @Autowired
+    private BillingService billingService;
+
     public List<OtBooking> getBookingsForAdmission(Long ipdAdmissionId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
@@ -193,6 +196,13 @@ public class OtService {
             // Auto-advance status to COMPLETED when sign-out is completed
             booking.setStatus("COMPLETED");
             bookingRepository.save(booking);
+
+            // Auto-Billing
+            try {
+                billingService.postIpdCharge(booking.getIpdAdmissionId(), "Surgery Procedure - " + booking.getProcedureName(), new java.math.BigDecimal("5000.00"));
+            } catch (Exception e) {
+                log.warn("Failed to auto-bill surgery booking: {}", e.getMessage());
+            }
         } else {
             throw new IllegalArgumentException("Invalid checklist phase: " + phase);
         }

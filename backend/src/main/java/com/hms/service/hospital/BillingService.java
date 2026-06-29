@@ -452,5 +452,58 @@ public class BillingService {
             logger.info("Recalculated total for bill {}: {}", billingId, total);
         }
     }
+
+    @Transactional
+    public void postIpdCharge(Long ipdAdmissionId, String description, BigDecimal amount) {
+        Long hospitalId = null;
+        try {
+            hospitalId = securityHelper.getCurrentHospitalId();
+        } catch (Exception ignored) {}
+
+        if (hospitalId == null) {
+            com.hms.entity.IpdAdmission admission = ipdAdmissionRepository.findById(ipdAdmissionId).orElse(null);
+            if (admission != null) {
+                hospitalId = admission.getHospitalId();
+            }
+        }
+        if (hospitalId == null) return;
+
+        Hospital hospital = hospitalRepository.findById(hospitalId).orElse(null);
+        if (hospital == null || hospital.getModules() == null || !hospital.getModules().contains("BILLING")) {
+            return;
+        }
+
+        java.util.List<Billing> bills = billingRepository.findByIpdAdmissionId(ipdAdmissionId);
+        Billing bill = (bills != null && !bills.isEmpty()) ? bills.get(0) : null;
+        if (bill == null) {
+            com.hms.entity.IpdAdmission admission = ipdAdmissionRepository.findById(ipdAdmissionId)
+                    .orElseThrow(() -> new RuntimeException("IPD Admission not found: " + ipdAdmissionId));
+            bill = new Billing();
+            bill.setHospitalId(hospitalId);
+            bill.setPatientId(admission.getPatientId());
+            bill.setDoctorId(admission.getDoctorId());
+            bill.setIpdAdmissionId(ipdAdmissionId);
+            bill.setBillingType("IPD");
+            bill.setAmount(BigDecimal.ZERO);
+            bill.setPaymentStatus("PENDING");
+            bill.setDescription("IPD Bill - Admission #" + admission.getIpdNumber());
+            bill = billingRepository.save(bill);
+        }
+
+        com.hms.entity.BillingItem item = new com.hms.entity.BillingItem();
+        item.setBillingId(bill.getId());
+        item.setHospitalId(hospitalId);
+        item.setDescription(description);
+        item.setAmount(amount);
+        billingItemRepository.save(item);
+
+        recalculateTotal(bill.getId());
+        
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after direct IPD charge posting", e);
+        }
+    }
 }
 
