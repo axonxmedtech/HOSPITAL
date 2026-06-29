@@ -17,11 +17,15 @@ public class NurseTaskService {
     @Autowired private SecurityContextHelper securityHelper;
 
     public List<NurseTask> getTasks(Long admissionId) {
-        return taskRepository.findByIpdAdmissionIdOrderByScheduledAtDesc(admissionId);
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        return taskRepository.findByIpdAdmissionIdAndHospitalIdOrderByScheduledAtDesc(admissionId, hospitalId);
     }
 
     public List<NurseTask> getPendingTasks(Long admissionId) {
-        return taskRepository.findByIpdAdmissionIdAndStatus(admissionId, "PENDING");
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        return taskRepository.findByIpdAdmissionIdAndHospitalIdAndStatus(admissionId, hospitalId, "PENDING");
     }
 
     @Transactional
