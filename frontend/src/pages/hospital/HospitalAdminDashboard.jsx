@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
+import nurseService from '../../services/nurseService';
 import { useToast } from '../../context/ToastContext';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import { validateForm } from '../../utils/validation';
@@ -1293,6 +1294,7 @@ const HospitalAdminDashboard = () => {
         { id: 'wards', label: 'Wards & Beds', icon: null, requiredModule: 'IPD' },
         { id: 'doctors', label: 'Doctors', icon: null, requiredModule: 'OPD' },
         { id: 'receptionists', label: 'Receptionists', icon: null, requiredModule: 'OPD' },
+            { id: 'nurses', label: 'Nurses', icon: null, requiredModule: 'OPD' },
         { id: 'billing', label: 'Billing', icon: null, requiredModule: 'BILLING' },
         { id: 'pharmacy', label: 'Pharmacy', icon: null, requiredModule: 'PHARMACY' },
         { id: 'pharmacists', label: 'Pharmacists', icon: null, requiredModule: 'PHARMACY' },
@@ -1855,15 +1857,15 @@ const HospitalAdminDashboard = () => {
                                 )}
                                 {activeTab === 'receptionists' && (
                                     receptionists.length > 0 ? (
-                                        <ReceptionistsTable 
-                                            receptionists={receptionists} 
-                                            isAdmin={user?.role === 'HOSPITAL_ADMIN'} 
-                                            onDelete={handleDeleteReceptionist} 
+                                        <ReceptionistsTable
+                                            receptionists={receptionists}
+                                            isAdmin={user?.role === 'HOSPITAL_ADMIN'}
+                                            onDelete={handleDeleteReceptionist}
                                             onEdit={(rec) => handleEdit(rec, 'receptionists')}
                                             onViewDetails={(rec) => handleViewStaffDetails(rec, 'receptionist')}
                                             onResetPassword={(rec) => handleResetStaffPassword(rec, 'receptionist')}
-                                            startIndex={page * pageSize} 
-                                            pagination={pagination} 
+                                            startIndex={page * pageSize}
+                                            pagination={pagination}
                                         />
                                     ) : (
                                         <EmptyState
@@ -1874,6 +1876,11 @@ const HospitalAdminDashboard = () => {
                                             onAction={user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
                                         />
                                     )
+                                )}
+                                {activeTab === 'nurses' && (
+                                    <NursesTable
+                                        onDelete={(id) => handleDelete(id, 'nurses')}
+                                    />
                                 )}
 
                                 {activeTab === 'wards' && (
@@ -4879,6 +4886,116 @@ const AdminOpdTable = ({ opds, onPrintOpd, onAdmitToIpd, startIndex = 0, paginat
     ];
 
     return <DataTable data={opds} columns={columns} pagination={pagination} />;
+};
+
+const NursesTable = ({ onDelete }) => {
+    const [nurses, setNurses] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [showAdd, setShowAdd] = useState(false);
+    const [form, setForm] = useState({ name: '', email: '', password: '', phone: '' });
+    const { success, error: toastError } = useToast();
+
+    useEffect(() => { load(); }, []);
+
+    async function load() {
+        setLoading(true);
+        try {
+            const r = await nurseService.getNurses();
+            setNurses(r.data.content || r.data);
+        } catch (e) { toastError('Failed to load nurses'); }
+        finally { setLoading(false); }
+    }
+
+    async function handleCreate(e) {
+        e.preventDefault();
+        try {
+            await nurseService.createNurse(form);
+            success('Nurse created');
+            setShowAdd(false);
+            setForm({ name: '', email: '', password: '', phone: '' });
+            load();
+        } catch (err) {
+            toastError(err.response?.data || 'Failed to create nurse');
+        }
+    }
+
+    async function handleDelete(id) {
+        if (!window.confirm('Delete this nurse?')) return;
+        try {
+            await nurseService.deleteNurse(id);
+            success('Nurse deleted');
+            load();
+        } catch (e) { toastError('Failed to delete'); }
+    }
+
+    if (loading) return <div className="text-center py-8 text-gray-400">Loading...</div>;
+
+    return (
+        <div>
+            <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-semibold">Nurses</h2>
+                <button
+                    onClick={() => setShowAdd(v => !v)}
+                    className="px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                >
+                    {showAdd ? 'Cancel' : '+ Add Nurse'}
+                </button>
+            </div>
+
+            {showAdd && (
+                <form onSubmit={handleCreate} className="grid grid-cols-2 gap-3 mb-4 p-4 border rounded-lg bg-gray-50">
+                    {[['name','Name'],['email','Email'],['password','Password'],['phone','Phone']].map(([key, label]) => (
+                        <div key={key}>
+                            <label className="block text-xs text-gray-600 mb-1">{label}</label>
+                            <input
+                                type={key === 'password' ? 'password' : 'text'}
+                                value={form[key]}
+                                onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                                required={key !== 'phone'}
+                                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"
+                            />
+                        </div>
+                    ))}
+                    <div className="col-span-2">
+                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
+                            Create Nurse
+                        </button>
+                    </div>
+                </form>
+            )}
+
+            <table className="w-full text-sm">
+                <thead>
+                    <tr className="bg-gray-50 text-left text-gray-600 uppercase text-xs tracking-wide">
+                        <th className="px-4 py-3">Name</th>
+                        <th className="px-4 py-3">Email</th>
+                        <th className="px-4 py-3">Custom ID</th>
+                        <th className="px-4 py-3">Actions</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                    {nurses.length === 0 && (
+                        <tr><td colSpan={4} className="px-4 py-6 text-center text-gray-400">No nurses found</td></tr>
+                    )}
+                    {nurses.map(n => (
+                        <tr key={n.publicId || n.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 font-medium">{n.name}</td>
+                            <td className="px-4 py-3 text-gray-500">{n.email}</td>
+                            <td className="px-4 py-3 text-gray-500">{n.customId || '—'}</td>
+                            <td className="px-4 py-3">
+                                <button
+                                    onClick={() => handleDelete(n.publicId || n.id)}
+                                    className="text-red-500 hover:underline text-xs"
+                                >
+                                    Delete
+                                </button>
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
 };
 
 export default HospitalAdminDashboard;

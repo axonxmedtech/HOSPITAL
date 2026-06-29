@@ -137,12 +137,22 @@ const authService = {
 
     /**
      * Check if current user is Pharmacist
-     * 
+     *
      * @returns {boolean} True if user is Pharmacist
      */
     isPharmacist: () => {
         const user = authService.getCurrentUser();
         return user && user.role === 'PHARMACIST';
+    },
+
+    /**
+     * Check if current user is Nurse
+     *
+     * @returns {boolean} True if user is Nurse
+     */
+    isNurse: () => {
+        const user = authService.getCurrentUser();
+        return user && user.role === 'NURSE';
     },
 
     /**
