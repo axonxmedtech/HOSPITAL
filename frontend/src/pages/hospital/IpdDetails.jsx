@@ -15,6 +15,7 @@ import ConfirmationModal from '../../components/ConfirmationModal';
 import DoctorOrdersPanel from '../../components/nurse/DoctorOrdersPanel';
 import LabResultsPanel from '../../components/lab/LabResultsPanel';
 import RadiologyResultsPanel from '../../components/radiology/RadiologyResultsPanel';
+import DoctorRoundsPanel from '../../components/doctor/DoctorRoundsPanel';
 
 const IpdDetails = () => {
     const { id } = useParams();
@@ -530,6 +531,9 @@ const IpdDetails = () => {
                             <button className="px-3 py-1 bg-green-600 text-white rounded" onClick={onAddFollowUp}>+ Add Follow-up</button>
                         )}
                     </div>
+
+                    <hr className="my-4" />
+                    <DoctorRoundsPanel admissionId={id} />
 
                     <hr className="my-4" />
 
