@@ -14,6 +14,7 @@ import ProfileModal from '../../components/ProfileModal';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import DoctorOrdersPanel from '../../components/nurse/DoctorOrdersPanel';
 import LabResultsPanel from '../../components/lab/LabResultsPanel';
+import RadiologyResultsPanel from '../../components/radiology/RadiologyResultsPanel';
 
 const IpdDetails = () => {
     const { id } = useParams();
@@ -539,6 +540,14 @@ const IpdDetails = () => {
                     {/* Lab Orders & Results — visible to Doctor, Nurse, and Admin */}
                     <hr className="my-4" />
                     <LabResultsPanel
+                        ipdAdmissionId={Number(id)}
+                        patientId={data?.patientId}
+                        canOrder={isDoctor || isAdmin}
+                    />
+
+                    {/* Radiology Orders & Reports — visible to Doctor, Nurse, and Admin */}
+                    <hr className="my-4" />
+                    <RadiologyResultsPanel
                         ipdAdmissionId={Number(id)}
                         patientId={data?.patientId}
                         canOrder={isDoctor || isAdmin}

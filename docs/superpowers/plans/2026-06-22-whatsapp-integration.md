@@ -2069,7 +2069,7 @@ Find the `inClinic` checkbox section. Immediately after it (still inside the mod
     <div className="flex flex-col gap-2">
         {[
             { value: 'NONE',     label: 'None' },
-            { value: 'PLATFORM', label: 'Platform (use AxonxMedtech number)' },
+            { value: 'PLATFORM', label: 'Platform (use AxonX number)' },
             { value: 'CUSTOM',   label: 'Custom (hospital provides own credentials)' },
         ].map(opt => (
             <label key={opt.value} className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">

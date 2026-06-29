@@ -166,6 +166,16 @@ const authService = {
     },
 
     /**
+     * Check if current user is Radiology Technician
+     *
+     * @returns {boolean} True if user is Radiology Technician
+     */
+    isRadiologyTechnician: () => {
+        const user = authService.getCurrentUser();
+        return user && user.role === 'RADIOLOGY_TECHNICIAN';
+    },
+
+    /**
      * Get fresh user profile from server
      */
     getProfile: async () => {

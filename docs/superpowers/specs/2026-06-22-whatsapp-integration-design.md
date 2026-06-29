@@ -25,7 +25,7 @@ New module strings added to the existing `plan_modules` `@ElementCollection`. No
 
 | Module String | Meaning |
 |---|---|
-| `WHATSAPP_PLATFORM` | Hospital uses AxonxMedtech's number; sub-options controlled in plan |
+| `WHATSAPP_PLATFORM` | Hospital uses AxonX's number; sub-options controlled in plan |
 | `WHATSAPP_CUSTOM` | Hospital configures their own Meta credentials; they control all options |
 
 **Sub-options (only meaningful when `WHATSAPP_PLATFORM` is present):**

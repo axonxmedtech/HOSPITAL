@@ -103,7 +103,7 @@ Created by doctor on an IPD patient. Drives the nurse task list.
 | notes | TEXT | nullable |
 
 ### `NurseTask`
-One execution record per scheduled instance of an order. Generated when an order is created (one task per frequency slot per day) or on-demand for SOS orders.
+One execution record per scheduled instance of an order. In Phase 1, one `NurseTask` is created immediately when the doctor saves an order (status PENDING). For recurring orders (BD, TDS), a new task is auto-created each day at order-start time via a daily scheduler. SOS orders create one task on demand — the nurse clicks "Create Task" from the Orders tab.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -221,7 +221,7 @@ Two tabs:
 - ICU-specific nurse workflow
 - Shift management / nurse scheduling
 - Medication administration record (MAR) with full audit trail
-- Automatic task generation on order creation (Phase 1 uses manual task creation or simple frequency parsing)
+- Full MAR-style task scheduling calendar (Phase 1 uses one task per day per recurring order via a simple daily scheduler)
 
 ---
 
