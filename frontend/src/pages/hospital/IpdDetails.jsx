@@ -16,6 +16,7 @@ import DoctorOrdersPanel from '../../components/nurse/DoctorOrdersPanel';
 import LabResultsPanel from '../../components/lab/LabResultsPanel';
 import RadiologyResultsPanel from '../../components/radiology/RadiologyResultsPanel';
 import DoctorRoundsPanel from '../../components/doctor/DoctorRoundsPanel';
+import OtWorkflowPanel from '../../components/ot/OtWorkflowPanel';
 
 const IpdDetails = () => {
     const { id } = useParams();
@@ -534,6 +535,9 @@ const IpdDetails = () => {
 
                     <hr className="my-4" />
                     <DoctorRoundsPanel admissionId={id} />
+
+                    <hr className="my-4" />
+                    <OtWorkflowPanel admissionId={id} />
 
                     <hr className="my-4" />
 
