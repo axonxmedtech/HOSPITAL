@@ -1,5 +1,6 @@
 package com.hms.controller.hospital;
 
+import com.hms.exception.UnauthorizedException;
 import com.hms.service.hospital.NurseTaskService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -34,8 +35,10 @@ public class NurseTaskController {
         if (!"DONE".equals(status) && !"SKIPPED".equals(status))
             return ResponseEntity.badRequest().body("status must be DONE or SKIPPED");
         try {
-            return ResponseEntity.ok(taskService.executeTask(taskId, status, body.get("notes")));
+            return ResponseEntity.ok(taskService.executeTask(admissionId, taskId, status, body.get("notes")));
         } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (IllegalArgumentException | UnauthorizedException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }

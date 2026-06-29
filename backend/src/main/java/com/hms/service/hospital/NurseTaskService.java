@@ -25,14 +25,21 @@ public class NurseTaskService {
     }
 
     @Transactional
-    public NurseTask executeTask(Long taskId, String status, String notes) {
+    public NurseTask executeTask(Long admissionId, Long taskId, String status, String notes) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+
+        if (!"DONE".equals(status) && !"SKIPPED".equals(status)) {
+            throw new IllegalArgumentException("status must be DONE or SKIPPED");
+        }
 
         NurseTask task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new RuntimeException("Task not found: " + taskId));
         if (!task.getHospitalId().equals(hospitalId))
             throw new UnauthorizedException("Access denied");
+        if (!task.getIpdAdmissionId().equals(admissionId)) {
+            throw new UnauthorizedException("Task does not belong to this admission");
+        }
         if (!"PENDING".equals(task.getStatus()))
             throw new IllegalStateException("Task is already " + task.getStatus());
 
