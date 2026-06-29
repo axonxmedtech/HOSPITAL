@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
 import nurseService from '../../services/nurseService';
+import { createLabTechnician, getLabTechnicians, deactivateLabTechnician } from '../../services/labService';
 import { useToast } from '../../context/ToastContext';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import { validateForm } from '../../utils/validation';
@@ -1295,6 +1296,7 @@ const HospitalAdminDashboard = () => {
         { id: 'doctors', label: 'Doctors', icon: null, requiredModule: 'OPD' },
         { id: 'receptionists', label: 'Receptionists', icon: null, requiredModule: 'OPD' },
             { id: 'nurses', label: 'Nurses', icon: null, requiredModule: 'OPD' },
+            { id: 'lab-technicians', label: 'Lab Technicians', icon: null, requiredModule: 'OPD' },
         { id: 'billing', label: 'Billing', icon: null, requiredModule: 'BILLING' },
         { id: 'pharmacy', label: 'Pharmacy', icon: null, requiredModule: 'PHARMACY' },
         { id: 'pharmacists', label: 'Pharmacists', icon: null, requiredModule: 'PHARMACY' },
@@ -1881,6 +1883,10 @@ const HospitalAdminDashboard = () => {
                                     <NursesTable
                                         onDelete={(id) => handleDelete(id, 'nurses')}
                                     />
+                                )}
+
+                                {activeTab === 'lab-technicians' && (
+                                    <LabTechniciansTable />
                                 )}
 
                                 {activeTab === 'wards' && (
@@ -4999,3 +5005,117 @@ const NursesTable = ({ onDelete }) => {
 };
 
 export default HospitalAdminDashboard;
+
+// ─── Lab Technicians Table ─────────────────────────────────────────────────────
+const LabTechniciansTable = () => {
+    const [labTechs, setLabTechs] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [showAdd, setShowAdd] = useState(false);
+    const [form, setForm] = useState({ name: '', email: '', password: '', phone: '' });
+    const { success, error: toastError } = useToast();
+
+    useEffect(() => { load(); }, []);
+
+    async function load() {
+        setLoading(true);
+        try {
+            const r = await getLabTechnicians({ size: 100 });
+            setLabTechs(r.data.content || r.data);
+        } catch (e) { toastError('Failed to load lab technicians'); }
+        finally { setLoading(false); }
+    }
+
+    async function handleCreate(e) {
+        e.preventDefault();
+        try {
+            await createLabTechnician(form);
+            success('Lab technician created');
+            setShowAdd(false);
+            setForm({ name: '', email: '', password: '', phone: '' });
+            load();
+        } catch (err) {
+            toastError(err.response?.data || 'Failed to create lab technician');
+        }
+    }
+
+    async function handleDeactivate(publicId) {
+        if (!window.confirm('Deactivate this lab technician?')) return;
+        try {
+            await deactivateLabTechnician(publicId);
+            success('Lab technician deactivated');
+            load();
+        } catch (e) { toastError('Failed to deactivate'); }
+    }
+
+    if (loading) return <div className="text-center py-8 text-gray-400">Loading...</div>;
+
+    return (
+        <div>
+            <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-semibold">Lab Technicians</h2>
+                <button
+                    onClick={() => setShowAdd(v => !v)}
+                    className="px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                >
+                    {showAdd ? 'Cancel' : '+ Add Lab Technician'}
+                </button>
+            </div>
+
+            {showAdd && (
+                <form onSubmit={handleCreate} className="grid grid-cols-2 gap-3 mb-4 p-4 border rounded-lg bg-gray-50">
+                    {[['name','Name'],['email','Email'],['password','Password'],['phone','Phone (optional)']].map(([key, label]) => (
+                        <div key={key}>
+                            <label className="block text-xs text-gray-600 mb-1">{label}</label>
+                            <input
+                                type={key === 'password' ? 'password' : 'text'}
+                                value={form[key]}
+                                onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                                required={key !== 'phone'}
+                                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"
+                            />
+                        </div>
+                    ))}
+                    <div className="col-span-2">
+                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
+                            Create Lab Technician
+                        </button>
+                    </div>
+                </form>
+            )}
+
+            {labTechs.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">
+                    No lab technicians yet. Add one above.
+                </div>
+            ) : (
+                <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            {['ID', 'Name', 'Email', 'Phone', 'Actions'].map(h => (
+                                <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {labTechs.map(lt => (
+                            <tr key={lt.publicId || lt.id} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 font-mono text-xs text-blue-600">{lt.customId || '—'}</td>
+                                <td className="px-4 py-3 font-medium text-gray-900">{lt.name}</td>
+                                <td className="px-4 py-3 text-gray-600">{lt.email}</td>
+                                <td className="px-4 py-3 text-gray-600">{lt.phone || '—'}</td>
+                                <td className="px-4 py-3">
+                                    <button
+                                        onClick={() => handleDeactivate(lt.publicId)}
+                                        className="text-red-500 hover:underline text-xs border border-red-200 rounded px-2 py-1 hover:bg-red-50"
+                                    >
+                                        Deactivate
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            )}
+        </div>
+    );
+};

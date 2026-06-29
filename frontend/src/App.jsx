@@ -8,6 +8,7 @@ import ReceptionistDashboard from './pages/hospital/ReceptionistDashboard';
 import PharmacyDashboard from './pages/hospital/PharmacyDashboard';
 import IpdDetails from './pages/hospital/IpdDetails';
 import NurseDashboard from './pages/hospital/NurseDashboard';
+import LabTechnicianDashboard from './pages/hospital/LabTechnicianDashboard';
 import { ToastProvider } from './context/ToastContext';
 import PageMeta from './components/PageMeta';
 import authService from './services/authService';
@@ -69,6 +70,8 @@ const LandingRedirect = () => {
             return <Navigate to="/hospital/pharmacy" replace />;
         case 'NURSE':
             return <Navigate to="/nurse-dashboard" replace />;
+        case 'LAB_TECHNICIAN':
+            return <Navigate to="/lab-dashboard" replace />;
         default:
             return <Navigate to="/login/hospital" replace />;
     }
@@ -192,6 +195,17 @@ function App() {
                             <ProtectedRoute allowedRoles={['NURSE']}>
                                 <PageMeta title="HMS - Nurse Dashboard">
                                     <NurseDashboard />
+                                </PageMeta>
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    <Route
+                        path="/lab-dashboard"
+                        element={
+                            <ProtectedRoute allowedRoles={['LAB_TECHNICIAN']}>
+                                <PageMeta title="HMS - Lab Technician">
+                                    <LabTechnicianDashboard />
                                 </PageMeta>
                             </ProtectedRoute>
                         }

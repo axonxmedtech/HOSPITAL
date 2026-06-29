@@ -13,6 +13,7 @@ import Navbar from '../../components/Navbar';
 import ProfileModal from '../../components/ProfileModal';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import DoctorOrdersPanel from '../../components/nurse/DoctorOrdersPanel';
+import LabResultsPanel from '../../components/lab/LabResultsPanel';
 
 const IpdDetails = () => {
     const { id } = useParams();
@@ -534,6 +535,14 @@ const IpdDetails = () => {
                     {(isDoctor || isAdmin) && (
                         <DoctorOrdersPanel admissionId={id} />
                     )}
+
+                    {/* Lab Orders & Results — visible to Doctor, Nurse, and Admin */}
+                    <hr className="my-4" />
+                    <LabResultsPanel
+                        ipdAdmissionId={Number(id)}
+                        patientId={data?.patientId}
+                        canOrder={isDoctor || isAdmin}
+                    />
 
                     {followupModal.isOpen && (
                         <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">

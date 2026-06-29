@@ -109,4 +109,29 @@ public interface UserRepository extends JpaRepository<User, Long> {
                         @org.springframework.data.repository.query.Param("hospitalId") String hospitalId,
                         @org.springframework.data.repository.query.Param("search") String search,
                         org.springframework.data.domain.Pageable pageable);
+
+        @org.springframework.data.jpa.repository.Query("""
+                            SELECT u FROM User u
+                            WHERE u.hospitalId = :hospitalId
+                              AND u.role = :role
+                              AND u.isActive = true
+                              AND (LOWER(u.name) LIKE LOWER(CONCAT('%', :search, '%'))
+                                   OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')))
+                        """)
+        org.springframework.data.domain.Page<User> searchLabTechnicians(
+                        @org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
+                        @org.springframework.data.repository.query.Param("role") String role,
+                        @org.springframework.data.repository.query.Param("search") String search,
+                        org.springframework.data.domain.Pageable pageable);
+
+        /**
+         * Returns the highest sequential number used by LAB_TECHNICIAN custom IDs (LT1, LT2, …).
+         * Used to derive next custom ID without a gap.
+         */
+        @org.springframework.data.jpa.repository.Query(
+                value = "SELECT COALESCE(MAX(CAST(SUBSTRING(custom_id, 3) AS UNSIGNED)), 0) " +
+                        "FROM users WHERE role = 'LAB_TECHNICIAN' AND custom_id LIKE 'LT%'",
+                nativeQuery = true)
+        Integer findMaxLabTechSequence();
 }
+

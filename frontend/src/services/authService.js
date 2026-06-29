@@ -156,6 +156,16 @@ const authService = {
     },
 
     /**
+     * Check if current user is Lab Technician
+     *
+     * @returns {boolean} True if user is Lab Technician
+     */
+    isLabTechnician: () => {
+        const user = authService.getCurrentUser();
+        return user && user.role === 'LAB_TECHNICIAN';
+    },
+
+    /**
      * Get fresh user profile from server
      */
     getProfile: async () => {
