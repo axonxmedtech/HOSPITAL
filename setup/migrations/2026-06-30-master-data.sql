@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS `lab_test_master` (
   PRIMARY KEY (`id`),
   KEY `idx_ltm_hospital` (`hospital_id`),
   KEY `idx_ltm_name` (`test_name`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- 2. Radiology Test Master
 CREATE TABLE IF NOT EXISTS `radiology_test_master` (
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS `radiology_test_master` (
   `updated_at` datetime(6) DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP(6),
   PRIMARY KEY (`id`),
   KEY `idx_rtm_hospital` (`hospital_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- 3. Allergy Master
 CREATE TABLE IF NOT EXISTS `allergy_master` (
@@ -49,9 +49,10 @@ CREATE TABLE IF NOT EXISTS `allergy_master` (
   `is_custom` bit(1) NOT NULL DEFAULT 0,
   `is_active` bit(1) NOT NULL DEFAULT 1,
   `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `updated_at` datetime(6) DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP(6),
   PRIMARY KEY (`id`),
   KEY `idx_am_hospital` (`hospital_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- 4. Patient Allergies
 CREATE TABLE IF NOT EXISTS `patient_allergies` (
@@ -66,7 +67,7 @@ CREATE TABLE IF NOT EXISTS `patient_allergies` (
   PRIMARY KEY (`id`),
   KEY `idx_pa_patient` (`patient_id`),
   KEY `idx_pa_hospital` (`hospital_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- 5. Diagnosis Master
 CREATE TABLE IF NOT EXISTS `diagnosis_master` (
@@ -78,10 +79,11 @@ CREATE TABLE IF NOT EXISTS `diagnosis_master` (
   `is_custom` bit(1) NOT NULL DEFAULT 0,
   `is_active` bit(1) NOT NULL DEFAULT 1,
   `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `updated_at` datetime(6) DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP(6),
   PRIMARY KEY (`id`),
   KEY `idx_dm_hospital` (`hospital_id`),
   KEY `idx_dm_code` (`icd_code`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- 6. Procedure Master
 CREATE TABLE IF NOT EXISTS `procedure_master` (
@@ -97,7 +99,7 @@ CREATE TABLE IF NOT EXISTS `procedure_master` (
   `updated_at` datetime(6) DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP(6),
   PRIMARY KEY (`id`),
   KEY `idx_pm_hospital` (`hospital_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- 7. Add FK columns to existing tables (nullable for backward compat)
 -- Using stored procedure to guard against duplicate-column errors on re-run
