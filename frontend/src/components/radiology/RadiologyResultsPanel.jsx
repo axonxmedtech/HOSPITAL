@@ -11,7 +11,7 @@ const STATUS_CONFIG = {
   CANCELLED: { badge: 'bg-gray-100 text-gray-500 border border-gray-200', label: 'Cancelled', icon: '✕' },
 };
 
-export default function RadiologyResultsPanel({ ipdAdmissionId, patientId, canOrder = false }) {
+export default function RadiologyResultsPanel({ ipdAdmissionId, patientId, canOrder = false, openTrigger = 0 }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showOrderForm, setShowOrderForm] = useState(false);
@@ -39,6 +39,10 @@ export default function RadiologyResultsPanel({ ipdAdmissionId, patientId, canOr
   useEffect(() => {
     fetchOrders();
   }, [fetchOrders]);
+
+  useEffect(() => {
+    if (openTrigger > 0 && canOrder) setShowOrderForm(true);
+  }, [openTrigger, canOrder]);
 
   const handleOrder = async (e) => {
     e.preventDefault();
