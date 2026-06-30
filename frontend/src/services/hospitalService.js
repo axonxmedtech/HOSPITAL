@@ -892,6 +892,23 @@ const hospitalService = {
         });
         return response.data;
     },
+
+    // ========== Medical Records Department (MRD) APIs ==========
+    
+    getPendingMrdArchives: async () => {
+        const response = await apiClient.get('/hospital/mrd/pending');
+        return response.data;
+    },
+
+    getArchivedMrdRecords: async () => {
+        const response = await apiClient.get('/hospital/mrd/archived');
+        return response.data;
+    },
+
+    archiveMrdRecord: async (payload) => {
+        const response = await apiClient.post('/hospital/mrd/archive', payload);
+        return response.data;
+    },
 };
 
 export default hospitalService;

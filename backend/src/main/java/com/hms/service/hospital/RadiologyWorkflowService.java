@@ -26,6 +26,7 @@ public class RadiologyWorkflowService {
     @Autowired private RadiologyResultRepository radiologyResultRepository;
     @Autowired private AuditLogRepository auditLogRepository;
     @Autowired private SecurityContextHelper securityHelper;
+    @Autowired private MrdService mrdService;
     @Autowired private HospitalWebSocketHandler webSocketHandler;
     @Autowired private BillingService billingService;
 
@@ -125,6 +126,9 @@ public class RadiologyWorkflowService {
         String email = securityHelper.getCurrentUserEmail();
 
         RadiologyOrder order = requireOrder(publicId, hospitalId);
+        if (order.getIpdAdmissionId() != null) {
+            mrdService.validateAdmissionActive(order.getIpdAdmissionId());
+        }
         if (!"ORDERED".equals(order.getStatus()))
             throw new IllegalStateException(
                     "Can only conduct study for ORDERED orders; current status: " + order.getStatus());
@@ -151,6 +155,9 @@ public class RadiologyWorkflowService {
         String email = securityHelper.getCurrentUserEmail();
 
         RadiologyOrder order = requireOrder(publicId, hospitalId);
+        if (order.getIpdAdmissionId() != null) {
+            mrdService.validateAdmissionActive(order.getIpdAdmissionId());
+        }
 
         if (radiologyResultRepository.existsByRadiologyOrderId(order.getId()))
             throw new IllegalStateException("Result already entered for this order");

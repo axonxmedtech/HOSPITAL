@@ -43,6 +43,9 @@ public class DoctorRoundService {
     private AuditLogRepository auditLogRepository;
 
     @Autowired
+    private MrdService mrdService;
+
+    @Autowired
     private HospitalWebSocketHandler webSocketHandler;
 
     public List<DoctorRound> getRoundsHistory(Long ipdAdmissionId) {
@@ -61,6 +64,7 @@ public class DoctorRoundService {
 
     @Transactional
     public DoctorRound logRound(Long ipdAdmissionId, DoctorRoundRequest request) {
+        mrdService.validateAdmissionActive(ipdAdmissionId);
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
 

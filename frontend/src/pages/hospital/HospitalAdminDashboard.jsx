@@ -1306,6 +1306,7 @@ const HospitalAdminDashboard = () => {
         { id: 'hospital-inventory', label: 'Hospital Inventory', icon: null, requiredModule: 'HOSPITAL_INVENTORY' },
         { id: 'pathology', label: 'Pathology', icon: null, requiredModule: 'PATHOLOGY' },
         { id: 'ipd', label: 'IPD', icon: null, requiredModule: 'IPD' },
+        { id: 'mrd', label: 'MRD Archive', icon: null, requiredModule: 'IPD' },
         { id: 'ot', label: 'Operation Theatre', icon: null, requiredModule: 'OT' },
         { id: 'fees', label: 'Fees', icon: null, requiredModule: 'BILLING' },
         { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },

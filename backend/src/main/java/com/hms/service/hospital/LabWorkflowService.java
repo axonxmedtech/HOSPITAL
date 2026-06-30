@@ -40,6 +40,7 @@ public class LabWorkflowService {
     @Autowired private LabResultRepository labResultRepository;
     @Autowired private AuditLogRepository auditLogRepository;
     @Autowired private SecurityContextHelper securityHelper;
+    @Autowired private MrdService mrdService;
     @Autowired private HospitalWebSocketHandler webSocketHandler;
     @Autowired private BillingService billingService;
 
@@ -147,6 +148,10 @@ public class LabWorkflowService {
         String email = securityHelper.getCurrentUserEmail();
 
         LabOrder order = requireOrder(publicId, hospitalId);
+        if (order.getIpdAdmissionId() != null) {
+            mrdService.validateAdmissionActive(order.getIpdAdmissionId());
+        }
+
         if (!"ORDERED".equals(order.getStatus()))
             throw new IllegalStateException(
                     "Can only collect sample for ORDERED orders; current status: " + order.getStatus());
@@ -174,6 +179,9 @@ public class LabWorkflowService {
         String email = securityHelper.getCurrentUserEmail();
 
         LabOrder order = requireOrder(publicId, hospitalId);
+        if (order.getIpdAdmissionId() != null) {
+            mrdService.validateAdmissionActive(order.getIpdAdmissionId());
+        }
 
         if (labResultRepository.existsByLabOrderId(order.getId()))
             throw new IllegalStateException("Result already entered for this order");

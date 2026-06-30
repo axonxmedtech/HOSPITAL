@@ -77,6 +77,7 @@ const IpdDetails = () => {
                 { id: 'hospital-inventory', label: 'Hospital Inventory', requiredModule: 'OPD' },
                 { id: 'pathology', label: 'Pathology', requiredModule: 'PATHOLOGY' },
                 { id: 'ipd', label: 'IPD', requiredModule: 'IPD' },
+                { id: 'mrd', label: 'MRD Archive', requiredModule: 'IPD' },
                 { id: 'fees', label: 'Fees', requiredModule: 'OPD' },
                 { id: 'audit-logs', label: 'Audit Logs', requiredModule: null },
                 { id: 'settings', label: 'Settings', requiredModule: 'OPD' },
@@ -87,6 +88,7 @@ const IpdDetails = () => {
                 { id: 'overview', label: 'Overview' },
                 { id: 'appointments', label: 'My Appointments' },
                 { id: 'ipd', label: 'IPD' },
+                { id: 'mrd', label: 'MRD Archive' },
                 { id: 'queue', label: 'Queue' },
                 { id: 'opd', label: 'OPD' },
                 ...(isSolo ? [{ id: 'patients', label: 'Patients' }] : []),
@@ -100,6 +102,7 @@ const IpdDetails = () => {
                 { id: 'patients', label: 'Patients' },
                 { id: 'opd', label: 'OPD' },
                 { id: 'ipd', label: 'IPD' },
+                { id: 'mrd', label: 'MRD Archive' },
                 { id: 'billing', label: 'Billing' },
                 ...(user?.inClinic !== false ? [{ id: 'inventory', label: 'Medicine Inventory' }] : [])
             ].filter(tab => tab.id !== 'billing' || user?.billingHandler !== 'DOCTOR');
@@ -516,6 +519,18 @@ const IpdDetails = () => {
             </div>
             <PageHeader title={`IPD ${data.ipdNumber || ''}`} subtitle={`${data.patient?.name || ''} • ${data.patient?.age || ''} • ${data.patient?.gender || ''}`} />
 
+            {/* Lock Banner — shown when patient is discharged or archived in MRD */}
+            {(data.isArchived || data.status === 'DISCHARGED') && (
+                <div className={`mt-3 flex items-center gap-3 px-4 py-3 rounded-lg border text-sm font-medium ${data.isArchived ? 'bg-purple-50 border-purple-200 text-purple-800' : 'bg-gray-100 border-gray-300 text-gray-700'}`}>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    {data.isArchived
+                        ? 'This record is archived in MRD. All clinical modifications are permanently locked.'
+                        : 'This patient has been discharged. Clinical record is read-only.'}
+                </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
                 <div className="col-span-2 bg-white border rounded p-4">
                     <h3 className="font-semibold mb-2">Admission Info</h3>
@@ -551,21 +566,21 @@ const IpdDetails = () => {
                     )}
 
                     <div className="mt-3">
-                        {isDoctor && data.status !== 'DISCHARGE_PLANNED' && data.status !== 'DISCHARGED' && (
+                        {isDoctor && data.status !== 'DISCHARGE_PLANNED' && data.status !== 'DISCHARGED' && !data.isArchived && (
                             <button className="px-3 py-1 bg-green-600 text-white rounded" onClick={onAddFollowUp}>+ Add Follow-up</button>
                         )}
                     </div>
 
                     <hr className="my-4" />
-                    <DoctorRoundsPanel admissionId={id} />
+                    <DoctorRoundsPanel admissionId={id} isLocked={data?.isArchived || data?.status === 'DISCHARGED'} />
 
                     <hr className="my-4" />
-                    <OtWorkflowPanel admissionId={id} />
+                    <OtWorkflowPanel admissionId={id} isLocked={data?.isArchived || data?.status === 'DISCHARGED'} />
 
                     <hr className="my-4" />
 
                     {(isDoctor || isAdmin) && (
-                        <DoctorOrdersPanel admissionId={id} />
+                        <DoctorOrdersPanel admissionId={id} isLocked={data?.isArchived || data?.status === 'DISCHARGED'} />
                     )}
 
                     {/* Lab Orders & Results — visible to Doctor, Nurse, and Admin */}
@@ -573,7 +588,7 @@ const IpdDetails = () => {
                     <LabResultsPanel
                         ipdAdmissionId={Number(id)}
                         patientId={data?.patientId}
-                        canOrder={isDoctor || isAdmin}
+                        canOrder={(isDoctor || isAdmin) && !data?.isArchived && data?.status !== 'DISCHARGED'}
                     />
 
                     {/* Radiology Orders & Reports — visible to Doctor, Nurse, and Admin */}
@@ -581,7 +596,7 @@ const IpdDetails = () => {
                     <RadiologyResultsPanel
                         ipdAdmissionId={Number(id)}
                         patientId={data?.patientId}
-                        canOrder={isDoctor || isAdmin}
+                        canOrder={(isDoctor || isAdmin) && !data?.isArchived && data?.status !== 'DISCHARGED'}
                     />
 
                     {followupModal.isOpen && (
@@ -1112,7 +1127,7 @@ const IpdDetails = () => {
                                             <div className="text-xs text-gray-600">{p.type} • {p.route} • {p.frequency}</div>
                                         </div>
                                         <div>
-                                            {isDoctor ? (
+                                            {isDoctor && !data.isArchived && data.status !== 'DISCHARGED' ? (
                                                 <div className="flex gap-2">
                                                     <button className="px-2 py-1 bg-yellow-500 text-white rounded text-xs" onClick={() => onStopMedicine(p.id)}>Stop</button>
                                                 </div>
@@ -1152,7 +1167,7 @@ const IpdDetails = () => {
                         <div className="text-sm text-gray-500">No active medicines or administered items.</div>
                     )}
 
-                    {isDoctor && data.status !== 'DISCHARGE_PLANNED' && data.status !== 'DISCHARGED' && (
+                    {isDoctor && data.status !== 'DISCHARGE_PLANNED' && data.status !== 'DISCHARGED' && !data.isArchived && (
                         <div className="mt-3">
                             <button className="px-3 py-1 bg-blue-600 text-white rounded" onClick={onAddMedicine}>+ Add Medicine</button>
                         </div>
@@ -1205,7 +1220,7 @@ const IpdDetails = () => {
                             </button>
                         </div>
                     )}
-                    {isDoctor && data.status === 'ADMITTED' && (
+                    {isDoctor && data.status === 'ADMITTED' && !data.isArchived && (
                         <button className="px-3 py-1 bg-yellow-600 text-white rounded" onClick={onPlanDischarge}>📝 Plan Discharge</button>
                     )}
                     {(isReceptionist || isSoloDoctor || isAdmin) && data.status === 'DISCHARGE_PLANNED' && (

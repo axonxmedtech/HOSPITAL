@@ -44,6 +44,9 @@ public class OtService {
     @Autowired
     private BillingService billingService;
 
+    @Autowired
+    private MrdService mrdService;
+
     public List<OtBooking> getBookingsForAdmission(Long ipdAdmissionId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
@@ -79,6 +82,7 @@ public class OtService {
 
     @Transactional
     public OtBooking scheduleBooking(Long ipdAdmissionId, OtBookingRequest request) {
+        mrdService.validateAdmissionActive(ipdAdmissionId);
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
 
@@ -131,6 +135,8 @@ public class OtService {
 
         OtBooking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new RuntimeException("OT Booking not found: " + bookingId));
+        mrdService.validateAdmissionActive(booking.getIpdAdmissionId());
+
         if (!booking.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Access denied: Tenant mismatch");
         }
@@ -160,6 +166,8 @@ public class OtService {
         if (!booking.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Access denied: Tenant mismatch");
         }
+        
+        mrdService.validateAdmissionActive(booking.getIpdAdmissionId());
 
         OtChecklist checklist = checklistRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
                 .orElseThrow(() -> new RuntimeException("Checklist not found for booking: " + bookingId));

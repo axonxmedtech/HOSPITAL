@@ -15,6 +15,7 @@ public class NurseTaskService {
 
     @Autowired private NurseTaskRepository taskRepository;
     @Autowired private SecurityContextHelper securityHelper;
+    @Autowired private MrdService mrdService;
 
     public List<NurseTask> getTasks(Long admissionId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
@@ -31,6 +32,7 @@ public class NurseTaskService {
     @Transactional
     public NurseTask executeTask(Long admissionId, Long taskId, String status, String notes,
                                  Double administeredQuantity, String route, String injectionSite, String preVitals) {
+        mrdService.validateAdmissionActive(admissionId);
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
 

@@ -13,6 +13,7 @@ public class IpdAdmissionDetailsDTO {
     private List<PrescriptionDTO> activePrescriptions;
     private List<PrescriptionDTO> allPrescriptions;
     private BillingDTO billing;
+    private boolean isArchived;
 
     public static class PatientDTO {
         public Long id;
@@ -100,5 +101,15 @@ public class IpdAdmissionDetailsDTO {
     public void setAdministeredItems(List<AdministeredItemDTO> administeredItems) { this.administeredItems = administeredItems; }
 
     public DischargeSummaryDTO getDischargeSummary() { return dischargeSummary; }
-    public void setDischargeSummary(DischargeSummaryDTO dischargeSummary) { this.dischargeSummary = dischargeSummary; }
+    public void setDischargeSummary(DischargeSummaryDTO dischargeSummary) {
+        this.dischargeSummary = dischargeSummary;
+    }
+
+    public boolean getIsArchived() {
+        return isArchived;
+    }
+
+    public void setIsArchived(boolean isArchived) {
+        this.isArchived = isArchived;
+    }
 }

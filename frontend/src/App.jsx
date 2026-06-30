@@ -10,6 +10,7 @@ import IpdDetails from './pages/hospital/IpdDetails';
 import NurseDashboard from './pages/hospital/NurseDashboard';
 import LabTechnicianDashboard from './pages/hospital/LabTechnicianDashboard';
 import RadiologyTechnicianDashboard from './pages/hospital/RadiologyTechnicianDashboard';
+import MrdArchive from './pages/hospital/MrdArchive';
 import { ToastProvider } from './context/ToastContext';
 import PageMeta from './components/PageMeta';
 import authService from './services/authService';
@@ -147,6 +148,17 @@ function App() {
                             </ProtectedRoute>
                         }
                     />
+                    
+                    <Route
+                        path="/hospital/admin/mrd"
+                        element={
+                            <ProtectedRoute allowedRoles={['HOSPITAL_ADMIN']}>
+                                <PageMeta title="HMS - MRD Archive">
+                                    <MrdArchive />
+                                </PageMeta>
+                            </ProtectedRoute>
+                        }
+                    />
 
                     <Route
                         path="/hospital/doctor"
@@ -158,6 +170,17 @@ function App() {
                             </ProtectedRoute>
                         }
                     />
+                    
+                    <Route
+                        path="/hospital/doctor/mrd"
+                        element={
+                            <ProtectedRoute allowedRoles={['DOCTOR', 'HOSPITAL_ADMIN']}>
+                                <PageMeta title="HMS - MRD Archive">
+                                    <MrdArchive />
+                                </PageMeta>
+                            </ProtectedRoute>
+                        }
+                    />
 
                     <Route
                         path="/hospital/receptionist"
@@ -165,6 +188,17 @@ function App() {
                             <ProtectedRoute allowedRoles={['RECEPTIONIST']}>
                                 <PageMeta title="HMS - Reception">
                                     <ReceptionistDashboard />
+                                </PageMeta>
+                            </ProtectedRoute>
+                        }
+                    />
+                    
+                    <Route
+                        path="/hospital/receptionist/mrd"
+                        element={
+                            <ProtectedRoute allowedRoles={['RECEPTIONIST', 'HOSPITAL_ADMIN']}>
+                                <PageMeta title="HMS - MRD Archive">
+                                    <MrdArchive />
                                 </PageMeta>
                             </ProtectedRoute>
                         }

@@ -96,6 +96,9 @@ public class IpdAdmissionService {
     @Autowired
     private com.hms.security.HospitalWebSocketHandler webSocketHandler;
 
+    @Autowired
+    private MrdService mrdService;
+
     @Transactional
     public IpdAdmission admitFromOpd(Long opdId, Long wardId, Long bedId, String admissionType, String primaryDiagnosis) {
         // Load OPD
@@ -340,6 +343,7 @@ public class IpdAdmissionService {
         com.hms.dto.IpdAdmissionDetailsDTO dto = new com.hms.dto.IpdAdmissionDetailsDTO();
         dto.setIpdNumber(ipd.getIpdNumber());
         dto.setStatus(ipd.getStatus());
+        dto.setIsArchived(mrdService.isAdmissionArchived(ipdId));
 
         // patient
         com.hms.entity.Patient patient = patientRepository.findById(ipd.getPatientId()).orElse(null);
@@ -512,6 +516,7 @@ public class IpdAdmissionService {
 
     @Transactional
     public com.hms.entity.MedicalRecord addIpdFollowup(Long ipdId, String diagnosis, String notes, java.util.List<com.hms.dto.ConsultationRequest.AdministeredItem> administeredItems) {
+        mrdService.validateAdmissionActive(ipdId);
         String role = securityHelper.getCurrentUserRole();
         if (!"DOCTOR".equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can add follow-ups");
@@ -622,6 +627,7 @@ public class IpdAdmissionService {
 
     @Transactional
     public void administerItems(Long ipdId, java.util.List<com.hms.dto.ConsultationRequest.AdministeredItem> administeredItems) {
+        mrdService.validateAdmissionActive(ipdId);
         String role = securityHelper.getCurrentUserRole();
         if (!"DOCTOR".equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can administer items");
@@ -705,6 +711,7 @@ public class IpdAdmissionService {
 
     @Transactional
     public void administerHospitalItems(Long ipdId, java.util.List<com.hms.dto.AdministerHospitalItemsRequest.HospitalItem> items) {
+        mrdService.validateAdmissionActive(ipdId);
         String role = securityHelper.getCurrentUserRole();
         if (!"DOCTOR".equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can administer items");
@@ -792,6 +799,7 @@ public class IpdAdmissionService {
 
     @Transactional
     public com.hms.entity.Prescription addIpdPrescription(Long ipdId, com.hms.dto.AddIpdPrescriptionRequest req) {
+        mrdService.validateAdmissionActive(ipdId);
         String role = securityHelper.getCurrentUserRole();
         if (!"DOCTOR".equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can add prescriptions");
@@ -876,6 +884,7 @@ public class IpdAdmissionService {
 
         // Verify it belongs to an IPD by looking up medical record
         com.hms.entity.MedicalRecord mr = medicalRecordRepository.findById(pres.getMedicalRecordId()).orElseThrow(() -> new RuntimeException("Related medical record not found"));
+        mrdService.validateAdmissionActive(mr.getIpdAdmissionId());
         if (mr.getIpdAdmissionId() == null) throw new IllegalArgumentException("Prescription is not linked to an IPD admission");
 
         pres.setStatus("STOPPED");
@@ -1070,6 +1079,7 @@ public class IpdAdmissionService {
 
     @org.springframework.transaction.annotation.Transactional
     public IpdAdmission changeBed(Long ipdId, Long newBedId) {
+        mrdService.validateAdmissionActive(ipdId);
         IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new RuntimeException("IPD not found"));
 
         String role = securityHelper.getCurrentUserRole();

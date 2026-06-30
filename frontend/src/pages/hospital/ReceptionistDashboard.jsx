@@ -688,6 +688,7 @@ const ReceptionistDashboard = () => {
         ...(hasAppointments ? [{ id: 'appointments', label: 'Appointments', icon: null }] : []),
         ...(hasOPD ? [{ id: 'opd', label: 'OPD', icon: null }] : []),
         ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
+        ...(hasIPD ? [{ id: 'mrd', label: 'MRD Archive', icon: null }] : []),
         ...(hasBilling ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
         ...(hasMedicalInventory && user?.inClinic !== false ? [{ id: 'inventory', label: 'Medicine Inventory', icon: null }] : []),
     ].filter(tab => tab.id !== 'billing' || user?.billingHandler !== 'DOCTOR');

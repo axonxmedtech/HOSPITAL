@@ -20,9 +20,11 @@ public class NurseAssessmentService {
     @Autowired private NurseAssessmentRepository assessmentRepository;
     @Autowired private VitalSignsRepository vitalsRepository;
     @Autowired private SecurityContextHelper securityHelper;
+    @Autowired private MrdService mrdService;
 
     @Transactional
     public NurseAssessment createAssessment(Long admissionId, Map<String, Object> data) {
+        mrdService.validateAdmissionActive(admissionId);
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
         if (assessmentRepository.existsByIpdAdmissionId(admissionId))
@@ -53,6 +55,7 @@ public class NurseAssessmentService {
 
     @Transactional
     public VitalSigns recordVitals(Long admissionId, Map<String, Object> data) {
+        mrdService.validateAdmissionActive(admissionId);
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
 

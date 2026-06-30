@@ -715,6 +715,7 @@ const DoctorDashboard = () => {
     const tabs = [
         { id: 'overview', label: 'Overview', icon: null },
         ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
+        ...(hasIPD ? [{ id: 'mrd', label: 'MRD Archive', icon: null }] : []),
         { id: 'opd', label: 'OPD', icon: null },
         { id: 'patients', label: 'Patients', icon: null },
         ...((isSolo || hasBilling) ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
