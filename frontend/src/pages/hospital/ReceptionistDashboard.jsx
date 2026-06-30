@@ -748,7 +748,7 @@ const ReceptionistDashboard = () => {
     const firstName = user?.name?.split(' ')[0] || user?.username || 'there';
     const todayLabel = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
-    const availToday = new Date().toISOString().slice(0, 10);
+    const availToday = todayStr;
 
     const availDoctorAppts = availabilityDoctorId
       ? appointments
