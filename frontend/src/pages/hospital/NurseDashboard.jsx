@@ -4,7 +4,7 @@ import PatientClinicalRecord from '../../components/nurse/PatientClinicalRecord'
 import MedicationAdministrationModal from '../../components/nurse/MedicationAdministrationModal';
 
 export default function NurseDashboard() {
-  const [tab, setTab] = useState('patients');
+  const [tab, setTab] = useState('tasks');
   const [patients, setPatients] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [selectedAdmission, setSelectedAdmission] = useState(null);
@@ -13,8 +13,11 @@ export default function NurseDashboard() {
   const [administerTarget, setAdministerTarget] = useState(null);
 
   useEffect(() => {
+    loadTasks();
+  }, []);
+
+  useEffect(() => {
     if (tab === 'patients') loadPatients();
-    if (tab === 'tasks') loadTasks();
   }, [tab]);
 
   async function loadPatients() {
