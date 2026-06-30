@@ -34,4 +34,7 @@ public interface LabOrderRepository extends JpaRepository<LabOrder, Long> {
     /** IPD Details filtered by status (e.g. only ORDERED pending orders) */
     List<LabOrder> findByHospitalIdAndIpdAdmissionIdAndStatusOrderByCreatedAtDesc(
             Long hospitalId, Long ipdAdmissionId, String status);
+
+    /** Analytics: fast count for dashboard KPIs */
+    long countByHospitalIdAndStatus(Long hospitalId, String status);
 }

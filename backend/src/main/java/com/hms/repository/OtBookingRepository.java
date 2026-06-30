@@ -9,4 +9,5 @@ import java.util.List;
 public interface OtBookingRepository extends JpaRepository<OtBooking, Long> {
     List<OtBooking> findByIpdAdmissionIdAndHospitalIdOrderByScheduledDateTimeDesc(Long ipdAdmissionId, Long hospitalId);
     List<OtBooking> findByHospitalIdOrderByScheduledDateTimeDesc(Long hospitalId);
+    long countByHospitalIdAndStatus(Long hospitalId, String status);
 }

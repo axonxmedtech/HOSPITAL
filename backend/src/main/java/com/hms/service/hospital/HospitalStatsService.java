@@ -20,6 +20,11 @@ import com.hms.repository.BillingRepository;
 import com.hms.repository.pharmacy.PharmacySaleRepository;
 import com.hms.repository.WardRepository;
 import com.hms.repository.BedRepository;
+import com.hms.repository.LabOrderRepository;
+import com.hms.repository.RadiologyOrderRepository;
+import com.hms.repository.OtBookingRepository;
+import com.hms.repository.NurseTaskRepository;
+import com.hms.repository.MrdRecordRepository;
 import com.hms.entity.Billing;
 import com.hms.entity.pharmacy.PharmacySale;
 import com.hms.entity.Ward;
@@ -73,6 +78,21 @@ public class HospitalStatsService {
 
     @Autowired
     private BedRepository bedRepository;
+
+    @Autowired
+    private LabOrderRepository labOrderRepository;
+
+    @Autowired
+    private RadiologyOrderRepository radiologyOrderRepository;
+
+    @Autowired
+    private OtBookingRepository otBookingRepository;
+
+    @Autowired
+    private NurseTaskRepository nurseTaskRepository;
+
+    @Autowired
+    private MrdRecordRepository mrdRecordRepository;
 
     @Cacheable(value = "hospitalStats", key = "#hospitalId")
     public Map<String, Long> getStats(Long hospitalId) {
@@ -385,6 +405,44 @@ public class HospitalStatsService {
             wardOccupancyInfo.add(wMap);
         }
         analytics.put("wardOccupancy", wardOccupancyInfo);
+
+        // ── Clinical Operations Snapshot ──────────────────────────────────────
+        // Active IPD patients right now
+        long activeIpdPatients = ipdAdmissionRepository.findByHospitalIdAndStatus(hospitalId, "ADMITTED").size();
+        analytics.put("activeIpdPatients", activeIpdPatients);
+
+        // Lab orders — pending (ORDERED + SAMPLE_COLLECTED) and completed in period
+        long pendingLabOrdered    = labOrderRepository.countByHospitalIdAndStatus(hospitalId, "ORDERED");
+        long pendingLabCollected  = labOrderRepository.countByHospitalIdAndStatus(hospitalId, "SAMPLE_COLLECTED");
+        long pendingLabOrders     = pendingLabOrdered + pendingLabCollected;
+        long completedLabOrders   = labOrderRepository.countByHospitalIdAndStatus(hospitalId, "COMPLETED");
+        analytics.put("pendingLabOrders", pendingLabOrders);
+        analytics.put("completedLabOrders", completedLabOrders);
+
+        // Radiology orders — pending and completed
+        long pendingRadOrdered   = radiologyOrderRepository.countByHospitalIdAndStatus(hospitalId, "ORDERED");
+        long pendingRadCollected = radiologyOrderRepository.countByHospitalIdAndStatus(hospitalId, "SAMPLE_COLLECTED");
+        long pendingRadiology    = pendingRadOrdered + pendingRadCollected;
+        long completedRadiology  = radiologyOrderRepository.countByHospitalIdAndStatus(hospitalId, "COMPLETED");
+        analytics.put("pendingRadiologyOrders", pendingRadiology);
+        analytics.put("completedRadiologyOrders", completedRadiology);
+
+        // OT — scheduled and completed surgeries
+        long scheduledOtSurgeries  = otBookingRepository.countByHospitalIdAndStatus(hospitalId, "SCHEDULED");
+        long completedOtSurgeries  = otBookingRepository.countByHospitalIdAndStatus(hospitalId, "COMPLETED");
+        analytics.put("scheduledOtSurgeries", scheduledOtSurgeries);
+        analytics.put("completedOtSurgeries", completedOtSurgeries);
+
+        // Nurse tasks — pending across all active admissions
+        long pendingNurseTasks = nurseTaskRepository.countByHospitalIdAndStatus(hospitalId, "PENDING");
+        analytics.put("pendingNurseTasks", pendingNurseTasks);
+
+        // MRD — pending archive (discharged patients not yet archived)
+        long totalDischarged = ipdAdmissionRepository.findByHospitalIdAndStatus(hospitalId, "DISCHARGED").size();
+        long totalArchived   = mrdRecordRepository.findByHospitalIdOrderByCreatedAtDesc(hospitalId).size();
+        long pendingMrdArchive = Math.max(0, totalDischarged - totalArchived);
+        analytics.put("pendingMrdArchive", pendingMrdArchive);
+        analytics.put("totalArchivedRecords", totalArchived);
 
         return analytics;
     }

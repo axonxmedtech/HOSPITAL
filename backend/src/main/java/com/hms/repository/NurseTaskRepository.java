@@ -10,6 +10,7 @@ public interface NurseTaskRepository extends JpaRepository<NurseTask, Long> {
     List<NurseTask> findByDoctorOrderIdAndStatus(Long doctorOrderId, String status);
     List<NurseTask> findByIpdAdmissionIdInAndStatus(List<Long> ipdAdmissionIds, String status);
     boolean existsByDoctorOrderIdAndStatus(Long doctorOrderId, String status);
+    long countByHospitalIdAndStatus(Long hospitalId, String status);
     List<NurseTask> findByIpdAdmissionIdAndHospitalIdOrderByScheduledAtDesc(Long ipdAdmissionId, Long hospitalId);
     List<NurseTask> findByIpdAdmissionIdAndHospitalIdAndStatus(Long ipdAdmissionId, Long hospitalId, String status);
 }

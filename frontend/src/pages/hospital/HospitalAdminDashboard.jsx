@@ -2625,6 +2625,42 @@ const HospitalAdminDashboard = () => {
                                                         </div>
                                                     </div>
 
+                                                    {/* Clinical Operations Snapshot */}
+                                                    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+                                                        <h3 className="text-base font-bold text-gray-800 mb-4">Clinical Operations Snapshot</h3>
+                                                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                                                            {[
+                                                                { label: 'Active IPD', value: analyticsData.activeIpdPatients ?? 0, color: 'bg-blue-50 text-blue-700', dot: 'bg-blue-500' },
+                                                                { label: 'Pending Labs', value: analyticsData.pendingLabOrders ?? 0, color: 'bg-yellow-50 text-yellow-700', dot: 'bg-yellow-500' },
+                                                                { label: 'Pending Radiology', value: analyticsData.pendingRadiologyOrders ?? 0, color: 'bg-purple-50 text-purple-700', dot: 'bg-purple-500' },
+                                                                { label: 'OT Scheduled', value: analyticsData.scheduledOtSurgeries ?? 0, color: 'bg-teal-50 text-teal-700', dot: 'bg-teal-500' },
+                                                                { label: 'Nurse Tasks', value: analyticsData.pendingNurseTasks ?? 0, color: 'bg-orange-50 text-orange-700', dot: 'bg-orange-500' },
+                                                                { label: 'Pending MRD', value: analyticsData.pendingMrdArchive ?? 0, color: 'bg-red-50 text-red-700', dot: 'bg-red-500' },
+                                                            ].map(item => (
+                                                                <div key={item.label} className={`rounded-xl p-4 ${item.color} flex flex-col gap-2`}>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${item.dot}`} />
+                                                                        <span className="text-xs font-semibold uppercase tracking-wide opacity-80">{item.label}</span>
+                                                                    </div>
+                                                                    <span className="text-3xl font-extrabold">{item.value}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                        <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3 border-t pt-4">
+                                                            {[
+                                                                { label: 'Lab Tests Completed', value: analyticsData.completedLabOrders ?? 0 },
+                                                                { label: 'Radiology Completed', value: analyticsData.completedRadiologyOrders ?? 0 },
+                                                                { label: 'OT Surgeries Done', value: analyticsData.completedOtSurgeries ?? 0 },
+                                                                { label: 'MRD Archived', value: analyticsData.totalArchivedRecords ?? 0 },
+                                                            ].map(item => (
+                                                                <div key={item.label} className="text-center">
+                                                                    <div className="text-xl font-bold text-gray-800">{item.value}</div>
+                                                                    <div className="text-xs text-gray-500 mt-0.5">{item.label}</div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
                                                     {/* Charts Grid Row 1 */}
                                                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                                                         {/* Patient Volume Trends */}
