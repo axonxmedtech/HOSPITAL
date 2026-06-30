@@ -303,13 +303,102 @@ export default function NurseDashboard() {
                     {task.bedNumber ? ` · Bed ${task.bedNumber}` : task.wardName ? ` · ${task.wardName}` : ''}
                   </p>
                 </div>
-                <div className="flex gap-2 ml-4 shrink-0">
-                  <button
-                    onClick={() => setAdministerTarget(task)}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl shadow-sm transition-all active:scale-95"
-                  >
-                    {task.orderType === 'MEDICATION' ? '💊 Administer' : '📋 Execute'}
-                  </button>
+                <div className="ml-4 shrink-0">
+                  {task.orderType === 'MEDICATION' ? (
+                    <div>
+                      {notGivenOpenId === task.id ? (
+                        <div className="flex flex-col gap-2 min-w-[220px]">
+                          <p className="text-xs font-semibold text-gray-600">Why wasn't this given?</p>
+                          <div className="flex gap-1.5">
+                            {[
+                              { key: 'HELD', label: 'Hold' },
+                              { key: 'REFUSED', label: 'Refuse' },
+                              { key: 'SKIPPED', label: 'Skip' },
+                            ].map(opt => (
+                              <button
+                                key={opt.key}
+                                type="button"
+                                onClick={() => setNotGivenStatus(opt.key)}
+                                className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition-all ${
+                                  notGivenStatus === opt.key
+                                    ? 'bg-gray-800 text-white border-gray-800'
+                                    : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
+                                }`}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                          <input
+                            type="text"
+                            value={notGivenReason}
+                            onChange={e => setNotGivenReason(e.target.value)}
+                            placeholder="Reason (required)"
+                            className="text-xs border border-gray-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                          />
+                          {errorId === task.id && (
+                            <p className="text-xs text-red-600">⚠ Failed to record. Try again.</p>
+                          )}
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => { setNotGivenOpenId(null); setNotGivenReason(''); setNotGivenStatus('HELD'); }}
+                              className="flex-1 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleNotGiven(task)}
+                              disabled={!notGivenReason.trim() || submittingId === task.id}
+                              className="flex-1 px-3 py-1.5 text-xs font-semibold bg-gray-800 text-white rounded-lg hover:bg-gray-900 disabled:opacity-50 transition-all"
+                            >
+                              {submittingId === task.id ? '…' : 'Confirm'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-1.5 items-end">
+                          <div className="flex gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleGiven(task)}
+                              disabled={submittingId === task.id}
+                              className="px-3 py-1.5 text-xs font-semibold bg-green-600 hover:bg-green-700 text-white rounded-xl shadow-sm transition-all active:scale-95 disabled:opacity-50"
+                            >
+                              {submittingId === task.id ? '…' : '✓ Given'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSnooze(task)}
+                              disabled={submittingId === task.id}
+                              className="px-3 py-1.5 text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-sm transition-all active:scale-95 disabled:opacity-50"
+                            >
+                              ⏰ Snooze
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setNotGivenOpenId(task.id); setNotGivenReason(''); setNotGivenStatus('HELD'); }}
+                              disabled={submittingId === task.id}
+                              className="px-3 py-1.5 text-xs font-semibold bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 rounded-xl shadow-sm transition-all active:scale-95 disabled:opacity-50"
+                            >
+                              ✗ Not Given
+                            </button>
+                          </div>
+                          {errorId === task.id && (
+                            <p className="text-xs text-red-600">⚠ Failed to record. Try again.</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setAdministerTarget(task)}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl shadow-sm transition-all active:scale-95"
+                    >
+                      📋 Execute
+                    </button>
+                  )}
                 </div>
               </div>
             );
