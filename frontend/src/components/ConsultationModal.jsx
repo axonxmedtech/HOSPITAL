@@ -206,6 +206,32 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         fetchPatientDetails();
     }, [isOpen, appointment?.patientId, patient?.publicId, patient?.id, opd?.id]);
 
+    useEffect(() => {
+        if (!isOpen) return;
+        const handleKeyDown = (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+                e.preventDefault();
+                setActiveTab('clinical');
+                setTimeout(() => {
+                    document.getElementById('consultation-diagnosis-anchor')
+                        ?.querySelector('textarea')
+                        ?.focus();
+                }, 0);
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
+                e.preventDefault();
+                setActiveTab('clinical');
+                setFormData(prev => ({ ...prev, labRequired: true }));
+                setTimeout(() => {
+                    document.getElementById('consultation-lab-section')
+                        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 0);
+            }
+        };
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [isOpen]);
+
     if (!isOpen || (!appointment && !patient)) return null;
 
     const handleChange = (field, value) => {
@@ -491,15 +517,20 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                         placeholder="Enter patient's symptoms..."
                                     />
 
-                                    <CharCountInput
-                                        label="Diagnosis"
-                                        textarea
-                                        rows={3}
-                                        value={formData.diagnosis}
-                                        onChange={(e) => handleChange('diagnosis', e.target.value)}
-                                        maxLength={500}
-                                        placeholder="Enter diagnosis..."
-                                    />
+                                    <div id="consultation-diagnosis-anchor">
+                                        <CharCountInput
+                                            label="Diagnosis"
+                                            textarea
+                                            rows={3}
+                                            value={formData.diagnosis}
+                                            onChange={(e) => handleChange('diagnosis', e.target.value)}
+                                            maxLength={500}
+                                            placeholder="Enter diagnosis..."
+                                        />
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            Shortcut: <kbd className="font-mono bg-gray-100 border border-gray-200 rounded px-1 py-0.5 text-gray-500">Ctrl+D</kbd>
+                                        </p>
+                                    </div>
 
                                     {/* Hospital Inventory Items Used Section */}
                                     {(hasBilling || hasHospitalInventory) && (
@@ -862,7 +893,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                             </div>
                                         )}
 
-                                        <div className="mt-4">
+                                        <div id="consultation-lab-section" className="mt-4">
                                             <div className="flex items-center gap-3">
                                                 <input
                                                     id="lab-checkbox"
@@ -871,7 +902,10 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                                     onChange={(e) => setFormData(prev => ({ ...prev, labRequired: e.target.checked }))}
                                                     className="h-4 w-4"
                                                 />
-                                                <label htmlFor="lab-checkbox" className="text-sm font-medium text-gray-700">Order Lab Tests</label>
+                                                <label htmlFor="lab-checkbox" className="text-sm font-medium text-gray-700">
+                                                    Order Lab Tests
+                                                    <kbd className="ml-2 font-mono bg-gray-100 border border-gray-200 rounded px-1 py-0.5 text-xs text-gray-400">Ctrl+L</kbd>
+                                                </label>
                                             </div>
 
                                             {formData.labRequired && (
