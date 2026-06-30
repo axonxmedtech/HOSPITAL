@@ -9,6 +9,7 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
     const [formData, setFormData] = useState({});
     const [errors, setErrors] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [duplicatePatient, setDuplicatePatient] = useState(null);
     const { success, error: toastError } = useToast();
     const isEdit = !!initialData;
 
@@ -21,6 +22,7 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
             }
             setErrors({});
             setIsSubmitting(false);
+            setDuplicatePatient(null);
         }
     }, [isOpen, initialData]);
 
@@ -75,6 +77,26 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
         }
     };
 
+    useEffect(() => {
+        if (!formData.phone || formData.phone.length < 10 || isEdit) {
+            setDuplicatePatient(null);
+            return;
+        }
+        const timer = setTimeout(async () => {
+            try {
+                const results = await hospitalService.getPatients(formData.phone, 0, 3);
+                const patients = results.content || results || [];
+                const match = patients.find(p =>
+                    (p.phone || p.mobile || '').replace(/\D/g, '') === formData.phone.replace(/\D/g, '')
+                );
+                setDuplicatePatient(match || null);
+            } catch {
+                setDuplicatePatient(null);
+            }
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [formData.phone, isEdit]);
+
     if (!isOpen) return null;
 
     return (
@@ -104,6 +126,23 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
 
                 {/* Form */}
                 <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[76vh] overflow-auto">
+                    {duplicatePatient && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start justify-between gap-3">
+                            <div>
+                                <p className="text-sm font-semibold text-amber-800">⚠️ Patient may already exist</p>
+                                <p className="text-xs text-amber-700 mt-0.5">
+                                    {duplicatePatient.name} &middot; {duplicatePatient.phone || duplicatePatient.mobile || '—'} &middot; UHID: {duplicatePatient.uhid || duplicatePatient.id}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="text-xs font-semibold text-amber-700 underline whitespace-nowrap mt-0.5"
+                            >
+                                Cancel &amp; Search
+                            </button>
+                        </div>
+                    )}
                     {/* Row: Name + Phone */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         <CharCountInput
