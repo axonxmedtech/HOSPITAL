@@ -39,6 +39,7 @@ import HospitalInventoryTab from '../../components/HospitalInventoryTab';
  * @version Phase-1
  */
 const DoctorDashboard = () => {
+    const navigate = useNavigate();
     const [user, setUser] = useState(() => authService.getCurrentUser());
     const modules = user?.modules || [];
     const hasIPD = modules.includes('IPD');
@@ -48,6 +49,10 @@ const DoctorDashboard = () => {
 
     // Helper to switch tabs
     const setActiveTab = (tab) => {
+        if (tab === 'mrd') {
+            navigate('/hospital/doctor/mrd');
+            return;
+        }
         const newParams = { tab };
         if (tab === 'appointments' && viewFilter) newParams.appointmentFilter = viewFilter;
         setSearchParams(newParams);
@@ -89,7 +94,6 @@ const DoctorDashboard = () => {
     const [searchTerm, setSearchTerm] = useState('');
 
     const { success, error: toastError, info } = useToast();
-    const navigate = useNavigate();
 
     // Patient History Modal State (Removed in favor of HistoryDrawer)
     // const [historyModal, setHistoryModal] = useState({ isOpen: false, patient: null, history: [] });
@@ -752,6 +756,9 @@ const DoctorDashboard = () => {
 
     // Client-side pagination logic for queueEntries
     const sortedQueue = [...queueEntries].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    const consultingEntry = sortedQueue.find(q => q.opd?.status === 'CONSULTING');
+    const nextQueuedEntry = sortedQueue.find(q => q.opd?.status === 'QUEUED');
+    const nextQueuedToken = nextQueuedEntry ? sortedQueue.indexOf(nextQueuedEntry) + 1 : null;
     const queueTotalPages = Math.ceil(sortedQueue.length / ITEMS_PER_PAGE) || 1;
     const paginatedQueue = sortedQueue.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
