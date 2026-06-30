@@ -608,6 +608,61 @@ const IpdDetails = () => {
                 </div>
             )}
 
+            {/* Patient Context Bar — allergies, EWS, pending labs, alerts */}
+            {smartSummary && (
+                (smartSummary.allergies?.length > 0 ||
+                 ewsResult ||
+                 (smartSummary.pendingLabTests?.length ?? 0) > 0 ||
+                 (smartSummary.unacknowledgedAlerts?.length ?? 0) > 0)
+            ) && (
+                <div className="mt-3 flex flex-wrap items-center gap-2 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl">
+                    {/* Allergies */}
+                    {smartSummary.allergies?.length > 0 && (
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-semibold text-red-600">⚠️ Allergies:</span>
+                            {smartSummary.allergies.slice(0, 3).map((a, i) => (
+                                <span key={i} className="text-xs px-2 py-0.5 bg-red-50 text-red-700 border border-red-200 rounded-full font-medium">
+                                    {a}
+                                </span>
+                            ))}
+                            {smartSummary.allergies.length > 3 && (
+                                <span className="text-xs px-2 py-0.5 bg-red-50 text-red-600 border border-red-200 rounded-full">
+                                    +{smartSummary.allergies.length - 3} more
+                                </span>
+                            )}
+                        </div>
+                    )}
+
+                    {/* EWS Score */}
+                    {ewsResult && (
+                        <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${
+                            ewsResult.severity === 'HIGH' ? 'bg-red-50 text-red-700 border-red-200' :
+                            ewsResult.severity === 'MEDIUM' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                            'bg-green-50 text-green-700 border-green-200'
+                        }`}>
+                            EWS {ewsResult.totalScore ?? 0}
+                            {ewsResult.severity === 'HIGH' && ' 🔴'}
+                            {ewsResult.severity === 'MEDIUM' && ' ⚠️'}
+                            {ewsResult.severity === 'NORMAL' && ' 🟢'}
+                        </span>
+                    )}
+
+                    {/* Pending Labs */}
+                    {(smartSummary.pendingLabTests?.length ?? 0) > 0 && (
+                        <span className="text-xs px-2.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full font-medium">
+                            🧪 {smartSummary.pendingLabTests.length} pending lab{smartSummary.pendingLabTests.length > 1 ? 's' : ''}
+                        </span>
+                    )}
+
+                    {/* Unacknowledged CDSS Alerts */}
+                    {(smartSummary.unacknowledgedAlerts?.length ?? 0) > 0 && (
+                        <span className="text-xs px-2.5 py-0.5 bg-red-50 text-red-700 border border-red-200 rounded-full font-semibold">
+                            🔔 {smartSummary.unacknowledgedAlerts.length} alert{smartSummary.unacknowledgedAlerts.length > 1 ? 's' : ''}
+                        </span>
+                    )}
+                </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
                 <div className="col-span-2 bg-white border rounded p-4">
                     <h3 className="font-semibold mb-2">Admission Info</h3>
