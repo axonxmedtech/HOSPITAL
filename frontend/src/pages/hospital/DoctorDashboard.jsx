@@ -1071,6 +1071,68 @@ const DoctorDashboard = () => {
                                 )}
                             </div>
 
+                            {/* Consultation One-Click Widget */}
+                            {queueEntries.length > 0 && (
+                                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h3 className="text-base font-bold text-gray-900">
+                                            {consultingEntry ? 'Now Consulting' : 'Next Patient'}
+                                        </h3>
+                                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                                            queueEntries.length >= 8
+                                                ? 'bg-red-100 text-red-700'
+                                                : queueEntries.length >= 4
+                                                ? 'bg-amber-100 text-amber-700'
+                                                : 'bg-green-100 text-green-700'
+                                        }`}>
+                                            {queueEntries.length} waiting
+                                        </span>
+                                    </div>
+
+                                    {consultingEntry && (
+                                        <div className="flex items-center gap-3 mb-3">
+                                            <span className="text-sm font-semibold text-gray-800">
+                                                {consultingEntry.opd?.patient?.name || consultingEntry.opd?.patientName || 'Unknown'}
+                                            </span>
+                                            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                                                CONSULTING
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    {consultingEntry && nextQueuedEntry && (
+                                        <div className="border-t border-gray-100 my-3" />
+                                    )}
+
+                                    {nextQueuedEntry && (
+                                        <div className="flex items-center justify-between gap-4">
+                                            <div>
+                                                {consultingEntry && (
+                                                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Up Next</p>
+                                                )}
+                                                <p className="text-sm font-bold text-gray-900">
+                                                    {nextQueuedEntry.opd?.patient?.name || nextQueuedEntry.opd?.patientName || 'Unknown'}
+                                                </p>
+                                                <p className="text-xs text-gray-500 mt-0.5">
+                                                    Token #{nextQueuedToken} · Waiting since {new Date(nextQueuedEntry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                </p>
+                                            </div>
+                                            <button
+                                                onClick={() => handleStartOpdConsultation(nextQueuedEntry.opd)}
+                                                disabled={!!startingConsultationId}
+                                                className="shrink-0 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {startingConsultationId ? 'Starting…' : 'Start Consultation →'}
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {consultingEntry && !nextQueuedEntry && (
+                                        <p className="text-sm text-gray-500">No more patients in queue</p>
+                                    )}
+                                </div>
+                            )}
+
                             {/* Side-by-Side Lists: Appointments and Queue */}
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
                                 {/* Left Div: Appointments */}
