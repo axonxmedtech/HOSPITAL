@@ -68,33 +68,17 @@ A new "Shift Mode" card in the Settings tab, following the same toggle-card patt
 
 ## 2. Fixed Shift Windows
 
-When `shiftMode = 'FIXED'`, the frontend auto-detects the current shift from the local clock:
+When `shiftMode = 'FIXED'`, the frontend auto-detects the current shift from the local clock hour. No user input needed.
 
-| Shift | Window |
-|-------|--------|
-| Morning | 07:00 – 15:00 |
-| Evening | 15:00 – 23:00 |
-| Night | 23:00 – 07:00 (next day) |
+| Shift | Window | Condition |
+|-------|--------|-----------|
+| Morning | 07:00 – 15:00 | `hour >= 7 && hour < 15` |
+| Evening | 15:00 – 23:00 | `hour >= 15 && hour < 23` |
+| Night | 23:00 – 07:00 (next day) | `hour >= 23 \|\| hour < 7` |
 
-```js
-function getCurrentFixedShift() {
-  const hour = new Date().getHours();
-  const today = new Date().toISOString().slice(0, 10); // local date
-  if (hour >= 7 && hour < 15) {
-    return { label: 'Morning Shift', start: `${today}T07:00:00`, end: `${today}T15:00:00` };
-  } else if (hour >= 15 && hour < 23) {
-    return { label: 'Evening Shift', start: `${today}T15:00:00`, end: `${today}T23:00:00` };
-  } else {
-    // Night shift: start is previous day 23:00 if before midnight, or today 23:00 if past midnight
-    const isAfterMidnight = hour < 7;
-    const shiftDate = isAfterMidnight
-      ? new Date(Date.now() - 86400000).toISOString().slice(0, 10)
-      : today;
-    const nextDate = isAfterMidnight ? today : new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-    return { label: 'Night Shift', start: `${shiftDate}T23:00:00`, end: `${nextDate}T07:00:00` };
-  }
-}
-```
+Night shift spans midnight: `shiftStart` is the previous calendar day at 23:00 when `hour < 7`, otherwise today at 23:00. `shiftEnd` is always `shiftStart + 8h`.
+
+The full implementation is in Section 4d (`getShiftWindow`) which handles both FIXED and MANUAL in one function — do not implement a separate fixed-only function.
 
 ---
 
