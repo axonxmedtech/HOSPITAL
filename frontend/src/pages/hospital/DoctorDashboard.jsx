@@ -72,6 +72,7 @@ const DoctorDashboard = () => {
 
     // Stats State
     const [stats, setStats] = useState({ today: 0, pending: 0, total: 0 });
+    const [ipdCount, setIpdCount] = useState(0);
     // Queue / OPD state (doctor-specific)
     const [queueEntries, setQueueEntries] = useState([]);
     const [opds, setOpds] = useState([]);
@@ -335,6 +336,16 @@ const DoctorDashboard = () => {
                 } catch (err) {
                     console.error('Failed to load overview appointments and followups', err);
                 }
+
+                    // Fetch IPD count if module is enabled
+                    if (hasIPD) {
+                        try {
+                            const admitted = await hospitalService.getAdmittedIpdAdmissions();
+                            setIpdCount(Array.isArray(admitted) ? admitted.length : 0);
+                        } catch {
+                            setIpdCount(0);
+                        }
+                    }
             } else if (activeTab === 'patients') {
                 const dateParam = patientTabView === 'Date' ? patientDateFilter : '';
                 const data = await hospitalService.getPatients(
@@ -980,7 +991,7 @@ const DoctorDashboard = () => {
                                 </div>
                             )}
                             {/* Stat Cards */}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className={`grid grid-cols-1 gap-4 ${hasIPD ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
                                 <button
                                     onClick={() => setActiveTab('opd')}
                                     className="bg-white rounded-2xl border border-gray-200 p-6 text-left hover:shadow-md hover:border-blue-200 transition-all group"
@@ -1009,6 +1020,48 @@ const DoctorDashboard = () => {
                                     </p>
                                     <p className="text-xs text-gray-400 mt-2 font-medium">View Appointments →</p>
                                 </button>
+                                {hasIPD && (
+                                    <button
+                                        onClick={() => setActiveTab('ipd')}
+                                        className="bg-white rounded-2xl border border-gray-200 p-6 text-left hover:shadow-md hover:border-blue-200 transition-all group"
+                                    >
+                                        <p className="text-sm font-medium text-gray-500 group-hover:text-blue-600 transition-colors">IPD Patients</p>
+                                        <p className="text-3xl font-bold text-gray-900 mt-1">{ipdCount}</p>
+                                        <p className="text-xs text-blue-500 mt-2 font-medium">View IPD →</p>
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Quick Actions */}
+                            <div className="flex flex-wrap gap-3">
+                                <button
+                                    onClick={() => setActiveTab('opd')}
+                                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-xl transition-all shadow-sm active:scale-95"
+                                >
+                                    Start OPD →
+                                </button>
+                                {hasIPD && (
+                                    <button
+                                        onClick={() => setActiveTab('ipd')}
+                                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-all shadow-sm active:scale-95"
+                                    >
+                                        Continue IPD →
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => setActiveTab('appointments')}
+                                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-white hover:bg-gray-50 text-gray-700 text-sm font-semibold rounded-xl border border-gray-200 transition-all shadow-sm active:scale-95"
+                                >
+                                    View Appointments
+                                </button>
+                                {user?.receptionMode === 'SOLO' && (
+                                    <button
+                                        onClick={() => setIsAddPatientModalOpen(true)}
+                                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-white hover:bg-gray-50 text-gray-700 text-sm font-semibold rounded-xl border border-gray-200 transition-all shadow-sm active:scale-95"
+                                    >
+                                        + Add Patient
+                                    </button>
+                                )}
                             </div>
 
                             {/* Side-by-Side Lists: Appointments and Queue */}
