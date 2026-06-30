@@ -234,6 +234,8 @@ const IpdDetails = () => {
     const [downloadingPdf, setDownloadingPdf] = useState(false);
     const [payment, setPayment] = useState({ amount: '', mode: 'CASH', saving: false });
     const [bedModal, setBedModal] = useState({ isOpen: false, wards: [], selectedWard: '', beds: [], selectedBed: '', saving: false });
+    const [labOpenTrigger, setLabOpenTrigger] = useState(0);
+    const [radOpenTrigger, setRadOpenTrigger] = useState(0);
 
     useEffect(() => {
         if (bedModal.isOpen && bedModal.wards.length === 0) {
@@ -304,6 +306,20 @@ const IpdDetails = () => {
         }
     });
 
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
+                e.preventDefault();
+                setLabOpenTrigger(t => t + 1);
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
+                e.preventDefault();
+                setRadOpenTrigger(t => t + 1);
+            }
+        };
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, []);
 
 
 
@@ -721,6 +737,7 @@ const IpdDetails = () => {
                         ipdAdmissionId={Number(id)}
                         patientId={data?.patientId}
                         canOrder={(isDoctor || isAdmin) && !data?.isArchived && data?.status !== 'DISCHARGED'}
+                        openTrigger={labOpenTrigger}
                     />
 
                     {/* Radiology Orders & Reports — visible to Doctor, Nurse, and Admin */}
@@ -729,6 +746,7 @@ const IpdDetails = () => {
                         ipdAdmissionId={Number(id)}
                         patientId={data?.patientId}
                         canOrder={(isDoctor || isAdmin) && !data?.isArchived && data?.status !== 'DISCHARGED'}
+                        openTrigger={radOpenTrigger}
                     />
 
                     {followupModal.isOpen && (
