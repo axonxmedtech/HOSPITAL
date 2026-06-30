@@ -927,6 +927,21 @@ const hospitalService = {
     removePatientAllergy: async (patientId, allergyId) => {
         await apiClient.delete(`/hospital/patients/${patientId}/allergies/${allergyId}`);
     },
+
+    // ========== Nurse Dashboard APIs ==========
+
+    /**
+     * Get shift activity summary for the current nurse
+     * Returns activities (admissions, discharges, vitals, medications) during a shift window
+     * @param {string} shiftStart - ISO datetime string (e.g., "2026-07-01T08:00:00Z")
+     * @param {string} shiftEnd - ISO datetime string (e.g., "2026-07-01T16:00:00Z")
+     */
+    getShiftActivity: async (shiftStart, shiftEnd) => {
+        const response = await apiClient.get('/hospital/nurse/dashboard/shift-activity', {
+            params: { shiftStart, shiftEnd }
+        });
+        return response.data;
+    },
 };
 
 export default hospitalService;
