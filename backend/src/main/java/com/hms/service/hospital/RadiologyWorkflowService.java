@@ -41,6 +41,9 @@ public class RadiologyWorkflowService {
         RadiologyOrder order = new RadiologyOrder();
         order.setHospitalId(hospitalId);
         order.setTestName(req.getTestName());
+        if (req.getRadiologyTestMasterId() != null) {
+            order.setRadiologyTestMasterId(req.getRadiologyTestMasterId());
+        }
         order.setPatientId(req.getPatientId());
         order.setIpdAdmissionId(req.getIpdAdmissionId());
         order.setOpdId(req.getOpdId());

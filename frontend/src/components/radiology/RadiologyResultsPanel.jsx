@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getRadiologyOrders, placeRadiologyOrder, cancelRadiologyOrder } from '../../services/radiologyService';
 import authService from '../../services/authService';
+import masterDataService from '../../services/masterDataService';
+import SearchableSelect from '../SearchableSelect';
 
 const STATUS_CONFIG = {
   ORDERED: { badge: 'bg-amber-100 text-amber-700 border border-amber-200', label: 'Ordered', icon: '⏳' },
@@ -14,7 +16,7 @@ export default function RadiologyResultsPanel({ ipdAdmissionId, patientId, canOr
   const [loading, setLoading] = useState(false);
   const [showOrderForm, setShowOrderForm] = useState(false);
   const [expanded, setExpanded] = useState({});
-  const [newOrder, setNewOrder] = useState({ testName: '', priority: 'ROUTINE', notes: '' });
+  const [newOrder, setNewOrder] = useState({ testName: '', radiologyTestMasterId: null, modality: '', priority: 'ROUTINE', notes: '' });
   const [ordering, setOrdering] = useState(false);
   const [orderError, setOrderError] = useState('');
 
@@ -44,7 +46,7 @@ export default function RadiologyResultsPanel({ ipdAdmissionId, patientId, canOr
     setOrderError('');
     try {
       await placeRadiologyOrder({ ...newOrder, patientId, ipdAdmissionId });
-      setNewOrder({ testName: '', priority: 'ROUTINE', notes: '' });
+      setNewOrder({ testName: '', radiologyTestMasterId: null, modality: '', priority: 'ROUTINE', notes: '' });
       setShowOrderForm(false);
       fetchOrders();
     } catch (err) {
@@ -105,12 +107,18 @@ export default function RadiologyResultsPanel({ ipdAdmissionId, patientId, canOr
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Scan / Test Name *</label>
-              <input
-                value={newOrder.testName}
-                onChange={e => setNewOrder(p => ({ ...p, testName: e.target.value }))}
-                required
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
-                placeholder="e.g. Chest X-Ray PA View"
+              <SearchableSelect
+                onSearch={masterDataService.searchRadiologyTests}
+                onSelect={item => setNewOrder(p => ({
+                  ...p,
+                  testName: item.testName,
+                  radiologyTestMasterId: item.id,
+                  modality: item.modality
+                }))}
+                getLabel={item => `${item.testName}${item.modality ? ' [' + item.modality.replace(/_/g, ' ') + ']' : ''}`}
+                placeholder="Search radiology test (e.g. X-Ray Chest, MRI Brain)"
+                value={newOrder.testName || ''}
+                hint={newOrder.modality ? `Modality: ${newOrder.modality.replace(/_/g, ' ')}` : ''}
               />
             </div>
             <div>
