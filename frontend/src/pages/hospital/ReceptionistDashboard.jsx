@@ -917,6 +917,7 @@ const ReceptionistDashboard = () => {
                                     <select
                                         value={availabilityDoctorId}
                                         onChange={e => setAvailabilityDoctorId(e.target.value)}
+                                        aria-label="Select doctor"
                                         className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300 w-full sm:w-auto"
                                     >
                                         <option value="">Select a doctor</option>
@@ -931,7 +932,7 @@ const ReceptionistDashboard = () => {
                                         <p className="text-sm text-gray-400 mt-3">Select a doctor to see today&apos;s schedule</p>
                                     )}
 
-                                    {availabilityDoctorId && loading && (
+                                    {availabilityDoctorId && loading && appointments.length === 0 && (
                                         <p className="text-sm text-gray-400 mt-3">Loading…</p>
                                     )}
 
