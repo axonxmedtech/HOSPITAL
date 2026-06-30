@@ -61,6 +61,57 @@ export default function NurseDashboard() {
     ? patients.filter(p => p.wardName === wardFilter)
     : patients;
 
+  const now = new Date();
+  const MS_60 = 60 * 60 * 1000;
+
+  const overdueTaskList = tasks
+    .filter(t => t.scheduledAt && new Date(t.scheduledAt) < now)
+    .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
+
+  const dueSoonTaskList = tasks
+    .filter(t => t.scheduledAt && new Date(t.scheduledAt) >= now && new Date(t.scheduledAt) - now <= MS_60)
+    .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
+
+  const upcomingTaskList = tasks
+    .filter(t => !t.scheduledAt || (new Date(t.scheduledAt) >= now && new Date(t.scheduledAt) - now > MS_60))
+    .sort((a, b) => {
+      if (!a.scheduledAt) return 1;
+      if (!b.scheduledAt) return -1;
+      return new Date(a.scheduledAt) - new Date(b.scheduledAt);
+    });
+
+  const sortedTasks = [...overdueTaskList, ...dueSoonTaskList, ...upcomingTaskList];
+
+  const overdueCount = overdueTaskList.length;
+  const dueSoonCount = dueSoonTaskList.length;
+  const patientCount = new Set(tasks.map(t => t.patientName).filter(Boolean)).size;
+
+  function getTaskBucket(task) {
+    if (!task.scheduledAt) return 'upcoming';
+    const diffMs = new Date(task.scheduledAt) - now;
+    if (diffMs < 0) return 'overdue';
+    if (diffMs <= MS_60) return 'dueSoon';
+    return 'upcoming';
+  }
+
+  function getTimeLabel(task) {
+    if (!task.scheduledAt) return { label: 'No time set', cls: 'text-gray-400 text-xs' };
+    const scheduled = new Date(task.scheduledAt);
+    const diffMs = scheduled - now;
+    if (diffMs < 0) {
+      const mins = Math.floor(-diffMs / 60000);
+      return { label: `OVERDUE ${mins} min`, cls: 'text-red-600 font-semibold text-xs' };
+    }
+    if (diffMs <= MS_60) {
+      const mins = Math.floor(diffMs / 60000);
+      return { label: `Due in ${mins} min`, cls: 'text-amber-600 font-semibold text-xs' };
+    }
+    return {
+      label: `Due at ${scheduled.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+      cls: 'text-gray-500 text-xs',
+    };
+  }
+
   if (selectedAdmission) {
     return (
       <PatientClinicalRecord
