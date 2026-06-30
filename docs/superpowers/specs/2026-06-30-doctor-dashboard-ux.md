@@ -42,9 +42,20 @@ Replaces the current 5-card grid. Cards are clickable and navigate to the releva
 | Today's OPD | `stats.today` | Already fetched | `?tab=opd` | Blue |
 | In Queue | `queueEntries.length` | Already fetched | `?tab=queue` | Orange if > 10 |
 | Pending | `stats.pending` | Already fetched | `?tab=appointments` | Red if > 5, green if 0 |
-| IPD Patients | `opds.length` | Already fetched | `?tab=ipd` | Blue — **only rendered if `hasIPD === true`** |
+| IPD Patients | `ipdCount` (new state, default `0`) | One new lightweight fetch: `GET /hospital/ipd/admissions?status=ACTIVE&page=0&size=1` — reads `totalElements` from response | `?tab=ipd` | Blue — **only rendered if `hasIPD === true`** |
 
 Grid is `grid-cols-3` when `hasIPD` is false, `grid-cols-4` when `hasIPD` is true.
+
+**New state for IPD count:**
+```js
+const [ipdCount, setIpdCount] = useState(0);
+```
+Fetched inside `loadData` when `activeTab === 'overview' && hasIPD`:
+```js
+const ipdData = await hospitalService.getIpdAdmissions(0, 1, 'ACTIVE');
+setIpdCount(ipdData.totalElements || 0);
+```
+If the fetch fails, `ipdCount` stays 0 — non-blocking.
 
 **Removed cards:** "Current Patient", "Next Patient", "Total Appointments" — these are not removed from the dashboard, only from the top card grid. "Current Patient" and "Next Patient" already appear in the queue panel lower on the page.
 
@@ -79,8 +90,8 @@ These remain **unchanged**:
 | Constraint | Detail |
 |---|---|
 | Files changed | `frontend/src/pages/hospital/DoctorDashboard.jsx` only |
-| New state variables | None |
-| New API calls | None — all values (`stats`, `queueEntries`, `opds`) already fetched in existing `loadData` |
+| New state variables | `ipdCount` (number, default 0) — only used when `hasIPD` is true |
+| New API calls | One: `GET /hospital/ipd/admissions?status=ACTIVE&page=0&size=1` fetched in `loadData` when `hasIPD` is true. Non-blocking (catch returns 0). All other values from existing state. |
 | New helper functions | `getGreeting()` and `getDoctorFirstName()` — pure functions defined before the JSX return |
 | Regression risk | Zero — only overview tab header replaced; all tabs and lower panels untouched |
 
