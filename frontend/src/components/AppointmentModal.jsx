@@ -22,6 +22,11 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
     const [bookedSlots, setBookedSlots] = useState([]);
     const [loadingSlots, setLoadingSlots] = useState(false);
 
+    // Welcome Back card state
+    const [selectedPatient, setSelectedPatient] = useState(null);
+    const [patientHistory, setPatientHistory] = useState(null);
+    const [historyLoading, setHistoryLoading] = useState(false);
+
     const TIME_SLOTS = [
         "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
         "12:00", "12:30", "13:00", "13:30", "14:00", "14:30",
@@ -58,6 +63,9 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
             setFilteredPatients([]);
             setSelectedSlot(null);
             setBookedSlots([]);
+            setSelectedPatient(null);
+            setPatientHistory(null);
+            setHistoryLoading(false);
             if (patients) setFilteredPatients(patients);
         }
     }, [isOpen, patients]);
@@ -143,6 +151,7 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
     const selectPatient = (patient) => {
         handleChange('patientName', `${patient.name} - ${patient.phone}`);
         handleChange('patientId', patient.id);
+        setSelectedPatient(patient);
         setShowPatientDropdown(false);
     };
 
@@ -196,6 +205,9 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
         setIsNewPatient(false);
         setFormData({});
         setErrors({});
+        setSelectedPatient(null);
+        setPatientHistory(null);
+        setHistoryLoading(false);
         onClose();
     };
 
