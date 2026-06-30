@@ -936,7 +936,7 @@ const ReceptionistDashboard = () => {
                                         <p className="text-sm text-gray-400 mt-3">Loading…</p>
                                     )}
 
-                                    {availabilityDoctorId && !loading && (
+                                    {availabilityDoctorId && (!loading || appointments.length > 0) && (
                                         <div className="mt-4">
                                             {availApptCount === 0 ? (
                                                 <p className="text-sm text-gray-500">No appointments scheduled today</p>
