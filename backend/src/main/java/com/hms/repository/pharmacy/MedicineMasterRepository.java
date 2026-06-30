@@ -29,4 +29,10 @@ public interface MedicineMasterRepository extends JpaRepository<MedicineMaster, 
            "LOWER(m.genericName) LIKE LOWER(CONCAT('%', :q, '%')) OR " +
            "LOWER(m.medicineCode) LIKE LOWER(CONCAT('%', :q, '%'))) AND m.isActive = true")
     List<MedicineMaster> findTop10ByHospitalIdAndMedicineNameContainingIgnoreCase(@Param("hospitalId") Long hospitalId, @Param("q") String query);
+
+    List<MedicineMaster> findByHospitalIdAndIsActiveTrueOrderByMedicineNameAsc(Long hospitalId);
+
+    @Query("SELECT m FROM MedicineMaster m WHERE m.hospitalId = :hospitalId AND m.isActive = true " +
+           "AND LOWER(m.medicineName) LIKE LOWER(CONCAT('%',:q,'%'))")
+    List<MedicineMaster> searchByHospitalAndName(@Param("hospitalId") Long hospitalId, @Param("q") String q);
 }
