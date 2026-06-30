@@ -399,6 +399,36 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
                         </div>
                     )}
 
+                    {/* Welcome Back Card */}
+                    {!isNewPatient && historyLoading && (
+                        <div className="h-12 bg-gray-100 rounded-xl animate-pulse" />
+                    )}
+                    {!isNewPatient && !historyLoading && patientHistory && patientHistory.length > 0 && (() => {
+                        const last = patientHistory[0];
+                        const firstName = (selectedPatient?.name || '').split(' ')[0];
+                        const count = patientHistory.length;
+                        const lastDate = new Date(last.appointmentDate).toLocaleDateString('en-IN', {
+                            day: 'numeric', month: 'short', year: 'numeric'
+                        });
+                        const doctorName = last.doctor?.name || null;
+                        return (
+                            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <p className="text-sm font-bold text-gray-900">Welcome back, {firstName}!</p>
+                                        <p className="text-xs text-gray-500 mt-0.5">
+                                            {count} visit{count !== 1 ? 's' : ''} · Last seen {lastDate}
+                                            {doctorName ? ` · ${doctorName}` : ''}
+                                        </p>
+                                    </div>
+                                    <span className="shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                                        FOLLOW-UP SUGGESTED
+                                    </span>
+                                </div>
+                            </div>
+                        );
+                    })()}
+
                     {/* Doctor Selection */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Doctor *</label>
