@@ -198,38 +198,56 @@ export default function NurseDashboard() {
 
       {!tasksLoading && tab === 'tasks' && (
         <div className="space-y-3">
-          {tasks.length === 0 && (
+          {tasks.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {overdueCount > 0 && (
+                <span className="text-xs font-semibold px-3 py-1.5 rounded-full border bg-red-50 text-red-700 border-red-200">
+                  ⚠️ {overdueCount} Overdue
+                </span>
+              )}
+              {dueSoonCount > 0 && (
+                <span className="text-xs font-semibold px-3 py-1.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200">
+                  🕐 {dueSoonCount} Due Soon
+                </span>
+              )}
+              <span className="text-xs font-semibold px-3 py-1.5 rounded-full border bg-blue-50 text-blue-700 border-blue-200">
+                👤 {patientCount} Patient{patientCount !== 1 ? 's' : ''}
+              </span>
+            </div>
+          )}
+
+          {sortedTasks.length === 0 && (
             <div className="text-center py-8 text-gray-400">No pending tasks</div>
           )}
-          {tasks.map(task => {
-            const isOverdue = task.scheduledAt && new Date(task.scheduledAt) < new Date();
+
+          {sortedTasks.map(task => {
+            const bucket = getTaskBucket(task);
+            const { label: timeLabel, cls: timeLabelCls } = getTimeLabel(task);
+            const cardCls = bucket === 'overdue'
+              ? 'border-l-4 border-red-400 bg-red-50 border border-red-200'
+              : bucket === 'dueSoon'
+              ? 'border-l-4 border-amber-400 bg-amber-50 border border-amber-200'
+              : 'border-l-4 border-gray-200 bg-white border border-gray-200';
             return (
-              <div
-                key={task.id}
-                className={`flex items-center justify-between p-4 rounded-lg border ${
-                  isOverdue ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-white'
-                }`}
-              >
-                <div>
-                  <p className="font-medium text-gray-800">{task.orderDescription}</p>
+              <div key={task.id} className={`flex items-center justify-between p-4 rounded-lg ${cardCls}`}>
+                <div className="flex-1 min-w-0">
+                  <span className={timeLabelCls}>{timeLabel}</span>
+                  <p className="font-medium text-gray-800 mt-0.5">{task.orderDescription}</p>
                   <p className="text-sm text-gray-500 mt-0.5">
-                    Patient: {task.patientName} &nbsp;·&nbsp;
-                    {task.orderType} &nbsp;·&nbsp;
-                    {task.scheduledAt
-                      ? new Date(task.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                      : 'No time set'}
-                    {isOverdue && <span className="ml-2 text-red-600 font-semibold">OVERDUE</span>}
+                    {task.orderType}
+                    {task.patientName && ` · ${task.patientName}`}
+                    {task.bedNumber ? ` · Bed ${task.bedNumber}` : task.wardName ? ` · ${task.wardName}` : ''}
                   </p>
                 </div>
-                 <div className="flex gap-2">
-                   <button
-                     onClick={() => setAdministerTarget(task)}
-                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl shadow-sm transition-all active:scale-95"
-                   >
-                     {task.orderType === 'MEDICATION' ? '💊 Administer' : '📋 Execute'}
-                   </button>
-                 </div>
-               </div>
+                <div className="flex gap-2 ml-4 shrink-0">
+                  <button
+                    onClick={() => setAdministerTarget(task)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl shadow-sm transition-all active:scale-95"
+                  >
+                    {task.orderType === 'MEDICATION' ? '💊 Administer' : '📋 Execute'}
+                  </button>
+                </div>
+              </div>
             );
           })}
         </div>
