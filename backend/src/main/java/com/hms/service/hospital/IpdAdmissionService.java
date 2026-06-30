@@ -859,6 +859,9 @@ public class IpdAdmissionService {
         p.setHospitalId(hospitalId);
         p.setMedicalRecordId(latest.getId());
         p.setMedicineName(medicineName);
+        if (req.getMedicineMasterId() != null) {
+            p.setMedicineMasterId(req.getMedicineMasterId());
+        }
         p.setType(req.getType() != null ? req.getType() : "TABLET");
         p.setRoute(req.getRoute() != null ? req.getRoute() : "ORAL");
         p.setDosage(req.getDose());

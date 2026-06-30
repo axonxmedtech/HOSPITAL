@@ -4,6 +4,7 @@ import java.time.LocalDate;
 
 public class AddIpdPrescriptionRequest {
     private Long medicineId;
+    private Long medicineMasterId;
     private String medicineName; // explicit name (used when doctor types manually without selecting from inventory)
     private String type; // TABLET / INJECTION / IV_FLUID
     private String route; // ORAL / IV / IM
@@ -14,6 +15,9 @@ public class AddIpdPrescriptionRequest {
 
     public Long getMedicineId() { return medicineId; }
     public void setMedicineId(Long medicineId) { this.medicineId = medicineId; }
+
+    public Long getMedicineMasterId() { return medicineMasterId; }
+    public void setMedicineMasterId(Long medicineMasterId) { this.medicineMasterId = medicineMasterId; }
 
     public String getMedicineName() { return medicineName; }
     public void setMedicineName(String medicineName) { this.medicineName = medicineName; }

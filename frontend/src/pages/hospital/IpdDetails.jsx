@@ -148,8 +148,8 @@ const IpdDetails = () => {
 
     const [followupModal, setFollowupModal] = useState({ isOpen: false, diagnosis: '', notes: '', saving: false });
     const [dischargeModal, setDischargeModal] = useState({ isOpen: false, finalDiagnosis: '', treatmentGiven: '', dischargeNotes: '', followUpDate: '', saving: false });
-    const [medicineModal, setMedicineModal] = useState({ isOpen: false, medicineId: null, medicineName: '', type: 'TABLET', route: 'ORAL', dose: '', frequency: '', durationDays: 0, startDate: '', saving: false });
-    const [medSearchResults, setMedSearchResults] = useState([]);
+    const [medicineModal, setMedicineModal] = useState({ isOpen: false, medicineId: null, medicineMasterId: null, medicineName: '', type: 'TABLET', route: 'ORAL', dose: '', frequency: '', durationDays: 0, startDate: '', saving: false });
+    // medSearchResults removed — medicine name now uses masterDataService.searchMedicines via SearchableSelect
 
     const [inventory, setInventory] = useState([]);
     const [administeredList, setAdministeredList] = useState([]);
@@ -215,21 +215,7 @@ const IpdDetails = () => {
         }
     }, [medicineModal.isOpen, medicineTab]);
 
-    useEffect(() => {
-        const q = medicineModal.medicineName || '';
-        // Only search if query string is non-null and length >= 3, AND we don't currently have an active locked medicineId (meaning doctor is typing new)
-        if (q.length >= 3 && !medicineModal.medicineId) {
-            const delay = setTimeout(async () => {
-                try {
-                    const resp = await hospitalService.searchMedicines(q);
-                    setMedSearchResults(resp || []);
-                } catch (e) { console.error(e); }
-            }, 400);
-            return () => clearTimeout(delay);
-        } else {
-            setMedSearchResults([]);
-        }
-    }, [medicineModal.medicineName, medicineModal.medicineId]);
+    // Medicine name search is now handled by SearchableSelect + masterDataService.searchMedicines
     const [allergies, setAllergies] = useState([]);
     const [showAllergyModal, setShowAllergyModal] = useState(false);
     const [allergyForm, setAllergyForm] = useState({ allergyMasterId: null, allergyName: '', severity: 'UNKNOWN', notes: '' });
@@ -336,7 +322,7 @@ const IpdDetails = () => {
     };
 
     const onAddMedicine = () => {
-        setMedicineModal({ isOpen: true, medicineName: '', type: 'TABLET', route: 'ORAL', dose: '', frequency: '', durationDays: 0, startDate: '', saving: false });
+        setMedicineModal({ isOpen: true, medicineId: null, medicineMasterId: null, medicineName: '', type: 'TABLET', route: 'ORAL', dose: '', frequency: '', durationDays: 0, startDate: '', saving: false });
     };
 
     const onStopMedicine = (prescriptionId) => {
@@ -677,45 +663,21 @@ const IpdDetails = () => {
                                     {medicineTab === 'prescribe' && (
                                         <>
                                             <div className="grid grid-cols-2 gap-3">
-                                                <div className="relative">
+                                                <div>
                                                     <label className="block text-sm font-medium mb-1">Medicine Name</label>
-                                                    <input 
-                                                        value={medicineModal.medicineName} 
-                                                        onChange={e => setMedicineModal(prev => ({ ...prev, medicineName: e.target.value, medicineId: null }))} 
-                                                        className="w-full border p-2 rounded text-sm outline-none bg-white" 
-                                                        placeholder="Type min 3 letters..."
+                                                    <SearchableSelect
+                                                        onSearch={masterDataService.searchMedicines}
+                                                        onSelect={item => setMedicineModal(prev => ({
+                                                            ...prev,
+                                                            medicineName: item.medicineName,
+                                                            medicineMasterId: item.id,
+                                                            medicineId: null,
+                                                            type: item.medicineType?.toUpperCase() || prev.type,
+                                                        }))}
+                                                        getLabel={item => `${item.medicineName}${item.strength ? ' ' + item.strength : ''}`}
+                                                        placeholder="Search medicine (e.g. Paracetamol, Amoxicillin)"
+                                                        value={medicineModal.medicineName || ''}
                                                     />
-                                                    {medSearchResults.length > 0 && (
-                                                        <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-lg max-h-48 overflow-y-auto">
-                                                            {medSearchResults.map(m => (
-                                                                <div 
-                                                                    key={m.id} 
-                                                                    onClick={() => {
-                                                                        // Extract number from duration string e.g. "5 Days"
-                                                                        let parsedDur = 0;
-                                                                        if (m.defaultDuration) {
-                                                                            const match = m.defaultDuration.match(/\d+/);
-                                                                            if (match) parsedDur = parseInt(match[0]);
-                                                                        }
-                                                                        setMedicineModal(prev => ({
-                                                                            ...prev,
-                                                                            medicineId: m.id,
-                                                                            medicineName: m.name,
-                                                                            type: m.type?.toUpperCase() || 'TABLET',
-                                                                            dose: m.defaultDosage || '',
-                                                                            frequency: m.defaultFrequency || '',
-                                                                            durationDays: parsedDur || prev.durationDays
-                                                                        }));
-                                                                        setMedSearchResults([]);
-                                                                    }}
-                                                                    className="p-2 hover:bg-blue-50 cursor-pointer border-b text-sm flex justify-between items-center"
-                                                                >
-                                                                    <span className="font-medium text-gray-800">{m.name}</span>
-                                                                    <span className="text-xs text-gray-500">{m.type}</span>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
                                                 </div>
                                                 <div>
                                                     <label className="block text-sm font-medium mb-1">Type</label>
@@ -758,6 +720,7 @@ const IpdDetails = () => {
                                                     try {
                                                         const payload = {
                                                             medicineId: medicineModal.medicineId,
+                                                            medicineMasterId: medicineModal.medicineMasterId,
                                                             medicineName: medicineModal.medicineName,
                                                             type: medicineModal.type,
                                                             route: medicineModal.route,
