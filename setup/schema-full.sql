@@ -308,6 +308,7 @@ CREATE TABLE `lab_orders` (
   `public_id` varchar(255) NOT NULL,
   `status` varchar(50) NOT NULL,
   `test_name` varchar(255) NOT NULL,
+  `lab_test_master_id` bigint DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_9d9924cas2rwvtgkan0mtkmq` (`public_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -641,6 +642,7 @@ CREATE TABLE `prescriptions` (
   `instructions` varchar(200) DEFAULT NULL,
   `medical_record_id` bigint NOT NULL,
   `medicine_name` varchar(255) NOT NULL,
+  `medicine_master_id` bigint DEFAULT NULL,
   `route` varchar(255) NOT NULL,
   `start_date` date DEFAULT NULL,
   `status` varchar(255) NOT NULL,
@@ -1165,6 +1167,7 @@ CREATE TABLE IF NOT EXISTS radiology_orders (
     ipd_admission_id BIGINT NULL,
     opd_id BIGINT NULL,
     test_name VARCHAR(255) NOT NULL,
+    radiology_test_master_id BIGINT DEFAULT NULL,
     priority VARCHAR(10) NOT NULL DEFAULT 'ROUTINE',
     status VARCHAR(50) NOT NULL DEFAULT 'ORDERED',
     ordered_by BIGINT NULL,
@@ -1286,3 +1289,105 @@ CREATE TABLE `mrd_records` (
 ) ENGINE=InnoDB;
 
 CREATE INDEX `idx_mrd_hospital` ON `mrd_records` (`hospital_id`);
+
+-- =====================================================
+-- MASTER DATA ARCHITECTURE (Step 16)
+-- =====================================================
+
+-- 1. Lab Test Master
+CREATE TABLE IF NOT EXISTS `lab_test_master` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `test_code` varchar(50) DEFAULT NULL,
+  `test_name` varchar(200) NOT NULL,
+  `department` varchar(50) NOT NULL DEFAULT 'OTHER',
+  `sample_type` varchar(50) NOT NULL DEFAULT 'BLOOD',
+  `normal_range_text` varchar(500) DEFAULT NULL,
+  `unit` varchar(50) DEFAULT NULL,
+  `turnaround_hours` int DEFAULT NULL,
+  `price` decimal(10,2) DEFAULT NULL,
+  `is_active` bit(1) NOT NULL DEFAULT 1,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `updated_at` datetime(6) DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  KEY `idx_ltm_hospital` (`hospital_id`),
+  KEY `idx_ltm_name` (`test_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- 2. Radiology Test Master
+CREATE TABLE IF NOT EXISTS `radiology_test_master` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `test_code` varchar(50) DEFAULT NULL,
+  `test_name` varchar(200) NOT NULL,
+  `modality` varchar(50) NOT NULL DEFAULT 'OTHER',
+  `preparation_instructions` text DEFAULT NULL,
+  `estimated_duration_minutes` int DEFAULT NULL,
+  `price` decimal(10,2) DEFAULT NULL,
+  `is_active` bit(1) NOT NULL DEFAULT 1,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `updated_at` datetime(6) DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  KEY `idx_rtm_hospital` (`hospital_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- 3. Allergy Master
+CREATE TABLE IF NOT EXISTS `allergy_master` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `allergy_name` varchar(200) NOT NULL,
+  `category` varchar(50) NOT NULL DEFAULT 'OTHER',
+  `is_custom` bit(1) NOT NULL DEFAULT 0,
+  `is_active` bit(1) NOT NULL DEFAULT 1,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `updated_at` datetime(6) DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  KEY `idx_am_hospital` (`hospital_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- 4. Patient Allergies
+CREATE TABLE IF NOT EXISTS `patient_allergies` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `patient_id` bigint NOT NULL,
+  `allergy_master_id` bigint NOT NULL,
+  `severity` varchar(20) NOT NULL DEFAULT 'UNKNOWN',
+  `notes` text DEFAULT NULL,
+  `recorded_by_user_id` bigint DEFAULT NULL,
+  `recorded_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  KEY `idx_pa_patient` (`patient_id`),
+  KEY `idx_pa_hospital` (`hospital_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- 5. Diagnosis Master
+CREATE TABLE IF NOT EXISTS `diagnosis_master` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `icd_code` varchar(20) NOT NULL,
+  `icd_description` varchar(500) NOT NULL,
+  `category` varchar(50) NOT NULL DEFAULT 'OTHER',
+  `is_custom` bit(1) NOT NULL DEFAULT 0,
+  `is_active` bit(1) NOT NULL DEFAULT 1,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `updated_at` datetime(6) DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  KEY `idx_dm_hospital` (`hospital_id`),
+  KEY `idx_dm_code` (`icd_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- 6. Procedure Master
+CREATE TABLE IF NOT EXISTS `procedure_master` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `procedure_code` varchar(50) DEFAULT NULL,
+  `procedure_name` varchar(200) NOT NULL,
+  `department` varchar(100) DEFAULT NULL,
+  `estimated_duration_minutes` int DEFAULT NULL,
+  `price` decimal(10,2) DEFAULT NULL,
+  `is_active` bit(1) NOT NULL DEFAULT 1,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `updated_at` datetime(6) DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  KEY `idx_pm_hospital` (`hospital_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
