@@ -189,6 +189,7 @@ const ReceptionistDashboard = () => {
 
     // Stats
     const [stats, setStats] = useState({ today: 0, pending: 0, total: 0 });
+    const [availableBeds, setAvailableBeds] = useState([]);
 
     useEffect(() => {
         loadData();
@@ -234,6 +235,12 @@ const ReceptionistDashboard = () => {
 
                 if (activeTab === 'overview') {
                     setTodaysFollowUps(followUpsData || []);
+                    try {
+                        const beds = await hospitalService.getAvailableBeds();
+                        setAvailableBeds(beds || []);
+                    } catch {
+                        setAvailableBeds([]);
+                    }
                 }
 
                 if (activeTab === 'opd') {
