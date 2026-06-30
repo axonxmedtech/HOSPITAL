@@ -10,6 +10,7 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
     const [errors, setErrors] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [duplicatePatient, setDuplicatePatient] = useState(null);
+    const [showMoreDetails, setShowMoreDetails] = useState(false);
     const { success, error: toastError } = useToast();
     const isEdit = !!initialData;
 
@@ -23,6 +24,7 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
             setErrors({});
             setIsSubmitting(false);
             setDuplicatePatient(null);
+            setShowMoreDetails(!!initialData); // expand on edit, collapse on new
         }
     }, [isOpen, initialData]);
 
@@ -143,7 +145,7 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                             </button>
                         </div>
                     )}
-                    {/* Row: Name + Phone */}
+                    {/* Zone A: Required fields */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         <CharCountInput
                             label="Full Name"
@@ -154,7 +156,6 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                             placeholder="Enter patient's full name"
                             error={errors.name}
                         />
-
                         <CharCountInput
                             label="Phone Number"
                             required
@@ -167,7 +168,6 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                         />
                     </div>
 
-                    {/* Row: Age + Gender */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         <div>
                             <label className="block text-sm font-semibold text-neutral-700 mb-2">
@@ -182,77 +182,78 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                                 className={`input-field ${errors.age ? 'border-error-300 focus:ring-error-500' : ''}`}
                                 placeholder="Age"
                             />
-                            {errors.age && <p className="text-red-600 text-sm mt-1 flex items-center gap-1">
-                                {errors.age}
-                            </p>}
+                            {errors.age && <p className="text-red-600 text-sm mt-1">{errors.age}</p>}
                         </div>
                         <div>
                             <label className="block text-sm font-semibold text-neutral-700 mb-2">
                                 Gender <span className="text-red-600">*</span>
                             </label>
-                            <select
-                                value={formData.gender || ''}
-                                onChange={(e) => handleChange('gender', e.target.value)}
-                                className={`input-field ${errors.gender ? 'border-error-300 focus:ring-error-500' : ''}`}
-                            >
-                                <option value="">Select gender</option>
-                                <option value="MALE">Male</option>
-                                <option value="FEMALE">Female</option>
-                                <option value="OTHER">Other</option>
-                            </select>
-                            {errors.gender && <p className="text-red-600 text-sm mt-1 flex items-center gap-1">
-                                {errors.gender}
-                            </p>}
+                            <div className="flex items-center gap-6 h-11">
+                                {['MALE', 'FEMALE', 'OTHER'].map(g => (
+                                    <label key={g} className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="gender"
+                                            value={g}
+                                            checked={formData.gender === g}
+                                            onChange={() => handleChange('gender', g)}
+                                            className="w-4 h-4 accent-blue-600"
+                                        />
+                                        <span className="text-sm text-neutral-700">
+                                            {g.charAt(0) + g.slice(1).toLowerCase()}
+                                        </span>
+                                    </label>
+                                ))}
+                            </div>
+                            {errors.gender && <p className="text-red-600 text-sm mt-1">{errors.gender}</p>}
                         </div>
                     </div>
 
-                    {/* Row: Email + Insurance */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                        <CharCountInput
-                            label="Email Address"
-                            type="email"
-                            value={formData.email || ''}
-                            onChange={(e) => handleChange('email', e.target.value)}
-                            maxLength={50}
-                            placeholder="Enter email address"
-                            error={errors.email}
-                        />
-                        <div>
-                            <label className="block text-sm font-semibold text-neutral-700 mb-2">
-                                Insurance
-                            </label>
-                            <select
-                                value={formData.insurance || 'NO'}
-                                onChange={(e) => handleChange('insurance', e.target.value)}
-                                className="input-field cursor-pointer bg-neutral-50 border border-neutral-300 rounded-xl"
-                            >
-                                <option value="NO">No</option>
-                                <option value="YES">Yes</option>
-                            </select>
-                        </div>
+                    {/* Zone B: Optional details (collapsible) */}
+                    <div>
+                        <button
+                            type="button"
+                            onClick={() => setShowMoreDetails(prev => !prev)}
+                            className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 font-medium transition-colors"
+                        >
+                            <svg className={`w-4 h-4 transition-transform ${showMoreDetails ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                            {showMoreDetails ? 'Hide details' : '+ Add more details'}
+                        </button>
+
+                        {showMoreDetails && (
+                            <div className="mt-4 space-y-4">
+                                <CharCountInput
+                                    label="Email Address"
+                                    type="email"
+                                    value={formData.email || ''}
+                                    onChange={(e) => handleChange('email', e.target.value)}
+                                    maxLength={50}
+                                    placeholder="Enter email address"
+                                    error={errors.email}
+                                />
+                                <CharCountInput
+                                    label="Address"
+                                    textarea
+                                    rows={3}
+                                    value={formData.address || ''}
+                                    onChange={(e) => handleChange('address', e.target.value)}
+                                    maxLength={500}
+                                    placeholder="Enter complete address"
+                                />
+                                <CharCountInput
+                                    label="Medical History / Allergies"
+                                    textarea
+                                    rows={3}
+                                    value={formData.medicalHistory || ''}
+                                    onChange={(e) => handleChange('medicalHistory', e.target.value)}
+                                    maxLength={500}
+                                    placeholder="Any medical conditions, allergies, or important notes..."
+                                />
+                            </div>
+                        )}
                     </div>
-
-                    {/* Address - Full width */}
-                    <CharCountInput
-                        label="Address"
-                        textarea
-                        rows={4}
-                        value={formData.address || ''}
-                        onChange={(e) => handleChange('address', e.target.value)}
-                        maxLength={500}
-                        placeholder="Enter complete address"
-                    />
-
-                    {/* Medical History - Full width */}
-                    <CharCountInput
-                        label="Medical History / Allergies"
-                        textarea
-                        rows={4}
-                        value={formData.medicalHistory || ''}
-                        onChange={(e) => handleChange('medicalHistory', e.target.value)}
-                        maxLength={500}
-                        placeholder="Any medical conditions, allergies, or important notes..."
-                    />
 
                     {/* Action Buttons */}
                     <div className="flex gap-4 pt-4">
@@ -271,7 +272,7 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                             className="flex-1"
                             loading={isSubmitting}
                         >
-                            {isEdit ? 'Update Patient' : 'Save Patient'}
+                            {isEdit ? 'Update Patient' : 'Register Patient'}
                         </Button>
                     </div>
                 </form>
