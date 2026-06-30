@@ -58,6 +58,9 @@ public class LabWorkflowService {
         LabOrder order = new LabOrder();
         order.setHospitalId(hospitalId);
         order.setTestName(req.getTestName());
+        if (req.getLabTestMasterId() != null) {
+            order.setLabTestMasterId(req.getLabTestMasterId());
+        }
         order.setPatientId(req.getPatientId());
         order.setIpdAdmissionId(req.getIpdAdmissionId());
         order.setOpdId(req.getOpdId());

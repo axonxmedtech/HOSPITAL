@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getLabOrders, placeLabOrder, cancelLabOrder } from '../../services/labService';
 import authService from '../../services/authService';
+import masterDataService from '../../services/masterDataService';
+import SearchableSelect from '../SearchableSelect';
 
 // Status display config
 const STATUS_CONFIG = {
@@ -23,7 +25,7 @@ export default function LabResultsPanel({ ipdAdmissionId, patientId, canOrder = 
   const [loading, setLoading] = useState(false);
   const [showOrderForm, setShowOrderForm] = useState(false);
   const [expanded, setExpanded] = useState({});
-  const [newOrder, setNewOrder] = useState({ testName: '', priority: 'ROUTINE', notes: '' });
+  const [newOrder, setNewOrder] = useState({ testName: '', labTestMasterId: null, priority: 'ROUTINE', notes: '' });
   const [ordering, setOrdering] = useState(false);
   const [orderError, setOrderError] = useState('');
 
@@ -51,7 +53,7 @@ export default function LabResultsPanel({ ipdAdmissionId, patientId, canOrder = 
     setOrderError('');
     try {
       await placeLabOrder({ ...newOrder, patientId, ipdAdmissionId });
-      setNewOrder({ testName: '', priority: 'ROUTINE', notes: '' });
+      setNewOrder({ testName: '', labTestMasterId: null, priority: 'ROUTINE', notes: '' });
       setShowOrderForm(false);
       fetchOrders();
     } catch (err) {
@@ -112,12 +114,17 @@ export default function LabResultsPanel({ ipdAdmissionId, patientId, canOrder = 
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Test Name *</label>
-              <input
-                value={newOrder.testName}
-                onChange={e => setNewOrder(p => ({ ...p, testName: e.target.value }))}
-                required
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"
-                placeholder="e.g. Complete Blood Count"
+              <SearchableSelect
+                onSearch={masterDataService.searchLabTests}
+                onSelect={item => setNewOrder(p => ({
+                  ...p,
+                  testName: item.testName,
+                  labTestMasterId: item.id
+                }))}
+                getLabel={item => `${item.testName}${item.testCode ? ' (' + item.testCode + ')' : ''}`}
+                placeholder="Search lab test (e.g. CBC, LFT)"
+                value={newOrder.testName || ''}
+                hint={newOrder.labTestMasterId ? `Sample: ${newOrder.sampleType || ''}` : ''}
               />
             </div>
             <div>

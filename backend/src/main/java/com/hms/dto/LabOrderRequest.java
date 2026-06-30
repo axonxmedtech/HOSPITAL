@@ -10,6 +10,7 @@ import lombok.Data;
 @Data
 public class LabOrderRequest {
     private String testName;
+    private Long labTestMasterId;
     private Long patientId;
     private Long ipdAdmissionId;
     private Long opdId;
