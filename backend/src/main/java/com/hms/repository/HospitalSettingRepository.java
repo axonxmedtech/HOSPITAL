@@ -18,9 +18,10 @@ public interface HospitalSettingRepository extends JpaRepository<HospitalSetting
     Optional<HospitalSetting> findByHospital_Id(Long hospitalId);
 
     @Modifying
-    @Query("UPDATE HospitalSetting s SET s.receptionMode = :receptionMode, s.billingHandler = :billingHandler, s.inClinic = :inClinic WHERE s.hospital.id = :hospitalId")
+    @Query("UPDATE HospitalSetting s SET s.receptionMode = :receptionMode, s.billingHandler = :billingHandler, s.inClinic = :inClinic, s.shiftMode = :shiftMode WHERE s.hospital.id = :hospitalId")
     void updateByHospitalId(@Param("hospitalId") Long hospitalId,
                             @Param("receptionMode") String receptionMode,
                             @Param("billingHandler") String billingHandler,
-                            @Param("inClinic") Boolean inClinic);
+                            @Param("inClinic") Boolean inClinic,
+                            @Param("shiftMode") String shiftMode);
 }

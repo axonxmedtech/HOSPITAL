@@ -45,6 +45,8 @@ public class HospitalSettingDTO {
 
     private Boolean inClinic = true;
 
+    private String shiftMode = "FIXED";
+
     public HospitalSettingDTO(String receptionMode, String billingHandler) {
         this.receptionMode = receptionMode;
         this.billingHandler = billingHandler;

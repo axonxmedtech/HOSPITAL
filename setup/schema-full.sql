@@ -935,6 +935,7 @@ CREATE TABLE `hospital_settings` (
   `reception_mode` varchar(20) NOT NULL DEFAULT 'HAS_RECEPTIONIST',
   `billing_handler` varchar(20) NOT NULL DEFAULT 'RECEPTIONIST',
   `in_clinic` tinyint(1) NOT NULL DEFAULT 1,
+  `shift_mode` varchar(20) NOT NULL DEFAULT 'FIXED',
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_hospital_settings_hospital_id` (`hospital_id`),
   CONSTRAINT `FK_hospital_settings_hospital_id` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`)

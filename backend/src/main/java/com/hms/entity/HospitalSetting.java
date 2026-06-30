@@ -39,6 +39,9 @@ public class HospitalSetting {
     @Column(name = "in_clinic", nullable = false)
     private Boolean inClinic = true;
 
+    @Column(name = "shift_mode", nullable = false, length = 20)
+    private String shiftMode = "FIXED";
+
     public Long getId() {
         return id;
     }
@@ -77,5 +80,13 @@ public class HospitalSetting {
 
     public void setInClinic(Boolean inClinic) {
         this.inClinic = inClinic;
+    }
+
+    public String getShiftMode() {
+        return shiftMode;
+    }
+
+    public void setShiftMode(String shiftMode) {
+        this.shiftMode = shiftMode;
     }
 }
