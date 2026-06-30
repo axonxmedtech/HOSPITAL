@@ -78,6 +78,7 @@ useEffect(() => {
     setHistoryLoading(false);
     return;
   }
+  const doctorAlreadySet = !!formData.doctorId; // capture before async fetch
   setHistoryLoading(true);
   setPatientHistory(null);
   hospitalService.getAppointmentsByPatient(selectedPatient.id)
@@ -86,8 +87,8 @@ useEffect(() => {
         .filter(a => (a.status || '').toUpperCase() === 'CONFIRMED')
         .sort((a, b) => new Date(b.appointmentDate) - new Date(a.appointmentDate));
       setPatientHistory(history);
-      // Doctor pre-fill: only if doctor not already selected
-      if (history.length > 0 && !formData.doctorId) {
+      // Doctor pre-fill: only if doctor not already selected at effect-start
+      if (history.length > 0 && !doctorAlreadySet) {
         const lastDoctorId = history[0].doctorId || history[0].doctor?.id;
         if (lastDoctorId && doctors.some(d => String(d.id) === String(lastDoctorId))) {
           setFormData(prev => ({ ...prev, doctorId: String(lastDoctorId) }));
