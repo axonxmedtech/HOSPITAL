@@ -26,6 +26,7 @@ import { SkeletonDashboard, SkeletonStatsGrid, SkeletonOverviewDual, SkeletonTab
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
 
 const ReceptionistDashboard = () => {
+    const navigate = useNavigate();
     const [user, setUser] = useState(() => authService.getCurrentUser());
     const modules = user?.modules || [];
     const hasOPD = modules.includes('OPD');
@@ -39,6 +40,10 @@ const ReceptionistDashboard = () => {
 
     // Helper to switch tabs
     const setActiveTab = (tab) => {
+        if (tab === 'mrd') {
+            navigate('/hospital/receptionist/mrd');
+            return;
+        }
         const newParams = { tab };
         if (tab === 'appointments' && viewFilter) newParams.appointmentFilter = viewFilter;
         setSearchParams(newParams);
@@ -77,6 +82,7 @@ const ReceptionistDashboard = () => {
 
     const [lowStockItems, setLowStockItems] = useState([]);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [availabilityDoctorId, setAvailabilityDoctorId] = useState('');
     const [isAddPatientModalOpen, setIsAddPatientModalOpen] = useState(false);
     const [isOpdModalOpen, setIsOpdModalOpen] = useState(false);
     const [opdSubmitting, setOpdSubmitting] = useState(false);
@@ -185,7 +191,6 @@ const ReceptionistDashboard = () => {
     const [patientDetailsModal, setPatientDetailsModal] = useState({ isOpen: false, patient: null });
 
     const { success, error: toastError, info } = useToast();
-    const navigate = useNavigate();
 
     // Stats
     const [stats, setStats] = useState({ today: 0, pending: 0, total: 0 });
@@ -742,6 +747,29 @@ const ReceptionistDashboard = () => {
     };
     const firstName = user?.name?.split(' ')[0] || user?.username || 'there';
     const todayLabel = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+    const availToday = new Date().toISOString().slice(0, 10);
+
+    const availDoctorAppts = availabilityDoctorId
+      ? appointments
+          .filter(a => {
+            const dId = String(a.doctorId ?? a.doctor?.id ?? '');
+            const aDate = (a.appointmentDate ?? a.date ?? '').slice(0, 10);
+            return dId === String(availabilityDoctorId) && aDate === availToday;
+          })
+          .sort((a, b) =>
+            (a.appointmentTime ?? a.scheduledTime ?? '').localeCompare(
+              b.appointmentTime ?? b.scheduledTime ?? ''
+            )
+          )
+      : [];
+
+    const availApptCount = availDoctorAppts.length;
+    const availLastTime = availDoctorAppts.length > 0
+      ? (availDoctorAppts[availDoctorAppts.length - 1].appointmentTime
+          ?? availDoctorAppts[availDoctorAppts.length - 1].scheduledTime
+          ?? null)
+      : null;
 
     return (
         <div className="flex h-screen bg-white">
