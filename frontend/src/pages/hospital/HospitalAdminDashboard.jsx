@@ -53,6 +53,7 @@ import {
  * @version Phase-1
  */
 const HospitalAdminDashboard = () => {
+    const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const [user, setUser] = useState(authService.getCurrentUser());
     const modules = user?.modules || [];
@@ -63,6 +64,10 @@ const HospitalAdminDashboard = () => {
 
     // Helper to switch tabs
     const setActiveTab = (tab) => {
+        if (tab === 'mrd') {
+            navigate('/hospital/admin/mrd');
+            return;
+        }
         const newParams = { tab };
         setSearchParams(newParams);
         setSearchTerm(''); // Clear search on tab switch
@@ -114,7 +119,7 @@ const HospitalAdminDashboard = () => {
         billNumber: ''
     });
     const [editBillItemsSubmitting, setEditBillItemsSubmitting] = useState(false);
-    const [operationsSettings, setOperationsSettings] = useState({ receptionMode: 'HAS_RECEPTIONIST', billingHandler: 'RECEPTIONIST', inClinic: true });
+    const [operationsSettings, setOperationsSettings] = useState({ receptionMode: 'HAS_RECEPTIONIST', billingHandler: 'RECEPTIONIST', inClinic: true, shiftMode: 'FIXED' });
     const [origOperationsSettings, setOrigOperationsSettings] = useState(null);
     const [settingsLoading, setSettingsLoading] = useState(false);
     const [settingsEditing, setSettingsEditing] = useState(false);
@@ -133,6 +138,7 @@ const HospitalAdminDashboard = () => {
 
     // Modal tracking state instead of activeTab
     const [modalType, setModalType] = useState(null);
+    const [refreshTrigger, setRefreshTrigger] = useState(0);
 
     // Patients state for Overview tab
     const [patientsSearchTerm, setPatientsSearchTerm] = useState('');
@@ -200,7 +206,6 @@ const HospitalAdminDashboard = () => {
     const [faqSearch, setFaqSearch] = useState('');
     const [ticketForm, setTicketForm] = useState({ subject: '', message: '', priority: 'LOW' });
 
-    const navigate = useNavigate();
 
     // Reset patientDateFilter at midnight IST
     useEffect(() => {
@@ -431,7 +436,8 @@ const HospitalAdminDashboard = () => {
                 const loaded = {
                     receptionMode: data.receptionMode || 'HAS_RECEPTIONIST',
                     billingHandler: data.billingHandler || 'RECEPTIONIST',
-                    inClinic: data.inClinic !== false
+                    inClinic: data.inClinic !== false,
+                    shiftMode: data.shiftMode || 'FIXED'
                 };
                 setOperationsSettings(loaded);
                 setOrigOperationsSettings(loaded);
@@ -574,12 +580,13 @@ const HospitalAdminDashboard = () => {
             const loaded = {
                 receptionMode: data.receptionMode || 'HAS_RECEPTIONIST',
                 billingHandler: data.billingHandler || 'RECEPTIONIST',
-                inClinic: data.inClinic !== false
+                inClinic: data.inClinic !== false,
+                shiftMode: data.shiftMode || 'FIXED'
             };
             setOperationsSettings(loaded);
             setOrigOperationsSettings(loaded);
             success('Operational settings updated successfully.');
-            
+
             // Refresh local user profile session
             const profile = await authService.getProfile();
             authService.updateCurrentUser(profile);
@@ -616,7 +623,8 @@ const HospitalAdminDashboard = () => {
                 const loaded = {
                     receptionMode: data.receptionMode || 'HAS_RECEPTIONIST',
                     billingHandler: data.billingHandler || 'RECEPTIONIST',
-                    inClinic: data.inClinic !== false
+                    inClinic: data.inClinic !== false,
+                    shiftMode: data.shiftMode || 'FIXED'
                 };
                 setOperationsSettings(loaded);
                 setOrigOperationsSettings(loaded);
@@ -666,6 +674,7 @@ const HospitalAdminDashboard = () => {
     };
 
     const loadData = async (pageNum = page, sizeNum = pageSize, showSpinner = true) => {
+        setRefreshTrigger(prev => prev + 1);
         if (showSpinner) setLoading(true);
         try {
             if (activeTab === 'overview') {
@@ -1641,15 +1650,15 @@ const HospitalAdminDashboard = () => {
                     )}
 
                     {/* Standardized Header */}
-                    {activeTab !== 'overview' && activeTab !== 'pharmacy' &&  activeTab !== 'ipd' &&  activeTab !== 'pathology' && activeTab !== 'support' && activeTab !== 'inventory' && activeTab !== 'hospital-inventory' && activeTab !== 'messages' && (
+                    {activeTab !== 'overview' && activeTab !== 'pharmacy' &&  activeTab !== 'ipd' &&  activeTab !== 'pathology' && activeTab !== 'support' && activeTab !== 'inventory' && activeTab !== 'hospital-inventory' && activeTab !== 'messages' && activeTab !== 'analytics' && activeTab !== 'masters' && (
                         <PageHeader
                             title={tabs.find(t => t.id === activeTab)?.label}
                             subtitle={activeTab === 'settings' ? 'Configure operational settings and permissions' : activeTab === 'opd' ? 'Active patients currently in queue or being consulted' : `Manage hospital ${activeTab} records`}
                             onSearch={(activeTab === 'fees' || activeTab === 'settings') ? null : (e) => setSearchTerm(e.target.value)}
                             searchValue={(activeTab === 'fees' || activeTab === 'settings') ? '' : searchTerm}
                             searchPlaceholder={(activeTab === 'fees' || activeTab === 'settings') ? '' : `Search ${activeTab}...`}
-                            onAdd={activeTab === 'opd' ? () => setIsAdminOpdModalOpen(true) : (activeTab !== 'billing' && activeTab !== 'audit-logs' && activeTab !== 'fees' && activeTab !== 'settings' && user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null)}
-                            addLabel={activeTab === 'opd' ? 'New OPD' : (activeTab === 'fees' || activeTab === 'settings') ? '' : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`}
+                            onAdd={activeTab === 'opd' ? () => setIsAdminOpdModalOpen(true) : (activeTab !== 'billing' && activeTab !== 'audit-logs' && activeTab !== 'fees' && activeTab !== 'settings' && activeTab !== 'ot' && activeTab !== 'mrd' && activeTab !== 'pathology' && user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null)}
+                            addLabel={activeTab === 'opd' ? 'New OPD' : (activeTab === 'fees' || activeTab === 'settings') ? '' : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? 'Ward' : activeTab === 'nurses' ? 'Nurse' : activeTab === 'lab-technicians' ? 'Lab Technician' : activeTab === 'radiology-technicians' ? 'Radiology Technician' : ''}`}
                             filter={activeTab === 'patients' ? (
                                 <div className="flex items-center gap-2">
                                     <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 h-[38px] items-center">
@@ -1787,7 +1796,7 @@ const HospitalAdminDashboard = () => {
                         <>
                             {/* Overview tab content already rendered above */}
 
-                            {(activeTab === 'patients' || activeTab === 'doctors' || activeTab === 'pharmacists' || activeTab === 'receptionists' || activeTab === 'wards' || activeTab === 'billing' || activeTab === 'fees' || activeTab === 'opd') && (
+                            {(activeTab === 'patients' || activeTab === 'doctors' || activeTab === 'appointments' || activeTab === 'pharmacists' || activeTab === 'receptionists' || activeTab === 'nurses' || activeTab === 'lab-technicians' || activeTab === 'radiology-technicians' || activeTab === 'wards' || activeTab === 'billing' || activeTab === 'fees' || activeTab === 'opd') && (
                                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
                                     {activeTab === 'patients' && (
                                         patients.length > 0 ? (
@@ -1886,16 +1895,17 @@ const HospitalAdminDashboard = () => {
                                 )}
                                 {activeTab === 'nurses' && (
                                     <NursesTable
+                                        key={refreshTrigger}
                                         onDelete={(id) => handleDelete(id, 'nurses')}
                                     />
                                 )}
 
                                 {activeTab === 'lab-technicians' && (
-                                    <LabTechniciansTable />
+                                    <LabTechniciansTable key={refreshTrigger} />
                                 )}
 
                                 {activeTab === 'radiology-technicians' && (
-                                    <RadiologyTechniciansTable />
+                                    <RadiologyTechniciansTable key={refreshTrigger} />
                                 )}
 
                                 {activeTab === 'wards' && (
@@ -2202,6 +2212,51 @@ const HospitalAdminDashboard = () => {
                                                         </button>
                                                     </div>
                                                 </div>}
+
+                                                {/* Shift Mode Card */}
+                                                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+                                                    <div className="flex items-start gap-4">
+                                                        <div className="p-2 bg-indigo-50 rounded-xl">
+                                                            <svg className="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                            </svg>
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <h4 className="text-sm font-bold text-gray-900 mb-1">Shift Mode</h4>
+                                                            <p className="text-xs text-gray-500 mb-4">How nurse shift windows are determined for handover summaries</p>
+                                                            <div className="space-y-3">
+                                                                <label className="flex items-start gap-3 cursor-pointer">
+                                                                    <input
+                                                                        type="radio"
+                                                                        name="shiftMode"
+                                                                        value="FIXED"
+                                                                        checked={operationsSettings.shiftMode === 'FIXED'}
+                                                                        onChange={() => setOperationsSettings(prev => ({ ...prev, shiftMode: 'FIXED' }))}
+                                                                        className="mt-0.5 h-4 w-4 text-indigo-600"
+                                                                    />
+                                                                    <div>
+                                                                        <p className="text-sm font-semibold text-gray-800">Fixed Shifts</p>
+                                                                        <p className="text-xs text-gray-500">Morning 07–15 · Evening 15–23 · Night 23–07 (auto-detected)</p>
+                                                                    </div>
+                                                                </label>
+                                                                <label className="flex items-start gap-3 cursor-pointer">
+                                                                    <input
+                                                                        type="radio"
+                                                                        name="shiftMode"
+                                                                        value="MANUAL"
+                                                                        checked={operationsSettings.shiftMode === 'MANUAL'}
+                                                                        onChange={() => setOperationsSettings(prev => ({ ...prev, shiftMode: 'MANUAL' }))}
+                                                                        className="mt-0.5 h-4 w-4 text-indigo-600"
+                                                                    />
+                                                                    <div>
+                                                                        <p className="text-sm font-semibold text-gray-800">Manual Entry</p>
+                                                                        <p className="text-xs text-gray-500">Nurse enters their shift start time when opening the handover panel</p>
+                                                                    </div>
+                                                                </label>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
                                         )}
                                     </div>
@@ -2502,7 +2557,7 @@ const HospitalAdminDashboard = () => {
                                 {activeTab === 'ot' && (
                                     <div className="flex flex-col items-center justify-center p-12 text-center h-96">
                                         <h2 className="text-2xl font-bold text-gray-950">Operation Theatre</h2>
-                                        <p className="text-gray-600 mt-2 font-medium">This feature will is in process and will be available soon</p>
+                                        <p className="text-gray-600 mt-2 font-medium">This feature is in progress and will be available soon.</p>
                                     </div>
                                 )}
                                 {activeTab === 'analytics' && (
@@ -4143,6 +4198,15 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
             if (!isEdit) {
                 rules.password = ['required', 'password'];
             }
+        } else if (type === 'nurses' || type === 'lab-technicians' || type === 'radiology-technicians') {
+            Object.assign(rules, {
+                name: ['required', 'name'],
+                email: ['required', 'email'],
+                phone: ['phone']
+            });
+            if (!isEdit) {
+                rules.password = ['required', 'password'];
+            }
         } else if (type === 'billing') {
             rules.amount = ['required', 'positiveNumber'];
         } else if (type === 'appointments') {
@@ -4167,7 +4231,15 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
         }
 
         const action = isEdit ? 'Update' : 'Add';
-        const entity = type === 'patients' ? 'Patient' : type === 'doctors' ? 'Doctor' : type === 'receptionists' ? 'Receptionist' : type === 'pharmacists' ? 'Pharmacist' : type === 'appointments' ? 'Appointment' : 'Billing Record';
+        const entity = type === 'patients' ? 'Patient' : 
+                       type === 'doctors' ? 'Doctor' : 
+                       type === 'receptionists' ? 'Receptionist' : 
+                       type === 'pharmacists' ? 'Pharmacist' : 
+                       type === 'appointments' ? 'Appointment' : 
+                       type === 'nurses' ? 'Nurse' : 
+                       type === 'lab-technicians' ? 'Lab Technician' : 
+                       type === 'radiology-technicians' ? 'Radiology Technician' : 
+                       'Billing Record';
 
         openConfirmation(
             `${action} ${entity}`,
@@ -4186,6 +4258,13 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
                     } else if (type === 'pharmacists') {
                         if (isEdit) await hospitalService.updatePharmacist(initialData.publicId || initialData.id, formData);
                         else await hospitalService.addPharmacist(formData);
+                    } else if (type === 'nurses') {
+                        if (isEdit) await nurseService.updateNurse(initialData.publicId || initialData.id, formData);
+                        else await nurseService.createNurse(formData);
+                    } else if (type === 'lab-technicians') {
+                        await createLabTechnician(formData);
+                    } else if (type === 'radiology-technicians') {
+                        await createRadiologyTechnician(formData);
                     } else if (type === 'appointments') {
                         // Appointments editing not supported in this modal yet
                         await hospitalService.createAppointment(formData);
@@ -4203,8 +4282,8 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
 
     const isFieldDisabled = (field) => {
         if (!isEdit) return false;
-        // Disable email/password editing for doctors, receptionists, pharmacists as per security rules
-        if ((type === 'doctors' || type === 'receptionists' || type === 'pharmacists') && (field === 'email' || field === 'password')) return true;
+        // Disable email/password editing for staff as per security rules
+        if ((type === 'doctors' || type === 'receptionists' || type === 'pharmacists' || type === 'nurses' || type === 'lab-technicians' || type === 'radiology-technicians') && (field === 'email' || field === 'password')) return true;
         return false;
     };
 
@@ -4344,13 +4423,13 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
 
 
 
-                        {type === 'pharmacists' && (
+                        {(type === 'pharmacists' || type === 'receptionists' || type === 'nurses' || type === 'lab-technicians' || type === 'radiology-technicians') && (
                             <>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">Name</label>
                                     <input
                                         type="text"
-                                        placeholder="Pharmacist Name"
+                                        placeholder={`${type === 'nurses' ? 'Nurse' : type === 'lab-technicians' ? 'Lab Technician' : type === 'radiology-technicians' ? 'Radiology Technician' : type === 'pharmacists' ? 'Pharmacist' : 'Receptionist'} Name`}
                                         value={formData.name || ''}
                                         onChange={(e) => handleChange('name', e.target.value)}
                                         className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.name ? 'border-red-500' : 'border-gray-300'}`}
@@ -4361,59 +4440,7 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
                                     <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
                                     <input
                                         type="email"
-                                        placeholder="pharmacist@hospital.com"
-                                        value={formData.email || ''}
-                                        onChange={(e) => handleChange('email', e.target.value)}
-                                        disabled={isFieldDisabled('email')}
-                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.email ? 'border-red-500' : 'border-gray-300'} ${isFieldDisabled('email') ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                                    />
-                                    {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
-                                    <input
-                                        type="tel"
-                                        placeholder="10-digit number"
-                                        value={formData.phone || ''}
-                                        onChange={(e) => handleChange('phone', e.target.value)}
-                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.phone ? 'border-red-500' : 'border-gray-300'}`}
-                                    />
-                                    {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone}</p>}
-                                </div>
-                                {!isEdit && (
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
-                                        <input
-                                            type="password"
-                                            placeholder="******"
-                                            value={formData.password || ''}
-                                            onChange={(e) => handleChange('password', e.target.value)}
-                                            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.password ? 'border-red-500' : 'border-gray-300'}`}
-                                        />
-                                        {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
-                                    </div>
-                                )}
-                            </>
-                        )}
-
-                        {type === 'receptionists' && (
-                            <>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Name</label>
-                                    <input
-                                        type="text"
-                                        placeholder="Receptionist Name"
-                                        value={formData.name || ''}
-                                        onChange={(e) => handleChange('name', e.target.value)}
-                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.name ? 'border-red-500' : 'border-gray-300'}`}
-                                    />
-                                    {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                                    <input
-                                        type="email"
-                                        placeholder="receptionist@hospital.com"
+                                        placeholder="user@hospital.com"
                                         value={formData.email || ''}
                                         onChange={(e) => handleChange('email', e.target.value)}
                                         disabled={isFieldDisabled('email')}
@@ -4945,11 +4972,9 @@ const AdminOpdTable = ({ opds, onPrintOpd, onAdmitToIpd, startIndex = 0, paginat
     return <DataTable data={opds} columns={columns} pagination={pagination} />;
 };
 
-const NursesTable = ({ onDelete }) => {
+const NursesTable = () => {
     const [nurses, setNurses] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [showAdd, setShowAdd] = useState(false);
-    const [form, setForm] = useState({ name: '', email: '', password: '', phone: '' });
     const { success, error: toastError } = useToast();
 
     useEffect(() => { load(); }, []);
@@ -4961,19 +4986,6 @@ const NursesTable = ({ onDelete }) => {
             setNurses(r.data.content || r.data);
         } catch (e) { toastError('Failed to load nurses'); }
         finally { setLoading(false); }
-    }
-
-    async function handleCreate(e) {
-        e.preventDefault();
-        try {
-            await nurseService.createNurse(form);
-            success('Nurse created');
-            setShowAdd(false);
-            setForm({ name: '', email: '', password: '', phone: '' });
-            load();
-        } catch (err) {
-            toastError(err.response?.data || 'Failed to create nurse');
-        }
     }
 
     async function handleDelete(id) {
@@ -4989,68 +5001,41 @@ const NursesTable = ({ onDelete }) => {
 
     return (
         <div>
-            <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold">Nurses</h2>
-                <button
-                    onClick={() => setShowAdd(v => !v)}
-                    className="px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
-                >
-                    {showAdd ? 'Cancel' : '+ Add Nurse'}
-                </button>
-            </div>
-
-            {showAdd && (
-                <form onSubmit={handleCreate} className="grid grid-cols-2 gap-3 mb-4 p-4 border rounded-lg bg-gray-50">
-                    {[['name','Name'],['email','Email'],['password','Password'],['phone','Phone']].map(([key, label]) => (
-                        <div key={key}>
-                            <label className="block text-xs text-gray-600 mb-1">{label}</label>
-                            <input
-                                type={key === 'password' ? 'password' : 'text'}
-                                value={form[key]}
-                                onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                                required={key !== 'phone'}
-                                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"
-                            />
-                        </div>
-                    ))}
-                    <div className="col-span-2">
-                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
-                            Create Nurse
-                        </button>
-                    </div>
-                </form>
-            )}
-
-            <table className="w-full text-sm">
-                <thead>
-                    <tr className="bg-gray-50 text-left text-gray-600 uppercase text-xs tracking-wide">
-                        <th className="px-4 py-3">Name</th>
-                        <th className="px-4 py-3">Email</th>
-                        <th className="px-4 py-3">Custom ID</th>
-                        <th className="px-4 py-3">Actions</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                    {nurses.length === 0 && (
-                        <tr><td colSpan={4} className="px-4 py-6 text-center text-gray-400">No nurses found</td></tr>
-                    )}
-                    {nurses.map(n => (
-                        <tr key={n.publicId || n.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 font-medium">{n.name}</td>
-                            <td className="px-4 py-3 text-gray-500">{n.email}</td>
-                            <td className="px-4 py-3 text-gray-500">{n.customId || '—'}</td>
-                            <td className="px-4 py-3">
-                                <button
-                                    onClick={() => handleDelete(n.publicId || n.id)}
-                                    className="text-red-500 hover:underline text-xs"
-                                >
-                                    Delete
-                                </button>
-                            </td>
+            {nurses.length === 0 ? (
+                <div className="text-center py-8 text-slate-400">
+                    No nurses yet. Use "Add Nurse" above to add one.
+                </div>
+            ) : (
+                <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                        <tr className="bg-gray-50 text-left text-gray-600 uppercase text-xs tracking-wide">
+                            <th className="px-4 py-3">ID</th>
+                            <th className="px-4 py-3">Name</th>
+                            <th className="px-4 py-3">Email</th>
+                            <th className="px-4 py-3">Phone</th>
+                            <th className="px-4 py-3 text-right">Actions</th>
                         </tr>
-                    ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {nurses.map(n => (
+                            <tr key={n.publicId || n.id} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 font-mono text-xs text-blue-600">{n.customId || '—'}</td>
+                                <td className="px-4 py-3 font-medium text-gray-900">{n.name}</td>
+                                <td className="px-4 py-3 text-gray-600">{n.email}</td>
+                                <td className="px-4 py-3 text-gray-600">{n.phone || '—'}</td>
+                                <td className="px-4 py-3 text-right">
+                                    <button
+                                        onClick={() => handleDelete(n.publicId || n.id)}
+                                        className="text-red-500 hover:underline text-xs border border-red-200 rounded px-2 py-1 hover:bg-red-50"
+                                    >
+                                        Delete
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            )}
         </div>
     );
 };
@@ -5061,8 +5046,6 @@ export default HospitalAdminDashboard;
 const LabTechniciansTable = () => {
     const [labTechs, setLabTechs] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [showAdd, setShowAdd] = useState(false);
-    const [form, setForm] = useState({ name: '', email: '', password: '', phone: '' });
     const { success, error: toastError } = useToast();
 
     useEffect(() => { load(); }, []);
@@ -5074,19 +5057,6 @@ const LabTechniciansTable = () => {
             setLabTechs(r.data.content || r.data);
         } catch (e) { toastError('Failed to load lab technicians'); }
         finally { setLoading(false); }
-    }
-
-    async function handleCreate(e) {
-        e.preventDefault();
-        try {
-            await createLabTechnician(form);
-            success('Lab technician created');
-            setShowAdd(false);
-            setForm({ name: '', email: '', password: '', phone: '' });
-            load();
-        } catch (err) {
-            toastError(err.response?.data || 'Failed to create lab technician');
-        }
     }
 
     async function handleDeactivate(publicId) {
@@ -5102,49 +5072,19 @@ const LabTechniciansTable = () => {
 
     return (
         <div>
-            <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold">Lab Technicians</h2>
-                <button
-                    onClick={() => setShowAdd(v => !v)}
-                    className="px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
-                >
-                    {showAdd ? 'Cancel' : '+ Add Lab Technician'}
-                </button>
-            </div>
-
-            {showAdd && (
-                <form onSubmit={handleCreate} className="grid grid-cols-2 gap-3 mb-4 p-4 border rounded-lg bg-gray-50">
-                    {[['name','Name'],['email','Email'],['password','Password'],['phone','Phone (optional)']].map(([key, label]) => (
-                        <div key={key}>
-                            <label className="block text-xs text-gray-600 mb-1">{label}</label>
-                            <input
-                                type={key === 'password' ? 'password' : 'text'}
-                                value={form[key]}
-                                onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                                required={key !== 'phone'}
-                                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"
-                            />
-                        </div>
-                    ))}
-                    <div className="col-span-2">
-                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
-                            Create Lab Technician
-                        </button>
-                    </div>
-                </form>
-            )}
-
             {labTechs.length === 0 ? (
-                <div className="text-center py-8 text-gray-400">
-                    No lab technicians yet. Add one above.
+                <div className="text-center py-8 text-slate-400">
+                    No lab technicians yet. Use "Add Lab Technician" above to add one.
                 </div>
             ) : (
                 <table className="w-full text-sm">
                     <thead className="bg-gray-50">
-                        <tr>
-                            {['ID', 'Name', 'Email', 'Phone', 'Actions'].map(h => (
-                                <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>
-                            ))}
+                        <tr className="bg-gray-50 text-left text-gray-600 uppercase text-xs tracking-wide">
+                            <th className="px-4 py-3">ID</th>
+                            <th className="px-4 py-3">Name</th>
+                            <th className="px-4 py-3">Email</th>
+                            <th className="px-4 py-3">Phone</th>
+                            <th className="px-4 py-3 text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -5154,7 +5094,7 @@ const LabTechniciansTable = () => {
                                 <td className="px-4 py-3 font-medium text-gray-900">{lt.name}</td>
                                 <td className="px-4 py-3 text-gray-600">{lt.email}</td>
                                 <td className="px-4 py-3 text-gray-600">{lt.phone || '—'}</td>
-                                <td className="px-4 py-3">
+                                <td className="px-4 py-3 text-right">
                                     <button
                                         onClick={() => handleDeactivate(lt.publicId)}
                                         className="text-red-500 hover:underline text-xs border border-red-200 rounded px-2 py-1 hover:bg-red-50"
@@ -5175,8 +5115,6 @@ const LabTechniciansTable = () => {
 const RadiologyTechniciansTable = () => {
     const [radTechs, setRadTechs] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [showAdd, setShowAdd] = useState(false);
-    const [form, setForm] = useState({ name: '', email: '', password: '', phone: '' });
     const { success, error: toastError } = useToast();
 
     useEffect(() => { load(); }, []);
@@ -5188,19 +5126,6 @@ const RadiologyTechniciansTable = () => {
             setRadTechs(r.data.content || r.data);
         } catch (e) { toastError('Failed to load radiology technicians'); }
         finally { setLoading(false); }
-    }
-
-    async function handleCreate(e) {
-        e.preventDefault();
-        try {
-            await createRadiologyTechnician(form);
-            success('Radiology technician created');
-            setShowAdd(false);
-            setForm({ name: '', email: '', password: '', phone: '' });
-            load();
-        } catch (err) {
-            toastError(err.response?.data || 'Failed to create radiology technician');
-        }
     }
 
     async function handleDeactivate(publicId) {
@@ -5216,49 +5141,19 @@ const RadiologyTechniciansTable = () => {
 
     return (
         <div>
-            <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold">Radiology Technicians</h2>
-                <button
-                    onClick={() => setShowAdd(v => !v)}
-                    className="px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
-                >
-                    {showAdd ? 'Cancel' : '+ Add Radiology Technician'}
-                </button>
-            </div>
-
-            {showAdd && (
-                <form onSubmit={handleCreate} className="grid grid-cols-2 gap-3 mb-4 p-4 border rounded-lg bg-gray-50">
-                    {[['name','Name'],['email','Email'],['password','Password'],['phone','Phone (optional)']].map(([key, label]) => (
-                        <div key={key}>
-                            <label className="block text-xs text-gray-600 mb-1">{label}</label>
-                            <input
-                                type={key === 'password' ? 'password' : 'text'}
-                                value={form[key]}
-                                onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                                required={key !== 'phone'}
-                                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"
-                            />
-                        </div>
-                    ))}
-                    <div className="col-span-2">
-                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
-                            Create Radiology Technician
-                        </button>
-                    </div>
-                </form>
-            )}
-
             {radTechs.length === 0 ? (
-                <div className="text-center py-8 text-gray-400">
-                    No radiology technicians yet. Add one above.
+                <div className="text-center py-8 text-slate-400">
+                    No radiology technicians yet. Use "Add Radiology Technician" above to add one.
                 </div>
             ) : (
                 <table className="w-full text-sm">
                     <thead className="bg-gray-50">
-                        <tr>
-                            {['ID', 'Name', 'Email', 'Phone', 'Actions'].map(h => (
-                                <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>
-                            ))}
+                        <tr className="bg-gray-50 text-left text-gray-600 uppercase text-xs tracking-wide">
+                            <th className="px-4 py-3">ID</th>
+                            <th className="px-4 py-3">Name</th>
+                            <th className="px-4 py-3">Email</th>
+                            <th className="px-4 py-3">Phone</th>
+                            <th className="px-4 py-3 text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -5268,7 +5163,7 @@ const RadiologyTechniciansTable = () => {
                                 <td className="px-4 py-3 font-medium text-gray-900">{rt.name}</td>
                                 <td className="px-4 py-3 text-gray-600">{rt.email}</td>
                                 <td className="px-4 py-3 text-gray-600">{rt.phone || '—'}</td>
-                                <td className="px-4 py-3">
+                                <td className="px-4 py-3 text-right">
                                     <button
                                         onClick={() => handleDeactivate(rt.publicId)}
                                         className="text-red-500 hover:underline text-xs border border-red-200 rounded px-2 py-1 hover:bg-red-50"
