@@ -910,6 +910,87 @@ const ReceptionistDashboard = () => {
                                 </button>
                             </div>
 
+                            {/* Doctor Availability Widget */}
+                            {doctors.length > 0 && (
+                                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+                                    <h3 className="text-base font-bold text-gray-900 mb-4">Doctor Availability — Today</h3>
+                                    <select
+                                        value={availabilityDoctorId}
+                                        onChange={e => setAvailabilityDoctorId(e.target.value)}
+                                        className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300 w-full sm:w-auto"
+                                    >
+                                        <option value="">Select a doctor</option>
+                                        {doctors.map(d => (
+                                            <option key={d.id} value={d.id}>
+                                                {d.name}{d.specialization ? ` · ${d.specialization}` : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+
+                                    {!availabilityDoctorId && (
+                                        <p className="text-sm text-gray-400 mt-3">Select a doctor to see today&apos;s schedule</p>
+                                    )}
+
+                                    {availabilityDoctorId && loading && (
+                                        <p className="text-sm text-gray-400 mt-3">Loading…</p>
+                                    )}
+
+                                    {availabilityDoctorId && !loading && (
+                                        <div className="mt-4">
+                                            {availApptCount === 0 ? (
+                                                <p className="text-sm text-gray-500">No appointments scheduled today</p>
+                                            ) : (
+                                                <>
+                                                    <p className="text-sm text-gray-600 mb-3">
+                                                        Today: <span className="font-semibold text-gray-900">{availApptCount} appointment{availApptCount !== 1 ? 's' : ''}</span>
+                                                        {availLastTime && (
+                                                            <span> · Last at <span className="font-semibold text-gray-900">
+                                                                {new Date(`1970-01-01T${availLastTime}`).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                            </span></span>
+                                                        )}
+                                                    </p>
+                                                    <div className="space-y-1.5">
+                                                        {availDoctorAppts.slice(0, 10).map((a, i) => {
+                                                            const time = a.appointmentTime ?? a.scheduledTime ?? null;
+                                                            const timeLabel = time
+                                                                ? new Date(`1970-01-01T${time}`).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                                                : '—';
+                                                            const patient = a.patientName ?? a.patient?.name ?? '—';
+                                                            const status = (a.status || '').toUpperCase();
+                                                            const statusCls = status === 'CONFIRMED'
+                                                                ? 'bg-green-100 text-green-700'
+                                                                : status === 'PENDING'
+                                                                ? 'bg-yellow-100 text-yellow-700'
+                                                                : status === 'CANCELLED'
+                                                                ? 'bg-red-100 text-red-500 line-through'
+                                                                : 'bg-gray-100 text-gray-600';
+                                                            return (
+                                                                <div key={a.id ?? i} className="flex items-center gap-3 py-1.5 border-b border-gray-50 last:border-0">
+                                                                    <span className="text-xs font-mono text-gray-500 w-16 shrink-0">{timeLabel}</span>
+                                                                    <span className="text-sm text-gray-800 flex-1 truncate">{patient}</span>
+                                                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusCls}`}>{status || '—'}</span>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                        {availDoctorAppts.length > 10 && (
+                                                            <p className="text-xs text-gray-400 pt-1">+{availDoctorAppts.length - 10} more appointments</p>
+                                                        )}
+                                                    </div>
+                                                </>
+                                            )}
+                                            <div className="mt-4 pt-4 border-t border-gray-100">
+                                                <button
+                                                    onClick={() => setIsAddModalOpen(true)}
+                                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-all active:scale-95"
+                                                >
+                                                    Book Appointment with this doctor →
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             {/* Side-by-Side Lists: Appointments and Queue */}
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
                                 {/* Left Div: Appointments */}
