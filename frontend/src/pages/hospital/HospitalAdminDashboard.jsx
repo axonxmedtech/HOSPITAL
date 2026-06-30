@@ -542,7 +542,8 @@ const HospitalAdminDashboard = () => {
                 const updated = {
                     receptionMode: nextValue,
                     billingHandler: nextValue === 'SOLO' ? 'DOCTOR' : operationsSettings.billingHandler,
-                    inClinic: operationsSettings.inClinic
+                    inClinic: operationsSettings.inClinic,
+                    shiftMode: operationsSettings.shiftMode
                 };
                 await hospitalService.updateHospitalOperationsSettings(updated);
                 setOperationsSettings(updated);
