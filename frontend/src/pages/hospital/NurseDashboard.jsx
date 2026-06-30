@@ -12,6 +12,11 @@ export default function NurseDashboard() {
   const [tasksLoading, setTasksLoading] = useState(false);
   const [patientsLoading, setPatientsLoading] = useState(false);
   const [administerTarget, setAdministerTarget] = useState(null);
+  const [notGivenOpenId, setNotGivenOpenId] = useState(null);
+  const [notGivenStatus, setNotGivenStatus] = useState('HELD');
+  const [notGivenReason, setNotGivenReason] = useState('');
+  const [submittingId, setSubmittingId] = useState(null);
+  const [errorId, setErrorId] = useState(null);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -110,6 +115,65 @@ export default function NurseDashboard() {
       label: `Due at ${scheduled.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
       cls: 'text-gray-500 text-xs',
     };
+  }
+
+  const INJECTABLE_KEYWORDS = ['IV', 'IM', 'SUB-Q', 'SUBQ', 'SUBCUTANEOUS', 'INTRAMUSCULAR', 'INTRAVENOUS'];
+  function isInjectable(task) {
+    const desc = (task.orderDescription || '').toUpperCase();
+    return INJECTABLE_KEYWORDS.some(k => desc.includes(k));
+  }
+
+  async function handleGiven(task) {
+    if (isInjectable(task)) {
+      setAdministerTarget(task);
+      return;
+    }
+    setSubmittingId(task.id);
+    setErrorId(null);
+    try {
+      await nurseService.executeTask(task.ipdAdmissionId, task.id, {
+        status: 'DONE', route: 'ORAL', administeredQuantity: 1.0,
+      });
+      loadTasks();
+    } catch {
+      setErrorId(task.id);
+    } finally {
+      setSubmittingId(null);
+    }
+  }
+
+  async function handleSnooze(task) {
+    setSubmittingId(task.id);
+    setErrorId(null);
+    try {
+      await nurseService.executeTask(task.ipdAdmissionId, task.id, {
+        status: 'HELD', notes: 'Snoozed — retry shortly',
+      });
+      loadTasks();
+    } catch {
+      setErrorId(task.id);
+    } finally {
+      setSubmittingId(null);
+    }
+  }
+
+  async function handleNotGiven(task) {
+    if (!notGivenReason.trim()) return;
+    setSubmittingId(task.id);
+    setErrorId(null);
+    try {
+      await nurseService.executeTask(task.ipdAdmissionId, task.id, {
+        status: notGivenStatus, notes: notGivenReason.trim(),
+      });
+      setNotGivenOpenId(null);
+      setNotGivenReason('');
+      setNotGivenStatus('HELD');
+      loadTasks();
+    } catch {
+      setErrorId(task.id);
+    } finally {
+      setSubmittingId(null);
+    }
   }
 
   if (selectedAdmission) {
