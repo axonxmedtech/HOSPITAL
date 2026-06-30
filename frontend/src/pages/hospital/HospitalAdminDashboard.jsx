@@ -35,6 +35,7 @@ import reportsApi from '../../services/pharmacy/reportsApi';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
+import MasterDataView from './MasterDataView';
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     BarChart, Bar, Legend, PieChart, Pie, Cell
@@ -1311,6 +1312,7 @@ const HospitalAdminDashboard = () => {
         { id: 'fees', label: 'Fees', icon: null, requiredModule: 'BILLING' },
         { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
         { id: 'analytics', label: 'Reports & Analytics', icon: null, requiredModule: 'REPORTS' },
+        { id: 'masters', label: 'Master Data', icon: null, requiredModule: null },
         { id: 'messages', label: 'Messages', icon: null, requiredModule: null },
         { id: 'settings', label: 'Settings', icon: null, requiredModule: null },
         { id: 'support', label: 'Support', icon: null, requiredModule: null },
@@ -3137,6 +3139,12 @@ const HospitalAdminDashboard = () => {
                                         </div>
                                     )}
                                 </div>
+                            )}
+
+                            {activeTab === 'masters' && (
+                              <div className="p-6">
+                                <MasterDataView />
+                              </div>
                             )}
                         </>
                     )}
