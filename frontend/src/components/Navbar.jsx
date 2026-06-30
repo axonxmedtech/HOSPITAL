@@ -1,10 +1,24 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import UserMenu from './UserMenu';
+import CommandPalette from './CommandPalette';
 
 const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggleSidebar }) => {
     const location = useLocation();
     const navigate = useNavigate();
+
+    const [showPalette, setShowPalette] = useState(false);
+
+    useEffect(() => {
+        const handleKey = (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                setShowPalette(prev => !prev);
+            }
+        };
+        window.addEventListener('keydown', handleKey);
+        return () => window.removeEventListener('keydown', handleKey);
+    }, []);
 
     const isSingleDoctor = user?.role === 'HOSPITAL_ADMIN' && user?.isSingleDoctor;
     const isDoctorDashboard = location.pathname.includes('/hospital/doctor');
@@ -13,6 +27,7 @@ const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggle
     const isPharmacyDashboard = location.pathname.includes('/hospital/pharmacy');
 
     return (
+        <>
         <header className="bg-white border-b border-gray-200 z-10 w-full sticky top-0">
             <div className="flex justify-between items-center px-6 py-3">
                 {/* Left side - Sidebar toggle button */}
@@ -28,6 +43,17 @@ const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggle
 
                 {/* Right side - User menu and single doctor toggle */}
                 <div className="flex items-center gap-4">
+                    <button
+                        onClick={() => setShowPalette(true)}
+                        className="hidden md:flex items-center gap-2 px-3 py-1.5 text-xs text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-lg border border-gray-200 transition-colors"
+                        title="Search (Ctrl+K)"
+                    >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                        Search
+                        <kbd className="ml-1 text-xs bg-white px-1 py-0.5 rounded border border-gray-300">⌘K</kbd>
+                    </button>
                     {/* Quick actions if provided */}
                     {actions && (
                         <div className="flex items-center gap-3">
@@ -121,6 +147,8 @@ const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggle
                 </div>
             </div>
         </header>
+        {showPalette && <CommandPalette onClose={() => setShowPalette(false)} />}
+        </>
     );
 };
 
