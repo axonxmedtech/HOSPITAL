@@ -185,10 +185,10 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                             {errors.age && <p className="text-red-600 text-sm mt-1">{errors.age}</p>}
                         </div>
                         <div>
-                            <label className="block text-sm font-semibold text-neutral-700 mb-2">
+                            <label id="gender-label" className="block text-sm font-semibold text-neutral-700 mb-2">
                                 Gender <span className="text-red-600">*</span>
                             </label>
-                            <div className="flex items-center gap-6 h-11">
+                            <div role="group" aria-labelledby="gender-label" className="flex items-center gap-6 h-11">
                                 {['MALE', 'FEMALE', 'OTHER'].map(g => (
                                     <label key={g} className="flex items-center gap-2 cursor-pointer">
                                         <input
