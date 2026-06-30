@@ -45,6 +45,7 @@ public class HospitalSettingDTO {
 
     private Boolean inClinic = true;
 
+    @Pattern(regexp = "FIXED|MANUAL", message = "shiftMode must be FIXED or MANUAL")
     private String shiftMode = "FIXED";
 
     public HospitalSettingDTO(String receptionMode, String billingHandler) {

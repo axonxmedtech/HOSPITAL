@@ -63,11 +63,11 @@ class HospitalAuthServiceTest {
         when(userRepository.findByEmail("admin@test.com")).thenReturn(Optional.of(adminUser));
         when(hospitalSettingRepository.findByHospital_Id(1L)).thenReturn(Optional.of(existingSetting));
 
-        HospitalSettingDTO dto = new HospitalSettingDTO("SOLO", "RECEPTIONIST", true);
+        HospitalSettingDTO dto = new HospitalSettingDTO("SOLO", "RECEPTIONIST", true, "FIXED");
         HospitalSettingDTO result = service.updateHospitalOperationsSettings("admin@test.com", dto);
 
         assertThat(result.getBillingHandler()).isEqualTo("DOCTOR");
-        verify(hospitalSettingRepository).updateByHospitalId(1L, "SOLO", "DOCTOR", true);
+        verify(hospitalSettingRepository).updateByHospitalId(1L, "SOLO", "DOCTOR", true, "FIXED");
     }
 
     @Test
@@ -79,19 +79,19 @@ class HospitalAuthServiceTest {
         when(userRepository.findByEmail("admin@test.com")).thenReturn(Optional.of(adminUser));
         when(hospitalSettingRepository.findByHospital_Id(1L)).thenReturn(Optional.of(existingSetting));
 
-        HospitalSettingDTO dto = new HospitalSettingDTO("HAS_RECEPTIONIST", "RECEPTIONIST", null);
+        HospitalSettingDTO dto = new HospitalSettingDTO("HAS_RECEPTIONIST", "RECEPTIONIST", null, "FIXED");
         HospitalSettingDTO result = service.updateHospitalOperationsSettings("admin@test.com", dto);
 
         // inClinic was null in DTO → should be preserved from existingSetting (true)
         assertThat(result.getInClinic()).isTrue();
-        verify(hospitalSettingRepository).updateByHospitalId(1L, "HAS_RECEPTIONIST", "RECEPTIONIST", true);
+        verify(hospitalSettingRepository).updateByHospitalId(1L, "HAS_RECEPTIONIST", "RECEPTIONIST", true, "FIXED");
     }
 
     @Test
     void updateSettings_invalidReceptionMode_throws() {
         when(userRepository.findByEmail("admin@test.com")).thenReturn(Optional.of(adminUser));
 
-        HospitalSettingDTO dto = new HospitalSettingDTO("INVALID_MODE", "RECEPTIONIST", true);
+        HospitalSettingDTO dto = new HospitalSettingDTO("INVALID_MODE", "RECEPTIONIST", true, "FIXED");
         assertThatThrownBy(() -> service.updateHospitalOperationsSettings("admin@test.com", dto))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("receptionMode");
@@ -101,7 +101,7 @@ class HospitalAuthServiceTest {
     void updateSettings_invalidBillingHandler_throws() {
         when(userRepository.findByEmail("admin@test.com")).thenReturn(Optional.of(adminUser));
 
-        HospitalSettingDTO dto = new HospitalSettingDTO("HAS_RECEPTIONIST", "INVALID_HANDLER", true);
+        HospitalSettingDTO dto = new HospitalSettingDTO("HAS_RECEPTIONIST", "INVALID_HANDLER", true, "FIXED");
         assertThatThrownBy(() -> service.updateHospitalOperationsSettings("admin@test.com", dto))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("billingHandler");
@@ -115,7 +115,7 @@ class HospitalAuthServiceTest {
         doctorUser.setHospitalId(1L);
         when(userRepository.findByEmail("doc@test.com")).thenReturn(Optional.of(doctorUser));
 
-        HospitalSettingDTO dto = new HospitalSettingDTO("HAS_RECEPTIONIST", "RECEPTIONIST", true);
+        HospitalSettingDTO dto = new HospitalSettingDTO("HAS_RECEPTIONIST", "RECEPTIONIST", true, "FIXED");
         assertThatThrownBy(() -> service.updateHospitalOperationsSettings("doc@test.com", dto))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Access denied");

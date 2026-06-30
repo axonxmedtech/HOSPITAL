@@ -589,8 +589,8 @@ public class HospitalAuthService {
         User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
         if (user.getHospitalId() == null) throw new UnauthorizedException("Invalid hospital user account");
         return hospitalSettingRepository.findByHospital_Id(user.getHospitalId())
-                .map(s -> new HospitalSettingDTO(s.getReceptionMode(), s.getBillingHandler(), s.getInClinic()))
-                .orElse(new HospitalSettingDTO("HAS_RECEPTIONIST", "RECEPTIONIST", true));
+                .map(s -> new HospitalSettingDTO(s.getReceptionMode(), s.getBillingHandler(), s.getInClinic(), s.getShiftMode() != null ? s.getShiftMode() : "FIXED"))
+                .orElse(new HospitalSettingDTO("HAS_RECEPTIONIST", "RECEPTIONIST", true, "FIXED"));
     }
 
     /**
@@ -607,6 +607,7 @@ public class HospitalAuthService {
         // Normalize: trim whitespace and uppercase to be tolerant of minor client variations
         String receptionMode = dto.getReceptionMode() == null ? null : dto.getReceptionMode().trim().toUpperCase();
         String billingHandler = dto.getBillingHandler() == null ? null : dto.getBillingHandler().trim().toUpperCase();
+        String shiftMode = (dto.getShiftMode() == null || dto.getShiftMode().isBlank()) ? "FIXED" : dto.getShiftMode().trim().toUpperCase();
 
         // Guard: validate normalized values against allowed domains
         if (!"HAS_RECEPTIONIST".equals(receptionMode) && !"SOLO".equals(receptionMode)) {
@@ -614,6 +615,9 @@ public class HospitalAuthService {
         }
         if (!"RECEPTIONIST".equals(billingHandler) && !"DOCTOR".equals(billingHandler) && !"BOTH".equals(billingHandler)) {
             throw new IllegalArgumentException("billingHandler must be RECEPTIONIST, DOCTOR, or BOTH");
+        }
+        if (!"FIXED".equals(shiftMode) && !"MANUAL".equals(shiftMode)) {
+            throw new IllegalArgumentException("shiftMode must be FIXED or MANUAL");
         }
 
         // Cross-field invariant: SOLO mode has no receptionist, so billing must be handled by DOCTOR.
@@ -645,6 +649,7 @@ public class HospitalAuthService {
                     newSettings.setReceptionMode(receptionMode != null ? receptionMode : "HAS_RECEPTIONIST");
                     newSettings.setBillingHandler(effectiveBillingHandler != null ? effectiveBillingHandler : "RECEPTIONIST");
                     newSettings.setInClinic(inClinic != null ? inClinic : Boolean.FALSE);
+                    newSettings.setShiftMode(shiftMode);
                     return hospitalSettingRepository.save(newSettings);
                 });
 
@@ -653,10 +658,11 @@ public class HospitalAuthService {
                 user.getHospitalId(),
                 receptionMode,
                 billingHandler,
-                inClinic != null ? inClinic : settings.getInClinic()
+                inClinic != null ? inClinic : settings.getInClinic(),
+                shiftMode
         );
 
         return new HospitalSettingDTO(receptionMode, billingHandler,
-                inClinic != null ? inClinic : settings.getInClinic());
+                inClinic != null ? inClinic : settings.getInClinic(), shiftMode);
     }
 }
