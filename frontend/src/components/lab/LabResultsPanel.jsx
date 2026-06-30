@@ -20,7 +20,7 @@ const STATUS_CONFIG = {
  *   patientId       — filter by patient (for history view)
  *   canOrder        — show "New Lab Order" form (DOCTOR/HOSPITAL_ADMIN only)
  */
-export default function LabResultsPanel({ ipdAdmissionId, patientId, canOrder = false }) {
+export default function LabResultsPanel({ ipdAdmissionId, patientId, canOrder = false, openTrigger = 0 }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showOrderForm, setShowOrderForm] = useState(false);
@@ -46,6 +46,10 @@ export default function LabResultsPanel({ ipdAdmissionId, patientId, canOrder = 
   }, [ipdAdmissionId, patientId]);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
+
+  useEffect(() => {
+    if (openTrigger > 0 && canOrder) setShowOrderForm(true);
+  }, [openTrigger, canOrder]);
 
   const handleOrder = async (e) => {
     e.preventDefault();
