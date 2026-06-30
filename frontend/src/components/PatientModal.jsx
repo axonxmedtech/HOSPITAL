@@ -69,8 +69,12 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData, onBookAppointme
                 onClose();
             } else {
                 const result = await hospitalService.addPatient(savePayload);
-                setRegisteredPatient(result);
-                setShowSuccess(true);
+                if (result && result.id) {
+                    setRegisteredPatient(result);
+                    setShowSuccess(true);
+                } else {
+                    toastError('Registration failed. Please try again.');
+                }
             }
         } catch (err) {
             console.error("Failed to save patient", err);
@@ -146,8 +150,10 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData, onBookAppointme
                                 variant="secondary"
                                 className="w-full"
                                 onClick={() => {
+                                    onSuccess(); // refresh parent list so new patient appears
                                     setFormData({ insurance: 'NO' });
                                     setErrors({});
+                                    setIsSubmitting(false);
                                     setShowSuccess(false);
                                     setRegisteredPatient(null);
                                     setDuplicatePatient(null);
