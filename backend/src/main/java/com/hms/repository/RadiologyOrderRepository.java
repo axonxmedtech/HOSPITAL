@@ -25,4 +25,7 @@ public interface RadiologyOrderRepository extends JpaRepository<RadiologyOrder, 
             Long hospitalId, Long ipdAdmissionId, String status);
 
     long countByHospitalIdAndStatus(Long hospitalId, String status);
+
+    /** CDSS: active orders for an IPD admission (excludes a given status, e.g. CANCELLED) */
+    List<RadiologyOrder> findByIpdAdmissionIdAndStatusNot(Long ipdAdmissionId, String status);
 }

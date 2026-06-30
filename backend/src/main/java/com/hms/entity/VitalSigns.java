@@ -34,6 +34,9 @@ public class VitalSigns {
 
     private Integer spo2;
 
+    @Column(name = "respiratory_rate")
+    private Integer respiratoryRate;
+
     @Column(name = "recorded_by")
     private Long recordedBy;
 

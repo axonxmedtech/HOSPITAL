@@ -37,4 +37,7 @@ public interface LabOrderRepository extends JpaRepository<LabOrder, Long> {
 
     /** Analytics: fast count for dashboard KPIs */
     long countByHospitalIdAndStatus(Long hospitalId, String status);
+
+    /** CDSS: active orders for an IPD admission (excludes a given status, e.g. CANCELLED) */
+    List<LabOrder> findByIpdAdmissionIdAndStatusNot(Long ipdAdmissionId, String status);
 }
