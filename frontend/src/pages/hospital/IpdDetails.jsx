@@ -611,7 +611,7 @@ const IpdDetails = () => {
             {/* Patient Context Bar — allergies, EWS, pending labs, alerts */}
             {smartSummary && (
                 (smartSummary.allergies?.length > 0 ||
-                 ewsResult ||
+                 !!ewsResult ||
                  (smartSummary.pendingLabTests?.length ?? 0) > 0 ||
                  (smartSummary.unacknowledgedAlerts?.length ?? 0) > 0)
             ) && (
@@ -621,7 +621,7 @@ const IpdDetails = () => {
                         <div className="flex items-center gap-1.5">
                             <span className="text-xs font-semibold text-red-600">⚠️ Allergies:</span>
                             {smartSummary.allergies.slice(0, 3).map((a, i) => (
-                                <span key={i} className="text-xs px-2 py-0.5 bg-red-50 text-red-700 border border-red-200 rounded-full font-medium">
+                                <span key={a} className="text-xs px-2 py-0.5 bg-red-50 text-red-700 border border-red-200 rounded-full font-medium">
                                     {a}
                                 </span>
                             ))}
