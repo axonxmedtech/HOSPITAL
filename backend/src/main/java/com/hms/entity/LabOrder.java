@@ -49,6 +49,9 @@ public class LabOrder {
     @Column(name = "test_name", nullable = false)
     private String testName;
 
+    @Column(name = "lab_test_master_id")
+    private Long labTestMasterId;
+
     /** ROUTINE or URGENT */
     @Column(nullable = false, length = 10)
     private String priority = "ROUTINE";

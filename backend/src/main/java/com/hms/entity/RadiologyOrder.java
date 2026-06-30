@@ -49,6 +49,9 @@ public class RadiologyOrder {
     @Column(name = "test_name", nullable = false)
     private String testName;
 
+    @Column(name = "radiology_test_master_id")
+    private Long radiologyTestMasterId;
+
     /** ROUTINE or URGENT */
     @Column(nullable = false, length = 10)
     private String priority = "ROUTINE";

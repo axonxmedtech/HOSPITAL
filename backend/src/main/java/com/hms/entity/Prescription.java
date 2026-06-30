@@ -38,6 +38,9 @@ public class Prescription {
     @Column(nullable = false)
     private String medicineName;
 
+    @Column(name = "medicine_master_id")
+    private Long medicineMasterId;
+
     @Column(length = 50)
     private String dosage; // e.g., "500mg"
 
