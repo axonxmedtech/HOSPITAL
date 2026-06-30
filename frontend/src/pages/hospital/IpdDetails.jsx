@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import hospitalService from '../../services/hospitalService';
 import authService from '../../services/authService';
+import cdssService from '../../services/cdssService';
+import CdssAlertModal from '../../components/CdssAlertModal';
 import masterDataService from '../../services/masterDataService';
 import SearchableSelect from '../../components/SearchableSelect';
 import wardService from '../../services/wardService';
@@ -146,6 +148,13 @@ const IpdDetails = () => {
 
     const [confirmState, setConfirmState] = useState({ open: false, title: '', message: '', onConfirm: null });
 
+    // CDSS state
+    const [smartSummary, setSmartSummary] = useState(null);
+    const [ewsResult, setEwsResult] = useState(null);
+    const [cdssAlerts, setCdssAlerts] = useState([]);
+    const [showCdssModal, setShowCdssModal] = useState(false);
+    const [pendingPrescriptionSave, setPendingPrescriptionSave] = useState(null);
+
     const [followupModal, setFollowupModal] = useState({ isOpen: false, diagnosis: '', notes: '', saving: false });
     const [dischargeModal, setDischargeModal] = useState({ isOpen: false, finalDiagnosis: '', treatmentGiven: '', dischargeNotes: '', followUpDate: '', saving: false });
     const [medicineModal, setMedicineModal] = useState({ isOpen: false, medicineId: null, medicineMasterId: null, medicineName: '', type: 'TABLET', route: 'ORAL', dose: '', frequency: '', durationDays: 0, startDate: '', saving: false });
@@ -267,6 +276,14 @@ const IpdDetails = () => {
             if (resp?.patientId) {
                 hospitalService.getPatientAllergies(resp.patientId)
                     .then(setAllergies)
+                    .catch(() => {});
+            }
+            if (id) {
+                cdssService.getSmartSummary(id)
+                    .then(setSmartSummary)
+                    .catch(() => {});
+                cdssService.getEws(id)
+                    .then(setEwsResult)
                     .catch(() => {});
             }
         } catch (err) {
@@ -468,6 +485,69 @@ const IpdDetails = () => {
         } finally {
             setPrintingBill(false);
         }
+    };
+
+    const doSavePrescription = async (prescriptionData) => {
+        setMedicineModal(prev => ({ ...prev, saving: true }));
+        try {
+            const payload = {
+                medicineId: prescriptionData.medicineId,
+                medicineMasterId: prescriptionData.medicineMasterId,
+                medicineName: prescriptionData.medicineName,
+                type: prescriptionData.type,
+                route: prescriptionData.route,
+                dose: prescriptionData.dose,
+                frequency: prescriptionData.frequency,
+                durationDays: prescriptionData.durationDays,
+                startDate: prescriptionData.startDate || null
+            };
+            await hospitalService.addIpdPrescription(id, payload);
+            success('Medicine prescribed successfully');
+            setMedicineModal(prev => ({ ...prev, isOpen: false }));
+            await load(false);
+        } catch (err) {
+            console.error('Failed to add medicine', err);
+            toastError(parseError(err, 'Failed to add medicine'));
+        } finally {
+            setMedicineModal(prev => ({ ...prev, saving: false }));
+        }
+    };
+
+    const handlePrescriptionSaveWithCdss = async (prescriptionData) => {
+        try {
+            const patientId = data?.patientId;
+            const admId = data?.id;
+            const alerts = await cdssService.checkPrescription(
+                patientId,
+                admId,
+                prescriptionData.medicineName,
+                prescriptionData.medicineMasterId || null
+            );
+            if (alerts && alerts.length > 0) {
+                setCdssAlerts(alerts);
+                setPendingPrescriptionSave(() => prescriptionData);
+                setShowCdssModal(true);
+            } else {
+                await doSavePrescription(prescriptionData);
+            }
+        } catch (e) {
+            console.warn('CDSS check failed, proceeding with save:', e);
+            await doSavePrescription(prescriptionData);
+        }
+    };
+
+    const handleCdssModalProceed = async (overrideReason) => {
+        setShowCdssModal(false);
+        try {
+            const patientId = data?.patientId;
+            const admId = data?.id;
+            await cdssService.acknowledge(patientId, admId, cdssAlerts, overrideReason);
+        } catch (e) { console.warn('CDSS acknowledge failed:', e); }
+        if (pendingPrescriptionSave) {
+            await doSavePrescription(pendingPrescriptionSave);
+            setPendingPrescriptionSave(null);
+        }
+        setCdssAlerts([]);
     };
 
     return (
@@ -716,29 +796,17 @@ const IpdDetails = () => {
                                                 <button onClick={() => setMedicineModal(prev => ({ ...prev, isOpen: false }))} className="px-3 py-1 bg-gray-100 rounded text-sm">Cancel</button>
                                                 <button onClick={async () => {
                                                     if (!medicineModal.medicineName) return toastError('Medicine name required');
-                                                    setMedicineModal(prev => ({ ...prev, saving: true }));
-                                                    try {
-                                                        const payload = {
-                                                            medicineId: medicineModal.medicineId,
-                                                            medicineMasterId: medicineModal.medicineMasterId,
-                                                            medicineName: medicineModal.medicineName,
-                                                            type: medicineModal.type,
-                                                            route: medicineModal.route,
-                                                            dose: medicineModal.dose,
-                                                            frequency: medicineModal.frequency,
-                                                            durationDays: medicineModal.durationDays,
-                                                            startDate: medicineModal.startDate || null
-                                                        };
-                                                        await hospitalService.addIpdPrescription(id, payload);
-                                                        success('Medicine prescribed successfully');
-                                                        setMedicineModal(prev => ({ ...prev, isOpen: false }));
-                                                        await load(false); // Silent reload to show updated prescriptions
-                                                    } catch (err) {
-                                                        console.error('Failed to add medicine', err);
-                                                        toastError(parseError(err, 'Failed to add medicine'));
-                                                    } finally {
-                                                        setMedicineModal(prev => ({ ...prev, saving: false }));
-                                                    }
+                                                    await handlePrescriptionSaveWithCdss({
+                                                        medicineId: medicineModal.medicineId,
+                                                        medicineMasterId: medicineModal.medicineMasterId,
+                                                        medicineName: medicineModal.medicineName,
+                                                        type: medicineModal.type,
+                                                        route: medicineModal.route,
+                                                        dose: medicineModal.dose,
+                                                        frequency: medicineModal.frequency,
+                                                        durationDays: medicineModal.durationDays,
+                                                        startDate: medicineModal.startDate || null
+                                                    });
                                                 }} disabled={medicineModal.saving} className="px-3 py-1 bg-blue-600 text-white rounded text-sm">{medicineModal.saving ? 'Saving...' : 'Save Prescription'}</button>
                                             </div>
                                         </>
@@ -1149,6 +1217,59 @@ const IpdDetails = () => {
                 </div>
 
                 <aside className="bg-white border rounded p-4">
+                    {/* Clinical Summary (CDSS Smart Summary + EWS) */}
+                    {smartSummary && (
+                      <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-sm font-semibold text-gray-700">Clinical Summary</h3>
+                          {ewsResult && (
+                            <span className={`text-xs font-bold px-2 py-1 rounded-full ${
+                              ewsResult.severity === 'HIGH' ? 'bg-red-100 text-red-700' :
+                              ewsResult.severity === 'MEDIUM' ? 'bg-orange-100 text-orange-700' :
+                              ewsResult.severity === 'NORMAL' ? 'bg-green-100 text-green-700' :
+                              'bg-gray-100 text-gray-500'
+                            }`}>
+                              EWS: {ewsResult.totalScore || 0}
+                              {ewsResult.severity === 'HIGH' && ' 🔴'}
+                              {ewsResult.severity === 'MEDIUM' && ' ⚠️'}
+                            </span>
+                          )}
+                        </div>
+                        {smartSummary.allergies?.length > 0 && (
+                          <div className="mb-2">
+                            <p className="text-xs font-medium text-red-600 mb-1">🔴 Allergies</p>
+                            <div className="flex flex-wrap gap-1">
+                              {smartSummary.allergies.map((a, i) => (
+                                <span key={i} className="bg-red-50 text-red-700 text-xs px-2 py-0.5 rounded-full border border-red-200">{a}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {smartSummary.activeMedicines?.length > 0 && (
+                          <div className="mb-2">
+                            <p className="text-xs font-medium text-blue-600 mb-1">💊 Active Medicines</p>
+                            <p className="text-xs text-gray-600">{smartSummary.activeMedicines.slice(0,5).join(', ')}{smartSummary.activeMedicines.length > 5 ? ` +${smartSummary.activeMedicines.length - 5} more` : ''}</p>
+                          </div>
+                        )}
+                        {smartSummary.pendingLabTests?.length > 0 && (
+                          <div className="mb-2">
+                            <p className="text-xs font-medium text-amber-600 mb-1">🧪 Pending Labs</p>
+                            <p className="text-xs text-gray-600">{smartSummary.pendingLabTests.join(', ')}</p>
+                          </div>
+                        )}
+                        {smartSummary.pendingRadiology?.length > 0 && (
+                          <div className="mb-2">
+                            <p className="text-xs font-medium text-purple-600 mb-1">📷 Pending Radiology</p>
+                            <p className="text-xs text-gray-600">{smartSummary.pendingRadiology.join(', ')}</p>
+                          </div>
+                        )}
+                        {(!smartSummary.allergies?.length && !smartSummary.activeMedicines?.length &&
+                          !smartSummary.pendingLabTests?.length && !smartSummary.pendingRadiology?.length) && (
+                          <p className="text-xs text-gray-400">No clinical flags at this time.</p>
+                        )}
+                      </div>
+                    )}
+
                     {/* Patient Allergies */}
                     <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
                       <div className="flex items-center justify-between mb-3">
@@ -1475,6 +1596,19 @@ const IpdDetails = () => {
                     )}
                 </main>
             </div>
+
+            {/* CDSS Alert Modal */}
+            {showCdssModal && (
+              <CdssAlertModal
+                alerts={cdssAlerts}
+                onProceed={handleCdssModalProceed}
+                onCancel={() => {
+                  setShowCdssModal(false);
+                  setCdssAlerts([]);
+                  setPendingPrescriptionSave(null);
+                }}
+              />
+            )}
 
             {/* Profile Settings Modal */}
             <ProfileModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} />

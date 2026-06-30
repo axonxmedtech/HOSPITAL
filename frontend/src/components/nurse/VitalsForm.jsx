@@ -2,7 +2,7 @@ import { useState } from 'react';
 import nurseService from '../../services/nurseService';
 
 export default function VitalsForm({ admissionId, onSaved }) {
-  const [form, setForm] = useState({ bloodPressure: '', pulse: '', temperature: '', spo2: '' });
+  const [form, setForm] = useState({ bloodPressure: '', pulse: '', temperature: '', spo2: '', respiratoryRate: '' });
   const [saving, setSaving] = useState(false);
 
   async function handleSubmit(e) {
@@ -10,7 +10,7 @@ export default function VitalsForm({ admissionId, onSaved }) {
     setSaving(true);
     try {
       await nurseService.recordVitals(admissionId, form);
-      setForm({ bloodPressure: '', pulse: '', temperature: '', spo2: '' });
+      setForm({ bloodPressure: '', pulse: '', temperature: '', spo2: '', respiratoryRate: '' });
       onSaved();
     } catch (err) {
       alert(err.response?.data || 'Failed to record vitals');
@@ -26,6 +26,7 @@ export default function VitalsForm({ admissionId, onSaved }) {
         ['pulse', 'Pulse', 'number'],
         ['temperature', 'Temp °F', 'number'],
         ['spo2', 'SpO2 %', 'number'],
+        ['respiratoryRate', 'Resp. Rate', 'number'],
       ].map(([key, label, type]) => (
         <div key={key}>
           <label className="block text-xs text-gray-600 mb-1">{label}</label>
