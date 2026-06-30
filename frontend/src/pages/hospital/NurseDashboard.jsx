@@ -9,38 +9,41 @@ export default function NurseDashboard() {
   const [tasks, setTasks] = useState([]);
   const [selectedAdmission, setSelectedAdmission] = useState(null);
   const [wardFilter, setWardFilter] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [patientsLoading, setPatientsLoading] = useState(false);
   const [administerTarget, setAdministerTarget] = useState(null);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadTasks();
   }, []);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (tab === 'patients') loadPatients();
   }, [tab]);
 
   async function loadPatients() {
-    setLoading(true);
+    setPatientsLoading(true);
     try {
       const res = await nurseService.getMyPatients();
       setPatients(res.data);
     } catch (e) {
       console.error(e);
     } finally {
-      setLoading(false);
+      setPatientsLoading(false);
     }
   }
 
   async function loadTasks() {
-    setLoading(true);
+    setTasksLoading(true);
     try {
       const res = await nurseService.getMyTasks();
       setTasks(res.data);
     } catch (e) {
       console.error(e);
     } finally {
-      setLoading(false);
+      setTasksLoading(false);
     }
   }
 
@@ -87,9 +90,9 @@ export default function NurseDashboard() {
         ))}
       </div>
 
-      {loading && <div className="text-center py-8 text-gray-500">Loading...</div>}
+      {(tasksLoading || patientsLoading) && <div className="text-center py-8 text-gray-500">Loading...</div>}
 
-      {!loading && tab === 'patients' && (
+      {!patientsLoading && tab === 'patients' && (
         <div>
           {wards.length > 0 && (
             <div className="mb-4">
@@ -142,7 +145,7 @@ export default function NurseDashboard() {
         </div>
       )}
 
-      {!loading && tab === 'tasks' && (
+      {!tasksLoading && tab === 'tasks' && (
         <div className="space-y-3">
           {tasks.length === 0 && (
             <div className="text-center py-8 text-gray-400">No pending tasks</div>
