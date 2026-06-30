@@ -526,6 +526,11 @@ const hospitalService = {
         return response.data;
     },
 
+    getAvailableBeds: async () => {
+        const response = await apiClient.get('/hospital/beds/available');
+        return response.data;
+    },
+
     /**
      * Get hospital-wide queue for today
      */
