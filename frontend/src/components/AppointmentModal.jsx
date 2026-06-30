@@ -104,6 +104,33 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
         fetchSlots();
     }, [formData.doctorId, formData.appointmentDate]);
 
+    // Fetch patient history when a returning patient is selected
+    useEffect(() => {
+        if (!selectedPatient?.id) {
+            setPatientHistory(null);
+            setHistoryLoading(false);
+            return;
+        }
+        const doctorAlreadySet = !!formData.doctorId;
+        setHistoryLoading(true);
+        setPatientHistory(null);
+        hospitalService.getAppointmentsByPatient(selectedPatient.id)
+            .then(data => {
+                const history = (data || [])
+                    .filter(a => (a.status || '').toUpperCase() === 'CONFIRMED')
+                    .sort((a, b) => new Date(b.appointmentDate) - new Date(a.appointmentDate));
+                setPatientHistory(history);
+                if (history.length > 0 && !doctorAlreadySet) {
+                    const lastDoctorId = history[0].doctorId || history[0].doctor?.id;
+                    if (lastDoctorId && doctors.some(d => String(d.id) === String(lastDoctorId))) {
+                        setFormData(prev => ({ ...prev, doctorId: String(lastDoctorId) }));
+                    }
+                }
+            })
+            .catch(() => setPatientHistory([]))
+            .finally(() => setHistoryLoading(false));
+    }, [selectedPatient?.id]);
+
     const handleSlotSelect = (time) => {
         setSelectedSlot(time);
         handleChange('appointmentTime', time); // Send HH:mm format, backend expects LocalTime pattern "HH:mm"
