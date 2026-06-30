@@ -909,6 +909,19 @@ const hospitalService = {
         const response = await apiClient.post('/hospital/mrd/archive', payload);
         return response.data;
     },
+
+    // Patient Allergies
+    getPatientAllergies: async (patientId) => {
+        const response = await apiClient.get(`/hospital/patients/${patientId}/allergies`);
+        return response.data;
+    },
+    addPatientAllergy: async (patientId, payload) => {
+        const response = await apiClient.post(`/hospital/patients/${patientId}/allergies`, payload);
+        return response.data;
+    },
+    removePatientAllergy: async (patientId, allergyId) => {
+        await apiClient.delete(`/hospital/patients/${patientId}/allergies/${allergyId}`);
+    },
 };
 
 export default hospitalService;
