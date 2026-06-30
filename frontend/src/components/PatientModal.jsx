@@ -5,12 +5,14 @@ import { validateForm } from '../utils/validation';
 import Button from './Button';
 import CharCountInput from './CharCountInput';
 
-const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
+const PatientModal = ({ isOpen, onClose, onSuccess, initialData, onBookAppointment }) => {
     const [formData, setFormData] = useState({});
     const [errors, setErrors] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [duplicatePatient, setDuplicatePatient] = useState(null);
     const [showMoreDetails, setShowMoreDetails] = useState(false);
+    const [showSuccess, setShowSuccess] = useState(false);
+    const [registeredPatient, setRegisteredPatient] = useState(null);
     const { success, error: toastError } = useToast();
     const isEdit = !!initialData;
 
@@ -25,6 +27,8 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
             setIsSubmitting(false);
             setDuplicatePatient(null);
             setShowMoreDetails(!!initialData); // expand on edit, collapse on new
+            setShowSuccess(false);
+            setRegisteredPatient(null);
         }
     }, [isOpen, initialData]);
 
@@ -45,7 +49,7 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
             age: ['required', 'age'],
             gender: ['required'],
             phone: ['required', 'phone'],
-            email: ['email'] // optional but valid if present
+            email: ['email']
         };
 
         const validationErrors = validateForm(formData, rules);
@@ -56,20 +60,18 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
         }
 
         try {
-            // Strip insurance field so it is not sent to backend/database
             const { insurance, ...savePayload } = formData;
 
             if (isEdit) {
                 await hospitalService.updatePatient(formData.id, savePayload);
                 success('Patient updated successfully');
-                console.log('[PatientModal] Patient updated');
+                onSuccess();
+                onClose();
             } else {
                 const result = await hospitalService.addPatient(savePayload);
-                success('Patient added successfully');
-                console.log('[PatientModal] Patient added, calling onSuccess');
+                setRegisteredPatient(result);
+                setShowSuccess(true);
             }
-            onSuccess();
-            onClose();
         } catch (err) {
             console.error("Failed to save patient", err);
             const msg = err.response?.data?.message || 'Operation failed';
@@ -100,6 +102,73 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
     }, [formData.phone, isEdit]);
 
     if (!isOpen) return null;
+
+    if (showSuccess && registeredPatient) {
+        return (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-2xl shadow-organic w-full max-w-md animate-scale-in overflow-hidden">
+                    <div className="bg-white px-8 py-6 border-b border-gray-200 flex justify-between items-center">
+                        <h3 className="text-xl font-bold text-neutral-800">Registration Complete</h3>
+                        <button
+                            onClick={() => { onSuccess(); onClose(); }}
+                            className="w-10 h-10 rounded-xl hover:bg-gray-100 flex items-center justify-center text-neutral-400 hover:text-neutral-600 transition-all"
+                        >
+                            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div className="px-8 py-8 flex flex-col items-center text-center gap-6">
+                        <div>
+                            <p className="text-4xl mb-3">🎉</p>
+                            <p className="text-lg font-bold text-neutral-800">
+                                {registeredPatient.name} has been registered
+                            </p>
+                            <p className="text-sm text-neutral-500 mt-1">
+                                UHID: <span className="font-semibold text-neutral-700">
+                                    {registeredPatient.uhid || registeredPatient.id}
+                                </span>
+                            </p>
+                        </div>
+                        <div className="w-full space-y-3">
+                            <Button
+                                variant="primary"
+                                className="w-full"
+                                onClick={() => {
+                                    if (onBookAppointment) onBookAppointment(registeredPatient);
+                                    onSuccess();
+                                    onClose();
+                                }}
+                            >
+                                📅 Book Appointment →
+                            </Button>
+                            <Button
+                                variant="secondary"
+                                className="w-full"
+                                onClick={() => {
+                                    setFormData({ insurance: 'NO' });
+                                    setErrors({});
+                                    setShowSuccess(false);
+                                    setRegisteredPatient(null);
+                                    setDuplicatePatient(null);
+                                    setShowMoreDetails(false);
+                                }}
+                            >
+                                Register Another Patient
+                            </Button>
+                            <button
+                                type="button"
+                                onClick={() => { onSuccess(); onClose(); }}
+                                className="text-sm text-neutral-500 hover:text-neutral-700 underline transition-colors"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
