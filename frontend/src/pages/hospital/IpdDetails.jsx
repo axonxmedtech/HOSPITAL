@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import hospitalService from '../../services/hospitalService';
 import authService from '../../services/authService';
+import masterDataService from '../../services/masterDataService';
+import SearchableSelect from '../../components/SearchableSelect';
 import wardService from '../../services/wardService';
 import { useToast } from '../../context/ToastContext';
 import PageHeader from '../../components/PageHeader';
@@ -228,6 +230,10 @@ const IpdDetails = () => {
             setMedSearchResults([]);
         }
     }, [medicineModal.medicineName, medicineModal.medicineId]);
+    const [allergies, setAllergies] = useState([]);
+    const [showAllergyModal, setShowAllergyModal] = useState(false);
+    const [allergyForm, setAllergyForm] = useState({ allergyMasterId: null, allergyName: '', severity: 'UNKNOWN', notes: '' });
+
     const [billModal, setBillModal] = useState({ isOpen: false, loading: false, bill: null });
     const [printingBill, setPrintingBill] = useState(false);
     const [downloadingPdf, setDownloadingPdf] = useState(false);
@@ -272,6 +278,11 @@ const IpdDetails = () => {
         try {
             const resp = await hospitalService.getIpdDetails(id);
             setData(resp);
+            if (resp?.patientId) {
+                hospitalService.getPatientAllergies(resp.patientId)
+                    .then(setAllergies)
+                    .catch(() => {});
+            }
         } catch (err) {
             console.error('Failed to load IPD details', err);
             setData(null);
@@ -1175,6 +1186,111 @@ const IpdDetails = () => {
                 </div>
 
                 <aside className="bg-white border rounded p-4">
+                    {/* Patient Allergies */}
+                    <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-semibold text-gray-700">Known Allergies</h3>
+                        {(isDoctor || isAdmin) && !data?.isArchived && (
+                          <button
+                            onClick={() => setShowAllergyModal(true)}
+                            className="text-xs px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100 font-medium"
+                          >
+                            + Add
+                          </button>
+                        )}
+                      </div>
+                      {allergies.length === 0 ? (
+                        <p className="text-xs text-gray-400">No known allergies recorded</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          {allergies.map(a => (
+                            <span key={a.id}
+                              className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium
+                                ${a.severity === 'SEVERE' ? 'bg-red-100 text-red-700' :
+                                  a.severity === 'MODERATE' ? 'bg-orange-100 text-orange-700' :
+                                  'bg-yellow-100 text-yellow-700'}`}>
+                              ⚠ {a.allergyName || `Allergy #${a.allergyMasterId}`}
+                              <span className="opacity-60">· {a.severity}</span>
+                              {(isDoctor || isAdmin) && !data?.isArchived && (
+                                <button
+                                  onClick={async () => {
+                                    await hospitalService.removePatientAllergy(data.patientId, a.id);
+                                    setAllergies(prev => prev.filter(x => x.id !== a.id));
+                                  }}
+                                  className="ml-1 opacity-50 hover:opacity-100"
+                                >×</button>
+                              )}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Add Allergy Modal */}
+                    {showAllergyModal && (
+                      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                        <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+                          <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-semibold text-gray-800">Add Allergy</h3>
+                            <button onClick={() => setShowAllergyModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+                          </div>
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Search Allergy</label>
+                              <SearchableSelect
+                                onSearch={masterDataService.searchAllergies}
+                                onSelect={item => setAllergyForm(f => ({ ...f, allergyMasterId: item.id, allergyName: item.allergyName }))}
+                                getLabel={item => item.allergyName}
+                                placeholder="Search allergy (e.g. Penicillin)"
+                                value={allergyForm.allergyName}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Severity</label>
+                              <select value={allergyForm.severity}
+                                onChange={e => setAllergyForm(f => ({ ...f, severity: e.target.value }))}
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="UNKNOWN">Unknown</option>
+                                <option value="MILD">Mild</option>
+                                <option value="MODERATE">Moderate</option>
+                                <option value="SEVERE">Severe</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+                              <input type="text" value={allergyForm.notes}
+                                onChange={e => setAllergyForm(f => ({ ...f, notes: e.target.value }))}
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="e.g. Anaphylaxis history" />
+                            </div>
+                            <div className="flex justify-end gap-3 pt-2">
+                              <button onClick={() => setShowAllergyModal(false)}
+                                className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-600">Cancel</button>
+                              <button
+                                disabled={!allergyForm.allergyMasterId}
+                                onClick={async () => {
+                                  try {
+                                    const saved = await hospitalService.addPatientAllergy(data.patientId, {
+                                      allergyMasterId: allergyForm.allergyMasterId,
+                                      severity: allergyForm.severity,
+                                      notes: allergyForm.notes,
+                                    });
+                                    setAllergies(prev => [...prev, { ...saved, allergyName: allergyForm.allergyName }]);
+                                    setShowAllergyModal(false);
+                                    setAllergyForm({ allergyMasterId: null, allergyName: '', severity: 'UNKNOWN', notes: '' });
+                                  } catch (e) {
+                                    alert(e.response?.data?.message || 'Failed to add allergy');
+                                  }
+                                }}
+                                className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 font-medium disabled:opacity-50">
+                                Save Allergy
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <h3 className="font-semibold mb-2">Billing</h3>
                     {canManageBilling ? (
                         <div>
