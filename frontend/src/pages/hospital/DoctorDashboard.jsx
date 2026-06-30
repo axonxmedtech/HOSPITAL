@@ -880,6 +880,24 @@ const DoctorDashboard = () => {
         }
     };
 
+    const getGreeting = () => {
+        const h = new Date().getHours();
+        if (h < 12) return 'Good morning';
+        if (h < 17) return 'Good afternoon';
+        return 'Good evening';
+    };
+
+    const getDoctorFirstName = () => {
+        const name = user?.name || user?.username || 'Doctor';
+        const parts = name.trim().split(/\s+/);
+        const first = parts[0].toLowerCase().replace('.', '') === 'dr' ? (parts[1] || parts[0]) : parts[0];
+        return `Dr. ${first}`;
+    };
+
+    const todayLabel = new Date().toLocaleDateString('en-IN', {
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+    });
+
     return (
         <div className="flex h-screen bg-white">
             {/* Sidebar */}
@@ -912,21 +930,12 @@ const DoctorDashboard = () => {
                     {/* Overview Tab */}
                     {activeTab === 'overview' && !loading && (
                         <div className="space-y-6">
-                            <div className="flex items-center justify-between">
-                                <h2 className="text-2xl font-bold text-gray-900">Overview</h2>
-                                {user?.receptionMode === 'SOLO' && (
-                                    <div className="flex items-center gap-3">
-                                        <button
-                                            onClick={() => setIsAddPatientModalOpen(true)}
-                                            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer animate-fade-in"
-                                        >
-                                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                                            </svg>
-                                            Add Patient
-                                        </button>
-                                    </div>
-                                )}
+                            {/* Greeting Header */}
+                            <div>
+                                <h2 className="text-2xl font-bold text-gray-900">
+                                    {getGreeting()}, {getDoctorFirstName()} 👋
+                                </h2>
+                                <p className="text-sm text-gray-500 mt-1">Doctor · {todayLabel}</p>
                             </div>
                             {lowStockItems.length > 0 && (
                                 <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-4 flex items-start gap-3 shadow-sm hover:shadow transition-all duration-300 animate-fade-in">
@@ -970,47 +979,36 @@ const DoctorDashboard = () => {
                                     )}
                                 </div>
                             )}
-                            <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-                                <div className="bg-white rounded-lg border border-gray-200 p-6">
-                                    <div className="flex justify-between items-center">
-                                        <div className="min-w-0 w-full">
-                                            <p className="text-gray-600 text-sm font-medium">Current Patient</p>
-                                            <h3 className="text-base font-bold text-gray-900 mt-1 truncate" title={currentPatient}>{currentPatient ?? 'None'}</h3>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="bg-white rounded-lg border border-gray-200 p-6">
-                                    <div className="flex justify-between items-center">
-                                        <div className="min-w-0 w-full">
-                                            <p className="text-gray-600 text-sm font-medium">Next Patient</p>
-                                            <h3 className="text-base font-bold text-gray-900 mt-1 truncate" title={nextPatient}>{nextPatient ?? 'None'}</h3>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="bg-white rounded-lg border border-gray-200 p-6">
-                                    <div className="flex justify-between items-center">
-                                        <div>
-                                            <p className="text-gray-600 text-sm font-medium">Today's Appointments</p>
-                                            <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.today}</h3>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="bg-white rounded-lg border border-gray-200 p-6">
-                                    <div className="flex justify-between items-center">
-                                        <div>
-                                            <p className="text-gray-600 text-sm font-medium">Pending Action</p>
-                                            <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.pending}</h3>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="bg-white rounded-lg border border-gray-200 p-6">
-                                    <div className="flex justify-between items-center">
-                                        <div>
-                                            <p className="text-gray-600 text-sm font-medium">Total Appointments</p>
-                                            <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.total}</h3>
-                                        </div>
-                                    </div>
-                                </div>
+                            {/* Stat Cards */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <button
+                                    onClick={() => setActiveTab('opd')}
+                                    className="bg-white rounded-2xl border border-gray-200 p-6 text-left hover:shadow-md hover:border-blue-200 transition-all group"
+                                >
+                                    <p className="text-sm font-medium text-gray-500 group-hover:text-blue-600 transition-colors">Today's OPD</p>
+                                    <p className="text-3xl font-bold text-gray-900 mt-1">{stats.today}</p>
+                                    <p className="text-xs text-blue-500 mt-2 font-medium">View OPD →</p>
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('queue')}
+                                    className="bg-white rounded-2xl border border-gray-200 p-6 text-left hover:shadow-md transition-all group"
+                                >
+                                    <p className="text-sm font-medium text-gray-500 group-hover:text-orange-600 transition-colors">In Queue</p>
+                                    <p className={`text-3xl font-bold mt-1 ${queueEntries.length > 10 ? 'text-orange-600' : 'text-gray-900'}`}>
+                                        {queueEntries.length}
+                                    </p>
+                                    <p className="text-xs text-gray-400 mt-2 font-medium">View Queue →</p>
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('appointments')}
+                                    className="bg-white rounded-2xl border border-gray-200 p-6 text-left hover:shadow-md transition-all group"
+                                >
+                                    <p className="text-sm font-medium text-gray-500 group-hover:text-red-600 transition-colors">Pending</p>
+                                    <p className={`text-3xl font-bold mt-1 ${stats.pending > 5 ? 'text-red-600' : stats.pending === 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                                        {stats.pending}
+                                    </p>
+                                    <p className="text-xs text-gray-400 mt-2 font-medium">View Appointments →</p>
+                                </button>
                             </div>
 
                             {/* Side-by-Side Lists: Appointments and Queue */}
