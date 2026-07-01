@@ -74,8 +74,18 @@ class OtServiceTest {
     @Mock
     private PatientImplantRepository implantRepository;
 
+    @Mock
+    private OtReadinessRepository readinessRepository;
+
+    @Mock
+    private PatientRepository patientRepository;
+
+    @Mock
+    private DoctorRepository doctorRepository;
+
     @InjectMocks
     private OtService otService;
+
 
     // ===== Operation Record (Form 18) =====
 
@@ -939,4 +949,105 @@ class OtServiceTest {
                 .hasMessageContaining("already signed");
         verify(implantRepository, never()).save(any());
     }
+
+    // ===== OT Readiness Gating (Form 26) =====
+
+    @Test
+    void scheduleBooking_succeedsWhenNoReadinessRecord() {
+        Long hospitalId = 1L;
+        Long admissionId = 10L;
+        java.time.LocalDateTime testTime = java.time.LocalDateTime.now().plusDays(2);
+        java.time.LocalDate testDate = testTime.toLocalDate();
+
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+
+        IpdAdmission admission = new IpdAdmission();
+        admission.setId(admissionId);
+        admission.setHospitalId(hospitalId);
+        when(ipdAdmissionRepository.findById(admissionId)).thenReturn(Optional.of(admission));
+
+        // Mock readiness: empty (doesn't exist) -> should pass do-no-harm logic
+        when(readinessRepository.findByOtRoomAndReadinessDateAndHospitalId("OT 1", testDate, hospitalId))
+                .thenReturn(Optional.empty());
+
+        when(bookingRepository.findByHospitalIdOrderByScheduledDateTimeDesc(hospitalId))
+                .thenReturn(new java.util.ArrayList<>());
+        when(bookingRepository.save(any(OtBooking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        OtBookingRequest req = new OtBookingRequest(
+                "Cholecystectomy", testTime, 5L, "Dr. Ana", "OT 1", "Scheduled surgery"
+        );
+
+        OtBooking booking = otService.scheduleBooking(admissionId, req);
+        assertThat(booking).isNotNull();
+        assertThat(booking.getProcedureName()).isEqualTo("Cholecystectomy");
+    }
+
+    @Test
+    void scheduleBooking_failsWhenReadinessNotReady() {
+        Long hospitalId = 1L;
+        Long admissionId = 10L;
+        java.time.LocalDateTime testTime = java.time.LocalDateTime.now().plusDays(2);
+        java.time.LocalDate testDate = testTime.toLocalDate();
+
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+
+        IpdAdmission admission = new IpdAdmission();
+        admission.setId(admissionId);
+        admission.setHospitalId(hospitalId);
+        when(ipdAdmissionRepository.findById(admissionId)).thenReturn(Optional.of(admission));
+
+        // Mock readiness: exists and PENDING -> should throw
+        OtReadiness readiness = new OtReadiness();
+        readiness.setOtRoom("OT 1");
+        readiness.setReadinessDate(testDate);
+        readiness.setStatus("PENDING");
+        when(readinessRepository.findByOtRoomAndReadinessDateAndHospitalId("OT 1", testDate, hospitalId))
+                .thenReturn(Optional.of(readiness));
+
+        OtBookingRequest req = new OtBookingRequest(
+                "Cholecystectomy", testTime, 5L, "Dr. Ana", "OT 1", "Scheduled surgery"
+        );
+
+        assertThatThrownBy(() -> otService.scheduleBooking(admissionId, req))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("is not READY");
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void scheduleBooking_succeedsWhenReadinessReady() {
+        Long hospitalId = 1L;
+        Long admissionId = 10L;
+        java.time.LocalDateTime testTime = java.time.LocalDateTime.now().plusDays(2);
+        java.time.LocalDate testDate = testTime.toLocalDate();
+
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+
+        IpdAdmission admission = new IpdAdmission();
+        admission.setId(admissionId);
+        admission.setHospitalId(hospitalId);
+        when(ipdAdmissionRepository.findById(admissionId)).thenReturn(Optional.of(admission));
+
+        // Mock readiness: exists and READY -> should pass
+        OtReadiness readiness = new OtReadiness();
+        readiness.setOtRoom("OT 1");
+        readiness.setReadinessDate(testDate);
+        readiness.setStatus("READY");
+        when(readinessRepository.findByOtRoomAndReadinessDateAndHospitalId("OT 1", testDate, hospitalId))
+                .thenReturn(Optional.of(readiness));
+
+        when(bookingRepository.findByHospitalIdOrderByScheduledDateTimeDesc(hospitalId))
+                .thenReturn(new java.util.ArrayList<>());
+        when(bookingRepository.save(any(OtBooking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        OtBookingRequest req = new OtBookingRequest(
+                "Cholecystectomy", testTime, 5L, "Dr. Ana", "OT 1", "Scheduled surgery"
+        );
+
+        OtBooking booking = otService.scheduleBooking(admissionId, req);
+        assertThat(booking).isNotNull();
+        assertThat(booking.getStatus()).isEqualTo("SCHEDULED");
+    }
 }
+

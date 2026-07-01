@@ -9,7 +9,11 @@ import com.hms.dto.OtBookingRequest;
 import com.hms.dto.OtChecklistRequest;
 import com.hms.dto.PacuRecordRequest;
 import com.hms.dto.PostopOrdersRequest;
+import com.hms.dto.OtReadinessRequest;
+import com.hms.dto.OtRegisterDto;
 import com.hms.entity.*;
+import java.util.Optional;
+
 import com.hms.exception.UnauthorizedException;
 import com.hms.repository.*;
 import com.hms.security.SecurityContextHelper;
@@ -75,6 +79,16 @@ public class OtService {
     @Autowired
     private PatientImplantRepository implantRepository;
 
+    @Autowired
+    private OtReadinessRepository readinessRepository;
+
+    @Autowired
+    private PatientRepository patientRepository;
+
+    @Autowired
+    private DoctorRepository doctorRepository;
+
+
     /** Minimum modified Aldrete score required to transfer a patient out of PACU to a ward. */
     private static final int ALDRETE_TRANSFER_MIN = 9;
 
@@ -123,7 +137,17 @@ public class OtService {
             throw new UnauthorizedException("Access denied: Tenant mismatch");
         }
 
+        // Form 26 Gating Check: gate scheduleBooking only when a readiness record exists and is not READY
+        java.time.LocalDate requestDate = request.getScheduledDateTime().toLocalDate();
+        Optional<OtReadiness> readinessOpt = readinessRepository.findByOtRoomAndReadinessDateAndHospitalId(
+                request.getOtRoomNumber(), requestDate, hospitalId
+        );
+        if (readinessOpt.isPresent() && !"READY".equalsIgnoreCase(readinessOpt.get().getStatus())) {
+            throw new IllegalStateException("Room " + request.getOtRoomNumber() + " is not READY on " + requestDate);
+        }
+
         // Room conflict check (warn or throw, let's throw if exact same time or conflict exists)
+
         List<OtBooking> existing = bookingRepository.findByHospitalIdOrderByScheduledDateTimeDesc(hospitalId);
         boolean conflict = existing.stream().anyMatch(b -> 
             "SCHEDULED".equals(b.getStatus()) &&
@@ -1155,4 +1179,147 @@ public class OtService {
             log.warn("WebSocket broadcast failed: {}", e.getMessage());
         }
     }
+
+    // ===== OT Register (Form 25) & OT Readiness (Form 26) =====
+
+    public List<OtRegisterDto> getRegisterEntries(java.time.LocalDate date, String room) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+
+        List<OtBooking> bookings = bookingRepository.findByHospitalIdOrderByScheduledDateTimeDesc(hospitalId);
+        
+        java.util.List<OtRegisterDto> result = new java.util.ArrayList<>();
+        for (OtBooking b : bookings) {
+            // Apply filtering by date and room
+            if (date != null && !b.getScheduledDateTime().toLocalDate().equals(date)) {
+                continue;
+            }
+            if (room != null && !room.equalsIgnoreCase(b.getOtRoomNumber())) {
+                continue;
+            }
+
+            OtRegisterDto dto = new OtRegisterDto();
+            dto.setBookingId(b.getId());
+            dto.setProcedureName(b.getProcedureName());
+            dto.setScheduledDateTime(b.getScheduledDateTime());
+            dto.setAnesthetistName(b.getAnesthetistName());
+            dto.setOtRoomNumber(b.getOtRoomNumber());
+            dto.setStatus(b.getStatus());
+
+            // Patient details
+            try {
+                IpdAdmission adm = ipdAdmissionRepository.findById(b.getIpdAdmissionId()).orElse(null);
+                if (adm != null) {
+                    dto.setIpdNumber(adm.getIpdNumber());
+                    Patient p = patientRepository.findById(adm.getPatientId()).orElse(null);
+                    if (p != null) {
+                        dto.setPatientName(p.getName());
+                        dto.setPatientCustomId(p.getCustomId());
+                        dto.setPatientAge(p.getAge());
+                        dto.setPatientGender(p.getGender());
+                    }
+                }
+            } catch (Exception ignored) {}
+
+            // Surgeon details
+            try {
+                Doctor doc = doctorRepository.findById(b.getSurgeonId()).orElse(null);
+                if (doc != null) {
+                    dto.setSurgeonName(doc.getName());
+                }
+            } catch (Exception ignored) {}
+
+            // Operation Record status
+            try {
+                Optional<OperationRecord> op = operationRecordRepository.findByOtBookingIdAndHospitalId(b.getId(), hospitalId);
+                dto.setOperationStatus(op.map(OperationRecord::getStatus).orElse("NONE"));
+            } catch (Exception ignored) {
+                dto.setOperationStatus("NONE");
+            }
+
+            // Anaesthesia Record status
+            try {
+                Optional<AnaesthesiaRecord> ana = anaesthesiaRecordRepository.findByOtBookingIdAndHospitalId(b.getId(), hospitalId);
+                dto.setAnaesthesiaStatus(ana.map(AnaesthesiaRecord::getStatus).orElse("NONE"));
+            } catch (Exception ignored) {
+                dto.setAnaesthesiaStatus("NONE");
+            }
+
+            // PACU Record status
+            try {
+                Optional<PacuRecord> pacu = pacuRecordRepository.findByOtBookingIdAndHospitalId(b.getId(), hospitalId);
+                if (pacu.isPresent()) {
+                    dto.setPacuStatus(pacu.get().getStatus());
+                } else {
+                    dto.setPacuStatus("NONE");
+                }
+            } catch (Exception ignored) {
+                dto.setPacuStatus("NONE");
+            }
+
+            // Checklist status
+            try {
+                Optional<OtChecklist> chk = checklistRepository.findByOtBookingIdAndHospitalId(b.getId(), hospitalId);
+                if (chk.isPresent()) {
+                    if (chk.get().isSignOutCompleted()) {
+                        dto.setChecklistStatus("SIGN_OUT");
+                    } else if (chk.get().isTimeOutCompleted()) {
+                        dto.setChecklistStatus("TIME_OUT");
+                    } else if (chk.get().isSignInCompleted()) {
+                        dto.setChecklistStatus("SIGN_IN");
+                    } else {
+                        dto.setChecklistStatus("NONE");
+                    }
+                } else {
+                    dto.setChecklistStatus("NONE");
+                }
+            } catch (Exception ignored) {
+                dto.setChecklistStatus("NONE");
+            }
+
+            result.add(dto);
+        }
+        return result;
+    }
+
+    public java.util.Optional<OtReadiness> getReadiness(java.time.LocalDate date, String room) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        return readinessRepository.findByOtRoomAndReadinessDateAndHospitalId(room, date, hospitalId);
+    }
+
+    @Transactional
+    public OtReadiness saveReadiness(OtReadinessRequest req) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+
+        OtReadiness readiness = readinessRepository.findByOtRoomAndReadinessDateAndHospitalId(
+                req.getOtRoom(), req.getReadinessDate(), hospitalId
+        ).orElseGet(() -> {
+            OtReadiness r = new OtReadiness();
+            r.setHospitalId(hospitalId);
+            r.setOtRoom(req.getOtRoom());
+            r.setReadinessDate(req.getReadinessDate());
+            return r;
+        });
+
+        readiness.setCleaningDone(req.getCleaningDone());
+        readiness.setSterilityDone(req.getSterilityDone());
+        readiness.setEquipmentOk(req.getEquipmentOk());
+        readiness.setStatus(req.getStatus());
+
+        if ("READY".equalsIgnoreCase(req.getStatus())) {
+            readiness.setVerifiedBy(securityHelper.getCurrentUserEmail());
+            readiness.setVerifiedAt(LocalDateTime.now());
+        } else {
+            readiness.setVerifiedBy(null);
+            readiness.setVerifiedAt(null);
+        }
+
+        OtReadiness saved = readinessRepository.save(readiness);
+        audit("OT_READINESS_SAVED", "Readiness updated for room " + saved.getOtRoom() + " on " + saved.getReadinessDate() + " to " + saved.getStatus(), hospitalId);
+        broadcast(hospitalId);
+        return saved;
+    }
 }
+

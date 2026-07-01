@@ -2257,7 +2257,25 @@ CREATE INDEX IF NOT EXISTS idx_implant_hospital_booking  ON patient_implant(hosp
 CREATE INDEX IF NOT EXISTS idx_implant_hospital_patient  ON patient_implant(hospital_id, patient_id);
 CREATE INDEX IF NOT EXISTS idx_implant_hospital_batch    ON patient_implant(hospital_id, batch_number);
 
+-- Table structure for table `ot_readiness` (Form 26 — OT Readiness Checklist)
+CREATE TABLE IF NOT EXISTS ot_readiness (
+    id             BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id    BIGINT NOT NULL,
+    ot_room        VARCHAR(50) NOT NULL,
+    readiness_date DATE NOT NULL,
+    cleaning_done  BOOLEAN,
+    sterility_done BOOLEAN,
+    equipment_ok   BOOLEAN,
+    status         VARCHAR(20) NOT NULL,
+    verified_by    VARCHAR(100),
+    verified_at    DATETIME(6),
+    created_at     DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    CONSTRAINT fk_readiness_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_readiness_hospital_room_date ON ot_readiness(hospital_id, ot_room, readiness_date);
+
 -- Table structure for table `mrd_records`
+
 
 DROP TABLE IF EXISTS `mrd_records`;
 CREATE TABLE `mrd_records` (
