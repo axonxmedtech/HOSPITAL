@@ -41,6 +41,10 @@ public class NurseTaskService {
             throw new IllegalArgumentException("status must be DONE, SKIPPED, REFUSED, or HELD");
         }
 
+        if (!"DONE".equals(status) && (missedReason == null || missedReason.isBlank())) {
+            throw new IllegalArgumentException("missedReason is mandatory when medication is missed/held/refused/skipped");
+        }
+
         NurseTask task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new RuntimeException("Task not found: " + taskId));
         if (!task.getHospitalId().equals(hospitalId))

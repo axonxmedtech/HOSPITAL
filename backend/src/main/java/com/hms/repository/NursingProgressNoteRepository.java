@@ -4,6 +4,7 @@ import com.hms.entity.NursingProgressNote;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * NursingProgressNoteRepository - Repository interface for NursingProgressNote.
@@ -18,4 +19,8 @@ public interface NursingProgressNoteRepository extends JpaRepository<NursingProg
      * Find progress notes for admission.
      */
     List<NursingProgressNote> findByHospitalIdAndAdmissionIdOrderByCreatedAtDesc(Long hospitalId, Long admissionId);
+
+    Optional<NursingProgressNote> findByHospitalIdAndAdmissionIdAndShift(Long hospitalId, Long admissionId, String shift);
+
+    List<NursingProgressNote> findByHospitalIdAndPatientId(Long hospitalId, Long patientId);
 }
