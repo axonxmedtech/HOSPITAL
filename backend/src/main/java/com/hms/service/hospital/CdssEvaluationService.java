@@ -156,13 +156,13 @@ public class CdssEvaluationService {
         }
 
         VitalSigns v = opt.get();
-        result.setBloodPressure(v.getBloodPressure());
+        result.setBloodPressure(formatBloodPressure(v));
         result.setPulse(v.getPulse());
         result.setTemperature(v.getTemperature() == null ? null : v.getTemperature().doubleValue());
         result.setSpo2(v.getSpo2());
         result.setRespiratoryRate(v.getRespiratoryRate());
 
-        int sbpScore   = scoreSbp(parseSystolic(v.getBloodPressure()));
+        int sbpScore   = scoreSbp(systolicFor(v));
         int pulseScore = scorePulse(v.getPulse());
         int tempScore  = scoreTemp(v.getTemperature());
         int spo2Score  = scoreSpo2(v.getSpo2());
@@ -277,6 +277,21 @@ public class CdssEvaluationService {
         if (bp == null || bp.isBlank()) return null;
         try { return Integer.parseInt(bp.trim().split("[/\\s]")[0]); }
         catch (Exception e) { return null; }
+    }
+
+    /** Prefer the structured systolic; fall back to parsing the legacy blood_pressure string. */
+    private Integer systolicFor(VitalSigns v) {
+        if (v.getBpSystolic() != null) return v.getBpSystolic();
+        return parseSystolic(v.getBloodPressure());
+    }
+
+    /** Display string: "sys/dia" from structured columns when present, else the legacy string. */
+    private String formatBloodPressure(VitalSigns v) {
+        if (v.getBpSystolic() != null && v.getBpDiastolic() != null) {
+            return v.getBpSystolic() + "/" + v.getBpDiastolic();
+        }
+        if (v.getBpSystolic() != null) return String.valueOf(v.getBpSystolic());
+        return v.getBloodPressure();
     }
 
     private List<String> parseFlaggedParameters(String json) {

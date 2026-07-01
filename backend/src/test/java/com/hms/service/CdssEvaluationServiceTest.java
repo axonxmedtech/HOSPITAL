@@ -196,4 +196,44 @@ class CdssEvaluationServiceTest {
         assertTrue(alerts.isEmpty());
         verify(alertLogRepo, never()).save(any());
     }
+
+    @Test
+    void calculateEws_prefersStructuredSystolicOverLegacyString() {
+        VitalSigns v = new VitalSigns();
+        // Structured says hypotensive (85 -> SBP score 3); legacy string says normal (120).
+        v.setBpSystolic(85);
+        v.setBpDiastolic(50);
+        v.setBloodPressure("120/80");
+        v.setPulse(75);                       // score 0
+        v.setTemperature(new BigDecimal("36.8")); // score 0
+        v.setSpo2(98);                        // score 0
+        v.setRespiratoryRate(16);             // score 0
+
+        when(vitalSignsRepo.findByIpdAdmissionIdOrderByRecordedAtDesc(ADMISSION_ID))
+                .thenReturn(List.of(v));
+
+        EwsResultDTO result = service.calculateEws(ADMISSION_ID);
+
+        assertEquals(3, result.getSbpScore());
+        assertEquals("MEDIUM", result.getSeverity());
+    }
+
+    @Test
+    void calculateEws_fallsBackToLegacyStringWhenSystolicNull() {
+        VitalSigns v = new VitalSigns();
+        v.setBpSystolic(null);                // legacy row: no structured value
+        v.setBloodPressure("85/50");          // parse -> 85 -> SBP score 3
+        v.setPulse(75);
+        v.setTemperature(new BigDecimal("36.8"));
+        v.setSpo2(98);
+        v.setRespiratoryRate(16);
+
+        when(vitalSignsRepo.findByIpdAdmissionIdOrderByRecordedAtDesc(ADMISSION_ID))
+                .thenReturn(List.of(v));
+
+        EwsResultDTO result = service.calculateEws(ADMISSION_ID);
+
+        assertEquals(3, result.getSbpScore());
+        assertEquals("MEDIUM", result.getSeverity());
+    }
 }
