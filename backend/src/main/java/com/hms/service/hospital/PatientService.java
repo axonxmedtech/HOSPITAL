@@ -108,6 +108,13 @@ public class PatientService {
      * @return Created Patient entity
      */
     public Patient addPatient(Patient patient) {
+        // Derive age / dateOfBirth if missing
+        if (patient.getDateOfBirth() != null && patient.getAge() == null) {
+            patient.setAge(java.time.Period.between(patient.getDateOfBirth(), java.time.LocalDate.now()).getYears());
+        } else if (patient.getAge() != null && patient.getDateOfBirth() == null) {
+            patient.setDateOfBirth(java.time.LocalDate.now().minusYears(patient.getAge()).withMonth(1).withDayOfMonth(1));
+        }
+
         // Get hospital_id from security context (multi-tenant isolation)
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
@@ -167,12 +174,28 @@ public class PatientService {
         // Ensure patient exists and belongs to this hospital
         Patient existingPatient = getPatientById(publicId);
 
+        // Derive age / dateOfBirth if missing on updatedData
+        if (updatedData.getDateOfBirth() != null && updatedData.getAge() == null) {
+            updatedData.setAge(java.time.Period.between(updatedData.getDateOfBirth(), java.time.LocalDate.now()).getYears());
+        } else if (updatedData.getAge() != null && updatedData.getDateOfBirth() == null) {
+            updatedData.setDateOfBirth(java.time.LocalDate.now().minusYears(updatedData.getAge()).withMonth(1).withDayOfMonth(1));
+        }
+
         existingPatient.setName(updatedData.getName());
         existingPatient.setAge(updatedData.getAge());
         existingPatient.setGender(updatedData.getGender());
         existingPatient.setPhone(updatedData.getPhone());
         existingPatient.setAddress(updatedData.getAddress());
         existingPatient.setMedicalHistory(updatedData.getMedicalHistory());
+
+        // Copy NABH fields
+        existingPatient.setDateOfBirth(updatedData.getDateOfBirth());
+        existingPatient.setGuardianName(updatedData.getGuardianName());
+        existingPatient.setGuardianRelationship(updatedData.getGuardianRelationship());
+        existingPatient.setPreferredLanguage(updatedData.getPreferredLanguage());
+        existingPatient.setBloodGroup(updatedData.getBloodGroup());
+        existingPatient.setIsTemporary(updatedData.getIsTemporary() != null ? updatedData.getIsTemporary() : false);
+        existingPatient.setIsUnknown(updatedData.getIsUnknown() != null ? updatedData.getIsUnknown() : false);
 
         Patient saved = patientRepository.save(existingPatient);
         evictStatsCache(saved.getHospitalId());
@@ -1003,6 +1026,13 @@ public class PatientService {
         if (hospitalId == null) {
             throw new UnauthorizedException("Hospital ID not found in context");
         }
+        if (survivorId == null || loserId == null) {
+            throw new IllegalArgumentException("Both survivorId and loserId are required");
+        }
+        // Defense-in-depth: a self-merge would deactivate the surviving patient.
+        if (survivorId.equals(loserId)) {
+            throw new IllegalArgumentException("Cannot merge a patient into themselves");
+        }
 
         Patient survivor = patientRepository.findById(survivorId)
                 .filter(p -> p.getHospitalId().equals(hospitalId))
@@ -1014,20 +1044,33 @@ public class PatientService {
 
         logger.info("Merging patient {} into survivor {} for hospital {}", loserId, survivorId, hospitalId);
 
-        // Repoint child foreign keys
-        jdbcTemplate.update("UPDATE appointments SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
-        jdbcTemplate.update("UPDATE billing SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
-        jdbcTemplate.update("UPDATE ipd_admission SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
-        jdbcTemplate.update("UPDATE lab_orders SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
-        jdbcTemplate.update("UPDATE lab_results SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
-        jdbcTemplate.update("UPDATE medical_records SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
-        jdbcTemplate.update("UPDATE patient_allergies SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
-        jdbcTemplate.update("UPDATE pharmacy_sales SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
-        jdbcTemplate.update("UPDATE radiology_orders SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
-        jdbcTemplate.update("UPDATE radiology_results SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
-        jdbcTemplate.update("UPDATE whatsapp_message_log SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
-        jdbcTemplate.update("UPDATE cdss_alert_log SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
-        jdbcTemplate.update("UPDATE discharge_summary SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
+        // Repoint child foreign keys — every table carrying a patient_id column
+        // (loser is tenant-verified above, so all its child rows belong to this hospital).
+        String[] patientIdTables = {
+                "appointments", "billing", "ipd_admission", "opd",
+                "lab_orders", "lab_results", "medical_records", "patient_allergies",
+                "pharmacy_sales", "radiology_orders", "radiology_results",
+                "whatsapp_message_log", "cdss_alert_log", "discharge_summary",
+                // EMR history backbone + consents
+                "patient_consent", "clinical_assessment", "patient_diagnosis",
+                "patient_family_history", "patient_medical_history", "patient_medication_history",
+                "patient_risk_assessment", "patient_social_history", "patient_surgical_history",
+                "nursing_progress_note",
+                // Fluid management
+                "fluid_intake", "fluid_output", "daily_fluid_balance",
+                // OT execution records (incl. implant recall traceability)
+                "operation_record", "anaesthesia_record", "pacu_record",
+                "clinical_handover", "ot_instrument_count", "postoperative_orders",
+                "patient_implant"
+        };
+        for (String table : patientIdTables) {
+            try {
+                jdbcTemplate.update("UPDATE " + table + " SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
+            } catch (Exception e) {
+                // Fail the whole merge (transactional) rather than leave a half-merged record.
+                throw new RuntimeException("Patient merge failed while re-pointing table " + table + ": " + e.getMessage(), e);
+            }
+        }
 
         // Mark loser merged and soft-delete
         loser.setIsMerged(true);

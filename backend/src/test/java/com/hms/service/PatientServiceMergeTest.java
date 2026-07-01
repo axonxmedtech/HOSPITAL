@@ -55,9 +55,14 @@ class PatientServiceMergeTest {
 
         service.mergePatients(survivorId, loserId);
 
-        // Verify child records are repointed
+        // Verify child records are repointed — including OPD, consents, EMR history and OT records
         verify(jdbcTemplate, atLeastOnce()).update(contains("appointments"), eq(survivorId), eq(loserId));
         verify(jdbcTemplate, atLeastOnce()).update(contains("billing"), eq(survivorId), eq(loserId));
+        verify(jdbcTemplate, atLeastOnce()).update(contains("UPDATE opd "), eq(survivorId), eq(loserId));
+        verify(jdbcTemplate, atLeastOnce()).update(contains("patient_consent"), eq(survivorId), eq(loserId));
+        verify(jdbcTemplate, atLeastOnce()).update(contains("patient_diagnosis"), eq(survivorId), eq(loserId));
+        verify(jdbcTemplate, atLeastOnce()).update(contains("patient_implant"), eq(survivorId), eq(loserId));
+        verify(jdbcTemplate, atLeastOnce()).update(contains("operation_record"), eq(survivorId), eq(loserId));
 
         // Verify loser is marked merged and inactive
         verify(patientRepository).save(loser);
@@ -101,5 +106,18 @@ class PatientServiceMergeTest {
                 .hasMessageContaining("Duplicate patient not found");
 
         verify(jdbcTemplate, never()).update(anyString(), any(), any());
+    }
+
+    @Test
+    void mergePatients_rejectsSelfMerge() {
+        // A self-merge would deactivate the surviving patient — must be blocked at service level.
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+
+        assertThatThrownBy(() -> service.mergePatients(10L, 10L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("themselves");
+
+        verify(jdbcTemplate, never()).update(anyString(), any(), any());
+        verify(patientRepository, never()).save(any());
     }
 }
