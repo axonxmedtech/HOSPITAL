@@ -27,6 +27,24 @@ public class VitalSigns {
     @Column(name = "blood_pressure", length = 20)
     private String bloodPressure;
 
+    @Column(name = "bp_systolic")
+    private Integer bpSystolic;
+
+    @Column(name = "bp_diastolic")
+    private Integer bpDiastolic;
+
+    @Column(name = "pain_score")
+    private Integer painScore;
+
+    @Column(name = "weight", precision = 5, scale = 2)
+    private java.math.BigDecimal weight;
+
+    @Column(name = "oxygen_support", length = 50)
+    private String oxygenSupport;
+
+    @Column(name = "remarks", columnDefinition = "text")
+    private String remarks;
+
     private Integer pulse;
 
     @Column(precision = 4, scale = 1)
