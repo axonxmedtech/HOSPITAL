@@ -62,10 +62,35 @@ public class NurseAssessmentService {
         VitalSigns v = new VitalSigns();
         v.setIpdAdmissionId(admissionId);
         v.setHospitalId(hospitalId);
-        v.setBloodPressure((String) data.get("bloodPressure"));
+
+        // Structured BP: accept explicit systolic/diastolic, else parse the legacy string.
+        Integer systolic = toInt(data.get("bpSystolic"));
+        Integer diastolic = toInt(data.get("bpDiastolic"));
+        String legacyBp = (String) data.get("bloodPressure");
+        if ((systolic == null || diastolic == null) && legacyBp != null) {
+            int[] parsed = parseBloodPressure(legacyBp);
+            if (systolic == null) systolic = parsed[0] == -1 ? null : parsed[0];
+            if (diastolic == null) diastolic = parsed[1] == -1 ? null : parsed[1];
+        }
+        v.setBpSystolic(systolic);
+        v.setBpDiastolic(diastolic);
+        // Keep the legacy string populated (normalize from structured when only structured was sent).
+        if (legacyBp != null && !legacyBp.isBlank()) {
+            v.setBloodPressure(legacyBp);
+        } else if (systolic != null && diastolic != null) {
+            v.setBloodPressure(systolic + "/" + diastolic);
+        } else if (systolic != null) {
+            v.setBloodPressure(String.valueOf(systolic));
+        }
+
         v.setPulse(toInt(data.get("pulse")));
         v.setTemperature(toBigDecimal(data.get("temperature")));
         v.setSpo2(toInt(data.get("spo2")));
+        v.setRespiratoryRate(toInt(data.get("respiratoryRate")));
+        v.setPainScore(toInt(data.get("painScore")));
+        v.setWeight(toBigDecimal(data.get("weight")));
+        v.setOxygenSupport((String) data.get("oxygenSupport"));
+        v.setRemarks((String) data.get("remarks"));
         v.setRecordedByName(securityHelper.getCurrentUserEmail());
         v.setRecordedAt(LocalDateTime.now());
         return vitalsRepository.save(v);
@@ -85,5 +110,15 @@ public class NurseAssessmentService {
         if (val == null) return null;
         if (val instanceof BigDecimal bd) return bd;
         return new BigDecimal(val.toString());
+    }
+
+    /** Parses "120/80" (or "120 80") into [systolic, diastolic]; -1 for a token that is missing or non-numeric. */
+    private int[] parseBloodPressure(String bp) {
+        int[] out = { -1, -1 };
+        if (bp == null || bp.isBlank()) return out;
+        String[] parts = bp.trim().split("[/\\s]+");
+        try { if (parts.length >= 1) out[0] = Integer.parseInt(parts[0]); } catch (NumberFormatException ignored) {}
+        try { if (parts.length >= 2) out[1] = Integer.parseInt(parts[1]); } catch (NumberFormatException ignored) {}
+        return out;
     }
 }
