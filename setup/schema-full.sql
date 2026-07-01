@@ -1044,11 +1044,29 @@ CREATE TABLE IF NOT EXISTS nurse_assessments (
     CONSTRAINT fk_na_ipd FOREIGN KEY (ipd_admission_id) REFERENCES ipd_admission(id)
 );
 
+-- Phase 0.2 additive migration (safe on live data):
+-- ALTER TABLE `vital_signs`
+--   ADD COLUMN `bp_systolic` int DEFAULT NULL,
+--   ADD COLUMN `bp_diastolic` int DEFAULT NULL,
+--   ADD COLUMN `pain_score` int DEFAULT NULL,
+--   ADD COLUMN `weight` decimal(5,2) DEFAULT NULL,
+--   ADD COLUMN `oxygen_support` varchar(50) DEFAULT NULL,
+--   ADD COLUMN `remarks` text;
+-- UPDATE `vital_signs`
+--   SET bp_systolic  = CAST(SUBSTRING_INDEX(REPLACE(blood_pressure,' ','/'),'/',1) AS UNSIGNED),
+--       bp_diastolic = CAST(SUBSTRING_INDEX(REPLACE(blood_pressure,' ','/'),'/',-1) AS UNSIGNED)
+--   WHERE bp_systolic IS NULL AND blood_pressure REGEXP '^[0-9]+[/ ][0-9]+$';
 CREATE TABLE IF NOT EXISTS vital_signs (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     ipd_admission_id BIGINT NOT NULL,
     hospital_id BIGINT NOT NULL,
     blood_pressure VARCHAR(20),
+    bp_systolic int DEFAULT NULL,
+    bp_diastolic int DEFAULT NULL,
+    pain_score int DEFAULT NULL,
+    weight decimal(5,2) DEFAULT NULL,
+    oxygen_support varchar(50) DEFAULT NULL,
+    remarks text,
     pulse INT,
     temperature DECIMAL(4,1),
     spo2 INT,

@@ -36,6 +36,7 @@ public class DatabaseMigrationRunner {
         fixLabOrdersMedicalRecordIdColumn();
         fixRadiologyOrdersMedicalRecordIdColumn();
         backfillDischargeSummaryTenantColumns();
+        backfillVitalSignsStructuredBp();
     }
 
     /**
@@ -320,6 +321,43 @@ public class DatabaseMigrationRunner {
             log.info("DB migration applied: backfilled {} discharge_summary tenant column rows", updated);
         } catch (Exception e) {
             log.warn("DB migration skipped (discharge_summary tenant backfill): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Backfills vital_signs.bp_systolic / bp_diastolic from a well-formed legacy
+     * blood_pressure string (e.g. "120/80"). Additive + idempotent: only rows where
+     * bp_systolic IS NULL and blood_pressure matches a numeric "n/n" pattern.
+     */
+    private void backfillVitalSignsStructuredBp() {
+        try {
+            Integer columnExists = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vital_signs' AND COLUMN_NAME = 'bp_systolic'",
+                Integer.class
+            );
+            if (columnExists == null || columnExists == 0) {
+                return; // ddl-auto has not created the column yet
+            }
+
+            Integer pending = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM vital_signs " +
+                "WHERE bp_systolic IS NULL AND blood_pressure REGEXP '^[0-9]+[/ ][0-9]+$'",
+                Integer.class
+            );
+            if (pending == null || pending == 0) {
+                return; // nothing to backfill
+            }
+
+            int updated = jdbcTemplate.update(
+                "UPDATE vital_signs " +
+                "SET bp_systolic  = CAST(SUBSTRING_INDEX(REPLACE(blood_pressure, ' ', '/'), '/', 1) AS UNSIGNED), " +
+                "    bp_diastolic = CAST(SUBSTRING_INDEX(REPLACE(blood_pressure, ' ', '/'), '/', -1) AS UNSIGNED) " +
+                "WHERE bp_systolic IS NULL AND blood_pressure REGEXP '^[0-9]+[/ ][0-9]+$'"
+            );
+            log.info("DB migration applied: backfilled {} vital_signs structured BP rows", updated);
+        } catch (Exception e) {
+            log.warn("DB migration skipped (vital_signs structured BP backfill): {}", e.getMessage());
         }
     }
 }
