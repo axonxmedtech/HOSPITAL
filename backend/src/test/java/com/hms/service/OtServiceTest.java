@@ -59,6 +59,9 @@ class OtServiceTest {
     @Mock
     private AnaesthesiaRecordRepository anaesthesiaRecordRepository;
 
+    @Mock
+    private PacuRecordRepository pacuRecordRepository;
+
     @InjectMocks
     private OtService otService;
 
@@ -266,6 +269,139 @@ class OtServiceTest {
         assertThat(completed.getSignedBy()).isEqualTo("anaes@hospital.com");
         assertThat(completed.getSignedAt()).isNotNull();
         assertThat(completed.getCompletionTime()).isNotNull();
+    }
+
+    // ===== PACU / Recovery Record (Form 20) =====
+
+    private com.hms.dto.PacuRecordRequest aldreteRequest(int each) {
+        com.hms.dto.PacuRecordRequest req = new com.hms.dto.PacuRecordRequest();
+        req.setAldreteActivity(each);
+        req.setAldreteRespiration(each);
+        req.setAldreteCirculation(each);
+        req.setAldreteConsciousness(each);
+        req.setAldreteOxygen(each);
+        return req;
+    }
+
+    @Test
+    void startPacuRecord_rejectedBeforeAnaesthesiaCompleted() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        AnaesthesiaRecord anaes = new AnaesthesiaRecord();
+        anaes.setStatus("ACTIVE"); // not COMPLETED
+        when(anaesthesiaRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(anaes));
+
+        assertThatThrownBy(() -> otService.startPacuRecord(bookingId, new com.hms.dto.PacuRecordRequest()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("anaesthesia record is completed");
+        verify(pacuRecordRepository, never()).save(any());
+    }
+
+    @Test
+    void startPacuRecord_computesAldreteAndReadyStatus() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        AnaesthesiaRecord anaes = new AnaesthesiaRecord();
+        anaes.setStatus("COMPLETED");
+        when(anaesthesiaRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(anaes));
+        when(pacuRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.empty());
+        when(pacuRecordRepository.save(any(PacuRecord.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        PacuRecord saved = otService.startPacuRecord(bookingId, aldreteRequest(2)); // 5 x 2 = 10
+
+        assertThat(saved.getAldreteScore()).isEqualTo(10);
+        assertThat(saved.getStatus()).isEqualTo("READY");
+        assertThat(saved.getRecoveryStart()).isNotNull();
+    }
+
+    @Test
+    void startPacuRecord_lowAldreteStaysActive() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        AnaesthesiaRecord anaes = new AnaesthesiaRecord();
+        anaes.setStatus("COMPLETED");
+        when(anaesthesiaRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(anaes));
+        when(pacuRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.empty());
+        when(pacuRecordRepository.save(any(PacuRecord.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        PacuRecord saved = otService.startPacuRecord(bookingId, aldreteRequest(1)); // 5 x 1 = 5
+
+        assertThat(saved.getAldreteScore()).isEqualTo(5);
+        assertThat(saved.getStatus()).isEqualTo("ACTIVE");
+    }
+
+    @Test
+    void transferPacuRecord_rejectedWhenAldreteBelowMin() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("anaes@hospital.com");
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        PacuRecord record = new PacuRecord();
+        record.setStatus("ACTIVE");
+        record.setAldreteScore(7);
+        record.setTransferDestination("WARD");
+        record.setHandoverNotes("Stable");
+        when(pacuRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(record));
+
+        assertThatThrownBy(() -> otService.transferPacuRecord(bookingId))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Aldrete");
+        verify(pacuRecordRepository, never()).save(any());
+    }
+
+    @Test
+    void transferPacuRecord_rejectedWithoutHandover() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("anaes@hospital.com");
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        PacuRecord record = new PacuRecord();
+        record.setStatus("READY");
+        record.setAldreteScore(10);
+        record.setTransferDestination("WARD");
+        record.setHandoverNotes(null); // missing
+        when(pacuRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(record));
+
+        assertThatThrownBy(() -> otService.transferPacuRecord(bookingId))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("handover");
+        verify(pacuRecordRepository, never()).save(any());
+    }
+
+    @Test
+    void transferPacuRecord_succeedsWhenReady() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("anaes@hospital.com");
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        PacuRecord record = new PacuRecord();
+        record.setStatus("READY");
+        record.setAldreteScore(9);
+        record.setTransferDestination("WARD");
+        record.setHandoverNotes("Stable, IV antibiotics, monitor pain");
+        when(pacuRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(record));
+        when(pacuRecordRepository.save(any(PacuRecord.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        PacuRecord transferred = otService.transferPacuRecord(bookingId);
+
+        assertThat(transferred.getStatus()).isEqualTo("TRANSFERRED");
+        assertThat(transferred.getSignedBy()).isEqualTo("anaes@hospital.com");
+        assertThat(transferred.getSignedAt()).isNotNull();
+        assertThat(transferred.getRecoveryEnd()).isNotNull();
+    }
+
+    @Test
+    void startPacuRecord_rejectsCrossTenant() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, 99L, 10L)));
+
+        assertThatThrownBy(() -> otService.startPacuRecord(bookingId, new com.hms.dto.PacuRecordRequest()))
+                .isInstanceOf(UnauthorizedException.class);
+        verify(pacuRecordRepository, never()).save(any());
     }
 
     @Test

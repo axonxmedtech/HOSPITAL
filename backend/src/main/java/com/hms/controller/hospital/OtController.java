@@ -4,6 +4,7 @@ import com.hms.dto.AnaesthesiaRecordRequest;
 import com.hms.dto.OperationRecordRequest;
 import com.hms.dto.OtBookingRequest;
 import com.hms.dto.OtChecklistRequest;
+import com.hms.dto.PacuRecordRequest;
 import com.hms.service.hospital.OtService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -164,6 +165,54 @@ public class OtController {
                                                        @PathVariable Long bookingId) {
         try {
             return ResponseEntity.ok(otService.completeAnaesthesiaRecord(bookingId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // ===== PACU / Recovery Record (Form 20) =====
+
+    @GetMapping("/{bookingId}/pacu-record")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'NURSE', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> getPacuRecord(@PathVariable Long admissionId,
+                                           @PathVariable Long bookingId) {
+        try {
+            return ResponseEntity.ok(otService.getPacuRecord(bookingId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/{bookingId}/pacu-record")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'NURSE', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> startPacuRecord(@PathVariable Long admissionId,
+                                             @PathVariable Long bookingId,
+                                             @RequestBody PacuRecordRequest request) {
+        try {
+            return ResponseEntity.ok(otService.startPacuRecord(bookingId, request));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PutMapping("/{bookingId}/pacu-record")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'NURSE', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> updatePacuRecord(@PathVariable Long admissionId,
+                                              @PathVariable Long bookingId,
+                                              @RequestBody PacuRecordRequest request) {
+        try {
+            return ResponseEntity.ok(otService.updatePacuRecord(bookingId, request));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/{bookingId}/pacu-record/transfer")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> transferPacuRecord(@PathVariable Long admissionId,
+                                                @PathVariable Long bookingId) {
+        try {
+            return ResponseEntity.ok(otService.transferPacuRecord(bookingId));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

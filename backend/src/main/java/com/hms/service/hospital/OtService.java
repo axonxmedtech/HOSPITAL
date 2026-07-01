@@ -4,6 +4,7 @@ import com.hms.dto.AnaesthesiaRecordRequest;
 import com.hms.dto.OperationRecordRequest;
 import com.hms.dto.OtBookingRequest;
 import com.hms.dto.OtChecklistRequest;
+import com.hms.dto.PacuRecordRequest;
 import com.hms.entity.*;
 import com.hms.exception.UnauthorizedException;
 import com.hms.repository.*;
@@ -54,6 +55,12 @@ public class OtService {
 
     @Autowired
     private AnaesthesiaRecordRepository anaesthesiaRecordRepository;
+
+    @Autowired
+    private PacuRecordRepository pacuRecordRepository;
+
+    /** Minimum modified Aldrete score required to transfer a patient out of PACU to a ward. */
+    private static final int ALDRETE_TRANSFER_MIN = 9;
 
     public List<OtBooking> getBookingsForAdmission(Long ipdAdmissionId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
@@ -480,6 +487,169 @@ public class OtService {
         record.setInductionTime(request.getInductionTime());
         record.setCompletionTime(request.getCompletionTime());
         record.setNotes(request.getNotes());
+    }
+
+    // ===== PACU / Recovery Record (Form 20 core) =====
+
+    /** Loads the PACU record for a booking (or null), tenant-guarded. */
+    public PacuRecord getPacuRecord(Long bookingId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT Booking not found: " + bookingId));
+        if (!booking.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        return pacuRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId).orElse(null);
+    }
+
+    /** BR-1: recovery can only begin once the anaesthesia record is COMPLETED (Form 19 BR-5). */
+    @Transactional
+    public PacuRecord startPacuRecord(Long bookingId, PacuRecordRequest request) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT Booking not found: " + bookingId));
+        if (!booking.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        mrdService.validateAdmissionActive(booking.getIpdAdmissionId());
+
+        AnaesthesiaRecord anaesthesia = anaesthesiaRecordRepository
+                .findByOtBookingIdAndHospitalId(bookingId, hospitalId).orElse(null);
+        if (anaesthesia == null || !"COMPLETED".equalsIgnoreCase(anaesthesia.getStatus())) {
+            throw new IllegalStateException("Cannot start recovery before the anaesthesia record is completed.");
+        }
+
+        PacuRecord record = pacuRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
+                .orElseGet(PacuRecord::new);
+        if ("TRANSFERRED".equalsIgnoreCase(record.getStatus())) {
+            throw new IllegalStateException("Patient has already been transferred out of recovery.");
+        }
+        record.setHospitalId(hospitalId);
+        record.setOtBookingId(bookingId);
+        record.setAdmissionId(booking.getIpdAdmissionId());
+        if (record.getRecoveryStart() == null) {
+            record.setRecoveryStart(request.getRecoveryStart() != null ? request.getRecoveryStart() : LocalDateTime.now());
+        }
+        applyPacuRequest(record, request);
+        PacuRecord saved = pacuRecordRepository.save(record);
+
+        audit("PACU_RECORD_STARTED", "Recovery record started for booking " + bookingId, hospitalId);
+        broadcast(hospitalId);
+        return saved;
+    }
+
+    /** Update an in-progress recovery record (recomputes Aldrete + READY status). */
+    @Transactional
+    public PacuRecord updatePacuRecord(Long bookingId, PacuRecordRequest request) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT Booking not found: " + bookingId));
+        if (!booking.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        PacuRecord record = pacuRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
+                .orElseThrow(() -> new RuntimeException("PACU record not found for booking: " + bookingId));
+        if ("TRANSFERRED".equalsIgnoreCase(record.getStatus())) {
+            throw new IllegalStateException("Patient has already been transferred; the record is read-only.");
+        }
+        applyPacuRequest(record, request);
+        PacuRecord saved = pacuRecordRepository.save(record);
+
+        audit("PACU_RECORD_UPDATED", "Recovery record updated for booking " + bookingId, hospitalId);
+        broadcast(hospitalId);
+        return saved;
+    }
+
+    /** BR-4 + BR-6: transfer requires Aldrete >= 9, a destination and a handover note. */
+    @Transactional
+    public PacuRecord transferPacuRecord(Long bookingId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        String email = securityHelper.getCurrentUserEmail();
+
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT Booking not found: " + bookingId));
+        if (!booking.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        PacuRecord record = pacuRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
+                .orElseThrow(() -> new RuntimeException("PACU record not found for booking: " + bookingId));
+
+        Integer score = record.getAldreteScore();
+        if (score == null || score < ALDRETE_TRANSFER_MIN) {
+            throw new IllegalStateException(
+                    "Cannot transfer: modified Aldrete score must be at least " + ALDRETE_TRANSFER_MIN
+                            + " (current: " + (score == null ? 0 : score) + ").");
+        }
+        if (record.getTransferDestination() == null || record.getTransferDestination().isBlank()) {
+            throw new IllegalStateException("Cannot transfer: a transfer destination is required.");
+        }
+        if (record.getHandoverNotes() == null || record.getHandoverNotes().isBlank()) {
+            throw new IllegalStateException("Cannot transfer: a structured handover note is required.");
+        }
+
+        record.setStatus("TRANSFERRED");
+        record.setRecoveryEnd(LocalDateTime.now());
+        record.setSignedBy(email);
+        record.setSignedAt(LocalDateTime.now());
+        PacuRecord saved = pacuRecordRepository.save(record);
+
+        audit("PACU_RECORD_TRANSFERRED",
+                "Recovery transfer to " + record.getTransferDestination() + " for booking " + bookingId + " by " + email,
+                hospitalId);
+        broadcast(hospitalId);
+        return saved;
+    }
+
+    private void applyPacuRequest(PacuRecord record, PacuRecordRequest request) {
+        record.setRecoveryBed(request.getRecoveryBed());
+        if (request.getRecoveryStart() != null) record.setRecoveryStart(request.getRecoveryStart());
+        if (request.getRecoveryEnd() != null) record.setRecoveryEnd(request.getRecoveryEnd());
+        record.setConsciousness(request.getConsciousness());
+        record.setOrientation(request.getOrientation());
+        record.setAirwayStatus(request.getAirwayStatus());
+        record.setBreathingStatus(request.getBreathingStatus());
+        record.setCirculationStatus(request.getCirculationStatus());
+        record.setNauseaSeverity(request.getNauseaSeverity());
+        record.setVomitingPresent(request.getVomitingPresent());
+        record.setPainScore(request.getPainScore());
+
+        record.setAldreteActivity(validAldrete(request.getAldreteActivity(), "Activity"));
+        record.setAldreteRespiration(validAldrete(request.getAldreteRespiration(), "Respiration"));
+        record.setAldreteCirculation(validAldrete(request.getAldreteCirculation(), "Circulation"));
+        record.setAldreteConsciousness(validAldrete(request.getAldreteConsciousness(), "Consciousness"));
+        record.setAldreteOxygen(validAldrete(request.getAldreteOxygen(), "Oxygen saturation"));
+
+        record.setTransferDestination(request.getTransferDestination());
+        record.setHandoverNotes(request.getHandoverNotes());
+
+        // BR-3: server-computes the modified Aldrete score as the sum of its 5 components.
+        int score = nz(record.getAldreteActivity()) + nz(record.getAldreteRespiration())
+                + nz(record.getAldreteCirculation()) + nz(record.getAldreteConsciousness())
+                + nz(record.getAldreteOxygen());
+        record.setAldreteScore(score);
+
+        // Ready-for-transfer flag (BR-4); never downgrade a TRANSFERRED record here.
+        if (!"TRANSFERRED".equalsIgnoreCase(record.getStatus())) {
+            record.setStatus(score >= ALDRETE_TRANSFER_MIN ? "READY" : "ACTIVE");
+        }
+    }
+
+    private int nz(Integer v) {
+        return v == null ? 0 : v;
+    }
+
+    private Integer validAldrete(Integer v, String label) {
+        if (v == null) return null;
+        if (v < 0 || v > 2) {
+            throw new IllegalArgumentException("Aldrete " + label + " score must be 0, 1 or 2.");
+        }
+        return v;
     }
 
     private void audit(String action, String details, Long hospitalId) {

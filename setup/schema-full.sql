@@ -2107,6 +2107,41 @@ CREATE TABLE IF NOT EXISTS anaesthesia_record (
 ) ENGINE=InnoDB;
 CREATE INDEX IF NOT EXISTS idx_anaesthesia_record_hospital_booking ON anaesthesia_record(hospital_id, ot_booking_id);
 
+-- Phase 4.03 PACU / Recovery Record (Form 20 core). Additive; Hibernate ddl-auto creates it.
+CREATE TABLE IF NOT EXISTS pacu_record (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    patient_id BIGINT NULL,
+    admission_id BIGINT NULL,
+    ot_booking_id BIGINT NOT NULL UNIQUE,
+    recovery_start DATETIME NULL,
+    recovery_end DATETIME NULL,
+    recovery_bed VARCHAR(20) NULL,
+    consciousness VARCHAR(20) NULL,
+    orientation VARCHAR(20) NULL,
+    airway_status VARCHAR(20) NULL,
+    breathing_status VARCHAR(20) NULL,
+    circulation_status VARCHAR(20) NULL,
+    nausea_severity VARCHAR(20) NULL,
+    vomiting_present BIT(1) NULL,
+    pain_score INT NULL,
+    aldrete_activity INT NULL,
+    aldrete_respiration INT NULL,
+    aldrete_circulation INT NULL,
+    aldrete_consciousness INT NULL,
+    aldrete_oxygen INT NULL,
+    aldrete_score INT NULL,
+    transfer_destination VARCHAR(30) NULL,
+    handover_notes TEXT NULL,
+    status VARCHAR(20) NULL,
+    signed_by VARCHAR(100) NULL,
+    signed_at DATETIME NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_pacu_booking FOREIGN KEY (ot_booking_id) REFERENCES ot_bookings(id),
+    CONSTRAINT fk_pacu_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_pacu_record_hospital_booking ON pacu_record(hospital_id, ot_booking_id);
+
 -- Table structure for table `mrd_records`
 DROP TABLE IF EXISTS `mrd_records`;
 CREATE TABLE `mrd_records` (
