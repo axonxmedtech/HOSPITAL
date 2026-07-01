@@ -6,6 +6,7 @@ import com.hms.dto.OperationRecordRequest;
 import com.hms.dto.OtBookingRequest;
 import com.hms.dto.OtChecklistRequest;
 import com.hms.dto.PacuRecordRequest;
+import com.hms.dto.PostopOrdersRequest;
 import com.hms.entity.*;
 import com.hms.exception.UnauthorizedException;
 import com.hms.repository.*;
@@ -62,6 +63,9 @@ public class OtService {
 
     @Autowired
     private ClinicalHandoverRepository clinicalHandoverRepository;
+
+    @Autowired
+    private PostopOrdersRepository postopOrdersRepository;
 
     /** Minimum modified Aldrete score required to transfer a patient out of PACU to a ward. */
     private static final int ALDRETE_TRANSFER_MIN = 9;
@@ -776,6 +780,93 @@ public class OtService {
         handover.setMonitoringPlan(request.getMonitoringPlan());
         handover.setPendingTasks(request.getPendingTasks());
         handover.setRemarks(request.getRemarks());
+    }
+
+    // ===== Post-operative Orders (Form 21 core) =====
+
+    /** Loads the post-op orders for a booking (or null), tenant-guarded. */
+    public PostopOrders getPostopOrders(Long bookingId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT Booking not found: " + bookingId));
+        if (!booking.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        return postopOrdersRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId).orElse(null);
+    }
+
+    /** Upsert a DRAFT post-op order bundle (blocked once SIGNED, BR-6). */
+    @Transactional
+    public PostopOrders savePostopOrders(Long bookingId, PostopOrdersRequest request) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT Booking not found: " + bookingId));
+        if (!booking.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        mrdService.validateAdmissionActive(booking.getIpdAdmissionId());
+
+        PostopOrders orders = postopOrdersRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
+                .orElseGet(PostopOrders::new);
+        if ("SIGNED".equalsIgnoreCase(orders.getStatus())) {
+            throw new IllegalStateException("Post-operative orders are signed and read-only; create an amendment instead (BR-6).");
+        }
+        orders.setHospitalId(hospitalId);
+        orders.setOtBookingId(bookingId);
+        orders.setAdmissionId(booking.getIpdAdmissionId());
+        orders.setSurgeonId(booking.getSurgeonId());
+        applyPostopRequest(orders, request);
+        orders.setStatus("DRAFT");
+        PostopOrders saved = postopOrdersRepository.save(orders);
+
+        audit("POSTOP_ORDERS_SAVED", "Post-op orders drafted for booking " + bookingId, hospitalId);
+        broadcast(hospitalId);
+        return saved;
+    }
+
+    /** BR-1/BR-6: surgeon signs the bundle; requires a post-op diagnosis; the record then locks. */
+    @Transactional
+    public PostopOrders signPostopOrders(Long bookingId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        String email = securityHelper.getCurrentUserEmail();
+
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT Booking not found: " + bookingId));
+        if (!booking.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        PostopOrders orders = postopOrdersRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
+                .orElseThrow(() -> new RuntimeException("Post-operative orders not found for booking: " + bookingId));
+        if ("SIGNED".equalsIgnoreCase(orders.getStatus())) {
+            throw new IllegalStateException("Post-operative orders are already signed.");
+        }
+        if (orders.getPostopDiagnosis() == null || orders.getPostopDiagnosis().isBlank()) {
+            throw new IllegalStateException("Cannot sign: a post-operative diagnosis is required.");
+        }
+
+        orders.setStatus("SIGNED");
+        orders.setSignedBy(email);
+        orders.setSignedAt(LocalDateTime.now());
+        PostopOrders saved = postopOrdersRepository.save(orders);
+
+        audit("POSTOP_ORDERS_SIGNED", "Post-op orders signed for booking " + bookingId + " by " + email, hospitalId);
+        broadcast(hospitalId);
+        return saved;
+    }
+
+    private void applyPostopRequest(PostopOrders orders, PostopOrdersRequest request) {
+        orders.setPostopDiagnosis(request.getPostopDiagnosis());
+        orders.setCondition(request.getCondition());
+        orders.setDietOrder(request.getDietOrder());
+        orders.setActivityOrder(request.getActivityOrder());
+        orders.setMedications(request.getMedications());
+        orders.setMonitoringPlan(request.getMonitoringPlan());
+        orders.setInvestigations(request.getInvestigations());
+        orders.setEscalationInstructions(request.getEscalationInstructions());
     }
 
     private void audit(String action, String details, Long hospitalId) {

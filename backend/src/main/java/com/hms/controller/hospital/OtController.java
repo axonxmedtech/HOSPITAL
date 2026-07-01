@@ -6,6 +6,7 @@ import com.hms.dto.OperationRecordRequest;
 import com.hms.dto.OtBookingRequest;
 import com.hms.dto.OtChecklistRequest;
 import com.hms.dto.PacuRecordRequest;
+import com.hms.dto.PostopOrdersRequest;
 import com.hms.service.hospital.OtService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -262,6 +263,42 @@ public class OtController {
                                             @PathVariable Long bookingId) {
         try {
             return ResponseEntity.ok(otService.acceptHandover(bookingId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // ===== Post-operative Orders (Form 21) =====
+
+    @GetMapping("/{bookingId}/postop-orders")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'NURSE', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> getPostopOrders(@PathVariable Long admissionId,
+                                             @PathVariable Long bookingId) {
+        try {
+            return ResponseEntity.ok(otService.getPostopOrders(bookingId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/{bookingId}/postop-orders")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> savePostopOrders(@PathVariable Long admissionId,
+                                              @PathVariable Long bookingId,
+                                              @RequestBody PostopOrdersRequest request) {
+        try {
+            return ResponseEntity.ok(otService.savePostopOrders(bookingId, request));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/{bookingId}/postop-orders/sign")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> signPostopOrders(@PathVariable Long admissionId,
+                                              @PathVariable Long bookingId) {
+        try {
+            return ResponseEntity.ok(otService.signPostopOrders(bookingId));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

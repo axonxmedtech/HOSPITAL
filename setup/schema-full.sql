@@ -2168,6 +2168,31 @@ CREATE TABLE IF NOT EXISTS clinical_handover (
 ) ENGINE=InnoDB;
 CREATE INDEX IF NOT EXISTS idx_clinical_handover_hospital_booking ON clinical_handover(hospital_id, ot_booking_id);
 
+-- Phase 4.05 Post-operative Orders (Form 21 core). Additive; Hibernate ddl-auto creates it.
+CREATE TABLE IF NOT EXISTS postoperative_orders (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    patient_id BIGINT NULL,
+    admission_id BIGINT NULL,
+    ot_booking_id BIGINT NOT NULL UNIQUE,
+    surgeon_id BIGINT NULL,
+    postop_diagnosis VARCHAR(250) NULL,
+    post_condition VARCHAR(30) NULL,
+    diet_order VARCHAR(30) NULL,
+    activity_order VARCHAR(30) NULL,
+    medications TEXT NULL,
+    monitoring_plan TEXT NULL,
+    investigations TEXT NULL,
+    escalation_instructions TEXT NULL,
+    status VARCHAR(20) NULL,
+    signed_by VARCHAR(100) NULL,
+    signed_at DATETIME NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_postop_booking FOREIGN KEY (ot_booking_id) REFERENCES ot_bookings(id),
+    CONSTRAINT fk_postop_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_postop_orders_hospital_booking ON postoperative_orders(hospital_id, ot_booking_id);
+
 -- Table structure for table `mrd_records`
 DROP TABLE IF EXISTS `mrd_records`;
 CREATE TABLE `mrd_records` (

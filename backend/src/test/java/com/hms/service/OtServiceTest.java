@@ -65,6 +65,9 @@ class OtServiceTest {
     @Mock
     private ClinicalHandoverRepository clinicalHandoverRepository;
 
+    @Mock
+    private PostopOrdersRepository postopOrdersRepository;
+
     @InjectMocks
     private OtService otService;
 
@@ -511,6 +514,88 @@ class OtServiceTest {
         assertThatThrownBy(() -> otService.initiateHandover(bookingId, handoverRequest()))
                 .isInstanceOf(UnauthorizedException.class);
         verify(clinicalHandoverRepository, never()).save(any());
+    }
+
+    // ===== Post-operative Orders (Form 21) =====
+
+    @Test
+    void savePostopOrders_createsDraft() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        when(postopOrdersRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.empty());
+        when(postopOrdersRepository.save(any(PostopOrders.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        com.hms.dto.PostopOrdersRequest req = new com.hms.dto.PostopOrdersRequest();
+        req.setPostopDiagnosis("Acute appendicitis, resolved");
+        req.setDietOrder("NPO 6h then clear fluids");
+        PostopOrders saved = otService.savePostopOrders(bookingId, req);
+
+        assertThat(saved.getStatus()).isEqualTo("DRAFT");
+        assertThat(saved.getSurgeonId()).isEqualTo(7L);
+        assertThat(saved.getPostopDiagnosis()).isEqualTo("Acute appendicitis, resolved");
+    }
+
+    @Test
+    void signPostopOrders_rejectedWithoutDiagnosis() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("surgeon@hospital.com");
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        PostopOrders orders = new PostopOrders();
+        orders.setStatus("DRAFT");
+        orders.setPostopDiagnosis(null);
+        when(postopOrdersRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(orders));
+
+        assertThatThrownBy(() -> otService.signPostopOrders(bookingId))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("diagnosis");
+        verify(postopOrdersRepository, never()).save(any());
+    }
+
+    @Test
+    void signPostopOrders_stampsSignatureAndLocks() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("surgeon@hospital.com");
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        PostopOrders orders = new PostopOrders();
+        orders.setStatus("DRAFT");
+        orders.setPostopDiagnosis("Acute appendicitis, resolved");
+        when(postopOrdersRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(orders));
+        when(postopOrdersRepository.save(any(PostopOrders.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        PostopOrders signed = otService.signPostopOrders(bookingId);
+
+        assertThat(signed.getStatus()).isEqualTo("SIGNED");
+        assertThat(signed.getSignedBy()).isEqualTo("surgeon@hospital.com");
+        assertThat(signed.getSignedAt()).isNotNull();
+    }
+
+    @Test
+    void savePostopOrders_rejectedAfterSigned() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        PostopOrders orders = new PostopOrders();
+        orders.setStatus("SIGNED");
+        when(postopOrdersRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(orders));
+
+        assertThatThrownBy(() -> otService.savePostopOrders(bookingId, new com.hms.dto.PostopOrdersRequest()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("read-only");
+        verify(postopOrdersRepository, never()).save(any());
+    }
+
+    @Test
+    void savePostopOrders_rejectsCrossTenant() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, 99L, 10L)));
+
+        assertThatThrownBy(() -> otService.savePostopOrders(bookingId, new com.hms.dto.PostopOrdersRequest()))
+                .isInstanceOf(UnauthorizedException.class);
+        verify(postopOrdersRepository, never()).save(any());
     }
 
     @Test
