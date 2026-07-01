@@ -7,6 +7,7 @@ import AnaesthesiaRecordSection from './AnaesthesiaRecordSection';
 import PacuRecordSection from './PacuRecordSection';
 import ClinicalHandoverSection from './ClinicalHandoverSection';
 import PostopOrdersSection from './PostopOrdersSection';
+import InstrumentCountSection from './InstrumentCountSection';
 
 export default function OtWorkflowPanel({ admissionId, isLocked = false }) {
   const [bookings, setBookings] = useState([]);
@@ -385,6 +386,13 @@ export default function OtWorkflowPanel({ admissionId, isLocked = false }) {
                 />
 
                 <OperationRecordSection
+                  admissionId={admissionId}
+                  bookingId={activeBooking.id}
+                  bookingStatus={activeBooking.status}
+                  isLocked={isLocked}
+                />
+
+                <InstrumentCountSection
                   admissionId={admissionId}
                   bookingId={activeBooking.id}
                   bookingStatus={activeBooking.status}

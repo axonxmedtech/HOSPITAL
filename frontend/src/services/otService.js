@@ -72,6 +72,15 @@ const otService = {
 
   signPostopOrders: (admissionId, bookingId) =>
     apiService.post(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/postop-orders/sign`),
+
+  getInstrumentCount: (admissionId, bookingId) =>
+    apiService.get(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/instrument-count`),
+
+  saveInstrumentCount: (admissionId, bookingId, payload) =>
+    apiService.post(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/instrument-count`, payload),
+
+  resolveInstrumentCount: (admissionId, bookingId, payload) =>
+    apiService.post(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/instrument-count/resolve`, payload),
 };
 
 export default otService;
