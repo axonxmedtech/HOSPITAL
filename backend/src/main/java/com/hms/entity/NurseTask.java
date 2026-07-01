@@ -17,8 +17,17 @@ public class NurseTask {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "doctor_order_id", nullable = false)
+    @Column(name = "doctor_order_id")
     private Long doctorOrderId;
+
+    @Column(name = "source", length = 30)
+    private String source = "DOCTOR_ORDER";
+
+    @Column(name = "task_type", length = 50)
+    private String taskType;
+
+    @Column(name = "missed_reason", columnDefinition = "TEXT")
+    private String missedReason;
 
     @Column(name = "ipd_admission_id", nullable = false)
     private Long ipdAdmissionId;
