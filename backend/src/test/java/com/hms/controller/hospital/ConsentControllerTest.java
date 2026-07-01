@@ -22,6 +22,8 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Collections;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -70,7 +72,7 @@ public class ConsentControllerTest {
         request.setEncounterType("IPD");
         request.setConsentType("GENERAL");
 
-        when(consentService.createConsentDraft(100L, 200L, "IPD", "GENERAL", null, null))
+        when(consentService.createConsentDraft(any(ConsentCreateRequest.class)))
                 .thenReturn(mockConsent);
 
         mockMvc.perform(post("/hospital/consents")
@@ -106,17 +108,15 @@ public class ConsentControllerTest {
     @Test
     public void signConsent_validRequest_updatesConsent() throws Exception {
         ConsentSignRequest request = new ConsentSignRequest();
-        request.setSignerRole("PATIENT");
-        request.setSignerName("John Doe");
+        request.setPatientSigned(true);
         request.setSignatureType("STYLUS");
-        request.setSignatureImageBase64("base64data");
 
         PatientConsent signedConsent = new PatientConsent();
         signedConsent.setId(10L);
         signedConsent.setStatus("SIGNED");
         signedConsent.setPatientSigned(true);
 
-        when(consentService.signConsent(10L, "PATIENT", "John Doe", null, "STYLUS", "base64data"))
+        when(consentService.signConsent(eq(10L), any(ConsentSignRequest.class)))
                 .thenReturn(signedConsent);
 
         mockMvc.perform(post("/hospital/consents/10/sign")

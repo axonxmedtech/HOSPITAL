@@ -2274,7 +2274,74 @@ CREATE TABLE IF NOT EXISTS ot_readiness (
 ) ENGINE=InnoDB;
 CREATE INDEX IF NOT EXISTS idx_readiness_hospital_room_date ON ot_readiness(hospital_id, ot_room, readiness_date);
 
+-- Table structure for table `patient_consent` (Form 05 — General & Central Consent Engine)
+CREATE TABLE IF NOT EXISTS patient_consent (
+  id bigint NOT NULL AUTO_INCREMENT,
+  public_id varchar(36) NOT NULL UNIQUE,
+  hospital_id bigint NOT NULL,
+  patient_id bigint NOT NULL,
+  admission_id bigint DEFAULT NULL,
+  encounter_type varchar(20) NOT NULL,
+  consent_type varchar(30) NOT NULL,
+  version int NOT NULL,
+  parent_id bigint DEFAULT NULL,
+  status varchar(20) NOT NULL,
+  patient_signed boolean NOT NULL DEFAULT false,
+  guardian_signed boolean NOT NULL DEFAULT false,
+  relationship varchar(40) DEFAULT NULL,
+  signature_type varchar(30) DEFAULT NULL,
+  witness_id bigint DEFAULT NULL,
+  language varchar(20) NOT NULL,
+  interpreter_id bigint DEFAULT NULL,
+  signed_at datetime DEFAULT NULL,
+  remarks text DEFAULT NULL,
+  created_by bigint DEFAULT NULL,
+  created_at datetime NOT NULL,
+  updated_at datetime NOT NULL,
+  is_deleted boolean NOT NULL DEFAULT false,
+  PRIMARY KEY (id),
+  KEY idx_consent_patient (patient_id),
+  KEY idx_consent_admission (admission_id),
+  KEY idx_consent_hospital (hospital_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Table structure for table `blood_consent_detail` (Form 01 — Blood Transfusion Consent)
+CREATE TABLE IF NOT EXISTS blood_consent_detail (
+  id bigint NOT NULL AUTO_INCREMENT,
+  consent_id bigint NOT NULL UNIQUE,
+  explanation_given boolean NOT NULL DEFAULT false,
+  witness_patient_name varchar(100) DEFAULT NULL,
+  witness_patient_signed boolean NOT NULL DEFAULT false,
+  witness_hospital_name varchar(100) DEFAULT NULL,
+  witness_hospital_signed boolean NOT NULL DEFAULT false,
+  interpreter_required boolean NOT NULL DEFAULT false,
+  interpreter_language varchar(40) DEFAULT NULL,
+  interpreter_name varchar(100) DEFAULT NULL,
+  interpreter_signed boolean NOT NULL DEFAULT false,
+  blood_request_id bigint DEFAULT NULL,
+  PRIMARY KEY (id),
+  CONSTRAINT fk_blood_consent_parent FOREIGN KEY (consent_id) REFERENCES patient_consent (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Table structure for table `signature_slots` (Centralized Signature Slots)
+CREATE TABLE IF NOT EXISTS signature_slots (
+  id bigint NOT NULL AUTO_INCREMENT,
+  hospital_id bigint NOT NULL,
+  signer_role varchar(30) NOT NULL,
+  signer_name varchar(100) NOT NULL,
+  signer_relationship varchar(50) DEFAULT NULL,
+  signed_at datetime NOT NULL,
+  document_type varchar(50) NOT NULL,
+  document_id varchar(50) NOT NULL,
+  signature_image_base64 longtext DEFAULT NULL,
+  signature_hash varchar(64) DEFAULT NULL,
+  PRIMARY KEY (id),
+  KEY idx_sig_doc (document_type, document_id),
+  KEY idx_sig_hospital (hospital_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 -- Table structure for table `mrd_records`
+
 
 
 DROP TABLE IF EXISTS `mrd_records`;
