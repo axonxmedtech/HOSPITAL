@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Design philosophy
+
+Before writing a UX spec or designing a new screen, read
+[docs/superpowers/product-philosophy.md](docs/superpowers/product-philosophy.md) —
+the Strynkix product principles (problem-first design, mental models borrowed
+from real life, cognitive-load rules, tasks-over-modules direction) that guide
+this codebase's UX and architecture decisions.
+
 ## Commands
 
 ### Backend (Spring Boot / Maven)

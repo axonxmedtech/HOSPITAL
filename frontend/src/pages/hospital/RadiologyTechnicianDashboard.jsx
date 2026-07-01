@@ -1,7 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getRadiologyOrders, conductRadiologyStudy } from '../../services/radiologyService';
 import RadiologyResultForm from '../../components/radiology/RadiologyResultForm';
 import authService from '../../services/authService';
+import Sidebar from '../../components/Sidebar';
+import Navbar from '../../components/Navbar';
+import PageHeader from '../../components/PageHeader';
+import { useToast } from '../../context/ToastContext';
+import ProfileModal from '../../components/ProfileModal';
 
 const STATUS_CONFIG = {
   ORDERED: {
@@ -90,7 +96,7 @@ function OrderCard({ item, onConduct, onEnterResult }) {
             </p>
           )}
           {order.notes && (
-            <p className="text-xs text-gray-500 italic">📝 {order.notes}</p>
+            <p className="text-xs text-gray-500 italic font-medium">📝 {order.notes}</p>
           )}
           {order.studyConductedAt && (
             <p className="text-xs text-gray-500">
@@ -105,14 +111,14 @@ function OrderCard({ item, onConduct, onEnterResult }) {
           <div className={`rounded-xl p-3 mb-4 text-xs ${result.isAbnormal ? 'bg-red-50 border border-red-100' : 'bg-emerald-50 border border-emerald-100'}`}>
             <div className="flex items-center gap-2 mb-1">
               <span className={`font-semibold ${result.isAbnormal ? 'text-red-700' : 'text-emerald-700'}`}>
-                {result.isAbnormal ? '⚠ Abnormal findings' : '✓ Normal findings'}
+                {result.isAbnormal ? '⚠️ Abnormal findings' : '✓ Normal findings'}
               </span>
             </div>
             {result.impression && (
-              <p className="text-gray-700 font-medium">Impression: {result.impression}</p>
+              <p className="text-gray-750 font-semibold">Impression: {result.impression}</p>
             )}
             {result.findings && (
-              <p className="text-gray-600 mt-1 line-clamp-2">Findings: {result.findings}</p>
+              <p className="text-gray-600 mt-1 line-clamp-2 font-medium">Findings: {result.findings}</p>
             )}
           </div>
         )}
@@ -121,7 +127,7 @@ function OrderCard({ item, onConduct, onEnterResult }) {
           {order.status === 'ORDERED' && (
             <button
               onClick={() => onConduct(order.publicId)}
-              className="flex-1 px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-xl hover:bg-blue-700 active:scale-95 transition-all duration-150"
+              className="flex-1 px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-xl hover:bg-blue-700 active:scale-95 transition-all duration-150 cursor-pointer"
             >
               📷 Conduct Study
             </button>
@@ -129,7 +135,7 @@ function OrderCard({ item, onConduct, onEnterResult }) {
           {order.status === 'STUDY_CONDUCTED' && (
             <button
               onClick={() => onEnterResult(order.publicId)}
-              className="flex-1 px-4 py-2 text-sm font-medium bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 active:scale-95 transition-all duration-150"
+              className="flex-1 px-4 py-2 text-sm font-medium bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 active:scale-95 transition-all duration-150 cursor-pointer"
             >
               📝 Enter Result
             </button>
@@ -141,11 +147,18 @@ function OrderCard({ item, onConduct, onEnterResult }) {
 }
 
 export default function RadiologyTechnicianDashboard() {
+  const navigate = useNavigate();
+  const { success, error: toastError } = useToast();
+
   const [activeTab, setActiveTab] = useState('pending');
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [resultTarget, setResultTarget] = useState(null);
-  const user = authService.getCurrentUser();
+  const [user, setUser] = useState(() => authService.getCurrentUser() || {});
+
+  // Sidebar / Navbar states
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -170,6 +183,7 @@ export default function RadiologyTechnicianDashboard() {
       }
     } catch (err) {
       console.error('Failed to fetch radiology orders', err);
+      toastError('Failed to fetch radiology orders');
     } finally {
       setLoading(false);
     }
@@ -182,103 +196,110 @@ export default function RadiologyTechnicianDashboard() {
   const handleConduct = async (publicId) => {
     try {
       await conductRadiologyStudy(publicId);
+      success('Study status updated: Conducted');
       fetchOrders();
     } catch (err) {
-      alert(err.response?.data || 'Failed to update order status');
+      toastError(err.response?.data || 'Failed to update order status');
     }
+  };
+
+  const handleLogout = () => {
+    const loginUrl = authService.getLoginUrl();
+    authService.logout();
+    navigate(loginUrl);
   };
 
   const orderedCount = orders.filter(i => (i.order || i).status === 'ORDERED').length;
   const conductedCount = orders.filter(i => (i.order || i).status === 'STUDY_CONDUCTED').length;
 
-  const now = new Date();
-  const greeting = now.getHours() < 12 ? 'Good Morning' : now.getHours() < 17 ? 'Good Afternoon' : 'Good Evening';
+  const tabs = [
+    { id: 'pending', label: 'Pending Cases', icon: null },
+    { id: 'completed', label: 'History', icon: null },
+  ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-100 shadow-sm sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">📷 Radiology Dashboard</h1>
-            <p className="text-sm text-gray-500">
-              {greeting}, <span className="font-medium text-blue-700">{user?.name || 'Radiology Technician'}</span>
-            </p>
-          </div>
-          <button
-            onClick={fetchOrders}
-            className="px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors border border-blue-100"
-          >
-            ↻ Refresh
-          </button>
-        </div>
-      </div>
+    <div className="flex h-screen bg-white">
+      {/* Sidebar */}
+      <Sidebar
+        title="HMS Portal"
+        tabs={tabs}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        footerTitle="Radiology Tech"
+        footerData={user?.hospitalName}
+        variant="plain"
+        isCollapsed={sidebarCollapsed}
+        showOnMobile={true}
+      />
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-        {/* Stats */}
-        {activeTab === 'pending' && (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <StatCard icon="⏳" label="Awaiting Scan" value={orderedCount} color="border-amber-200" />
-            <StatCard icon="📷" label="Ready for Report" value={conductedCount} color="border-indigo-200" />
-          </div>
-        )}
+      {/* Main Content Wrapper */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Navbar */}
+        <Navbar
+          title={tabs.find(t => t.id === activeTab)?.label}
+          user={user}
+          onLogout={handleLogout}
+          onProfile={() => setProfileOpen(true)}
+          onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+        />
 
-        {/* Tabs */}
-        <div className="flex gap-1 p-1 bg-white rounded-2xl border border-gray-100 shadow-sm w-fit">
-          {[
-            { key: 'pending', label: '⏳ Pending', desc: 'To conduct & process' },
-            { key: 'completed', label: '✅ History', desc: 'Completed & cancelled' },
-          ].map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`px-5 py-2.5 text-sm font-medium rounded-xl transition-all duration-200 ${
-                activeTab === tab.key
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        {/* Main Content Area */}
+        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
+          <div className="space-y-6">
+            <PageHeader
+              title={activeTab === 'pending' ? 'Radiology Worklist' : 'Scan History'}
+              subtitle={activeTab === 'pending' ? 'Conduct scheduled imaging studies and write reports.' : 'View completed radiologic diagnostics.'}
+              onAdd={fetchOrders}
+              addLabel="Refresh Worklist"
+            />
 
-        {/* Orders grid */}
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="bg-white rounded-2xl border border-gray-100 h-48 animate-pulse" />
-            ))}
+            {/* Stats */}
+            {activeTab === 'pending' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                <StatCard icon="⏳" label="Awaiting Scan" value={orderedCount} color="border-amber-200" />
+                <StatCard icon="📷" label="Ready for Report" value={conductedCount} color="border-indigo-200" />
+                <StatCard icon="📊" label="Total in View" value={orders.length} color="border-gray-200" />
+              </div>
+            )}
+
+            {/* Orders grid */}
+            {loading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className="bg-white rounded-2xl border border-gray-100 h-48 animate-pulse shadow-sm" />
+                ))}
+              </div>
+            ) : orders.length === 0 ? (
+              <div className="text-center py-16 bg-white rounded-2xl border border-gray-200 shadow-sm">
+                <div className="text-5xl mb-4">
+                  {activeTab === 'pending' ? '🎉' : '📂'}
+                </div>
+                <h3 className="text-base font-semibold text-gray-700 mb-2">
+                  {activeTab === 'pending' ? 'No pending orders!' : 'No history yet'}
+                </h3>
+                <p className="text-sm text-gray-400 mt-1">
+                  {activeTab === 'pending'
+                    ? 'All radiology orders have been processed.'
+                    : 'Completed and cancelled orders will appear here.'}
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {orders.map((item, idx) => {
+                  const order = item.order || item;
+                  return (
+                    <OrderCard
+                      key={order.publicId || idx}
+                      item={item}
+                      onConduct={handleConduct}
+                      onEnterResult={setResultTarget}
+                    />
+                  );
+                })}
+              </div>
+            )}
           </div>
-        ) : orders.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-2xl border border-gray-100">
-            <div className="text-5xl mb-4">
-              {activeTab === 'pending' ? '🎉' : '📂'}
-            </div>
-            <h3 className="text-lg font-semibold text-gray-700 mb-2">
-              {activeTab === 'pending' ? 'No pending orders!' : 'No history yet'}
-            </h3>
-            <p className="text-sm text-gray-400">
-              {activeTab === 'pending'
-                ? 'All radiology orders have been processed.'
-                : 'Completed and cancelled orders will appear here.'}
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {orders.map((item, idx) => {
-              const order = item.order || item;
-              return (
-                <OrderCard
-                  key={order.publicId || idx}
-                  item={item}
-                  onConduct={handleConduct}
-                  onEnterResult={setResultTarget}
-                />
-              );
-            })}
-          </div>
-        )}
+        </main>
       </div>
 
       {/* Result Entry Modal */}
@@ -292,6 +313,9 @@ export default function RadiologyTechnicianDashboard() {
           }}
         />
       )}
+
+      {/* Profile Settings Modal */}
+      <ProfileModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
     </div>
   );
 }

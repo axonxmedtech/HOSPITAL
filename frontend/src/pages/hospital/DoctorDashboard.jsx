@@ -756,9 +756,11 @@ const DoctorDashboard = () => {
 
     // Client-side pagination logic for queueEntries
     const sortedQueue = [...queueEntries].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-    const consultingEntry = sortedQueue.find(q => q.opd?.status === 'CONSULTING');
-    const nextQueuedEntry = sortedQueue.find(q => q.opd?.status === 'QUEUED');
+    const consultingEntry = sortedQueue.find(q => q.opd?.patient?.status === 'CONSULTING');
+    const nextQueuedEntry = sortedQueue.find(q => q.opd?.status === 'QUEUED' && q.opd?.patient?.status !== 'CONSULTING');
     const nextQueuedToken = nextQueuedEntry ? sortedQueue.indexOf(nextQueuedEntry) + 1 : null;
+    const patientName = (entry) => entry?.opd?.patient?.name || entry?.opd?.patientName || 'Unknown';
+    const waitSince = (entry) => new Date(entry?.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const queueTotalPages = Math.ceil(sortedQueue.length / ITEMS_PER_PAGE) || 1;
     const paginatedQueue = sortedQueue.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
@@ -868,13 +870,35 @@ const DoctorDashboard = () => {
     };
 
     const handleStartOpdConsultation = async (opd) => {
+        if (startingConsultationId) return;
+        const patientId = opd.patient?.publicId || opd.patient?.id;
+        if (!patientId) {
+            toastError("Patient ID not found");
+            return;
+        }
+        setStartingConsultationId(patientId);
         try {
+            // Update status to CONSULTING
+            await hospitalService.startConsultation(patientId);
+            success("Consultation started");
+            
+            // Reload data to reflect status change in the queue
+            await loadData();
+            
             // Open consultation modal with OPD context
-            setConsultationModal({ isOpen: true, appointment: null, patient: opd.patient, opd });
+            setConsultationModal({ 
+                isOpen: true, 
+                appointment: null, 
+                patient: { ...opd.patient, status: 'CONSULTING' }, 
+                opd 
+            });
         } catch (err) {
-            console.error('Failed to open OPD consultation modal', err);
+            console.error('Failed to start OPD consultation', err);
             toastError('Failed to start OPD consultation');
+            // Fallback: still open modal
             setConsultationModal({ isOpen: true, appointment: null, patient: opd.patient, opd });
+        } finally {
+            setStartingConsultationId(null);
         }
     };
 
@@ -1073,62 +1097,102 @@ const DoctorDashboard = () => {
 
                             {/* Consultation One-Click Widget */}
                             {queueEntries.length > 0 && (
-                                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <h3 className="text-base font-bold text-gray-900">
-                                            {consultingEntry ? 'Now Consulting' : 'Next Patient'}
-                                        </h3>
-                                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                                            queueEntries.length >= 8
-                                                ? 'bg-red-100 text-red-700'
-                                                : queueEntries.length >= 4
-                                                ? 'bg-amber-100 text-amber-700'
-                                                : 'bg-green-100 text-green-700'
-                                        }`}>
-                                            {queueEntries.length} waiting
-                                        </span>
-                                    </div>
-
-                                    {consultingEntry && (
-                                        <div className="flex items-center gap-3 mb-3">
-                                            <span className="text-sm font-semibold text-gray-800">
-                                                {consultingEntry.opd?.patient?.name || consultingEntry.opd?.patientName || 'Unknown'}
-                                            </span>
-                                            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
-                                                CONSULTING
-                                            </span>
+                                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 hover:shadow-md transition-all duration-300">
+                                    {!consultingEntry && !nextQueuedEntry && queueEntries.length === 0 ? (
+                                        // 3a. Queue is completely empty
+                                        <div className="flex flex-col items-center justify-center py-6 text-center">
+                                            <span className="text-4xl mb-3">🎉</span>
+                                            <h3 className="text-base font-bold text-gray-900">Queue is clear</h3>
+                                            <p className="text-sm text-gray-500 mt-1">No patients are waiting right now.</p>
                                         </div>
-                                    )}
-
-                                    {consultingEntry && nextQueuedEntry && (
-                                        <div className="border-t border-gray-100 my-3" />
-                                    )}
-
-                                    {nextQueuedEntry && (
-                                        <div className="flex items-center justify-between gap-4">
-                                            <div>
-                                                {consultingEntry && (
-                                                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Up Next</p>
-                                                )}
-                                                <p className="text-sm font-bold text-gray-900">
-                                                    {nextQueuedEntry.opd?.patient?.name || nextQueuedEntry.opd?.patientName || 'Unknown'}
-                                                </p>
-                                                <p className="text-xs text-gray-500 mt-0.5">
-                                                    Token #{nextQueuedToken} · Waiting since {new Date(nextQueuedEntry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                </p>
+                                    ) : !consultingEntry ? (
+                                        // 3b. Nobody consulting yet, but patients in queue
+                                        <div>
+                                            <div className="flex items-center justify-between mb-4">
+                                                <h3 className="text-base font-bold text-gray-900">Next Patient</h3>
+                                                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                                                    queueEntries.length >= 8
+                                                        ? 'bg-red-100 text-red-700'
+                                                        : queueEntries.length >= 4
+                                                        ? 'bg-amber-100 text-amber-700'
+                                                        : 'bg-green-100 text-green-700'
+                                                }`}>
+                                                    {queueEntries.length} waiting
+                                                </span>
                                             </div>
-                                            <button
-                                                onClick={() => handleStartOpdConsultation(nextQueuedEntry.opd)}
-                                                disabled={!!startingConsultationId}
-                                                className="shrink-0 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                                {startingConsultationId ? 'Starting…' : 'Start Consultation →'}
-                                            </button>
+                                            {nextQueuedEntry && (
+                                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mt-2">
+                                                    <div className="text-sm text-gray-600">
+                                                        <span className="text-base font-bold text-gray-900">
+                                                            {patientName(nextQueuedEntry)}
+                                                        </span>
+                                                        <span className="text-gray-300 mx-2">·</span>
+                                                        <span className="font-semibold text-gray-800">Token #{nextQueuedToken}</span>
+                                                        <span className="text-gray-300 mx-2">·</span>
+                                                        <span>Waiting since {waitSince(nextQueuedEntry)}</span>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => handleStartOpdConsultation(nextQueuedEntry.opd)}
+                                                        disabled={!!startingConsultationId}
+                                                        className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-xl transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                                                    >
+                                                        {startingConsultationId ? 'Starting…' : 'Start Consultation →'}
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
+                                    ) : (
+                                        // 3c. Someone already consulting
+                                        <div>
+                                            <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+                                                <div className="flex flex-wrap items-center gap-3">
+                                                    <h3 className="text-base font-bold text-gray-900">
+                                                        Now Consulting: <span className="font-extrabold text-slate-850">{patientName(consultingEntry)}</span>
+                                                    </h3>
+                                                    <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200 animate-pulse">
+                                                        CONSULTING
+                                                    </span>
+                                                </div>
+                                                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                                                    queueEntries.length >= 8
+                                                        ? 'bg-red-100 text-red-700'
+                                                        : queueEntries.length >= 4
+                                                        ? 'bg-amber-100 text-amber-700'
+                                                        : 'bg-green-100 text-green-700'
+                                                }`}>
+                                                    {queueEntries.length} waiting
+                                                </span>
+                                            </div>
 
-                                    {consultingEntry && !nextQueuedEntry && (
-                                        <p className="text-sm text-gray-500">No more patients in queue</p>
+                                            {nextQueuedEntry ? (
+                                                <>
+                                                    <div className="border-t border-gray-100 my-4" />
+                                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                                                        <div className="text-sm text-gray-600">
+                                                            <span className="font-bold text-gray-900 mr-2">Up Next:</span>
+                                                            <span className="font-semibold text-gray-800">{patientName(nextQueuedEntry)}</span>
+                                                            <span className="text-gray-300 mx-2">·</span>
+                                                            <span className="font-medium text-gray-800">Token #{nextQueuedToken}</span>
+                                                            <span className="text-gray-300 mx-2">·</span>
+                                                            <span>Waiting since {waitSince(nextQueuedEntry)}</span>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => handleStartOpdConsultation(nextQueuedEntry.opd)}
+                                                            disabled={!!startingConsultationId}
+                                                            className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-xl transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                                                        >
+                                                            {startingConsultationId ? 'Starting…' : 'Start Consultation →'}
+                                                        </button>
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                // Only one patient, currently being consulted
+                                                <>
+                                                    <div className="border-t border-gray-100 my-4" />
+                                                    <p className="text-sm text-gray-500">No more patients in queue</p>
+                                                </>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
                             )}

@@ -16,6 +16,9 @@ const PORTAL_CONFIG = {
             { value: 'DOCTOR', label: 'Doctor' },
             { value: 'RECEPTIONIST', label: 'Reception & Registration' },
             { value: 'PHARMACIST', label: 'Pharmacy Services' },
+            { value: 'NURSE', label: 'Nurse' },
+            { value: 'LAB_TECHNICIAN', label: 'Lab Technician' },
+            { value: 'RADIOLOGY_TECHNICIAN', label: 'Radiology Technician' },
         ],
         otherPortals: [
             { label: 'Login as Clinic', path: '/login/clinic' },
@@ -33,6 +36,9 @@ const PORTAL_CONFIG = {
             { value: 'DOCTOR', label: 'Doctor' },
             { value: 'RECEPTIONIST', label: 'Reception & Registration' },
             { value: 'PHARMACIST', label: 'Pharmacy Services' },
+            { value: 'NURSE', label: 'Nurse' },
+            { value: 'LAB_TECHNICIAN', label: 'Lab Technician' },
+            { value: 'RADIOLOGY_TECHNICIAN', label: 'Radiology Technician' },
         ],
         otherPortals: [
             { label: 'Login as Hospital', path: '/login/hospital' },
@@ -71,7 +77,7 @@ const HospitalLogin = ({ portalType = 'HOSPITAL' }) => {
         setErrors({});
 
         const validationErrors = validateForm({ email, password }, {
-            email: ['required', 'email'],
+            email: ['required'],
             password: ['required']
         });
 
@@ -115,6 +121,12 @@ const HospitalLogin = ({ portalType = 'HOSPITAL' }) => {
                 navigate('/hospital/receptionist');
             } else if (response.role === 'PHARMACIST') {
                 navigate('/hospital/pharmacy');
+            } else if (response.role === 'NURSE') {
+                navigate('/nurse-dashboard');
+            } else if (response.role === 'LAB_TECHNICIAN') {
+                navigate('/lab-dashboard');
+            } else if (response.role === 'RADIOLOGY_TECHNICIAN') {
+                navigate('/radiology-dashboard');
             } else {
                 setErrors({ submit: 'Invalid user role' });
             }
@@ -231,15 +243,16 @@ const HospitalLogin = ({ portalType = 'HOSPITAL' }) => {
 
                                 <div className="space-y-2">
                                     <label htmlFor="email" className="block text-sm font-medium text-gray-900">
-                                        Email Address
+                                        Username or Email
                                     </label>
                                     <input
-                                        type="email"
+                                        type="text"
                                         id="email"
                                         value={email}
                                         onChange={handleEmailChange}
-                                        placeholder="your.name@example.com"
+                                        placeholder="Enter your username or email"
                                         disabled={loading}
+                                        autoComplete="username"
                                         className={`w-full h-11 px-4 py-2.5 text-sm bg-white border rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-60 disabled:cursor-not-allowed ${errors.email ? 'border-red-400 bg-red-50' : 'border-gray-300'}`}
                                     />
                                     {errors.email && <p className="text-red-600 text-sm mt-1">{errors.email}</p>}

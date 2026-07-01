@@ -47,6 +47,9 @@ class OtServiceTest {
     @Mock
     private HospitalWebSocketHandler webSocketHandler;
 
+    @Mock
+    private com.hms.service.hospital.MrdService mrdService;
+
     @InjectMocks
     private OtService otService;
 

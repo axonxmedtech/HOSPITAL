@@ -54,7 +54,7 @@ After a successful new-patient POST, instead of closing the modal and showing a 
 🎉 Patient Registered Successfully
 
         [Patient Name]
-      UHID: [id from response]
+      UHID: [patient.uhid || patient.id]
 
   [ 📅 Book Appointment → ]    ← primary, dark button
   [ Register Another Patient ] ← secondary, outline button

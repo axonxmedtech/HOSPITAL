@@ -124,6 +124,11 @@ const IpdDetails = () => {
                 { id: 'expiry', label: 'Expiry Management' },
                 { id: 'reports', label: 'Reports & Analytics' }
             ];
+        } else if (effectiveRole === 'NURSE') {
+            return [
+                { id: 'tasks', label: 'My Tasks' },
+                { id: 'patients', label: 'My Patients' },
+            ];
         }
         return [];
     };
@@ -137,6 +142,8 @@ const IpdDetails = () => {
             navigate(`/hospital/receptionist?tab=${tabId}`);
         } else if (effectiveRole === 'PHARMACIST') {
             navigate(`/hospital/pharmacy?tab=${tabId}`);
+        } else if (effectiveRole === 'NURSE') {
+            navigate(`/nurse-dashboard`);
         }
     };
 
@@ -275,8 +282,8 @@ const IpdDetails = () => {
         try {
             const resp = await hospitalService.getIpdDetails(id);
             setData(resp);
-            if (resp?.patientId) {
-                hospitalService.getPatientAllergies(resp.patientId)
+            if (resp?.patient?.id) {
+                hospitalService.getPatientAllergies(resp.patient.id)
                     .then(setAllergies)
                     .catch(() => {});
             }
@@ -531,8 +538,8 @@ const IpdDetails = () => {
 
     const handlePrescriptionSaveWithCdss = async (prescriptionData) => {
         try {
-            const patientId = data?.patientId;
-            const admId = data?.id;
+            const patientId = data?.patient?.id;
+            const admId = Number(id);
             const alerts = await cdssService.checkPrescription(
                 patientId,
                 admId,
@@ -555,8 +562,8 @@ const IpdDetails = () => {
     const handleCdssModalProceed = async (overrideReason) => {
         setShowCdssModal(false);
         try {
-            const patientId = data?.patientId;
-            const admId = data?.id;
+            const patientId = data?.patient?.id;
+            const admId = Number(id);
             await cdssService.acknowledge(patientId, admId, cdssAlerts, overrideReason);
         } catch (e) { console.warn('CDSS acknowledge failed:', e); }
         if (pendingPrescriptionSave) {
@@ -735,7 +742,7 @@ const IpdDetails = () => {
                     <hr className="my-4" />
                     <LabResultsPanel
                         ipdAdmissionId={Number(id)}
-                        patientId={data?.patientId}
+                        patientId={data?.patient?.id}
                         canOrder={(isDoctor || isAdmin) && !data?.isArchived && data?.status !== 'DISCHARGED'}
                         openTrigger={labOpenTrigger}
                     />
@@ -744,7 +751,7 @@ const IpdDetails = () => {
                     <hr className="my-4" />
                     <RadiologyResultsPanel
                         ipdAdmissionId={Number(id)}
-                        patientId={data?.patientId}
+                        patientId={data?.patient?.id}
                         canOrder={(isDoctor || isAdmin) && !data?.isArchived && data?.status !== 'DISCHARGED'}
                         openTrigger={radOpenTrigger}
                     />
@@ -1371,7 +1378,7 @@ const IpdDetails = () => {
                               {(isDoctor || isAdmin) && !data?.isArchived && (
                                 <button
                                   onClick={async () => {
-                                    await hospitalService.removePatientAllergy(data.patientId, a.id);
+                                    await hospitalService.removePatientAllergy(data.patient?.id, a.id);
                                     setAllergies(prev => prev.filter(x => x.id !== a.id));
                                   }}
                                   className="ml-1 opacity-50 hover:opacity-100"
@@ -1427,7 +1434,7 @@ const IpdDetails = () => {
                                 disabled={!allergyForm.allergyMasterId}
                                 onClick={async () => {
                                   try {
-                                    const saved = await hospitalService.addPatientAllergy(data.patientId, {
+                                    const saved = await hospitalService.addPatientAllergy(data.patient?.id, {
                                       allergyMasterId: allergyForm.allergyMasterId,
                                       severity: allergyForm.severity,
                                       notes: allergyForm.notes,

@@ -13,9 +13,16 @@ public class IpdAdmissionSummaryDTO {
     private String doctorName;
     private LocalDateTime admissionDateTime;
     private String status;
+    private String uhid;
 
     public Long getIpdId() { return ipdId; }
     public void setIpdId(Long ipdId) { this.ipdId = ipdId; }
+
+    public Long getId() { return ipdId; }
+    public void setId(Long id) { this.ipdId = id; }
+
+    public String getUhid() { return uhid; }
+    public void setUhid(String uhid) { this.uhid = uhid; }
 
     public String getIpdNumber() { return ipdNumber; }
     public void setIpdNumber(String ipdNumber) { this.ipdNumber = ipdNumber; }
@@ -40,6 +47,9 @@ public class IpdAdmissionSummaryDTO {
 
     public LocalDateTime getAdmissionDateTime() { return admissionDateTime; }
     public void setAdmissionDateTime(LocalDateTime admissionDateTime) { this.admissionDateTime = admissionDateTime; }
+
+    public LocalDateTime getAdmissionDate() { return admissionDateTime; }
+    public void setAdmissionDate(LocalDateTime admissionDateTime) { this.admissionDateTime = admissionDateTime; }
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }

@@ -61,7 +61,11 @@ export default function LabResultsPanel({ ipdAdmissionId, patientId, canOrder = 
       setShowOrderForm(false);
       fetchOrders();
     } catch (err) {
-      setOrderError(err.response?.data || 'Failed to place order');
+      const rawError = err.response?.data;
+      const errorMsg = typeof rawError === 'object'
+        ? (rawError.error || rawError.message || JSON.stringify(rawError))
+        : (rawError || 'Failed to place order');
+      setOrderError(errorMsg);
     } finally {
       setOrdering(false);
     }

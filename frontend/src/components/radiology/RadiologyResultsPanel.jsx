@@ -54,7 +54,11 @@ export default function RadiologyResultsPanel({ ipdAdmissionId, patientId, canOr
       setShowOrderForm(false);
       fetchOrders();
     } catch (err) {
-      setOrderError(err.response?.data || 'Failed to place radiology order');
+      const rawError = err.response?.data;
+      const errorMsg = typeof rawError === 'object'
+        ? (rawError.error || rawError.message || JSON.stringify(rawError))
+        : (rawError || 'Failed to place radiology order');
+      setOrderError(errorMsg);
     } finally {
       setOrdering(false);
     }

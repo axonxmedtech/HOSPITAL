@@ -26,6 +26,9 @@ class NurseTaskServiceTest {
     @Mock
     private SecurityContextHelper securityHelper;
 
+    @Mock
+    private com.hms.service.hospital.MrdService mrdService;
+
     @InjectMocks
     private NurseTaskService nurseTaskService;
 

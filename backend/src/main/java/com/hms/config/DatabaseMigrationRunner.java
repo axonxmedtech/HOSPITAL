@@ -33,6 +33,8 @@ public class DatabaseMigrationRunner {
         ensureWhatsAppMessageLogRetryColumns();
         ensureMissingIndexes();
         simplifyMedicineListTable();
+        fixLabOrdersMedicalRecordIdColumn();
+        fixRadiologyOrdersMedicalRecordIdColumn();
     }
 
     /**
@@ -247,6 +249,38 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped (simplifyMedicineListTable): {}", e.getMessage());
+        }
+    }
+
+    private void fixLabOrdersMedicalRecordIdColumn() {
+        try {
+            Integer isNullable = jdbcTemplate.queryForObject(
+                "SELECT IS_NULLABLE = 'YES' FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lab_orders' AND COLUMN_NAME = 'medical_record_id'",
+                Integer.class
+            );
+            if (isNullable != null && isNullable == 0) {
+                jdbcTemplate.execute("ALTER TABLE lab_orders MODIFY COLUMN medical_record_id BIGINT DEFAULT NULL");
+                log.info("DB migration applied: lab_orders.medical_record_id is now nullable");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (lab_orders.medical_record_id): {}", e.getMessage());
+        }
+    }
+
+    private void fixRadiologyOrdersMedicalRecordIdColumn() {
+        try {
+            Integer isNullable = jdbcTemplate.queryForObject(
+                "SELECT IS_NULLABLE = 'YES' FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'radiology_orders' AND COLUMN_NAME = 'medical_record_id'",
+                Integer.class
+            );
+            if (isNullable != null && isNullable == 0) {
+                jdbcTemplate.execute("ALTER TABLE radiology_orders MODIFY COLUMN medical_record_id BIGINT DEFAULT NULL");
+                log.info("DB migration applied: radiology_orders.medical_record_id is now nullable");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (radiology_orders.medical_record_id): {}", e.getMessage());
         }
     }
 }

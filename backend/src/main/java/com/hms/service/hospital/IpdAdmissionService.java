@@ -320,6 +320,7 @@ public class IpdAdmissionService {
                 dto.setPatientName(p.getName());
                 try { dto.setAge(p.getAge()); } catch (Exception ignored) {}
                 dto.setGender(p.getGender());
+                dto.setUhid(p.getCustomId());
             });
             // ward/bed
             wardRepository.findById(ipd.getWardId()).ifPresent(w -> dto.setWardName(w.getWardName()));

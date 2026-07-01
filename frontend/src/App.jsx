@@ -218,7 +218,7 @@ function App() {
                     <Route
                         path="/ipd/:id"
                         element={
-                            <ProtectedRoute allowedRoles={['RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN']}>
+                            <ProtectedRoute allowedRoles={['RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN', 'NURSE']}>
                                 <PageMeta title="HMS - IPD Details">
                                     <IpdDetails />
                                 </PageMeta>

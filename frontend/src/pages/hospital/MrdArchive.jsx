@@ -16,9 +16,23 @@ const MrdArchive = () => {
     const { success, error: toastError } = useToast();
     const [user] = useState(() => authService.getCurrentUser() || {});
     
+    const getEffectiveRole = () => {
+        const activeDashboard = sessionStorage.getItem('activeDashboard');
+        return user?.role === 'HOSPITAL_ADMIN' && user?.isSingleDoctor && activeDashboard !== 'admin' 
+            ? 'DOCTOR' 
+            : user?.role;
+    };
+
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [profileOpen, setProfileOpen] = useState(false);
-    const [activeTab, setActiveTab] = useState('pending'); // 'pending' or 'archived'
+    const [activeTab, setActiveTab] = useState(() => {
+        const currentUser = authService.getCurrentUser() || {};
+        const activeDashboard = sessionStorage.getItem('activeDashboard');
+        const effectiveRole = currentUser.role === 'HOSPITAL_ADMIN' && currentUser.isSingleDoctor && activeDashboard !== 'admin'
+            ? 'DOCTOR'
+            : currentUser.role;
+        return effectiveRole === 'DOCTOR' ? 'archived' : 'pending';
+    });
     
     const [pendingRecords, setPendingRecords] = useState([]);
     const [archivedRecords, setArchivedRecords] = useState([]);
@@ -56,30 +70,77 @@ const MrdArchive = () => {
     };
 
     const getSidebarTabs = () => {
-        const activeDashboard = sessionStorage.getItem('activeDashboard');
-        const role = user?.role === 'HOSPITAL_ADMIN' && user?.isSingleDoctor && activeDashboard !== 'admin' 
-            ? 'HOSPITAL_DOCTOR' 
-            : user?.role;
-            
-        if (role === 'HOSPITAL_RECEPTIONIST') return [
-            { id: 'dashboard', label: 'Dashboard', icon: 'ChartPieIcon', path: '/hospital/receptionist' },
-            { id: 'opd', label: 'OPD Queue', icon: 'QueueListIcon', path: '/hospital/receptionist/opd' },
-            { id: 'ipd', label: 'IPD Admissions', icon: 'UserGroupIcon', path: '/hospital/receptionist/ipd' },
-            { id: 'appointments', label: 'Appointments', icon: 'CalendarIcon', path: '/hospital/receptionist/appointments' },
-            { id: 'mrd', label: 'MRD Archive', icon: 'ArchiveBoxIcon', path: '/hospital/receptionist/mrd' }
-        ];
+        const role = getEffectiveRole();
+        const modules = user?.modules || [];
+        const hasOPD = modules.includes('OPD');
+        const hasIPD = modules.includes('IPD');
+        const hasBilling = modules.includes('BILLING');
+        const hasAppointments = modules.includes('APPOINTMENTS');
+        const hasMedicalInventory = modules.includes('MEDICAL_INVENTORY');
+        const hasHospitalInventory = modules.includes('HOSPITAL_INVENTORY');
+
+        if (role === 'RECEPTIONIST') {
+            return [
+                { id: 'overview', label: 'Overview', path: '/hospital/receptionist' },
+                ...(hasOPD ? [{ id: 'patients', label: 'Patients', path: '/hospital/receptionist?tab=patients' }] : []),
+                ...(hasAppointments ? [{ id: 'appointments', label: 'Appointments', path: '/hospital/receptionist?tab=appointments' }] : []),
+                ...(hasOPD ? [{ id: 'opd', label: 'OPD', path: '/hospital/receptionist?tab=opd' }] : []),
+                ...(hasIPD ? [{ id: 'ipd', label: 'IPD', path: '/hospital/receptionist?tab=ipd' }] : []),
+                ...(hasIPD ? [{ id: 'mrd', label: 'MRD Archive', path: '/hospital/receptionist/mrd' }] : []),
+                ...(hasBilling && user?.billingHandler !== 'DOCTOR' ? [{ id: 'billing', label: 'Billing', path: '/hospital/receptionist?tab=billing' }] : []),
+                ...(hasMedicalInventory && user?.inClinic !== false ? [{ id: 'inventory', label: 'Medicine Inventory', path: '/hospital/receptionist?tab=inventory' }] : []),
+            ];
+        }
         
-        if (role === 'HOSPITAL_ADMIN') return [
-            { id: 'dashboard', label: 'Overview', icon: 'ChartPieIcon', path: '/hospital/admin' },
-            { id: 'ipd', label: 'IPD Management', icon: 'UserGroupIcon', path: '/hospital/admin/ipd' },
-            { id: 'mrd', label: 'MRD Archive', icon: 'ArchiveBoxIcon', path: '/hospital/admin/mrd' },
-        ];
+        if (role === 'HOSPITAL_ADMIN') {
+            const allTabs = [
+                { id: 'overview', label: 'Overview', path: '/hospital/admin' },
+                { id: 'patients', label: 'Patients', path: '/hospital/admin?tab=patients', requiredModule: 'OPD' },
+                { id: 'appointments', label: 'Appointments', path: '/hospital/admin?tab=appointments', requiredModule: 'APPOINTMENTS' },
+                { id: 'opd', label: 'OPD', path: '/hospital/admin?tab=opd', requiredModule: 'OPD' },
+                { id: 'wards', label: 'Wards & Beds', path: '/hospital/admin?tab=wards', requiredModule: 'IPD' },
+                { id: 'doctors', label: 'Doctors', path: '/hospital/admin?tab=doctors', requiredModule: 'OPD' },
+                { id: 'receptionists', label: 'Receptionists', path: '/hospital/admin?tab=receptionists', requiredModule: 'OPD' },
+                { id: 'nurses', label: 'Nurses', path: '/hospital/admin?tab=nurses', requiredModule: 'OPD' },
+                { id: 'lab-technicians', label: 'Lab Technicians', path: '/hospital/admin?tab=lab-technicians', requiredModule: 'OPD' },
+                { id: 'radiology-technicians', label: 'Radiology Technicians', path: '/hospital/admin?tab=radiology-technicians', requiredModule: 'OPD' },
+                { id: 'billing', label: 'Billing', path: '/hospital/admin?tab=billing', requiredModule: 'BILLING' },
+                { id: 'pharmacy', label: 'Pharmacy', path: '/hospital/admin?tab=pharmacy', requiredModule: 'PHARMACY' },
+                { id: 'pharmacists', label: 'Pharmacists', path: '/hospital/admin?tab=pharmacists', requiredModule: 'PHARMACY' },
+                { id: 'inventory', label: 'Medicine Inventory', path: '/hospital/admin?tab=inventory', requiredModule: 'MEDICAL_INVENTORY' },
+                { id: 'hospital-inventory', label: 'Hospital Inventory', path: '/hospital/admin?tab=hospital-inventory', requiredModule: 'HOSPITAL_INVENTORY' },
+                { id: 'pathology', label: 'Pathology', path: '/hospital/admin?tab=pathology', requiredModule: 'PATHOLOGY' },
+                { id: 'ipd', label: 'IPD', path: '/hospital/admin?tab=ipd', requiredModule: 'IPD' },
+                { id: 'mrd', label: 'MRD Archive', path: '/hospital/admin/mrd', requiredModule: 'IPD' },
+                { id: 'ot', label: 'Operation Theatre', path: '/hospital/admin?tab=ot', requiredModule: 'OT' },
+                { id: 'fees', label: 'Fees', path: '/hospital/admin?tab=fees', requiredModule: 'BILLING' },
+                { id: 'audit-logs', label: 'Audit Logs', path: '/hospital/admin?tab=audit-logs', requiredModule: null },
+                { id: 'analytics', label: 'Reports & Analytics', path: '/hospital/admin?tab=analytics', requiredModule: 'REPORTS' },
+                { id: 'masters', label: 'Master Data', path: '/hospital/admin?tab=masters', requiredModule: null },
+                { id: 'messages', label: 'Messages', path: '/hospital/admin?tab=messages', requiredModule: null },
+                { id: 'settings', label: 'Settings', path: '/hospital/admin?tab=settings', requiredModule: null },
+                { id: 'support', label: 'Support', path: '/hospital/admin?tab=support', requiredModule: null },
+            ];
+
+            return allTabs.filter(tab => !tab.requiredModule || modules.includes(tab.requiredModule));
+        }
         
-        if (role === 'HOSPITAL_DOCTOR' && user?.receptionMode === 'SOLO') return [
-            { id: 'dashboard', label: 'Dashboard', icon: 'ChartPieIcon', path: '/hospital/doctor' },
-            { id: 'ipd', label: 'IPD Patients', icon: 'UserGroupIcon', path: '/hospital/doctor/ipd' },
-            { id: 'mrd', label: 'MRD Archive', icon: 'ArchiveBoxIcon', path: '/hospital/doctor/mrd' }
-        ];
+        if (role === 'DOCTOR') {
+            const isSolo = user?.receptionMode === 'SOLO';
+            const hasBilling = user?.billingHandler === 'DOCTOR' || user?.billingHandler === 'BOTH';
+            const hasInClinic = user?.inClinic !== false;
+
+            return [
+                { id: 'overview', label: 'Overview', path: '/hospital/doctor' },
+                ...(hasIPD ? [{ id: 'ipd', label: 'IPD', path: '/hospital/doctor?tab=ipd' }] : []),
+                ...(hasIPD ? [{ id: 'mrd', label: 'MRD Archive', path: '/hospital/doctor/mrd' }] : []),
+                { id: 'opd', label: 'OPD', path: '/hospital/doctor?tab=opd' },
+                { id: 'patients', label: 'Patients', path: '/hospital/doctor?tab=patients' },
+                ...((isSolo || hasBilling) ? [{ id: 'billing', label: 'Billing', path: '/hospital/doctor?tab=billing' }] : []),
+                ...((isSolo && hasInClinic && hasMedicalInventory) ? [{ id: 'inventory', label: 'Medicine Inventory', path: '/hospital/doctor?tab=inventory' }] : []),
+                ...(isSolo && hasHospitalInventory ? [{ id: 'hospital-inventory', label: 'Hospital Inventory', path: '/hospital/doctor?tab=hospital-inventory' }] : []),
+            ];
+        }
         
         return [];
     };
@@ -141,20 +202,22 @@ const MrdArchive = () => {
                         subtitle="Manage discharged patient records and physical archives." 
                     />
 
-                    <div className="flex border-b mb-6 mt-4">
-                        <button
-                            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'pending' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                            onClick={() => setActiveTab('pending')}
-                        >
-                            Pending Archive
-                        </button>
-                        <button
-                            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'archived' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                            onClick={() => setActiveTab('archived')}
-                        >
-                            Archived Records
-                        </button>
-                    </div>
+                    {getEffectiveRole() !== 'DOCTOR' && (
+                        <div className="flex border-b mb-6 mt-4">
+                            <button
+                                className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'pending' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                onClick={() => setActiveTab('pending')}
+                            >
+                                Pending Archive
+                            </button>
+                            <button
+                                className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'archived' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                onClick={() => setActiveTab('archived')}
+                            >
+                                Archived Records
+                            </button>
+                        </div>
+                    )}
 
                     {loading ? (
                         <SkeletonTable rows={5} cols={5} />
