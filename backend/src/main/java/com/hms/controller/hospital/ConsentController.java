@@ -133,6 +133,28 @@ public class ConsentController {
     }
 
     /**
+     * Updates Surgical Consent (Form 16) specific attributes.
+     */
+    @PutMapping("/{id}/surgical-details")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'NURSE', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<ApiResponse<SurgicalConsentDetail>> updateSurgicalConsentDetail(
+            @PathVariable Long id,
+            @RequestBody SurgicalConsentDetail details) {
+        SurgicalConsentDetail updated = consentService.updateSurgicalConsentDetail(id, details);
+        return ResponseEntity.ok(ApiResponse.ok("Surgical consent details updated successfully", updated));
+    }
+
+    /**
+     * Fetches Surgical Consent (Form 16) specific details.
+     */
+    @GetMapping("/{id}/surgical-details")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'NURSE', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<ApiResponse<SurgicalConsentDetail>> getSurgicalConsentDetail(@PathVariable Long id) {
+        SurgicalConsentDetail detail = consentService.getSurgicalConsentDetail(id);
+        return ResponseEntity.ok(ApiResponse.ok(detail));
+    }
+
+    /**
      * Locks the consent form, preventing any further signature updates.
      */
     @PostMapping("/{id}/submit")

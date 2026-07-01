@@ -86,6 +86,9 @@ class OtServiceTest {
     @Mock
     private PreAnaesthesiaAssessmentRepository pacRepository;
 
+    @Mock
+    private PatientConsentRepository patientConsentRepository;
+
     @InjectMocks
     private OtService otService;
 
@@ -1172,6 +1175,53 @@ class OtServiceTest {
         assertThatThrownBy(() -> otService.savePac(admissionId, new com.hms.dto.PacRequest()))
                 .isInstanceOf(UnauthorizedException.class);
         verify(pacRepository, never()).save(any());
+    }
+
+    // ===== Surgical Consent gate on WHO sign-in (Form 16) =====
+
+    private com.hms.dto.OtChecklistRequest signInRequest() {
+        com.hms.dto.OtChecklistRequest req = new com.hms.dto.OtChecklistRequest();
+        req.setPhase("SIGN_IN");
+        return req;
+    }
+
+    private PatientConsent surgeryConsent(String status) {
+        PatientConsent c = new PatientConsent();
+        c.setConsentType("SURGERY");
+        c.setStatus(status);
+        return c;
+    }
+
+    @Test
+    void signIn_blockedWhenSurgicalConsentUnsigned() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("nurse@hospital.com");
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        when(checklistRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(new OtChecklist()));
+        when(patientConsentRepository.findByHospitalIdAndAdmissionIdAndIsDeletedFalse(hospitalId, 10L))
+                .thenReturn(java.util.List.of(surgeryConsent("DRAFT")));
+
+        assertThatThrownBy(() -> otService.signChecklist(bookingId, signInRequest()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("surgical consent");
+        verify(checklistRepository, never()).save(any());
+    }
+
+    @Test
+    void signIn_allowedWhenSurgicalConsentSigned() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("nurse@hospital.com");
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        when(checklistRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(new OtChecklist()));
+        when(patientConsentRepository.findByHospitalIdAndAdmissionIdAndIsDeletedFalse(hospitalId, 10L))
+                .thenReturn(java.util.List.of(surgeryConsent("SIGNED")));
+        when(checklistRepository.save(any(OtChecklist.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        OtChecklist saved = otService.signChecklist(bookingId, signInRequest());
+
+        assertThat(saved.isSignInCompleted()).isTrue();
     }
 }
 

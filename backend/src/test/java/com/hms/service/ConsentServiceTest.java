@@ -36,6 +36,9 @@ class ConsentServiceTest {
     private BloodConsentDetailRepository bloodConsentDetailRepository;
 
     @Mock
+    private SurgicalConsentDetailRepository surgicalConsentDetailRepository;
+
+    @Mock
     private PatientRepository patientRepository;
 
     @Mock
@@ -348,5 +351,77 @@ class ConsentServiceTest {
         assertThatThrownBy(() -> consentService.submitConsent(15L))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Either Patient or Guardian signature must be captured");
+    }
+
+    // ===== Surgical Consent (Form 16) =====
+
+    @Test
+    void createConsentDraft_Surgery_requiresProcedureName() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        Patient patient = new Patient();
+        patient.setId(10L);
+        patient.setHospitalId(1L);
+        patient.setIsActive(true);
+        when(patientRepository.findByIdAndHospitalIdAndIsActiveTrue(10L, 1L)).thenReturn(Optional.of(patient));
+        IpdAdmission admission = new IpdAdmission();
+        admission.setId(20L);
+        admission.setHospitalId(1L);
+        admission.setPatientId(10L);
+        when(ipdAdmissionRepository.findById(20L)).thenReturn(Optional.of(admission));
+
+        ConsentCreateRequest request = new ConsentCreateRequest();
+        request.setPatientId(10L);
+        request.setAdmissionId(20L);
+        request.setConsentType("SURGERY");
+        request.setEncounterType("IPD");
+        request.setProcedureName(null); // missing
+
+        assertThatThrownBy(() -> consentService.createConsentDraft(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("procedure");
+        verify(patientConsentRepository, never()).save(any());
+    }
+
+    @Test
+    void createConsentDraft_Surgery_initializesSurgicalDetail() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        when(securityHelper.getCurrentUserId()).thenReturn(2L);
+        Patient patient = new Patient();
+        patient.setId(10L);
+        patient.setHospitalId(1L);
+        patient.setName("John Doe");
+        patient.setIsActive(true);
+        when(patientRepository.findByIdAndHospitalIdAndIsActiveTrue(10L, 1L)).thenReturn(Optional.of(patient));
+        IpdAdmission admission = new IpdAdmission();
+        admission.setId(20L);
+        admission.setHospitalId(1L);
+        admission.setPatientId(10L);
+        when(ipdAdmissionRepository.findById(20L)).thenReturn(Optional.of(admission));
+        when(patientConsentRepository.findByHospitalIdAndAdmissionIdAndIsDeletedFalse(1L, 20L))
+                .thenReturn(new ArrayList<>());
+        when(patientConsentRepository.save(any(PatientConsent.class))).thenAnswer(inv -> {
+            PatientConsent c = inv.getArgument(0);
+            c.setId(77L);
+            return c;
+        });
+        when(surgicalConsentDetailRepository.save(any(SurgicalConsentDetail.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ConsentCreateRequest request = new ConsentCreateRequest();
+        request.setPatientId(10L);
+        request.setAdmissionId(20L);
+        request.setConsentType("SURGERY");
+        request.setEncounterType("IPD");
+        request.setProcedureName("Laparoscopic Cholecystectomy");
+        request.setSurgeonName("Dr. Mehta");
+
+        PatientConsent result = consentService.createConsentDraft(request);
+
+        assertThat(result.getConsentType()).isEqualTo("SURGERY");
+        org.mockito.ArgumentCaptor<SurgicalConsentDetail> captor =
+                org.mockito.ArgumentCaptor.forClass(SurgicalConsentDetail.class);
+        verify(surgicalConsentDetailRepository).save(captor.capture());
+        assertThat(captor.getValue().getConsentId()).isEqualTo(77L);
+        assertThat(captor.getValue().getProcedureName()).isEqualTo("Laparoscopic Cholecystectomy");
+        assertThat(captor.getValue().getSurgeonName()).isEqualTo("Dr. Mehta");
     }
 }

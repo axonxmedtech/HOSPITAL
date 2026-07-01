@@ -3,7 +3,7 @@ import hospitalService from "../../services/hospitalService";
 import authService from "../../services/authService";
 import { useToast } from "../../context/ToastContext";
 
-const CONSENT_TYPES = ["GENERAL", "SURGICAL", "BLOOD", "ANESTHESIA", "PROCEDURE"];
+const CONSENT_TYPES = ["GENERAL", "SURGERY", "BLOOD", "ANESTHESIA", "PROCEDURE"];
 const SIGNATURE_TYPES = ["WET", "DIGITAL", "THUMBPRINT"];
 const LANGUAGES = ["ENGLISH", "HINDI", "MARATHI", "GUJARATI", "BENGALI", "TAMIL", "TELUGU", "OTHER"];
 
@@ -15,7 +15,7 @@ const STATUS_STYLES = {
 };
 
 const TYPE_ICONS = {
-    GENERAL: "📋", SURGICAL: "🔪", BLOOD: "🩸", ANESTHESIA: "💉", PROCEDURE: "🏥",
+    GENERAL: "📋", SURGERY: "🔪", SURGICAL: "🔪", BLOOD: "🩸", ANESTHESIA: "💉", PROCEDURE: "🏥",
 };
 
 const parseErr = (e) => e?.response?.data?.error || e?.response?.data?.message || e?.message || "An error occurred";
@@ -32,7 +32,7 @@ const ConsentPanel = ({ admissionId, patientId, isLocked }) => {
     const [expandedId, setExpandedId] = useState(null);
 
     const [createModal, setCreateModal] = useState({ open: false, saving: false });
-    const [form, setForm] = useState({ consentType: "GENERAL", encounterType: "IPD", language: "ENGLISH", signatureType: "WET", patientSigned: false, guardianSigned: false, relationship: "", remarks: "" });
+    const [form, setForm] = useState({ consentType: "GENERAL", encounterType: "IPD", language: "ENGLISH", signatureType: "WET", patientSigned: false, guardianSigned: false, relationship: "", remarks: "", procedureName: "", surgeonName: "" });
 
     const [signModal, setSignModal] = useState({ open: false, consentId: null, saving: false });
     const [signForm, setSignForm] = useState({ signatureType: "WET", patientSigned: false, guardianSigned: false, relationship: "" });
@@ -53,7 +53,7 @@ const ConsentPanel = ({ admissionId, patientId, isLocked }) => {
             await hospitalService.createConsentDraft({ admissionId: Number(admissionId), patientId: Number(patientId), ...form });
             success("Consent draft created");
             setCreateModal({ open: false, saving: false });
-            setForm({ consentType: "GENERAL", encounterType: "IPD", language: "ENGLISH", signatureType: "WET", patientSigned: false, guardianSigned: false, relationship: "", remarks: "" });
+            setForm({ consentType: "GENERAL", encounterType: "IPD", language: "ENGLISH", signatureType: "WET", patientSigned: false, guardianSigned: false, relationship: "", remarks: "", procedureName: "", surgeonName: "" });
             load();
         } catch (e) { toastError(parseErr(e)); setCreateModal(p => ({ ...p, saving: false })); }
     };
@@ -158,6 +158,14 @@ const ConsentPanel = ({ admissionId, patientId, isLocked }) => {
                             <div className="grid grid-cols-2 gap-4">
                                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Consent Type *</label>
                                     <select value={form.consentType} onChange={e => setForm(p => ({ ...p, consentType: e.target.value }))} className={InputCls}>{CONSENT_TYPES.map(t => <option key={t}>{t}</option>)}</select></div>
+                                {form.consentType === "SURGERY" && (
+                                    <>
+                                        <div><label className="text-[11px] font-medium text-gray-600">Planned Procedure *</label>
+                                            <input type="text" value={form.procedureName} onChange={e => setForm(p => ({ ...p, procedureName: e.target.value }))} className={InputCls} placeholder="e.g. Laparoscopic Cholecystectomy" /></div>
+                                        <div><label className="text-[11px] font-medium text-gray-600">Surgeon</label>
+                                            <input type="text" value={form.surgeonName} onChange={e => setForm(p => ({ ...p, surgeonName: e.target.value }))} className={InputCls} /></div>
+                                    </>
+                                )}
                                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Language *</label>
                                     <select value={form.language} onChange={e => setForm(p => ({ ...p, language: e.target.value }))} className={InputCls}>{LANGUAGES.map(l => <option key={l}>{l}</option>)}</select></div>
                                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Signature Type</label>

@@ -92,6 +92,9 @@ public class OtService {
     @Autowired
     private PreAnaesthesiaAssessmentRepository pacRepository;
 
+    @Autowired
+    private PatientConsentRepository patientConsentRepository;
+
     /** Minimum modified Aldrete score required to transfer a patient out of PACU to a ward. */
     private static final int ALDRETE_TRANSFER_MIN = 9;
 
@@ -249,6 +252,16 @@ public class OtService {
         LocalDateTime now = LocalDateTime.now();
 
         if ("SIGN_IN".equalsIgnoreCase(phase)) {
+            // Form 16 gate: when a SURGERY consent exists for this admission, WHO sign-in is
+            // blocked until it is signed/submitted. No surgical consent = legacy flow unchanged.
+            List<PatientConsent> consents = patientConsentRepository
+                    .findByHospitalIdAndAdmissionIdAndIsDeletedFalse(hospitalId, booking.getIpdAdmissionId());
+            boolean hasUnsignedSurgicalConsent = consents.stream()
+                    .anyMatch(c -> "SURGERY".equalsIgnoreCase(c.getConsentType())
+                            && "DRAFT".equalsIgnoreCase(c.getStatus()));
+            if (hasUnsignedSurgicalConsent) {
+                throw new IllegalStateException("Cannot sign in: the surgical consent has not been signed by the patient/guardian yet.");
+            }
             checklist.setSignInCompleted(true);
             checklist.setSignInBy(email);
             checklist.setSignInAt(now);

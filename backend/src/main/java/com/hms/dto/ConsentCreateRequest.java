@@ -28,6 +28,11 @@ public class ConsentCreateRequest {
 
     private Long bloodRequestId;
 
+    // SURGERY consent (Form 16) specific
+    private String procedureName;
+
+    private String surgeonName;
+
     private String signatureType;
 
     private Boolean patientSigned;

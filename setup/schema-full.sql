@@ -1586,6 +1586,23 @@ CREATE TABLE IF NOT EXISTS blood_consent_detail (
   CONSTRAINT fk_blood_consent_parent FOREIGN KEY (consent_id) REFERENCES patient_consent (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- Form 16 Surgical Consent detail. Additive; Hibernate ddl-auto creates it.
+CREATE TABLE IF NOT EXISTS surgical_consent_detail (
+  id bigint NOT NULL AUTO_INCREMENT,
+  consent_id bigint NOT NULL UNIQUE,
+  procedure_name varchar(200) DEFAULT NULL,
+  surgeon_name varchar(100) DEFAULT NULL,
+  planned_anaesthesia varchar(100) DEFAULT NULL,
+  risks_explained boolean NOT NULL DEFAULT false,
+  alternatives_explained boolean NOT NULL DEFAULT false,
+  high_risk boolean NOT NULL DEFAULT false,
+  ot_booking_id bigint DEFAULT NULL,
+  remarks text,
+  created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  CONSTRAINT fk_surgical_consent_parent FOREIGN KEY (consent_id) REFERENCES patient_consent (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE IF NOT EXISTS clinical_assessment (
   id bigint NOT NULL AUTO_INCREMENT,
   public_id varchar(36) NOT NULL UNIQUE,

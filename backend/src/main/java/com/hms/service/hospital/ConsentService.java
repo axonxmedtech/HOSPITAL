@@ -39,6 +39,9 @@ public class ConsentService {
     private BloodConsentDetailRepository bloodConsentDetailRepository;
 
     @Autowired
+    private SurgicalConsentDetailRepository surgicalConsentDetailRepository;
+
+    @Autowired
     private PatientRepository patientRepository;
 
     @Autowired
@@ -71,7 +74,10 @@ public class ConsentService {
 
         Long patientId = request.getPatientId();
         Long admissionId = request.getAdmissionId();
-        String consentType = request.getConsentType();
+        // Normalize the frontend's legacy "SURGICAL" label to the canonical SURGERY type (Form 16).
+        final String consentType = "SURGICAL".equalsIgnoreCase(request.getConsentType())
+                ? "SURGERY"
+                : request.getConsentType();
 
         // Verify patient existence and tenant scope
         Patient patient = patientRepository.findByIdAndHospitalIdAndIsActiveTrue(patientId, hospitalId)
@@ -101,6 +107,16 @@ public class ConsentService {
                             || (o.getDescription() != null && o.getDescription().toLowerCase().contains("transfusion")));
             if (!hasTransfusionOrder) {
                 throw new IllegalArgumentException("No active transfusion doctor order found for admission " + admissionId);
+            }
+        }
+
+        // Validate Surgical Consent (Form 16) specific pre-conditions
+        if ("SURGERY".equalsIgnoreCase(consentType)) {
+            if (admissionId == null) {
+                throw new IllegalArgumentException("Admission ID is mandatory for Surgical Consent");
+            }
+            if (request.getProcedureName() == null || request.getProcedureName().isBlank()) {
+                throw new IllegalArgumentException("The planned procedure name is mandatory for Surgical Consent");
             }
         }
 
@@ -150,6 +166,15 @@ public class ConsentService {
             detail.setWitnessPatientSigned(true);
             detail.setWitnessHospitalSigned(true);
             bloodConsentDetailRepository.save(detail);
+        }
+
+        // If Surgical Consent, initialize surgical details (Form 16)
+        if ("SURGERY".equalsIgnoreCase(consentType)) {
+            SurgicalConsentDetail sDetail = new SurgicalConsentDetail();
+            sDetail.setConsentId(savedConsent.getId());
+            sDetail.setProcedureName(request.getProcedureName());
+            sDetail.setSurgeonName(request.getSurgeonName());
+            surgicalConsentDetailRepository.save(sDetail);
         }
 
         // Persist signature slots if checked
@@ -349,6 +374,53 @@ public class ConsentService {
             throw new UnauthorizedException("Hospital ID not found in security context");
         }
         return patientConsentRepository.findByHospitalIdAndAdmissionIdAndIsDeletedFalse(hospitalId, admissionId);
+    }
+
+    /** Updates Surgical Consent (Form 16) specific attributes; blocked once the consent is locked. */
+    @Transactional
+    public SurgicalConsentDetail updateSurgicalConsentDetail(Long id, SurgicalConsentDetail inputDetails) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new UnauthorizedException("Hospital ID not found in security context");
+        }
+
+        PatientConsent consent = patientConsentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Consent record not found"));
+        if (!consent.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access Denied: Tenant mismatch");
+        }
+        if ("LOCKED".equalsIgnoreCase(consent.getStatus())) {
+            throw new IllegalArgumentException("Cannot modify locked consent details");
+        }
+
+        SurgicalConsentDetail detail = surgicalConsentDetailRepository.findByConsentId(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Surgical consent details not found"));
+
+        detail.setProcedureName(inputDetails.getProcedureName());
+        detail.setSurgeonName(inputDetails.getSurgeonName());
+        detail.setPlannedAnaesthesia(inputDetails.getPlannedAnaesthesia());
+        detail.setRisksExplained(Boolean.TRUE.equals(inputDetails.getRisksExplained()));
+        detail.setAlternativesExplained(Boolean.TRUE.equals(inputDetails.getAlternativesExplained()));
+        detail.setHighRisk(Boolean.TRUE.equals(inputDetails.getHighRisk()));
+        detail.setOtBookingId(inputDetails.getOtBookingId());
+        detail.setRemarks(inputDetails.getRemarks());
+
+        return surgicalConsentDetailRepository.save(detail);
+    }
+
+    @Transactional(readOnly = true)
+    public SurgicalConsentDetail getSurgicalConsentDetail(Long consentId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new UnauthorizedException("Hospital ID not found in security context");
+        }
+        PatientConsent parent = patientConsentRepository.findById(consentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Parent consent not found"));
+        if (!parent.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access Denied: Tenant mismatch");
+        }
+        return surgicalConsentDetailRepository.findByConsentId(consentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Surgical consent details not found"));
     }
 
     @Transactional(readOnly = true)
