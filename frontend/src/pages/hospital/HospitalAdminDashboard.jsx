@@ -37,6 +37,7 @@ import HospitalInventoryTab from '../../components/HospitalInventoryTab';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
 import MasterDataView from './MasterDataView';
 import OtRegisterDashboard from '../../components/ot/OtRegisterDashboard';
+import EmergencyBoard from '../../components/emergency/EmergencyBoard';
 
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -1321,6 +1322,7 @@ const HospitalAdminDashboard = () => {
         { id: 'ipd', label: 'IPD', icon: null, requiredModule: 'IPD' },
         { id: 'mrd', label: 'MRD Archive', icon: null, requiredModule: 'IPD' },
         { id: 'ot', label: 'Operation Theatre', icon: null, requiredModule: 'OT' },
+        { id: 'emergency', label: 'Emergency', icon: null, requiredModule: null },
         { id: 'fees', label: 'Fees', icon: null, requiredModule: 'BILLING' },
         { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
         { id: 'analytics', label: 'Reports & Analytics', icon: null, requiredModule: 'REPORTS' },
@@ -2559,6 +2561,9 @@ const HospitalAdminDashboard = () => {
                                 )}
                                 {activeTab === 'ot' && (
                                     <OtRegisterDashboard />
+                                )}
+                                {activeTab === 'emergency' && (
+                                    <EmergencyBoard />
                                 )}
                                 {activeTab === 'analytics' && (
                                     <div className="p-6 space-y-8 bg-gray-50/50 min-h-screen">

@@ -26,6 +26,7 @@ import IpdAdmitModal from '../../components/IpdAdmitModal';
 import { SkeletonDashboard, SkeletonStatsGrid, SkeletonOverviewDual, SkeletonTable } from '../../components/Skeleton';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
+import EmergencyBoard from '../../components/emergency/EmergencyBoard';
 
 /**
  * DoctorDashboard - Doctor dashboard
@@ -729,6 +730,7 @@ const DoctorDashboard = () => {
 
     const tabs = [
         { id: 'overview', label: 'Overview', icon: null },
+        { id: 'emergency', label: 'Emergency', icon: null },
         ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
         ...(hasIPD ? [{ id: 'mrd', label: 'MRD Archive', icon: null }] : []),
         { id: 'opd', label: 'OPD', icon: null },
@@ -1405,7 +1407,7 @@ const DoctorDashboard = () => {
                     )}
 
                     {/* Standardized Header - Hide on overview, inventory and hospital-inventory tabs */}
-                    {activeTab !== 'overview' && activeTab !== 'inventory' && activeTab !== 'hospital-inventory' && (
+                    {activeTab !== 'overview' && activeTab !== 'emergency' && activeTab !== 'inventory' && activeTab !== 'hospital-inventory' && (
                     <PageHeader
                         title={
                             activeTab === 'appointments' ? 'My Appointments' : 
@@ -1564,7 +1566,11 @@ const DoctorDashboard = () => {
                         </div>
                     )}
 
-                    {!loading && activeTab !== 'overview' && (
+                    {!loading && activeTab === 'emergency' && (
+                        <div className='mb-4'><EmergencyBoard /></div>
+                    )}
+
+                    {!loading && activeTab !== 'overview' && activeTab !== 'emergency' && (
                             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
                                 {activeTab === 'appointments' && (
                                     appointments.length > 0 ? (
