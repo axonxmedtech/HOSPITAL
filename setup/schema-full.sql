@@ -2390,6 +2390,37 @@ CREATE TABLE IF NOT EXISTS pre_anaesthesia_assessment (
 CREATE INDEX IF NOT EXISTS idx_pac_hospital_admission ON pre_anaesthesia_assessment(hospital_id, admission_id);
 CREATE INDEX IF NOT EXISTS idx_pac_hospital_fitness ON pre_anaesthesia_assessment(hospital_id, fitness_status);
 
+-- Form 12 Emergency Visit (EIS core). Additive; Hibernate ddl-auto creates it.
+CREATE TABLE IF NOT EXISTS emergency_visit (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    patient_id BIGINT NOT NULL,
+    emergency_number VARCHAR(30) NULL,
+    arrival_time DATETIME NULL,
+    arrival_mode VARCHAR(30) NULL,
+    triage_level VARCHAR(10) NULL,
+    triage_criteria VARCHAR(255) NULL,
+    triaged_by VARCHAR(100) NULL,
+    triaged_at DATETIME NULL,
+    is_mlc BIT(1) NULL,
+    mlc_number VARCHAR(50) NULL,
+    chief_complaint TEXT NULL,
+    airway_status VARCHAR(30) NULL,
+    breathing_status VARCHAR(30) NULL,
+    circulation_status VARCHAR(30) NULL,
+    gcs_score INT NULL,
+    initial_diagnosis TEXT NULL,
+    assessed_by VARCHAR(100) NULL,
+    assessed_at DATETIME NULL,
+    disposition VARCHAR(30) NULL,
+    ipd_admission_id BIGINT NULL,
+    status VARCHAR(20) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_er_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
+    CONSTRAINT fk_er_patient FOREIGN KEY (patient_id) REFERENCES patients(id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_er_hospital_status_triage ON emergency_visit(hospital_id, status, triage_level);
+
 -- Table structure for table `mrd_records`
 
 
