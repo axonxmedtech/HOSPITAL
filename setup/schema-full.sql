@@ -188,6 +188,15 @@ CREATE TABLE `discharge_summary` (
 -- Table structure for table `doctors`
 --
 
+-- Phase 0.5 additive migration:
+-- ALTER TABLE doctors ADD COLUMN user_id bigint DEFAULT NULL;
+-- ALTER TABLE doctors ADD COLUMN is_anaesthetist bit(1) NOT NULL DEFAULT b'0';
+-- ALTER TABLE doctors ADD COLUMN is_surgeon bit(1) NOT NULL DEFAULT b'0';
+-- ALTER TABLE doctors ADD COLUMN is_pathologist bit(1) NOT NULL DEFAULT b'0';
+-- ALTER TABLE doctors ADD COLUMN is_radiologist bit(1) NOT NULL DEFAULT b'0';
+-- ALTER TABLE doctors ADD COLUMN is_intensivist bit(1) NOT NULL DEFAULT b'0';
+-- ALTER TABLE doctors ADD COLUMN is_cmo bit(1) NOT NULL DEFAULT b'0';
+
 DROP TABLE IF EXISTS `doctors`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
@@ -202,6 +211,13 @@ CREATE TABLE `doctors` (
   `phone` varchar(15) NOT NULL,
   `public_id` varchar(255) NOT NULL,
   `specialization` varchar(100) NOT NULL,
+  `user_id` bigint DEFAULT NULL,
+  `is_anaesthetist` bit(1) NOT NULL DEFAULT b'0',
+  `is_surgeon` bit(1) NOT NULL DEFAULT b'0',
+  `is_pathologist` bit(1) NOT NULL DEFAULT b'0',
+  `is_radiologist` bit(1) NOT NULL DEFAULT b'0',
+  `is_intensivist` bit(1) NOT NULL DEFAULT b'0',
+  `is_cmo` bit(1) NOT NULL DEFAULT b'0',
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_lqd2m2kx16cc3locfwtq02bek` (`public_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -830,6 +846,11 @@ CREATE TABLE `suppliers` (
 -- Table structure for table `users`
 --
 
+-- Phase 0.5 additive migration:
+-- ALTER TABLE users ADD COLUMN department varchar(100) DEFAULT NULL;
+-- ALTER TABLE users ADD COLUMN designation varchar(100) DEFAULT NULL;
+-- ALTER TABLE users ADD COLUMN is_trainer bit(1) NOT NULL DEFAULT b'0';
+
 DROP TABLE IF EXISTS `users`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
@@ -844,6 +865,9 @@ CREATE TABLE `users` (
   `password` varchar(255) NOT NULL,
   `public_id` varchar(255) NOT NULL,
   `role` varchar(20) NOT NULL,
+  `department` varchar(100) DEFAULT NULL,
+  `designation` varchar(100) DEFAULT NULL,
+  `is_trainer` bit(1) NOT NULL DEFAULT b'0',
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_6dotkott2kjsp8vw4d0m25fb7` (`email`),
   UNIQUE KEY `UK_s24bux761rbgowsl7a4b386ba` (`public_id`)
@@ -1026,6 +1050,13 @@ CREATE TABLE IF NOT EXISTS `whatsapp_message_log` (
 -- NURSE IPD WORKFLOW (Phase 1)
 -- =============================================
 
+-- Phase 0.5 additive migration:
+-- ALTER TABLE nurses ADD COLUMN user_id bigint DEFAULT NULL;
+-- ALTER TABLE nurses ADD COLUMN is_scrub bit(1) NOT NULL DEFAULT b'0';
+-- ALTER TABLE nurses ADD COLUMN is_ot bit(1) NOT NULL DEFAULT b'0';
+-- ALTER TABLE nurses ADD COLUMN is_pacu bit(1) NOT NULL DEFAULT b'0';
+-- ALTER TABLE nurses ADD COLUMN is_icu bit(1) NOT NULL DEFAULT b'0';
+
 CREATE TABLE IF NOT EXISTS nurses (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     public_id VARCHAR(36) NOT NULL UNIQUE,
@@ -1036,6 +1067,11 @@ CREATE TABLE IF NOT EXISTS nurses (
     phone VARCHAR(15),
     is_active TINYINT(1) NOT NULL DEFAULT 1,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    user_id BIGINT DEFAULT NULL,
+    is_scrub bit(1) NOT NULL DEFAULT b'0',
+    is_ot bit(1) NOT NULL DEFAULT b'0',
+    is_pacu bit(1) NOT NULL DEFAULT b'0',
+    is_icu bit(1) NOT NULL DEFAULT b'0',
     CONSTRAINT fk_nurse_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
 );
 

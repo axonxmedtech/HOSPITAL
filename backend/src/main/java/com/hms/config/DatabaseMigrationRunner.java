@@ -39,6 +39,7 @@ public class DatabaseMigrationRunner {
         backfillVitalSignsStructuredBp();
         decoupleNurseTasksSchema();
         migratePatientModelSchema();
+        migrateStaffIdentitySchema();
     }
 
     /**
@@ -440,6 +441,74 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped (migratePatientModelSchema): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Modifies staff/users schema to add user_id foreign keys, capacity flags,
+     * and backfills existing doctors/nurses using matched emails.
+     */
+    private void migrateStaffIdentitySchema() {
+        try {
+            // Add columns to users if they don't exist
+            addColumnIfNotExists("users", "department", "VARCHAR(100) DEFAULT NULL");
+            addColumnIfNotExists("users", "designation", "VARCHAR(100) DEFAULT NULL");
+            addColumnIfNotExists("users", "is_trainer", "BIT(1) NOT NULL DEFAULT b'0'");
+
+            // Add columns to doctors if they don't exist
+            addColumnIfNotExists("doctors", "user_id", "BIGINT DEFAULT NULL");
+            addColumnIfNotExists("doctors", "is_anaesthetist", "BIT(1) NOT NULL DEFAULT b'0'");
+            addColumnIfNotExists("doctors", "is_surgeon", "BIT(1) NOT NULL DEFAULT b'0'");
+            addColumnIfNotExists("doctors", "is_pathologist", "BIT(1) NOT NULL DEFAULT b'0'");
+            addColumnIfNotExists("doctors", "is_radiologist", "BIT(1) NOT NULL DEFAULT b'0'");
+            addColumnIfNotExists("doctors", "is_intensivist", "BIT(1) NOT NULL DEFAULT b'0'");
+            addColumnIfNotExists("doctors", "is_cmo", "BIT(1) NOT NULL DEFAULT b'0'");
+
+            // Add columns to nurses if they don't exist
+            addColumnIfNotExists("nurses", "user_id", "BIGINT DEFAULT NULL");
+            addColumnIfNotExists("nurses", "is_scrub", "BIT(1) NOT NULL DEFAULT b'0'");
+            addColumnIfNotExists("nurses", "is_ot", "BIT(1) NOT NULL DEFAULT b'0'");
+            addColumnIfNotExists("nurses", "is_pacu", "BIT(1) NOT NULL DEFAULT b'0'");
+            addColumnIfNotExists("nurses", "is_icu", "BIT(1) NOT NULL DEFAULT b'0'");
+
+            // Backfill user_id on doctors by matching email
+            int updatedDocs = jdbcTemplate.update(
+                "UPDATE doctors d JOIN users u ON d.email = u.email SET d.user_id = u.id WHERE d.user_id IS NULL"
+            );
+            if (updatedDocs > 0) {
+                log.info("DB migration applied: backfilled user_id for {} doctors", updatedDocs);
+            }
+
+            // Backfill user_id on nurses by matching email
+            int updatedNurses = jdbcTemplate.update(
+                "UPDATE nurses n JOIN users u ON n.email = u.email SET n.user_id = u.id WHERE n.user_id IS NULL"
+            );
+            if (updatedNurses > 0) {
+                log.info("DB migration applied: backfilled user_id for {} nurses", updatedNurses);
+            }
+
+        } catch (Exception e) {
+            log.warn("DB migration skipped (migrateStaffIdentitySchema): {}", e.getMessage());
+        }
+    }
+
+    private void addColumnIfNotExists(String tableName, String columnName, String columnDefinition) {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() " +
+                "AND TABLE_NAME = ? " +
+                "AND COLUMN_NAME = ?",
+                Integer.class,
+                tableName,
+                columnName
+            );
+            if (count == null || count == 0) {
+                jdbcTemplate.execute("ALTER TABLE " + tableName + " ADD COLUMN " + columnName + " " + columnDefinition);
+                log.info("DB migration applied: added column {}.{}", tableName, columnName);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to check or add column {}.{}: {}", tableName, columnName, e.getMessage());
         }
     }
 }
