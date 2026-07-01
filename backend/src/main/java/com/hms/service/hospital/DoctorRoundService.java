@@ -91,13 +91,84 @@ public class DoctorRoundService {
         round.setAssessment(request.getAssessment());
         round.setPlan(request.getPlan());
         round.setNextRoundAt(request.getNextRoundAt());
+        // Clinical Documentation Engine (Forms 11/13): notes are signed at creation.
+        round.setAssessmentType(normalizeAssessmentType(request.getAssessmentType()));
+        round.setStatus("SIGNED");
+        round.setSignedBy(email);
+        round.setSignedAt(LocalDateTime.now());
 
         DoctorRound saved = roundRepository.save(round);
 
-        audit("DOCTOR_ROUND_RECORDED", "Doctor round recorded for IPD " + ipdAdmissionId + " by Dr. " + doctor.getName(), hospitalId);
+        audit("DOCTOR_ROUND_RECORDED", "Doctor round (" + saved.getAssessmentType() + ") recorded for IPD "
+                + ipdAdmissionId + " by Dr. " + doctor.getName(), hospitalId);
         broadcast(hospitalId);
 
         return saved;
+    }
+
+    /**
+     * Amends a signed note (Forms 11/13 medico-legal lifecycle): the original is NEVER mutated —
+     * it is marked AMENDED and a new signed note is created linked via amended_from_id.
+     */
+    @Transactional
+    public DoctorRound amendRound(Long roundId, DoctorRoundRequest request) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        String email = securityHelper.getCurrentUserEmail();
+
+        DoctorRound original = roundRepository.findById(roundId)
+                .orElseThrow(() -> new RuntimeException("Doctor round not found: " + roundId));
+        if (!original.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        mrdService.validateAdmissionActive(original.getIpdAdmissionId());
+        if ("AMENDED".equalsIgnoreCase(original.getStatus())) {
+            throw new IllegalStateException("This note has already been amended; amend the latest version instead.");
+        }
+        if (request.getAmendmentReason() == null || request.getAmendmentReason().isBlank()) {
+            throw new IllegalStateException("An amendment reason is required.");
+        }
+
+        Doctor doctor = doctorRepository.findByEmailAndHospitalId(email, hospitalId)
+                .orElseThrow(() -> new UnauthorizedException("Doctor profile not found for this user"));
+
+        DoctorRound amendment = new DoctorRound();
+        amendment.setIpdAdmissionId(original.getIpdAdmissionId());
+        amendment.setHospitalId(hospitalId);
+        amendment.setDoctorId(doctor.getId());
+        amendment.setDoctorName(doctor.getName());
+        amendment.setRoundDateTime(LocalDateTime.now());
+        amendment.setSubjective(request.getSubjective());
+        amendment.setObjective(request.getObjective());
+        amendment.setAssessment(request.getAssessment());
+        amendment.setPlan(request.getPlan());
+        amendment.setNextRoundAt(request.getNextRoundAt());
+        amendment.setAssessmentType(original.getAssessmentType() != null
+                ? original.getAssessmentType()
+                : normalizeAssessmentType(request.getAssessmentType()));
+        amendment.setStatus("SIGNED");
+        amendment.setSignedBy(email);
+        amendment.setSignedAt(LocalDateTime.now());
+        amendment.setAmendedFromId(original.getId());
+        amendment.setAmendmentReason(request.getAmendmentReason());
+        DoctorRound saved = roundRepository.save(amendment);
+
+        // Mark the original superseded — content untouched (immutable medico-legal record).
+        original.setStatus("AMENDED");
+        roundRepository.save(original);
+
+        audit("DOCTOR_ROUND_AMENDED", "Doctor round " + roundId + " amended (new note " + saved.getId()
+                + ") by Dr. " + doctor.getName() + ": " + request.getAmendmentReason(), hospitalId);
+        broadcast(hospitalId);
+
+        return saved;
+    }
+
+    private String normalizeAssessmentType(String type) {
+        if (type == null || type.isBlank()) return "PROGRESS_NOTE";
+        String t = type.toUpperCase();
+        if (t.equals("PROGRESS_NOTE") || t.equals("REASSESSMENT")) return t;
+        throw new IllegalArgumentException("Invalid assessment type: " + type);
     }
 
     private void audit(String action, String details, Long hospitalId) {

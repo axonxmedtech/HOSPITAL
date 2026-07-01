@@ -34,4 +34,17 @@ public class DoctorRoundController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+
+    /** Amends a signed note (Forms 11/13): original stays immutable, a linked correction is created. */
+    @PostMapping("/{roundId}/amend")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> amendRound(@PathVariable Long admissionId,
+                                        @PathVariable Long roundId,
+                                        @RequestBody DoctorRoundRequest request) {
+        try {
+            return ResponseEntity.ok(roundService.amendRound(roundId, request));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
 }

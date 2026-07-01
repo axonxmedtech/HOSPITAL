@@ -14,6 +14,9 @@ export default function DoctorRoundsPanel({ admissionId }) {
   const [assessment, setAssessment] = useState('');
   const [plan, setPlan] = useState('');
   const [nextRoundAt, setNextRoundAt] = useState('');
+  const [assessmentType, setAssessmentType] = useState('PROGRESS_NOTE');
+  const [amendTarget, setAmendTarget] = useState(null); // round being amended (null = new note)
+  const [amendReason, setAmendReason] = useState('');
   const [error, setError] = useState('');
 
   const isDoctor = authService.isDoctor();
@@ -44,6 +47,11 @@ export default function DoctorRoundsPanel({ admissionId }) {
       return;
     }
 
+    if (amendTarget && !amendReason.trim()) {
+      setError('An amendment reason is required.');
+      return;
+    }
+
     setSaving(true);
     setError('');
 
@@ -53,10 +61,16 @@ export default function DoctorRoundsPanel({ admissionId }) {
       assessment: assessment.trim() || null,
       plan: plan.trim() || null,
       nextRoundAt: nextRoundAt ? new Date(nextRoundAt).toISOString() : null,
+      assessmentType,
+      amendmentReason: amendTarget ? amendReason.trim() : null,
     };
 
     try {
-      await doctorRoundService.logRound(admissionId, payload);
+      if (amendTarget) {
+        await doctorRoundService.amendRound(admissionId, amendTarget.id, payload);
+      } else {
+        await doctorRoundService.logRound(admissionId, payload);
+      }
       setIsOpen(false);
       // Reset Form
       setSubjective('');
@@ -64,12 +78,28 @@ export default function DoctorRoundsPanel({ admissionId }) {
       setAssessment('');
       setPlan('');
       setNextRoundAt('');
+      setAssessmentType('PROGRESS_NOTE');
+      setAmendTarget(null);
+      setAmendReason('');
       loadRounds();
     } catch (err) {
-      setError(err.response?.data || 'Failed to log round. Please try again.');
+      setError(err.response?.data || 'Failed to save note. Please try again.');
     } finally {
       setSaving(false);
     }
+  };
+
+  const startAmend = (round) => {
+    setAmendTarget(round);
+    setSubjective(round.subjective || '');
+    setObjective(round.objective || '');
+    setAssessment(round.assessment || '');
+    setPlan(round.plan || '');
+    setNextRoundAt('');
+    setAssessmentType(round.assessmentType || 'PROGRESS_NOTE');
+    setAmendReason('');
+    setError('');
+    setIsOpen(true);
   };
 
   // Find next round details
@@ -94,7 +124,7 @@ export default function DoctorRoundsPanel({ admissionId }) {
         </div>
         {canLog && (
           <button
-            onClick={() => setIsOpen(true)}
+            onClick={() => { setAmendTarget(null); setAmendReason(''); setError(''); setIsOpen(true); }}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl shadow-sm transition-all active:scale-95 self-start sm:self-center"
           >
             + Log Round Note
@@ -143,12 +173,34 @@ export default function DoctorRoundsPanel({ admissionId }) {
                       {new Date(round.roundDateTime).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
                     </p>
                   </div>
-                </div>
-                {round.nextRoundAt && (
-                  <span className="text-[10px] sm:text-xs bg-slate-100 border border-slate-200 text-gray-600 px-2 py-0.5 rounded-full font-medium">
-                    Next Due: {new Date(round.nextRoundAt).toLocaleDateString()} {new Date(round.nextRoundAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${round.assessmentType === 'REASSESSMENT' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                    {round.assessmentType === 'REASSESSMENT' ? 'REASSESSMENT' : 'PROGRESS NOTE'}
                   </span>
-                )}
+                  {round.status === 'AMENDED' && (
+                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-gray-200 text-gray-600">SUPERSEDED</span>
+                  )}
+                  {round.amendedFromId && (
+                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700" title={round.amendmentReason || ''}>
+                      ✎ AMENDMENT of #{round.amendedFromId}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {round.nextRoundAt && (
+                    <span className="text-[10px] sm:text-xs bg-slate-100 border border-slate-200 text-gray-600 px-2 py-0.5 rounded-full font-medium">
+                      Next Due: {new Date(round.nextRoundAt).toLocaleDateString()} {new Date(round.nextRoundAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                  {canLog && round.status !== 'AMENDED' && (
+                    <button
+                      onClick={() => startAmend(round)}
+                      className="text-[10px] border border-gray-300 hover:bg-gray-50 text-gray-600 px-2 py-0.5 rounded-full font-medium"
+                      title="Create a signed correction linked to this note (original stays on record)"
+                    >
+                      ✎ Amend
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* SOAP Details Grid */}
@@ -193,7 +245,7 @@ export default function DoctorRoundsPanel({ admissionId }) {
                 <p className="text-xs text-gray-500 mt-0.5">Log clinical observation status and record planned updates</p>
               </div>
               <button
-                onClick={() => setIsOpen(false)}
+                onClick={() => { setIsOpen(false); setAmendTarget(null); setAmendReason(''); }}
                 className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
               >
                 ✕
@@ -202,6 +254,34 @@ export default function DoctorRoundsPanel({ admissionId }) {
 
             {/* Form */}
             <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 space-y-4">
+              {amendTarget && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                  <p className="text-xs font-semibold text-amber-800 mb-2">
+                    ✎ Amending note #{amendTarget.id} — the original stays on record; a signed correction will be created.
+                  </p>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Amendment Reason *</label>
+                  <input
+                    type="text"
+                    value={amendReason}
+                    onChange={e => setAmendReason(e.target.value)}
+                    className="w-full border border-amber-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
+                    placeholder="e.g. Corrected medication dose in the plan"
+                  />
+                </div>
+              )}
+              {!amendTarget && (
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Note Type</label>
+                  <select
+                    value={assessmentType}
+                    onChange={e => setAssessmentType(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  >
+                    <option value="PROGRESS_NOTE">Progress Note (Form 13)</option>
+                    <option value="REASSESSMENT">Patient Reassessment (Form 11)</option>
+                  </select>
+                </div>
+              )}
               {/* SOAP input grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Subjective */}
@@ -283,7 +363,7 @@ export default function DoctorRoundsPanel({ admissionId }) {
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50/30">
               <button
                 type="button"
-                onClick={() => setIsOpen(false)}
+                onClick={() => { setIsOpen(false); setAmendTarget(null); setAmendReason(''); }}
                 className="px-4 py-2 text-sm font-medium border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50 transition-colors"
               >
                 Cancel

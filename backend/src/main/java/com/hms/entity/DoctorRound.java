@@ -48,6 +48,29 @@ public class DoctorRound {
     @Column(name = "doctor_name", nullable = false, length = 100)
     private String doctorName;
 
+    // --- Clinical Documentation Engine (Forms 11/13, all nullable/additive) ---
+
+    // PROGRESS_NOTE (Form 13, default) or REASSESSMENT (Form 11)
+    @Column(name = "assessment_type", length = 30)
+    private String assessmentType;
+
+    // SIGNED (on creation) or AMENDED (superseded by a correction). Null on legacy rows = implicitly SIGNED.
+    @Column(name = "status", length = 20)
+    private String status;
+
+    @Column(name = "signed_by", length = 100)
+    private String signedBy;
+
+    @Column(name = "signed_at")
+    private LocalDateTime signedAt;
+
+    // Amendment chain: the id of the note this one corrects (originals are never mutated).
+    @Column(name = "amended_from_id")
+    private Long amendedFromId;
+
+    @Column(name = "amendment_reason", length = 255)
+    private String amendmentReason;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

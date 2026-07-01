@@ -86,7 +86,7 @@ class DoctorRoundServiceTest {
 
         DoctorRoundRequest req = new DoctorRoundRequest(
                 "Patient feels tired", "Chest clear", "Infection resolving", "Continue current medications",
-                LocalDateTime.now().plusDays(1)
+                LocalDateTime.now().plusDays(1), null, null
         );
 
         DoctorRound round = doctorRoundService.logRound(admissionId, req);
@@ -115,10 +115,118 @@ class DoctorRoundServiceTest {
         admission.setHospitalId(99L); // Mismatched hospitalId
         when(ipdAdmissionRepository.findById(admissionId)).thenReturn(Optional.of(admission));
 
-        DoctorRoundRequest req = new DoctorRoundRequest("S", "O", "A", "P", null);
+        DoctorRoundRequest req = new DoctorRoundRequest("S", "O", "A", "P", null, null, null);
 
         assertThatThrownBy(() -> doctorRoundService.logRound(admissionId, req))
                 .isInstanceOf(UnauthorizedException.class)
                 .hasMessageContaining("Access denied: Tenant mismatch");
+    }
+
+    // ===== Clinical Documentation Engine (Forms 11/13) =====
+
+    private void stubDoctorContext(Long hospitalId) {
+        Authentication authentication = mock(Authentication.class);
+        lenient().when(authentication.getName()).thenReturn("doctor@hospital.com");
+        SecurityContext securityContext = mock(SecurityContext.class);
+        lenient().when(securityContext.getAuthentication()).thenReturn(authentication);
+        SecurityContextHolder.setContext(securityContext);
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("doctor@hospital.com");
+        Doctor doctor = new Doctor();
+        doctor.setId(5L);
+        doctor.setName("Dr. John Smith");
+        when(doctorRepository.findByEmailAndHospitalId("doctor@hospital.com", hospitalId))
+                .thenReturn(Optional.of(doctor));
+    }
+
+    @Test
+    void logRound_signsNoteWithTypeOnCreation() {
+        Long hospitalId = 1L, admissionId = 10L;
+        stubDoctorContext(hospitalId);
+        IpdAdmission admission = new IpdAdmission();
+        admission.setId(admissionId);
+        admission.setHospitalId(hospitalId);
+        when(ipdAdmissionRepository.findById(admissionId)).thenReturn(Optional.of(admission));
+        when(roundRepository.save(any(DoctorRound.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        DoctorRoundRequest req = new DoctorRoundRequest("S", "O", "A", "P", null, "REASSESSMENT", null);
+        DoctorRound round = doctorRoundService.logRound(admissionId, req);
+
+        assertThat(round.getAssessmentType()).isEqualTo("REASSESSMENT");
+        assertThat(round.getStatus()).isEqualTo("SIGNED");
+        assertThat(round.getSignedBy()).isEqualTo("doctor@hospital.com");
+        assertThat(round.getSignedAt()).isNotNull();
+    }
+
+    @Test
+    void amendRound_requiresReason() {
+        Long hospitalId = 1L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("doctor@hospital.com");
+        DoctorRound original = new DoctorRound();
+        original.setId(7L);
+        original.setHospitalId(hospitalId);
+        original.setIpdAdmissionId(10L);
+        original.setStatus("SIGNED");
+        when(roundRepository.findById(7L)).thenReturn(Optional.of(original));
+
+        DoctorRoundRequest req = new DoctorRoundRequest("S2", "O2", "A2", "P2", null, null, null); // no reason
+
+        assertThatThrownBy(() -> doctorRoundService.amendRound(7L, req))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("reason");
+        verify(roundRepository, never()).save(any());
+    }
+
+    @Test
+    void amendRound_createsLinkedNoteAndMarksOriginalAmended() {
+        Long hospitalId = 1L;
+        stubDoctorContext(hospitalId);
+        DoctorRound original = new DoctorRound();
+        original.setId(7L);
+        original.setHospitalId(hospitalId);
+        original.setIpdAdmissionId(10L);
+        original.setStatus("SIGNED");
+        original.setAssessmentType("PROGRESS_NOTE");
+        original.setSubjective("original text");
+        when(roundRepository.findById(7L)).thenReturn(Optional.of(original));
+        when(roundRepository.save(any(DoctorRound.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        DoctorRoundRequest req = new DoctorRoundRequest("S2", "O2", "A2", "P2", null, null, "Wrong medication dose recorded");
+        DoctorRound amendment = doctorRoundService.amendRound(7L, req);
+
+        assertThat(amendment.getAmendedFromId()).isEqualTo(7L);
+        assertThat(amendment.getStatus()).isEqualTo("SIGNED");
+        assertThat(amendment.getAssessmentType()).isEqualTo("PROGRESS_NOTE"); // inherited
+        assertThat(amendment.getAmendmentReason()).isEqualTo("Wrong medication dose recorded");
+        // Original marked superseded but content untouched
+        assertThat(original.getStatus()).isEqualTo("AMENDED");
+        assertThat(original.getSubjective()).isEqualTo("original text");
+        verify(roundRepository, times(2)).save(any(DoctorRound.class));
+    }
+
+    @Test
+    void amendRound_rejectsAlreadyAmendedAndCrossTenant() {
+        Long hospitalId = 1L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        // already amended
+        DoctorRound amended = new DoctorRound();
+        amended.setId(7L);
+        amended.setHospitalId(hospitalId);
+        amended.setIpdAdmissionId(10L);
+        amended.setStatus("AMENDED");
+        when(roundRepository.findById(7L)).thenReturn(Optional.of(amended));
+        DoctorRoundRequest req = new DoctorRoundRequest("S", "O", "A", "P", null, null, "reason");
+        assertThatThrownBy(() -> doctorRoundService.amendRound(7L, req))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("already been amended");
+        // cross-tenant
+        DoctorRound foreign = new DoctorRound();
+        foreign.setId(8L);
+        foreign.setHospitalId(99L);
+        when(roundRepository.findById(8L)).thenReturn(Optional.of(foreign));
+        assertThatThrownBy(() -> doctorRoundService.amendRound(8L, req))
+                .isInstanceOf(UnauthorizedException.class);
+        verify(roundRepository, never()).save(any());
     }
 }

@@ -14,4 +14,10 @@ public class DoctorRoundRequest {
     private String assessment;
     private String plan;
     private LocalDateTime nextRoundAt;
+
+    // PROGRESS_NOTE (Form 13, default) or REASSESSMENT (Form 11)
+    private String assessmentType;
+
+    // Required when amending a signed note
+    private String amendmentReason;
 }

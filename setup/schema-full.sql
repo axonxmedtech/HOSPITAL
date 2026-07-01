@@ -2025,10 +2025,21 @@ CREATE TABLE IF NOT EXISTS doctor_rounds (
     plan TEXT NULL,
     next_round_at DATETIME NULL,
     doctor_name VARCHAR(100) NOT NULL,
+    assessment_type VARCHAR(30) NULL,
+    status VARCHAR(20) NULL,
+    signed_by VARCHAR(100) NULL,
+    signed_at DATETIME NULL,
+    amended_from_id BIGINT NULL,
+    amendment_reason VARCHAR(255) NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_dr_ipd FOREIGN KEY (ipd_admission_id) REFERENCES ipd_admission(id),
     CONSTRAINT fk_dr_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
 ) ENGINE=InnoDB;
+-- Forms 11/13 additive migration (safe on live data; null status on legacy rows = implicitly SIGNED):
+-- ALTER TABLE doctor_rounds
+--   ADD COLUMN assessment_type VARCHAR(30) NULL, ADD COLUMN status VARCHAR(20) NULL,
+--   ADD COLUMN signed_by VARCHAR(100) NULL, ADD COLUMN signed_at DATETIME NULL,
+--   ADD COLUMN amended_from_id BIGINT NULL, ADD COLUMN amendment_reason VARCHAR(255) NULL;
 
 CREATE INDEX IF NOT EXISTS idx_dr_ipd_hosp ON doctor_rounds(ipd_admission_id, hospital_id);
 
