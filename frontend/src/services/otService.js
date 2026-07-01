@@ -81,6 +81,20 @@ const otService = {
 
   resolveInstrumentCount: (admissionId, bookingId, payload) =>
     apiService.post(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/instrument-count/resolve`, payload),
+
+  // Form 24 — Implant / Prosthesis / Biomedical Device Record
+  getImplants: (admissionId, bookingId) =>
+    apiService.get(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/implants`),
+
+  addImplant: (admissionId, bookingId, payload) =>
+    apiService.post(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/implants`, payload),
+
+  updateImplant: (admissionId, bookingId, implantId, payload) =>
+    apiService.put(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/implants/${implantId}`, payload),
+
+  signImplant: (admissionId, bookingId, implantId, payload) =>
+    apiService.post(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/implants/${implantId}/sign`, payload),
 };
+
 
 export default otService;
