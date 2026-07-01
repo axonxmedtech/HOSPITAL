@@ -2058,6 +2058,31 @@ CREATE TABLE IF NOT EXISTS ot_checklists (
 
 CREATE INDEX IF NOT EXISTS idx_ot_bookings_admission ON ot_bookings(ipd_admission_id);
 
+-- Phase 4.01 Operation Record (Form 18 core). Additive; Hibernate ddl-auto creates it.
+CREATE TABLE IF NOT EXISTS operation_record (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    patient_id BIGINT NULL,
+    admission_id BIGINT NULL,
+    ot_booking_id BIGINT NOT NULL UNIQUE,
+    surgeon_id BIGINT NULL,
+    procedure_name VARCHAR(200) NULL,
+    actual_procedure TEXT NULL,
+    operative_findings TEXT NULL,
+    estimated_blood_loss VARCHAR(100) NULL,
+    complications_summary TEXT NULL,
+    post_op_plan TEXT NULL,
+    operation_start DATETIME NULL,
+    operation_end DATETIME NULL,
+    status VARCHAR(20) NULL,
+    signed_by VARCHAR(100) NULL,
+    signed_at DATETIME NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_oprec_booking FOREIGN KEY (ot_booking_id) REFERENCES ot_bookings(id),
+    CONSTRAINT fk_oprec_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_operation_record_hospital_booking ON operation_record(hospital_id, ot_booking_id);
+
 -- Table structure for table `mrd_records`
 DROP TABLE IF EXISTS `mrd_records`;
 CREATE TABLE `mrd_records` (

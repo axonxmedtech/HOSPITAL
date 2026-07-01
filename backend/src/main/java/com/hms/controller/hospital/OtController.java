@@ -1,5 +1,6 @@
 package com.hms.controller.hospital;
 
+import com.hms.dto.OperationRecordRequest;
 import com.hms.dto.OtBookingRequest;
 import com.hms.dto.OtChecklistRequest;
 import com.hms.service.hospital.OtService;
@@ -66,6 +67,54 @@ public class OtController {
                                            @RequestBody OtChecklistRequest request) {
         try {
             return ResponseEntity.ok(otService.signChecklist(bookingId, request));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // ===== Operation Record (Form 18) =====
+
+    @GetMapping("/{bookingId}/operation-record")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'NURSE', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> getOperationRecord(@PathVariable Long admissionId,
+                                                @PathVariable Long bookingId) {
+        try {
+            return ResponseEntity.ok(otService.getOperationRecord(bookingId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/{bookingId}/operation-record")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> createOperationRecord(@PathVariable Long admissionId,
+                                                   @PathVariable Long bookingId,
+                                                   @RequestBody OperationRecordRequest request) {
+        try {
+            return ResponseEntity.ok(otService.createOperationRecord(bookingId, request));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PutMapping("/{bookingId}/operation-record")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> updateOperationRecord(@PathVariable Long admissionId,
+                                                   @PathVariable Long bookingId,
+                                                   @RequestBody OperationRecordRequest request) {
+        try {
+            return ResponseEntity.ok(otService.updateOperationRecord(bookingId, request));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/{bookingId}/operation-record/finalize")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> finalizeOperationRecord(@PathVariable Long admissionId,
+                                                     @PathVariable Long bookingId) {
+        try {
+            return ResponseEntity.ok(otService.finalizeOperationRecord(bookingId));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

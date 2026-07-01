@@ -50,8 +50,135 @@ class OtServiceTest {
     @Mock
     private com.hms.service.hospital.MrdService mrdService;
 
+    @Mock
+    private com.hms.service.hospital.BillingService billingService;
+
+    @Mock
+    private OperationRecordRepository operationRecordRepository;
+
     @InjectMocks
     private OtService otService;
+
+    // ===== Operation Record (Form 18) =====
+
+    private OtBooking tenantBooking(Long bookingId, Long hospitalId, Long admissionId) {
+        OtBooking booking = new OtBooking();
+        booking.setId(bookingId);
+        booking.setHospitalId(hospitalId);
+        booking.setIpdAdmissionId(admissionId);
+        booking.setSurgeonId(7L);
+        booking.setProcedureName("Appendectomy");
+        return booking;
+    }
+
+    @Test
+    void createOperationRecord_rejectedBeforeTimeOut() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        OtChecklist checklist = new OtChecklist();
+        checklist.setSignInCompleted(true);
+        checklist.setTimeOutCompleted(false);
+        when(checklistRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(checklist));
+
+        assertThatThrownBy(() -> otService.createOperationRecord(bookingId, new com.hms.dto.OperationRecordRequest()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("time-out");
+        verify(operationRecordRepository, never()).save(any());
+    }
+
+    @Test
+    void createOperationRecord_succeedsAfterTimeOut() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        OtChecklist checklist = new OtChecklist();
+        checklist.setSignInCompleted(true);
+        checklist.setTimeOutCompleted(true);
+        when(checklistRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(checklist));
+        when(operationRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.empty());
+        when(operationRecordRepository.save(any(OperationRecord.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        com.hms.dto.OperationRecordRequest req = new com.hms.dto.OperationRecordRequest();
+        req.setActualProcedure("Laparoscopic appendectomy");
+        OperationRecord saved = otService.createOperationRecord(bookingId, req);
+
+        assertThat(saved.getStatus()).isEqualTo("DRAFT");
+        assertThat(saved.getOtBookingId()).isEqualTo(bookingId);
+        assertThat(saved.getProcedureName()).isEqualTo("Appendectomy"); // fell back to booking
+        assertThat(saved.getSurgeonId()).isEqualTo(7L);
+    }
+
+    @Test
+    void createOperationRecord_rejectsCrossTenant() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, 99L, 10L)));
+
+        assertThatThrownBy(() -> otService.createOperationRecord(bookingId, new com.hms.dto.OperationRecordRequest()))
+                .isInstanceOf(UnauthorizedException.class);
+        verify(operationRecordRepository, never()).save(any());
+    }
+
+    @Test
+    void finalizeOperationRecord_rejectedWithoutProcedureOrPlan() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        OperationRecord record = new OperationRecord();
+        record.setStatus("DRAFT");
+        record.setActualProcedure(null); // missing
+        when(operationRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(record));
+
+        assertThatThrownBy(() -> otService.finalizeOperationRecord(bookingId))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("actual procedure");
+        verify(operationRecordRepository, never()).save(any());
+    }
+
+    @Test
+    void finalizeOperationRecord_rejectedBeforeSignOut() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("surgeon@hospital.com");
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        OperationRecord record = new OperationRecord();
+        record.setStatus("DRAFT");
+        record.setActualProcedure("Lap appendectomy");
+        record.setPostOpPlan("ICU overnight, IV antibiotics");
+        when(operationRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(record));
+        OtChecklist checklist = new OtChecklist();
+        checklist.setSignOutCompleted(false);
+        when(checklistRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(checklist));
+
+        assertThatThrownBy(() -> otService.finalizeOperationRecord(bookingId))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("sign-out");
+        verify(operationRecordRepository, never()).save(any());
+    }
+
+    @Test
+    void finalizeOperationRecord_stampsSignatureWhenReady() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("surgeon@hospital.com");
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        OperationRecord record = new OperationRecord();
+        record.setStatus("DRAFT");
+        record.setActualProcedure("Lap appendectomy");
+        record.setPostOpPlan("ICU overnight, IV antibiotics");
+        when(operationRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(record));
+        OtChecklist checklist = new OtChecklist();
+        checklist.setSignOutCompleted(true);
+        when(checklistRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(checklist));
+        when(operationRecordRepository.save(any(OperationRecord.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        OperationRecord finalized = otService.finalizeOperationRecord(bookingId);
+
+        assertThat(finalized.getStatus()).isEqualTo("FINALIZED");
+        assertThat(finalized.getSignedBy()).isEqualTo("surgeon@hospital.com");
+        assertThat(finalized.getSignedAt()).isNotNull();
+    }
 
     @Test
     void scheduleBooking_savesBookingAndChecklist() {

@@ -1,5 +1,6 @@
 package com.hms.service.hospital;
 
+import com.hms.dto.OperationRecordRequest;
 import com.hms.dto.OtBookingRequest;
 import com.hms.dto.OtChecklistRequest;
 import com.hms.entity.*;
@@ -46,6 +47,9 @@ public class OtService {
 
     @Autowired
     private MrdService mrdService;
+
+    @Autowired
+    private OperationRecordRepository operationRecordRepository;
 
     public List<OtBooking> getBookingsForAdmission(Long ipdAdmissionId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
@@ -221,6 +225,138 @@ public class OtService {
         broadcast(hospitalId);
 
         return saved;
+    }
+
+    // ===== Operation Record (Form 18 core) =====
+
+    /** Loads the operation record for a booking (or null), tenant-guarded. */
+    public OperationRecord getOperationRecord(Long bookingId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT Booking not found: " + bookingId));
+        if (!booking.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        return operationRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId).orElse(null);
+    }
+
+    /** BR-1: create only after the WHO time-out is complete (patient inside OT). Upserts a DRAFT. */
+    @Transactional
+    public OperationRecord createOperationRecord(Long bookingId, OperationRecordRequest request) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT Booking not found: " + bookingId));
+        if (!booking.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        mrdService.validateAdmissionActive(booking.getIpdAdmissionId());
+
+        OtChecklist checklist = checklistRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
+                .orElseThrow(() -> new RuntimeException("Checklist not found for booking: " + bookingId));
+        if (!checklist.isTimeOutCompleted()) {
+            throw new IllegalStateException("Cannot start the operation record before the WHO time-out is completed.");
+        }
+
+        // Upsert: reuse an existing draft rather than violating the unique(ot_booking_id) constraint.
+        OperationRecord record = operationRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
+                .orElseGet(OperationRecord::new);
+        if ("FINALIZED".equalsIgnoreCase(record.getStatus())) {
+            throw new IllegalStateException("Operation record is finalized and can no longer be edited.");
+        }
+        record.setHospitalId(hospitalId);
+        record.setOtBookingId(bookingId);
+        record.setAdmissionId(booking.getIpdAdmissionId());
+        record.setSurgeonId(booking.getSurgeonId());
+        applyRequest(record, request, booking);
+        record.setStatus("DRAFT");
+        OperationRecord saved = operationRecordRepository.save(record);
+
+        audit("OT_OPERATION_RECORD_CREATED", "Operation record started for booking " + bookingId, hospitalId);
+        broadcast(hospitalId);
+        return saved;
+    }
+
+    /** Edit a DRAFT operation record. */
+    @Transactional
+    public OperationRecord updateOperationRecord(Long bookingId, OperationRecordRequest request) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT Booking not found: " + bookingId));
+        if (!booking.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        OperationRecord record = operationRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
+                .orElseThrow(() -> new RuntimeException("Operation record not found for booking: " + bookingId));
+        if ("FINALIZED".equalsIgnoreCase(record.getStatus())) {
+            throw new IllegalStateException("Operation record is finalized and can no longer be edited.");
+        }
+        applyRequest(record, request, booking);
+        OperationRecord saved = operationRecordRepository.save(record);
+
+        audit("OT_OPERATION_RECORD_UPDATED", "Operation record updated for booking " + bookingId, hospitalId);
+        broadcast(hospitalId);
+        return saved;
+    }
+
+    /** BR-2: finalize+sign — requires actual procedure, post-op plan and a completed WHO sign-out. */
+    @Transactional
+    public OperationRecord finalizeOperationRecord(Long bookingId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        String email = securityHelper.getCurrentUserEmail();
+
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT Booking not found: " + bookingId));
+        if (!booking.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        OperationRecord record = operationRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
+                .orElseThrow(() -> new RuntimeException("Operation record not found for booking: " + bookingId));
+
+        if (record.getActualProcedure() == null || record.getActualProcedure().isBlank()) {
+            throw new IllegalStateException("Cannot finalize: the actual procedure performed is required.");
+        }
+        if (record.getPostOpPlan() == null || record.getPostOpPlan().isBlank()) {
+            throw new IllegalStateException("Cannot finalize: a post-operative plan is required.");
+        }
+        OtChecklist checklist = checklistRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
+                .orElseThrow(() -> new RuntimeException("Checklist not found for booking: " + bookingId));
+        if (!checklist.isSignOutCompleted()) {
+            throw new IllegalStateException("Cannot finalize: the WHO sign-out (instrument count) must be completed first.");
+        }
+
+        record.setStatus("FINALIZED");
+        record.setSignedBy(email);
+        record.setSignedAt(LocalDateTime.now());
+        OperationRecord saved = operationRecordRepository.save(record);
+
+        audit("OT_OPERATION_RECORD_FINALIZED", "Operation record finalized for booking " + bookingId + " by " + email, hospitalId);
+        broadcast(hospitalId);
+        return saved;
+    }
+
+    /** Copies editable fields, enforcing monotonic timings. */
+    private void applyRequest(OperationRecord record, OperationRecordRequest request, OtBooking booking) {
+        record.setProcedureName(
+                (request.getProcedureName() != null && !request.getProcedureName().isBlank())
+                        ? request.getProcedureName()
+                        : booking.getProcedureName());
+        record.setActualProcedure(request.getActualProcedure());
+        record.setOperativeFindings(request.getOperativeFindings());
+        record.setEstimatedBloodLoss(request.getEstimatedBloodLoss());
+        record.setComplicationsSummary(request.getComplicationsSummary());
+        record.setPostOpPlan(request.getPostOpPlan());
+        if (request.getOperationStart() != null && request.getOperationEnd() != null
+                && request.getOperationEnd().isBefore(request.getOperationStart())) {
+            throw new IllegalArgumentException("Operation end time cannot be before the start time.");
+        }
+        record.setOperationStart(request.getOperationStart());
+        record.setOperationEnd(request.getOperationEnd());
     }
 
     private void audit(String action, String details, Long hospitalId) {
