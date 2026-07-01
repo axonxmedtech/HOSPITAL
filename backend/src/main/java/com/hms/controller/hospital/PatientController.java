@@ -42,7 +42,7 @@ public class PatientController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST', 'MRD_OFFICER', 'QUALITY_OFFICER')")
     public ResponseEntity<?> getAllPatients(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String view,
