@@ -173,7 +173,7 @@ const AnaesthesiaRecordSection = ({ admissionId, bookingId, checklistSignedIn, i
                     checklistSignedIn ? (
                         <>
                             <p className="text-[11px] text-gray-500 mb-3">Start the anaesthesia record. Requires the WHO sign-in (before induction).</p>
-                            <Fields />
+                            {Fields()}
                             <div className="flex justify-end mt-3">
                                 <button onClick={start} disabled={saving} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-xs font-semibold px-4 py-2 rounded-lg">
                                     {saving ? "Saving…" : "Start Anaesthesia Record"}
@@ -190,7 +190,7 @@ const AnaesthesiaRecordSection = ({ admissionId, bookingId, checklistSignedIn, i
 
             {record && editing && !isCompleted && (
                 <>
-                    <Fields />
+                    {Fields()}
                     <div className="flex justify-end gap-2 mt-3">
                         <button onClick={() => { hydrate(record); setEditing(false); }} className="text-xs text-gray-500 hover:text-gray-700 px-3 py-2">Cancel</button>
                         <button onClick={update} disabled={saving} className="border border-gray-300 hover:bg-gray-50 disabled:opacity-60 text-gray-700 text-xs font-semibold px-4 py-2 rounded-lg">
