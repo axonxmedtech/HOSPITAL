@@ -27,6 +27,18 @@ const otService = {
 
   finalizeOperationRecord: (admissionId, bookingId) =>
     apiService.post(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/operation-record/finalize`),
+
+  getAnaesthesiaRecord: (admissionId, bookingId) =>
+    apiService.get(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/anaesthesia-record`),
+
+  startAnaesthesiaRecord: (admissionId, bookingId, payload) =>
+    apiService.post(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/anaesthesia-record`, payload),
+
+  updateAnaesthesiaRecord: (admissionId, bookingId, payload) =>
+    apiService.put(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/anaesthesia-record`, payload),
+
+  completeAnaesthesiaRecord: (admissionId, bookingId) =>
+    apiService.post(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/anaesthesia-record/complete`),
 };
 
 export default otService;
