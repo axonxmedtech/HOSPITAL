@@ -51,7 +51,7 @@ class NurseTaskServiceTest {
         when(taskRepository.save(any(NurseTask.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         NurseTask executed = nurseTaskService.executeTask(
-                admissionId, taskId, "DONE", "Given to patient", 1.0, "IV", "Left Arm", "BP: 120/80");
+                admissionId, taskId, "DONE", "Given to patient", 1.0, "IV", "Left Arm", "BP: 120/80", null);
 
         assertThat(executed.getStatus()).isEqualTo("DONE");
         assertThat(executed.getNotes()).isEqualTo("Given to patient");
@@ -68,8 +68,60 @@ class NurseTaskServiceTest {
         when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
 
         assertThatThrownBy(() -> nurseTaskService.executeTask(
-                10L, 100L, "INVALID", "Notes", null, null, null, null))
+                10L, 100L, "INVALID", "Notes", null, null, null, null, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("status must be DONE, SKIPPED, REFUSED, or HELD");
+    }
+
+    @Test
+    void executeTask_savesMissedReasonForSkippedTask() {
+        Long hospitalId = 1L;
+        Long admissionId = 10L;
+        Long taskId = 101L;
+
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("nurse@hospital.com");
+
+        NurseTask task = new NurseTask();
+        task.setId(taskId);
+        task.setHospitalId(hospitalId);
+        task.setIpdAdmissionId(admissionId);
+        task.setStatus("PENDING");
+        task.setSource("NURSING");
+        task.setTaskType("OBSERVATION");
+
+        when(taskRepository.findById(taskId)).thenReturn(Optional.of(task));
+        when(taskRepository.save(any(NurseTask.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        NurseTask executed = nurseTaskService.executeTask(
+                admissionId, taskId, "SKIPPED", "Skipping for now", null, null, null, null, "Patient was sleeping");
+
+        assertThat(executed.getStatus()).isEqualTo("SKIPPED");
+        assertThat(executed.getNotes()).isEqualTo("Skipping for now");
+        assertThat(executed.getMissedReason()).isEqualTo("Patient was sleeping");
+        assertThat(executed.getSource()).isEqualTo("NURSING");
+        assertThat(executed.getTaskType()).isEqualTo("OBSERVATION");
+    }
+
+    @Test
+    void executeTask_throwsUnauthorizedForCrossTenantTask() {
+        Long hospitalId = 1L;
+        Long admissionId = 10L;
+        Long taskId = 102L;
+
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+
+        NurseTask task = new NurseTask();
+        task.setId(taskId);
+        task.setHospitalId(2L); // Different hospital
+        task.setIpdAdmissionId(admissionId);
+        task.setStatus("PENDING");
+
+        when(taskRepository.findById(taskId)).thenReturn(Optional.of(task));
+
+        assertThatThrownBy(() -> nurseTaskService.executeTask(
+                admissionId, taskId, "DONE", "Given", null, null, null, null, null))
+                .isInstanceOf(com.hms.exception.UnauthorizedException.class)
+                .hasMessageContaining("Access denied");
     }
 }

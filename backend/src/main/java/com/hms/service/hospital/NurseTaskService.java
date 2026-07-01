@@ -31,7 +31,8 @@ public class NurseTaskService {
 
     @Transactional
     public NurseTask executeTask(Long admissionId, Long taskId, String status, String notes,
-                                 Double administeredQuantity, String route, String injectionSite, String preVitals) {
+                                 Double administeredQuantity, String route, String injectionSite, String preVitals,
+                                 String missedReason) {
         mrdService.validateAdmissionActive(admissionId);
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
@@ -58,6 +59,11 @@ public class NurseTaskService {
         task.setRoute(route);
         task.setInjectionSite(injectionSite);
         task.setPreVitals(preVitals);
+        if (!"DONE".equals(status)) {
+            task.setMissedReason(missedReason);
+        } else {
+            task.setMissedReason(null);
+        }
         return taskRepository.save(task);
     }
 }

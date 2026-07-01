@@ -42,10 +42,14 @@ public class NurseTaskController {
         String route = (String) body.get("route");
         String injectionSite = (String) body.get("injectionSite");
         String preVitals = (String) body.get("preVitals");
+        String missedReason = (String) body.get("missedReason");
+        if (missedReason == null && ("SKIPPED".equals(status) || "REFUSED".equals(status) || "HELD".equals(status))) {
+            missedReason = notes; // fallback if only notes are passed by UI
+        }
 
         try {
             return ResponseEntity.ok(taskService.executeTask(
-                    admissionId, taskId, status, notes, administeredQuantity, route, injectionSite, preVitals));
+                    admissionId, taskId, status, notes, administeredQuantity, route, injectionSite, preVitals, missedReason));
         } catch (IllegalStateException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         } catch (IllegalArgumentException | UnauthorizedException e) {
