@@ -35,7 +35,7 @@ public class NurseAssessmentController {
     }
 
     @PostMapping("/vitals")
-    @PreAuthorize("hasAnyRole('NURSE', 'HOSPITAL_ADMIN')")
+    @PreAuthorize("hasAnyRole('NURSE', 'DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> recordVitals(@PathVariable Long admissionId,
                                           @RequestBody Map<String, Object> body) {
         VitalSigns result = assessmentService.recordVitals(admissionId, body);
