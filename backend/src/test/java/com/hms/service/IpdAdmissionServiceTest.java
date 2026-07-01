@@ -138,9 +138,11 @@ class IpdAdmissionServiceTest {
     @Test
     void planDischarge_whenPatientNotAdmitted_throwsRuntimeException() {
         when(securityHelper.getCurrentUserRole()).thenReturn("DOCTOR");
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
 
         IpdAdmission ipd = new IpdAdmission();
         ipd.setId(1L);
+        ipd.setHospitalId(1L);
         ipd.setStatus("DISCHARGED");
 
         when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(ipd));
@@ -148,5 +150,44 @@ class IpdAdmissionServiceTest {
         assertThatThrownBy(() -> service.planDischarge(1L, new PlanDischargeRequest()))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Can only plan discharge for ADMITTED patients");
+    }
+
+    @Test
+    void planDischarge_rejectsCrossTenantAdmission() {
+        Long ipdId = 500L;
+        when(securityHelper.getCurrentUserRole()).thenReturn("DOCTOR");
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+
+        IpdAdmission foreignAdmission = new IpdAdmission();
+        foreignAdmission.setId(ipdId);
+        foreignAdmission.setHospitalId(2L);
+        foreignAdmission.setStatus("ADMITTED");
+        when(ipdAdmissionRepository.findById(ipdId)).thenReturn(Optional.of(foreignAdmission));
+
+        PlanDischargeRequest req = new PlanDischargeRequest();
+
+        assertThatThrownBy(() -> service.planDischarge(ipdId, req))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Tenant mismatch");
+
+        verify(dischargeSummaryRepository, never()).save(any(com.hms.entity.DischargeSummary.class));
+    }
+
+    @Test
+    void confirmDischarge_rejectsCrossTenantAdmission() {
+        Long ipdId = 501L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+
+        IpdAdmission foreignAdmission = new IpdAdmission();
+        foreignAdmission.setId(ipdId);
+        foreignAdmission.setHospitalId(2L);
+        foreignAdmission.setStatus("DISCHARGE_PLANNED");
+        when(ipdAdmissionRepository.findById(ipdId)).thenReturn(Optional.of(foreignAdmission));
+
+        assertThatThrownBy(() -> service.confirmDischarge(ipdId))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Tenant mismatch");
+
+        verify(hospitalSettingRepository, never()).findByHospital_Id(any());
     }
 }

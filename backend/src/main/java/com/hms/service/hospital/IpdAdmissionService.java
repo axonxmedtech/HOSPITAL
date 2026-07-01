@@ -904,6 +904,13 @@ public class IpdAdmissionService {
         }
 
         IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new RuntimeException("IPD admission not found"));
+        Long currentHospitalId = securityHelper.getCurrentHospitalId();
+        if (currentHospitalId == null) {
+            throw new UnauthorizedException("Hospital ID not found in context");
+        }
+        if (ipd.getHospitalId() == null || !ipd.getHospitalId().equals(currentHospitalId)) {
+            throw new org.springframework.security.access.AccessDeniedException("Access denied: Tenant mismatch");
+        }
         if (ipd.getStatus() == null || !ipd.getStatus().equalsIgnoreCase("ADMITTED")) {
             throw new IllegalArgumentException("Can only plan discharge for ADMITTED patients");
         }
@@ -945,6 +952,13 @@ public class IpdAdmissionService {
     @Transactional
     public IpdAdmission confirmDischarge(Long ipdId) {
         IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new RuntimeException("IPD admission not found"));
+        Long currentHospitalId = securityHelper.getCurrentHospitalId();
+        if (currentHospitalId == null) {
+            throw new UnauthorizedException("Hospital ID not found in context");
+        }
+        if (ipd.getHospitalId() == null || !ipd.getHospitalId().equals(currentHospitalId)) {
+            throw new org.springframework.security.access.AccessDeniedException("Access denied: Tenant mismatch");
+        }
 
         String role = securityHelper.getCurrentUserRole();
         Long hospitalId = ipd.getHospitalId();
