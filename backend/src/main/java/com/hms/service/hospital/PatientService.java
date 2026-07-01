@@ -87,6 +87,9 @@ public class PatientService {
     @Autowired
     private com.hms.service.PdfService pdfService;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
     private void evictStatsCache(Long hospitalId) {
         if (hospitalId != null && cacheManager != null) {
             org.springframework.cache.Cache cache = cacheManager.getCache("hospitalStats");
@@ -120,6 +123,9 @@ public class PatientService {
 
         // Set sequential customId using the auto-increment id: PAT1, PAT2, PAT3...
         savedPatient.setCustomId("PAT" + savedPatient.getId());
+        if (savedPatient.getUhid() == null) {
+            savedPatient.setUhid("UHID-" + savedPatient.getHospitalId() + "-" + savedPatient.getId());
+        }
         savedPatient = patientRepository.save(savedPatient);
 
         evictStatsCache(hospitalId);
@@ -989,6 +995,60 @@ public class PatientService {
         java.util.List<com.hms.entity.Prescription> prescriptions = prescriptionRepository.findByIpdAdmissionIdOrderByStartDate(ipdId);
         
         return pdfService.generateIpdPrescriptionPdf(hospital, patient, ipd, prescriptions);
+    }
+
+    @Transactional
+    public void mergePatients(Long survivorId, Long loserId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new UnauthorizedException("Hospital ID not found in context");
+        }
+
+        Patient survivor = patientRepository.findById(survivorId)
+                .filter(p -> p.getHospitalId().equals(hospitalId))
+                .orElseThrow(() -> new RuntimeException("Survivor patient not found"));
+
+        Patient loser = patientRepository.findById(loserId)
+                .filter(p -> p.getHospitalId().equals(hospitalId))
+                .orElseThrow(() -> new RuntimeException("Duplicate patient not found"));
+
+        logger.info("Merging patient {} into survivor {} for hospital {}", loserId, survivorId, hospitalId);
+
+        // Repoint child foreign keys
+        jdbcTemplate.update("UPDATE appointments SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
+        jdbcTemplate.update("UPDATE billing SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
+        jdbcTemplate.update("UPDATE ipd_admission SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
+        jdbcTemplate.update("UPDATE lab_orders SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
+        jdbcTemplate.update("UPDATE lab_results SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
+        jdbcTemplate.update("UPDATE medical_records SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
+        jdbcTemplate.update("UPDATE patient_allergies SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
+        jdbcTemplate.update("UPDATE pharmacy_sales SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
+        jdbcTemplate.update("UPDATE radiology_orders SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
+        jdbcTemplate.update("UPDATE radiology_results SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
+        jdbcTemplate.update("UPDATE whatsapp_message_log SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
+        jdbcTemplate.update("UPDATE cdss_alert_log SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
+        jdbcTemplate.update("UPDATE discharge_summary SET patient_id = ? WHERE patient_id = ?", survivorId, loserId);
+
+        // Mark loser merged and soft-delete
+        loser.setIsMerged(true);
+        loser.setMergedToId(survivorId);
+        loser.setIsActive(false);
+        patientRepository.save(loser);
+
+        // Audit Log
+        try {
+            auditLogService.logAction(
+                    "PATIENT_MERGED",
+                    "Patient ID " + loserId + " was merged into Patient ID " + survivorId,
+                    securityHelper.getCurrentUserEmail(),
+                    hospitalId,
+                    "PATIENT",
+                    survivor.getPublicId(),
+                    "Duplicate/Temporary record merge"
+            );
+        } catch (Exception e) {
+            logger.warn("Failed to create audit log for patient merge", e);
+        }
     }
 }
 

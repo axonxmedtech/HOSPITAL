@@ -165,5 +165,20 @@ public class PatientController {
                 .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
                 .body(resource);
     }
+
+    @PostMapping("/merge")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
+    public ResponseEntity<?> mergePatients(@RequestBody java.util.Map<String, Long> request) {
+        Long survivorId = request.get("survivorId");
+        Long loserId = request.get("loserId");
+        if (survivorId == null || loserId == null) {
+            return ResponseEntity.badRequest().body("Both survivorId and loserId are required");
+        }
+        if (survivorId.equals(loserId)) {
+            return ResponseEntity.badRequest().body("Cannot merge a patient into themselves");
+        }
+        patientService.mergePatients(survivorId, loserId);
+        return ResponseEntity.ok("Patients merged successfully");
+    }
 }
 
