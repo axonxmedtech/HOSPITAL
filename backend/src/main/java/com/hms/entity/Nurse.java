@@ -50,6 +50,21 @@ public class Nurse {
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "user_id")
+    private Long userId;
+
+    @Column(name = "is_scrub", nullable = false)
+    private Boolean isScrub = false;
+
+    @Column(name = "is_ot", nullable = false)
+    private Boolean isOt = false;
+
+    @Column(name = "is_pacu", nullable = false)
+    private Boolean isPacu = false;
+
+    @Column(name = "is_icu", nullable = false)
+    private Boolean isIcu = false;
+
     public Boolean getIsActive() { return isActive; }
     public void setIsActive(Boolean isActive) { this.isActive = isActive; }
 }

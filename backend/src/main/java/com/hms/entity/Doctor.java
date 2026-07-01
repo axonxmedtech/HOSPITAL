@@ -101,6 +101,27 @@ public class Doctor {
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "user_id")
+    private Long userId;
+
+    @Column(name = "is_anaesthetist", nullable = false)
+    private Boolean isAnaesthetist = false;
+
+    @Column(name = "is_surgeon", nullable = false)
+    private Boolean isSurgeon = false;
+
+    @Column(name = "is_pathologist", nullable = false)
+    private Boolean isPathologist = false;
+
+    @Column(name = "is_radiologist", nullable = false)
+    private Boolean isRadiologist = false;
+
+    @Column(name = "is_intensivist", nullable = false)
+    private Boolean isIntensivist = false;
+
+    @Column(name = "is_cmo", nullable = false)
+    private Boolean isCmo = false;
+
     public Boolean getIsActive() {
         return isActive;
     }

@@ -117,6 +117,15 @@ public class User {
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "department", length = 100)
+    private String department;
+
+    @Column(name = "designation", length = 100)
+    private String designation;
+
+    @Column(name = "is_trainer", nullable = false)
+    private Boolean isTrainer = false;
+
     public Boolean getIsActive() {
         return isActive;
     }
