@@ -35,6 +35,7 @@ public class DatabaseMigrationRunner {
         simplifyMedicineListTable();
         fixLabOrdersMedicalRecordIdColumn();
         fixRadiologyOrdersMedicalRecordIdColumn();
+        backfillDischargeSummaryTenantColumns();
     }
 
     /**
@@ -281,6 +282,44 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped (radiology_orders.medical_record_id): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Backfills discharge_summary.hospital_id / patient_id / doctor_id from the parent
+     * ipd_admission for rows created before those columns existed. Additive + idempotent:
+     * only touches rows where hospital_id IS NULL, and no-ops once every row is stamped.
+     */
+    private void backfillDischargeSummaryTenantColumns() {
+        try {
+            Integer columnExists = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'discharge_summary' AND COLUMN_NAME = 'hospital_id'",
+                Integer.class
+            );
+            if (columnExists == null || columnExists == 0) {
+                return; // ddl-auto has not created the column yet; nothing to backfill
+            }
+
+            Integer nullRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM discharge_summary WHERE hospital_id IS NULL",
+                Integer.class
+            );
+            if (nullRows == null || nullRows == 0) {
+                return; // already fully backfilled
+            }
+
+            int updated = jdbcTemplate.update(
+                "UPDATE discharge_summary ds " +
+                "JOIN ipd_admission ia ON ia.id = ds.ipd_admission_id " +
+                "SET ds.hospital_id = ia.hospital_id, " +
+                "    ds.patient_id  = ia.patient_id, " +
+                "    ds.doctor_id   = ia.doctor_id " +
+                "WHERE ds.hospital_id IS NULL"
+            );
+            log.info("DB migration applied: backfilled {} discharge_summary tenant column rows", updated);
+        } catch (Exception e) {
+            log.warn("DB migration skipped (discharge_summary tenant backfill): {}", e.getMessage());
         }
     }
 }

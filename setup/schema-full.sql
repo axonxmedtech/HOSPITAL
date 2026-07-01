@@ -155,6 +155,15 @@ CREATE TABLE `billing_payments` (
 -- Table structure for table `discharge_summary`
 --
 
+-- Phase 0.1 additive migration (safe on live data):
+-- ALTER TABLE `discharge_summary`
+--   ADD COLUMN `hospital_id` bigint DEFAULT NULL,
+--   ADD COLUMN `patient_id` bigint DEFAULT NULL,
+--   ADD COLUMN `doctor_id` bigint DEFAULT NULL,
+--   ADD KEY `idx_discharge_summary_hospital` (`hospital_id`);
+-- UPDATE `discharge_summary` ds JOIN `ipd_admission` ia ON ia.id = ds.ipd_admission_id
+--   SET ds.hospital_id = ia.hospital_id, ds.patient_id = ia.patient_id, ds.doctor_id = ia.doctor_id
+--   WHERE ds.hospital_id IS NULL;
 DROP TABLE IF EXISTS `discharge_summary`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
@@ -166,8 +175,12 @@ CREATE TABLE `discharge_summary` (
   `follow_up_date` date DEFAULT NULL,
   `ipd_admission_id` bigint NOT NULL,
   `treatment_given` text,
+  `hospital_id` bigint DEFAULT NULL,
+  `patient_id` bigint DEFAULT NULL,
+  `doctor_id` bigint DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `UK_5poa40gpt44a152gibdlfe6sb` (`ipd_admission_id`)
+  UNIQUE KEY `UK_5poa40gpt44a152gibdlfe6sb` (`ipd_admission_id`),
+  KEY `idx_discharge_summary_hospital` (`hospital_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
