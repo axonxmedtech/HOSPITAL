@@ -175,6 +175,12 @@ public class WhatsAppService {
 
     // ---- Internal ----
 
+    public void sendWhatsApp(Long hospitalId, Long patientId, String phone,
+                             String templateName, String msgType,
+                             List<String> templateParams, String mediaUrl) {
+        doSend(hospitalId, patientId, phone, templateName, msgType, templateParams, mediaUrl);
+    }
+
     private void doSend(Long hospitalId, Long patientId, String rawPhone,
                         String templateName, String msgType,
                         List<String> templateParams, String mediaUrl) {
