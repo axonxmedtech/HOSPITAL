@@ -94,6 +94,16 @@ const otService = {
 
   signImplant: (admissionId, bookingId, implantId, payload) =>
     apiService.post(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/implants/${implantId}/sign`, payload),
+
+  // Form 25 — OT Master Register & Form 26 — OT Readiness Checklist
+  getRegisterEntries: (date, room) =>
+    apiService.get(`/hospital/ot/register?date=${date || ''}&room=${room || ''}`),
+
+  getReadiness: (date, room) =>
+    apiService.get(`/hospital/ot/readiness?date=${date}&room=${room}`),
+
+  saveReadiness: (payload) =>
+    apiService.post(`/hospital/ot/readiness`, payload),
 };
 
 

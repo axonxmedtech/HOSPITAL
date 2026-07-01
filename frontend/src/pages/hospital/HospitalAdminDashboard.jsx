@@ -36,6 +36,8 @@ import MedicineInventoryTab from '../../components/MedicineInventoryTab';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
 import MasterDataView from './MasterDataView';
+import OtRegisterDashboard from '../../components/ot/OtRegisterDashboard';
+
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     BarChart, Bar, Legend, PieChart, Pie, Cell
@@ -2556,10 +2558,7 @@ const HospitalAdminDashboard = () => {
                                     </div>
                                 )}
                                 {activeTab === 'ot' && (
-                                    <div className="flex flex-col items-center justify-center p-12 text-center h-96">
-                                        <h2 className="text-2xl font-bold text-gray-950">Operation Theatre</h2>
-                                        <p className="text-gray-600 mt-2 font-medium">This feature is in progress and will be available soon.</p>
-                                    </div>
+                                    <OtRegisterDashboard />
                                 )}
                                 {activeTab === 'analytics' && (
                                     <div className="p-6 space-y-8 bg-gray-50/50 min-h-screen">
