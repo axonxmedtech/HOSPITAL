@@ -299,6 +299,112 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData, onBookAppointme
 
                         {showMoreDetails && (
                             <div className="mt-4 space-y-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-neutral-700 mb-2">
+                                            Date of Birth
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={formData.dateOfBirth || ''}
+                                            onChange={(e) => handleChange('dateOfBirth', e.target.value)}
+                                            className="input-field"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-neutral-700 mb-2">
+                                            UHID (Unique Hospital ID)
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={formData.uhid || ''}
+                                            onChange={(e) => handleChange('uhid', e.target.value)}
+                                            className="input-field"
+                                            placeholder="Enter UHID if known"
+                                            disabled={isEdit}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-neutral-700 mb-2">
+                                            Blood Group
+                                        </label>
+                                        <select
+                                            value={formData.bloodGroup || ''}
+                                            onChange={(e) => handleChange('bloodGroup', e.target.value)}
+                                            className="input-field bg-white"
+                                        >
+                                            <option value="">Select Blood Group</option>
+                                            {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(bg => (
+                                                <option key={bg} value={bg}>{bg}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-neutral-700 mb-2">
+                                            Preferred Language
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={formData.preferredLanguage || ''}
+                                            onChange={(e) => handleChange('preferredLanguage', e.target.value)}
+                                            className="input-field"
+                                            placeholder="e.g. English, Hindi"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-neutral-700 mb-2">
+                                            Guardian Name
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={formData.guardianName || ''}
+                                            onChange={(e) => handleChange('guardianName', e.target.value)}
+                                            className="input-field"
+                                            placeholder="Guardian full name"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-neutral-700 mb-2">
+                                            Guardian Relationship
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={formData.guardianRelationship || ''}
+                                            onChange={(e) => handleChange('guardianRelationship', e.target.value)}
+                                            className="input-field"
+                                            placeholder="e.g. Father, Mother, Spouse"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-6 h-11 items-center">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={!!formData.isTemporary}
+                                            onChange={(e) => handleChange('isTemporary', e.target.checked)}
+                                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
+                                        />
+                                        <span className="text-sm text-neutral-700 font-semibold">Temporary Record</span>
+                                    </label>
+
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={!!formData.isUnknown}
+                                            onChange={(e) => handleChange('isUnknown', e.target.checked)}
+                                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
+                                        />
+                                        <span className="text-sm text-neutral-700 font-semibold">Unknown/Unidentified Arrival</span>
+                                    </label>
+                                </div>
+
                                 <CharCountInput
                                     label="Email Address"
                                     type="email"
