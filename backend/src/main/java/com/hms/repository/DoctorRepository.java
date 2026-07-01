@@ -61,6 +61,8 @@ public interface DoctorRepository extends JpaRepository<Doctor, Long> {
      */
     Optional<Doctor> findByEmailAndHospitalId(String email, Long hospitalId);
 
+    Optional<Doctor> findByHospitalIdAndUserId(Long hospitalId, Long userId);
+
     default Optional<Doctor> findByIdOrUserId(Long id, UserRepository userRepository) {
         if (id == null) return Optional.empty();
         Optional<Doctor> doc = findById(id);
