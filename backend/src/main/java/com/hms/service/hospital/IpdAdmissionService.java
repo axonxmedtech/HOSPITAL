@@ -235,6 +235,130 @@ public class IpdAdmissionService {
         return saved;
     }
 
+    @Transactional
+    public IpdAdmission admitFromEmergency(Long patientId, Long doctorId, Long wardId, Long bedId, String admissionType, String primaryDiagnosis) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found in context");
+
+        // Validate bed availability
+        Bed bed = bedRepository.findById(bedId).orElseThrow(() -> new RuntimeException("Bed not found"));
+        if (!bed.getStatus().equalsIgnoreCase("available")) {
+            throw new IllegalArgumentException("Bed is not available");
+        }
+
+        // Validate patient exists and matches tenant
+        com.hms.entity.Patient patient = patientRepository.findById(patientId).orElseThrow(() -> new RuntimeException("Patient not found"));
+        if (!patient.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Patient does not belong to this hospital");
+        }
+
+        // Create IPD admission with sequential IPD-1, IPD-2...
+        IpdAdmission ipd = new IpdAdmission();
+        int nextIpd = (ipdAdmissionRepository.findMaxIpdSequence() != null ? ipdAdmissionRepository.findMaxIpdSequence() : 0) + 1;
+        ipd.setIpdNumber("IPD-" + nextIpd);
+        ipd.setPatientId(patientId);
+        ipd.setDoctorId(doctorId);
+        ipd.setHospitalId(hospitalId);
+        ipd.setSourceOpdId(null); // No OPD source
+        ipd.setAdmissionType(admissionType != null ? admissionType : "EMERGENCY");
+        ipd.setStatus("ADMITTED");
+        ipd.setAdmissionDatetime(LocalDateTime.now());
+        ipd.setWardId(wardId);
+        ipd.setBedId(bedId);
+        ipd.setPrimaryDiagnosis(primaryDiagnosis != null ? primaryDiagnosis : "");
+
+        IpdAdmission saved = ipdAdmissionRepository.save(ipd);
+
+        // Record initial bed assignment in IpdBedHistory
+        try {
+            com.hms.entity.IpdBedHistory initialHist = new com.hms.entity.IpdBedHistory();
+            initialHist.setIpdAdmissionId(saved.getId());
+            initialHist.setWardId(wardId);
+            initialHist.setBedId(bedId);
+            initialHist.setAssignedAt(LocalDateTime.now());
+            ipdBedHistoryRepository.save(initialHist);
+        } catch (Exception e) {
+            logger.warn("Failed to save initial bed history", e);
+        }
+
+        // Mark bed occupied
+        bed.setStatus("occupied");
+        bed.setCurrentIpdAdmissionId(saved.getId());
+        bedRepository.save(bed);
+
+        com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId).orElse(null);
+        boolean hasBillingModule = hospital != null && hospital.getModules() != null && hospital.getModules().contains("BILLING");
+
+        if (hasBillingModule) {
+            // Create initial IPD billing (empty / started)
+            java.math.BigDecimal bedPrice = java.math.BigDecimal.ZERO;
+            if (wardId != null) {
+                java.util.Optional<com.hms.entity.Ward> wardOpt = wardRepository.findById(wardId);
+                if (wardOpt.isPresent()) {
+                    java.math.BigDecimal bp = wardOpt.get().getBedPrice();
+                    if (bp != null) {
+                        bedPrice = bp;
+                    }
+                }
+            }
+
+            Long appointmentId = null;
+            try {
+                java.util.List<com.hms.entity.Appointment> appointments = appointmentRepository.findByPatientIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(saved.getPatientId(), hospitalId);
+                if (appointments != null && !appointments.isEmpty()) {
+                    appointmentId = appointments.get(0).getId();
+                }
+            } catch (Exception ignored) {}
+
+            Billing bill = new Billing();
+            bill.setHospitalId(hospitalId);
+            bill.setPatientId(saved.getPatientId());
+            bill.setDoctorId(saved.getDoctorId());
+            bill.setIpdAdmissionId(saved.getId());
+            bill.setOpdId(null);
+            bill.setAppointmentId(appointmentId);
+            bill.setBillingType("IPD");
+            bill.setAmount(bedPrice);
+            bill.setDescription("Bed Price");
+            bill.setPaymentStatus("PENDING");
+            Billing savedBill = billingRepository.save(bill);
+
+            // Create billing item for bed price
+            if (bedPrice != null) {
+                com.hms.entity.BillingItem item = new com.hms.entity.BillingItem();
+                item.setBillingId(savedBill.getId());
+                item.setHospitalId(hospitalId);
+                item.setDescription("Bed Price");
+                item.setAmount(bedPrice);
+                billingItemRepository.save(item);
+            }
+        }
+
+        logger.info("Created direct IPD admission {} from emergency", saved.getIpdNumber());
+
+        // Audit log
+        try {
+            auditLogService.logAction(
+                    "IPD_ADMISSION_CREATED",
+                    "Patient was admitted to IPD from Emergency (Case: " + saved.getIpdNumber() + ").",
+                    securityHelper.getCurrentUserEmail(),
+                    hospitalId,
+                    "IPD",
+                    saved.getId().toString(),
+                    null);
+        } catch (Exception e) {
+            logger.warn("Failed to create audit log for emergency IPD admission", e);
+        }
+
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh data from admitFromEmergency", e);
+        }
+
+        return saved;
+    }
+
     @Transactional(readOnly = true)
     public org.springframework.data.domain.Page<java.util.Map<String, Object>> listIpdAdmissions(int page, int size, String search) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
@@ -524,12 +648,16 @@ public class IpdAdmissionService {
         }
 
         IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new RuntimeException("IPD admission not found"));
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found in context");
+
+        if (!ipd.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access Denied: Record belongs to another tenant");
+        }
+
         if (ipd.getStatus() == null || !ipd.getStatus().equalsIgnoreCase("ADMITTED")) {
             throw new IllegalArgumentException("Cannot add follow-up to non-admitted IPD");
         }
-
-        Long hospitalId = securityHelper.getCurrentHospitalId();
-        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found in context");
 
         String email = securityHelper.getCurrentUserEmail();
         com.hms.entity.Doctor doctor = doctorRepository.findByEmailAndHospitalId(email, hospitalId)
