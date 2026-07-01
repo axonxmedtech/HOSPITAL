@@ -40,6 +40,7 @@ public class DatabaseMigrationRunner {
         decoupleNurseTasksSchema();
         migratePatientModelSchema();
         migrateStaffIdentitySchema();
+        migrateAdmissionMonitoringSchema();
     }
 
     /**
@@ -509,6 +510,37 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("Failed to check or add column {}.{}: {}", tableName, columnName, e.getMessage());
+        }
+    }
+
+    /**
+     * Creates the monitoring_vitals table dynamically if it does not exist.
+     */
+    private void migrateAdmissionMonitoringSchema() {
+        try {
+            jdbcTemplate.execute(
+                "CREATE TABLE IF NOT EXISTS monitoring_vitals (" +
+                "  id bigint NOT NULL AUTO_INCREMENT," +
+                "  ipd_admission_id bigint NOT NULL," +
+                "  hospital_id bigint NOT NULL," +
+                "  context varchar(20) NOT NULL," +
+                "  pulse int DEFAULT NULL," +
+                "  bp_systolic int DEFAULT NULL," +
+                "  bp_diastolic int DEFAULT NULL," +
+                "  spo2 int DEFAULT NULL," +
+                "  respiratory_rate int DEFAULT NULL," +
+                "  temperature decimal(4,1) DEFAULT NULL," +
+                "  recorded_by bigint DEFAULT NULL," +
+                "  recorded_by_name varchar(100) DEFAULT NULL," +
+                "  recorded_at datetime NOT NULL," +
+                "  PRIMARY KEY (id)," +
+                "  KEY idx_mv_admission_context (ipd_admission_id, context)," +
+                "  KEY idx_mv_hospital (hospital_id)" +
+                ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+            );
+            log.info("DB migration applied: created/verified monitoring_vitals table");
+        } catch (Exception e) {
+            log.warn("DB migration skipped (migrateAdmissionMonitoringSchema): {}", e.getMessage());
         }
     }
 }

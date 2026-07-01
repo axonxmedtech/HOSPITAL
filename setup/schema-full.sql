@@ -1138,6 +1138,45 @@ CREATE TABLE IF NOT EXISTS vital_signs (
     CONSTRAINT fk_vs_ipd FOREIGN KEY (ipd_admission_id) REFERENCES ipd_admission(id)
 );
 
+-- Phase 0.7 additive migration:
+-- CREATE TABLE IF NOT EXISTS monitoring_vitals (
+--   id bigint NOT NULL AUTO_INCREMENT,
+--   ipd_admission_id bigint NOT NULL,
+--   hospital_id bigint NOT NULL,
+--   context varchar(20) NOT NULL,
+--   pulse int DEFAULT NULL,
+--   bp_systolic int DEFAULT NULL,
+--   bp_diastolic int DEFAULT NULL,
+--   spo2 int DEFAULT NULL,
+--   respiratory_rate int DEFAULT NULL,
+--   temperature decimal(4,1) DEFAULT NULL,
+--   recorded_by bigint DEFAULT NULL,
+--   recorded_by_name varchar(100) DEFAULT NULL,
+--   recorded_at datetime NOT NULL,
+--   PRIMARY KEY (id),
+--   KEY idx_mv_admission_context (ipd_admission_id, context),
+--   KEY idx_mv_hospital (hospital_id)
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS monitoring_vitals (
+  id bigint NOT NULL AUTO_INCREMENT,
+  ipd_admission_id bigint NOT NULL,
+  hospital_id bigint NOT NULL,
+  context varchar(20) NOT NULL,
+  pulse int DEFAULT NULL,
+  bp_systolic int DEFAULT NULL,
+  bp_diastolic int DEFAULT NULL,
+  spo2 int DEFAULT NULL,
+  respiratory_rate int DEFAULT NULL,
+  temperature decimal(4,1) DEFAULT NULL,
+  recorded_by bigint DEFAULT NULL,
+  recorded_by_name varchar(100) DEFAULT NULL,
+  recorded_at datetime NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_mv_admission_context (ipd_admission_id, context),
+  KEY idx_mv_hospital (hospital_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE IF NOT EXISTS doctor_orders (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     public_id VARCHAR(36) NOT NULL UNIQUE,
