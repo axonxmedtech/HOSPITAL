@@ -63,6 +63,15 @@ const otService = {
 
   acceptHandover: (admissionId, bookingId) =>
     apiService.post(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/handover/accept`),
+
+  getPostopOrders: (admissionId, bookingId) =>
+    apiService.get(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/postop-orders`),
+
+  savePostopOrders: (admissionId, bookingId, payload) =>
+    apiService.post(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/postop-orders`, payload),
+
+  signPostopOrders: (admissionId, bookingId) =>
+    apiService.post(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/postop-orders/sign`),
 };
 
 export default otService;
