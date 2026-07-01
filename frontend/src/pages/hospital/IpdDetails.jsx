@@ -21,6 +21,11 @@ import LabResultsPanel from '../../components/lab/LabResultsPanel';
 import RadiologyResultsPanel from '../../components/radiology/RadiologyResultsPanel';
 import DoctorRoundsPanel from '../../components/doctor/DoctorRoundsPanel';
 import OtWorkflowPanel from '../../components/ot/OtWorkflowPanel';
+import ConsentPanel from '../../components/ipd/ConsentPanel';
+import RiskAssessmentPanel from '../../components/ipd/RiskAssessmentPanel';
+import FluidChartPanel from '../../components/ipd/FluidChartPanel';
+import NursingProgressPanel from '../../components/ipd/NursingProgressPanel';
+import ClinicalAssessmentPanel from '../../components/ipd/ClinicalAssessmentPanel';
 
 const IpdDetails = () => {
     const { id } = useParams();
@@ -148,6 +153,19 @@ const IpdDetails = () => {
     };
 
     const isAdmin = user?.role === 'HOSPITAL_ADMIN';
+
+    // Clinical tab navigation
+    const [clinicalTab, setClinicalTab] = useState('overview');
+
+    const CLINICAL_TABS = [
+        { id: 'overview', label: 'Overview', icon: '🏠' },
+        { id: 'assessment', label: 'Clinical Assessment', icon: '🩺' },
+        { id: 'consent', label: 'Consents', icon: '📋' },
+        { id: 'risk', label: 'Risk Assessment', icon: '📊' },
+        { id: 'fluid', label: 'Fluid Chart', icon: '💧' },
+        { id: 'nursing', label: 'Nursing Progress', icon: '📓' },
+    ];
+
     const canManageBilling = 
         isAdmin ||
         (isDoctor && (user?.billingHandler === 'DOCTOR' || user?.billingHandler === 'BOTH')) ||
@@ -630,6 +648,77 @@ const IpdDetails = () => {
                         : 'This patient has been discharged. Clinical record is read-only.'}
                 </div>
             )}
+
+            {/* ===== Clinical Tab Navigation Bar ===== */}
+            <div className="mt-4 border-b border-gray-200">
+                <nav className="-mb-px flex gap-1 overflow-x-auto scrollbar-none" aria-label="Clinical tabs">
+                    {CLINICAL_TABS.map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setClinicalTab(tab.id)}
+                            className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold whitespace-nowrap border-b-2 transition-all ${
+                                clinicalTab === tab.id
+                                    ? 'border-blue-600 text-blue-700 bg-blue-50/50'
+                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                            }`}
+                        >
+                            <span>{tab.icon}</span>
+                            {tab.label}
+                        </button>
+                    ))}
+                </nav>
+            </div>
+
+            {/* ===== Clinical Panel Content ===== */}
+            {clinicalTab === 'assessment' && (
+                <div className="mt-4">
+                    <ClinicalAssessmentPanel
+                        admissionId={id}
+                        patientId={data?.patient?.id}
+                        isLocked={data?.isArchived || data?.status === 'DISCHARGED'}
+                    />
+                </div>
+            )}
+            {clinicalTab === 'consent' && (
+                <div className="mt-4">
+                    <ConsentPanel
+                        admissionId={id}
+                        patientId={data?.patient?.id}
+                        isLocked={data?.isArchived || data?.status === 'DISCHARGED'}
+                    />
+                </div>
+            )}
+            {clinicalTab === 'risk' && (
+                <div className="mt-4">
+                    <RiskAssessmentPanel
+                        admissionId={id}
+                        patientId={data?.patient?.id}
+                        isLocked={data?.isArchived || data?.status === 'DISCHARGED'}
+                    />
+                </div>
+            )}
+            {clinicalTab === 'fluid' && (
+                <div className="mt-4">
+                    <FluidChartPanel
+                        admissionId={id}
+                        patientId={data?.patient?.id}
+                        isLocked={data?.isArchived || data?.status === 'DISCHARGED'}
+                    />
+                </div>
+            )}
+            {clinicalTab === 'nursing' && (
+                <div className="mt-4">
+                    <NursingProgressPanel
+                        admissionId={id}
+                        patientId={data?.patient?.id}
+                        isLocked={data?.isArchived || data?.status === 'DISCHARGED'}
+                    />
+                </div>
+            )}
+
+            {/* ===== Overview Tab: existing content ===== */}
+            {clinicalTab === 'overview' && (
+            <div>
 
             {/* Patient Context Bar — allergies, EWS, pending labs, alerts */}
             {smartSummary && (
@@ -1671,9 +1760,12 @@ const IpdDetails = () => {
                         )}
                     </div>
                 </div>
-            )}
+                        )}
+                    </div>
+                )}\r
                         </div>
                     )}
+
                 </main>
             </div>
 

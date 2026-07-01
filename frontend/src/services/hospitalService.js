@@ -942,6 +942,132 @@ const hospitalService = {
         });
         return response.data;
     },
+
+    // ========== Clinical Assessment APIs (Form 07) ==========
+
+    createClinicalAssessmentDraft: async (payload) => {
+        const response = await apiClient.post('/hospital/clinical-assessments', payload);
+        return response.data;
+    },
+
+    updateClinicalAssessment: async (id, payload) => {
+        const response = await apiClient.put(`/hospital/clinical-assessments/${id}`, payload);
+        return response.data;
+    },
+
+    finalizeClinicalAssessment: async (id, payload) => {
+        const response = await apiClient.post(`/hospital/clinical-assessments/${id}/finalize`, payload);
+        return response.data;
+    },
+
+    amendClinicalAssessment: async (id, payload) => {
+        const response = await apiClient.post(`/hospital/clinical-assessments/${id}/amend`, payload);
+        return response.data;
+    },
+
+    getClinicalAssessmentByAdmission: async (admissionId) => {
+        const response = await apiClient.get(`/hospital/clinical-assessments/admission/${admissionId}`);
+        return response.data;
+    },
+
+    getPatientClinicalHistory: async (patientId) => {
+        const response = await apiClient.get(`/hospital/patients/${patientId}/clinical-history`);
+        return response.data;
+    },
+
+    // ========== Consent APIs (Forms 05 & 01) ==========
+
+    createConsentDraft: async (payload) => {
+        const response = await apiClient.post('/hospital/consents', payload);
+        return response.data;
+    },
+
+    getConsentsByAdmission: async (admissionId) => {
+        const response = await apiClient.get(`/hospital/consents/admission/${admissionId}`);
+        return response.data;
+    },
+
+    getConsentsByPatient: async (patientId) => {
+        const response = await apiClient.get(`/hospital/patients/${patientId}/consents`);
+        return response.data;
+    },
+
+    signConsent: async (id, payload) => {
+        const response = await apiClient.post(`/hospital/consents/${id}/sign`, payload);
+        return response.data;
+    },
+
+    submitConsent: async (id) => {
+        const response = await apiClient.post(`/hospital/consents/${id}/submit`);
+        return response.data;
+    },
+
+    // ========== Risk Assessment APIs (Form 06) ==========
+
+    saveRiskAssessment: async (payload) => {
+        const response = await apiClient.post('/hospital/risk-assessments', payload);
+        return response.data;
+    },
+
+    getRiskAssessmentByAdmission: async (admissionId) => {
+        const response = await apiClient.get(`/hospital/risk-assessments/admission/${admissionId}`);
+        return response.data;
+    },
+
+    reviewRiskAssessment: async (id, payload) => {
+        const response = await apiClient.post(`/hospital/risk-assessments/${id}/review`, payload);
+        return response.data;
+    },
+
+    // ========== Fluid Chart APIs (Form 10) ==========
+
+    recordFluidIntake: async (payload) => {
+        const response = await apiClient.post('/hospital/fluid/intake', payload);
+        return response.data;
+    },
+
+    recordFluidOutput: async (payload) => {
+        const response = await apiClient.post('/hospital/fluid/output', payload);
+        return response.data;
+    },
+
+    getFluidBalance: async (admissionId) => {
+        const response = await apiClient.get(`/hospital/fluid/balance/${admissionId}`);
+        return response.data;
+    },
+
+    getFluidTrends: async (admissionId) => {
+        const response = await apiClient.get(`/hospital/fluid/trends/${admissionId}`);
+        return response.data;
+    },
+
+    // ========== Nursing Progress APIs (Form 08) ==========
+
+    saveNursingProgress: async (payload) => {
+        const response = await apiClient.post('/hospital/nursing/progress', payload);
+        return response.data;
+    },
+
+    submitNursingProgress: async (id) => {
+        const response = await apiClient.post(`/hospital/nursing/progress/${id}/submit`);
+        return response.data;
+    },
+
+    addNursingProcedure: async (progressNoteId, payload) => {
+        const response = await apiClient.post(`/hospital/nursing/progress/${progressNoteId}/procedures`, payload);
+        return response.data;
+    },
+
+    saveShiftHandover: async (payload) => {
+        const response = await apiClient.post('/hospital/nursing/handover', payload);
+        return response.data;
+    },
+
+    getNursingProgressByAdmission: async (admissionId) => {
+        const response = await apiClient.get(`/hospital/nursing/progress/admission/${admissionId}`);
+        return response.data;
+    },
 };
 
 export default hospitalService;
+
