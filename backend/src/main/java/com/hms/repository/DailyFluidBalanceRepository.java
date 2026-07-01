@@ -25,4 +25,8 @@ public interface DailyFluidBalanceRepository extends JpaRepository<DailyFluidBal
      * Find summary for specific date.
      */
     Optional<DailyFluidBalance> findByHospitalIdAndAdmissionIdAndBalanceDate(Long hospitalId, Long admissionId, LocalDate balanceDate);
+
+    Optional<DailyFluidBalance> findByAdmissionIdAndBalanceDate(Long admissionId, LocalDate balanceDate);
+
+    List<DailyFluidBalance> findByHospitalIdAndAdmissionIdOrderByBalanceDateAsc(Long hospitalId, Long admissionId);
 }

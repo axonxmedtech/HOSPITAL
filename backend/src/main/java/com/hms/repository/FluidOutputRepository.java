@@ -24,4 +24,6 @@ public interface FluidOutputRepository extends JpaRepository<FluidOutput, Long> 
      * Find output logs for admission in a time window.
      */
     List<FluidOutput> findByHospitalIdAndAdmissionIdAndRecordedTimeBetween(Long hospitalId, Long admissionId, LocalDateTime start, LocalDateTime end);
+
+    List<FluidOutput> findByAdmissionIdAndRecordedTimeBetween(Long admissionId, LocalDateTime start, LocalDateTime end);
 }

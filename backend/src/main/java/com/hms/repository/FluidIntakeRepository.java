@@ -24,4 +24,8 @@ public interface FluidIntakeRepository extends JpaRepository<FluidIntake, Long> 
      * Find intake logs for admission in a time window.
      */
     List<FluidIntake> findByHospitalIdAndAdmissionIdAndRecordedTimeBetween(Long hospitalId, Long admissionId, LocalDateTime start, LocalDateTime end);
+
+    List<FluidIntake> findByAdmissionIdAndRecordedTimeBetween(Long admissionId, LocalDateTime start, LocalDateTime end);
+
+    boolean existsByHospitalIdAndSourceRef(Long hospitalId, Long sourceRef);
 }

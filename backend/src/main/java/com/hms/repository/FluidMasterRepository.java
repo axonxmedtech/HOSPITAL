@@ -18,4 +18,8 @@ public interface FluidMasterRepository extends JpaRepository<FluidMaster, Long> 
      * Find fluid definitions for a specific hospital (tenant-isolated).
      */
     List<FluidMaster> findByHospitalId(Long hospitalId);
+
+    long countByHospitalId(Long hospitalId);
+
+    boolean existsByHospitalIdAndCategoryAndName(Long hospitalId, String category, String name);
 }

@@ -30,6 +30,7 @@ public class CdssEvaluationService {
     @Autowired private RadiologyOrderRepository radiologyOrderRepo;
     @Autowired private IpdAdmissionRepository ipdAdmissionRepo;
     @Autowired private SecurityContextHelper securityHelper;
+    @Autowired private FluidOutputRepository fluidOutputRepo;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -379,5 +380,41 @@ public class CdssEvaluationService {
             result.add(dim);
         }
         return result;
+    }
+
+    @Transactional
+    public void evaluateFluidBalance(Long admissionId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        IpdAdmission admission = ipdAdmissionRepo.findById(admissionId).orElse(null);
+        if (admission == null) return;
+
+        // Query last 24 hours of urine output
+        LocalDateTime window = LocalDateTime.now().minusHours(24);
+        List<FluidOutput> outputs = fluidOutputRepo.findByHospitalIdAndAdmissionIdAndRecordedTimeBetween(
+                hospitalId, admissionId, window, LocalDateTime.now()
+        );
+
+        int totalUrineMl = outputs.stream()
+                .filter(o -> "URINE".equalsIgnoreCase(o.getType()))
+                .mapToInt(FluidOutput::getVolumeMl)
+                .sum();
+
+        // Safe clinical threshold check (<800 ml/day triggers AKI alert flag)
+        if (totalUrineMl > 0 && totalUrineMl < 800) {
+            boolean existsRecently = alertLogRepo.existsByHospitalIdAndIpdAdmissionIdAndAlertTypeAndCreatedAtAfter(
+                    hospitalId, admissionId, "AKI_RISK", LocalDateTime.now().minusHours(4)
+            );
+
+            if (!existsRecently) {
+                CdssAlertLog logRecord = new CdssAlertLog();
+                logRecord.setHospitalId(hospitalId);
+                logRecord.setPatientId(admission.getPatientId());
+                logRecord.setIpdAdmissionId(admissionId);
+                logRecord.setAlertType("AKI_RISK");
+                logRecord.setSeverity("HIGH");
+                logRecord.setAlertMessage("Potential AKI Risk: Patient's 24h urine output is critical (" + totalUrineMl + " ml) which is below the safe clinical limit (<800 ml/day).");
+                alertLogRepo.save(logRecord);
+            }
+        }
     }
 }
