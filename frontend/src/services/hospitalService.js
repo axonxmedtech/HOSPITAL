@@ -478,6 +478,10 @@ const hospitalService = {
         const response = await apiClient.get(`/api/ipd/${id}`, { timeout: 30000 });
         return response.data;
     },
+    getDischargeSummary: async (id) => {
+        const response = await apiClient.get(`/api/ipd/${id}/discharge-summary`);
+        return response.data;
+    },
     planDischarge: async (id, payload) => {
         const response = await apiClient.post(`/api/ipd/${id}/plan-discharge`, payload);
         return response.data;
@@ -491,6 +495,14 @@ const hospitalService = {
             responseType: 'blob',
             timeout: 60000
         });
+        return response.data;
+    },
+    getVitalsByAdmission: async (id) => {
+        const response = await apiClient.get(`/api/ipd/${id}/vitals`);
+        return response.data;
+    },
+    recordVitals: async (id, payload) => {
+        const response = await apiClient.post(`/api/ipd/${id}/vitals`, payload);
         return response.data;
     },
     getIpdBill: async (ipdId) => {

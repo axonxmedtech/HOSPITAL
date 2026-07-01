@@ -26,6 +26,8 @@ import RiskAssessmentPanel from '../../components/ipd/RiskAssessmentPanel';
 import FluidChartPanel from '../../components/ipd/FluidChartPanel';
 import NursingProgressPanel from '../../components/ipd/NursingProgressPanel';
 import ClinicalAssessmentPanel from '../../components/ipd/ClinicalAssessmentPanel';
+import VitalsPanel from '../../components/ipd/VitalsPanel';
+import DischargeSummaryPanel from '../../components/ipd/DischargeSummaryPanel';
 
 const IpdDetails = () => {
     const { id } = useParams();
@@ -164,6 +166,8 @@ const IpdDetails = () => {
         { id: 'risk', label: 'Risk Assessment', icon: '📊' },
         { id: 'fluid', label: 'Fluid Chart', icon: '💧' },
         { id: 'nursing', label: 'Nursing Progress', icon: '📓' },
+        { id: 'vitals', label: 'Vitals', icon: '❤️' },
+        { id: 'discharge', label: 'Discharge Summary', icon: '📄' },
     ];
 
     const canManageBilling = 
@@ -712,6 +716,25 @@ const IpdDetails = () => {
                         admissionId={id}
                         patientId={data?.patient?.id}
                         isLocked={data?.isArchived || data?.status === 'DISCHARGED'}
+                    />
+                </div>
+            )}
+            {clinicalTab === 'vitals' && (
+                <div className="mt-4">
+                    <VitalsPanel
+                        admissionId={id}
+                        patientId={data?.patient?.id}
+                        isLocked={data?.isArchived || data?.status === 'DISCHARGED'}
+                    />
+                </div>
+            )}
+            {clinicalTab === 'discharge' && (
+                <div className="mt-4">
+                    <DischargeSummaryPanel
+                        admissionId={id}
+                        patientId={data?.patient?.id}
+                        isLocked={data?.isArchived || data?.status === 'DISCHARGED'}
+                        ipdStatus={data?.status}
                     />
                 </div>
             )}
