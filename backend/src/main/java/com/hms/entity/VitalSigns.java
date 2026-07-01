@@ -55,6 +55,18 @@ public class VitalSigns {
     @Column(name = "respiratory_rate")
     private Integer respiratoryRate;
 
+    @Column(name = "temp_method", length = 50)
+    private String tempMethod;
+
+    @Column(name = "pulse_rhythm", length = 50)
+    private String pulseRhythm;
+
+    @Column(name = "resp_pattern", length = 50)
+    private String respPattern;
+
+    @Column(name = "bp_position", length = 50)
+    private String bpPosition;
+
     @Column(name = "recorded_by")
     private Long recordedBy;
 

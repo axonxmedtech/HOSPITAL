@@ -1132,11 +1132,22 @@ CREATE TABLE IF NOT EXISTS vital_signs (
     temperature DECIMAL(4,1),
     spo2 INT,
     respiratory_rate int DEFAULT NULL,
+    temp_method varchar(50) DEFAULT NULL,
+    pulse_rhythm varchar(50) DEFAULT NULL,
+    resp_pattern varchar(50) DEFAULT NULL,
+    bp_position varchar(50) DEFAULT NULL,
     recorded_by BIGINT,
     recorded_by_name VARCHAR(100),
     recorded_at DATETIME NOT NULL,
     CONSTRAINT fk_vs_ipd FOREIGN KEY (ipd_admission_id) REFERENCES ipd_admission(id)
 );
+
+-- Phase 1 additive migration:
+-- ALTER TABLE `vital_signs`
+--   ADD COLUMN `temp_method` varchar(50) DEFAULT NULL,
+--   ADD COLUMN `pulse_rhythm` varchar(50) DEFAULT NULL,
+--   ADD COLUMN `resp_pattern` varchar(50) DEFAULT NULL,
+--   ADD COLUMN `bp_position` varchar(50) DEFAULT NULL;
 
 -- Phase 0.7 additive migration:
 -- CREATE TABLE IF NOT EXISTS monitoring_vitals (
@@ -1235,6 +1246,555 @@ CREATE TABLE IF NOT EXISTS document_versions (
   PRIMARY KEY (id),
   KEY idx_dv_doc (document_type, document_id),
   KEY idx_dv_hospital (hospital_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Phase 1 additive tables:
+-- CREATE TABLE IF NOT EXISTS patient_consent (
+--   id bigint NOT NULL AUTO_INCREMENT,
+--   public_id varchar(36) NOT NULL UNIQUE,
+--   hospital_id bigint NOT NULL,
+--   patient_id bigint NOT NULL,
+--   admission_id bigint DEFAULT NULL,
+--   encounter_type varchar(20) NOT NULL,
+--   consent_type varchar(30) NOT NULL,
+--   version int NOT NULL,
+--   parent_id bigint DEFAULT NULL,
+--   status varchar(20) NOT NULL,
+--   patient_signed boolean NOT NULL DEFAULT false,
+--   guardian_signed boolean NOT NULL DEFAULT false,
+--   relationship varchar(40) DEFAULT NULL,
+--   signature_type varchar(30) DEFAULT NULL,
+--   witness_id bigint DEFAULT NULL,
+--   language varchar(20) NOT NULL,
+--   interpreter_id bigint DEFAULT NULL,
+--   signed_at datetime DEFAULT NULL,
+--   remarks text DEFAULT NULL,
+--   created_by bigint DEFAULT NULL,
+--   created_at datetime NOT NULL,
+--   updated_at datetime NOT NULL,
+--   is_deleted boolean NOT NULL DEFAULT false,
+--   PRIMARY KEY (id),
+--   KEY idx_consent_patient (patient_id),
+--   KEY idx_consent_admission (admission_id),
+--   KEY idx_consent_hospital (hospital_id)
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+-- CREATE TABLE IF NOT EXISTS blood_consent_detail (
+--   id bigint NOT NULL AUTO_INCREMENT,
+--   consent_id bigint NOT NULL UNIQUE,
+--   explanation_given boolean NOT NULL DEFAULT false,
+--   witness_patient_name varchar(100) DEFAULT NULL,
+--   witness_patient_signed boolean NOT NULL DEFAULT false,
+--   witness_hospital_name varchar(100) DEFAULT NULL,
+--   witness_hospital_signed boolean NOT NULL DEFAULT false,
+--   interpreter_required boolean NOT NULL DEFAULT false,
+--   interpreter_language varchar(40) DEFAULT NULL,
+--   interpreter_name varchar(100) DEFAULT NULL,
+--   interpreter_signed boolean NOT NULL DEFAULT false,
+--   blood_request_id bigint DEFAULT NULL,
+--   PRIMARY KEY (id),
+--   CONSTRAINT fk_blood_consent_parent FOREIGN KEY (consent_id) REFERENCES patient_consent (id) ON DELETE CASCADE
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+-- CREATE TABLE IF NOT EXISTS clinical_assessment (
+--   id bigint NOT NULL AUTO_INCREMENT,
+--   public_id varchar(36) NOT NULL UNIQUE,
+--   hospital_id bigint NOT NULL,
+--   patient_id bigint NOT NULL,
+--   admission_id bigint NOT NULL,
+--   doctor_id bigint NOT NULL,
+--   chief_complaint text NOT NULL,
+--   history_present_illness text NOT NULL,
+--   provisional_diagnosis text NOT NULL,
+--   treatment_plan text NOT NULL,
+--   status varchar(20) NOT NULL,
+--   version int NOT NULL,
+--   parent_id bigint DEFAULT NULL,
+--   finalized_by bigint DEFAULT NULL,
+--   finalized_at datetime DEFAULT NULL,
+--   created_at datetime NOT NULL,
+--   updated_at datetime NOT NULL,
+--   PRIMARY KEY (id),
+--   KEY idx_ca_admission (admission_id),
+--   KEY idx_ca_hospital (hospital_id)
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+-- CREATE TABLE IF NOT EXISTS patient_medical_history (
+--   id bigint NOT NULL AUTO_INCREMENT,
+--   hospital_id bigint NOT NULL,
+--   patient_id bigint NOT NULL,
+--   condition_name varchar(100) NOT NULL,
+--   diagnosed_year int DEFAULT NULL,
+--   is_active boolean NOT NULL DEFAULT true,
+--   recorded_at datetime NOT NULL,
+--   PRIMARY KEY (id),
+--   KEY idx_pmh_patient (patient_id)
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+-- CREATE TABLE IF NOT EXISTS patient_surgical_history (
+--   id bigint NOT NULL AUTO_INCREMENT,
+--   hospital_id bigint NOT NULL,
+--   patient_id bigint NOT NULL,
+--   procedure_name varchar(150) NOT NULL,
+--   surgery_year int DEFAULT NULL,
+--   hospital_name varchar(100) DEFAULT NULL,
+--   complications text DEFAULT NULL,
+--   recorded_at datetime NOT NULL,
+--   PRIMARY KEY (id),
+--   KEY idx_psh_patient (patient_id)
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+-- CREATE TABLE IF NOT EXISTS patient_medication_history (
+--   id bigint NOT NULL AUTO_INCREMENT,
+--   hospital_id bigint NOT NULL,
+--   patient_id bigint NOT NULL,
+--   medication_name varchar(150) NOT NULL,
+--   dosage varchar(50) DEFAULT NULL,
+--   frequency varchar(50) DEFAULT NULL,
+--   compliance_status varchar(30) DEFAULT NULL,
+--   recorded_at datetime NOT NULL,
+--   PRIMARY KEY (id),
+--   KEY idx_pmdh_patient (patient_id)
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+-- CREATE TABLE IF NOT EXISTS patient_family_history (
+--   id bigint NOT NULL AUTO_INCREMENT,
+--   hospital_id bigint NOT NULL,
+--   patient_id bigint NOT NULL,
+--   relationship varchar(50) NOT NULL,
+--   condition_name varchar(100) NOT NULL,
+--   recorded_at datetime NOT NULL,
+--   PRIMARY KEY (id),
+--   KEY idx_pfh_patient (patient_id)
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+-- CREATE TABLE IF NOT EXISTS patient_social_history (
+--   id bigint NOT NULL AUTO_INCREMENT,
+--   hospital_id bigint NOT NULL,
+--   patient_id bigint NOT NULL,
+--   smoking_status varchar(30) DEFAULT NULL,
+--   alcohol_consumption varchar(30) DEFAULT NULL,
+--   tobacco_use varchar(30) DEFAULT NULL,
+--   dietary_habits varchar(100) DEFAULT NULL,
+--   recorded_at datetime NOT NULL,
+--   PRIMARY KEY (id),
+--   KEY idx_psch_patient (patient_id)
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+-- CREATE TABLE IF NOT EXISTS patient_diagnosis (
+--   id bigint NOT NULL AUTO_INCREMENT,
+--   hospital_id bigint NOT NULL,
+--   patient_id bigint NOT NULL,
+--   admission_id bigint NOT NULL,
+--   diagnosis_code varchar(30) DEFAULT NULL,
+--   diagnosis_description text NOT NULL,
+--   diagnosis_type varchar(20) NOT NULL,
+--   recorded_by bigint NOT NULL,
+--   recorded_at datetime NOT NULL,
+--   PRIMARY KEY (id),
+--   KEY idx_pd_admission (admission_id)
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+-- CREATE TABLE IF NOT EXISTS patient_risk_assessment (
+--   id bigint NOT NULL AUTO_INCREMENT,
+--   public_id varchar(36) NOT NULL UNIQUE,
+--   hospital_id bigint NOT NULL,
+--   patient_id bigint NOT NULL,
+--   admission_id bigint NOT NULL,
+--   scale_type varchar(30) NOT NULL,
+--   fall_risk varchar(10) NOT NULL,
+--   pressure_ulcer_risk varchar(10) NOT NULL,
+--   nutrition_risk varchar(10) NOT NULL,
+--   mental_status varchar(50) DEFAULT NULL,
+--   mobility_status varchar(50) DEFAULT NULL,
+--   infection_risk boolean NOT NULL DEFAULT false,
+--   allergy_risk boolean NOT NULL DEFAULT false,
+--   isolation_required boolean NOT NULL DEFAULT false,
+--   overall_risk varchar(10) NOT NULL,
+--   inputs_json text DEFAULT NULL,
+--   status varchar(20) NOT NULL,
+--   version int NOT NULL,
+--   parent_id bigint DEFAULT NULL,
+--   assessed_by bigint NOT NULL,
+--   reviewed_by bigint DEFAULT NULL,
+--   created_at datetime NOT NULL,
+--   PRIMARY KEY (id),
+--   KEY idx_pra_admission (admission_id),
+--   KEY idx_pra_hospital (hospital_id)
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+-- CREATE TABLE IF NOT EXISTS fluid_master (
+--   id bigint NOT NULL AUTO_INCREMENT,
+--   hospital_id bigint NOT NULL,
+--   category varchar(30) NOT NULL,
+--   name varchar(100) NOT NULL,
+--   default_unit varchar(10) NOT NULL,
+--   PRIMARY KEY (id),
+--   KEY idx_fm_hospital (hospital_id)
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+-- CREATE TABLE IF NOT EXISTS fluid_intake (
+--   id bigint NOT NULL AUTO_INCREMENT,
+--   public_id varchar(36) NOT NULL UNIQUE,
+--   hospital_id bigint NOT NULL,
+--   patient_id bigint NOT NULL,
+--   admission_id bigint NOT NULL,
+--   type varchar(30) NOT NULL,
+--   source_ref bigint DEFAULT NULL,
+--   description varchar(255) NOT NULL,
+--   volume_ml int NOT NULL,
+--   recorded_time datetime NOT NULL,
+--   recorded_by bigint NOT NULL,
+--   created_at datetime NOT NULL,
+--   PRIMARY KEY (id),
+--   KEY idx_fi_admission (admission_id)
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+-- CREATE TABLE IF NOT EXISTS fluid_output (
+--   id bigint NOT NULL AUTO_INCREMENT,
+--   public_id varchar(36) NOT NULL UNIQUE,
+--   hospital_id bigint NOT NULL,
+--   patient_id bigint NOT NULL,
+--   admission_id bigint NOT NULL,
+--   type varchar(30) NOT NULL,
+--   description varchar(255) NOT NULL,
+--   volume_ml int NOT NULL,
+--   color varchar(50) DEFAULT NULL,
+--   recorded_time datetime NOT NULL,
+--   recorded_by bigint NOT NULL,
+--   created_at datetime NOT NULL,
+--   PRIMARY KEY (id),
+--   KEY idx_fo_admission (admission_id)
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+-- CREATE TABLE IF NOT EXISTS daily_fluid_balance (
+--   id bigint NOT NULL AUTO_INCREMENT,
+--   hospital_id bigint NOT NULL,
+--   patient_id bigint NOT NULL,
+--   admission_id bigint NOT NULL,
+--   balance_date date NOT NULL,
+--   total_intake int NOT NULL,
+--   total_output int NOT NULL,
+--   net_balance int NOT NULL,
+--   updated_at datetime NOT NULL,
+--   PRIMARY KEY (id),
+--   UNIQUE KEY uq_dfb_encounter (admission_id, balance_date)
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+-- CREATE TABLE IF NOT EXISTS nursing_progress_note (
+--   id bigint NOT NULL AUTO_INCREMENT,
+--   public_id varchar(36) NOT NULL UNIQUE,
+--   hospital_id bigint NOT NULL,
+--   patient_id bigint NOT NULL,
+--   admission_id bigint NOT NULL,
+--   shift varchar(20) NOT NULL,
+--   nurse_id bigint NOT NULL,
+--   general_condition varchar(50) NOT NULL,
+--   pain_score int NOT NULL,
+--   remarks text DEFAULT NULL,
+--   doctor_notified boolean NOT NULL DEFAULT false,
+--   doctor_name varchar(100) DEFAULT NULL,
+--   doctor_advice text DEFAULT NULL,
+--   patient_response varchar(50) NOT NULL,
+--   status varchar(20) NOT NULL,
+--   created_at datetime NOT NULL,
+--   PRIMARY KEY (id),
+--   KEY idx_npn_admission (admission_id)
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+-- CREATE TABLE IF NOT EXISTS nursing_procedure (
+--   id bigint NOT NULL AUTO_INCREMENT,
+--   progress_note_id bigint NOT NULL,
+--   hospital_id bigint NOT NULL,
+--   procedure_name varchar(150) NOT NULL,
+--   performed_by bigint NOT NULL,
+--   performed_time datetime NOT NULL,
+--   remarks text DEFAULT NULL,
+--   PRIMARY KEY (id),
+--   CONSTRAINT fk_nproc_parent FOREIGN KEY (progress_note_id) REFERENCES nursing_progress_note (id) ON DELETE CASCADE
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+-- CREATE TABLE IF NOT EXISTS shift_handover (
+--   id bigint NOT NULL AUTO_INCREMENT,
+--   hospital_id bigint NOT NULL,
+--   admission_id bigint NOT NULL,
+--   shift varchar(20) NOT NULL,
+--   outgoing_nurse_id bigint NOT NULL,
+--   incoming_nurse_id bigint NOT NULL,
+--   pending_tasks text DEFAULT NULL,
+--   critical_alerts text DEFAULT NULL,
+--   meds_due text DEFAULT NULL,
+--   investigations_pending text DEFAULT NULL,
+--   doctor_review_pending boolean NOT NULL DEFAULT false,
+--   created_at datetime NOT NULL,
+--   PRIMARY KEY (id),
+--   KEY idx_sh_admission (admission_id)
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS patient_consent (
+  id bigint NOT NULL AUTO_INCREMENT,
+  public_id varchar(36) NOT NULL UNIQUE,
+  hospital_id bigint NOT NULL,
+  patient_id bigint NOT NULL,
+  admission_id bigint DEFAULT NULL,
+  encounter_type varchar(20) NOT NULL,
+  consent_type varchar(30) NOT NULL,
+  version int NOT NULL,
+  parent_id bigint DEFAULT NULL,
+  status varchar(20) NOT NULL,
+  patient_signed boolean NOT NULL DEFAULT false,
+  guardian_signed boolean NOT NULL DEFAULT false,
+  relationship varchar(40) DEFAULT NULL,
+  signature_type varchar(30) DEFAULT NULL,
+  witness_id bigint DEFAULT NULL,
+  language varchar(20) NOT NULL,
+  interpreter_id bigint DEFAULT NULL,
+  signed_at datetime DEFAULT NULL,
+  remarks text DEFAULT NULL,
+  created_by bigint DEFAULT NULL,
+  created_at datetime NOT NULL,
+  updated_at datetime NOT NULL,
+  is_deleted boolean NOT NULL DEFAULT false,
+  PRIMARY KEY (id),
+  KEY idx_consent_patient (patient_id),
+  KEY idx_consent_admission (admission_id),
+  KEY idx_consent_hospital (hospital_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS blood_consent_detail (
+  id bigint NOT NULL AUTO_INCREMENT,
+  consent_id bigint NOT NULL UNIQUE,
+  explanation_given boolean NOT NULL DEFAULT false,
+  witness_patient_name varchar(100) DEFAULT NULL,
+  witness_patient_signed boolean NOT NULL DEFAULT false,
+  witness_hospital_name varchar(100) DEFAULT NULL,
+  witness_hospital_signed boolean NOT NULL DEFAULT false,
+  interpreter_required boolean NOT NULL DEFAULT false,
+  interpreter_language varchar(40) DEFAULT NULL,
+  interpreter_name varchar(100) DEFAULT NULL,
+  interpreter_signed boolean NOT NULL DEFAULT false,
+  blood_request_id bigint DEFAULT NULL,
+  PRIMARY KEY (id),
+  CONSTRAINT fk_blood_consent_parent FOREIGN KEY (consent_id) REFERENCES patient_consent (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS clinical_assessment (
+  id bigint NOT NULL AUTO_INCREMENT,
+  public_id varchar(36) NOT NULL UNIQUE,
+  hospital_id bigint NOT NULL,
+  patient_id bigint NOT NULL,
+  admission_id bigint NOT NULL,
+  doctor_id bigint NOT NULL,
+  chief_complaint text NOT NULL,
+  history_present_illness text NOT NULL,
+  provisional_diagnosis text NOT NULL,
+  treatment_plan text NOT NULL,
+  status varchar(20) NOT NULL,
+  version int NOT NULL,
+  parent_id bigint DEFAULT NULL,
+  finalized_by bigint DEFAULT NULL,
+  finalized_at datetime DEFAULT NULL,
+  created_at datetime NOT NULL,
+  updated_at datetime NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_ca_admission (admission_id),
+  KEY idx_ca_hospital (hospital_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS patient_medical_history (
+  id bigint NOT NULL AUTO_INCREMENT,
+  hospital_id bigint NOT NULL,
+  patient_id bigint NOT NULL,
+  condition_name varchar(100) NOT NULL,
+  diagnosed_year int DEFAULT NULL,
+  is_active boolean NOT NULL DEFAULT true,
+  recorded_at datetime NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_pmh_patient (patient_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS patient_surgical_history (
+  id bigint NOT NULL AUTO_INCREMENT,
+  hospital_id bigint NOT NULL,
+  patient_id bigint NOT NULL,
+  procedure_name varchar(150) NOT NULL,
+  surgery_year int DEFAULT NULL,
+  hospital_name varchar(100) DEFAULT NULL,
+  complications text DEFAULT NULL,
+  recorded_at datetime NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_psh_patient (patient_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS patient_medication_history (
+  id bigint NOT NULL AUTO_INCREMENT,
+  hospital_id bigint NOT NULL,
+  patient_id bigint NOT NULL,
+  medication_name varchar(150) NOT NULL,
+  dosage varchar(50) DEFAULT NULL,
+  frequency varchar(50) DEFAULT NULL,
+  compliance_status varchar(30) DEFAULT NULL,
+  recorded_at datetime NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_pmdh_patient (patient_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS patient_family_history (
+  id bigint NOT NULL AUTO_INCREMENT,
+  hospital_id bigint NOT NULL,
+  patient_id bigint NOT NULL,
+  relationship varchar(50) NOT NULL,
+  condition_name varchar(100) NOT NULL,
+  recorded_at datetime NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_pfh_patient (patient_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS patient_social_history (
+  id bigint NOT NULL AUTO_INCREMENT,
+  hospital_id bigint NOT NULL,
+  patient_id bigint NOT NULL,
+  smoking_status varchar(30) DEFAULT NULL,
+  alcohol_consumption varchar(30) DEFAULT NULL,
+  tobacco_use varchar(30) DEFAULT NULL,
+  dietary_habits varchar(100) DEFAULT NULL,
+  recorded_at datetime NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_psch_patient (patient_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS patient_diagnosis (
+  id bigint NOT NULL AUTO_INCREMENT,
+  hospital_id bigint NOT NULL,
+  patient_id bigint NOT NULL,
+  admission_id bigint NOT NULL,
+  diagnosis_code varchar(30) DEFAULT NULL,
+  diagnosis_description text NOT NULL,
+  diagnosis_type varchar(20) NOT NULL,
+  recorded_by bigint NOT NULL,
+  recorded_at datetime NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_pd_admission (admission_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS patient_risk_assessment (
+  id bigint NOT NULL AUTO_INCREMENT,
+  public_id varchar(36) NOT NULL UNIQUE,
+  hospital_id bigint NOT NULL,
+  patient_id bigint NOT NULL,
+  admission_id bigint NOT NULL,
+  scale_type varchar(30) NOT NULL,
+  fall_risk varchar(10) NOT NULL,
+  pressure_ulcer_risk varchar(10) NOT NULL,
+  nutrition_risk varchar(10) NOT NULL,
+  mental_status varchar(50) DEFAULT NULL,
+  mobility_status varchar(50) DEFAULT NULL,
+  infection_risk boolean NOT NULL DEFAULT false,
+  allergy_risk boolean NOT NULL DEFAULT false,
+  isolation_required boolean NOT NULL DEFAULT false,
+  overall_risk varchar(10) NOT NULL,
+  inputs_json text DEFAULT NULL,
+  status varchar(20) NOT NULL,
+  version int NOT NULL,
+  parent_id bigint DEFAULT NULL,
+  assessed_by bigint NOT NULL,
+  reviewed_by bigint DEFAULT NULL,
+  created_at datetime NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_pra_admission (admission_id),
+  KEY idx_pra_hospital (hospital_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS fluid_master (
+  id bigint NOT NULL AUTO_INCREMENT,
+  hospital_id bigint NOT NULL,
+  category varchar(30) NOT NULL,
+  name varchar(100) NOT NULL,
+  default_unit varchar(10) NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_fm_hospital (hospital_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS fluid_intake (
+  id bigint NOT NULL AUTO_INCREMENT,
+  public_id varchar(36) NOT NULL UNIQUE,
+  hospital_id bigint NOT NULL,
+  patient_id bigint NOT NULL,
+  admission_id bigint NOT NULL,
+  type varchar(30) NOT NULL,
+  source_ref bigint DEFAULT NULL,
+  description varchar(255) NOT NULL,
+  volume_ml int NOT NULL,
+  recorded_time datetime NOT NULL,
+  recorded_by bigint NOT NULL,
+  created_at datetime NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_fi_admission (admission_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS fluid_output (
+  id bigint NOT NULL AUTO_INCREMENT,
+  public_id varchar(36) NOT NULL UNIQUE,
+  hospital_id bigint NOT NULL,
+  patient_id bigint NOT NULL,
+  admission_id bigint NOT NULL,
+  type varchar(30) NOT NULL,
+  description varchar(255) NOT NULL,
+  volume_ml int NOT NULL,
+  color varchar(50) DEFAULT NULL,
+  recorded_time datetime NOT NULL,
+  recorded_by bigint NOT NULL,
+  created_at datetime NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_fo_admission (admission_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS daily_fluid_balance (
+  id bigint NOT NULL AUTO_INCREMENT,
+  hospital_id bigint NOT NULL,
+  patient_id bigint NOT NULL,
+  admission_id bigint NOT NULL,
+  balance_date date NOT NULL,
+  total_intake int NOT NULL,
+  total_output int NOT NULL,
+  net_balance int NOT NULL,
+  updated_at datetime NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_dfb_encounter (admission_id, balance_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS nursing_progress_note (
+  id bigint NOT NULL AUTO_INCREMENT,
+  public_id varchar(36) NOT NULL UNIQUE,
+  hospital_id bigint NOT NULL,
+  patient_id bigint NOT NULL,
+  admission_id bigint NOT NULL,
+  shift varchar(20) NOT NULL,
+  nurse_id bigint NOT NULL,
+  general_condition varchar(50) NOT NULL,
+  pain_score int NOT NULL,
+  remarks text DEFAULT NULL,
+  doctor_notified boolean NOT NULL DEFAULT false,
+  doctor_name varchar(100) DEFAULT NULL,
+  doctor_advice text DEFAULT NULL,
+  patient_response varchar(50) NOT NULL,
+  status varchar(20) NOT NULL,
+  created_at datetime NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_npn_admission (admission_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS nursing_procedure (
+  id bigint NOT NULL AUTO_INCREMENT,
+  progress_note_id bigint NOT NULL,
+  hospital_id bigint NOT NULL,
+  procedure_name varchar(150) NOT NULL,
+  performed_by bigint NOT NULL,
+  performed_time datetime NOT NULL,
+  remarks text DEFAULT NULL,
+  PRIMARY KEY (id),
+  CONSTRAINT fk_nproc_parent FOREIGN KEY (progress_note_id) REFERENCES nursing_progress_note (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS shift_handover (
+  id bigint NOT NULL AUTO_INCREMENT,
+  hospital_id bigint NOT NULL,
+  admission_id bigint NOT NULL,
+  shift varchar(20) NOT NULL,
+  outgoing_nurse_id bigint NOT NULL,
+  incoming_nurse_id bigint NOT NULL,
+  pending_tasks text DEFAULT NULL,
+  critical_alerts text DEFAULT NULL,
+  meds_due text DEFAULT NULL,
+  investigations_pending text DEFAULT NULL,
+  doctor_review_pending boolean NOT NULL DEFAULT false,
+  created_at datetime NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_sh_admission (admission_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS doctor_orders (
