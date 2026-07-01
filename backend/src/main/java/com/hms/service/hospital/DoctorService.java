@@ -84,16 +84,6 @@ public class DoctorService {
             throw new IllegalArgumentException("Email already exists in the system");
         }
 
-        // Set hospital_id to ensure multi-tenant isolation
-        doctor.setHospitalId(hospitalId);
-
-        // Save doctor record
-        doctor = doctorRepository.save(doctor);
-
-        // Set sequential customId using the auto-increment id: DOC1, DOC2, DOC3...
-        doctor.setCustomId("DOC" + doctor.getId());
-        doctor = doctorRepository.save(doctor);
-
         // Create user account for doctor login
         User doctorUser = new User();
         doctorUser.setEmail(doctor.getEmail());
@@ -101,7 +91,18 @@ public class DoctorService {
         doctorUser.setName(doctor.getName());
         doctorUser.setRole("DOCTOR");
         doctorUser.setHospitalId(hospitalId);
-        userRepository.save(doctorUser);
+        User savedUser = userRepository.save(doctorUser);
+
+        // Set hospital_id to ensure multi-tenant isolation
+        doctor.setHospitalId(hospitalId);
+        doctor.setUserId(savedUser.getId());
+
+        // Save doctor record
+        doctor = doctorRepository.save(doctor);
+
+        // Set sequential customId using the auto-increment id: DOC1, DOC2, DOC3...
+        doctor.setCustomId("DOC" + doctor.getId());
+        doctor = doctorRepository.save(doctor);
 
         logger.info("Hospital {} created new doctor: {}", hospitalId, doctor.getEmail());
 

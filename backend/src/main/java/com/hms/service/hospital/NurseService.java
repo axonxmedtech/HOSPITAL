@@ -94,6 +94,7 @@ public class NurseService {
         nurseProfile.setEmail(email);
         nurseProfile.setPhone(phone != null ? phone : "");
         nurseProfile.setCustomId(saved.getCustomId());
+        nurseProfile.setUserId(saved.getId());
         nurseProfile.setIsActive(true);
         nurseRepository.save(nurseProfile);
 

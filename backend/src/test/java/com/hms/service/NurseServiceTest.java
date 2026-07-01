@@ -77,6 +77,7 @@ class NurseServiceTest {
 
         Nurse savedNurse = new Nurse();
         savedNurse.setId(1L);
+        savedNurse.setUserId(10L);
         when(nurseRepository.save(any(Nurse.class))).thenReturn(savedNurse);
 
         User result = nurseService.createNurse("Nurse Jane", "nurse@test.com", "password123", "9876543210");
@@ -90,7 +91,9 @@ class NurseServiceTest {
         assertThat(capturedUser.getRole()).isEqualTo("NURSE");
         assertThat(capturedUser.getEmail()).isEqualTo("nurse@test.com");
 
-        verify(nurseRepository, atLeastOnce()).save(any(Nurse.class));
+        ArgumentCaptor<Nurse> nurseCaptor = ArgumentCaptor.forClass(Nurse.class);
+        verify(nurseRepository, atLeastOnce()).save(nurseCaptor.capture());
+        assertThat(nurseCaptor.getValue().getUserId()).isEqualTo(10L);
     }
 
     @Test
