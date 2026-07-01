@@ -2193,6 +2193,30 @@ CREATE TABLE IF NOT EXISTS postoperative_orders (
 ) ENGINE=InnoDB;
 CREATE INDEX IF NOT EXISTS idx_postop_orders_hospital_booking ON postoperative_orders(hospital_id, ot_booking_id);
 
+-- Phase 4.06 Instrument/Swab/Needle Count (Form 23 core). Additive; Hibernate ddl-auto creates it.
+CREATE TABLE IF NOT EXISTS ot_instrument_count (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    patient_id BIGINT NULL,
+    admission_id BIGINT NULL,
+    ot_booking_id BIGINT NOT NULL UNIQUE,
+    scrub_nurse VARCHAR(100) NULL,
+    circulating_nurse VARCHAR(100) NULL,
+    count_summary TEXT NULL,
+    initial_count_status VARCHAR(20) NULL,
+    final_count_status VARCHAR(20) NULL,
+    discrepancy_found BIT(1) NULL,
+    resolved BIT(1) NULL,
+    search_conducted BIT(1) NULL,
+    xray_performed BIT(1) NULL,
+    resolution_remarks TEXT NULL,
+    completed_at DATETIME NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_instcount_booking FOREIGN KEY (ot_booking_id) REFERENCES ot_bookings(id),
+    CONSTRAINT fk_instcount_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_instrument_count_hospital_booking ON ot_instrument_count(hospital_id, ot_booking_id);
+
 -- Table structure for table `mrd_records`
 DROP TABLE IF EXISTS `mrd_records`;
 CREATE TABLE `mrd_records` (

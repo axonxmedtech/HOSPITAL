@@ -2,6 +2,7 @@ package com.hms.service.hospital;
 
 import com.hms.dto.AnaesthesiaRecordRequest;
 import com.hms.dto.ClinicalHandoverRequest;
+import com.hms.dto.InstrumentCountRequest;
 import com.hms.dto.OperationRecordRequest;
 import com.hms.dto.OtBookingRequest;
 import com.hms.dto.OtChecklistRequest;
@@ -66,6 +67,9 @@ public class OtService {
 
     @Autowired
     private PostopOrdersRepository postopOrdersRepository;
+
+    @Autowired
+    private OtInstrumentCountRepository instrumentCountRepository;
 
     /** Minimum modified Aldrete score required to transfer a patient out of PACU to a ward. */
     private static final int ALDRETE_TRANSFER_MIN = 9;
@@ -218,6 +222,19 @@ public class OtService {
         } else if ("SIGN_OUT".equalsIgnoreCase(phase)) {
             if (!checklist.isTimeOutCompleted()) {
                 throw new IllegalStateException("Cannot sign Sign Out before Time Out is completed.");
+            }
+            // BR-2 (Form 23): when a count record exists, sign-out is blocked until the final
+            // count is VERIFIED or a documented discrepancy resolution has been recorded.
+            // (No count record = legacy flow, allowed unchanged.)
+            OtInstrumentCount count = instrumentCountRepository
+                    .findByOtBookingIdAndHospitalId(bookingId, hospitalId).orElse(null);
+            if (count != null && !"VERIFIED".equalsIgnoreCase(count.getFinalCountStatus())
+                    && !Boolean.TRUE.equals(count.getResolved())) {
+                throw new IllegalStateException(
+                        "Cannot sign out: the instrument/swab/needle count is not verified"
+                                + (("MISMATCH".equalsIgnoreCase(count.getFinalCountStatus()))
+                                        ? " — resolve the count discrepancy first."
+                                        : "."));
             }
             checklist.setSignOutCompleted(true);
             checklist.setSignOutBy(email);
@@ -867,6 +884,107 @@ public class OtService {
         orders.setMonitoringPlan(request.getMonitoringPlan());
         orders.setInvestigations(request.getInvestigations());
         orders.setEscalationInstructions(request.getEscalationInstructions());
+    }
+
+    // ===== Instrument / Swab / Needle Count (Form 23 core) =====
+
+    /** Loads the instrument count for a booking (or null), tenant-guarded. */
+    public OtInstrumentCount getInstrumentCount(Long bookingId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT Booking not found: " + bookingId));
+        if (!booking.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        return instrumentCountRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId).orElse(null);
+    }
+
+    /** Upsert the count session (BR-3: totals update as items are opened). */
+    @Transactional
+    public OtInstrumentCount saveInstrumentCount(Long bookingId, InstrumentCountRequest request) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT Booking not found: " + bookingId));
+        if (!booking.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        mrdService.validateAdmissionActive(booking.getIpdAdmissionId());
+
+        String initialStatus = normalizeCountStatus(request.getInitialCountStatus(), false);
+        String finalStatus = normalizeCountStatus(request.getFinalCountStatus(), true);
+
+        OtInstrumentCount count = instrumentCountRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
+                .orElseGet(OtInstrumentCount::new);
+        count.setHospitalId(hospitalId);
+        count.setOtBookingId(bookingId);
+        count.setAdmissionId(booking.getIpdAdmissionId());
+        count.setScrubNurse(request.getScrubNurse());
+        count.setCirculatingNurse(request.getCirculatingNurse());
+        count.setCountSummary(request.getCountSummary());
+        count.setInitialCountStatus(initialStatus);
+        count.setFinalCountStatus(finalStatus);
+        if ("MISMATCH".equals(finalStatus)) {
+            count.setDiscrepancyFound(true);
+            count.setResolved(false); // a (re-)declared mismatch always requires fresh resolution documentation
+        } else if ("VERIFIED".equals(finalStatus)) {
+            count.setCompletedAt(LocalDateTime.now());
+        }
+        OtInstrumentCount saved = instrumentCountRepository.save(count);
+
+        audit("OT_INSTRUMENT_COUNT_SAVED", "Instrument count " + finalStatus + " for booking " + bookingId, hospitalId);
+        broadcast(hospitalId);
+        return saved;
+    }
+
+    /** BR-4: document a discrepancy resolution (search + remarks required) so sign-out can proceed. */
+    @Transactional
+    public OtInstrumentCount resolveInstrumentCount(Long bookingId, InstrumentCountRequest request) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        String email = securityHelper.getCurrentUserEmail();
+
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT Booking not found: " + bookingId));
+        if (!booking.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        OtInstrumentCount count = instrumentCountRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
+                .orElseThrow(() -> new RuntimeException("Instrument count not found for booking: " + bookingId));
+        if (!"MISMATCH".equalsIgnoreCase(count.getFinalCountStatus())) {
+            throw new IllegalStateException("Only a mismatched count can be resolved.");
+        }
+        if (!Boolean.TRUE.equals(request.getSearchConducted())) {
+            throw new IllegalStateException("Cannot resolve: a search for the missing item must be conducted and documented.");
+        }
+        if (request.getResolutionRemarks() == null || request.getResolutionRemarks().isBlank()) {
+            throw new IllegalStateException("Cannot resolve: resolution remarks are required.");
+        }
+
+        count.setSearchConducted(true);
+        count.setXrayPerformed(Boolean.TRUE.equals(request.getXrayPerformed()));
+        count.setResolutionRemarks(request.getResolutionRemarks());
+        count.setResolved(true);
+        count.setCompletedAt(LocalDateTime.now());
+        OtInstrumentCount saved = instrumentCountRepository.save(count);
+
+        audit("OT_INSTRUMENT_COUNT_RESOLVED",
+                "Count discrepancy resolved for booking " + bookingId + " by " + email
+                        + (Boolean.TRUE.equals(request.getXrayPerformed()) ? " (X-ray performed)" : ""),
+                hospitalId);
+        broadcast(hospitalId);
+        return saved;
+    }
+
+    private String normalizeCountStatus(String status, boolean allowMismatch) {
+        if (status == null || status.isBlank()) return "PENDING";
+        String s = status.toUpperCase();
+        if (s.equals("PENDING") || s.equals("VERIFIED") || (allowMismatch && s.equals("MISMATCH"))) {
+            return s;
+        }
+        throw new IllegalArgumentException("Invalid count status: " + status);
     }
 
     private void audit(String action, String details, Long hospitalId) {

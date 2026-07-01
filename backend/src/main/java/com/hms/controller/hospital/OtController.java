@@ -2,6 +2,7 @@ package com.hms.controller.hospital;
 
 import com.hms.dto.AnaesthesiaRecordRequest;
 import com.hms.dto.ClinicalHandoverRequest;
+import com.hms.dto.InstrumentCountRequest;
 import com.hms.dto.OperationRecordRequest;
 import com.hms.dto.OtBookingRequest;
 import com.hms.dto.OtChecklistRequest;
@@ -299,6 +300,43 @@ public class OtController {
                                               @PathVariable Long bookingId) {
         try {
             return ResponseEntity.ok(otService.signPostopOrders(bookingId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // ===== Instrument / Swab / Needle Count (Form 23) =====
+
+    @GetMapping("/{bookingId}/instrument-count")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'NURSE', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> getInstrumentCount(@PathVariable Long admissionId,
+                                                @PathVariable Long bookingId) {
+        try {
+            return ResponseEntity.ok(otService.getInstrumentCount(bookingId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/{bookingId}/instrument-count")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'NURSE', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> saveInstrumentCount(@PathVariable Long admissionId,
+                                                 @PathVariable Long bookingId,
+                                                 @RequestBody InstrumentCountRequest request) {
+        try {
+            return ResponseEntity.ok(otService.saveInstrumentCount(bookingId, request));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/{bookingId}/instrument-count/resolve")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'NURSE', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> resolveInstrumentCount(@PathVariable Long admissionId,
+                                                    @PathVariable Long bookingId,
+                                                    @RequestBody InstrumentCountRequest request) {
+        try {
+            return ResponseEntity.ok(otService.resolveInstrumentCount(bookingId, request));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

@@ -68,6 +68,9 @@ class OtServiceTest {
     @Mock
     private PostopOrdersRepository postopOrdersRepository;
 
+    @Mock
+    private OtInstrumentCountRepository instrumentCountRepository;
+
     @InjectMocks
     private OtService otService;
 
@@ -596,6 +599,146 @@ class OtServiceTest {
         assertThatThrownBy(() -> otService.savePostopOrders(bookingId, new com.hms.dto.PostopOrdersRequest()))
                 .isInstanceOf(UnauthorizedException.class);
         verify(postopOrdersRepository, never()).save(any());
+    }
+
+    // ===== Instrument Count (Form 23) =====
+
+    private OtChecklist signedThroughTimeOut() {
+        OtChecklist checklist = new OtChecklist();
+        checklist.setSignInCompleted(true);
+        checklist.setTimeOutCompleted(true);
+        return checklist;
+    }
+
+    private com.hms.dto.OtChecklistRequest signOutRequest() {
+        com.hms.dto.OtChecklistRequest req = new com.hms.dto.OtChecklistRequest();
+        req.setPhase("SIGN_OUT");
+        return req;
+    }
+
+    @Test
+    void signOut_blockedWhenCountPending() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("nurse@hospital.com");
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        when(checklistRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(signedThroughTimeOut()));
+        OtInstrumentCount count = new OtInstrumentCount();
+        count.setFinalCountStatus("PENDING");
+        when(instrumentCountRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(count));
+
+        assertThatThrownBy(() -> otService.signChecklist(bookingId, signOutRequest()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("count");
+        verify(checklistRepository, never()).save(any());
+    }
+
+    @Test
+    void signOut_blockedWhenMismatchUnresolved() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("nurse@hospital.com");
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        when(checklistRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(signedThroughTimeOut()));
+        OtInstrumentCount count = new OtInstrumentCount();
+        count.setFinalCountStatus("MISMATCH");
+        count.setResolved(false);
+        when(instrumentCountRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(count));
+
+        assertThatThrownBy(() -> otService.signChecklist(bookingId, signOutRequest()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("discrepancy");
+        verify(checklistRepository, never()).save(any());
+    }
+
+    @Test
+    void signOut_allowedWhenMismatchResolved() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("nurse@hospital.com");
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        when(checklistRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(signedThroughTimeOut()));
+        OtInstrumentCount count = new OtInstrumentCount();
+        count.setFinalCountStatus("MISMATCH");
+        count.setResolved(true);
+        when(instrumentCountRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(count));
+        when(checklistRepository.save(any(OtChecklist.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(bookingRepository.save(any(OtBooking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        OtChecklist saved = otService.signChecklist(bookingId, signOutRequest());
+
+        assertThat(saved.isSignOutCompleted()).isTrue();
+    }
+
+    @Test
+    void saveInstrumentCount_mismatchResetsResolution() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        OtInstrumentCount existing = new OtInstrumentCount();
+        existing.setResolved(true); // earlier discrepancy was resolved
+        when(instrumentCountRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(existing));
+        when(instrumentCountRepository.save(any(OtInstrumentCount.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        com.hms.dto.InstrumentCountRequest req = new com.hms.dto.InstrumentCountRequest();
+        req.setFinalCountStatus("MISMATCH");
+        req.setCountSummary("Abdominal sponges 9/10");
+        OtInstrumentCount saved = otService.saveInstrumentCount(bookingId, req);
+
+        assertThat(saved.getFinalCountStatus()).isEqualTo("MISMATCH");
+        assertThat(saved.getDiscrepancyFound()).isTrue();
+        assertThat(saved.getResolved()).isFalse(); // fresh mismatch requires fresh documentation
+    }
+
+    @Test
+    void resolveInstrumentCount_requiresSearchAndRemarks() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("nurse@hospital.com");
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        OtInstrumentCount count = new OtInstrumentCount();
+        count.setFinalCountStatus("MISMATCH");
+        when(instrumentCountRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(count));
+
+        com.hms.dto.InstrumentCountRequest noSearch = new com.hms.dto.InstrumentCountRequest();
+        noSearch.setResolutionRemarks("Sponge located in kick bucket");
+        assertThatThrownBy(() -> otService.resolveInstrumentCount(bookingId, noSearch))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("search");
+        verify(instrumentCountRepository, never()).save(any());
+    }
+
+    @Test
+    void resolveInstrumentCount_documentsAndUnblocks() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("nurse@hospital.com");
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        OtInstrumentCount count = new OtInstrumentCount();
+        count.setFinalCountStatus("MISMATCH");
+        when(instrumentCountRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(count));
+        when(instrumentCountRepository.save(any(OtInstrumentCount.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        com.hms.dto.InstrumentCountRequest req = new com.hms.dto.InstrumentCountRequest();
+        req.setSearchConducted(true);
+        req.setXrayPerformed(true);
+        req.setResolutionRemarks("X-ray negative; sponge located in kick bucket");
+        OtInstrumentCount resolved = otService.resolveInstrumentCount(bookingId, req);
+
+        assertThat(resolved.getResolved()).isTrue();
+        assertThat(resolved.getXrayPerformed()).isTrue();
+        assertThat(resolved.getCompletedAt()).isNotNull();
+    }
+
+    @Test
+    void saveInstrumentCount_rejectsCrossTenant() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, 99L, 10L)));
+
+        assertThatThrownBy(() -> otService.saveInstrumentCount(bookingId, new com.hms.dto.InstrumentCountRequest()))
+                .isInstanceOf(UnauthorizedException.class);
+        verify(instrumentCountRepository, never()).save(any());
     }
 
     @Test
