@@ -1177,6 +1177,66 @@ CREATE TABLE IF NOT EXISTS monitoring_vitals (
   KEY idx_mv_hospital (hospital_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- Phase 0.8 additive migration:
+-- CREATE TABLE IF NOT EXISTS signature_slots (
+--   id bigint NOT NULL AUTO_INCREMENT,
+--   hospital_id bigint NOT NULL,
+--   signer_role varchar(30) NOT NULL,
+--   signer_name varchar(100) NOT NULL,
+--   signer_relationship varchar(50) DEFAULT NULL,
+--   signed_at datetime NOT NULL,
+--   document_type varchar(50) NOT NULL,
+--   document_id varchar(50) NOT NULL,
+--   signature_image_base64 longtext DEFAULT NULL,
+--   signature_hash varchar(64) DEFAULT NULL,
+--   PRIMARY KEY (id),
+--   KEY idx_sig_doc (document_type, document_id),
+--   KEY idx_sig_hospital (hospital_id)
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+-- CREATE TABLE IF NOT EXISTS document_versions (
+--   id bigint NOT NULL AUTO_INCREMENT,
+--   hospital_id bigint NOT NULL,
+--   document_type varchar(50) NOT NULL,
+--   document_id varchar(50) NOT NULL,
+--   version int NOT NULL,
+--   content_url varchar(255) DEFAULT NULL,
+--   updated_by bigint DEFAULT NULL,
+--   updated_at datetime NOT NULL,
+--   PRIMARY KEY (id),
+--   KEY idx_dv_doc (document_type, document_id),
+--   KEY idx_dv_hospital (hospital_id)
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS signature_slots (
+  id bigint NOT NULL AUTO_INCREMENT,
+  hospital_id bigint NOT NULL,
+  signer_role varchar(30) NOT NULL,
+  signer_name varchar(100) NOT NULL,
+  signer_relationship varchar(50) DEFAULT NULL,
+  signed_at datetime NOT NULL,
+  document_type varchar(50) NOT NULL,
+  document_id varchar(50) NOT NULL,
+  signature_image_base64 longtext DEFAULT NULL,
+  signature_hash varchar(64) DEFAULT NULL,
+  PRIMARY KEY (id),
+  KEY idx_sig_doc (document_type, document_id),
+  KEY idx_sig_hospital (hospital_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS document_versions (
+  id bigint NOT NULL AUTO_INCREMENT,
+  hospital_id bigint NOT NULL,
+  document_type varchar(50) NOT NULL,
+  document_id varchar(50) NOT NULL,
+  version int NOT NULL,
+  content_url varchar(255) DEFAULT NULL,
+  updated_by bigint DEFAULT NULL,
+  updated_at datetime NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_dv_doc (document_type, document_id),
+  KEY idx_dv_hospital (hospital_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE IF NOT EXISTS doctor_orders (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     public_id VARCHAR(36) NOT NULL UNIQUE,

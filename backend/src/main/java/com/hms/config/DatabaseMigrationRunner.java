@@ -41,6 +41,7 @@ public class DatabaseMigrationRunner {
         migratePatientModelSchema();
         migrateStaffIdentitySchema();
         migrateAdmissionMonitoringSchema();
+        migrateSignatureNotificationSchema();
     }
 
     /**
@@ -541,6 +542,53 @@ public class DatabaseMigrationRunner {
             log.info("DB migration applied: created/verified monitoring_vitals table");
         } catch (Exception e) {
             log.warn("DB migration skipped (migrateAdmissionMonitoringSchema): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Creates signature_slots and document_versions tables dynamically if they don't exist.
+     */
+    private void migrateSignatureNotificationSchema() {
+        try {
+            // Create signature_slots table if it doesn't exist
+            jdbcTemplate.execute(
+                "CREATE TABLE IF NOT EXISTS signature_slots (" +
+                "  id bigint NOT NULL AUTO_INCREMENT," +
+                "  hospital_id bigint NOT NULL," +
+                "  signer_role varchar(30) NOT NULL," +
+                "  signer_name varchar(100) NOT NULL," +
+                "  signer_relationship varchar(50) DEFAULT NULL," +
+                "  signed_at datetime NOT NULL," +
+                "  document_type varchar(50) NOT NULL," +
+                "  document_id varchar(50) NOT NULL," +
+                "  signature_image_base64 longtext DEFAULT NULL," +
+                "  signature_hash varchar(64) DEFAULT NULL," +
+                "  PRIMARY KEY (id)," +
+                "  KEY idx_sig_doc (document_type, document_id)," +
+                "  KEY idx_sig_hospital (hospital_id)" +
+                ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+            );
+            log.info("DB migration applied: created/verified signature_slots table");
+
+            // Create document_versions table if it doesn't exist
+            jdbcTemplate.execute(
+                "CREATE TABLE IF NOT EXISTS document_versions (" +
+                "  id bigint NOT NULL AUTO_INCREMENT," +
+                "  hospital_id bigint NOT NULL," +
+                "  document_type varchar(50) NOT NULL," +
+                "  document_id varchar(50) NOT NULL," +
+                "  version int NOT NULL," +
+                "  content_url varchar(255) DEFAULT NULL," +
+                "  updated_by bigint DEFAULT NULL," +
+                "  updated_at datetime NOT NULL," +
+                "  PRIMARY KEY (id)," +
+                "  KEY idx_dv_doc (document_type, document_id)," +
+                "  KEY idx_dv_hospital (hospital_id)" +
+                ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+            );
+            log.info("DB migration applied: created/verified document_versions table");
+        } catch (Exception e) {
+            log.warn("DB migration skipped (migrateSignatureNotificationSchema): {}", e.getMessage());
         }
     }
 }
