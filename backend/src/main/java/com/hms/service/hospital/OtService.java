@@ -2,6 +2,7 @@ package com.hms.service.hospital;
 
 import com.hms.dto.AnaesthesiaRecordRequest;
 import com.hms.dto.ClinicalHandoverRequest;
+import com.hms.dto.ImplantRecordRequest;
 import com.hms.dto.InstrumentCountRequest;
 import com.hms.dto.OperationRecordRequest;
 import com.hms.dto.OtBookingRequest;
@@ -70,6 +71,9 @@ public class OtService {
 
     @Autowired
     private OtInstrumentCountRepository instrumentCountRepository;
+
+    @Autowired
+    private PatientImplantRepository implantRepository;
 
     /** Minimum modified Aldrete score required to transfer a patient out of PACU to a ward. */
     private static final int ALDRETE_TRANSFER_MIN = 9;
@@ -985,6 +989,149 @@ public class OtService {
             return s;
         }
         throw new IllegalArgumentException("Invalid count status: " + status);
+    }
+
+    // ===== Implant Record (Form 24) =====
+
+    public List<PatientImplant> getImplants(Long bookingId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT booking not found"));
+        if (!booking.getHospitalId().equals(hospitalId))
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        return implantRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId);
+    }
+
+    @Transactional
+    public PatientImplant addImplant(Long bookingId, ImplantRecordRequest req) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT booking not found"));
+        if (!booking.getHospitalId().equals(hospitalId))
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+
+        // Gate: operation record must exist and must not be FINALIZED
+        OperationRecord opRec = operationRecordRepository
+                .findByOtBookingIdAndHospitalId(bookingId, hospitalId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "An operation record must be created before adding implants"));
+        if ("FINALIZED".equalsIgnoreCase(opRec.getStatus()))
+            throw new IllegalStateException("Cannot add implants to a finalized operation record");
+
+        // BR-7: serial number must be unique within the tenant
+        if (req.getSerialNumber() != null && !req.getSerialNumber().isBlank()) {
+            List<PatientImplant> existing =
+                    implantRepository.findBySerialNumberAndHospitalId(req.getSerialNumber(), hospitalId);
+            if (!existing.isEmpty())
+                throw new IllegalArgumentException(
+                        "Serial number '" + req.getSerialNumber() + "' already registered in this hospital");
+        }
+
+        mrdService.validateAdmissionActive(booking.getIpdAdmissionId());
+
+        // Resolve patientId from the IPD admission
+        Long patientId = null;
+        try {
+            IpdAdmission adm = ipdAdmissionRepository.findById(booking.getIpdAdmissionId()).orElse(null);
+            if (adm != null) patientId = adm.getPatientId();
+        } catch (Exception ignored) {}
+
+        String actor = securityHelper.getCurrentUserEmail();
+        PatientImplant implant = new PatientImplant();
+        implant.setHospitalId(hospitalId);
+        implant.setIpdAdmissionId(booking.getIpdAdmissionId());
+        implant.setOtBookingId(bookingId);
+        implant.setPatientId(patientId);
+        mapImplantFields(implant, req);
+        implant.setStatus("DRAFT");
+        implant.setRecordedByName(actor);
+        PatientImplant saved = implantRepository.save(implant);
+
+        audit("IMPLANT_ADDED", "Implant '" + saved.getImplantName() + "' added for booking " + bookingId, hospitalId);
+        broadcast(hospitalId);
+        return saved;
+    }
+
+    @Transactional
+    public PatientImplant updateImplant(Long bookingId, Long implantId, ImplantRecordRequest req) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        PatientImplant implant = implantRepository.findById(implantId)
+                .orElseThrow(() -> new RuntimeException("Implant record not found"));
+        if (!implant.getHospitalId().equals(hospitalId))
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        if (!implant.getOtBookingId().equals(bookingId))
+            throw new IllegalArgumentException("Implant does not belong to this booking");
+        if ("SIGNED".equalsIgnoreCase(implant.getStatus()))
+            throw new IllegalStateException("Cannot modify a signed implant record");
+
+        // Gate: operation record must still be open
+        OperationRecord opRec = operationRecordRepository
+                .findByOtBookingIdAndHospitalId(bookingId, hospitalId)
+                .orElseThrow(() -> new IllegalStateException("Operation record not found"));
+        if ("FINALIZED".equalsIgnoreCase(opRec.getStatus()))
+            throw new IllegalStateException("Cannot modify implants after operation record is finalized");
+
+        // BR-7: if serial changed, check uniqueness
+        if (req.getSerialNumber() != null && !req.getSerialNumber().equals(implant.getSerialNumber())) {
+            List<PatientImplant> existing =
+                    implantRepository.findBySerialNumberAndHospitalId(req.getSerialNumber(), hospitalId);
+            if (!existing.isEmpty())
+                throw new IllegalArgumentException(
+                        "Serial number '" + req.getSerialNumber() + "' already registered in this hospital");
+        }
+
+        mapImplantFields(implant, req);
+        PatientImplant saved = implantRepository.save(implant);
+        broadcast(hospitalId);
+        return saved;
+    }
+
+    @Transactional
+    public PatientImplant signImplant(Long bookingId, Long implantId, String surgeonSig) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        PatientImplant implant = implantRepository.findById(implantId)
+                .orElseThrow(() -> new RuntimeException("Implant record not found"));
+        if (!implant.getHospitalId().equals(hospitalId))
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        if (!implant.getOtBookingId().equals(bookingId))
+            throw new IllegalArgumentException("Implant does not belong to this booking");
+        if ("SIGNED".equalsIgnoreCase(implant.getStatus()))
+            throw new IllegalStateException("Implant record already signed");
+
+        implant.setSurgeonSig(surgeonSig);
+        implant.setStatus("SIGNED");
+        implant.setSignedBy(securityHelper.getCurrentUserId());
+        implant.setSignedAt(LocalDateTime.now());
+        PatientImplant saved = implantRepository.save(implant);
+
+        audit("IMPLANT_SIGNED", "Implant '" + saved.getImplantName() + "' signed for booking " + bookingId, hospitalId);
+        broadcast(hospitalId);
+        return saved;
+    }
+
+    private void mapImplantFields(PatientImplant implant, ImplantRecordRequest req) {
+        if (req.getInventoryItemId() != null) implant.setInventoryItemId(req.getInventoryItemId());
+        if (req.getImplantName() != null) implant.setImplantName(req.getImplantName());
+        if (req.getManufacturer() != null) implant.setManufacturer(req.getManufacturer());
+        if (req.getModelNumber() != null) implant.setModelNumber(req.getModelNumber());
+        if (req.getCatalogNumber() != null) implant.setCatalogNumber(req.getCatalogNumber());
+        if (req.getBatchNumber() != null) implant.setBatchNumber(req.getBatchNumber());
+        if (req.getLotNumber() != null) implant.setLotNumber(req.getLotNumber());
+        if (req.getSerialNumber() != null) implant.setSerialNumber(req.getSerialNumber());
+        if (req.getUdi() != null) implant.setUdi(req.getUdi());
+        if (req.getExpiryDate() != null) implant.setExpiryDate(req.getExpiryDate());
+        if (req.getQuantityOpened() != null) implant.setQuantityOpened(req.getQuantityOpened());
+        if (req.getQuantityImplanted() != null) implant.setQuantityImplanted(req.getQuantityImplanted());
+        if (req.getQuantityReturned() != null) implant.setQuantityReturned(req.getQuantityReturned());
+        if (req.getQuantityWasted() != null) implant.setQuantityWasted(req.getQuantityWasted());
+        if (req.getImplantLocation() != null) implant.setImplantLocation(req.getImplantLocation());
+        if (req.getWarrantyCardNumber() != null) implant.setWarrantyCardNumber(req.getWarrantyCardNumber());
+        if (req.getPatientCardIssued() != null) implant.setPatientCardIssued(req.getPatientCardIssued());
+        if (req.getNurseSig() != null) implant.setNurseSig(req.getNurseSig());
     }
 
     private void audit(String action, String details, Long hospitalId) {

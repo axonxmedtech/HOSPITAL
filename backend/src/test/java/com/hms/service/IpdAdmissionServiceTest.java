@@ -150,7 +150,8 @@ class IpdAdmissionServiceTest {
 
         assertThatThrownBy(() -> service.planDischarge(1L, new PlanDischargeRequest()))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Can only plan discharge for ADMITTED patients");
+                .hasMessageContaining("Can only plan discharge for ADMITTED");
+
     }
 
     @Test

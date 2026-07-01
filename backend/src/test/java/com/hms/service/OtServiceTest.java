@@ -71,6 +71,9 @@ class OtServiceTest {
     @Mock
     private OtInstrumentCountRepository instrumentCountRepository;
 
+    @Mock
+    private PatientImplantRepository implantRepository;
+
     @InjectMocks
     private OtService otService;
 
@@ -851,5 +854,89 @@ class OtServiceTest {
         assertThat(updated.isTimeOutCompleted()).isTrue();
         assertThat(updated.getTimeOutBy()).isEqualTo("nurse@hospital.com");
         assertThat(booking.getStatus()).isEqualTo("IN_PROGRESS");
+    }
+    // ===== Implant Record (Form 24) =====
+
+    @Test
+    void addImplant_blockedWhenNoOperationRecord() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        when(operationRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> otService.addImplant(bookingId, new com.hms.dto.ImplantRecordRequest()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("operation record must be created");
+        verify(implantRepository, never()).save(any());
+    }
+
+    @Test
+    void addImplant_blockedWhenOperationRecordFinalized() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        OperationRecord opRec = new OperationRecord();
+        opRec.setStatus("FINALIZED");
+        when(operationRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId))
+                .thenReturn(Optional.of(opRec));
+
+        assertThatThrownBy(() -> otService.addImplant(bookingId, new com.hms.dto.ImplantRecordRequest()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("finalized operation record");
+        verify(implantRepository, never()).save(any());
+    }
+
+    @Test
+    void addImplant_blockedOnDuplicateSerialNumber() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        OperationRecord opRec = new OperationRecord();
+        opRec.setStatus("DRAFT");
+        when(operationRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId))
+                .thenReturn(Optional.of(opRec));
+
+        PatientImplant existing = new PatientImplant();
+        existing.setSerialNumber("SN-DUPE");
+        when(implantRepository.findBySerialNumberAndHospitalId("SN-DUPE", hospitalId))
+                .thenReturn(java.util.List.of(existing));
+
+        com.hms.dto.ImplantRecordRequest req = new com.hms.dto.ImplantRecordRequest();
+        req.setSerialNumber("SN-DUPE");
+
+        assertThatThrownBy(() -> otService.addImplant(bookingId, req))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("already registered");
+        verify(implantRepository, never()).save(any());
+    }
+
+    @Test
+    void addImplant_rejectsCrossTenant() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        // Booking belongs to hospital 99
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, 99L, 10L)));
+
+        assertThatThrownBy(() -> otService.addImplant(bookingId, new com.hms.dto.ImplantRecordRequest()))
+                .isInstanceOf(com.hms.exception.UnauthorizedException.class);
+        verify(implantRepository, never()).save(any());
+    }
+
+    @Test
+    void signImplant_blocksDoubleSign() {
+        Long hospitalId = 1L, bookingId = 5L, implantId = 20L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        PatientImplant implant = new PatientImplant();
+        implant.setId(implantId);
+        implant.setHospitalId(hospitalId);
+        implant.setOtBookingId(bookingId);
+        implant.setStatus("SIGNED");
+        when(implantRepository.findById(implantId)).thenReturn(Optional.of(implant));
+
+        assertThatThrownBy(() -> otService.signImplant(bookingId, implantId, "sig-data"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("already signed");
+        verify(implantRepository, never()).save(any());
     }
 }

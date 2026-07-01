@@ -2217,7 +2217,48 @@ CREATE TABLE IF NOT EXISTS ot_instrument_count (
 ) ENGINE=InnoDB;
 CREATE INDEX IF NOT EXISTS idx_instrument_count_hospital_booking ON ot_instrument_count(hospital_id, ot_booking_id);
 
+-- Table structure for table `patient_implant` (Form 24 — Implant Record)
+CREATE TABLE IF NOT EXISTS patient_implant (
+    id                  BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id         BIGINT NOT NULL,
+    patient_id          BIGINT,
+    ipd_admission_id    BIGINT NOT NULL,
+    ot_booking_id       BIGINT NOT NULL,
+    inventory_item_id   BIGINT,
+    implant_name        VARCHAR(150),
+    manufacturer        VARCHAR(100),
+    model_number        VARCHAR(50),
+    catalog_number      VARCHAR(50),
+    batch_number        VARCHAR(30),
+    lot_number          VARCHAR(30),
+    serial_number       VARCHAR(40),
+    udi                 VARCHAR(100),
+    expiry_date         DATE,
+    quantity_opened     INT,
+    quantity_implanted  INT,
+    quantity_returned   INT,
+    quantity_wasted     INT,
+    implant_location    VARCHAR(100),
+    warranty_card_number VARCHAR(50),
+    patient_card_issued  BOOLEAN,
+    nurse_sig           TEXT,
+    surgeon_sig         TEXT,
+    signed_by           BIGINT,
+    signed_at           DATETIME(6),
+    status              VARCHAR(20),
+    recorded_by         BIGINT,
+    recorded_by_name    VARCHAR(100),
+    created_at          DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at          DATETIME(6),
+    CONSTRAINT fk_implant_booking  FOREIGN KEY (ot_booking_id)    REFERENCES ot_bookings(id),
+    CONSTRAINT fk_implant_hospital FOREIGN KEY (hospital_id)      REFERENCES hospitals(id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_implant_hospital_booking  ON patient_implant(hospital_id, ot_booking_id);
+CREATE INDEX IF NOT EXISTS idx_implant_hospital_patient  ON patient_implant(hospital_id, patient_id);
+CREATE INDEX IF NOT EXISTS idx_implant_hospital_batch    ON patient_implant(hospital_id, batch_number);
+
 -- Table structure for table `mrd_records`
+
 DROP TABLE IF EXISTS `mrd_records`;
 CREATE TABLE `mrd_records` (
     `id` BIGINT AUTO_INCREMENT PRIMARY KEY,

@@ -2,6 +2,7 @@ package com.hms.controller.hospital;
 
 import com.hms.dto.AnaesthesiaRecordRequest;
 import com.hms.dto.ClinicalHandoverRequest;
+import com.hms.dto.ImplantRecordRequest;
 import com.hms.dto.InstrumentCountRequest;
 import com.hms.dto.OperationRecordRequest;
 import com.hms.dto.OtBookingRequest;
@@ -337,6 +338,57 @@ public class OtController {
                                                     @RequestBody InstrumentCountRequest request) {
         try {
             return ResponseEntity.ok(otService.resolveInstrumentCount(bookingId, request));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // ===== Implant / Prosthesis / Biomedical Device Record (Form 24) =====
+
+    @GetMapping("/{bookingId}/implants")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'NURSE', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> getImplants(@PathVariable Long admissionId,
+                                         @PathVariable Long bookingId) {
+        try {
+            return ResponseEntity.ok(otService.getImplants(bookingId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/{bookingId}/implants")
+    @PreAuthorize("hasAnyRole('NURSE', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> addImplant(@PathVariable Long admissionId,
+                                        @PathVariable Long bookingId,
+                                        @RequestBody ImplantRecordRequest request) {
+        try {
+            return ResponseEntity.ok(otService.addImplant(bookingId, request));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PutMapping("/{bookingId}/implants/{implantId}")
+    @PreAuthorize("hasAnyRole('NURSE', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> updateImplant(@PathVariable Long admissionId,
+                                           @PathVariable Long bookingId,
+                                           @PathVariable Long implantId,
+                                           @RequestBody ImplantRecordRequest request) {
+        try {
+            return ResponseEntity.ok(otService.updateImplant(bookingId, implantId, request));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/{bookingId}/implants/{implantId}/sign")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> signImplant(@PathVariable Long admissionId,
+                                         @PathVariable Long bookingId,
+                                         @PathVariable Long implantId,
+                                         @RequestBody ImplantRecordRequest request) {
+        try {
+            return ResponseEntity.ok(otService.signImplant(bookingId, implantId, request.getSurgeonSig()));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
