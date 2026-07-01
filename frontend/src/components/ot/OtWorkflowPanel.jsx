@@ -4,6 +4,7 @@ import hospitalService from '../../services/hospitalService';
 import authService from '../../services/authService';
 import OperationRecordSection from './OperationRecordSection';
 import AnaesthesiaRecordSection from './AnaesthesiaRecordSection';
+import PacuRecordSection from './PacuRecordSection';
 
 export default function OtWorkflowPanel({ admissionId, isLocked = false }) {
   const [bookings, setBookings] = useState([]);
@@ -382,6 +383,13 @@ export default function OtWorkflowPanel({ admissionId, isLocked = false }) {
                 />
 
                 <OperationRecordSection
+                  admissionId={admissionId}
+                  bookingId={activeBooking.id}
+                  bookingStatus={activeBooking.status}
+                  isLocked={isLocked}
+                />
+
+                <PacuRecordSection
                   admissionId={admissionId}
                   bookingId={activeBooking.id}
                   bookingStatus={activeBooking.status}

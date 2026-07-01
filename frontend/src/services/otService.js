@@ -39,6 +39,18 @@ const otService = {
 
   completeAnaesthesiaRecord: (admissionId, bookingId) =>
     apiService.post(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/anaesthesia-record/complete`),
+
+  getPacuRecord: (admissionId, bookingId) =>
+    apiService.get(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/pacu-record`),
+
+  startPacuRecord: (admissionId, bookingId, payload) =>
+    apiService.post(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/pacu-record`, payload),
+
+  updatePacuRecord: (admissionId, bookingId, payload) =>
+    apiService.put(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/pacu-record`, payload),
+
+  transferPacuRecord: (admissionId, bookingId) =>
+    apiService.post(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/pacu-record/transfer`),
 };
 
 export default otService;
