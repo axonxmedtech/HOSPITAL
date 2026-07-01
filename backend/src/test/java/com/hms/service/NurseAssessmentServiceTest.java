@@ -75,4 +75,30 @@ class NurseAssessmentServiceTest {
         assertThat(saved.getOxygenSupport()).isEqualTo("ROOM_AIR");
         assertThat(saved.getRemarks()).isEqualTo("stable");
     }
+
+    @Test
+    void recordVitals_treatsBlankNumericFieldsAsNullWithoutThrowing() {
+        // The frontend posts every field, sending "" for the ones a nurse leaves blank.
+        // Blank numeric strings must coerce to null, not throw NumberFormatException (HTTP 500).
+        stubCommon();
+        Map<String, Object> data = new HashMap<>();
+        data.put("bloodPressure", "118/76");
+        data.put("pulse", "");
+        data.put("temperature", "");
+        data.put("spo2", "");
+        data.put("respiratoryRate", "  ");
+        data.put("painScore", "");
+        data.put("weight", "");
+
+        VitalSigns saved = service.recordVitals(10L, data);
+
+        assertThat(saved.getBpSystolic()).isEqualTo(118);
+        assertThat(saved.getBpDiastolic()).isEqualTo(76);
+        assertThat(saved.getPulse()).isNull();
+        assertThat(saved.getTemperature()).isNull();
+        assertThat(saved.getSpo2()).isNull();
+        assertThat(saved.getRespiratoryRate()).isNull();
+        assertThat(saved.getPainScore()).isNull();
+        assertThat(saved.getWeight()).isNull();
+    }
 }

@@ -103,13 +103,15 @@ public class NurseAssessmentService {
     private Integer toInt(Object val) {
         if (val == null) return null;
         if (val instanceof Integer i) return i;
-        return Integer.parseInt(val.toString());
+        String s = val.toString().trim();
+        return s.isEmpty() ? null : Integer.parseInt(s);
     }
 
     private BigDecimal toBigDecimal(Object val) {
         if (val == null) return null;
         if (val instanceof BigDecimal bd) return bd;
-        return new BigDecimal(val.toString());
+        String s = val.toString().trim();
+        return s.isEmpty() ? null : new BigDecimal(s);
     }
 
     /** Parses "120/80" (or "120 80") into [systolic, diastolic]; -1 for a token that is missing or non-numeric. */
