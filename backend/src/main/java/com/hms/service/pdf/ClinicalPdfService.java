@@ -9,6 +9,8 @@ import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -17,6 +19,8 @@ import java.util.List;
 
 @Service
 public class ClinicalPdfService {
+
+    private static final Logger logger = LoggerFactory.getLogger(ClinicalPdfService.class);
 
     @Autowired
     private com.hms.repository.OpdRepository opdRepository;
@@ -50,7 +54,9 @@ public class ClinicalPdfService {
                     if (opd != null) {
                         customNo = opd.getCaseId();
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    logger.debug("Could not resolve OPD case number for prescription PDF", e);
+                }
             }
 
             // 1. Premium Patient Header
@@ -241,7 +247,7 @@ public class ClinicalPdfService {
                 vitalsTable.setSpacingAfter(15f);
 
                 helper.addTableHeaderCell(vitalsTable, "BP (mmHg)");
-                helper.addTableHeaderCell(vitalsTable, "Temp (°F)");
+                helper.addTableHeaderCell(vitalsTable, "Temp (°C)");
                 helper.addTableHeaderCell(vitalsTable, "Pulse (bpm)");
                 helper.addTableHeaderCell(vitalsTable, "Weight (kg)");
                 helper.addTableHeaderCell(vitalsTable, "SpO2 (%)");

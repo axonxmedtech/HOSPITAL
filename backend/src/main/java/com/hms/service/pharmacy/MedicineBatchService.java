@@ -60,6 +60,46 @@ public class MedicineBatchService {
 
     @org.springframework.transaction.annotation.Transactional
     public MedicineBatch createManualBatch(MedicineBatch batch) {
+        if (batch.getMedicineId() == null) {
+            throw new IllegalArgumentException("Medicine ID is required");
+        }
+        if (batch.getBatchNumber() == null || batch.getBatchNumber().trim().isEmpty()) {
+            throw new IllegalArgumentException("Batch number is required");
+        }
+        if (batch.getExpiryDate() == null) {
+            throw new IllegalArgumentException("Expiry date is required");
+        }
+        if (batch.getExpiryDate().isBefore(java.time.LocalDate.now())) {
+            throw new IllegalArgumentException("Expiry date cannot be in the past");
+        }
+        if (batch.getManufacturingDate() != null && batch.getManufacturingDate().isAfter(java.time.LocalDate.now())) {
+            throw new IllegalArgumentException("Manufacturing date cannot be in the future");
+        }
+        if (batch.getManufacturingDate() != null && batch.getExpiryDate() != null && batch.getManufacturingDate().isAfter(batch.getExpiryDate())) {
+            throw new IllegalArgumentException("Manufacturing date cannot be after expiry date");
+        }
+        if (batch.getMrp() == null || batch.getMrp().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("MRP must be greater than zero");
+        }
+        if (batch.getPurchaseRate() == null || batch.getPurchaseRate().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Purchase rate must be greater than zero");
+        }
+        if (batch.getSellingPrice() == null || batch.getSellingPrice().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Selling price must be greater than zero");
+        }
+        if (batch.getSellingPrice().compareTo(batch.getMrp()) > 0) {
+            throw new IllegalArgumentException("Selling price cannot exceed MRP");
+        }
+        if (batch.getPurchaseRate().compareTo(batch.getMrp()) > 0) {
+            throw new IllegalArgumentException("Purchase rate cannot exceed MRP");
+        }
+        if (batch.getCurrentQuantity() == null || batch.getCurrentQuantity().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Current quantity must be greater than zero");
+        }
+        if (batch.getGstPercentage() != null && (batch.getGstPercentage().compareTo(java.math.BigDecimal.ZERO) < 0 || batch.getGstPercentage().compareTo(java.math.BigDecimal.valueOf(100)) > 0)) {
+            throw new IllegalArgumentException("GST percentage must be between 0% and 100%");
+        }
+ 
         Long hid = securityHelper.getCurrentHospitalId();
         batch.setHospitalId(hid);
         batch.setStatus("ACTIVE");

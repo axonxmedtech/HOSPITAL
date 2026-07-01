@@ -8,6 +8,8 @@ import com.hms.security.HospitalWebSocketHandler;
 import com.hms.security.SecurityContextHelper;
 import com.hms.exception.ResourceNotFoundException;
 import com.hms.exception.UnauthorizedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -18,6 +20,8 @@ import java.math.BigDecimal;
 
 @Service
 public class InventoryTransactionService {
+
+    private static final Logger logger = LoggerFactory.getLogger(InventoryTransactionService.class);
 
     @Autowired
     private InventoryTransactionRepository transactionRepository;
@@ -61,7 +65,9 @@ public class InventoryTransactionService {
         tx.setCreatedBy(securityHelper.getCurrentUserId());
 
         InventoryTransaction saved = transactionRepository.save(tx);
-        try { webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}"); } catch (Exception ignored) {}
+        try { webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}"); } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after inventory adjustment", e);
+        }
         return saved;
     }
 

@@ -82,7 +82,9 @@ public class HospitalInventoryService {
                     saved.getId().toString(),
                     null
             );
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to write audit log for catalog item add", e);
+        }
 
         return saved;
     }
@@ -118,7 +120,9 @@ public class HospitalInventoryService {
                     saved.getId().toString(),
                     null
             );
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to write audit log for catalog item update", e);
+        }
 
         return saved;
     }
@@ -146,7 +150,9 @@ public class HospitalInventoryService {
                     catalog.getId().toString(),
                     null
             );
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to write audit log for catalog item deactivation", e);
+        }
     }
 
     // --- Purchase History Management ---
@@ -217,11 +223,15 @@ public class HospitalInventoryService {
                     savedPurchase.getId().toString(),
                     null
             );
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to write audit log for inventory purchase add", e);
+        }
 
         try {
             webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after inventory purchase", e);
+        }
 
         return savedPurchase;
     }
@@ -271,11 +281,15 @@ public class HospitalInventoryService {
                     saved.getId().toString(),
                     null
             );
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to write audit log for inventory item restock", e);
+        }
 
         try {
             webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after inventory restock", e);
+        }
 
         return saved;
     }
@@ -315,11 +329,15 @@ public class HospitalInventoryService {
                     saved.getId().toString(),
                     null
             );
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to write audit log for inventory item modification", e);
+        }
 
         try {
             webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after inventory update", e);
+        }
 
         return saved;
     }
@@ -348,11 +366,15 @@ public class HospitalInventoryService {
                     stock.getId().toString(),
                     null
             );
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to write audit log for inventory item deactivation", e);
+        }
 
         try {
             webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after inventory deactivation", e);
+        }
     }
 
     @Transactional
@@ -414,7 +436,9 @@ public class HospitalInventoryService {
                                     childStock.getId().toString(),
                                     null
                                 );
-                            } catch (Exception ignored) {}
+                            } catch (Exception e) {
+                                logger.warn("Failed to write audit log for relative inventory deduction", e);
+                            }
                         }
                     }
                 }

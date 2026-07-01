@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import authService from '../services/authService';
+import { API_BASE_URL } from '../services/apiService'; // BUG-028: central base URL
 
 /**
  * useWebSocket - Custom hook for managing multi-tenant real-time WebSocket sync.
@@ -36,7 +37,6 @@ export default function useWebSocket(user, setUser, loadData) {
             wsRef.current = null;
         }
 
-        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
         const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         
         const token = sessionStorage.getItem('token');

@@ -1,23 +1,48 @@
 package com.hms.dto;
 
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+
 public class CreateOpdRequest {
-    private Long patientId;
+    @NotBlank(message = "Patient ID is required")
+    private String patientId;
     private Long receptionistId;
-    private Long doctorId;
+    private String doctorId;
+
+    @Pattern(regexp = "^(\\d{2,3})\\s*/\\s*(\\d{2,3})$", message = "Blood pressure must be in format Systolic/Diastolic, e.g., 120/80")
     private String bp;
+
+    @DecimalMin(value = "30.0", message = "Temperature must be at least 30.0°C")
+    @DecimalMax(value = "45.0", message = "Temperature cannot exceed 45.0°C")
     private Double temperature;
+
+    @Min(value = 30, message = "Pulse must be at least 30 bpm")
+    @Max(value = 250, message = "Pulse cannot exceed 250 bpm")
     private Integer pulse;
+
+    @DecimalMin(value = "0.1", message = "Weight must be at least 0.1 kg")
+    @DecimalMax(value = "500.0", message = "Weight cannot exceed 500.0 kg")
     private Double weight;
+
+    @Min(value = 0, message = "SpO2 cannot be negative")
+    @Max(value = 100, message = "SpO2 cannot exceed 100%")
     private Integer spo2;
+
     private String problem;
+
+    @NotBlank(message = "Visit type is required")
     private String visitType; // NEW or FOLLOWUP
 
-    public Long getPatientId() { return patientId; }
-    public void setPatientId(Long patientId) { this.patientId = patientId; }
+    public String getPatientId() { return patientId; }
+    public void setPatientId(String patientId) { this.patientId = patientId; }
     public Long getReceptionistId() { return receptionistId; }
     public void setReceptionistId(Long receptionistId) { this.receptionistId = receptionistId; }
-    public Long getDoctorId() { return doctorId; }
-    public void setDoctorId(Long doctorId) { this.doctorId = doctorId; }
+    public String getDoctorId() { return doctorId; }
+    public void setDoctorId(String doctorId) { this.doctorId = doctorId; }
     public String getBp() { return bp; }
     public void setBp(String bp) { this.bp = bp; }
     public Double getTemperature() { return temperature; }

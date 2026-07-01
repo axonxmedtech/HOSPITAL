@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
+import { API_BASE_URL } from '../../services/apiService'; // BUG-028: single source-of-truth for base URL
 import { useToast } from '../../context/ToastContext';
 import EmptyState from '../../components/EmptyState';
 import ConfirmationModal from '../../components/ConfirmationModal';
@@ -12,6 +13,7 @@ import HistoryDrawer from '../../components/HistoryDrawer';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import useWebSocket from '../../hooks/useWebSocket';
+import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
 
 import PageHeader from '../../components/PageHeader';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -85,7 +87,8 @@ const DoctorDashboard = () => {
     const [totalPages, setTotalPages] = useState(1);
     const [totalElements, setTotalElements] = useState(0);
     const [totalAppointments, setTotalAppointments] = useState(0);
-    const [searchTerm, setSearchTerm] = useState('');
+    const [searchInput, setSearchInput] = useState('');
+    const searchTerm = useDebounce(searchInput, 500); // BUG-017: debounce search input
 
     const { success, error: toastError, info } = useToast();
     const navigate = useNavigate();
@@ -272,16 +275,14 @@ const DoctorDashboard = () => {
     };
 
     useEffect(() => {
+        setSearchInput('');
         setPage(1);
         if (activeTab === 'opd') { setOpdTabView('Live'); setOpdDateFilter(todayStr); }
         if (activeTab === 'patients') { setPatientTabView('All'); setPatientDateFilter(todayStr); }
-    }, [activeTab, searchTerm, viewFilter, billingStatus]);
+    }, [activeTab]);
 
     useEffect(() => {
-        const timer = setTimeout(() => {
-            loadData();
-        }, 500);
-        return () => clearTimeout(timer);
+        loadData();
     }, [activeTab, searchTerm, viewFilter, billingStatus, opdDateFilter, opdTabView, patientTabView, patientDateFilter, page]);
 
     // WebSocket connection will be initialized below loadData definition to avoid ReferenceError
@@ -522,11 +523,14 @@ const DoctorDashboard = () => {
                 'Cancel Appointment',
                 'Are you sure you want to cancel this appointment? This action cannot be undone.',
                 async (reason) => {
+                    const oldAppointments = [...appointments];
+                    setAppointments(prev => prev.map(appt => appt.id === id ? { ...appt, status: newStatus } : appt));
                     try {
-                        await hospitalService.updateAppointmentStatus(id, newStatus);
+                        await hospitalService.updateAppointmentStatus(id, newStatus, reason);
                         success('Appointment cancelled successfully');
-                        loadData();
+                        loadData(false);
                     } catch (err) {
+                        setAppointments(oldAppointments);
                         toastError('Failed to cancel appointment');
                     }
                 },
@@ -538,11 +542,14 @@ const DoctorDashboard = () => {
                 `${action} Appointment`,
                 `Are you sure you want to mark this appointment as ${newStatus.toLowerCase()}?`,
                 async () => {
+                    const oldAppointments = [...appointments];
+                    setAppointments(prev => prev.map(appt => appt.id === id ? { ...appt, status: newStatus } : appt));
                     try {
                         await hospitalService.updateAppointmentStatus(id, newStatus);
                         success(`Appointment ${newStatus.toLowerCase()} successfully`);
-                        loadData();
+                        loadData(false);
                     } catch (err) {
+                        setAppointments(oldAppointments);
                         toastError(`Failed to ${action.toLowerCase()} appointment`);
                     }
                 }
@@ -768,9 +775,8 @@ const DoctorDashboard = () => {
 
     const openPdfInNewTab = (endpointPath) => {
         const token = sessionStorage.getItem('token');
-        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
         const separator = endpointPath.includes('?') ? '&' : '?';
-        const url = `${baseUrl}${endpointPath}${separator}token=${encodeURIComponent(token)}`;
+        const url = `${API_BASE_URL}${endpointPath}${separator}token=${encodeURIComponent(token)}`;
         const win = window.open(url, '_blank');
         if (!win || win.closed || typeof win.closed === 'undefined') {
             return false;
@@ -1045,8 +1051,8 @@ const DoctorDashboard = () => {
                                             <input
                                                 type="text"
                                                 placeholder="Search appointments..."
-                                                value={searchTerm}
-                                                onChange={(e) => setSearchTerm(e.target.value)}
+                                                value={searchInput}
+                                                onChange={(e) => setSearchInput(e.target.value)}
                                                 className="w-full pl-9 pr-4 py-1.5 text-xs bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 transition-all"
                                             />
                                         </div>
@@ -1236,8 +1242,8 @@ const DoctorDashboard = () => {
                             activeTab === 'billing' ? 'bills' :
                             'patients'
                         } here.`}
-                        onSearch={(e) => setSearchTerm(e.target.value)}
-                        searchValue={searchTerm}
+                        onSearch={(e) => setSearchInput(e.target.value)}
+                        searchValue={searchInput}
                         searchPlaceholder={`Search ${activeTab}...`}
                         onAdd={(user?.receptionMode === 'SOLO' && (activeTab === 'patients' || activeTab === 'opd' || activeTab === 'appointments')) ? () => {
                             if (activeTab === 'patients') setIsAddPatientModalOpen(true);
@@ -1730,6 +1736,49 @@ const DoctorDashboard = () => {
                                 if (!opdForm.patientId) {
                                     toastError('Please select a valid patient from the suggestions');
                                     return;
+                                }
+                                // Validate vitals
+                                if (opdForm.bp) {
+                                    const bpVal = opdForm.bp.trim();
+                                    const bpMatch = bpVal.match(/^(\d{2,3})\s*\/\s*(\d{2,3})$/);
+                                    if (!bpMatch) {
+                                        toastError("Blood pressure must be in format Systolic/Diastolic, e.g., 120/80");
+                                        return;
+                                    }
+                                    const systolic = parseInt(bpMatch[1], 10);
+                                    const diastolic = parseInt(bpMatch[2], 10);
+                                    if (systolic <= diastolic) {
+                                        toastError("Systolic blood pressure must be greater than diastolic blood pressure");
+                                        return;
+                                    }
+                                }
+                                if (opdForm.temperature) {
+                                    const temp = parseFloat(opdForm.temperature);
+                                    if (isNaN(temp) || temp < 30 || temp > 45) {
+                                        toastError("Temperature must be between 30.0°C and 45.0°C");
+                                        return;
+                                    }
+                                }
+                                if (opdForm.pulse) {
+                                    const pulse = parseInt(opdForm.pulse, 10);
+                                    if (isNaN(pulse) || pulse < 30 || pulse > 250) {
+                                        toastError("Pulse must be between 30 and 250 bpm");
+                                        return;
+                                    }
+                                }
+                                if (opdForm.weight) {
+                                    const weight = parseFloat(opdForm.weight);
+                                    if (isNaN(weight) || weight < 0.1 || weight > 500) {
+                                        toastError("Weight must be between 0.1 and 500.0 kg");
+                                        return;
+                                    }
+                                }
+                                if (opdForm.spo2) {
+                                    const spo2 = parseInt(opdForm.spo2, 10);
+                                    if (isNaN(spo2) || spo2 < 0 || spo2 > 100) {
+                                        toastError("SpO2 must be between 0% and 100%");
+                                        return;
+                                    }
                                 }
                                 try {
                                     const payload = {

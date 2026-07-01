@@ -1,15 +1,30 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import PlatformLogin from './pages/platform/PlatformLogin';
-import PlatformDashboard from './pages/platform/PlatformDashboard';
-import HospitalLogin from './pages/hospital/HospitalLogin';
-import HospitalAdminDashboard from './pages/hospital/HospitalAdminDashboard';
-import DoctorDashboard from './pages/hospital/DoctorDashboard';
-import ReceptionistDashboard from './pages/hospital/ReceptionistDashboard';
-import PharmacyDashboard from './pages/hospital/PharmacyDashboard';
-import IpdDetails from './pages/hospital/IpdDetails';
+import { lazy, Suspense } from 'react';
 import { ToastProvider } from './context/ToastContext';
 import PageMeta from './components/PageMeta';
 import authService from './services/authService';
+
+// Code-split all large dashboard components to reduce initial bundle size (BUG-023)
+const PlatformLogin = lazy(() => import('./pages/platform/PlatformLogin'));
+const PlatformDashboard = lazy(() => import('./pages/platform/PlatformDashboard'));
+const HospitalLogin = lazy(() => import('./pages/hospital/HospitalLogin'));
+const HospitalAdminDashboard = lazy(() => import('./pages/hospital/HospitalAdminDashboard'));
+const DoctorDashboard = lazy(() => import('./pages/hospital/DoctorDashboard'));
+const ReceptionistDashboard = lazy(() => import('./pages/hospital/ReceptionistDashboard'));
+const PharmacyDashboard = lazy(() => import('./pages/hospital/PharmacyDashboard'));
+const IpdDetails = lazy(() => import('./pages/hospital/IpdDetails'));
+
+// Minimal loading fallback shown while a lazy chunk is fetching
+const PageLoading = () => (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#f9fafb' }}>
+        <div style={{ textAlign: 'center' }}>
+            <div style={{ width: 40, height: 40, border: '3px solid #e5e7eb', borderTop: '3px solid #111827', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+            <p style={{ color: '#6b7280', fontSize: 14, fontFamily: 'Inter, system-ui, sans-serif' }}>Loading…</p>
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+    </div>
+);
+
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
     const user = authService.getCurrentUser();
@@ -75,6 +90,7 @@ function App() {
     return (
         <ToastProvider>
             <Router>
+                <Suspense fallback={<PageLoading />}>
                 <Routes>
 
                     {/* Public / Login Pages */}
@@ -190,6 +206,7 @@ function App() {
                     <Route path="*" element={<Navigate to="/" replace />} />
 
                 </Routes>
+                </Suspense>
             </Router>
         </ToastProvider>
     );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import authService from '../../services/authService';
 import platformService from '../../services/platformService';
@@ -29,6 +29,28 @@ import PlatformMedicinesTab from '../../components/PlatformMedicinesTab';
  * @author HMS Team
  * @version Phase-1
  */
+// BUG-015: Named constant – single source of truth for platform list page size
+const PLATFORM_PAGE_SIZE = 10;
+
+// BUG-027: Lightweight in-memory stats cache with a 60-second TTL.
+// Prevents redundant API calls every time the user returns to the dashboard tab.
+const statsCache = {
+    data: null,
+    fetchedAt: 0,
+    TTL_MS: 60_000,
+    isValid() {
+        return this.data !== null && Date.now() - this.fetchedAt < this.TTL_MS;
+    },
+    set(data) {
+        this.data = data;
+        this.fetchedAt = Date.now();
+    },
+    clear() {
+        this.data = null;
+        this.fetchedAt = 0;
+    },
+};
+
 const PlatformDashboard = () => {
     const navigate = useNavigate();
     const { success } = useToast();
@@ -46,6 +68,7 @@ const PlatformDashboard = () => {
         return 'HOSPITAL';
     };
 
+    // BUG-013: Centralised error extractor – all catch blocks must use this.
     const extractError = (err, fallback) => {
         const d = err?.response?.data;
         if (!d) return fallback;
@@ -146,14 +169,21 @@ const PlatformDashboard = () => {
     // Set Password Modal State (for Reset Password flow)
     const [resetPwModal, setResetPwModal] = useState({ isOpen: false, hospitalId: null });
 
+    // BUG-014: AbortController refs so stale in-flight requests are cancelled
+    // when the user switches tabs quickly.
+    const hospitalsAbortRef = useRef(null);
+    const auditAbortRef = useRef(null);
+
     // Load data based on active tab
     useEffect(() => {
         if (activeTab === 'dashboard') {
             loadHospitals();
             loadHospitalStats();
+            // BUG-027: only fetch WhatsApp stats if cache is cold
             apiClient.get('/platform/whatsapp/stats').then(r => setWaStats(r.data)).catch(() => {});
         } else if (activeTab === 'hospitals' || activeTab === 'clinics' || activeTab === 'pharmacies') {
-            loadHospitals(0, 10, getEntityType(activeTab));
+            // BUG-015: use PLATFORM_PAGE_SIZE constant instead of hard-coded 10
+            loadHospitals(0, PLATFORM_PAGE_SIZE, getEntityType(activeTab));
         } else if (activeTab === 'audit_logs') {
             loadAuditLogs();
         } else if (activeTab === 'tickets') {
@@ -163,10 +193,19 @@ const PlatformDashboard = () => {
         }
     }, [activeTab]);
 
-    const loadHospitals = async (page = 0, size = 10, type = 'HOSPITAL') => {
+    // BUG-015: default size uses PLATFORM_PAGE_SIZE constant
+    // BUG-014: AbortController cancels in-flight request on re-invocation
+    const loadHospitals = async (page = 0, size = PLATFORM_PAGE_SIZE, type = 'HOSPITAL') => {
+        // Cancel any previous in-flight hospitals request
+        if (hospitalsAbortRef.current) {
+            hospitalsAbortRef.current.abort();
+        }
+        const controller = new AbortController();
+        hospitalsAbortRef.current = controller;
+
         try {
             setLoading(true);
-            const data = await platformService.getHospitals(page, size, type);
+            const data = await platformService.getHospitals(page, size, type, { signal: controller.signal });
             if (data.content) {
                 setHospitals(data.content);
                 setHospitalPage(data);
@@ -175,32 +214,49 @@ const PlatformDashboard = () => {
                 setHospitalPage({ content: data, totalPages: 1, totalElements: data.length, number: 0, size: data.length });
             }
         } catch (err) {
-            setError('Failed to load hospitals');
+            if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return; // aborted – ignore
+            // BUG-013: use extractError for consistent server-side message propagation
+            setError(extractError(err, 'Failed to load hospitals'));
         } finally {
             setLoading(false);
         }
     };
 
-
-
+    // BUG-014: AbortController cancels in-flight audit request on re-invocation
     const loadAuditLogs = async () => {
+        if (auditAbortRef.current) {
+            auditAbortRef.current.abort();
+        }
+        const controller = new AbortController();
+        auditAbortRef.current = controller;
+
         try {
             setLoading(true);
-            const data = await platformService.getAuditLogs();
+            const data = await platformService.getAuditLogs({ signal: controller.signal });
             setAuditLogs(data);
         } catch (err) {
-            setError('Failed to load audit logs');
+            if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return;
+            // BUG-013: use extractError
+            setError(extractError(err, 'Failed to load audit logs'));
         } finally {
             setLoading(false);
         }
     };
 
+    // BUG-027: Cache hospital stats for 60 seconds to avoid redundant fetches
+    // on every dashboard-tab visit.
     const loadHospitalStats = async () => {
+        if (statsCache.isValid()) {
+            setHospitalStats(statsCache.data);
+            return;
+        }
         try {
             const stats = await platformService.getHospitalStats();
+            statsCache.set(stats);
             setHospitalStats(stats);
         } catch (err) {
-            setError('Failed to load hospital statistics');
+            // BUG-013: use extractError
+            setError(extractError(err, 'Failed to load hospital statistics'));
         }
     };
 
@@ -272,8 +328,9 @@ const PlatformDashboard = () => {
                     setConfirmModal(prev => ({ ...prev, isOpen: false }));
                     success('FAQ deleted successfully');
                     loadFaqs();
-                } catch {
-                    setError('Failed to delete FAQ');
+                } catch (err) {
+                    // BUG-013: propagate server error message
+                    setError(extractError(err, 'Failed to delete FAQ'));
                 }
             }
         );
@@ -349,9 +406,11 @@ const PlatformDashboard = () => {
             async (reason) => {
                 try {
                     await platformService.updateHospitalStatus(id, !currentStatus, reason);
-                    loadHospitals(0, 10, getEntityType(activeTab));
+                    // BUG-015: use PLATFORM_PAGE_SIZE constant
+                    loadHospitals(0, PLATFORM_PAGE_SIZE, getEntityType(activeTab));
                 } catch (err) {
-                    setError('Failed to update hospital status');
+                    // BUG-013: propagate server error message
+                    setError(extractError(err, 'Failed to update hospital status'));
                 }
             },
             true, // Require reason
@@ -409,7 +468,8 @@ const PlatformDashboard = () => {
                 availablePlansForEdit: plans.filter(p => p.isActive !== false),
             });
         } catch (err) {
-            setError('Failed to fetch hospital details');
+            // BUG-013: propagate server error message
+            setError(extractError(err, 'Failed to fetch hospital details'));
         }
     };
 
@@ -436,8 +496,11 @@ const PlatformDashboard = () => {
             async () => {
                 try {
                     await platformService.deleteHospital(id);
+                    // BUG-027: invalidate stats cache after deletion
+                    statsCache.clear();
                     success('Hospital deleted successfully');
-                    loadHospitals(0, 10, getEntityType(activeTab));
+                    // BUG-015: use PLATFORM_PAGE_SIZE constant
+                    loadHospitals(0, PLATFORM_PAGE_SIZE, getEntityType(activeTab));
                 } catch (err) {
                     setError(extractError(err, 'Failed to delete hospital'));
                 }

@@ -149,4 +149,28 @@ class IpdAdmissionServiceTest {
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Can only plan discharge for ADMITTED patients");
     }
+
+    @Test
+    void addIpdPrescription_withStartDateInPast_throwsIllegalArgumentException() {
+        when(securityHelper.getCurrentUserRole()).thenReturn("DOCTOR");
+        
+        IpdAdmission ipd = new IpdAdmission();
+        ipd.setId(1L);
+        ipd.setStatus("ADMITTED");
+        when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(ipd));
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        
+        com.hms.dto.AddIpdPrescriptionRequest req = new com.hms.dto.AddIpdPrescriptionRequest();
+        req.setMedicineId(5L);
+        req.setDose("1 tab");
+        req.setFrequency("1-0-1");
+        req.setType("TABLET");
+        req.setRoute("ORAL");
+        req.setDurationDays(5);
+        req.setStartDate(java.time.LocalDate.now().minusDays(1)); // past date
+        
+        assertThatThrownBy(() -> service.addIpdPrescription(1L, req))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Prescription start date cannot be in the past");
+    }
 }

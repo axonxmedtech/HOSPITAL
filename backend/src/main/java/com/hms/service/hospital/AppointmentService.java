@@ -176,8 +176,8 @@ public class AppointmentService {
                         appointment.getAppointmentDate());
 
         for (Appointment existing : existingAppointments) {
-            // Check for exact time match (assuming strict 30 min slots)
-            if (existing.getAppointmentTime().equals(appointment.getAppointmentTime())) {
+            // Check for exact time match (assuming strict 30 min slots) for non-cancelled appointments
+            if (!"CANCELLED".equals(existing.getStatus()) && existing.getAppointmentTime().equals(appointment.getAppointmentTime())) {
                 throw new IllegalArgumentException("Slot " + appointment.getAppointmentTime() + " is already booked.");
             }
 

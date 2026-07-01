@@ -17,9 +17,13 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class PurchaseService {
+
+    private static final Logger logger = LoggerFactory.getLogger(PurchaseService.class);
 
     @Autowired
     private PurchaseInvoiceRepository invoiceRepository;
@@ -56,6 +60,36 @@ public class PurchaseService {
         List<PurchaseInvoiceItem> items = new ArrayList<>();
         if (req.getItems() != null) {
             for (PurchaseRequest.PurchaseItemRequest itemReq : req.getItems()) {
+                if (itemReq.getQuantity() == null || itemReq.getQuantity().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                    throw new IllegalArgumentException("Purchase quantity must be positive");
+                }
+                if (itemReq.getFreeQuantity() == null || itemReq.getFreeQuantity().compareTo(java.math.BigDecimal.ZERO) < 0) {
+                    throw new IllegalArgumentException("Free quantity cannot be negative");
+                }
+                if (itemReq.getMrp() == null || itemReq.getMrp().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                    throw new IllegalArgumentException("MRP must be greater than zero");
+                }
+                if (itemReq.getPurchaseRate() == null || itemReq.getPurchaseRate().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                    throw new IllegalArgumentException("Purchase rate must be greater than zero");
+                }
+                if (itemReq.getSellingPrice() == null || itemReq.getSellingPrice().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                    throw new IllegalArgumentException("Selling price must be greater than zero");
+                }
+                if (itemReq.getSellingPrice().compareTo(itemReq.getMrp()) > 0) {
+                    throw new IllegalArgumentException("Selling price cannot exceed MRP");
+                }
+                if (itemReq.getPurchaseRate().compareTo(itemReq.getMrp()) > 0) {
+                    throw new IllegalArgumentException("Purchase rate cannot exceed MRP");
+                }
+                if (itemReq.getExpiryDate() == null) {
+                    throw new IllegalArgumentException("Expiry date is required");
+                }
+                if (itemReq.getExpiryDate().isBefore(java.time.LocalDate.now())) {
+                    throw new IllegalArgumentException("Expiry date cannot be in the past");
+                }
+                if (itemReq.getGstPercentage() != null && (itemReq.getGstPercentage().compareTo(java.math.BigDecimal.ZERO) < 0 || itemReq.getGstPercentage().compareTo(java.math.BigDecimal.valueOf(100)) > 0)) {
+                    throw new IllegalArgumentException("GST percentage must be between 0% and 100%");
+                }
                 PurchaseInvoiceItem item = new PurchaseInvoiceItem();
                 item.setMedicineId(itemReq.getMedicineId());
                 item.setBatchNumber(itemReq.getBatchNumber());
@@ -77,7 +111,9 @@ public class PurchaseService {
 
         if ("POSTED".equalsIgnoreCase(saved.getPostingStatus())) {
             updateInventory(saved);
-            try { webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}"); } catch (Exception ignored) {}
+            try { webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}"); } catch (Exception e) {
+                logger.warn("Failed to broadcast WebSocket refresh after purchase invoice creation", e);
+            }
         }
 
         return saved;
@@ -96,7 +132,9 @@ public class PurchaseService {
         invoice.setPostingStatus("POSTED");
         PurchaseInvoice saved = invoiceRepository.save(invoice);
         updateInventory(saved);
-        try { webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}"); } catch (Exception ignored) {}
+        try { webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}"); } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after invoice posting", e);
+        }
         return saved;
     }
 

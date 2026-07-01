@@ -25,6 +25,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.List;
@@ -47,6 +49,8 @@ import java.util.Map;
  */
 @Service
 public class PlatformHospitalService {
+
+    private static final Logger logger = LoggerFactory.getLogger(PlatformHospitalService.class);
 
     @Autowired
     private HospitalRepository hospitalRepository;
@@ -555,8 +559,8 @@ public class PlatformHospitalService {
             log.setHospitalId(hospitalId);
             auditLogRepository.save(log);
         } catch (Exception e) {
-            // Improve: Log error to console, but don't fail the operation
-            System.err.println("Failed to save audit log: " + e.getMessage());
+            // Improve: Log error using SLF4J, but don't fail the operation
+            logger.error("Failed to save audit log: {}", e.getMessage(), e);
         }
     }
 }

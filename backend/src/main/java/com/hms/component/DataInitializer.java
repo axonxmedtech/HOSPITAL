@@ -2,6 +2,8 @@ package com.hms.component;
 
 import com.hms.entity.User;
 import com.hms.repository.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -9,6 +11,8 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class DataInitializer implements CommandLineRunner {
+
+    private static final Logger logger = LoggerFactory.getLogger(DataInitializer.class);
 
     @Autowired
     private UserRepository userRepository;
@@ -28,17 +32,16 @@ public class DataInitializer implements CommandLineRunner {
                 superAdmin.setHospitalId(null);
                 superAdmin.setIsActive(true);
                 userRepository.save(superAdmin);
-                System.out.println("=================================================");
-                System.out.println("[DataInitializer] Super Admin CREATED");
-                System.out.println("[DataInitializer]   Email   : admin123@gmail.com");
-                System.out.println("[DataInitializer]   Password: pass123");
-                System.out.println("=================================================");
+                logger.info("=================================================");
+                logger.info("[DataInitializer] Super Admin CREATED");
+                logger.info("[DataInitializer]   Email   : admin123@gmail.com");
+                logger.info("[DataInitializer]   Password: pass123");
+                logger.info("=================================================");
             } else {
-                System.out.println("[DataInitializer] Super Admin already exists — skipping seed");
+                logger.info("[DataInitializer] Super Admin already exists — skipping seed");
             }
         } catch (Exception e) {
-            System.err.println("[DataInitializer] ERROR seeding Super Admin: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("[DataInitializer] ERROR seeding Super Admin: {}", e.getMessage(), e);
         }
     }
 }

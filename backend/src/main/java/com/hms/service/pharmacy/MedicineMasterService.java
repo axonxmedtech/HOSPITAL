@@ -11,10 +11,15 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.List;
 
 @Service
 public class MedicineMasterService {
+
+    private static final Logger logger = LoggerFactory.getLogger(MedicineMasterService.class);
 
     @Autowired
     private MedicineMasterRepository repository;
@@ -34,7 +39,9 @@ public class MedicineMasterService {
         m = repository.save(m);
         m.setMedicineCode("MED" + (1000 + m.getId()));
         m = repository.save(m);
-        try { webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}"); } catch (Exception ignored) {}
+        try { webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}"); } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after medicine master creation", e);
+        }
         return m;
     }
 
@@ -45,7 +52,9 @@ public class MedicineMasterService {
                 .orElseThrow(() -> new RuntimeException("Medicine not found in catalog"));
         mapDtoToEntity(req, m);
         m = repository.save(m);
-        try { webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}"); } catch (Exception ignored) {}
+        try { webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}"); } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after medicine master update", e);
+        }
         return m;
     }
 

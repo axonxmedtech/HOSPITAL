@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import hospitalService from '../services/hospitalService';
 import authService from '../services/authService';
+import { API_BASE_URL } from '../services/apiService'; // BUG-028: single source-of-truth for base URL
 
 /**
  * PatientDetailsModal - Read-only view of patient information with tabs for additional data
@@ -33,9 +34,8 @@ const PatientDetailsModal = ({ patient, onClose }) => {
 
     const openPdfInNewTab = (endpointPath) => {
         const token = sessionStorage.getItem('token');
-        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
         const separator = endpointPath.includes('?') ? '&' : '?';
-        const url = `${baseUrl}${endpointPath}${separator}token=${encodeURIComponent(token)}`;
+        const url = `${API_BASE_URL}${endpointPath}${separator}token=${encodeURIComponent(token)}`;
         window.open(url, '_blank');
     };
 
@@ -96,6 +96,20 @@ const PatientDetailsModal = ({ patient, onClose }) => {
         }
     }, [activeTab, patient?.id, patient?.publicId]);
 
+    // BUG-039: Escape key dismissal and auto-focus for accessibility
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') onClose();
+        };
+        document.addEventListener('keydown', handleKeyDown);
+        
+        // Auto-focus the close button or first tab on mount
+        const closeBtn = document.getElementById('patient-modal-close-btn');
+        closeBtn?.focus();
+
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [onClose]);
+
     if (!patient) return null;
 
     const tabs = [
@@ -105,34 +119,52 @@ const PatientDetailsModal = ({ patient, onClose }) => {
     ];
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+        <div 
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4"
+            onClick={onClose}
+            role="presentation"
+        >
+            <div 
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="patient-details-title"
+                aria-describedby="patient-details-subtitle"
+                className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[95vh] sm:max-h-[90vh] flex flex-col transform transition-all scale-100"
+                onClick={(e) => e.stopPropagation()}
+            >
                 {/* Header */}
-                <div className="flex justify-between items-center p-6 border-b border-gray-200">
+                <div className="flex justify-between items-center p-4 sm:p-6 border-b border-gray-200">
                     <div>
-                        <h2 className="text-2xl font-bold text-gray-900">Patient Details</h2>
-                        <p className="text-sm text-gray-600 mt-1">
+                        <h2 id="patient-details-title" className="text-xl sm:text-2xl font-bold text-gray-900">Patient Details</h2>
+                        <p id="patient-details-subtitle" className="text-xs sm:text-sm text-gray-600 mt-1">
                             Patient ID: {patient.customId || patient.publicId || patient.id}
                         </p>
                     </div>
                     <button
+                        id="patient-modal-close-btn"
                         onClick={onClose}
-                        className="text-gray-400 hover:text-gray-600 transition-colors"
+                        aria-label="Close details dialog"
+                        className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2"
                     >
-                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                     </button>
                 </div>
 
                 {/* Tabs */}
-                <div className="border-b border-gray-200 px-6">
-                    <nav className="flex space-x-4">
+                <div className="border-b border-gray-200 px-4 sm:px-6">
+                    <nav className="flex space-x-2 sm:space-x-4" role="tablist" aria-label="Patient details tabs">
                         {tabs.map((tab) => (
                             <button
                                 key={tab.id}
+                                id={`tab-${tab.id}`}
+                                role="tab"
+                                aria-selected={activeTab === tab.id}
+                                aria-controls={`panel-${tab.id}`}
+                                tabIndex={activeTab === tab.id ? 0 : -1}
                                 onClick={() => setActiveTab(tab.id)}
-                                className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors ${
+                                className={`py-3 px-3 sm:px-4 text-xs sm:text-sm font-medium border-b-2 transition-colors focus:outline-none focus:text-gray-900 ${
                                     activeTab === tab.id
                                         ? 'border-gray-900 text-gray-900 font-semibold'
                                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -145,7 +177,12 @@ const PatientDetailsModal = ({ patient, onClose }) => {
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto p-6">
+                <div 
+                    id={`panel-${activeTab}`}
+                    role="tabpanel"
+                    aria-labelledby={`tab-${activeTab}`}
+                    className="flex-1 overflow-y-auto p-4 sm:p-6"
+                >
                     {activeTab === 'info' && (
                         <div className="space-y-6">
                             {/* Basic Information */}

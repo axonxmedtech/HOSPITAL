@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
+import { API_BASE_URL } from '../../services/apiService'; // BUG-028: single source-of-truth for base URL
 import { useToast } from '../../context/ToastContext';
+import { formatDate, formatDateTime, formatTime } from '../../utils/date';
 import EmptyState from '../../components/EmptyState';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import AppointmentModal from '../../components/AppointmentModal';
@@ -152,7 +155,15 @@ const ReceptionistDashboard = () => {
     const [pageSize, setPageSize] = useState(10);
     const [totalPages, setTotalPages] = useState(1);
     const [totalElements, setTotalElements] = useState(0);
-    const [searchTerm, setSearchTerm] = useState('');
+    const [searchInput, setSearchInput] = useState('');
+    const searchTerm = useDebounce(searchInput, 500); // BUG-017: debounce search to prevent per-keystroke API calls
+    const activeRequestRef = useRef(0);
+
+    // Clear search when switching tabs
+    useEffect(() => {
+        setSearchInput('');
+        setPage(0);
+    }, [activeTab]);
     const todayStr = (() => { const t = new Date(); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); })();
     const [opdDateFilter, setOpdDateFilter] = useState(todayStr);
     const [opdTabView, setOpdTabView] = useState('Live');
@@ -204,10 +215,12 @@ const ReceptionistDashboard = () => {
     }, [isOpdModalOpen, doctors]);
 
     const loadData = async (showSpinner = true) => {
+        const requestId = ++activeRequestRef.current;
         if (showSpinner) setLoading(true);
         try {
             // Stats
             const statsData = await hospitalService.getAppointmentStats();
+            if (requestId !== activeRequestRef.current) return;
             setStats(statsData);
 
             if (activeTab === 'overview' || activeTab === 'appointments' || activeTab === 'opd' || activeTab === 'queue' || activeTab === 'ipd') {
@@ -219,6 +232,7 @@ const ReceptionistDashboard = () => {
                     activeTab === 'overview' ? hospitalService.getTodaysFollowUps() : Promise.resolve([])
                 ];
                 const [apptData, docData, patData, followUpsData] = await Promise.all(promises);
+                if (requestId !== activeRequestRef.current) return;
 
                 if (activeTab === 'appointments' || activeTab === 'overview') {
                     if (apptData.content) {
@@ -248,6 +262,7 @@ const ReceptionistDashboard = () => {
                         statusParam = ''; // all statuses on that date
                     }
                     const opdsData = await hospitalService.getOpds(searchTerm, page, pageSize, dateParam, statusParam);
+                    if (requestId !== activeRequestRef.current) return;
                     let opdsArray = opdsData.content ? opdsData.content : opdsData;
                     if (opdTabView === 'Live') {
                         opdsArray = (opdsArray || []).filter(o => o.status === 'QUEUED');
@@ -258,6 +273,7 @@ const ReceptionistDashboard = () => {
                 } else if (activeTab === 'ipd') {
                     // IPD tab: fetch role-based admitted IPD admissions
                     const ipdList = await hospitalService.getAdmittedIpdAdmissions();
+                    if (requestId !== activeRequestRef.current) return;
                     let arr = ipdList || [];
                     if (searchTerm && searchTerm.trim()) {
                         const q = searchTerm.trim().toLowerCase();
@@ -285,6 +301,7 @@ const ReceptionistDashboard = () => {
                     } else {
                         q = await hospitalService.getHospitalQueue();
                     }
+                    if (requestId !== activeRequestRef.current) return;
                     setQueueEntries(q || []);
                     if (q && q.length > 0) {
                         const sorted = [...q].sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
@@ -307,6 +324,7 @@ const ReceptionistDashboard = () => {
             } else if (activeTab === 'patients') {
                 const dateParam = patientTabView === 'Date' ? patientDateFilter : '';
                 const data = await hospitalService.getPatients(searchTerm, page, pageSize, dateParam);
+                if (requestId !== activeRequestRef.current) return;
                 if (data.content) {
                     setPatients(data.content);
                     setTotalPages(data.totalPages);
@@ -318,6 +336,7 @@ const ReceptionistDashboard = () => {
                 }
             } else if (activeTab === 'billing') {
                 const data = await hospitalService.getBills(searchTerm, page, pageSize, billingStatus);
+                if (requestId !== activeRequestRef.current) return;
                 if (data.content) {
                     setBilling(data.content);
                     setTotalPages(data.totalPages);
@@ -333,6 +352,7 @@ const ReceptionistDashboard = () => {
             if (user?.inClinic !== false) {
                 try {
                     const inv = await hospitalService.getInventoryMedicines();
+                    if (requestId !== activeRequestRef.current) return;
                     const lowStock = (inv || []).filter(item => item.isActive !== false && item.stockQuantity <= item.minStockLevel);
                     setLowStockItems(lowStock);
                 } catch (err) {
@@ -342,11 +362,14 @@ const ReceptionistDashboard = () => {
                 setLowStockItems([]);
             }
         } catch (err) {
+            if (requestId !== activeRequestRef.current) return;
             console.error(`[ReceptionistDashboard] Failed to load ${activeTab}:`, err);
             // Only show toast error if it was a user-initiated action (spinner shown)
             if (showSpinner) toastError('Failed to load data');
         } finally {
-            if (showSpinner) setLoading(false);
+            if (requestId === activeRequestRef.current) {
+                if (showSpinner) setLoading(false);
+            }
         }
     };
 
@@ -406,12 +429,15 @@ const ReceptionistDashboard = () => {
                 'Cancel Appointment',
                 'Are you sure you want to cancel this appointment? This action cannot be undone.',
                 async (reason) => {
+                    const oldAppointments = [...appointments];
+                    setAppointments(prev => prev.map(appt => appt.id === id ? { ...appt, status: newStatus } : appt));
                     try {
-                        await hospitalService.updateAppointmentStatus(id, newStatus);
+                        await hospitalService.updateAppointmentStatus(id, newStatus, reason);
                         success('Appointment cancelled successfully');
-                        loadData();
+                        loadData(false);
                     } catch (err) {
                         console.error('Failed to cancel appointment:', err);
+                        setAppointments(oldAppointments);
                         toastError('Failed to cancel appointment');
                     }
                 },
@@ -419,15 +445,15 @@ const ReceptionistDashboard = () => {
                 "Reason for cancellation (required)"
             );
         } else {
-            // Check if irreversible transition if needed, but backend handles most. 
-            // Admin dashboard allows non-cancelled updates directly? 
-            // Admin dash: "Normal update" -> handleAppointmentStatusUpdate
+            const oldAppointments = [...appointments];
+            setAppointments(prev => prev.map(appt => appt.id === id ? { ...appt, status: newStatus } : appt));
             try {
                 await hospitalService.updateAppointmentStatus(id, newStatus);
                 success(`Appointment status updated to ${newStatus}`);
-                loadData();
+                loadData(false);
             } catch (err) {
                 console.error('Failed to update status:', err);
+                setAppointments(oldAppointments);
                 toastError('Failed to update status');
             }
         }
@@ -466,9 +492,8 @@ const ReceptionistDashboard = () => {
 
     const openPdfInNewTab = (endpointPath) => {
         const token = sessionStorage.getItem('token');
-        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
         const separator = endpointPath.includes('?') ? '&' : '?';
-        const url = `${baseUrl}${endpointPath}${separator}token=${encodeURIComponent(token)}`;
+        const url = `${API_BASE_URL}${endpointPath}${separator}token=${encodeURIComponent(token)}`;
         window.open(url, '_blank');
     };
 
@@ -862,8 +887,8 @@ const ReceptionistDashboard = () => {
                                             <input
                                                 type="text"
                                                 placeholder="Search appointments..."
-                                                value={searchTerm}
-                                                onChange={(e) => { setSearchTerm(e.target.value); setPage(0); }}
+                                                value={searchInput}
+                                                onChange={(e) => { setSearchInput(e.target.value); setPage(0); }}
                                                 className="w-full pl-9 pr-4 py-1.5 text-xs bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 transition-all"
                                             />
                                         </div>
@@ -1006,7 +1031,7 @@ const ReceptionistDashboard = () => {
                                                                     <td className="px-4 py-3.5 text-sm text-gray-955 font-semibold">{q.opd?.patient?.name || q.opd?.patientName || '-'}</td>
                                                                     <td className="px-4 py-3.5 text-sm text-gray-600">{q.opd?.doctor?.name || q.opd?.doctorName || '-'}</td>
                                                                     <td className="px-4 py-3.5 text-xs text-gray-400">
-                                                                        {new Date(q.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                        {formatTime(q.createdAt)}
                                                                     </td>
                                                                 </tr>
                                                             ))}
@@ -1031,8 +1056,8 @@ const ReceptionistDashboard = () => {
                     <PageHeader
                         title={tabs.find(t => t.id === activeTab)?.label || (activeTab.charAt(0).toUpperCase() + activeTab.slice(1))}
                         subtitle={`Manage ${activeTab} records`}
-                        onSearch={activeTab === 'queue' ? null : (e) => setSearchTerm(e.target.value)}
-                        searchValue={searchTerm}
+                        onSearch={activeTab === 'queue' ? null : (e) => setSearchInput(e.target.value)}
+                        searchValue={searchInput}
                         searchPlaceholder={activeTab === 'queue' ? '' : `Search ${activeTab}...`}
                         onAdd={activeTab === 'queue' || activeTab === 'billing' || activeTab === 'ipd' || activeTab === 'inventory' ? null : () => {
                             if (activeTab === 'opd') setIsOpdModalOpen(true);
@@ -1088,7 +1113,7 @@ const ReceptionistDashboard = () => {
                                             onClick={() => {
                                                 setPatientTabView(view);
                                                 setPage(0);
-                                                setSearchTerm('');
+                                                setSearchInput('');
                                             }}
                                             className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${patientTabView === view
                                                 ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
@@ -1129,7 +1154,7 @@ const ReceptionistDashboard = () => {
                                             onClick={() => {
                                                 setOpdTabView(view);
                                                 setPage(0);
-                                                setSearchTerm('');
+                                                setSearchInput('');
                                             }}
                                             className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${opdTabView === view
                                                 ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
@@ -1224,7 +1249,7 @@ const ReceptionistDashboard = () => {
                                                         <td className="px-4 py-3">{o.patient?.name}</td>
                                                         <td className="px-4 py-3">{o.doctor?.name || '-'}</td>
                                                         <td className="px-4 py-3">{o.visitType}</td>
-                                                        <td className="px-4 py-3">{new Date(o.createdAt).toLocaleString()}</td>
+                                                        <td className="px-4 py-3">{formatDateTime(o.createdAt)}</td>
                                                         <td className="px-4 py-3">
                                                             <div className="flex items-center gap-2">
                                                                 <button onClick={() => handlePrintOpd(o)} className="px-3 py-1 bg-gray-900 text-white rounded">Print</button>
@@ -1284,7 +1309,7 @@ const ReceptionistDashboard = () => {
                                                             <td className="px-4 py-3">{doctorName}</td>
                                                             <td className="px-4 py-3">{wardName}</td>
                                                             <td className="px-4 py-3">{bedNumber}</td>
-                                                            <td className="px-4 py-3">{admittedAt ? new Date(admittedAt).toLocaleString() : '-'}</td>
+                                                            <td className="px-4 py-3">{formatDateTime(admittedAt)}</td>
                                                             <td className="px-4 py-3">{status}</td>
                                                             <td className="px-4 py-3">
                                                                 <button
@@ -1333,7 +1358,7 @@ const ReceptionistDashboard = () => {
                                                             <td className="px-4 py-3">Position #{idx + 1}</td>
                                                             <td className="px-4 py-3">{q.opd?.patient?.name || q.opd?.patientName || '-'}</td>
                                                             <td className="px-4 py-3">{q.opd?.doctor?.name || q.opd?.doctorName || '-'}</td>
-                                                            <td className="px-4 py-3">{new Date(q.createdAt).toLocaleString()}</td>
+                                                            <td className="px-4 py-3">{formatDateTime(q.createdAt)}</td>
                                                         </tr>
                                                     ))}
                                             </tbody>
@@ -1460,6 +1485,50 @@ const ReceptionistDashboard = () => {
                                 toastError('Please select a valid patient from the suggestions');
                                 return;
                             }
+                            // Validate vitals
+                            if (opdForm.bp) {
+                                const bpVal = opdForm.bp.trim();
+                                const bpMatch = bpVal.match(/^(\d{2,3})\s*\/\s*(\d{2,3})$/);
+                                if (!bpMatch) {
+                                    toastError("Blood pressure must be in format Systolic/Diastolic, e.g., 120/80");
+                                    return;
+                                }
+                                const systolic = parseInt(bpMatch[1], 10);
+                                const diastolic = parseInt(bpMatch[2], 10);
+                                if (systolic <= diastolic) {
+                                    toastError("Systolic blood pressure must be greater than diastolic blood pressure");
+                                    return;
+                                }
+                            }
+                            if (opdForm.temperature) {
+                                const temp = parseFloat(opdForm.temperature);
+                                if (isNaN(temp) || temp < 30 || temp > 45) {
+                                    toastError("Temperature must be between 30.0°C and 45.0°C");
+                                    return;
+                                }
+                            }
+                            if (opdForm.pulse) {
+                                const pulse = parseInt(opdForm.pulse, 10);
+                                if (isNaN(pulse) || pulse < 30 || pulse > 250) {
+                                    toastError("Pulse must be between 30 and 250 bpm");
+                                    return;
+                                }
+                            }
+                            if (opdForm.weight) {
+                                const weight = parseFloat(opdForm.weight);
+                                if (isNaN(weight) || weight < 0.1 || weight > 500) {
+                                    toastError("Weight must be between 0.1 and 500.0 kg");
+                                    return;
+                                }
+                            }
+                            if (opdForm.spo2) {
+                                const spo2 = parseInt(opdForm.spo2, 10);
+                                if (isNaN(spo2) || spo2 < 0 || spo2 > 100) {
+                                    toastError("SpO2 must be between 0% and 100%");
+                                    return;
+                                }
+                            }
+
                             setOpdSubmitting(true);
                             try {
                                 const payload = {

@@ -157,7 +157,9 @@ public class IpdAdmissionService {
         // Remove from doctor's active queue
         try {
             queueEntryRepository.deleteByOpdId(opdId);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to delete queue entry for OPD ID during IPD admission", e);
+        }
 
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId).orElse(null);
         boolean hasBillingModule = hospital != null && hospital.getModules() != null && hospital.getModules().contains("BILLING");
@@ -181,7 +183,9 @@ public class IpdAdmissionService {
                 if (appointments != null && !appointments.isEmpty()) {
                     appointmentId = appointments.get(0).getId();
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                logger.debug("Could not resolve latest appointment for patient during IPD admission billing", e);
+            }
 
             Billing bill = new Billing();
             bill.setHospitalId(hospitalId);
@@ -315,7 +319,7 @@ public class IpdAdmissionService {
             // patient
             patientRepository.findById(ipd.getPatientId()).ifPresent(p -> {
                 dto.setPatientName(p.getName());
-                try { dto.setAge(p.getAge()); } catch (Exception ignored) {}
+                try { dto.setAge(p.getAge()); } catch (Exception e) { logger.debug("Could not map patient age to DTO", e); }
                 dto.setGender(p.getGender());
             });
             // ward/bed
@@ -347,7 +351,7 @@ public class IpdAdmissionService {
             com.hms.dto.IpdAdmissionDetailsDTO.PatientDTO p = new com.hms.dto.IpdAdmissionDetailsDTO.PatientDTO();
             p.id = patient.getId();
             p.name = patient.getName();
-            try { p.age = patient.getAge(); } catch (Exception ignored) {}
+            try { p.age = patient.getAge(); } catch (Exception e) { logger.debug("Could not map patient age to details DTO", e); }
             p.gender = patient.getGender();
             dto.setPatient(p);
         }
@@ -398,8 +402,8 @@ public class IpdAdmissionService {
                 pd.durationDays = p.getDurationDays();
                 active.add(pd);
             }
-        } catch (Exception ex) {
-            // fallback empty
+        } catch (Exception e) {
+            logger.warn("Failed to load active prescriptions for IPD {}", ipdId, e);
         }
         dto.setActivePrescriptions(active);
 
@@ -420,8 +424,8 @@ public class IpdAdmissionService {
                 pd.durationDays = p.getDurationDays();
                 all.add(pd);
             }
-        } catch (Exception ex) {
-            // fallback empty
+        } catch (Exception e) {
+            logger.warn("Failed to load all prescription history for IPD {}", ipdId, e);
         }
         dto.setAllPrescriptions(all);
 
@@ -490,8 +494,8 @@ public class IpdAdmissionService {
                     }
                 }
             }
-        } catch (Exception ex) {
-            // fallback empty
+        } catch (Exception e) {
+            logger.warn("Failed to load administered billing medicines for IPD {}", ipdId, e);
         }
         dto.setAdministeredItems(administeredDtos);
 
@@ -530,7 +534,9 @@ public class IpdAdmissionService {
             try {
                 com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
                 mr.setAdministeredItemsJson(mapper.writeValueAsString(administeredItems));
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                logger.warn("Failed to serialize administered items JSON for IPD follow-up", e);
+            }
         }
 
         com.hms.entity.MedicalRecord saved = medicalRecordRepository.save(mr);
@@ -550,6 +556,9 @@ public class IpdAdmissionService {
 
         if (administeredItems != null && !administeredItems.isEmpty()) {
             for (com.hms.dto.ConsultationRequest.AdministeredItem item : administeredItems) {
+                if (item.getQuantity() == null || item.getQuantity() <= 0) {
+                    throw new IllegalArgumentException("Administered item quantity must be positive");
+                }
                 if (item.getMedicineId() != null) {
                     com.hms.entity.Medicine med = medicineRepository.findById(item.getMedicineId())
                             .orElseThrow(() -> new RuntimeException("Medicine not found in active inventory: ID " + item.getMedicineId()));
@@ -574,7 +583,9 @@ public class IpdAdmissionService {
                                 med.getId().toString(),
                                 null
                         );
-                    } catch (Exception ignored) {}
+                    } catch (Exception e) {
+                        logger.warn("Failed to write audit log for IPD follow-up medicine deduction", e);
+                    }
 
                     if (hasBillingModule && ipdBill != null) {
                         // Create BillingMedicine charge
@@ -596,7 +607,9 @@ public class IpdAdmissionService {
         if (hasBillingModule && ipdBill != null) {
             try {
                 billingService.recalculateTotal(ipdBill.getId());
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                logger.warn("Failed to recalculate billing total after IPD follow-up", e);
+            }
         }
 
         try {
@@ -635,6 +648,9 @@ public class IpdAdmissionService {
 
         if (administeredItems != null && !administeredItems.isEmpty()) {
             for (com.hms.dto.ConsultationRequest.AdministeredItem item : administeredItems) {
+                if (item.getQuantity() == null || item.getQuantity() <= 0) {
+                    throw new IllegalArgumentException("Administered item quantity must be positive");
+                }
                 if (item.getMedicineId() != null) {
                     com.hms.entity.Medicine med = medicineRepository.findById(item.getMedicineId())
                             .orElseThrow(() -> new RuntimeException("Medicine not found in active inventory: ID " + item.getMedicineId()));
@@ -659,7 +675,9 @@ public class IpdAdmissionService {
                                 med.getId().toString(),
                                 null
                         );
-                    } catch (Exception ignored) {}
+                    } catch (Exception e) {
+                        logger.warn("Failed to write audit log for IPD medicine administration deduction", e);
+                    }
 
                     if (hasBillingModule && ipdBill != null) {
                         // Create BillingMedicine charge
@@ -680,7 +698,9 @@ public class IpdAdmissionService {
                 // Recalculate bill total (incorporates consultation fee + medicines + bed fees)
                 try {
                     billingService.recalculateTotal(ipdBill.getId());
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    logger.warn("Failed to recalculate billing total after IPD medicine administration", e);
+                }
             }
         }
 
@@ -734,7 +754,9 @@ public class IpdAdmissionService {
                     // Degrade relative items
                     try {
                         hospitalInventoryService.degradeRelativeItems(stock.getName(), item.getQuantity(), hospitalId);
-                    } catch (Exception ignored) {}
+                    } catch (Exception e) {
+                        logger.warn("Failed to degrade relative inventory items during hospital item administration", e);
+                    }
 
                     // Audit Log for Stock deduction
                     try {
@@ -747,7 +769,9 @@ public class IpdAdmissionService {
                                 stock.getId().toString(),
                                 null
                         );
-                    } catch (Exception ignored) {}
+                    } catch (Exception e) {
+                        logger.warn("Failed to write audit log for hospital item deduction", e);
+                    }
 
                     if (hasBillingModule && ipdBill != null) {
                         // Create BillingItem charge
@@ -767,7 +791,9 @@ public class IpdAdmissionService {
                 // Recalculate bill total (incorporates consultation fee + medicines + bed fees + hospital items)
                 try {
                     billingService.recalculateTotal(ipdBill.getId());
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    logger.warn("Failed to recalculate billing total after hospital item administration", e);
+                }
             }
         }
 
@@ -807,7 +833,9 @@ public class IpdAdmissionService {
                     if (dopt.isPresent()) {
                         resolvedDocId = dopt.get().getId();
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    logger.debug("Could not resolve doctor during IPD prescription creation", e);
+                }
             }
             latest.setDoctorId(resolvedDocId);
             latest.setIpdAdmissionId(ipdId);
@@ -831,6 +859,28 @@ public class IpdAdmissionService {
                     .map(m -> m.getName())
                     .orElse(null);
         }
+        if ((req.getMedicineName() == null || req.getMedicineName().trim().isEmpty()) && req.getMedicineId() == null) {
+            throw new IllegalArgumentException("Either Medicine Name or Medicine ID is required");
+        }
+        if (req.getDose() == null || req.getDose().trim().isEmpty()) {
+            throw new IllegalArgumentException("Prescription dose is required");
+        }
+        if (req.getFrequency() == null || req.getFrequency().trim().isEmpty()) {
+            throw new IllegalArgumentException("Prescription frequency is required");
+        }
+        if (req.getType() == null || req.getType().trim().isEmpty()) {
+            throw new IllegalArgumentException("Prescription type is required");
+        }
+        if (req.getRoute() == null || req.getRoute().trim().isEmpty()) {
+            throw new IllegalArgumentException("Prescription route is required");
+        }
+        if (req.getStartDate() == null || req.getStartDate().isBefore(java.time.LocalDate.now())) {
+            throw new IllegalArgumentException("Prescription start date cannot be in the past");
+        }
+        if (req.getDurationDays() == null || req.getDurationDays() <= 0) {
+            throw new IllegalArgumentException("Prescription duration must be at least 1 day");
+        }
+
         if (medicineName == null) {
             medicineName = req.getMedicineId() != null ? "MED-" + req.getMedicineId() : "Unknown Medicine";
         }
@@ -964,7 +1014,8 @@ public class IpdAdmissionService {
                         } else {
                             if (b.getAmount() != null) total = total.add(b.getAmount());
                         }
-                    } catch (Exception ignored) {
+                    } catch (Exception e) {
+                        logger.warn("Failed to aggregate billing items/medicines for IPD discharge check", e);
                         if (b.getAmount() != null) total = total.add(b.getAmount());
                     }
 
@@ -974,7 +1025,9 @@ public class IpdAdmissionService {
                         for (com.hms.entity.BillingPayment p : pays) {
                             if (p.getAmount() != null) paid = paid.add(p.getAmount());
                         }
-                    } catch (Exception ignored) {}
+                    } catch (Exception e) {
+                        logger.warn("Failed to sum billing payments for IPD discharge check", e);
+                    }
                 }
             }
 
@@ -993,7 +1046,9 @@ public class IpdAdmissionService {
                     prescriptionRepository.save(pr);
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to complete active prescriptions during IPD discharge", e);
+        }
 
         // Update bed to available
         try {
@@ -1005,7 +1060,9 @@ public class IpdAdmissionService {
                     bedRepository.save(bed);
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to update bed status to available during IPD discharge", e);
+        }
 
         // Finalize billing records for this IPD
         if (hasBillingModule && bills != null) {

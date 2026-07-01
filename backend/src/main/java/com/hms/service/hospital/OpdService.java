@@ -51,10 +51,48 @@ public class OpdService {
 
     @Transactional
     public Opd createOpd(CreateOpdRequest req) {
-        Opd opd = new Opd();
+        // Validate Vitals
+        if (req.getBp() != null && !req.getBp().trim().isEmpty()) {
+            String bp = req.getBp().trim();
+            if (!bp.matches("^\\d{2,3}\\s*/\\s*\\d{2,3}$")) {
+                throw new IllegalArgumentException("Blood pressure must be in format Systolic/Diastolic, e.g., 120/80");
+            }
+            String[] parts = bp.split("/");
+            int systolic = Integer.parseInt(parts[0].trim());
+            int diastolic = Integer.parseInt(parts[1].trim());
+            if (systolic <= diastolic) {
+                throw new IllegalArgumentException("Systolic blood pressure must be greater than diastolic blood pressure");
+            }
+        }
+        if (req.getTemperature() != null && (req.getTemperature() < 30.0 || req.getTemperature() > 45.0)) {
+            throw new IllegalArgumentException("Temperature must be between 30.0°C and 45.0°C");
+        }
+        if (req.getPulse() != null && (req.getPulse() < 30 || req.getPulse() > 250)) {
+            throw new IllegalArgumentException("Pulse must be between 30 and 250 bpm");
+        }
+        if (req.getWeight() != null && (req.getWeight() < 0.1 || req.getWeight() > 500.0)) {
+            throw new IllegalArgumentException("Weight must be between 0.1 and 500.0 kg");
+        }
+        if (req.getSpo2() != null && (req.getSpo2() < 0 || req.getSpo2() > 100)) {
+            throw new IllegalArgumentException("SpO2 must be between 0% and 100%");
+        }
 
-        Patient patient = patientRepository.findById(req.getPatientId())
-                .orElseThrow(() -> new IllegalArgumentException("Invalid patient id"));
+        Opd opd = new Opd();
+        Patient patient;
+        if (req.getPatientId() != null && !req.getPatientId().trim().isEmpty()) {
+            String pid = req.getPatientId().trim();
+            Long hospitalId = securityHelper.getCurrentHospitalId();
+            if (pid.matches("^\\d+$")) {
+                Long numericId = Long.parseLong(pid);
+                patient = patientRepository.findByIdAndHospitalIdAndIsActiveTrue(numericId, hospitalId)
+                        .orElseThrow(() -> new IllegalArgumentException("Invalid patient id"));
+            } else {
+                patient = patientRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(pid, hospitalId)
+                        .orElseThrow(() -> new IllegalArgumentException("Invalid patient id"));
+            }
+        } else {
+            throw new IllegalArgumentException("Patient ID is required");
+        }
         opd.setPatient(patient);
 
         // Set receptionist from authenticated user (do not trust client-supplied receptionistId)
@@ -63,12 +101,21 @@ public class OpdService {
             if (receptionistId != null) {
                 userRepository.findById(receptionistId).ifPresent(opd::setReceptionist);
             }
-        } catch (Exception ignored) {
-            // If no authenticated user in context, skip setting receptionist
+        } catch (Exception e) {
+            logger.warn("Could not resolve current user as receptionist; continuing without receptionist assignment", e);
         }
 
-        if (req.getDoctorId() != null) {
-            doctorRepository.findByIdOrUserId(req.getDoctorId(), userRepository).ifPresent(opd::setDoctor);
+        if (req.getDoctorId() != null && !req.getDoctorId().trim().isEmpty()) {
+            String docIdStr = req.getDoctorId().trim();
+            java.util.Optional<Doctor> docOpt = java.util.Optional.empty();
+            if (docIdStr.matches("^\\d+$")) {
+                Long numericId = Long.parseLong(docIdStr);
+                docOpt = doctorRepository.findByIdOrUserId(numericId, userRepository);
+            } else {
+                Long hospitalId = securityHelper.getCurrentHospitalId();
+                docOpt = doctorRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(docIdStr, hospitalId);
+            }
+            docOpt.ifPresent(opd::setDoctor);
         }
 
         opd.setBp(req.getBp());
@@ -80,7 +127,10 @@ public class OpdService {
         if (req.getVisitType() != null) {
             try {
                 opd.setVisitType(Opd.VisitType.valueOf(req.getVisitType().toUpperCase()));
-            } catch (Exception ignored) {}
+            } catch (IllegalArgumentException e) {
+                logger.warn("Invalid visit type '{}'; defaulting to WALKIN", req.getVisitType());
+                opd.setVisitType(Opd.VisitType.WALKIN);
+            }
         }
 
         Opd saved = opdRepository.save(opd);
@@ -99,9 +149,13 @@ public class OpdService {
         // Audit log for OPD creation
         try {
             String performedBy = null;
-            try { performedBy = securityHelper.getCurrentUserEmail(); } catch (Exception ignored) {}
-            Long hospitalId = null;
-            try { hospitalId = securityHelper.getCurrentHospitalId(); } catch (Exception ignored) {}
+            try { performedBy = securityHelper.getCurrentUserEmail(); } catch (Exception e) {
+                logger.debug("Could not resolve current user email for audit log", e);
+            }
+            Long auditHospitalId = null;
+            try { auditHospitalId = securityHelper.getCurrentHospitalId(); } catch (Exception e) {
+                logger.debug("Could not resolve hospital ID for audit log", e);
+            }
 
             String details = "OPD " + (saved.getCaseId() != null ? saved.getCaseId() : saved.getId())
                     + " created for patient " + (saved.getPatient() != null ? saved.getPatient().getId() : "-");
@@ -110,12 +164,13 @@ public class OpdService {
                     "OPD_CREATED",
                     details,
                     performedBy,
-                    hospitalId,
+                    auditHospitalId,
                     "OPD",
                     saved.getCaseId() != null ? saved.getCaseId() : (saved.getId() != null ? saved.getId().toString() : null),
                     null
             );
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            logger.warn("Failed to write audit log for OPD creation", e);
         }
 
         // Broadcast real-time update to all connected clients in this hospital
@@ -137,7 +192,9 @@ public class OpdService {
             if (hospitalId != null) {
                 autoQueueTodaysFollowupsForDoctor(hospitalId, doctorId);
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to auto-queue today's follow-ups for doctor {}", doctorId, e);
+        }
         return queueEntryRepository.findQueueForDoctorToday(doctorId);
     }
 
@@ -149,7 +206,9 @@ public class OpdService {
         Long hospitalId = null;
         try {
             hospitalId = securityHelper.getCurrentHospitalId();
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Could not resolve hospital ID for OPD listing", e);
+        }
 
         if (hospitalId == null) {
             // Fallback: return empty page
@@ -163,7 +222,9 @@ public class OpdService {
                 java.time.LocalDate date = java.time.LocalDate.parse(dateStr.trim());
                 startDate = date.atStartOfDay();
                 endDate = date.atTime(23, 59, 59, 999999999);
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                logger.warn("Invalid date filter '{}' ignored for OPD listing", dateStr);
+            }
         }
 
         String searchVal = (search != null && !search.trim().isEmpty()) ? search.trim() : null;
@@ -179,11 +240,15 @@ public class OpdService {
         Long hospitalId = null;
         try {
             hospitalId = securityHelper.getCurrentHospitalId();
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Could not resolve hospital ID for queue listing", e);
+        }
         if (hospitalId == null) return java.util.List.of();
         try {
             autoQueueTodaysFollowupsForHospital(hospitalId);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to auto-queue today's follow-ups for hospital {}", hospitalId, e);
+        }
         return queueEntryRepository.findQueueForHospitalToday(hospitalId);
     }
 
@@ -258,7 +323,9 @@ public class OpdService {
                     saved.getCaseId(),
                     null
             );
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to write audit log for follow-up OPD creation {}", saved.getCaseId(), e);
+        }
     }
 
     public java.util.List<com.hms.entity.MedicalRecord> getFollowUpsForDoctorToday(Long hospitalId, Long doctorId, java.time.LocalDate today) {

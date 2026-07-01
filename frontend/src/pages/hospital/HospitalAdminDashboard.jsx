@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
+import { API_BASE_URL } from '../../services/apiService'; // BUG-028: single source-of-truth for base URL
 import { useToast } from '../../context/ToastContext';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import { validateForm } from '../../utils/validation';
@@ -27,6 +28,7 @@ import PageHeader from '../../components/PageHeader';
 import WardsAndBeds from './WardsAndBeds';
 import WardModal from '../../components/WardModal';
 import useWebSocket from '../../hooks/useWebSocket';
+import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
 import { SkeletonDashboard, SkeletonFormCard, SkeletonSettingsCard, SkeletonTable, SkeletonStatsGrid, SkeletonOverviewDual } from '../../components/Skeleton';
 import reportsApi from '../../services/pharmacy/reportsApi';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
@@ -61,7 +63,7 @@ const HospitalAdminDashboard = () => {
     const setActiveTab = (tab) => {
         const newParams = { tab };
         setSearchParams(newParams);
-        setSearchTerm(''); // Clear search on tab switch
+        setSearchInput(''); // Clear search input on tab switch
         setPage(0); // Reset page to 0
     };
 
@@ -125,13 +127,15 @@ const HospitalAdminDashboard = () => {
     const { success, error: toastError, info } = useToast();
 
     // Confirmation Modal State
-    const [searchTerm, setSearchTerm] = useState('');
+    const [searchInput, setSearchInput] = useState('');
+    const searchTerm = useDebounce(searchInput, 500); // BUG-017: debounce main search input
 
     // Modal tracking state instead of activeTab
     const [modalType, setModalType] = useState(null);
 
     // Patients state for Overview tab
-    const [patientsSearchTerm, setPatientsSearchTerm] = useState('');
+    const [patientsSearchInput, setPatientsSearchInput] = useState('');
+    const patientsSearchTerm = useDebounce(patientsSearchInput, 500); // BUG-017: debounce overview patients search
     const [patientsPage, setPatientsPage] = useState(0);
     const [patientsTotalPages, setPatientsTotalPages] = useState(1);
     const [patientsTotalElements, setPatientsTotalElements] = useState(0);
@@ -222,22 +226,17 @@ const HospitalAdminDashboard = () => {
         }
     });
 
-    // Effect for loading data - Immediate for Tab change, Debounced for Search
+    // Clear searchInput when tab changes
     useEffect(() => {
-        const fetchImmediate = async () => {
-            // Reset page when tab changes (already handled in setTab but good for safety)
-            if (!searchTerm) loadData(page, pageSize);
-        };
+        setSearchInput('');
+        setPage(0);
+    }, [activeTab]);
 
-        if (searchTerm) {
-            const timer = setTimeout(() => {
-                setPage(0); // Reset to first page on search
-                loadData(0, pageSize);
-            }, 500);
-            return () => clearTimeout(timer);
-        } else {
-            fetchImmediate();
-        }
+    // Effect for loading data
+    useEffect(() => {
+        // Prevent double fetch when searchInput was just cleared but debounced searchTerm hasn't updated yet
+        if (searchInput === '' && searchTerm !== '') return;
+        loadData(page, pageSize);
     }, [activeTab, searchTerm, page, billingStatus, auditLogRoleFilter, patientTabView, patientDateFilter, opdTabView, opdDateFilter]);
 
     // Periodic background polling replaced with WebSocket real-time sync
@@ -245,15 +244,8 @@ const HospitalAdminDashboard = () => {
     // Effect for Patients list loading (Overview Tab specific)
     useEffect(() => {
         if (activeTab !== 'overview') return;
-
-        if (patientsSearchTerm) {
-            const timer = setTimeout(() => {
-                loadPatients(patientsSearchTerm, patientsPage);
-            }, 500);
-            return () => clearTimeout(timer);
-        } else {
-            loadPatients(patientsSearchTerm, patientsPage);
-        }
+        if (patientsSearchInput === '' && patientsSearchTerm !== '') return;
+        loadPatients(patientsSearchTerm, patientsPage);
     }, [activeTab, patientsSearchTerm, patientsPage, pageSize]);
 
     // Load hospital fees when Fees tab is active
@@ -978,9 +970,8 @@ const HospitalAdminDashboard = () => {
 
     const openPdfInNewTab = (endpointPath) => {
         const token = sessionStorage.getItem('token');
-        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
         const separator = endpointPath.includes('?') ? '&' : '?';
-        const url = `${baseUrl}${endpointPath}${separator}token=${encodeURIComponent(token)}`;
+        const url = `${API_BASE_URL}${endpointPath}${separator}token=${encodeURIComponent(token)}`;
         window.open(url, '_blank');
     };
 
@@ -1535,8 +1526,8 @@ const HospitalAdminDashboard = () => {
                                             <input
                                                 type="text"
                                                 placeholder="Search patients..."
-                                                value={patientsSearchTerm}
-                                                onChange={(e) => setPatientsSearchTerm(e.target.value)}
+                                                value={patientsSearchInput}
+                                                onChange={(e) => setPatientsSearchInput(e.target.value)}
                                                 className="pl-9 pr-4 py-2 border border-neutral-300 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent w-full transition-all bg-neutral-50 focus:bg-white text-slate-800 placeholder-slate-400"
                                             />
                                             <span className="absolute left-3 top-2.5 text-slate-400">
@@ -1636,8 +1627,8 @@ const HospitalAdminDashboard = () => {
                         <PageHeader
                             title={tabs.find(t => t.id === activeTab)?.label}
                             subtitle={activeTab === 'settings' ? 'Configure operational settings and permissions' : activeTab === 'opd' ? 'Active patients currently in queue or being consulted' : `Manage hospital ${activeTab} records`}
-                            onSearch={(activeTab === 'fees' || activeTab === 'settings') ? null : (e) => setSearchTerm(e.target.value)}
-                            searchValue={(activeTab === 'fees' || activeTab === 'settings') ? '' : searchTerm}
+                            onSearch={(activeTab === 'fees' || activeTab === 'settings') ? null : (e) => setSearchInput(e.target.value)}
+                            searchValue={(activeTab === 'fees' || activeTab === 'settings') ? '' : searchInput}
                             searchPlaceholder={(activeTab === 'fees' || activeTab === 'settings') ? '' : `Search ${activeTab}...`}
                             onAdd={activeTab === 'opd' ? () => setIsAdminOpdModalOpen(true) : (activeTab !== 'billing' && activeTab !== 'audit-logs' && activeTab !== 'fees' && activeTab !== 'settings' && user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null)}
                             addLabel={activeTab === 'opd' ? 'New OPD' : (activeTab === 'fees' || activeTab === 'settings') ? '' : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`}
@@ -1651,7 +1642,7 @@ const HospitalAdminDashboard = () => {
                                                 onClick={() => {
                                                     setPatientTabView(view);
                                                     setPage(0);
-                                                    setSearchTerm('');
+                                                    setSearchInput('');
                                                 }}
                                                 className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${patientTabView === view
                                                     ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
@@ -1692,7 +1683,7 @@ const HospitalAdminDashboard = () => {
                                                 onClick={() => {
                                                     setOpdTabView(view);
                                                     setPage(0);
-                                                    setSearchTerm('');
+                                                    setSearchInput('');
                                                 }}
                                                 className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${opdTabView === view
                                                     ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'

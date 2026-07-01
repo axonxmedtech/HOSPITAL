@@ -55,15 +55,25 @@ public class OpdController {
 
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     @PostMapping
-    public ResponseEntity<Opd> createOpd(@RequestBody CreateOpdRequest req) {
+    public ResponseEntity<Opd> createOpd(@jakarta.validation.Valid @RequestBody CreateOpdRequest req) {
         Opd opd = opdService.createOpd(req);
         return ResponseEntity.ok(opd);
     }
 
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     @GetMapping("/{id}/pdf")
-    public ResponseEntity<byte[]> getOpdPdf(@PathVariable Long id) {
-        Opd opd = opdService.getOpdById(id);
+    public ResponseEntity<byte[]> getOpdPdf(@PathVariable String id) {
+        Long opdId;
+        try {
+            if (id.startsWith("OPD-")) {
+                opdId = Long.parseLong(id.substring(4));
+            } else {
+                opdId = Long.parseLong(id);
+            }
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+        Opd opd = opdService.getOpdById(opdId);
         if (opd == null) return ResponseEntity.notFound().build();
 
         com.hms.entity.Patient patient = opd.getPatient();
@@ -72,7 +82,7 @@ public class OpdController {
         if (patient != null && patient.getHospitalId() != null) {
             hospital = hospitalRepository.findById(patient.getHospitalId()).orElse(null);
         }
-        MedicalRecord record = medicalRecordRepository.findByOpdId(id).orElse(null);
+        MedicalRecord record = medicalRecordRepository.findByOpdId(opdId).orElse(null);
 
         try (java.io.ByteArrayInputStream pdfStream = pdfService.generateCasePaperPdf(hospital, doctor, patient, opd, record)) {
             byte[] pdfBytes = pdfStream.readAllBytes();
@@ -137,8 +147,18 @@ public class OpdController {
 
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     @GetMapping("/{id}")
-    public ResponseEntity<Opd> getOpd(@PathVariable Long id) {
-        Opd opd = opdService.getOpdById(id);
+    public ResponseEntity<Opd> getOpd(@PathVariable String id) {
+        Long opdId;
+        try {
+            if (id.startsWith("OPD-")) {
+                opdId = Long.parseLong(id.substring(4));
+            } else {
+                opdId = Long.parseLong(id);
+            }
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+        Opd opd = opdService.getOpdById(opdId);
         if (opd == null) return ResponseEntity.notFound().build();
         return ResponseEntity.ok(opd);
     }

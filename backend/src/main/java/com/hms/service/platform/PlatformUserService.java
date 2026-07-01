@@ -13,6 +13,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.Map;
 import java.util.HashMap;
 
@@ -23,6 +25,8 @@ import java.util.HashMap;
  */
 @Service
 public class PlatformUserService {
+
+    private static final Logger logger = LoggerFactory.getLogger(PlatformUserService.class);
 
     @Autowired
     private UserRepository userRepository;
@@ -84,7 +88,7 @@ public class PlatformUserService {
             log.setPerformedBy(currentUsername);
             auditLogRepository.save(log);
         } catch (Exception e) {
-            System.err.println("Failed to save audit log: " + e.getMessage());
+            logger.error("Failed to save audit log: {}", e.getMessage(), e);
         }
     }
 

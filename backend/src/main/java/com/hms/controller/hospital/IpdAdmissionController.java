@@ -70,7 +70,7 @@ public class IpdAdmissionController {
 
     @PostMapping("/{id}/followup")
     @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
-    public ResponseEntity<?> addFollowup(@PathVariable("id") Long id, @RequestBody com.hms.dto.AddIpdFollowupRequest req) {
+    public ResponseEntity<?> addFollowup(@PathVariable("id") Long id, @jakarta.validation.Valid @RequestBody com.hms.dto.AddIpdFollowupRequest req) {
         com.hms.entity.MedicalRecord mr = ipdAdmissionService.addIpdFollowup(id, req.getDiagnosis(), req.getNotes(), req.getAdministeredItems());
         return ResponseEntity.ok(mr);
     }
@@ -91,21 +91,21 @@ public class IpdAdmissionController {
 
     @PostMapping("/{id}/administer")
     @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
-    public ResponseEntity<?> administerItems(@PathVariable("id") Long id, @RequestBody com.hms.dto.AdministerItemsRequest req) {
+    public ResponseEntity<?> administerItems(@PathVariable("id") Long id, @jakarta.validation.Valid @RequestBody com.hms.dto.AdministerItemsRequest req) {
         ipdAdmissionService.administerItems(id, req.getAdministeredItems());
         return ResponseEntity.ok().body("{\"message\":\"Items administered successfully\"}");
     }
 
     @PostMapping("/{id}/administer-hospital-items")
     @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
-    public ResponseEntity<?> administerHospitalItems(@PathVariable("id") Long id, @RequestBody com.hms.dto.AdministerHospitalItemsRequest req) {
+    public ResponseEntity<?> administerHospitalItems(@PathVariable("id") Long id, @jakarta.validation.Valid @RequestBody com.hms.dto.AdministerHospitalItemsRequest req) {
         ipdAdmissionService.administerHospitalItems(id, req.getItems());
         return ResponseEntity.ok().body("{\"message\":\"Hospital items administered successfully\"}");
     }
 
     @PostMapping("/{id}/prescriptions")
     @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
-    public ResponseEntity<?> addPrescription(@PathVariable("id") Long id, @RequestBody com.hms.dto.AddIpdPrescriptionRequest req) {
+    public ResponseEntity<?> addPrescription(@PathVariable("id") Long id, @jakarta.validation.Valid @RequestBody com.hms.dto.AddIpdPrescriptionRequest req) {
         com.hms.entity.Prescription p = ipdAdmissionService.addIpdPrescription(id, req);
         return ResponseEntity.ok(p);
     }

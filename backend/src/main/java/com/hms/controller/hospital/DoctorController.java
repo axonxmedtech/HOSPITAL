@@ -53,7 +53,7 @@ public class DoctorController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
-    public ResponseEntity<?> updateDoctor(@PathVariable String id, @RequestBody Doctor doctor) {
+    public ResponseEntity<?> updateDoctor(@PathVariable String id, @jakarta.validation.Valid @RequestBody Doctor doctor) {
         // Note: Not validating full request as password/email might not be sent
         Doctor updatedDoctor = doctorService.updateDoctor(id, doctor);
         return ResponseEntity.ok(updatedDoctor);
@@ -100,7 +100,7 @@ public class DoctorController {
 
     @PostMapping("/consultation")
     @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
-    public ResponseEntity<?> submitConsultation(@RequestBody com.hms.dto.ConsultationRequest request) {
+    public ResponseEntity<?> submitConsultation(@jakarta.validation.Valid @RequestBody com.hms.dto.ConsultationRequest request) {
         com.hms.entity.Opd opd = doctorService.submitConsultation(request);
         java.util.Map<String, Object> response = new java.util.HashMap<>();
         response.put("message", "Consultation submitted successfully");

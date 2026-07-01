@@ -10,6 +10,8 @@ import com.hms.security.SecurityContextHelper;
 import com.hms.exception.ResourceNotFoundException;
 import com.hms.exception.UnauthorizedException;
 import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -27,6 +29,8 @@ import java.util.Optional;
 
 @Service
 public class MedicineService {
+
+    private static final Logger logger = LoggerFactory.getLogger(MedicineService.class);
 
     @Autowired
     private MedicineRepository medicineRepository;
@@ -172,7 +176,20 @@ public class MedicineService {
         if (hospitalId == null) {
             throw new UnauthorizedException("Hospital ID not found in context");
         }
-
+        
+        if (purchase.getQuantity() == null || purchase.getQuantity() <= 0) {
+            throw new IllegalArgumentException("Purchase quantity must be positive");
+        }
+        if (purchase.getUnitPrice() == null || purchase.getUnitPrice() <= 0) {
+            throw new IllegalArgumentException("Unit price must be positive");
+        }
+        if (purchase.getExpiryDate() == null) {
+            throw new IllegalArgumentException("Expiry date is required");
+        }
+        if (purchase.getExpiryDate().isBefore(java.time.LocalDate.now())) {
+            throw new IllegalArgumentException("Expiry date cannot be in the past");
+        }
+ 
         purchase.setHospitalId(hospitalId);
         com.hms.entity.MedicinePurchase savedPurchase = medicinePurchaseRepository.save(purchase);
 
@@ -228,11 +245,15 @@ public class MedicineService {
                     savedPurchase.getId().toString(),
                     null
             );
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to write audit log for medicine purchase", e);
+        }
 
         try {
             webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after medicine purchase", e);
+        }
 
         try {
             eventPublisher.publishEvent(new MedicineDispensedEvent(
@@ -260,7 +281,20 @@ public class MedicineService {
         if (hospitalId == null) {
             throw new UnauthorizedException("Hospital ID not found in context");
         }
-
+        
+        if (medicine.getStockQuantity() == null || medicine.getStockQuantity() < 0) {
+            throw new IllegalArgumentException("Stock quantity cannot be negative");
+        }
+        if (medicine.getUnitPrice() == null || medicine.getUnitPrice() <= 0) {
+            throw new IllegalArgumentException("Unit price must be positive");
+        }
+        if (medicine.getExpiryDate() == null) {
+            throw new IllegalArgumentException("Expiry date is required");
+        }
+        if (medicine.getExpiryDate().isBefore(java.time.LocalDate.now())) {
+            throw new IllegalArgumentException("Expiry date cannot be in the past");
+        }
+ 
         // Prevent duplicates in active physical stock inventory
         if (medicineRepository.existsByNameAndHospitalId(medicine.getName(), hospitalId)) {
             throw new IllegalArgumentException("Medicine already exists in stock inventory");
@@ -288,12 +322,14 @@ public class MedicineService {
                     saved.getId().toString(),
                     null
             );
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to write audit log for inventory restock", e);
+        }
 
         try {
             webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
         } catch (Exception e) {
-            // ignore
+            logger.warn("Failed to broadcast WebSocket refresh after inventory add", e);
         }
 
         return saved;
@@ -308,7 +344,20 @@ public class MedicineService {
         if (!medicine.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Unauthorized access to stock inventory");
         }
-
+        
+        if (request.getStockQuantity() == null || request.getStockQuantity() < 0) {
+            throw new IllegalArgumentException("Stock quantity cannot be negative");
+        }
+        if (request.getUnitPrice() == null || request.getUnitPrice() <= 0) {
+            throw new IllegalArgumentException("Unit price must be positive");
+        }
+        if (request.getExpiryDate() == null) {
+            throw new IllegalArgumentException("Expiry date is required");
+        }
+        if (request.getExpiryDate().isBefore(java.time.LocalDate.now())) {
+            throw new IllegalArgumentException("Expiry date cannot be in the past");
+        }
+ 
         Integer oldStock = medicine.getStockQuantity();
         medicine.setName(request.getName());
         medicine.setStockQuantity(request.getStockQuantity());
@@ -344,12 +393,14 @@ public class MedicineService {
                     saved.getId().toString(),
                     null
             );
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to write audit log for inventory modification", e);
+        }
 
         try {
             webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
         } catch (Exception e) {
-            // ignore
+            logger.warn("Failed to broadcast WebSocket refresh after inventory update", e);
         }
 
         return saved;
@@ -379,12 +430,14 @@ public class MedicineService {
                     medicine.getId().toString(),
                     null
             );
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to write audit log for inventory deactivation", e);
+        }
 
         try {
             webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
         } catch (Exception e) {
-            // ignore
+            logger.warn("Failed to broadcast WebSocket refresh after inventory deactivation", e);
         }
     }
 
@@ -399,7 +452,7 @@ public class MedicineService {
     @PostConstruct
     public void seedMedicines() {
         if (medicineListRepository.count() == 0) {
-            System.out.println("Seeding initial medicines into catalog...");
+            logger.info("Seeding initial medicines into catalog...");
             List<MedicineList> initialCatalog = Arrays.asList(
                     createMedicineCatalog("Paracetamol", "Tablet"),
                     createMedicineCatalog("Amoxicillin", "Capsule"),

@@ -275,7 +275,9 @@ public class BillingController {
         // Broadcast refresh
         try {
             webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after billing items update", e);
+        }
 
         return ResponseEntity.ok("Bill items updated successfully");
     }
@@ -375,7 +377,9 @@ public class BillingController {
                             total = total.add(ward.getBedPrice());
                         }
                     }
-                } catch (Exception ignored) {}
+                    } catch (Exception e) {
+                        logger.warn("Failed to retrieve ward bed price for IPD billing calculation", e);
+                    }
             }
         }
 
@@ -515,7 +519,9 @@ public class BillingController {
                 String userEmail = securityHelper.getCurrentUserEmail();
                 String userRole = securityHelper.getCurrentUserRole();
                 bill.setMarkedPaidBy(userRole + " (" + userEmail + ")");
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                logger.warn("Failed to resolve current user for markedPaidBy field", e);
+            }
         } else {
             bill.setPaymentStatus("PARTIAL");
             bill.setPaymentMethod(req.mode);

@@ -1,8 +1,12 @@
 package com.hms.dto;
 
+import jakarta.validation.Valid;
+
 public class AddIpdFollowupRequest {
     private String diagnosis;
     private String notes;
+
+    @Valid
     private java.util.List<ConsultationRequest.AdministeredItem> administeredItems;
 
     public String getDiagnosis() { return diagnosis; }

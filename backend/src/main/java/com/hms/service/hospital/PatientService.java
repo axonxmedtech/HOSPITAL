@@ -105,6 +105,11 @@ public class PatientService {
      * @return Created Patient entity
      */
     public Patient addPatient(Patient patient) {
+        // Validate phone number
+        if (patient.getPhone() == null || !patient.getPhone().matches("^[0-9]{10}$")) {
+            throw new IllegalArgumentException("Phone number must be exactly 10 digits");
+        }
+
         // Get hospital_id from security context (multi-tenant isolation)
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
@@ -158,6 +163,11 @@ public class PatientService {
      * @return Updated Patient entity
      */
     public Patient updatePatient(Long publicId, Patient updatedData) {
+        // Validate phone number
+        if (updatedData.getPhone() == null || !updatedData.getPhone().matches("^[0-9]{10}$")) {
+            throw new IllegalArgumentException("Phone number must be exactly 10 digits");
+        }
+
         // Ensure patient exists and belongs to this hospital
         Patient existingPatient = getPatientById(publicId);
 
@@ -694,7 +704,9 @@ public class PatientService {
                     logMap.put("assignedAt", hist.getAssignedAt());
                     logMap.put("releasedAt", hist.getReleasedAt());
                     ipdBedLogsMap.computeIfAbsent(hist.getIpdAdmissionId(), k -> new java.util.ArrayList<>()).add(logMap);
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    logger.warn("Failed to log bed assignment history: {}", e.getMessage());
+                }
             }
         }
 
@@ -759,7 +771,9 @@ public class PatientService {
                                 administeredItems.add(amMap);
                             }
                         }
-                    } catch (Exception ignored) {}
+                    } catch (Exception e) {
+                        logger.warn("Failed to parse administered items JSON: {}", e.getMessage());
+                    }
                 }
                 recordMap.put("administeredItems", administeredItems);
                 doctorEntries.add(recordMap);
@@ -781,7 +795,9 @@ public class PatientService {
                     dsMap.put("createdAt", ds.getCreatedAt());
                     ipdItem.put("dischargeSummary", dsMap);
                 });
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                logger.warn("Failed to retrieve or map discharge summary: {}", e.getMessage());
+            }
 
             ipdHistoryList.add(ipdItem);
         }
@@ -859,7 +875,9 @@ public class PatientService {
                         itemsList.add(new String[]{name, dosage, frequency, duration, instructions, qty});
                     }
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                logger.warn("Failed to parse medicines list JSON: {}", e.getMessage());
+            }
         }
 
         if (itemsList.isEmpty()) {
@@ -927,7 +945,9 @@ public class PatientService {
                             itemsList.add(new String[]{name, dosage, frequency, duration, instructions, qty});
                         }
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    logger.warn("Failed to parse administered items JSON: {}", e.getMessage());
+                }
             }
         }
 

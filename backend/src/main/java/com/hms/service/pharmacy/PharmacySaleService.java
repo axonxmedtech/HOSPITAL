@@ -73,6 +73,9 @@ public class PharmacySaleService {
             if (itemReq.getQuantity().compareTo(BigDecimal.ZERO) <= 0) {
                 throw new IllegalArgumentException("Sale quantity must be positive");
             }
+            if (itemReq.getTaxPercentage() != null && (itemReq.getTaxPercentage().compareTo(BigDecimal.ZERO) < 0 || itemReq.getTaxPercentage().compareTo(BigDecimal.valueOf(100)) > 0)) {
+                throw new IllegalArgumentException("Tax percentage must be between 0% and 100%");
+            }
 
             // 1. Fetch and update batch with Pessimistic Lock (Prevents Race Conditions)
             // Also prevents IDOR by including hospitalId in query

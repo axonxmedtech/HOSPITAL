@@ -67,6 +67,11 @@ public class DoctorService {
      */
     @Transactional
     public Doctor addDoctor(Doctor doctor, String password) {
+        // Validate phone number
+        if (doctor.getPhone() == null || !doctor.getPhone().matches("^[0-9]{10}$")) {
+            throw new IllegalArgumentException("Phone number must be exactly 10 digits");
+        }
+
         // Get hospital_id from security context (multi-tenant isolation)
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
@@ -196,9 +201,14 @@ public class DoctorService {
      * @return Updated Doctor entity
      */
     public Doctor updateDoctor(String publicId, Doctor updatedData) {
+        // Validate phone number
+        if (updatedData.getPhone() == null || !updatedData.getPhone().matches("^[0-9]{10}$")) {
+            throw new IllegalArgumentException("Phone number must be exactly 10 digits");
+        }
+
         // Ensure doctor exists and belongs to this hospital
         Doctor existingDoctor = getDoctorByPublicId(publicId);
-
+ 
         existingDoctor.setName(updatedData.getName());
         existingDoctor.setSpecialization(updatedData.getSpecialization());
         existingDoctor.setPhone(updatedData.getPhone());
@@ -410,6 +420,40 @@ public class DoctorService {
      */
     @Transactional
     public com.hms.entity.Opd submitConsultation(com.hms.dto.ConsultationRequest request) {
+        // Validate administered items quantity
+        if (request.getAdministeredItems() != null) {
+            for (com.hms.dto.ConsultationRequest.AdministeredItem item : request.getAdministeredItems()) {
+                if (item.getQuantity() == null || item.getQuantity() <= 0) {
+                    throw new IllegalArgumentException("Administered item quantity must be positive");
+                }
+            }
+        }
+        // Validate hospital inventory items quantity
+        if (request.getHospitalInventoryItems() != null) {
+            for (com.hms.dto.ConsultationRequest.HospitalInventoryItem item : request.getHospitalInventoryItems()) {
+                if (item.getQuantity() == null || item.getQuantity() <= 0) {
+                    throw new IllegalArgumentException("Hospital inventory item quantity must be positive");
+                }
+            }
+        }
+        // Validate prescriptions
+        if (request.getPrescription() != null) {
+            for (com.hms.dto.ConsultationRequest.PrescriptionItem item : request.getPrescription()) {
+                if (item.getMedicineName() == null || item.getMedicineName().trim().isEmpty()) {
+                    throw new IllegalArgumentException("Prescription medicine name is required");
+                }
+                if (item.getDosage() == null || item.getDosage().trim().isEmpty()) {
+                    throw new IllegalArgumentException("Prescription dosage is required");
+                }
+                if (item.getFrequency() == null || item.getFrequency().trim().isEmpty()) {
+                    throw new IllegalArgumentException("Prescription frequency is required");
+                }
+                if (item.getDuration() == null || item.getDuration().trim().isEmpty()) {
+                    throw new IllegalArgumentException("Prescription duration is required");
+                }
+            }
+        }
+
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Long currentDoctorId = securityHelper.getCurrentUserId(); // Get current doctor's user ID
 
@@ -592,13 +636,17 @@ public class DoctorService {
                                 "OPD",
                                 o.getId().toString(),
                                 null);
-                    } catch (Exception ignored) {}
+                    } catch (Exception e) {
+                        logger.warn("Failed to write audit log for OPD status change during consultation", e);
+                    }
                 }
 
                 // Remove queue entries for this OPD so it doesn't appear again
                 try {
                     queueEntryRepository.deleteByOpdId(opdIdToUse);
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    logger.warn("Failed to delete queue entry for OPD during consultation completion", e);
+                }
             } catch (Exception e) {
                 // Don't fail consultation if OPD update fails
             }
@@ -702,7 +750,9 @@ public class DoctorService {
                                 med.getId().toString(),
                                 null
                             );
-                        } catch (Exception ignored) {}
+                        } catch (Exception e) {
+                            logger.warn("Failed to write audit log for OPD medicine deduction", e);
+                        }
                         
                         // Create BillingMedicine charge
                         com.hms.entity.BillingMedicine bm = new com.hms.entity.BillingMedicine();
@@ -737,7 +787,9 @@ public class DoctorService {
                         // Degrade any relative catalog items
                         try {
                             hospitalInventoryService.degradeRelativeItems(stock.getName(), item.getQuantity(), hospitalId);
-                        } catch (Exception ignored) {}
+                        } catch (Exception e) {
+                            logger.warn("Failed to degrade relative inventory items during OPD consultation", e);
+                        }
 
                         // Audit Log for Stock deduction
                         try {
@@ -750,7 +802,9 @@ public class DoctorService {
                                 stock.getId().toString(),
                                 null
                             );
-                        } catch (Exception ignored) {}
+                        } catch (Exception e) {
+                            logger.warn("Failed to write audit log for OPD hospital item deduction", e);
+                        }
 
                         // Create BillingItem charge (only if it does not have a linked custom fee catalog mapping)
                         boolean hasLinkedFee = false;

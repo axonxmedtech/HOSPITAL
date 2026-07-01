@@ -80,6 +80,8 @@ public class Doctor {
      * Doctor's contact phone number
      */
     @Column(nullable = false, length = 15)
+    @jakarta.validation.constraints.NotBlank(message = "Phone number is required")
+    @jakarta.validation.constraints.Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
     private String phone;
 
     /**
