@@ -190,4 +190,34 @@ class IpdAdmissionServiceTest {
 
         verify(hospitalSettingRepository, never()).findByHospital_Id(any());
     }
+
+    @Test
+    void planDischarge_stampsTenantPatientDoctorOnSummary() {
+        Long ipdId = 502L;
+        when(securityHelper.getCurrentUserRole()).thenReturn("DOCTOR");
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+
+        IpdAdmission admission = new IpdAdmission();
+        admission.setId(ipdId);
+        admission.setHospitalId(7L);
+        admission.setPatientId(42L);
+        admission.setDoctorId(9L);
+        admission.setStatus("ADMITTED");
+        admission.setIpdNumber("IPD-7-001");
+        when(ipdAdmissionRepository.findById(ipdId)).thenReturn(Optional.of(admission));
+
+        PlanDischargeRequest req = new PlanDischargeRequest();
+        req.setFinalDiagnosis("Recovered");
+
+        service.planDischarge(ipdId, req);
+
+        ArgumentCaptor<com.hms.entity.DischargeSummary> captor =
+                ArgumentCaptor.forClass(com.hms.entity.DischargeSummary.class);
+        verify(dischargeSummaryRepository).save(captor.capture());
+        com.hms.entity.DischargeSummary saved = captor.getValue();
+        assertThat(saved.getHospitalId()).isEqualTo(7L);
+        assertThat(saved.getPatientId()).isEqualTo(42L);
+        assertThat(saved.getDoctorId()).isEqualTo(9L);
+        assertThat(saved.getIpdAdmissionId()).isEqualTo(ipdId);
+    }
 }

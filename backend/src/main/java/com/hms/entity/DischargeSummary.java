@@ -23,6 +23,15 @@ public class DischargeSummary {
     @Column(name = "ipd_admission_id", nullable = false, unique = true)
     private Long ipdAdmissionId;
 
+    @Column(name = "hospital_id")
+    private Long hospitalId;
+
+    @Column(name = "patient_id")
+    private Long patientId;
+
+    @Column(name = "doctor_id")
+    private Long doctorId;
+
     @Column(name = "final_diagnosis", columnDefinition = "text")
     private String finalDiagnosis;
 

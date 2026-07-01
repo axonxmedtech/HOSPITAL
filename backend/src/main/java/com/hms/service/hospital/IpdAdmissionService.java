@@ -917,6 +917,9 @@ public class IpdAdmissionService {
 
         com.hms.entity.DischargeSummary ds = new com.hms.entity.DischargeSummary();
         ds.setIpdAdmissionId(ipdId);
+        ds.setHospitalId(ipd.getHospitalId());
+        ds.setPatientId(ipd.getPatientId());
+        ds.setDoctorId(ipd.getDoctorId());
         ds.setFinalDiagnosis(req.getFinalDiagnosis());
         ds.setTreatmentGiven(req.getTreatmentGiven());
         ds.setDischargeNotes(req.getDischargeNotes());
