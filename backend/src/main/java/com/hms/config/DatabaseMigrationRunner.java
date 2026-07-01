@@ -37,6 +37,7 @@ public class DatabaseMigrationRunner {
         fixRadiologyOrdersMedicalRecordIdColumn();
         backfillDischargeSummaryTenantColumns();
         backfillVitalSignsStructuredBp();
+        decoupleNurseTasksSchema();
     }
 
     /**
@@ -358,6 +359,46 @@ public class DatabaseMigrationRunner {
             log.info("DB migration applied: backfilled {} vital_signs structured BP rows", updated);
         } catch (Exception e) {
             log.warn("DB migration skipped (vital_signs structured BP backfill): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Modifies nurse_tasks to make doctor_order_id nullable and backfills source.
+     * Additive + idempotent: modifying column nullability and setting source is safe to rerun.
+     */
+    private void decoupleNurseTasksSchema() {
+        try {
+            // 1. Make doctor_order_id nullable
+            Integer isNullable = jdbcTemplate.queryForObject(
+                "SELECT IS_NULLABLE = 'YES' FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'nurse_tasks' AND COLUMN_NAME = 'doctor_order_id'",
+                Integer.class
+            );
+            if (isNullable != null && isNullable == 0) {
+                jdbcTemplate.execute("ALTER TABLE nurse_tasks MODIFY COLUMN doctor_order_id BIGINT DEFAULT NULL");
+                log.info("DB migration applied: nurse_tasks.doctor_order_id is now nullable");
+            }
+
+            // 2. Backfill source column for existing rows
+            Integer sourceColumnExists = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'nurse_tasks' AND COLUMN_NAME = 'source'",
+                Integer.class
+            );
+            if (sourceColumnExists != null && sourceColumnExists > 0) {
+                Integer pendingSource = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM nurse_tasks WHERE source IS NULL",
+                    Integer.class
+                );
+                if (pendingSource != null && pendingSource > 0) {
+                    int updated = jdbcTemplate.update(
+                        "UPDATE nurse_tasks SET source = 'DOCTOR_ORDER' WHERE source IS NULL"
+                    );
+                    log.info("DB migration applied: backfilled {} nurse_tasks rows with source='DOCTOR_ORDER'", updated);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (decoupleNurseTasksSchema): {}", e.getMessage());
         }
     }
 }
