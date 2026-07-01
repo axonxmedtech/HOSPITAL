@@ -51,6 +51,18 @@ const otService = {
 
   transferPacuRecord: (admissionId, bookingId) =>
     apiService.post(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/pacu-record/transfer`),
+
+  getClinicalHandover: (admissionId, bookingId) =>
+    apiService.get(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/handover`),
+
+  initiateHandover: (admissionId, bookingId, payload) =>
+    apiService.post(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/handover`, payload),
+
+  updateHandover: (admissionId, bookingId, payload) =>
+    apiService.put(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/handover`, payload),
+
+  acceptHandover: (admissionId, bookingId) =>
+    apiService.post(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/handover/accept`),
 };
 
 export default otService;
