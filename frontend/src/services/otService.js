@@ -15,6 +15,18 @@ const otService = {
 
   signChecklist: (admissionId, bookingId, payload) =>
     apiService.put(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/checklist`, payload),
+
+  getOperationRecord: (admissionId, bookingId) =>
+    apiService.get(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/operation-record`),
+
+  saveOperationRecord: (admissionId, bookingId, payload) =>
+    apiService.post(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/operation-record`, payload),
+
+  updateOperationRecord: (admissionId, bookingId, payload) =>
+    apiService.put(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/operation-record`, payload),
+
+  finalizeOperationRecord: (admissionId, bookingId) =>
+    apiService.post(`/api/ipd/${admissionId}/ot/bookings/${bookingId}/operation-record/finalize`),
 };
 
 export default otService;

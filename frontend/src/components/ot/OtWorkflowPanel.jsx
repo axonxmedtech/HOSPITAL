@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import otService from '../../services/otService';
 import hospitalService from '../../services/hospitalService';
 import authService from '../../services/authService';
+import OperationRecordSection from './OperationRecordSection';
 
-export default function OtWorkflowPanel({ admissionId }) {
+export default function OtWorkflowPanel({ admissionId, isLocked = false }) {
   const [bookings, setBookings] = useState([]);
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -371,6 +372,13 @@ export default function OtWorkflowPanel({ admissionId }) {
                     )}
                   </div>
                 ) : null}
+
+                <OperationRecordSection
+                  admissionId={admissionId}
+                  bookingId={activeBooking.id}
+                  bookingStatus={activeBooking.status}
+                  isLocked={isLocked}
+                />
               </div>
             ) : (
               <div className="text-center py-20 text-gray-400 italic">Select a scheduled surgery from the list to view and complete the WHO Surgical Safety Checklist.</div>
