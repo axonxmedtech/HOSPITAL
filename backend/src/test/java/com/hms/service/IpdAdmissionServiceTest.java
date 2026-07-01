@@ -57,6 +57,7 @@ class IpdAdmissionServiceTest {
     @Mock HospitalInventoryRepository hospitalInventoryRepository;
     @Mock HospitalInventoryService hospitalInventoryService;
     @Mock HospitalWebSocketHandler webSocketHandler;
+    @Mock com.hms.service.hospital.MrdService mrdService;
 
     @InjectMocks
     IpdAdmissionService service;
@@ -219,5 +220,86 @@ class IpdAdmissionServiceTest {
         assertThat(saved.getPatientId()).isEqualTo(42L);
         assertThat(saved.getDoctorId()).isEqualTo(9L);
         assertThat(saved.getIpdAdmissionId()).isEqualTo(ipdId);
+    }
+
+    @Test
+    void admitFromEmergency_savesAdmissionAndMarksBedOccupied() {
+        Long patientId = 5L;
+        Long doctorId = 9L;
+        Long wardId = 1L;
+        Long bedId = 2L;
+
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+
+        Patient patient = new Patient();
+        patient.setId(patientId);
+        patient.setHospitalId(1L);
+        when(patientRepository.findById(patientId)).thenReturn(Optional.of(patient));
+
+        Bed bed = new Bed();
+        bed.setBedId(bedId);
+        bed.setStatus("available");
+        when(bedRepository.findById(bedId)).thenReturn(Optional.of(bed));
+
+        IpdAdmission savedAdmission = new IpdAdmission();
+        savedAdmission.setId(101L);
+        savedAdmission.setIpdNumber("IPD-1");
+        savedAdmission.setPatientId(patientId);
+        savedAdmission.setDoctorId(doctorId);
+        savedAdmission.setHospitalId(1L);
+        savedAdmission.setWardId(wardId);
+        savedAdmission.setBedId(bedId);
+        when(ipdAdmissionRepository.save(any(IpdAdmission.class))).thenReturn(savedAdmission);
+
+        IpdAdmission result = service.admitFromEmergency(patientId, doctorId, wardId, bedId, "EMERGENCY", "Fever");
+
+        assertThat(result).isNotNull();
+        assertThat(result.getIpdNumber()).isEqualTo("IPD-1");
+        assertThat(result.getPatientId()).isEqualTo(patientId);
+        assertThat(bed.getStatus()).isEqualTo("occupied");
+        verify(bedRepository).save(bed);
+    }
+
+    @Test
+    void admitFromEmergency_withMismatchedPatientTenant_throwsRuntimeException() {
+        Long patientId = 5L;
+        Long doctorId = 9L;
+        Long wardId = 1L;
+        Long bedId = 2L;
+
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+
+        Patient patient = new Patient();
+        patient.setId(patientId);
+        patient.setHospitalId(2L); // Different hospital ID
+        when(patientRepository.findById(patientId)).thenReturn(Optional.of(patient));
+
+        Bed bed = new Bed();
+        bed.setBedId(bedId);
+        bed.setStatus("available");
+        when(bedRepository.findById(bedId)).thenReturn(Optional.of(bed));
+
+        assertThatThrownBy(() -> service.admitFromEmergency(patientId, doctorId, wardId, bedId, "EMERGENCY", "Fever"))
+                .isInstanceOf(com.hms.exception.UnauthorizedException.class)
+                .hasMessageContaining("Patient does not belong to this hospital");
+    }
+
+    @Test
+    void addIpdFollowup_rejectsCrossTenantAdmission() {
+        Long ipdId = 501L;
+        when(securityHelper.getCurrentUserRole()).thenReturn("DOCTOR");
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+
+        IpdAdmission foreignAdmission = new IpdAdmission();
+        foreignAdmission.setId(ipdId);
+        foreignAdmission.setHospitalId(2L); // Different hospital ID
+        foreignAdmission.setStatus("ADMITTED");
+        when(ipdAdmissionRepository.findById(ipdId)).thenReturn(Optional.of(foreignAdmission));
+
+        assertThatThrownBy(() -> service.addIpdFollowup(ipdId, "Fever", "Give Paracetamol", null))
+                .isInstanceOf(com.hms.exception.UnauthorizedException.class)
+                .hasMessageContaining("Access Denied: Record belongs to another tenant");
+
+        verify(medicalRecordRepository, never()).save(any());
     }
 }
