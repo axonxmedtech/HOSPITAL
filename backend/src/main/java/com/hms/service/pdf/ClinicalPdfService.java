@@ -407,6 +407,24 @@ public class ClinicalPdfService {
 
             // 3. Clinical Summary Details
             if (summary != null) {
+                // Discharge classification row (Type / Condition / ICD-10)
+                if (summary.getDischargeType() != null || summary.getDischargeCondition() != null
+                        || summary.getIcdCode() != null) {
+                    PdfPTable classTable = new PdfPTable(3);
+                    classTable.setWidthPercentage(100);
+                    classTable.setSpacingAfter(10f);
+                    helper.addTableHeaderCell(classTable, "Discharge Type");
+                    helper.addTableHeaderCell(classTable, "Condition at Discharge");
+                    helper.addTableHeaderCell(classTable, "ICD-10 Code");
+                    helper.addTableCell(classTable,
+                            summary.getDischargeType() != null ? summary.getDischargeType() : "-", false);
+                    helper.addTableCell(classTable,
+                            summary.getDischargeCondition() != null ? summary.getDischargeCondition() : "-", false);
+                    helper.addTableCell(classTable,
+                            summary.getIcdCode() != null ? summary.getIcdCode() : "-", false);
+                    document.add(classTable);
+                }
+
                 // Final Diagnosis
                 Paragraph fdTitle = new Paragraph("FINAL DIAGNOSIS:", PdfLayoutHelper.SMALL_BOLD_FONT);
                 fdTitle.setSpacingBefore(8f);
@@ -429,6 +447,46 @@ public class ClinicalPdfService {
                 document.add(new Paragraph(summary.getDischargeNotes() != null ? summary.getDischargeNotes() : "-",
                         PdfLayoutHelper.NORMAL_FONT));
 
+                // Home Medications
+                if (summary.getHomeMedications() != null && !summary.getHomeMedications().isBlank()) {
+                    Paragraph hmTitle = new Paragraph("HOME MEDICATIONS:", PdfLayoutHelper.SMALL_BOLD_FONT);
+                    hmTitle.setSpacingBefore(8f);
+                    document.add(hmTitle);
+                    document.add(new Paragraph(summary.getHomeMedications(), PdfLayoutHelper.NORMAL_FONT));
+                }
+
+                // Diet Advice
+                if (summary.getDietAdvice() != null && !summary.getDietAdvice().isBlank()) {
+                    Paragraph daTitle = new Paragraph("DIET ADVICE:", PdfLayoutHelper.SMALL_BOLD_FONT);
+                    daTitle.setSpacingBefore(8f);
+                    document.add(daTitle);
+                    document.add(new Paragraph(summary.getDietAdvice(), PdfLayoutHelper.NORMAL_FONT));
+                }
+
+                // Activity Restrictions
+                if (summary.getActivityRestrictions() != null && !summary.getActivityRestrictions().isBlank()) {
+                    Paragraph arTitle = new Paragraph("ACTIVITY RESTRICTIONS:", PdfLayoutHelper.SMALL_BOLD_FONT);
+                    arTitle.setSpacingBefore(8f);
+                    document.add(arTitle);
+                    document.add(new Paragraph(summary.getActivityRestrictions(), PdfLayoutHelper.NORMAL_FONT));
+                }
+
+                // Follow-up Advice
+                if (summary.getFollowUpAdvice() != null && !summary.getFollowUpAdvice().isBlank()) {
+                    Paragraph faTitle = new Paragraph("FOLLOW-UP ADVICE:", PdfLayoutHelper.SMALL_BOLD_FONT);
+                    faTitle.setSpacingBefore(8f);
+                    document.add(faTitle);
+                    document.add(new Paragraph(summary.getFollowUpAdvice(), PdfLayoutHelper.NORMAL_FONT));
+                }
+
+                // Referred To
+                if (summary.getReferredTo() != null && !summary.getReferredTo().isBlank()) {
+                    Paragraph rtTitle = new Paragraph("REFERRED TO:", PdfLayoutHelper.SMALL_BOLD_FONT);
+                    rtTitle.setSpacingBefore(8f);
+                    document.add(rtTitle);
+                    document.add(new Paragraph(summary.getReferredTo(), PdfLayoutHelper.NORMAL_FONT));
+                }
+
                 // Follow Up Date
                 if (summary.getFollowUpDate() != null) {
                     Paragraph fuPara = new Paragraph("\nFOLLOW UP DATE: ",
@@ -446,6 +504,109 @@ public class ClinicalPdfService {
             document.close();
         } catch (Exception e) {
             throw new RuntimeException("Error generating Discharge Summary PDF", e);
+        }
+
+        return new ByteArrayInputStream(out.toByteArray());
+    }
+
+    /**
+     * Generates a structured consent form PDF (A4 format with patient demographics and signature logs).
+     */
+    public ByteArrayInputStream generateConsentPdf(
+            Hospital hospital,
+            Patient patient,
+            IpdAdmission ipd,
+            PatientConsent consent,
+            BloodConsentDetail bloodDetail,
+            Doctor doctor) {
+
+        Document document = new Document(PageSize.A4, 36, 36, 36, 120);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+        try {
+            PdfWriter writer = PdfWriter.getInstance(document, out);
+            helper.addPageBorder(writer);
+            document.open();
+
+            String docTitle = consent.getConsentType() + " CONSENT FORM";
+            String formCode = "GENERAL".equalsIgnoreCase(consent.getConsentType()) ? "VH/NABH/GEN/02/2026" : "VH/NABH/OT/02/2026";
+
+            // 1. Patient Info Header
+            helper.addPremiumPatientHeader(
+                    document,
+                    hospital,
+                    doctor,
+                    patient,
+                    (ipd != null) ? ipd.getIpdNumber() : "-",
+                    (ipd != null && ipd.getAdmissionDatetime() != null) ? ipd.getAdmissionDatetime() : java.time.LocalDateTime.now(),
+                    "-",
+                    docTitle + " (" + formCode + ")");
+
+            // 2. Consent Statement/Declaration Text
+            Paragraph consentTitle = new Paragraph("DECLARATION & INFORMED CONSENT",
+                    FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12, Font.BOLD, PdfLayoutHelper.NAVY_BLUE));
+            consentTitle.setSpacingBefore(15f);
+            consentTitle.setSpacingAfter(8f);
+            document.add(consentTitle);
+
+            String consentText;
+            if ("GENERAL".equalsIgnoreCase(consent.getConsentType())) {
+                consentText = "1. I hereby authorize the routine medical examination, diagnostics, nursing care, and emergency procedures prescribed by the medical team.\n" +
+                        "2. I understand that medical treatment is not an exact science and outcomes are not guaranteed.\n" +
+                        "3. I agree to abide by the hospital rules, regulations, and billing schedules as explained to me.\n" +
+                        "4. I consent to the storage and sharing of clinical records within multi-tenant boundaries under confidentiality rules.\n" +
+                        "5. Remarks: " + (consent.getRemarks() != null ? consent.getRemarks() : "None.");
+            } else {
+                consentText = "1. I consent to the transfusion of blood and blood products as deemed necessary by my attending doctor.\n" +
+                        "2. I have been explained the risks, benefits, and alternative pathways, and I understand the potential reactions associated with transfusion.\n" +
+                        "3. I confirm that doctor explanation was given: " + (bloodDetail != null && Boolean.TRUE.equals(bloodDetail.getExplanationGiven()) ? "Yes" : "No") + ".\n" +
+                        "4. Linked Blood Request ID: " + (bloodDetail != null && bloodDetail.getBloodRequestId() != null ? bloodDetail.getBloodRequestId() : "N/A") + ".\n" +
+                        "5. Remarks: " + (consent.getRemarks() != null ? consent.getRemarks() : "None.");
+            }
+            Paragraph textPara = new Paragraph(consentText, PdfLayoutHelper.NORMAL_FONT);
+            textPara.setSpacingAfter(20f);
+            document.add(textPara);
+
+            // 3. Signature details
+            Paragraph sigTitle = new Paragraph("SIGNATURES & ACKNOWLEDGEMENTS",
+                    FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Font.BOLD, PdfLayoutHelper.NAVY_BLUE));
+            sigTitle.setSpacingBefore(10f);
+            sigTitle.setSpacingAfter(8f);
+            document.add(sigTitle);
+
+            PdfPTable sigTable = new PdfPTable(2);
+            sigTable.setWidthPercentage(100);
+            sigTable.setSpacingAfter(15f);
+
+            helper.addTableHeaderCell(sigTable, "Party Role");
+            helper.addTableHeaderCell(sigTable, "Signature Details");
+
+            if (consent.getPatientSigned()) {
+                helper.addTableCell(sigTable, "PATIENT", false);
+                helper.addTableCell(sigTable, "Signed Digitally (Stylus/Finger) on " + consent.getSignedAt(), false);
+            }
+            if (consent.getGuardianSigned()) {
+                helper.addTableCell(sigTable, "GUARDIAN (" + consent.getRelationship() + ")", false);
+                helper.addTableCell(sigTable, "Signed Digitally on " + consent.getSignedAt(), false);
+            }
+            if (consent.getWitnessId() != null) {
+                helper.addTableCell(sigTable, "WITNESS (Hospital Staff)", false);
+                helper.addTableCell(sigTable, "Verified by User ID " + consent.getWitnessId(), false);
+            }
+            if (consent.getInterpreterId() != null) {
+                helper.addTableCell(sigTable, "INTERPRETER (Language Translation)", false);
+                helper.addTableCell(sigTable, "Attested by Interpreter ID " + consent.getInterpreterId(), false);
+            }
+
+            document.add(sigTable);
+
+            // 4. Fixed Signature Footer
+            String docName = (doctor != null && doctor.getName() != null) ? doctor.getName() : "Attending Consultant";
+            helper.addFixedFooter(writer, patient, (ipd != null) ? ipd.getIpdNumber() : "-", "Dr. " + docName);
+
+            document.close();
+        } catch (Exception e) {
+            throw new RuntimeException("Error generating Consent PDF", e);
         }
 
         return new ByteArrayInputStream(out.toByteArray());

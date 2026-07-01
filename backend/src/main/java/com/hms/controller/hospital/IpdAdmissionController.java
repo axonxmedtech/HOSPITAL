@@ -142,6 +142,13 @@ public class IpdAdmissionController {
     @Autowired
     private com.hms.repository.IpdAdmissionRepository ipdAdmissionRepository;
 
+    @GetMapping("/{id}/discharge-summary")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'NURSE', 'RECEPTIONIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> getDischargeSummary(@PathVariable("id") Long id) {
+        com.hms.entity.DischargeSummary summary = ipdAdmissionService.getDischargeSummary(id);
+        return ResponseEntity.ok(summary);
+    }
+
     @GetMapping("/{id}/discharge-summary/pdf")
     @PreAuthorize("hasAnyRole('DOCTOR', 'NURSE', 'RECEPTIONIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> getDischargeSummaryPdf(@PathVariable("id") Long id) {

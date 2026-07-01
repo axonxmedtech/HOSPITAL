@@ -178,10 +178,34 @@ CREATE TABLE `discharge_summary` (
   `hospital_id` bigint DEFAULT NULL,
   `patient_id` bigint DEFAULT NULL,
   `doctor_id` bigint DEFAULT NULL,
+  `discharge_type` varchar(50) DEFAULT NULL,
+  `discharge_condition` varchar(50) DEFAULT NULL,
+  `icd_code` varchar(20) DEFAULT NULL,
+  `follow_up_advice` text,
+  `home_medications` text,
+  `diet_advice` text,
+  `activity_restrictions` text,
+  `referred_to` varchar(255) DEFAULT NULL,
+  `status` varchar(30) DEFAULT NULL,
+  `finalized_by` bigint DEFAULT NULL,
+  `finalized_at` datetime(6) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_5poa40gpt44a152gibdlfe6sb` (`ipd_admission_id`),
   KEY `idx_discharge_summary_hospital` (`hospital_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+-- Phase 3 additive migration (safe on live data — nullable columns, Hibernate ddl-auto creates them):
+-- ALTER TABLE `discharge_summary`
+--   ADD COLUMN `discharge_type` varchar(50) DEFAULT NULL,
+--   ADD COLUMN `discharge_condition` varchar(50) DEFAULT NULL,
+--   ADD COLUMN `icd_code` varchar(20) DEFAULT NULL,
+--   ADD COLUMN `follow_up_advice` text,
+--   ADD COLUMN `home_medications` text,
+--   ADD COLUMN `diet_advice` text,
+--   ADD COLUMN `activity_restrictions` text,
+--   ADD COLUMN `referred_to` varchar(255) DEFAULT NULL,
+--   ADD COLUMN `status` varchar(30) DEFAULT NULL,
+--   ADD COLUMN `finalized_by` bigint DEFAULT NULL,
+--   ADD COLUMN `finalized_at` datetime(6) DEFAULT NULL;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --

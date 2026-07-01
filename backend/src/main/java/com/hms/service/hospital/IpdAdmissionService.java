@@ -1039,11 +1039,15 @@ public class IpdAdmissionService {
         if (ipd.getHospitalId() == null || !ipd.getHospitalId().equals(currentHospitalId)) {
             throw new org.springframework.security.access.AccessDeniedException("Access denied: Tenant mismatch");
         }
-        if (ipd.getStatus() == null || !ipd.getStatus().equalsIgnoreCase("ADMITTED")) {
-            throw new IllegalArgumentException("Can only plan discharge for ADMITTED patients");
+        String ipdStatus = ipd.getStatus();
+        if (ipdStatus == null
+                || !(ipdStatus.equalsIgnoreCase("ADMITTED") || ipdStatus.equalsIgnoreCase("DISCHARGE_PLANNED"))) {
+            throw new IllegalArgumentException("Can only plan discharge for ADMITTED or DISCHARGE_PLANNED patients");
         }
 
-        com.hms.entity.DischargeSummary ds = new com.hms.entity.DischargeSummary();
+        // Upsert: reuse an existing summary (draft edit) instead of violating the unique constraint.
+        com.hms.entity.DischargeSummary ds = dischargeSummaryRepository.findByIpdAdmissionId(ipdId)
+                .orElseGet(com.hms.entity.DischargeSummary::new);
         ds.setIpdAdmissionId(ipdId);
         ds.setHospitalId(ipd.getHospitalId());
         ds.setPatientId(ipd.getPatientId());
@@ -1052,6 +1056,23 @@ public class IpdAdmissionService {
         ds.setTreatmentGiven(req.getTreatmentGiven());
         ds.setDischargeNotes(req.getDischargeNotes());
         ds.setFollowUpDate(req.getFollowUpDate());
+        // NABH fields
+        ds.setDischargeType(req.getDischargeType());
+        ds.setDischargeCondition(req.getDischargeCondition());
+        ds.setIcdCode(req.getIcdCode());
+        ds.setFollowUpAdvice(req.getFollowUpAdvice());
+        ds.setHomeMedications(req.getHomeMedications());
+        ds.setDietAdvice(req.getDietAdvice());
+        ds.setActivityRestrictions(req.getActivityRestrictions());
+        ds.setReferredTo(req.getReferredTo());
+        String requestedStatus = (req.getStatus() != null && !req.getStatus().isBlank())
+                ? req.getStatus().toUpperCase()
+                : "DRAFT";
+        ds.setStatus(requestedStatus);
+        if ("FINALIZED".equals(requestedStatus)) {
+            ds.setFinalizedBy(ipd.getDoctorId());
+            ds.setFinalizedAt(java.time.LocalDateTime.now());
+        }
         dischargeSummaryRepository.save(ds);
 
         ipd.setStatus("DISCHARGE_PLANNED");
@@ -1078,6 +1099,24 @@ public class IpdAdmissionService {
         }
 
         return ds;
+    }
+
+    /**
+     * Returns the discharge summary for an admission (or null if none exists yet),
+     * enforcing tenant isolation on both the admission and the summary.
+     */
+    @Transactional(readOnly = true)
+    public com.hms.entity.DischargeSummary getDischargeSummary(Long ipdId) {
+        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId)
+                .orElseThrow(() -> new RuntimeException("IPD admission not found"));
+        Long currentHospitalId = securityHelper.getCurrentHospitalId();
+        if (currentHospitalId == null) {
+            throw new UnauthorizedException("Hospital ID not found in context");
+        }
+        if (ipd.getHospitalId() == null || !ipd.getHospitalId().equals(currentHospitalId)) {
+            throw new org.springframework.security.access.AccessDeniedException("Access denied: Tenant mismatch");
+        }
+        return dischargeSummaryRepository.findByIpdAdmissionId(ipdId).orElse(null);
     }
 
     @Transactional

@@ -104,4 +104,14 @@ public class PdfService {
             Doctor doctor) {
         return clinicalPdfService.generateDischargeSummaryPdf(hospital, patient, ipd, summary, doctor);
     }
+
+    public ByteArrayInputStream generateConsentPdf(
+            Hospital hospital,
+            Patient patient,
+            IpdAdmission ipd,
+            PatientConsent consent,
+            BloodConsentDetail bloodDetail,
+            Doctor doctor) {
+        return clinicalPdfService.generateConsentPdf(hospital, patient, ipd, consent, bloodDetail, doctor);
+    }
 }

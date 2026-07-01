@@ -101,4 +101,24 @@ class NurseAssessmentServiceTest {
         assertThat(saved.getPainScore()).isNull();
         assertThat(saved.getWeight()).isNull();
     }
+
+    @Test
+    void recordVitals_persistsQualitativeVitalDescriptors() {
+        // temp_method / pulse_rhythm / resp_pattern / bp_position are sent by the vitals form
+        // and must be persisted (previously silently dropped).
+        stubCommon();
+        Map<String, Object> data = new HashMap<>();
+        data.put("bloodPressure", "120/80");
+        data.put("tempMethod", "ORAL");
+        data.put("pulseRhythm", "REGULAR");
+        data.put("respPattern", "NORMAL");
+        data.put("bpPosition", "SITTING");
+
+        VitalSigns saved = service.recordVitals(10L, data);
+
+        assertThat(saved.getTempMethod()).isEqualTo("ORAL");
+        assertThat(saved.getPulseRhythm()).isEqualTo("REGULAR");
+        assertThat(saved.getRespPattern()).isEqualTo("NORMAL");
+        assertThat(saved.getBpPosition()).isEqualTo("SITTING");
+    }
 }

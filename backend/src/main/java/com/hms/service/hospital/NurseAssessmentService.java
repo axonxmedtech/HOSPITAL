@@ -91,6 +91,10 @@ public class NurseAssessmentService {
         v.setWeight(toBigDecimal(data.get("weight")));
         v.setOxygenSupport((String) data.get("oxygenSupport"));
         v.setRemarks((String) data.get("remarks"));
+        v.setTempMethod((String) data.get("tempMethod"));
+        v.setPulseRhythm((String) data.get("pulseRhythm"));
+        v.setRespPattern((String) data.get("respPattern"));
+        v.setBpPosition((String) data.get("bpPosition"));
         v.setRecordedByName(securityHelper.getCurrentUserEmail());
         v.setRecordedAt(LocalDateTime.now());
         return vitalsRepository.save(v);
