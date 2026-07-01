@@ -1,6 +1,7 @@
 package com.hms.controller.hospital;
 
 import com.hms.dto.AnaesthesiaRecordRequest;
+import com.hms.dto.ClinicalHandoverRequest;
 import com.hms.dto.OperationRecordRequest;
 import com.hms.dto.OtBookingRequest;
 import com.hms.dto.OtChecklistRequest;
@@ -213,6 +214,54 @@ public class OtController {
                                                 @PathVariable Long bookingId) {
         try {
             return ResponseEntity.ok(otService.transferPacuRecord(bookingId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // ===== Clinical Handover (Form 22) =====
+
+    @GetMapping("/{bookingId}/handover")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'NURSE', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> getClinicalHandover(@PathVariable Long admissionId,
+                                                 @PathVariable Long bookingId) {
+        try {
+            return ResponseEntity.ok(otService.getClinicalHandover(bookingId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/{bookingId}/handover")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'NURSE', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> initiateHandover(@PathVariable Long admissionId,
+                                              @PathVariable Long bookingId,
+                                              @RequestBody ClinicalHandoverRequest request) {
+        try {
+            return ResponseEntity.ok(otService.initiateHandover(bookingId, request));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PutMapping("/{bookingId}/handover")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'NURSE', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> updateHandover(@PathVariable Long admissionId,
+                                            @PathVariable Long bookingId,
+                                            @RequestBody ClinicalHandoverRequest request) {
+        try {
+            return ResponseEntity.ok(otService.updateHandover(bookingId, request));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/{bookingId}/handover/accept")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'NURSE', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> acceptHandover(@PathVariable Long admissionId,
+                                            @PathVariable Long bookingId) {
+        try {
+            return ResponseEntity.ok(otService.acceptHandover(bookingId));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

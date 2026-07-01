@@ -2142,6 +2142,32 @@ CREATE TABLE IF NOT EXISTS pacu_record (
 ) ENGINE=InnoDB;
 CREATE INDEX IF NOT EXISTS idx_pacu_record_hospital_booking ON pacu_record(hospital_id, ot_booking_id);
 
+-- Phase 4.04 Clinical Handover (Form 22 core; OT/PACU -> ward). Additive; Hibernate ddl-auto creates it.
+CREATE TABLE IF NOT EXISTS clinical_handover (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    patient_id BIGINT NULL,
+    admission_id BIGINT NULL,
+    ot_booking_id BIGINT NOT NULL UNIQUE,
+    from_department VARCHAR(50) NULL,
+    to_department VARCHAR(50) NULL,
+    transport_mode VARCHAR(30) NULL,
+    transport_staff VARCHAR(100) NULL,
+    transfer_time DATETIME NULL,
+    accepted_time DATETIME NULL,
+    devices TEXT NULL,
+    monitoring_plan TEXT NULL,
+    pending_tasks TEXT NULL,
+    remarks TEXT NULL,
+    handover_by VARCHAR(100) NULL,
+    accepted_by VARCHAR(100) NULL,
+    status VARCHAR(20) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_handover_booking FOREIGN KEY (ot_booking_id) REFERENCES ot_bookings(id),
+    CONSTRAINT fk_handover_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_clinical_handover_hospital_booking ON clinical_handover(hospital_id, ot_booking_id);
+
 -- Table structure for table `mrd_records`
 DROP TABLE IF EXISTS `mrd_records`;
 CREATE TABLE `mrd_records` (

@@ -62,6 +62,9 @@ class OtServiceTest {
     @Mock
     private PacuRecordRepository pacuRecordRepository;
 
+    @Mock
+    private ClinicalHandoverRepository clinicalHandoverRepository;
+
     @InjectMocks
     private OtService otService;
 
@@ -402,6 +405,112 @@ class OtServiceTest {
         assertThatThrownBy(() -> otService.startPacuRecord(bookingId, new com.hms.dto.PacuRecordRequest()))
                 .isInstanceOf(UnauthorizedException.class);
         verify(pacuRecordRepository, never()).save(any());
+    }
+
+    // ===== Clinical Handover (Form 22) =====
+
+    private PacuRecord readyPacu(int score) {
+        PacuRecord p = new PacuRecord();
+        p.setStatus(score >= 9 ? "READY" : "ACTIVE");
+        p.setAldreteScore(score);
+        return p;
+    }
+
+    private com.hms.dto.ClinicalHandoverRequest handoverRequest() {
+        com.hms.dto.ClinicalHandoverRequest req = new com.hms.dto.ClinicalHandoverRequest();
+        req.setTransportStaff("Nurse Priya");
+        req.setDevices("Foley catheter (patent); IV cannula R hand");
+        req.setToDepartment("Surgical Ward A");
+        return req;
+    }
+
+    @Test
+    void initiateHandover_rejectedWhenPacuNotReady() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        when(pacuRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(readyPacu(6)));
+
+        assertThatThrownBy(() -> otService.initiateHandover(bookingId, handoverRequest()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("recovery-ready");
+        verify(clinicalHandoverRepository, never()).save(any());
+    }
+
+    @Test
+    void initiateHandover_rejectedWithoutDevices() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        when(pacuRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(readyPacu(10)));
+        com.hms.dto.ClinicalHandoverRequest req = handoverRequest();
+        req.setDevices(null);
+
+        assertThatThrownBy(() -> otService.initiateHandover(bookingId, req))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("tubes/drains/lines");
+        verify(clinicalHandoverRepository, never()).save(any());
+    }
+
+    @Test
+    void initiateHandover_succeedsWhenReady() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("nurse.a@hospital.com");
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        when(pacuRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(readyPacu(10)));
+        when(clinicalHandoverRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.empty());
+        when(clinicalHandoverRepository.save(any(ClinicalHandover.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ClinicalHandover saved = otService.initiateHandover(bookingId, handoverRequest());
+
+        assertThat(saved.getStatus()).isEqualTo("PENDING");
+        assertThat(saved.getHandoverBy()).isEqualTo("nurse.a@hospital.com");
+        assertThat(saved.getTransferTime()).isNotNull();
+    }
+
+    @Test
+    void acceptHandover_locksRecord() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("ward.nurse@hospital.com");
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        ClinicalHandover handover = new ClinicalHandover();
+        handover.setStatus("PENDING");
+        when(clinicalHandoverRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(handover));
+        when(clinicalHandoverRepository.save(any(ClinicalHandover.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ClinicalHandover accepted = otService.acceptHandover(bookingId);
+
+        assertThat(accepted.getStatus()).isEqualTo("ACCEPTED");
+        assertThat(accepted.getAcceptedBy()).isEqualTo("ward.nurse@hospital.com");
+        assertThat(accepted.getAcceptedTime()).isNotNull();
+    }
+
+    @Test
+    void updateHandover_rejectedAfterAccepted() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        ClinicalHandover handover = new ClinicalHandover();
+        handover.setStatus("ACCEPTED");
+        when(clinicalHandoverRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(handover));
+
+        assertThatThrownBy(() -> otService.updateHandover(bookingId, handoverRequest()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("locked");
+        verify(clinicalHandoverRepository, never()).save(any());
+    }
+
+    @Test
+    void initiateHandover_rejectsCrossTenant() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, 99L, 10L)));
+
+        assertThatThrownBy(() -> otService.initiateHandover(bookingId, handoverRequest()))
+                .isInstanceOf(UnauthorizedException.class);
+        verify(clinicalHandoverRepository, never()).save(any());
     }
 
     @Test

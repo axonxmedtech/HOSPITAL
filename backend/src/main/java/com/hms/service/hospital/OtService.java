@@ -1,6 +1,7 @@
 package com.hms.service.hospital;
 
 import com.hms.dto.AnaesthesiaRecordRequest;
+import com.hms.dto.ClinicalHandoverRequest;
 import com.hms.dto.OperationRecordRequest;
 import com.hms.dto.OtBookingRequest;
 import com.hms.dto.OtChecklistRequest;
@@ -58,6 +59,9 @@ public class OtService {
 
     @Autowired
     private PacuRecordRepository pacuRecordRepository;
+
+    @Autowired
+    private ClinicalHandoverRepository clinicalHandoverRepository;
 
     /** Minimum modified Aldrete score required to transfer a patient out of PACU to a ward. */
     private static final int ALDRETE_TRANSFER_MIN = 9;
@@ -650,6 +654,128 @@ public class OtService {
             throw new IllegalArgumentException("Aldrete " + label + " score must be 0, 1 or 2.");
         }
         return v;
+    }
+
+    // ===== Clinical Handover (Form 22 core) =====
+
+    /** Loads the clinical handover for a booking (or null), tenant-guarded. */
+    public ClinicalHandover getClinicalHandover(Long bookingId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT Booking not found: " + bookingId));
+        if (!booking.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        return clinicalHandoverRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId).orElse(null);
+    }
+
+    /** BR-1: initiate only when the PACU record is recovery-ready (Aldrete >= 9). BR-5: devices required. */
+    @Transactional
+    public ClinicalHandover initiateHandover(Long bookingId, ClinicalHandoverRequest request) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        String email = securityHelper.getCurrentUserEmail();
+
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT Booking not found: " + bookingId));
+        if (!booking.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        mrdService.validateAdmissionActive(booking.getIpdAdmissionId());
+
+        PacuRecord pacu = pacuRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId).orElse(null);
+        if (pacu == null || pacu.getAldreteScore() == null || pacu.getAldreteScore() < ALDRETE_TRANSFER_MIN) {
+            throw new IllegalStateException("Cannot initiate handover before the patient is recovery-ready (Aldrete >= "
+                    + ALDRETE_TRANSFER_MIN + ").");
+        }
+        if (request.getTransportStaff() == null || request.getTransportStaff().isBlank()) {
+            throw new IllegalStateException("Cannot initiate handover: the accompanying transport staff is required.");
+        }
+        if (request.getDevices() == null || request.getDevices().isBlank()) {
+            throw new IllegalStateException("Cannot initiate handover: tubes/drains/lines must be documented (BR-5).");
+        }
+
+        ClinicalHandover handover = clinicalHandoverRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
+                .orElseGet(ClinicalHandover::new);
+        if ("ACCEPTED".equalsIgnoreCase(handover.getStatus())) {
+            throw new IllegalStateException("Handover has already been accepted and is locked.");
+        }
+        handover.setHospitalId(hospitalId);
+        handover.setOtBookingId(bookingId);
+        handover.setAdmissionId(booking.getIpdAdmissionId());
+        applyHandoverRequest(handover, request);
+        handover.setHandoverBy(email);
+        handover.setTransferTime(LocalDateTime.now());
+        handover.setStatus("PENDING");
+        ClinicalHandover saved = clinicalHandoverRepository.save(handover);
+
+        audit("CLINICAL_HANDOVER_INITIATED", "Clinical handover initiated for booking " + bookingId, hospitalId);
+        broadcast(hospitalId);
+        return saved;
+    }
+
+    /** Update a PENDING handover (locked once accepted). */
+    @Transactional
+    public ClinicalHandover updateHandover(Long bookingId, ClinicalHandoverRequest request) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT Booking not found: " + bookingId));
+        if (!booking.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        ClinicalHandover handover = clinicalHandoverRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
+                .orElseThrow(() -> new RuntimeException("Clinical handover not found for booking: " + bookingId));
+        if ("ACCEPTED".equalsIgnoreCase(handover.getStatus())) {
+            throw new IllegalStateException("Handover has been accepted and is locked (BR-6).");
+        }
+        applyHandoverRequest(handover, request);
+        ClinicalHandover saved = clinicalHandoverRepository.save(handover);
+
+        audit("CLINICAL_HANDOVER_UPDATED", "Clinical handover updated for booking " + bookingId, hospitalId);
+        broadcast(hospitalId);
+        return saved;
+    }
+
+    /** BR-2 + BR-6: the receiving nurse explicitly accepts; the record then locks. */
+    @Transactional
+    public ClinicalHandover acceptHandover(Long bookingId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        String email = securityHelper.getCurrentUserEmail();
+
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT Booking not found: " + bookingId));
+        if (!booking.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        ClinicalHandover handover = clinicalHandoverRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
+                .orElseThrow(() -> new RuntimeException("Clinical handover not found for booking: " + bookingId));
+        if (!"PENDING".equalsIgnoreCase(handover.getStatus())) {
+            throw new IllegalStateException("Only a pending handover can be accepted.");
+        }
+
+        handover.setStatus("ACCEPTED");
+        handover.setAcceptedBy(email);
+        handover.setAcceptedTime(LocalDateTime.now());
+        ClinicalHandover saved = clinicalHandoverRepository.save(handover);
+
+        audit("CLINICAL_HANDOVER_ACCEPTED", "Clinical handover accepted for booking " + bookingId + " by " + email, hospitalId);
+        broadcast(hospitalId);
+        return saved;
+    }
+
+    private void applyHandoverRequest(ClinicalHandover handover, ClinicalHandoverRequest request) {
+        handover.setFromDepartment(request.getFromDepartment());
+        handover.setToDepartment(request.getToDepartment());
+        handover.setTransportMode(request.getTransportMode());
+        handover.setTransportStaff(request.getTransportStaff());
+        handover.setDevices(request.getDevices());
+        handover.setMonitoringPlan(request.getMonitoringPlan());
+        handover.setPendingTasks(request.getPendingTasks());
+        handover.setRemarks(request.getRemarks());
     }
 
     private void audit(String action, String details, Long hospitalId) {
