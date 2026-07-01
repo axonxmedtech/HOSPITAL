@@ -1095,9 +1095,16 @@ CREATE TABLE IF NOT EXISTS doctor_orders (
     CONSTRAINT fk_do_ipd FOREIGN KEY (ipd_admission_id) REFERENCES ipd_admission(id)
 );
 
+-- Phase 0.3 additive migration:
+-- ALTER TABLE nurse_tasks MODIFY COLUMN doctor_order_id BIGINT DEFAULT NULL;
+-- ALTER TABLE nurse_tasks ADD COLUMN source VARCHAR(30) NOT NULL DEFAULT 'DOCTOR_ORDER';
+-- ALTER TABLE nurse_tasks ADD COLUMN task_type VARCHAR(50) DEFAULT NULL;
+-- ALTER TABLE nurse_tasks ADD COLUMN missed_reason TEXT DEFAULT NULL;
+-- UPDATE nurse_tasks SET source = 'DOCTOR_ORDER' WHERE source IS NULL;
+
 CREATE TABLE IF NOT EXISTS nurse_tasks (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    doctor_order_id BIGINT NOT NULL,
+    doctor_order_id BIGINT DEFAULT NULL,
     ipd_admission_id BIGINT NOT NULL,
     hospital_id BIGINT NOT NULL,
     scheduled_at DATETIME,
@@ -1110,6 +1117,9 @@ CREATE TABLE IF NOT EXISTS nurse_tasks (
     route VARCHAR(50) NULL,
     injection_site VARCHAR(100) NULL,
     pre_vitals VARCHAR(255) NULL,
+    source VARCHAR(30) NOT NULL DEFAULT 'DOCTOR_ORDER',
+    task_type VARCHAR(50) DEFAULT NULL,
+    missed_reason TEXT DEFAULT NULL,
     CONSTRAINT fk_nt_order FOREIGN KEY (doctor_order_id) REFERENCES doctor_orders(id)
 );
 
