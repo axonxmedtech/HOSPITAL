@@ -129,6 +129,36 @@ public class Patient {
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "date_of_birth")
+    private java.time.LocalDate dateOfBirth;
+
+    @Column(name = "guardian_name", length = 100)
+    private String guardianName;
+
+    @Column(name = "guardian_relationship", length = 50)
+    private String guardianRelationship;
+
+    @Column(name = "preferred_language", length = 50)
+    private String preferredLanguage;
+
+    @Column(name = "blood_group", length = 10)
+    private String bloodGroup;
+
+    @Column(name = "uhid", length = 50)
+    private String uhid;
+
+    @Column(name = "is_temporary", nullable = false)
+    private Boolean isTemporary = false;
+
+    @Column(name = "is_unknown", nullable = false)
+    private Boolean isUnknown = false;
+
+    @Column(name = "is_merged", nullable = false)
+    private Boolean isMerged = false;
+
+    @Column(name = "merged_to_id")
+    private Long mergedToId;
+
     /**
      * Transient field to hold the latest bill information for UI display.
      * This is not persisted in the patient table.
