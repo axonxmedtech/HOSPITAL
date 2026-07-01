@@ -38,6 +38,7 @@ public class DatabaseMigrationRunner {
         backfillDischargeSummaryTenantColumns();
         backfillVitalSignsStructuredBp();
         decoupleNurseTasksSchema();
+        migratePatientModelSchema();
     }
 
     /**
@@ -399,6 +400,46 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped (decoupleNurseTasksSchema): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Modifies patient schema to backfill age, date_of_birth, and generate sequential UHID values.
+     * Additive + idempotent: updates existing records and returns early if nothing to do.
+     */
+    private void migratePatientModelSchema() {
+        try {
+            // 1. Generate UHID for existing patients if NULL
+            Integer countNullUhid = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM patients WHERE uhid IS NULL",
+                Integer.class
+            );
+            if (countNullUhid != null && countNullUhid > 0) {
+                int updated = jdbcTemplate.update(
+                    "UPDATE patients SET uhid = CONCAT('UHID-', hospital_id, '-', id) WHERE uhid IS NULL"
+                );
+                log.info("DB migration applied: generated {} patient UHIDs", updated);
+            }
+
+            // 2. Synchronize DOB -> Age
+            int dobToAge = jdbcTemplate.update(
+                "UPDATE patients SET age = TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) " +
+                "WHERE age IS NULL AND date_of_birth IS NOT NULL"
+            );
+            if (dobToAge > 0) {
+                log.info("DB migration applied: synced date_of_birth -> age for {} patients", dobToAge);
+            }
+
+            // 3. Synchronize Age -> DOB (estimate birth date using Jan 1 of estimated birth year)
+            int ageToDob = jdbcTemplate.update(
+                "UPDATE patients SET date_of_birth = DATE_SUB(CONCAT(YEAR(CURDATE()) - age, '-01-01'), INTERVAL 0 DAY) " +
+                "WHERE date_of_birth IS NULL AND age IS NOT NULL"
+            );
+            if (ageToDob > 0) {
+                log.info("DB migration applied: synced age -> date_of_birth for {} patients", ageToDob);
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (migratePatientModelSchema): {}", e.getMessage());
         }
     }
 }
