@@ -2083,6 +2083,30 @@ CREATE TABLE IF NOT EXISTS operation_record (
 ) ENGINE=InnoDB;
 CREATE INDEX IF NOT EXISTS idx_operation_record_hospital_booking ON operation_record(hospital_id, ot_booking_id);
 
+-- Phase 4.02 Anaesthesia Record (Form 19 core / AIMS). Additive; Hibernate ddl-auto creates it.
+CREATE TABLE IF NOT EXISTS anaesthesia_record (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    patient_id BIGINT NULL,
+    admission_id BIGINT NULL,
+    ot_booking_id BIGINT NOT NULL UNIQUE,
+    anaesthesiologist_id BIGINT NULL,
+    anaesthesia_type VARCHAR(100) NULL,
+    asa_grade VARCHAR(10) NULL,
+    airway_type VARCHAR(100) NULL,
+    ventilation_mode VARCHAR(100) NULL,
+    induction_time DATETIME NULL,
+    completion_time DATETIME NULL,
+    notes TEXT NULL,
+    status VARCHAR(20) NULL,
+    signed_by VARCHAR(100) NULL,
+    signed_at DATETIME NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_anaes_booking FOREIGN KEY (ot_booking_id) REFERENCES ot_bookings(id),
+    CONSTRAINT fk_anaes_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_anaesthesia_record_hospital_booking ON anaesthesia_record(hospital_id, ot_booking_id);
+
 -- Table structure for table `mrd_records`
 DROP TABLE IF EXISTS `mrd_records`;
 CREATE TABLE `mrd_records` (

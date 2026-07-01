@@ -1,5 +1,6 @@
 package com.hms.service.hospital;
 
+import com.hms.dto.AnaesthesiaRecordRequest;
 import com.hms.dto.OperationRecordRequest;
 import com.hms.dto.OtBookingRequest;
 import com.hms.dto.OtChecklistRequest;
@@ -50,6 +51,9 @@ public class OtService {
 
     @Autowired
     private OperationRecordRepository operationRecordRepository;
+
+    @Autowired
+    private AnaesthesiaRecordRepository anaesthesiaRecordRepository;
 
     public List<OtBooking> getBookingsForAdmission(Long ipdAdmissionId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
@@ -357,6 +361,125 @@ public class OtService {
         }
         record.setOperationStart(request.getOperationStart());
         record.setOperationEnd(request.getOperationEnd());
+    }
+
+    // ===== Anaesthesia Record (Form 19 core) =====
+
+    /** Loads the anaesthesia record for a booking (or null), tenant-guarded. */
+    public AnaesthesiaRecord getAnaesthesiaRecord(Long bookingId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT Booking not found: " + bookingId));
+        if (!booking.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        return anaesthesiaRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId).orElse(null);
+    }
+
+    /** BR-1: start only after the WHO sign-in (before induction of anaesthesia). Upserts an ACTIVE record. */
+    @Transactional
+    public AnaesthesiaRecord startAnaesthesiaRecord(Long bookingId, AnaesthesiaRecordRequest request) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT Booking not found: " + bookingId));
+        if (!booking.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        mrdService.validateAdmissionActive(booking.getIpdAdmissionId());
+
+        OtChecklist checklist = checklistRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
+                .orElseThrow(() -> new RuntimeException("Checklist not found for booking: " + bookingId));
+        if (!checklist.isSignInCompleted()) {
+            throw new IllegalStateException("Cannot start the anaesthesia record before the WHO sign-in is completed.");
+        }
+
+        AnaesthesiaRecord record = anaesthesiaRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
+                .orElseGet(AnaesthesiaRecord::new);
+        if ("COMPLETED".equalsIgnoreCase(record.getStatus())) {
+            throw new IllegalStateException("Anaesthesia record is completed and can no longer be edited.");
+        }
+        record.setHospitalId(hospitalId);
+        record.setOtBookingId(bookingId);
+        record.setAdmissionId(booking.getIpdAdmissionId());
+        applyAnaesthesiaRequest(record, request);
+        record.setStatus("ACTIVE");
+        AnaesthesiaRecord saved = anaesthesiaRecordRepository.save(record);
+
+        audit("ANAESTHESIA_RECORD_STARTED", "Anaesthesia record started for booking " + bookingId, hospitalId);
+        broadcast(hospitalId);
+        return saved;
+    }
+
+    /** Edit an ACTIVE anaesthesia record. */
+    @Transactional
+    public AnaesthesiaRecord updateAnaesthesiaRecord(Long bookingId, AnaesthesiaRecordRequest request) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT Booking not found: " + bookingId));
+        if (!booking.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        AnaesthesiaRecord record = anaesthesiaRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
+                .orElseThrow(() -> new RuntimeException("Anaesthesia record not found for booking: " + bookingId));
+        if ("COMPLETED".equalsIgnoreCase(record.getStatus())) {
+            throw new IllegalStateException("Anaesthesia record is completed and can no longer be edited.");
+        }
+        applyAnaesthesiaRequest(record, request);
+        AnaesthesiaRecord saved = anaesthesiaRecordRepository.save(record);
+
+        audit("ANAESTHESIA_RECORD_UPDATED", "Anaesthesia record updated for booking " + bookingId, hospitalId);
+        broadcast(hospitalId);
+        return saved;
+    }
+
+    /** BR-5 feeder: complete + sign the anaesthesia record (this is what gates PACU/recovery). */
+    @Transactional
+    public AnaesthesiaRecord completeAnaesthesiaRecord(Long bookingId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        String email = securityHelper.getCurrentUserEmail();
+
+        OtBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("OT Booking not found: " + bookingId));
+        if (!booking.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        AnaesthesiaRecord record = anaesthesiaRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
+                .orElseThrow(() -> new RuntimeException("Anaesthesia record not found for booking: " + bookingId));
+        if (record.getAnaesthesiaType() == null || record.getAnaesthesiaType().isBlank()) {
+            throw new IllegalStateException("Cannot complete: the anaesthesia type is required.");
+        }
+
+        record.setStatus("COMPLETED");
+        if (record.getCompletionTime() == null) {
+            record.setCompletionTime(LocalDateTime.now());
+        }
+        record.setSignedBy(email);
+        record.setSignedAt(LocalDateTime.now());
+        AnaesthesiaRecord saved = anaesthesiaRecordRepository.save(record);
+
+        audit("ANAESTHESIA_RECORD_COMPLETED", "Anaesthesia record completed for booking " + bookingId + " by " + email, hospitalId);
+        broadcast(hospitalId);
+        return saved;
+    }
+
+    private void applyAnaesthesiaRequest(AnaesthesiaRecord record, AnaesthesiaRecordRequest request) {
+        record.setAnaesthesiaType(request.getAnaesthesiaType());
+        record.setAsaGrade(request.getAsaGrade());
+        record.setAirwayType(request.getAirwayType());
+        record.setVentilationMode(request.getVentilationMode());
+        if (request.getInductionTime() != null && request.getCompletionTime() != null
+                && request.getCompletionTime().isBefore(request.getInductionTime())) {
+            throw new IllegalArgumentException("Completion time cannot be before the induction time.");
+        }
+        record.setInductionTime(request.getInductionTime());
+        record.setCompletionTime(request.getCompletionTime());
+        record.setNotes(request.getNotes());
     }
 
     private void audit(String action, String details, Long hospitalId) {

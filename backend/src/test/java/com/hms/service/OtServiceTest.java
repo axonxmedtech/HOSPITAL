@@ -56,6 +56,9 @@ class OtServiceTest {
     @Mock
     private OperationRecordRepository operationRecordRepository;
 
+    @Mock
+    private AnaesthesiaRecordRepository anaesthesiaRecordRepository;
+
     @InjectMocks
     private OtService otService;
 
@@ -178,6 +181,91 @@ class OtServiceTest {
         assertThat(finalized.getStatus()).isEqualTo("FINALIZED");
         assertThat(finalized.getSignedBy()).isEqualTo("surgeon@hospital.com");
         assertThat(finalized.getSignedAt()).isNotNull();
+    }
+
+    // ===== Anaesthesia Record (Form 19) =====
+
+    @Test
+    void startAnaesthesiaRecord_rejectedBeforeSignIn() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        OtChecklist checklist = new OtChecklist();
+        checklist.setSignInCompleted(false);
+        when(checklistRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(checklist));
+
+        assertThatThrownBy(() -> otService.startAnaesthesiaRecord(bookingId, new com.hms.dto.AnaesthesiaRecordRequest()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("sign-in");
+        verify(anaesthesiaRecordRepository, never()).save(any());
+    }
+
+    @Test
+    void startAnaesthesiaRecord_succeedsAfterSignIn() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        OtChecklist checklist = new OtChecklist();
+        checklist.setSignInCompleted(true);
+        when(checklistRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(checklist));
+        when(anaesthesiaRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.empty());
+        when(anaesthesiaRecordRepository.save(any(AnaesthesiaRecord.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        com.hms.dto.AnaesthesiaRecordRequest req = new com.hms.dto.AnaesthesiaRecordRequest();
+        req.setAnaesthesiaType("GENERAL");
+        AnaesthesiaRecord saved = otService.startAnaesthesiaRecord(bookingId, req);
+
+        assertThat(saved.getStatus()).isEqualTo("ACTIVE");
+        assertThat(saved.getOtBookingId()).isEqualTo(bookingId);
+        assertThat(saved.getAnaesthesiaType()).isEqualTo("GENERAL");
+    }
+
+    @Test
+    void startAnaesthesiaRecord_rejectsCrossTenant() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, 99L, 10L)));
+
+        assertThatThrownBy(() -> otService.startAnaesthesiaRecord(bookingId, new com.hms.dto.AnaesthesiaRecordRequest()))
+                .isInstanceOf(UnauthorizedException.class);
+        verify(anaesthesiaRecordRepository, never()).save(any());
+    }
+
+    @Test
+    void completeAnaesthesiaRecord_rejectedWithoutType() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("anaes@hospital.com");
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        AnaesthesiaRecord record = new AnaesthesiaRecord();
+        record.setStatus("ACTIVE");
+        record.setAnaesthesiaType(null);
+        when(anaesthesiaRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(record));
+
+        assertThatThrownBy(() -> otService.completeAnaesthesiaRecord(bookingId))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("anaesthesia type");
+        verify(anaesthesiaRecordRepository, never()).save(any());
+    }
+
+    @Test
+    void completeAnaesthesiaRecord_stampsSignatureWhenReady() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("anaes@hospital.com");
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        AnaesthesiaRecord record = new AnaesthesiaRecord();
+        record.setStatus("ACTIVE");
+        record.setAnaesthesiaType("SPINAL");
+        when(anaesthesiaRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(record));
+        when(anaesthesiaRecordRepository.save(any(AnaesthesiaRecord.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        AnaesthesiaRecord completed = otService.completeAnaesthesiaRecord(bookingId);
+
+        assertThat(completed.getStatus()).isEqualTo("COMPLETED");
+        assertThat(completed.getSignedBy()).isEqualTo("anaes@hospital.com");
+        assertThat(completed.getSignedAt()).isNotNull();
+        assertThat(completed.getCompletionTime()).isNotNull();
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.hms.controller.hospital;
 
+import com.hms.dto.AnaesthesiaRecordRequest;
 import com.hms.dto.OperationRecordRequest;
 import com.hms.dto.OtBookingRequest;
 import com.hms.dto.OtChecklistRequest;
@@ -115,6 +116,54 @@ public class OtController {
                                                      @PathVariable Long bookingId) {
         try {
             return ResponseEntity.ok(otService.finalizeOperationRecord(bookingId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // ===== Anaesthesia Record (Form 19) =====
+
+    @GetMapping("/{bookingId}/anaesthesia-record")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'NURSE', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> getAnaesthesiaRecord(@PathVariable Long admissionId,
+                                                  @PathVariable Long bookingId) {
+        try {
+            return ResponseEntity.ok(otService.getAnaesthesiaRecord(bookingId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/{bookingId}/anaesthesia-record")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> startAnaesthesiaRecord(@PathVariable Long admissionId,
+                                                    @PathVariable Long bookingId,
+                                                    @RequestBody AnaesthesiaRecordRequest request) {
+        try {
+            return ResponseEntity.ok(otService.startAnaesthesiaRecord(bookingId, request));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PutMapping("/{bookingId}/anaesthesia-record")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> updateAnaesthesiaRecord(@PathVariable Long admissionId,
+                                                     @PathVariable Long bookingId,
+                                                     @RequestBody AnaesthesiaRecordRequest request) {
+        try {
+            return ResponseEntity.ok(otService.updateAnaesthesiaRecord(bookingId, request));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/{bookingId}/anaesthesia-record/complete")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> completeAnaesthesiaRecord(@PathVariable Long admissionId,
+                                                       @PathVariable Long bookingId) {
+        try {
+            return ResponseEntity.ok(otService.completeAnaesthesiaRecord(bookingId));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
