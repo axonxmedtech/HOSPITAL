@@ -535,6 +535,21 @@ CREATE TABLE `opd` (
 -- Table structure for table `patients`
 --
 
+-- Phase 0.4 additive migration:
+-- ALTER TABLE patients ADD COLUMN date_of_birth date DEFAULT NULL;
+-- ALTER TABLE patients ADD COLUMN guardian_name varchar(100) DEFAULT NULL;
+-- ALTER TABLE patients ADD COLUMN guardian_relationship varchar(50) DEFAULT NULL;
+-- ALTER TABLE patients ADD COLUMN preferred_language varchar(50) DEFAULT NULL;
+-- ALTER TABLE patients ADD COLUMN blood_group varchar(10) DEFAULT NULL;
+-- ALTER TABLE patients ADD COLUMN uhid varchar(50) DEFAULT NULL;
+-- ALTER TABLE patients ADD COLUMN is_temporary bit(1) NOT NULL DEFAULT b'0';
+-- ALTER TABLE patients ADD COLUMN is_unknown bit(1) NOT NULL DEFAULT b'0';
+-- ALTER TABLE patients ADD COLUMN is_merged bit(1) NOT NULL DEFAULT b'0';
+-- ALTER TABLE patients ADD COLUMN merged_to_id bigint DEFAULT NULL;
+-- UPDATE patients SET uhid = CONCAT('UHID-', hospital_id, '-', id) WHERE uhid IS NULL;
+-- UPDATE patients SET age = TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) WHERE age IS NULL AND date_of_birth IS NOT NULL;
+-- UPDATE patients SET date_of_birth = DATE_SUB(CONCAT(YEAR(CURDATE()) - age, '-01-01'), INTERVAL 0 DAY) WHERE date_of_birth IS NULL AND age IS NOT NULL;
+
 DROP TABLE IF EXISTS `patients`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
@@ -553,6 +568,16 @@ CREATE TABLE `patients` (
   `phone` varchar(15) NOT NULL,
   `public_id` varchar(255) NOT NULL,
   `status` enum('REGISTERED','CONSULTING','COMPLETED') NOT NULL,
+  `date_of_birth` date DEFAULT NULL,
+  `guardian_name` varchar(100) DEFAULT NULL,
+  `guardian_relationship` varchar(50) DEFAULT NULL,
+  `preferred_language` varchar(50) DEFAULT NULL,
+  `blood_group` varchar(10) DEFAULT NULL,
+  `uhid` varchar(50) DEFAULT NULL,
+  `is_temporary` bit(1) NOT NULL DEFAULT b'0',
+  `is_unknown` bit(1) NOT NULL DEFAULT b'0',
+  `is_merged` bit(1) NOT NULL DEFAULT b'0',
+  `merged_to_id` bigint DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_8isyrjl9ji56k5uv4cgp9p2q6` (`public_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
