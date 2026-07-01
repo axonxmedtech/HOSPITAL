@@ -104,6 +104,15 @@ const otService = {
 
   saveReadiness: (payload) =>
     apiService.post(`/hospital/ot/readiness`, payload),
+
+  getPac: (admissionId) =>
+    apiService.get(`/api/ipd/${admissionId}/ot/pac`),
+
+  savePac: (admissionId, payload) =>
+    apiService.post(`/api/ipd/${admissionId}/ot/pac`, payload),
+
+  approvePac: (admissionId) =>
+    apiService.post(`/api/ipd/${admissionId}/ot/pac/approve`),
 };
 
 

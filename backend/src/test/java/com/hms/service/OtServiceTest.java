@@ -83,6 +83,9 @@ class OtServiceTest {
     @Mock
     private DoctorRepository doctorRepository;
 
+    @Mock
+    private PreAnaesthesiaAssessmentRepository pacRepository;
+
     @InjectMocks
     private OtService otService;
 
@@ -1048,6 +1051,127 @@ class OtServiceTest {
         OtBooking booking = otService.scheduleBooking(admissionId, req);
         assertThat(booking).isNotNull();
         assertThat(booking.getStatus()).isEqualTo("SCHEDULED");
+    }
+
+    // ===== Pre-Anaesthesia Assessment / PAC (Form 15) =====
+
+    private IpdAdmission tenantAdmission(Long admissionId, Long hospitalId) {
+        IpdAdmission admission = new IpdAdmission();
+        admission.setId(admissionId);
+        admission.setHospitalId(hospitalId);
+        admission.setPatientId(55L);
+        return admission;
+    }
+
+    @Test
+    void scheduleBooking_blockedWhenPacNotApproved() {
+        Long hospitalId = 1L, admissionId = 10L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(ipdAdmissionRepository.findById(admissionId)).thenReturn(Optional.of(tenantAdmission(admissionId, hospitalId)));
+        PreAnaesthesiaAssessment pac = new PreAnaesthesiaAssessment();
+        pac.setStatus("DRAFT");
+        when(pacRepository.findByAdmissionIdAndHospitalId(admissionId, hospitalId)).thenReturn(Optional.of(pac));
+
+        OtBookingRequest req = new OtBookingRequest(
+                "Cholecystectomy", LocalDateTime.now().plusDays(2), 5L, "Dr. Ana", "OT 1", "Scheduled surgery");
+
+        assertThatThrownBy(() -> otService.scheduleBooking(admissionId, req))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("pre-anaesthesia assessment");
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void scheduleBooking_blockedWhenPacFitnessDeferred() {
+        Long hospitalId = 1L, admissionId = 10L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(ipdAdmissionRepository.findById(admissionId)).thenReturn(Optional.of(tenantAdmission(admissionId, hospitalId)));
+        PreAnaesthesiaAssessment pac = new PreAnaesthesiaAssessment();
+        pac.setStatus("APPROVED");
+        pac.setFitnessStatus("DEFERRED");
+        when(pacRepository.findByAdmissionIdAndHospitalId(admissionId, hospitalId)).thenReturn(Optional.of(pac));
+
+        OtBookingRequest req = new OtBookingRequest(
+                "Cholecystectomy", LocalDateTime.now().plusDays(2), 5L, "Dr. Ana", "OT 1", "Scheduled surgery");
+
+        assertThatThrownBy(() -> otService.scheduleBooking(admissionId, req))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("DEFERRED");
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void scheduleBooking_allowedWhenPacApprovedAndFit() {
+        Long hospitalId = 1L, admissionId = 10L;
+        Authentication authentication = mock(Authentication.class);
+        when(authentication.getName()).thenReturn("doctor@hospital.com");
+        SecurityContext securityContext = mock(SecurityContext.class);
+        when(securityContext.getAuthentication()).thenReturn(authentication);
+        SecurityContextHolder.setContext(securityContext);
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(ipdAdmissionRepository.findById(admissionId)).thenReturn(Optional.of(tenantAdmission(admissionId, hospitalId)));
+        PreAnaesthesiaAssessment pac = new PreAnaesthesiaAssessment();
+        pac.setStatus("APPROVED");
+        pac.setFitnessStatus("FIT_WITH_PRECAUTIONS");
+        when(pacRepository.findByAdmissionIdAndHospitalId(admissionId, hospitalId)).thenReturn(Optional.of(pac));
+        when(bookingRepository.findByHospitalIdOrderByScheduledDateTimeDesc(hospitalId)).thenReturn(new ArrayList<>());
+        when(bookingRepository.save(any(OtBooking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        OtBookingRequest req = new OtBookingRequest(
+                "Cholecystectomy", LocalDateTime.now().plusDays(2), 5L, "Dr. Ana", "OT 1", "Scheduled surgery");
+
+        OtBooking booking = otService.scheduleBooking(admissionId, req);
+
+        assertThat(booking.getStatus()).isEqualTo("SCHEDULED");
+    }
+
+    @Test
+    void approvePac_rejectedWithoutAsaClass() {
+        Long hospitalId = 1L, admissionId = 10L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("anaes@hospital.com");
+        when(ipdAdmissionRepository.findById(admissionId)).thenReturn(Optional.of(tenantAdmission(admissionId, hospitalId)));
+        PreAnaesthesiaAssessment pac = new PreAnaesthesiaAssessment();
+        pac.setStatus("DRAFT");
+        pac.setAsaClass(null);
+        pac.setFitnessStatus("FIT");
+        when(pacRepository.findByAdmissionIdAndHospitalId(admissionId, hospitalId)).thenReturn(Optional.of(pac));
+
+        assertThatThrownBy(() -> otService.approvePac(admissionId))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ASA");
+        verify(pacRepository, never()).save(any());
+    }
+
+    @Test
+    void approvePac_stampsSignature() {
+        Long hospitalId = 1L, admissionId = 10L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("anaes@hospital.com");
+        when(ipdAdmissionRepository.findById(admissionId)).thenReturn(Optional.of(tenantAdmission(admissionId, hospitalId)));
+        PreAnaesthesiaAssessment pac = new PreAnaesthesiaAssessment();
+        pac.setStatus("DRAFT");
+        pac.setAsaClass("II");
+        pac.setFitnessStatus("FIT");
+        when(pacRepository.findByAdmissionIdAndHospitalId(admissionId, hospitalId)).thenReturn(Optional.of(pac));
+        when(pacRepository.save(any(PreAnaesthesiaAssessment.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        PreAnaesthesiaAssessment approved = otService.approvePac(admissionId);
+
+        assertThat(approved.getStatus()).isEqualTo("APPROVED");
+        assertThat(approved.getSignedBy()).isEqualTo("anaes@hospital.com");
+        assertThat(approved.getSignedAt()).isNotNull();
+    }
+
+    @Test
+    void savePac_rejectsCrossTenant() {
+        Long hospitalId = 1L, admissionId = 10L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(ipdAdmissionRepository.findById(admissionId)).thenReturn(Optional.of(tenantAdmission(admissionId, 99L)));
+
+        assertThatThrownBy(() -> otService.savePac(admissionId, new com.hms.dto.PacRequest()))
+                .isInstanceOf(UnauthorizedException.class);
+        verify(pacRepository, never()).save(any());
     }
 }
 

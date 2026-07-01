@@ -7,6 +7,7 @@ import com.hms.dto.InstrumentCountRequest;
 import com.hms.dto.OperationRecordRequest;
 import com.hms.dto.OtBookingRequest;
 import com.hms.dto.OtChecklistRequest;
+import com.hms.dto.PacRequest;
 import com.hms.dto.PacuRecordRequest;
 import com.hms.dto.PostopOrdersRequest;
 import com.hms.dto.OtReadinessRequest;
@@ -88,6 +89,8 @@ public class OtService {
     @Autowired
     private DoctorRepository doctorRepository;
 
+    @Autowired
+    private PreAnaesthesiaAssessmentRepository pacRepository;
 
     /** Minimum modified Aldrete score required to transfer a patient out of PACU to a ward. */
     private static final int ALDRETE_TRANSFER_MIN = 9;
@@ -135,6 +138,21 @@ public class OtService {
                 .orElseThrow(() -> new RuntimeException("IPD Admission not found: " + ipdAdmissionId));
         if (!admission.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+
+        // Form 15 Gating Check (BR-1/BR-3): when a PAC exists for this admission, scheduling
+        // requires it APPROVED with a passing fitness status. No PAC = legacy flow unchanged.
+        PreAnaesthesiaAssessment pac = pacRepository
+                .findByAdmissionIdAndHospitalId(ipdAdmissionId, hospitalId).orElse(null);
+        if (pac != null) {
+            if (!"APPROVED".equalsIgnoreCase(pac.getStatus())) {
+                throw new IllegalStateException("Cannot schedule surgery: the pre-anaesthesia assessment has not been approved yet.");
+            }
+            String fitness = pac.getFitnessStatus() == null ? "" : pac.getFitnessStatus().toUpperCase();
+            if (!fitness.equals("FIT") && !fitness.equals("FIT_WITH_PRECAUTIONS")) {
+                throw new IllegalStateException("Cannot schedule surgery: PAC fitness status is " + pac.getFitnessStatus()
+                        + " — only FIT or FIT_WITH_PRECAUTIONS may proceed.");
+            }
         }
 
         // Form 26 Gating Check: gate scheduleBooking only when a readiness record exists and is not READY
@@ -1156,6 +1174,100 @@ public class OtService {
         if (req.getWarrantyCardNumber() != null) implant.setWarrantyCardNumber(req.getWarrantyCardNumber());
         if (req.getPatientCardIssued() != null) implant.setPatientCardIssued(req.getPatientCardIssued());
         if (req.getNurseSig() != null) implant.setNurseSig(req.getNurseSig());
+    }
+
+    // ===== Pre-Anaesthesia Assessment / PAC (Form 15 core) =====
+
+    /** Loads the PAC for an admission (or null), tenant-guarded. */
+    public PreAnaesthesiaAssessment getPac(Long admissionId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        IpdAdmission admission = ipdAdmissionRepository.findById(admissionId)
+                .orElseThrow(() -> new RuntimeException("IPD Admission not found: " + admissionId));
+        if (!admission.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        return pacRepository.findByAdmissionIdAndHospitalId(admissionId, hospitalId).orElse(null);
+    }
+
+    /** Upsert a DRAFT PAC (blocked once APPROVED — amend requires a fresh clinical decision). */
+    @Transactional
+    public PreAnaesthesiaAssessment savePac(Long admissionId, PacRequest request) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+
+        IpdAdmission admission = ipdAdmissionRepository.findById(admissionId)
+                .orElseThrow(() -> new RuntimeException("IPD Admission not found: " + admissionId));
+        if (!admission.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        mrdService.validateAdmissionActive(admissionId);
+
+        PreAnaesthesiaAssessment pac = pacRepository.findByAdmissionIdAndHospitalId(admissionId, hospitalId)
+                .orElseGet(PreAnaesthesiaAssessment::new);
+        if ("APPROVED".equalsIgnoreCase(pac.getStatus())) {
+            throw new IllegalStateException("PAC is approved and read-only.");
+        }
+        pac.setHospitalId(hospitalId);
+        pac.setAdmissionId(admissionId);
+        pac.setPatientId(admission.getPatientId());
+        pac.setAsaClass(request.getAsaClass());
+        pac.setAirwayAssessment(request.getAirwayAssessment());
+        pac.setSystemicAssessment(request.getSystemicAssessment());
+        pac.setFitnessStatus(normalizeFitness(request.getFitnessStatus()));
+        pac.setPlannedAnaesthesia(request.getPlannedAnaesthesia());
+        pac.setRemarks(request.getRemarks());
+        pac.setStatus("DRAFT");
+        PreAnaesthesiaAssessment saved = pacRepository.save(pac);
+
+        audit("PAC_SAVED", "Pre-anaesthesia assessment drafted for admission " + admissionId, hospitalId);
+        broadcast(hospitalId);
+        return saved;
+    }
+
+    /** BR-2: approval requires the ASA class and a fitness decision; stamps the anaesthetist's signature. */
+    @Transactional
+    public PreAnaesthesiaAssessment approvePac(Long admissionId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        String email = securityHelper.getCurrentUserEmail();
+
+        IpdAdmission admission = ipdAdmissionRepository.findById(admissionId)
+                .orElseThrow(() -> new RuntimeException("IPD Admission not found: " + admissionId));
+        if (!admission.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+        PreAnaesthesiaAssessment pac = pacRepository.findByAdmissionIdAndHospitalId(admissionId, hospitalId)
+                .orElseThrow(() -> new RuntimeException("PAC not found for admission: " + admissionId));
+        if ("APPROVED".equalsIgnoreCase(pac.getStatus())) {
+            throw new IllegalStateException("PAC is already approved.");
+        }
+        if (pac.getAsaClass() == null || pac.getAsaClass().isBlank()) {
+            throw new IllegalStateException("Cannot approve: the ASA classification is mandatory (BR-2).");
+        }
+        if (pac.getFitnessStatus() == null || pac.getFitnessStatus().isBlank()) {
+            throw new IllegalStateException("Cannot approve: a fitness decision is required.");
+        }
+
+        pac.setStatus("APPROVED");
+        pac.setSignedBy(email);
+        pac.setSignedAt(LocalDateTime.now());
+        PreAnaesthesiaAssessment saved = pacRepository.save(pac);
+
+        audit("PAC_APPROVED", "Pre-anaesthesia assessment approved for admission " + admissionId
+                + " (fitness: " + pac.getFitnessStatus() + ") by " + email, hospitalId);
+        broadcast(hospitalId);
+        return saved;
+    }
+
+    private String normalizeFitness(String fitness) {
+        if (fitness == null || fitness.isBlank()) return null;
+        String f = fitness.toUpperCase();
+        if (f.equals("FIT") || f.equals("FIT_WITH_PRECAUTIONS")
+                || f.equals("FURTHER_EVALUATION") || f.equals("DEFERRED")) {
+            return f;
+        }
+        throw new IllegalArgumentException("Invalid fitness status: " + fitness);
     }
 
     private void audit(String action, String details, Long hospitalId) {

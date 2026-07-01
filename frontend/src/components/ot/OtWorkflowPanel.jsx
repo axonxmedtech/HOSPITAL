@@ -9,6 +9,7 @@ import ClinicalHandoverSection from './ClinicalHandoverSection';
 import PostopOrdersSection from './PostopOrdersSection';
 import InstrumentCountSection from './InstrumentCountSection';
 import ImplantRecordSection from './ImplantRecordSection';
+import PacSection from './PacSection';
 
 export default function OtWorkflowPanel({ admissionId, isLocked = false }) {
   const [bookings, setBookings] = useState([]);
@@ -176,6 +177,9 @@ export default function OtWorkflowPanel({ admissionId, isLocked = false }) {
           </button>
         )}
       </div>
+
+      {/* Pre-Anaesthesia Assessment — admission-level, gates scheduling */}
+      <PacSection admissionId={admissionId} isLocked={isLocked} />
 
       {/* Bookings List */}
       {loading ? (

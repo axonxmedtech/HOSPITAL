@@ -2340,6 +2340,28 @@ CREATE TABLE IF NOT EXISTS signature_slots (
   KEY idx_sig_hospital (hospital_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- Phase 5.01 Pre-Anaesthesia Assessment (Form 15 core). Additive; Hibernate ddl-auto creates it.
+CREATE TABLE IF NOT EXISTS pre_anaesthesia_assessment (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    patient_id BIGINT NULL,
+    admission_id BIGINT NOT NULL UNIQUE,
+    ot_booking_id BIGINT NULL,
+    asa_class VARCHAR(10) NULL,
+    airway_assessment TEXT NULL,
+    systemic_assessment TEXT NULL,
+    fitness_status VARCHAR(30) NULL,
+    planned_anaesthesia VARCHAR(100) NULL,
+    remarks TEXT NULL,
+    status VARCHAR(20) NULL,
+    signed_by VARCHAR(100) NULL,
+    signed_at DATETIME NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_pac_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_pac_hospital_admission ON pre_anaesthesia_assessment(hospital_id, admission_id);
+CREATE INDEX IF NOT EXISTS idx_pac_hospital_fitness ON pre_anaesthesia_assessment(hospital_id, fitness_status);
+
 -- Table structure for table `mrd_records`
 
 
