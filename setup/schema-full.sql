@@ -789,6 +789,65 @@ CREATE TABLE IF NOT EXISTS facility_complaint (
     CONSTRAINT fk_facility_complaint_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS employee (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    employee_code VARCHAR(20) NOT NULL UNIQUE,
+    department VARCHAR(50) NOT NULL,
+    designation VARCHAR(50) NOT NULL,
+    joining_date DATE NOT NULL,
+    license_number VARCHAR(50) NULL,
+    license_expiry DATE NULL,
+    status VARCHAR(20) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_employee_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
+    CONSTRAINT fk_employee_user FOREIGN KEY (user_id) REFERENCES users(id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_employee_hospital_license ON employee(hospital_id, license_expiry);
+
+CREATE TABLE IF NOT EXISTS shift_roster (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    employee_id BIGINT NOT NULL,
+    department VARCHAR(50) NOT NULL,
+    shift VARCHAR(20) NOT NULL,
+    date DATE NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    CONSTRAINT fk_shift_roster_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
+    CONSTRAINT fk_shift_roster_employee FOREIGN KEY (employee_id) REFERENCES employee(id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_shift_roster_hospital_employee_date ON shift_roster(hospital_id, employee_id, date);
+
+CREATE TABLE IF NOT EXISTS leave_request (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    employee_id BIGINT NOT NULL,
+    leave_type VARCHAR(30) NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    approved_by BIGINT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_leave_request_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
+    CONSTRAINT fk_leave_request_employee FOREIGN KEY (employee_id) REFERENCES employee(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS payroll (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    employee_id BIGINT NOT NULL,
+    salary_month VARCHAR(7) NOT NULL,
+    gross_salary DECIMAL(10,2) NOT NULL,
+    deductions DECIMAL(10,2) NOT NULL,
+    net_salary DECIMAL(10,2) NOT NULL,
+    approved_by_sig TEXT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_payroll_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
+    CONSTRAINT fk_payroll_employee FOREIGN KEY (employee_id) REFERENCES employee(id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_payroll_hospital_employee_month ON payroll(hospital_id, employee_id, salary_month);
+
 --
 -- Table structure for table `medicine_categories`
 --
