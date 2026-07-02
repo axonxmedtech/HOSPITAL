@@ -44,7 +44,14 @@ public class PatientPortalAuthService {
 
     @Transactional
     public void requestOtp(Long hospitalId, PortalOtpRequestRequest request) {
-        Patient patient = resolvePatient(hospitalId, request.getMobile(), request.getUhid());
+        Patient patient;
+        try {
+            patient = resolvePatient(hospitalId, request.getMobile(), request.getUhid());
+        } catch (IllegalStateException e) {
+            throw e; // ambiguous match still needs a UHID prompt — not an enumeration leak
+        } catch (RuntimeException e) {
+            return; // no matching patient — silently no-op (don't reveal registration status)
+        }
 
         PatientPortalUser portalUser = portalUserRepository
                 .findByHospitalIdAndPatientId(hospitalId, patient.getId())

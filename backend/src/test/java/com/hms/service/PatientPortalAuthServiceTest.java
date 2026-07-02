@@ -54,17 +54,19 @@ class PatientPortalAuthServiceTest {
     // ===== OTP request =====
 
     @Test
-    void requestOtp_noMatchingPatient_throws() {
+    void requestOtp_noMatchingPatient_silentlyNoOpsWithoutRevealingNonExistence() {
         when(patientRepository.findByPhoneAndHospitalIdAndIsActiveTrue("9876543210", HOSPITAL_ID))
                 .thenReturn(List.of());
 
         PortalOtpRequestRequest req = new PortalOtpRequestRequest();
         req.setMobile("9876543210");
 
-        assertThatThrownBy(() -> service.requestOtp(HOSPITAL_ID, req))
-                .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("No patient record found");
+        // Must NOT throw — an anonymous caller shouldn't be able to distinguish
+        // "no such patient" from "OTP sent" (patient enumeration defense).
+        service.requestOtp(HOSPITAL_ID, req);
+
         verify(smsGateway, never()).send(any(), any());
+        verify(portalUserRepository, never()).save(any());
     }
 
     @Test
