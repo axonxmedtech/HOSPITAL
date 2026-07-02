@@ -10,6 +10,7 @@ import PageHeader from '../../components/PageHeader';
 import authService from '../../services/authService';
 import { useToast } from '../../context/ToastContext';
 import ProfileModal from '../../components/ProfileModal';
+import OtRegisterDashboard from '../../components/ot/OtRegisterDashboard';
 
 export default function NurseDashboard() {
   const navigate = useNavigate();
@@ -260,6 +261,7 @@ export default function NurseDashboard() {
   const tabs = [
     { id: 'tasks', label: 'My Tasks', icon: null },
     { id: 'patients', label: 'My Patients', icon: null },
+    { id: 'ot-register', label: 'OT Operations', icon: null },
   ];
 
   return (
@@ -302,8 +304,8 @@ export default function NurseDashboard() {
             <div className="space-y-6">
               {/* standardized header */}
               <PageHeader
-                title={tab === 'tasks' ? 'Nurse Tasks' : 'Ward Patients'}
-                subtitle={tab === 'tasks' ? 'Administer clinical tasks and check schedules.' : 'Review admitted cases in your assigned unit.'}
+                title={tab === 'tasks' ? 'Nurse Tasks' : tab === 'patients' ? 'Ward Patients' : 'OT Operations'}
+                subtitle={tab === 'tasks' ? 'Administer clinical tasks and check schedules.' : tab === 'patients' ? 'Review admitted cases in your assigned unit.' : 'Monitor daily surgeries & room sterile readiness logs.'}
                 filter={tab === 'patients' && wards.length > 0 ? (
                   <select
                     value={wardFilter}
@@ -316,10 +318,14 @@ export default function NurseDashboard() {
                 ) : null}
               />
 
-              {(tasksLoading || patientsLoading) && (
+              {(tasksLoading || patientsLoading) && tab !== 'ot-register' && (
                 <div className="flex justify-center items-center py-20">
                   <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
                 </div>
+              )}
+
+              {tab === 'ot-register' && (
+                <OtRegisterDashboard />
               )}
 
               {/* Patient Tab View */}

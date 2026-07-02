@@ -27,6 +27,7 @@ import { SkeletonDashboard, SkeletonStatsGrid, SkeletonOverviewDual, SkeletonTab
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
 import EmergencyBoard from '../../components/emergency/EmergencyBoard';
+import OtRegisterDashboard from '../../components/ot/OtRegisterDashboard';
 
 /**
  * DoctorDashboard - Doctor dashboard
@@ -733,6 +734,7 @@ const DoctorDashboard = () => {
         { id: 'emergency', label: 'Emergency', icon: null },
         ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
         ...(hasIPD ? [{ id: 'mrd', label: 'MRD Archive', icon: null }] : []),
+        ...(hasIPD ? [{ id: 'ot-register', label: 'OT Operations', icon: null }] : []),
         { id: 'opd', label: 'OPD', icon: null },
         { id: 'patients', label: 'Patients', icon: null },
         ...((isSolo || hasBilling) ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
@@ -1407,7 +1409,7 @@ const DoctorDashboard = () => {
                     )}
 
                     {/* Standardized Header - Hide on overview, inventory and hospital-inventory tabs */}
-                    {activeTab !== 'overview' && activeTab !== 'emergency' && activeTab !== 'inventory' && activeTab !== 'hospital-inventory' && (
+                    {activeTab !== 'overview' && activeTab !== 'emergency' && activeTab !== 'inventory' && activeTab !== 'hospital-inventory' && activeTab !== 'ot-register' && (
                     <PageHeader
                         title={
                             activeTab === 'appointments' ? 'My Appointments' : 
@@ -1749,6 +1751,10 @@ const DoctorDashboard = () => {
 
                                 {activeTab === 'hospital-inventory' && (
                                     <HospitalInventoryTab />
+                                )}
+
+                                {activeTab === 'ot-register' && (
+                                    <OtRegisterDashboard />
                                 )}
                             </div>
                             )}
