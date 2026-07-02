@@ -57,6 +57,14 @@ apiClient.interceptors.response.use(
 
     // If 401 Unauthorized (token expired/missing), redirect to login
     if (error.response && error.response.status === 401) {
+      const isPortalEndpoint = error.config?.url?.includes('/hospital/portal/');
+      if (isPortalEndpoint) {
+        const portalHospitalId = sessionStorage.getItem('portalHospitalId');
+        sessionStorage.removeItem('token');
+        sessionStorage.removeItem('user');
+        window.location.href = portalHospitalId ? `/portal/${portalHospitalId}/login` : '/';
+        return Promise.reject(error);
+      }
       if (!isLoginEndpoint) {
         try {
           const userStr = sessionStorage.getItem('user');

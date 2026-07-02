@@ -7,8 +7,12 @@ export default function PatientPortalDashboard() {
   const [reports, setReports] = useState([]);
   const [prescriptions, setPrescriptions] = useState([]);
   const [billing, setBilling] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError(false);
     try {
       const [d, a, r, p, b] = await Promise.all([
         patientPortalService.getDashboard(),
@@ -22,10 +26,34 @@ export default function PatientPortalDashboard() {
       setReports(Array.isArray(r?.data) ? r.data : (Array.isArray(r) ? r : []));
       setPrescriptions(Array.isArray(p?.data) ? p.data : (Array.isArray(p) ? p : []));
       setBilling(Array.isArray(b?.data) ? b.data : (Array.isArray(b) ? b : []));
-    } catch (e) { /* best-effort */ }
+    } catch (e) {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p className="text-gray-500 text-sm">Loading your health portal…</p>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 max-w-md w-full text-center space-y-3">
+          <p className="text-red-600 text-sm font-semibold">Couldn't load your health portal.</p>
+          <p className="text-gray-500 text-sm">Please check your connection and try again.</p>
+          <button onClick={load} className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">Retry</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 space-y-6">

@@ -42,6 +42,7 @@ export default function PatientPortalLogin() {
       const data = res?.data || res;
       sessionStorage.setItem('token', data.token);
       sessionStorage.setItem('user', JSON.stringify({ role: 'PATIENT', patientId: data.patientId, name: data.patientName }));
+      sessionStorage.setItem('portalHospitalId', hospitalId);
       navigate('/portal/dashboard');
     } catch (ex) {
       setError(err(ex, 'Invalid OTP'));
@@ -78,6 +79,13 @@ export default function PatientPortalLogin() {
               value={otp} onChange={e => setOtp(e.target.value)} />
             <button disabled={loading} className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-sm font-semibold py-2.5 rounded-lg">
               {loading ? 'Verifying…' : 'Verify & Login'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setStep('mobile'); setOtp(''); setError(''); }}
+              className="w-full text-center text-xs text-gray-500 hover:text-gray-700"
+            >
+              Wrong number? Go back
             </button>
           </form>
         )}
