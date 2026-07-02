@@ -12,6 +12,8 @@ import LabTechnicianDashboard from './pages/hospital/LabTechnicianDashboard';
 import RadiologyTechnicianDashboard from './pages/hospital/RadiologyTechnicianDashboard';
 import MrdArchive from './pages/hospital/MrdArchive';
 import PublicFeedbackPage from './pages/public/PublicFeedbackPage';
+import PatientPortalLogin from './pages/portal/PatientPortalLogin';
+import PatientPortalDashboard from './pages/portal/PatientPortalDashboard';
 import { ToastProvider } from './context/ToastContext';
 import PageMeta from './components/PageMeta';
 import authService from './services/authService';
@@ -136,7 +138,27 @@ function App() {
                         }
                     />
 
+                    <Route
+                        path="/portal/:hospitalId/login"
+                        element={
+                            <PageMeta title="HMS - Patient Portal">
+                                <PatientPortalLogin />
+                            </PageMeta>
+                        }
+                    />
+
                     {/* DASHBOARDS — PROTECTED */}
+
+                    <Route
+                        path="/portal/dashboard"
+                        element={
+                            <ProtectedRoute allowedRoles={['PATIENT']}>
+                                <PageMeta title="HMS - My Health Portal">
+                                    <PatientPortalDashboard />
+                                </PageMeta>
+                            </ProtectedRoute>
+                        }
+                    />
                     <Route
                         path="/platform/dashboard"
                         element={
