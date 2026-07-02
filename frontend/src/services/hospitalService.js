@@ -509,6 +509,30 @@ const hospitalService = {
         const response = await apiClient.get(`/hospital/billing/ipd/${ipdId}/bill`);
         return response.data;
     },
+    recordAdvance: async (payload) => {
+        const response = await apiClient.post(`/hospital/billing/advances`, payload);
+        return response.data;
+    },
+    getAdvanceBalance: async (ipdId) => {
+        const response = await apiClient.get(`/hospital/billing/advances/${ipdId}/balance`);
+        return response.data;
+    },
+    requestRefund: async (payload) => {
+        const response = await apiClient.post(`/hospital/billing/refunds`, payload);
+        return response.data;
+    },
+    getRefunds: async () => {
+        const response = await apiClient.get(`/hospital/billing/refunds`);
+        return response.data;
+    },
+    approveRefund: async (id) => {
+        const response = await apiClient.put(`/hospital/billing/refunds/${id}/approve`);
+        return response.data;
+    },
+    rejectRefund: async (id, rejectionReason) => {
+        const response = await apiClient.put(`/hospital/billing/refunds/${id}/reject`, { rejectionReason });
+        return response.data;
+    },
     payBilling: async (billingId, payload) => {
         const response = await apiClient.post(`/hospital/billing/${billingId}/pay`, payload);
         return response.data;

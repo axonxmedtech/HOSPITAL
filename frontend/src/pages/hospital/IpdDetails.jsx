@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import hospitalService from '../../services/hospitalService';
 import authService from '../../services/authService';
@@ -261,6 +261,8 @@ const IpdDetails = () => {
     const [billModal, setBillModal] = useState({ isOpen: false, loading: false, bill: null });
     const [printingBill, setPrintingBill] = useState(false);
     const [downloadingPdf, setDownloadingPdf] = useState(false);
+    const [advanceBalance, setAdvanceBalance] = useState(null);
+    const [advanceModal, setAdvanceModal] = useState({ isOpen: false, amount: '', paymentMode: 'CASH', saving: false });
     const [payment, setPayment] = useState({ amount: '', mode: 'CASH', saving: false });
     const [bedModal, setBedModal] = useState({ isOpen: false, wards: [], selectedWard: '', beds: [], selectedBed: '', saving: false });
     const [labOpenTrigger, setLabOpenTrigger] = useState(0);
@@ -490,6 +492,32 @@ const IpdDetails = () => {
             console.error('Failed to load bill', err);
             toastError('Failed to load bill');
             setBillModal({ isOpen: false, loading: false, bill: null });
+        }
+    };
+
+    const fetchAdvanceBalance = useCallback(async () => {
+        try {
+            const res = await hospitalService.getAdvanceBalance(id);
+            setAdvanceBalance(res?.balance ?? null);
+        } catch {
+            setAdvanceBalance(null);
+        }
+    }, [id]);
+
+    useEffect(() => { if (id && canManageBilling) fetchAdvanceBalance(); }, [id, canManageBilling, fetchAdvanceBalance]);
+
+    const submitAdvance = async () => {
+        const amt = Number(advanceModal.amount);
+        if (!amt || amt <= 0) return toastError('Enter a valid advance amount');
+        setAdvanceModal(prev => ({ ...prev, saving: true }));
+        try {
+            await hospitalService.recordAdvance({ ipdAdmissionId: Number(id), amount: amt, paymentMode: advanceModal.paymentMode });
+            success('Advance deposit recorded');
+            setAdvanceModal({ isOpen: false, amount: '', paymentMode: 'CASH', saving: false });
+            fetchAdvanceBalance();
+        } catch (err) {
+            toastError(err.response?.data?.error || err.response?.data || 'Failed to record advance');
+            setAdvanceModal(prev => ({ ...prev, saving: false }));
         }
     };
 
@@ -1579,10 +1607,21 @@ const IpdDetails = () => {
                             ) : (
                                 <div className="text-sm text-gray-500">No billing records found.</div>
                             )}
+                            {advanceBalance !== null && Number(advanceBalance) > 0 && (
+                                <div className="mt-2 text-sm text-purple-700 bg-purple-50 border border-purple-200 rounded px-3 py-1.5">
+                                    💰 Advance balance available: ₹{advanceBalance} (auto-applied at discharge)
+                                </div>
+                            )}
                             <div className="mt-3 flex gap-2">
                                 <button className="px-3 py-1 bg-green-600 text-white rounded" onClick={openBillModal}>Take Payment</button>
-                                <button 
-                                    className="px-3 py-1 bg-gray-600 text-white rounded disabled:opacity-50" 
+                                <button
+                                    className="px-3 py-1 bg-purple-600 text-white rounded"
+                                    onClick={() => setAdvanceModal({ isOpen: true, amount: '', paymentMode: 'CASH', saving: false })}
+                                >
+                                    Record Advance
+                                </button>
+                                <button
+                                    className="px-3 py-1 bg-gray-600 text-white rounded disabled:opacity-50"
                                     onClick={handlePrintIpdBill}
                                     disabled={printingBill}
                                 >
@@ -1784,6 +1823,40 @@ const IpdDetails = () => {
                     </div>
                 </div>
                         )}
+
+            {/* Record Advance Deposit (Form 30 BR-7) */}
+            {advanceModal.isOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-lg w-full max-w-md p-6">
+                        <h3 className="text-lg font-semibold mb-3">Record Advance Deposit</h3>
+                        <p className="text-xs text-gray-500 mb-3">The advance is automatically applied to the outstanding balance at discharge checkout.</p>
+                        <div className="grid grid-cols-2 gap-3">
+                            <input
+                                value={advanceModal.amount}
+                                onChange={e => setAdvanceModal(p => ({ ...p, amount: e.target.value }))}
+                                placeholder="Amount"
+                                type="number"
+                                className="border p-2 rounded"
+                            />
+                            <select
+                                value={advanceModal.paymentMode}
+                                onChange={e => setAdvanceModal(p => ({ ...p, paymentMode: e.target.value }))}
+                                className="border p-2 rounded"
+                            >
+                                <option value="CASH">CASH</option>
+                                <option value="CARD">CARD</option>
+                                <option value="UPI">UPI</option>
+                            </select>
+                        </div>
+                        <div className="flex justify-end gap-3 mt-4">
+                            <button onClick={() => setAdvanceModal({ isOpen: false, amount: '', paymentMode: 'CASH', saving: false })} className="px-3 py-1 bg-gray-100 rounded">Cancel</button>
+                            <button onClick={submitAdvance} disabled={advanceModal.saving} className="px-3 py-1 bg-purple-600 text-white rounded disabled:opacity-50">
+                                {advanceModal.saving ? 'Saving...' : 'Record Advance'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
                     </div>
                 )}\r
                         </div>
