@@ -34,9 +34,9 @@ class RadiologyWorkflowServiceTest {
 
     private void mockSecurityContext() {
         Authentication auth = mock(Authentication.class);
-        when(auth.getName()).thenReturn("doctor@hospital.com");
+        lenient().when(auth.getName()).thenReturn("doctor@hospital.com");
         SecurityContext ctx = mock(SecurityContext.class);
-        when(ctx.getAuthentication()).thenReturn(auth);
+        lenient().when(ctx.getAuthentication()).thenReturn(auth);
         SecurityContextHolder.setContext(ctx);
     }
 
