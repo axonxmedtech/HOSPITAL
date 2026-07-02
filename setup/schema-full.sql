@@ -743,6 +743,52 @@ CREATE TABLE IF NOT EXISTS calibration_record (
 ) ENGINE=InnoDB;
 CREATE INDEX IF NOT EXISTS idx_calibration_hospital_equipment ON calibration_record(hospital_id, equipment_id);
 
+CREATE TABLE IF NOT EXISTS cleaning_task (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    location VARCHAR(50) NOT NULL,
+    task_type VARCHAR(30) NOT NULL,
+    assigned_to VARCHAR(100) NULL,
+    priority VARCHAR(20) NOT NULL,
+    status VARCHAR(30) NOT NULL,
+    start_time DATETIME NULL,
+    completed_at DATETIME NULL,
+    supervisor_sig TEXT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_cleaning_task_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_cleaning_task_hospital_location ON cleaning_task(hospital_id, location, status);
+
+CREATE TABLE IF NOT EXISTS waste_collection (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    waste_type VARCHAR(20) NOT NULL,
+    quantity DECIMAL(5,2) NOT NULL,
+    barcode_tag VARCHAR(50) NOT NULL,
+    collector_name VARCHAR(100) NOT NULL,
+    vendor VARCHAR(100) NOT NULL,
+    manifest_number VARCHAR(50) NULL,
+    collection_time DATETIME NOT NULL,
+    CONSTRAINT fk_waste_collection_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_waste_collection_hospital_time ON waste_collection(hospital_id, collection_time);
+
+CREATE TABLE IF NOT EXISTS facility_complaint (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    location VARCHAR(50) NOT NULL,
+    complaint_type VARCHAR(30) NOT NULL,
+    reported_by VARCHAR(100) NOT NULL,
+    assigned_to VARCHAR(100) NULL,
+    status VARCHAR(20) NOT NULL,
+    engineer_confirmed BIT NOT NULL DEFAULT 0,
+    nurse_confirmed BIT NOT NULL DEFAULT 0,
+    resolution TEXT NULL,
+    resolved_at DATETIME NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_facility_complaint_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+) ENGINE=InnoDB;
+
 --
 -- Table structure for table `medicine_categories`
 --
