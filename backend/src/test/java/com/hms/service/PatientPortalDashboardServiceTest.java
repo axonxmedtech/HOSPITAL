@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -45,6 +46,7 @@ class PatientPortalDashboardServiceTest {
         u.setId(PORTAL_USER_ID);
         u.setHospitalId(HOSPITAL_ID);
         u.setPatientId(PATIENT_ID);
+        u.setStatus("ACTIVE");
         return u;
     }
 
@@ -142,5 +144,43 @@ class PatientPortalDashboardServiceTest {
 
         org.mockito.Mockito.verify(auditLogRepository).save(org.mockito.ArgumentMatchers.argThat(
                 entry -> entry.getAction().equals("PATIENT_PORTAL_REPORTS_ACCESSED")));
+    }
+
+    @Test
+    void getDashboard_countsOnlyActivePrescriptions() {
+        when(portalUserRepository.findById(PORTAL_USER_ID)).thenReturn(Optional.of(portalUser()));
+        when(appointmentRepository.findByPatientIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(PATIENT_ID, HOSPITAL_ID))
+                .thenReturn(List.of());
+        when(labOrderRepository.findByHospitalIdAndPatientIdOrderByCreatedAtDesc(HOSPITAL_ID, PATIENT_ID))
+                .thenReturn(List.of());
+        when(radiologyOrderRepository.findByHospitalIdAndPatientIdOrderByCreatedAtDesc(HOSPITAL_ID, PATIENT_ID))
+                .thenReturn(List.of());
+
+        MedicalRecord record = new MedicalRecord();
+        record.setId(20L);
+        when(medicalRecordRepository.findByPatientIdOrderByCreatedAtDesc(PATIENT_ID)).thenReturn(List.of(record));
+
+        Prescription active = new Prescription();
+        active.setStatus("ACTIVE");
+        Prescription stopped = new Prescription();
+        stopped.setStatus("STOPPED");
+        when(prescriptionRepository.findByMedicalRecordIdIn(List.of(20L))).thenReturn(List.of(active, stopped));
+
+        when(billingRepository.findByPatientIdOrderByCreatedAtDesc(PATIENT_ID)).thenReturn(List.of());
+
+        PortalDashboardResponse dashboard = service.getDashboard(HOSPITAL_ID, PORTAL_USER_ID);
+
+        assertThat(dashboard.getActivePrescriptions()).isEqualTo(1);
+    }
+
+    @Test
+    void getAppointments_rejectedWhenPortalAccountNotActive() {
+        PatientPortalUser suspended = portalUser();
+        suspended.setStatus("SUSPENDED");
+        when(portalUserRepository.findById(PORTAL_USER_ID)).thenReturn(Optional.of(suspended));
+
+        assertThatThrownBy(() -> service.getAppointments(HOSPITAL_ID, PORTAL_USER_ID))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("not active");
     }
 }

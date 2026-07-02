@@ -46,6 +46,9 @@ public class PatientPortalDashboardService {
                 .filter(a -> !a.getAppointmentDate().isBefore(LocalDate.now()))
                 .count();
 
+        // Order-status-based count (RELEASED orders), intentionally not requiring a joined
+        // result row like getReports() does — keeps the dashboard tile in sync with the
+        // report list count without paying for the LabResult/RadiologyResult lookups here.
         long releasedLabReports = labOrderRepository.findByHospitalIdAndPatientIdOrderByCreatedAtDesc(hospitalId, patientId)
                 .stream().filter(o -> "RELEASED".equals(o.getStatus())).count();
         long releasedRadiologyReports = radiologyOrderRepository.findByHospitalIdAndPatientIdOrderByCreatedAtDesc(hospitalId, patientId)
@@ -54,7 +57,9 @@ public class PatientPortalDashboardService {
 
         List<MedicalRecord> records = medicalRecordRepository.findByPatientIdOrderByCreatedAtDesc(patientId);
         List<Long> recordIds = records.stream().map(MedicalRecord::getId).collect(Collectors.toList());
-        long prescriptions = prescriptionRepository.findByMedicalRecordIdIn(recordIds).size();
+        long prescriptions = prescriptionRepository.findByMedicalRecordIdIn(recordIds).stream()
+                .filter(p -> "ACTIVE".equals(p.getStatus()))
+                .count();
 
         BigDecimal outstanding = billingRepository.findByPatientIdOrderByCreatedAtDesc(patientId).stream()
                 .filter(b -> "PENDING".equalsIgnoreCase(b.getPaymentStatus()))
@@ -115,6 +120,9 @@ public class PatientPortalDashboardService {
                 .orElseThrow(() -> new RuntimeException("Portal account not found"));
         if (!portalUser.getHospitalId().equals(hospitalId)) {
             throw new RuntimeException("Portal account not found");
+        }
+        if (!"ACTIVE".equals(portalUser.getStatus())) {
+            throw new IllegalStateException("This portal account is not active.");
         }
         return portalUser.getPatientId();
     }
