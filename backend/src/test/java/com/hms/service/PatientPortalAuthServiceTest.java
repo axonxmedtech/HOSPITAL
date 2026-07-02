@@ -179,7 +179,7 @@ class PatientPortalAuthServiceTest {
         otp.setAttemptCount(4);
         when(otpRepository.findTopByHospitalIdAndMobileAndConsumedAtIsNullOrderByCreatedAtDesc(HOSPITAL_ID, "9876543210"))
                 .thenReturn(Optional.of(otp));
-        when(portalUserRepository.findByHospitalIdAndPatientId(eq(HOSPITAL_ID), any())).thenReturn(Optional.empty());
+        when(portalUserRepository.findByHospitalIdAndMobile(HOSPITAL_ID, "9876543210")).thenReturn(Optional.empty());
         when(otpRepository.save(any(PortalOtp.class))).thenAnswer(i -> i.getArgument(0));
 
         PortalOtpVerifyRequest req = new PortalOtpVerifyRequest();
@@ -189,6 +189,37 @@ class PatientPortalAuthServiceTest {
         assertThatThrownBy(() -> service.verifyOtp(HOSPITAL_ID, req))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(otp.getAttemptCount()).isEqualTo(5);
+    }
+
+    @Test
+    void verifyOtp_wrongCode_locksAccountEvenWhenMobileIsAmbiguous() {
+        PortalOtp otp = new PortalOtp();
+        otp.setId(9L);
+        otp.setMobile("9876543210");
+        otp.setOtpHash(service.hashOtp("123456"));
+        otp.setExpiresAt(LocalDateTime.now().plusMinutes(5));
+        otp.setAttemptCount(4);
+        when(otpRepository.findTopByHospitalIdAndMobileAndConsumedAtIsNullOrderByCreatedAtDesc(HOSPITAL_ID, "9876543210"))
+                .thenReturn(Optional.of(otp));
+        when(otpRepository.save(any(PortalOtp.class))).thenAnswer(i -> i.getArgument(0));
+
+        PatientPortalUser sharedMobileUser = new PatientPortalUser();
+        sharedMobileUser.setId(7L);
+        sharedMobileUser.setStatus("ACTIVE");
+        when(portalUserRepository.findByHospitalIdAndMobile(HOSPITAL_ID, "9876543210"))
+                .thenReturn(Optional.of(sharedMobileUser));
+        when(portalUserRepository.save(any(PatientPortalUser.class))).thenAnswer(i -> i.getArgument(0));
+
+        PortalOtpVerifyRequest req = new PortalOtpVerifyRequest();
+        req.setMobile("9876543210");
+        req.setOtp("000000");
+
+        assertThatThrownBy(() -> service.verifyOtp(HOSPITAL_ID, req))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        assertThat(sharedMobileUser.getStatus()).isEqualTo("LOCKED");
+        assertThat(sharedMobileUser.getLockUntil()).isNotNull();
+        verify(patientRepository, never()).findByPhoneAndHospitalIdAndIsActiveTrue(any(), any());
     }
 
     @Test

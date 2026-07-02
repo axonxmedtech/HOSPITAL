@@ -87,13 +87,7 @@ public class PatientPortalAuthService {
             otp.setAttemptCount(otp.getAttemptCount() + 1);
             otpRepository.save(otp);
             if (otp.getAttemptCount() >= MAX_ATTEMPTS) {
-                Long patientId = null;
-                try {
-                    patientId = resolvePatient(hospitalId, request.getMobile(), null).getId();
-                } catch (RuntimeException ignored) {
-                    // Locking is a best-effort side effect; the OTP failure below is what matters.
-                }
-                portalUserRepository.findByHospitalIdAndPatientId(hospitalId, patientId).ifPresent(u -> {
+                portalUserRepository.findByHospitalIdAndMobile(hospitalId, request.getMobile()).ifPresent(u -> {
                     u.setStatus("LOCKED");
                     u.setLockUntil(LocalDateTime.now().plusMinutes(LOCK_MINUTES));
                     portalUserRepository.save(u);
