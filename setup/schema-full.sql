@@ -3186,3 +3186,22 @@ CREATE TABLE IF NOT EXISTS `vendor_invoice` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_vendor_invoice` (`hospital_id`, `vendor_id`, `invoice_number`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+ALTER TABLE `operation_record` ADD COLUMN `specimens` text DEFAULT NULL;
+ALTER TABLE `operation_record` ADD COLUMN `implants` text DEFAULT NULL;
+
+CREATE TABLE IF NOT EXISTS `incident_reports` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `patient_id` bigint DEFAULT NULL,
+  `admission_id` bigint DEFAULT NULL,
+  `source` varchar(50) NOT NULL,
+  `related_entity_id` bigint DEFAULT NULL,
+  `severity` varchar(20) DEFAULT NULL,
+  `description` text DEFAULT NULL,
+  `status` varchar(30) NOT NULL DEFAULT 'PENDING_REVIEW',
+  `reported_by` varchar(100) DEFAULT NULL,
+  `reported_at` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_ir_hospital` (`hospital_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

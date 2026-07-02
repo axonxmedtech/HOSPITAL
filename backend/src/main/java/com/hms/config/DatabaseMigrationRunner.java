@@ -45,6 +45,7 @@ public class DatabaseMigrationRunner {
         migrateAdmissionCoreSchema();
         migrateBillingHardeningSchema();
         migrateInventoryProcurementSchema();
+        migrateClinicalFanoutsSchema();
     }
 
     /**
@@ -1106,6 +1107,48 @@ public class DatabaseMigrationRunner {
             log.info("DB migration: created/verified Inventory & Procurement tables");
         } catch (Exception e) {
             log.warn("DB migration skipped (migrateInventoryProcurementSchema): {}", e.getMessage());
+        }
+    }
+
+    private void migrateClinicalFanoutsSchema() {
+        try {
+            // 1. Create incident_reports
+            jdbcTemplate.execute(
+                "CREATE TABLE IF NOT EXISTS incident_reports (" +
+                "  id bigint NOT NULL AUTO_INCREMENT," +
+                "  hospital_id bigint NOT NULL," +
+                "  patient_id bigint DEFAULT NULL," +
+                "  admission_id bigint DEFAULT NULL," +
+                "  source varchar(50) NOT NULL," +
+                "  related_entity_id bigint DEFAULT NULL," +
+                "  severity varchar(20) DEFAULT NULL," +
+                "  description text DEFAULT NULL," +
+                "  status varchar(30) NOT NULL DEFAULT 'PENDING_REVIEW'," +
+                "  reported_by varchar(100) DEFAULT NULL," +
+                "  reported_at datetime NOT NULL," +
+                "  PRIMARY KEY (id)," +
+                "  KEY idx_ir_hospital (hospital_id)" +
+                ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+            );
+
+            // 2. Add specimens and implants columns to operation_record
+            try {
+                jdbcTemplate.execute("ALTER TABLE operation_record ADD COLUMN specimens text DEFAULT NULL");
+                log.info("DB migration: added operation_record.specimens");
+            } catch (Exception e) {
+                // column already exists
+            }
+
+            try {
+                jdbcTemplate.execute("ALTER TABLE operation_record ADD COLUMN implants text DEFAULT NULL");
+                log.info("DB migration: added operation_record.implants");
+            } catch (Exception e) {
+                // column already exists
+            }
+
+            log.info("DB migration: created/verified Clinical Fan-outs / Incident Report tables");
+        } catch (Exception e) {
+            log.warn("DB migration skipped (migrateClinicalFanoutsSchema): {}", e.getMessage());
         }
     }
 }

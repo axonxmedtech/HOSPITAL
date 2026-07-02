@@ -90,6 +90,33 @@ public class OtService {
     private DoctorRepository doctorRepository;
 
     @Autowired
+    private com.hms.repository.DoctorOrderRepository doctorOrderRepository;
+
+    @Autowired
+    private com.hms.service.hospital.DoctorOrderService doctorOrderService;
+
+    @Autowired
+    private com.hms.repository.PrescriptionRepository prescriptionRepository;
+
+    @Autowired
+    private com.hms.repository.MedicalRecordRepository medicalRecordRepository;
+
+    @Autowired
+    private com.hms.repository.LabOrderRepository labOrderRepository;
+
+    @Autowired
+    private com.hms.repository.HospitalInventoryRepository inventoryRepository;
+
+    @Autowired
+    private com.hms.repository.StockTransactionRepository transactionRepository;
+
+    @Autowired
+    private com.hms.repository.IncidentReportRepository incidentReportRepository;
+
+    @Autowired
+    private com.hms.repository.NurseTaskRepository taskRepository;
+
+    @Autowired
     private PreAnaesthesiaAssessmentRepository pacRepository;
 
     @Autowired
@@ -420,6 +447,9 @@ public class OtService {
         if (!booking.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Access denied: Tenant mismatch");
         }
+        IpdAdmission admission = ipdAdmissionRepository.findById(booking.getIpdAdmissionId())
+                .orElseThrow(() -> new RuntimeException("IPD Admission not found: " + booking.getIpdAdmissionId()));
+        Long patientId = admission.getPatientId();
         OperationRecord record = operationRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
                 .orElseThrow(() -> new RuntimeException("Operation record not found for booking: " + bookingId));
 
@@ -438,6 +468,90 @@ public class OtService {
         record.setStatus("FINALIZED");
         record.setSignedBy(email);
         record.setSignedAt(LocalDateTime.now());
+
+        // 1. Specimens to LabOrders
+        if (record.getSpecimens() != null && !record.getSpecimens().isBlank()) {
+            String[] specLines = record.getSpecimens().split(";");
+            for (String line : specLines) {
+                String cleanLine = line.trim();
+                if (cleanLine.isEmpty()) continue;
+
+                com.hms.entity.LabOrder labOrder = new com.hms.entity.LabOrder();
+                labOrder.setHospitalId(hospitalId);
+                labOrder.setPatientId(patientId);
+                labOrder.setIpdAdmissionId(record.getAdmissionId());
+                labOrder.setTestName("Surgical Specimen Pathology: " + cleanLine);
+                labOrder.setPriority("ROUTINE");
+                labOrder.setStatus("ORDERED");
+                labOrder.setOrderedByName(email);
+                labOrderRepository.save(labOrder);
+            }
+        }
+
+        // 2. Implants auto-deduct stock
+        if (record.getImplants() != null && !record.getImplants().isBlank()) {
+            String[] impLines = record.getImplants().split(";");
+            for (String line : impLines) {
+                String cleanLine = line.trim();
+                if (cleanLine.isEmpty()) continue;
+
+                String itemName = cleanLine;
+                double qty = 1.0;
+                if (cleanLine.contains("[") && cleanLine.contains("]")) {
+                    try {
+                        int start = cleanLine.indexOf("[");
+                        int end = cleanLine.indexOf("]");
+                        qty = Double.parseDouble(cleanLine.substring(start + 1, end).trim());
+                        itemName = cleanLine.substring(0, start).trim();
+                    } catch (Exception e) {
+                        // ignore parsing error, default to 1.0
+                    }
+                }
+
+                final double finalQty = qty;
+                java.util.List<com.hms.entity.HospitalInventory> stockList = inventoryRepository.findByNameAndHospitalIdAndIsActiveTrue(itemName, hospitalId);
+                if (!stockList.isEmpty()) {
+                    com.hms.entity.HospitalInventory batch = stockList.stream()
+                            .filter(b -> b.getStockQuantity() >= finalQty)
+                            .findFirst()
+                            .orElse(stockList.get(0));
+
+                    int newQty = Math.max(0, batch.getStockQuantity() - (int) finalQty);
+                    batch.setStockQuantity(newQty);
+                    inventoryRepository.save(batch);
+
+                    // Create StockTransaction
+                    com.hms.entity.StockTransaction tx = new com.hms.entity.StockTransaction();
+                    tx.setHospitalId(hospitalId);
+                    tx.setInventoryItemId(batch.getId());
+                    tx.setBatchId(batch.getId());
+                    tx.setTransactionType("ISSUE");
+                    tx.setQuantity(java.math.BigDecimal.valueOf(qty));
+                    tx.setFromStore("OT Store");
+                    tx.setToStore("Patient Implantation");
+                    tx.setPerformedBy(email);
+                    tx.setTransactionTime(LocalDateTime.now());
+                    transactionRepository.save(tx);
+                }
+            }
+        }
+
+        // 3. Complications incident tracking
+        if (record.getComplicationsSummary() != null && !record.getComplicationsSummary().isBlank() && !"NONE".equalsIgnoreCase(record.getComplicationsSummary().trim())) {
+            com.hms.entity.IncidentReport incident = new com.hms.entity.IncidentReport();
+            incident.setHospitalId(hospitalId);
+            incident.setPatientId(patientId);
+            incident.setAdmissionId(record.getAdmissionId());
+            incident.setSource("OT_COMPLICATION");
+            incident.setRelatedEntityId(record.getId());
+            incident.setSeverity("HIGH");
+            incident.setDescription("Intraoperative Complication: " + record.getComplicationsSummary());
+            incident.setStatus("PENDING_REVIEW");
+            incident.setReportedBy(email);
+            incident.setReportedAt(LocalDateTime.now());
+            incidentReportRepository.save(incident);
+        }
+
         OperationRecord saved = operationRecordRepository.save(record);
 
         audit("OT_OPERATION_RECORD_FINALIZED", "Operation record finalized for booking " + bookingId + " by " + email, hospitalId);
@@ -456,6 +570,8 @@ public class OtService {
         record.setEstimatedBloodLoss(request.getEstimatedBloodLoss());
         record.setComplicationsSummary(request.getComplicationsSummary());
         record.setPostOpPlan(request.getPostOpPlan());
+        record.setSpecimens(request.getSpecimens());
+        record.setImplants(request.getImplants());
         if (request.getOperationStart() != null && request.getOperationEnd() != null
                 && request.getOperationEnd().isBefore(request.getOperationStart())) {
             throw new IllegalArgumentException("Operation end time cannot be before the start time.");
@@ -925,6 +1041,9 @@ public class OtService {
         if (!booking.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Access denied: Tenant mismatch");
         }
+        IpdAdmission admission = ipdAdmissionRepository.findById(booking.getIpdAdmissionId())
+                .orElseThrow(() -> new RuntimeException("IPD Admission not found: " + booking.getIpdAdmissionId()));
+        Long patientId = admission.getPatientId();
         PostopOrders orders = postopOrdersRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
                 .orElseThrow(() -> new RuntimeException("Post-operative orders not found for booking: " + bookingId));
         if ("SIGNED".equalsIgnoreCase(orders.getStatus())) {
@@ -937,6 +1056,117 @@ public class OtService {
         orders.setStatus("SIGNED");
         orders.setSignedBy(email);
         orders.setSignedAt(LocalDateTime.now());
+
+        // Trigger 1 & 3: Post-op meds -> Pharmacy queue + NurseTask MAR schedules + Monitoring/vitals task generation
+        if (orders.getMedications() != null && !orders.getMedications().isBlank()) {
+            com.hms.entity.MedicalRecord medRecord = medicalRecordRepository.findByIpdAdmissionIdOrderByCreatedAtDesc(orders.getAdmissionId())
+                    .stream().findFirst().orElseGet(() -> {
+                        com.hms.entity.MedicalRecord mr = new com.hms.entity.MedicalRecord();
+                        mr.setHospitalId(hospitalId);
+                        mr.setPatientId(patientId);
+                        mr.setIpdAdmissionId(orders.getAdmissionId());
+                        mr.setDoctorId(booking.getSurgeonId());
+                        mr.setSymptoms("Post-operative recovery");
+                        return medicalRecordRepository.save(mr);
+                    });
+
+            String[] medLines = orders.getMedications().split(";");
+            for (String line : medLines) {
+                String cleanLine = line.trim();
+                if (cleanLine.isEmpty()) continue;
+
+                // Create DoctorOrder (Type: MEDICATION)
+                DoctorOrder docOrder = new DoctorOrder();
+                docOrder.setHospitalId(hospitalId);
+                docOrder.setIpdAdmissionId(orders.getAdmissionId());
+                docOrder.setOrderType("MEDICATION");
+                docOrder.setDescription(cleanLine);
+                docOrder.setStartDate(java.time.LocalDate.now());
+                docOrder.setEndDate(java.time.LocalDate.now().plusDays(3));
+
+                String freq = "OD";
+                if (cleanLine.toUpperCase().contains("BD")) freq = "BD";
+                else if (cleanLine.toUpperCase().contains("TDS")) freq = "TDS";
+                else if (cleanLine.toUpperCase().contains("QID")) freq = "QID";
+                else if (cleanLine.toUpperCase().contains("SOS")) freq = "SOS";
+                docOrder.setFrequency(freq);
+                docOrder.setStatus("ACTIVE");
+                docOrder.setCreatedByName(email);
+                doctorOrderRepository.save(docOrder);
+
+                // Create NurseTask schedules for the doctor order
+                if (!"SOS".equalsIgnoreCase(freq)) {
+                    doctorOrderService.createTaskForOrder(docOrder, LocalDateTime.now());
+                }
+
+                // Create Prescription for Pharmacy queue
+                com.hms.entity.Prescription rx = new com.hms.entity.Prescription();
+                rx.setHospitalId(hospitalId);
+                rx.setMedicalRecordId(medRecord.getId());
+                rx.setMedicineName(cleanLine);
+                rx.setDosage("As prescribed");
+                rx.setFrequency(freq);
+                rx.setDuration("3 Days");
+                rx.setDurationDays(3);
+                rx.setStartDate(java.time.LocalDate.now());
+                rx.setStatus("ACTIVE");
+                rx.setRoute("IV");
+                rx.setType("INJECTION");
+                prescriptionRepository.save(rx);
+            }
+        }
+
+        // 2. Monitoring (Vitals tasks)
+        if (orders.getMonitoringPlan() != null && !orders.getMonitoringPlan().isBlank()) {
+            String[] planLines = orders.getMonitoringPlan().split(";");
+            for (String planLine : planLines) {
+                String cleanPlan = planLine.trim();
+                if (cleanPlan.isEmpty()) continue;
+
+                // Create a vitals monitoring NurseTask directly
+                NurseTask vitalTask = new NurseTask();
+                vitalTask.setHospitalId(hospitalId);
+                vitalTask.setIpdAdmissionId(orders.getAdmissionId());
+                vitalTask.setScheduledAt(LocalDateTime.now());
+                vitalTask.setStatus("PENDING");
+                vitalTask.setSource("RISK_PROTOCOL");
+                vitalTask.setTaskType("OBSERVATION");
+                vitalTask.setNotes("Vitals Check: " + cleanPlan);
+                taskRepository.save(vitalTask);
+            }
+        }
+
+        // 3. Investigations (LabOrders)
+        if (orders.getInvestigations() != null && !orders.getInvestigations().isBlank()) {
+            String[] invLines = orders.getInvestigations().split(";");
+            for (String invLine : invLines) {
+                String cleanInv = invLine.trim();
+                if (cleanInv.isEmpty()) continue;
+
+                // Create DoctorOrder (Type: INVESTIGATION)
+                DoctorOrder docOrder = new DoctorOrder();
+                docOrder.setHospitalId(hospitalId);
+                docOrder.setIpdAdmissionId(orders.getAdmissionId());
+                docOrder.setOrderType("INVESTIGATION");
+                docOrder.setDescription(cleanInv);
+                docOrder.setStartDate(java.time.LocalDate.now());
+                docOrder.setStatus("ACTIVE");
+                docOrder.setCreatedByName(email);
+                doctorOrderRepository.save(docOrder);
+
+                // Auto-generate LabOrder
+                com.hms.entity.LabOrder labOrder = new com.hms.entity.LabOrder();
+                labOrder.setHospitalId(hospitalId);
+                labOrder.setPatientId(patientId);
+                labOrder.setIpdAdmissionId(orders.getAdmissionId());
+                labOrder.setTestName(cleanInv);
+                labOrder.setPriority("ROUTINE");
+                labOrder.setStatus("ORDERED");
+                labOrder.setOrderedByName(email);
+                labOrderRepository.save(labOrder);
+            }
+        }
+
         PostopOrders saved = postopOrdersRepository.save(orders);
 
         audit("POSTOP_ORDERS_SIGNED", "Post-op orders signed for booking " + bookingId + " by " + email, hospitalId);
@@ -1020,6 +1250,9 @@ public class OtService {
         if (!booking.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Access denied: Tenant mismatch");
         }
+        IpdAdmission admission = ipdAdmissionRepository.findById(booking.getIpdAdmissionId())
+                .orElseThrow(() -> new RuntimeException("IPD Admission not found: " + booking.getIpdAdmissionId()));
+        Long patientId = admission.getPatientId();
         OtInstrumentCount count = instrumentCountRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
                 .orElseThrow(() -> new RuntimeException("Instrument count not found for booking: " + bookingId));
         if (!"MISMATCH".equalsIgnoreCase(count.getFinalCountStatus())) {
@@ -1037,6 +1270,23 @@ public class OtService {
         count.setResolutionRemarks(request.getResolutionRemarks());
         count.setResolved(true);
         count.setCompletedAt(LocalDateTime.now());
+
+        // Auto-generate IncidentReport for count discrepancy
+        if (Boolean.TRUE.equals(count.getDiscrepancyFound())) {
+            com.hms.entity.IncidentReport incident = new com.hms.entity.IncidentReport();
+            incident.setHospitalId(hospitalId);
+            incident.setPatientId(patientId);
+            incident.setAdmissionId(count.getAdmissionId());
+            incident.setSource("OT_INSTRUMENT_COUNT");
+            incident.setRelatedEntityId(count.getId());
+            incident.setSeverity("MEDIUM");
+            incident.setDescription("Instrument count mismatch: " + count.getCountSummary() + ". Resolution remarks: " + count.getResolutionRemarks());
+            incident.setStatus("PENDING_REVIEW");
+            incident.setReportedBy(email);
+            incident.setReportedAt(LocalDateTime.now());
+            incidentReportRepository.save(incident);
+        }
+
         OtInstrumentCount saved = instrumentCountRepository.save(count);
 
         audit("OT_INSTRUMENT_COUNT_RESOLVED",

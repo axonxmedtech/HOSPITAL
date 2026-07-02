@@ -89,6 +89,33 @@ class OtServiceTest {
     @Mock
     private PatientConsentRepository patientConsentRepository;
 
+    @Mock
+    private DoctorOrderRepository doctorOrderRepository;
+
+    @Mock
+    private com.hms.service.hospital.DoctorOrderService doctorOrderService;
+
+    @Mock
+    private PrescriptionRepository prescriptionRepository;
+
+    @Mock
+    private MedicalRecordRepository medicalRecordRepository;
+
+    @Mock
+    private LabOrderRepository labOrderRepository;
+
+    @Mock
+    private HospitalInventoryRepository inventoryRepository;
+
+    @Mock
+    private StockTransactionRepository transactionRepository;
+
+    @Mock
+    private IncidentReportRepository incidentReportRepository;
+
+    @Mock
+    private NurseTaskRepository taskRepository;
+
     @InjectMocks
     private OtService otService;
 
@@ -159,6 +186,9 @@ class OtServiceTest {
         Long hospitalId = 1L, bookingId = 5L;
         when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        IpdAdmission adm = new IpdAdmission();
+        adm.setPatientId(101L);
+        when(ipdAdmissionRepository.findById(10L)).thenReturn(Optional.of(adm));
         OperationRecord record = new OperationRecord();
         record.setStatus("DRAFT");
         record.setActualProcedure(null); // missing
@@ -176,6 +206,9 @@ class OtServiceTest {
         when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
         when(securityHelper.getCurrentUserEmail()).thenReturn("surgeon@hospital.com");
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        IpdAdmission adm = new IpdAdmission();
+        adm.setPatientId(101L);
+        when(ipdAdmissionRepository.findById(10L)).thenReturn(Optional.of(adm));
         OperationRecord record = new OperationRecord();
         record.setStatus("DRAFT");
         record.setActualProcedure("Lap appendectomy");
@@ -197,21 +230,47 @@ class OtServiceTest {
         when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
         when(securityHelper.getCurrentUserEmail()).thenReturn("surgeon@hospital.com");
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        IpdAdmission adm = new IpdAdmission();
+        adm.setPatientId(101L);
+        when(ipdAdmissionRepository.findById(10L)).thenReturn(Optional.of(adm));
         OperationRecord record = new OperationRecord();
         record.setStatus("DRAFT");
         record.setActualProcedure("Lap appendectomy");
         record.setPostOpPlan("ICU overnight, IV antibiotics");
+        record.setSpecimens("Appendix tissue; Swab");
+        record.setImplants("Surgical mesh [1]; Screws [4]");
+        record.setComplicationsSummary("Bleeding controlled");
         when(operationRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(record));
         OtChecklist checklist = new OtChecklist();
         checklist.setSignOutCompleted(true);
         when(checklistRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(checklist));
         when(operationRecordRepository.save(any(OperationRecord.class))).thenAnswer(inv -> inv.getArgument(0));
 
+        // Mock HospitalInventory
+        com.hms.entity.HospitalInventory invMesh = new com.hms.entity.HospitalInventory();
+        invMesh.setId(201L);
+        invMesh.setStockQuantity(10);
+        when(inventoryRepository.findByNameAndHospitalIdAndIsActiveTrue("Surgical mesh", hospitalId))
+                .thenReturn(java.util.Collections.singletonList(invMesh));
+        when(inventoryRepository.findByNameAndHospitalIdAndIsActiveTrue("Screws", hospitalId))
+                .thenReturn(java.util.Collections.emptyList());
+
         OperationRecord finalized = otService.finalizeOperationRecord(bookingId);
 
         assertThat(finalized.getStatus()).isEqualTo("FINALIZED");
         assertThat(finalized.getSignedBy()).isEqualTo("surgeon@hospital.com");
         assertThat(finalized.getSignedAt()).isNotNull();
+
+        // Verify specimen lab orders
+        verify(labOrderRepository, atLeastOnce()).save(any(LabOrder.class));
+
+        // Verify stock quantity updated & transaction saved
+        assertThat(invMesh.getStockQuantity()).isEqualTo(9);
+        verify(inventoryRepository, atLeastOnce()).save(invMesh);
+        verify(transactionRepository, atLeastOnce()).save(any(StockTransaction.class));
+
+        // Verify quality incident report created for complication
+        verify(incidentReportRepository, atLeastOnce()).save(any(IncidentReport.class));
     }
 
     // ===== Anaesthesia Record (Form 19) =====
@@ -564,6 +623,9 @@ class OtServiceTest {
         when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
         when(securityHelper.getCurrentUserEmail()).thenReturn("surgeon@hospital.com");
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        IpdAdmission adm = new IpdAdmission();
+        adm.setPatientId(101L);
+        when(ipdAdmissionRepository.findById(10L)).thenReturn(Optional.of(adm));
         PostopOrders orders = new PostopOrders();
         orders.setStatus("DRAFT");
         orders.setPostopDiagnosis(null);
@@ -581,17 +643,41 @@ class OtServiceTest {
         when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
         when(securityHelper.getCurrentUserEmail()).thenReturn("surgeon@hospital.com");
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        IpdAdmission adm = new IpdAdmission();
+        adm.setPatientId(101L);
+        when(ipdAdmissionRepository.findById(10L)).thenReturn(Optional.of(adm));
         PostopOrders orders = new PostopOrders();
         orders.setStatus("DRAFT");
+        orders.setAdmissionId(10L);
         orders.setPostopDiagnosis("Acute appendicitis, resolved");
+        orders.setMedications("Inj. Ceftriaxone 1g IV BD; Tab. Paracetamol 650mg TDS");
+        orders.setMonitoringPlan("Q1H Vitals; SPO2 continuous");
+        orders.setInvestigations("CBC; Serum Electrolytes");
+
         when(postopOrdersRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(orders));
         when(postopOrdersRepository.save(any(PostopOrders.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Mock MedicalRecord lookup
+        com.hms.entity.MedicalRecord mr = new com.hms.entity.MedicalRecord();
+        mr.setId(101L);
+        when(medicalRecordRepository.findByIpdAdmissionIdOrderByCreatedAtDesc(anyLong()))
+                .thenReturn(java.util.Collections.singletonList(mr));
 
         PostopOrders signed = otService.signPostopOrders(bookingId);
 
         assertThat(signed.getStatus()).isEqualTo("SIGNED");
         assertThat(signed.getSignedBy()).isEqualTo("surgeon@hospital.com");
         assertThat(signed.getSignedAt()).isNotNull();
+
+        // Verify medications trigger DoctorOrder, NurseTask & Prescription creation
+        verify(doctorOrderRepository, atLeastOnce()).save(any(DoctorOrder.class));
+        verify(prescriptionRepository, atLeastOnce()).save(any(Prescription.class));
+
+        // Verify monitoring vitals NurseTasks
+        verify(taskRepository, atLeastOnce()).save(any(NurseTask.class));
+
+        // Verify investigations LabOrders
+        verify(labOrderRepository, atLeastOnce()).save(any(LabOrder.class));
     }
 
     @Test
@@ -715,6 +801,9 @@ class OtServiceTest {
         when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
         when(securityHelper.getCurrentUserEmail()).thenReturn("nurse@hospital.com");
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        IpdAdmission adm = new IpdAdmission();
+        adm.setPatientId(101L);
+        when(ipdAdmissionRepository.findById(10L)).thenReturn(Optional.of(adm));
         OtInstrumentCount count = new OtInstrumentCount();
         count.setFinalCountStatus("MISMATCH");
         when(instrumentCountRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(count));
@@ -733,8 +822,12 @@ class OtServiceTest {
         when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
         when(securityHelper.getCurrentUserEmail()).thenReturn("nurse@hospital.com");
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        IpdAdmission adm = new IpdAdmission();
+        adm.setPatientId(101L);
+        when(ipdAdmissionRepository.findById(10L)).thenReturn(Optional.of(adm));
         OtInstrumentCount count = new OtInstrumentCount();
         count.setFinalCountStatus("MISMATCH");
+        count.setDiscrepancyFound(true);
         when(instrumentCountRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(count));
         when(instrumentCountRepository.save(any(OtInstrumentCount.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -747,6 +840,9 @@ class OtServiceTest {
         assertThat(resolved.getResolved()).isTrue();
         assertThat(resolved.getXrayPerformed()).isTrue();
         assertThat(resolved.getCompletedAt()).isNotNull();
+
+        // Verify incident report created
+        verify(incidentReportRepository, atLeastOnce()).save(any(IncidentReport.class));
     }
 
     @Test

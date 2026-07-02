@@ -67,6 +67,12 @@ public class OperationRecord {
     @Column(name = "status", length = 20)
     private String status;
 
+    @Column(name = "specimens", columnDefinition = "text")
+    private String specimens;
+
+    @Column(name = "implants", columnDefinition = "text")
+    private String implants;
+
     @Column(name = "signed_by", length = 100)
     private String signedBy;
 
