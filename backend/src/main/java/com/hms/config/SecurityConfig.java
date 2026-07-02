@@ -71,6 +71,9 @@ public class SecurityConfig {
                         // Public endpoints - no authentication required
                         .requestMatchers("/platform/login", "/login").permitAll()
                         .requestMatchers("/api/public/health").permitAll()
+                        // Form 03: token-authenticated public feedback submission (no JWT — the
+                        // single-use token itself resolves the patient/hospital server-side).
+                        .requestMatchers("/api/public/feedback/**").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
 

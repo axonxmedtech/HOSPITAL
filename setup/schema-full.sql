@@ -589,6 +589,67 @@ CREATE TABLE IF NOT EXISTS transfusion_record (
     CONSTRAINT fk_transfusion_unit FOREIGN KEY (blood_unit_id) REFERENCES blood_unit(id)
 ) ENGINE=InnoDB;
 
+-- Phase 6.02 Patient Feedback (Form 03 core). Additive; Hibernate ddl-auto creates them.
+CREATE TABLE IF NOT EXISTS feedback_token (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    token VARCHAR(64) NOT NULL UNIQUE,
+    hospital_id BIGINT NOT NULL,
+    patient_id BIGINT NOT NULL,
+    appointment_id BIGINT NULL,
+    admission_id BIGINT NULL,
+    feedback_type VARCHAR(10) NOT NULL,
+    expires_at DATETIME NOT NULL,
+    used_at DATETIME NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_fbtoken_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS patient_feedback (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    patient_id BIGINT NOT NULL,
+    appointment_id BIGINT NULL,
+    admission_id BIGINT NULL,
+    feedback_type VARCHAR(10) NOT NULL,
+    submitted_by VARCHAR(20) NULL,
+    source VARCHAR(30) NULL,
+    overall_rating INT NOT NULL,
+    reception_rating INT NULL,
+    doctor_rating INT NULL,
+    nurse_rating INT NULL,
+    housekeeping_rating INT NULL,
+    billing_rating INT NULL,
+    facility_rating VARCHAR(20) NULL,
+    recommend_score INT NULL,
+    complaints TEXT NULL,
+    suggestions TEXT NULL,
+    status VARCHAR(20) NOT NULL,
+    reviewed_by VARCHAR(100) NULL,
+    reviewed_at DATETIME NULL,
+    submitted_at DATETIME NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_feedback_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_feedback_hospital_status ON patient_feedback(hospital_id, status);
+
+CREATE TABLE IF NOT EXISTS quality_complaint (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    feedback_id BIGINT NOT NULL,
+    category VARCHAR(30) NULL,
+    department VARCHAR(50) NULL,
+    description TEXT NULL,
+    severity VARCHAR(10) NOT NULL,
+    assigned_to_name VARCHAR(100) NULL,
+    status VARCHAR(20) NOT NULL,
+    resolution TEXT NULL,
+    resolved_by_name VARCHAR(100) NULL,
+    resolved_at DATETIME NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_complaint_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
+    CONSTRAINT fk_complaint_feedback FOREIGN KEY (feedback_id) REFERENCES patient_feedback(id)
+) ENGINE=InnoDB;
+
 --
 -- Table structure for table `medicine_categories`
 --
