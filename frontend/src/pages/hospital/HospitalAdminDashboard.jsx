@@ -40,6 +40,7 @@ import OtRegisterDashboard from '../../components/ot/OtRegisterDashboard';
 import EmergencyBoard from '../../components/emergency/EmergencyBoard';
 import BloodBankView from '../../components/bloodbank/BloodBankView';
 import FeedbackView from '../../components/feedback/FeedbackView';
+import CssdView from '../../components/cssd/CssdView';
 
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -1326,6 +1327,7 @@ const HospitalAdminDashboard = () => {
         { id: 'ot', label: 'Operation Theatre', icon: null, requiredModule: 'OT' },
         { id: 'emergency', label: 'Emergency', icon: null, requiredModule: null },
         { id: 'blood-bank', label: 'Blood Bank', icon: null, requiredModule: null },
+        { id: 'cssd', label: 'CSSD', icon: null, requiredModule: null },
         { id: 'feedback', label: 'Patient Feedback', icon: null, requiredModule: null },
         { id: 'fees', label: 'Fees', icon: null, requiredModule: 'BILLING' },
         { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
@@ -2571,6 +2573,9 @@ const HospitalAdminDashboard = () => {
                                 )}
                                 {activeTab === 'blood-bank' && (
                                     <BloodBankView />
+                                )}
+                                {activeTab === 'cssd' && (
+                                    <CssdView />
                                 )}
                                 {activeTab === 'feedback' && (
                                     <FeedbackView />
