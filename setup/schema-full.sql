@@ -1932,10 +1932,21 @@ CREATE TABLE IF NOT EXISTS lab_results (
     resulted_by_name VARCHAR(100) NOT NULL,
     resulted_at DATETIME NOT NULL,
     verified_by_name VARCHAR(100),
+    verified_at DATETIME NULL,
+    released_by_name VARCHAR(100) NULL,
+    released_at DATETIME NULL,
+    is_critical BOOLEAN NOT NULL DEFAULT FALSE,
+    critical_alert_sent_at DATETIME NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_lr_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
     CONSTRAINT fk_lr_lab_order FOREIGN KEY (lab_order_id) REFERENCES lab_orders(id)
 ) ENGINE=InnoDB;
+-- Form 27 BR-4/5/6 additive migration (safe on live data):
+-- ALTER TABLE lab_results
+--   ADD COLUMN verified_at DATETIME NULL, ADD COLUMN released_by_name VARCHAR(100) NULL,
+--   ADD COLUMN released_at DATETIME NULL, ADD COLUMN is_critical BOOLEAN NOT NULL DEFAULT FALSE,
+--   ADD COLUMN critical_alert_sent_at DATETIME NULL;
+-- lab_orders.status now also takes VERIFIED / RELEASED values (existing VARCHAR column, no ALTER needed).
 
 -- Indexes for lab workflow queries
 CREATE INDEX IF NOT EXISTS idx_lab_orders_hospital_id ON lab_orders(hospital_id);

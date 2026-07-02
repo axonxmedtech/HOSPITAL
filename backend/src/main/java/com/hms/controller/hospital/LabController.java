@@ -89,4 +89,25 @@ public class LabController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+
+    /** BR-4: pathologist sign-off. Role check here is coarse (DOCTOR); the service enforces the actual is_pathologist flag. */
+    @PutMapping("/orders/{publicId}/verify")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> verifyResult(@PathVariable String publicId) {
+        try {
+            return ResponseEntity.ok(labWorkflowService.verifyResult(publicId));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PutMapping("/orders/{publicId}/release")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> releaseResult(@PathVariable String publicId) {
+        try {
+            return ResponseEntity.ok(labWorkflowService.releaseResult(publicId));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
 }

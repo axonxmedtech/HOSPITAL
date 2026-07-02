@@ -12,5 +12,6 @@ public class LabResultRequest {
     private String parameters;
     private String resultSummary;
     private Boolean isAbnormal = false;
-    private String verifiedByName;
+    // BR-5: technician flags an immediately dangerous value, triggering an alert.
+    private Boolean isCritical = false;
 }

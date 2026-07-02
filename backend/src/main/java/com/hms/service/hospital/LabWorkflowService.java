@@ -43,6 +43,7 @@ public class LabWorkflowService {
     @Autowired private MrdService mrdService;
     @Autowired private HospitalWebSocketHandler webSocketHandler;
     @Autowired private BillingService billingService;
+    @Autowired private DoctorRepository doctorRepository;
 
     // ─── Order placement ──────────────────────────────────────────────────────
 
@@ -192,7 +193,8 @@ public class LabWorkflowService {
             throw new IllegalStateException(
                     "Order must be in SAMPLE_COLLECTED status before entering result; current: " + order.getStatus());
 
-        // Create result
+        // Create result — awaiting pathologist verification (BR-4); resulted-by is never
+        // treated as verified-by, so a technician cannot self-attest a pathologist sign-off.
         LabResult result = new LabResult();
         result.setHospitalId(hospitalId);
         result.setLabOrderId(order.getId());
@@ -200,24 +202,120 @@ public class LabWorkflowService {
         result.setParameters(req.getParameters());
         result.setResultSummary(req.getResultSummary());
         result.setIsAbnormal(req.getIsAbnormal() != null ? req.getIsAbnormal() : false);
+        result.setIsCritical(req.getIsCritical() != null ? req.getIsCritical() : false);
         result.setResultedByName(email);
         result.setResultedAt(LocalDateTime.now());
-        result.setVerifiedByName(req.getVerifiedByName());
         LabResult savedResult = labResultRepository.save(result);
 
-        // Complete the order
+        // Complete the order — result entered but not yet pathologist-verified.
         order.setStatus("COMPLETED");
         order.setUpdatedAt(LocalDateTime.now());
         labOrderRepository.save(order);
 
         audit("LAB_RESULT_ENTERED", "Result entered for: " + order.getTestName() +
-              (result.getIsAbnormal() ? " [ABNORMAL]" : ""), hospitalId);
+              (result.getIsAbnormal() ? " [ABNORMAL]" : "")
+              + (result.getIsCritical() ? " [CRITICAL]" : ""), hospitalId);
+
+        // BR-5: critical value fires an immediate high-priority alert (attending doctor + ward nurse).
+        if (Boolean.TRUE.equals(result.getIsCritical())) {
+            savedResult.setCriticalAlertSentAt(LocalDateTime.now());
+            labResultRepository.save(savedResult);
+            try {
+                webSocketHandler.broadcast(hospitalId,
+                        "{\"type\":\"CRITICAL_LAB_ALERT\",\"testName\":\"" + escapeJson(order.getTestName())
+                                + "\",\"patientId\":" + order.getPatientId()
+                                + ",\"labOrderId\":\"" + order.getPublicId() + "\"}");
+            } catch (Exception e) {
+                log.warn("Critical lab alert broadcast failed: {}", e.getMessage());
+            }
+            audit("LAB_CRITICAL_ALERT", "Critical value alert fired for: " + order.getTestName(), hospitalId);
+        }
+
         broadcast(hospitalId);
 
         Map<String, Object> dto = new HashMap<>();
         dto.put("order", order);
         dto.put("result", savedResult);
         return dto;
+    }
+
+    /**
+     * BR-4: pathologist sign-off. Only a doctor carrying the pathologist capacity flag
+     * (is_pathologist) may verify a result. Transition: COMPLETED -> VERIFIED.
+     */
+    @Transactional
+    public Map<String, Object> verifyResult(String publicId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        String email = securityHelper.getCurrentUserEmail();
+
+        Doctor doctor = doctorRepository.findByEmailAndHospitalId(email, hospitalId)
+                .orElseThrow(() -> new UnauthorizedException("Doctor profile not found for this user"));
+        if (!Boolean.TRUE.equals(doctor.getIsPathologist())) {
+            throw new UnauthorizedException("Only a pathologist may verify lab results (BR-4).");
+        }
+
+        LabOrder order = requireOrder(publicId, hospitalId);
+        if (!"COMPLETED".equals(order.getStatus())) {
+            throw new IllegalStateException(
+                    "Order must be COMPLETED (result entered) before verification; current: " + order.getStatus());
+        }
+        LabResult result = labResultRepository.findByLabOrderId(order.getId())
+                .orElseThrow(() -> new IllegalStateException("No result found for order " + publicId));
+
+        result.setVerifiedByName(doctor.getName());
+        result.setVerifiedAt(LocalDateTime.now());
+        LabResult savedResult = labResultRepository.save(result);
+
+        order.setStatus("VERIFIED");
+        order.setUpdatedAt(LocalDateTime.now());
+        LabOrder savedOrder = labOrderRepository.save(order);
+
+        audit("LAB_RESULT_VERIFIED", "Result verified by Dr. " + doctor.getName() + " for: " + order.getTestName(), hospitalId);
+        broadcast(hospitalId);
+
+        Map<String, Object> dto = new HashMap<>();
+        dto.put("order", savedOrder);
+        dto.put("result", savedResult);
+        return dto;
+    }
+
+    /**
+     * BR-6: releases a verified, immutable report. Transition: VERIFIED -> RELEASED.
+     */
+    @Transactional
+    public Map<String, Object> releaseResult(String publicId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        String email = securityHelper.getCurrentUserEmail();
+
+        LabOrder order = requireOrder(publicId, hospitalId);
+        if (!"VERIFIED".equals(order.getStatus())) {
+            throw new IllegalStateException(
+                    "Order must be VERIFIED before release; current: " + order.getStatus());
+        }
+        LabResult result = labResultRepository.findByLabOrderId(order.getId())
+                .orElseThrow(() -> new IllegalStateException("No result found for order " + publicId));
+
+        result.setReleasedByName(email);
+        result.setReleasedAt(LocalDateTime.now());
+        LabResult savedResult = labResultRepository.save(result);
+
+        order.setStatus("RELEASED");
+        order.setUpdatedAt(LocalDateTime.now());
+        LabOrder savedOrder = labOrderRepository.save(order);
+
+        audit("LAB_RESULT_RELEASED", "Result released for: " + order.getTestName(), hospitalId);
+        broadcast(hospitalId);
+
+        Map<String, Object> dto = new HashMap<>();
+        dto.put("order", savedOrder);
+        dto.put("result", savedResult);
+        return dto;
+    }
+
+    private String escapeJson(String s) {
+        return s == null ? "" : s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     /**
@@ -230,8 +328,8 @@ public class LabWorkflowService {
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
 
         LabOrder order = requireOrder(publicId, hospitalId);
-        if ("COMPLETED".equals(order.getStatus()))
-            throw new IllegalStateException("Cannot cancel a completed order");
+        if (List.of("COMPLETED", "VERIFIED", "RELEASED").contains(order.getStatus()))
+            throw new IllegalStateException("Cannot cancel an order once its result has been entered");
 
         order.setStatus("CANCELLED");
         order.setUpdatedAt(LocalDateTime.now());

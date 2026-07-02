@@ -68,6 +68,24 @@ public class LabResult {
     @Column(name = "verified_by_name", length = 100)
     private String verifiedByName;
 
+    // --- Pathologist sign-off gate (Form 27 BR-4/BR-5/BR-6, all nullable/additive) ---
+
+    @Column(name = "verified_at")
+    private LocalDateTime verifiedAt;
+
+    @Column(name = "released_by_name", length = 100)
+    private String releasedByName;
+
+    @Column(name = "released_at")
+    private LocalDateTime releasedAt;
+
+    // BR-5: technician-flagged critical value (immediate alert), distinct from is_abnormal
+    @Column(name = "is_critical", nullable = false)
+    private Boolean isCritical = false;
+
+    @Column(name = "critical_alert_sent_at")
+    private LocalDateTime criticalAlertSentAt;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
