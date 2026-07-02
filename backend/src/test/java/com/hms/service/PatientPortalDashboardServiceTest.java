@@ -3,6 +3,7 @@ package com.hms.service;
 import com.hms.dto.PortalDashboardResponse;
 import com.hms.dto.PortalReportResponse;
 import com.hms.entity.*;
+import com.hms.exception.UnauthorizedException;
 import com.hms.repository.*;
 import com.hms.service.portal.PatientPortalDashboardService;
 import org.junit.jupiter.api.Test;
@@ -180,7 +181,7 @@ class PatientPortalDashboardServiceTest {
         when(portalUserRepository.findById(PORTAL_USER_ID)).thenReturn(Optional.of(suspended));
 
         assertThatThrownBy(() -> service.getAppointments(HOSPITAL_ID, PORTAL_USER_ID))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(UnauthorizedException.class)
                 .hasMessageContaining("not active");
     }
 }

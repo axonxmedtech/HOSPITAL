@@ -3,6 +3,7 @@ package com.hms.service.portal;
 import com.hms.dto.PortalDashboardResponse;
 import com.hms.dto.PortalReportResponse;
 import com.hms.entity.*;
+import com.hms.exception.UnauthorizedException;
 import com.hms.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -117,12 +118,12 @@ public class PatientPortalDashboardService {
 
     private Long resolvePatientId(Long hospitalId, Long portalUserId) {
         PatientPortalUser portalUser = portalUserRepository.findById(portalUserId)
-                .orElseThrow(() -> new RuntimeException("Portal account not found"));
+                .orElseThrow(() -> new UnauthorizedException("Portal account not found"));
         if (!portalUser.getHospitalId().equals(hospitalId)) {
-            throw new RuntimeException("Portal account not found");
+            throw new UnauthorizedException("Portal account not found");
         }
         if (!"ACTIVE".equals(portalUser.getStatus())) {
-            throw new IllegalStateException("This portal account is not active.");
+            throw new UnauthorizedException("This portal account is not active.");
         }
         return portalUser.getPatientId();
     }
