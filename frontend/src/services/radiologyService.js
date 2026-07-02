@@ -31,9 +31,23 @@ export const conductRadiologyStudy = (publicId) => api.put(`/hospital/radiology/
  * Radiology tech enters result.
  * Transitions order: STUDY_CONDUCTED → COMPLETED
  * @param {string} publicId
- * @param {{findings: string, impression: string, isAbnormal: boolean, resultFileUrl?: string, verifiedByName?: string}} data
+ * @param {{findings: string, impression: string, isAbnormal: boolean, resultFileUrl?: string, isCritical?: boolean}} data
  */
 export const enterRadiologyResult = (publicId, data) => api.post(`/hospital/radiology/orders/${publicId}/result`, data);
+
+/**
+ * Radiologist verifies (signs off on) a result. Requires the is_radiologist capacity flag.
+ * Transitions order: COMPLETED → VERIFIED
+ * @param {string} publicId
+ */
+export const verifyRadiologyResult = (publicId) => api.put(`/hospital/radiology/orders/${publicId}/verify`);
+
+/**
+ * Releases a verified, now-immutable report to the doctor/patient.
+ * Transitions order: VERIFIED → RELEASED
+ * @param {string} publicId
+ */
+export const releaseRadiologyResult = (publicId) => api.put(`/hospital/radiology/orders/${publicId}/release`);
 
 /**
  * Doctor cancels a radiology order (cannot cancel COMPLETED orders).

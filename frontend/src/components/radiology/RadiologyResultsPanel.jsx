@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getRadiologyOrders, placeRadiologyOrder, cancelRadiologyOrder } from '../../services/radiologyService';
+import { getRadiologyOrders, placeRadiologyOrder, cancelRadiologyOrder, verifyRadiologyResult, releaseRadiologyResult } from '../../services/radiologyService';
 import authService from '../../services/authService';
 import masterDataService from '../../services/masterDataService';
 import SearchableSelect from '../SearchableSelect';
@@ -7,7 +7,9 @@ import SearchableSelect from '../SearchableSelect';
 const STATUS_CONFIG = {
   ORDERED: { badge: 'bg-amber-100 text-amber-700 border border-amber-200', label: 'Ordered', icon: '⏳' },
   STUDY_CONDUCTED: { badge: 'bg-indigo-100 text-indigo-700 border border-indigo-200', label: 'Study Conducted', icon: '📷' },
-  COMPLETED: { badge: 'bg-emerald-100 text-emerald-700 border border-emerald-200', label: 'Completed', icon: '✓' },
+  COMPLETED: { badge: 'bg-emerald-100 text-emerald-700 border border-emerald-200', label: 'Pending Verification', icon: '✓' },
+  VERIFIED: { badge: 'bg-teal-100 text-teal-700 border border-teal-200', label: 'Verified', icon: '🩺' },
+  RELEASED: { badge: 'bg-purple-100 text-purple-700 border border-purple-200', label: 'Released', icon: '📤' },
   CANCELLED: { badge: 'bg-gray-100 text-gray-500 border border-gray-200', label: 'Cancelled', icon: '✕' },
 };
 
@@ -76,6 +78,24 @@ export default function RadiologyResultsPanel({ ipdAdmissionId, patientId, canOr
 
   const toggleExpand = (publicId) => {
     setExpanded(prev => ({ ...prev, [publicId]: !prev[publicId] }));
+  };
+
+  const handleVerify = async (publicId) => {
+    try {
+      await verifyRadiologyResult(publicId);
+      fetchOrders();
+    } catch (err) {
+      alert(err.response?.data || 'Only a radiologist may verify this result');
+    }
+  };
+
+  const handleRelease = async (publicId) => {
+    try {
+      await releaseRadiologyResult(publicId);
+      fetchOrders();
+    } catch (err) {
+      alert(err.response?.data || 'Cannot release this result yet');
+    }
   };
 
   return (
@@ -219,6 +239,11 @@ export default function RadiologyResultsPanel({ ipdAdmissionId, patientId, canOr
                         ⚠ Abnormal
                       </span>
                     )}
+                    {result?.isCritical && (
+                      <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-red-700 text-white border border-red-800">
+                        🚨 CRITICAL
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <span className="text-xs text-gray-400 hidden sm:block">
@@ -284,6 +309,30 @@ export default function RadiologyResultsPanel({ ipdAdmissionId, patientId, canOr
                                 🔗 View Scan Image / PACS Link
                               </a>
                             </div>
+                          )}
+
+                          {result.releasedAt && (
+                            <p className="text-purple-700 mt-2">
+                              📤 Released by {result.releasedByName} on {new Date(result.releasedAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          )}
+
+                          {/* Radiologist sign-off actions (BR-4/BR-6) */}
+                          {(user?.role === 'DOCTOR' || user?.role === 'HOSPITAL_ADMIN') && order.status === 'COMPLETED' && (
+                            <button
+                              onClick={e => { e.stopPropagation(); handleVerify(order.publicId); }}
+                              className="mt-2 text-xs font-semibold px-3 py-1.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+                            >
+                              🩺 Verify (Radiologist Sign-off)
+                            </button>
+                          )}
+                          {(user?.role === 'DOCTOR' || user?.role === 'HOSPITAL_ADMIN') && order.status === 'VERIFIED' && (
+                            <button
+                              onClick={e => { e.stopPropagation(); handleRelease(order.publicId); }}
+                              className="mt-2 text-xs font-semibold px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                            >
+                              📤 Release Report
+                            </button>
                           )}
                         </div>
                       </div>

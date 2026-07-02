@@ -6,7 +6,7 @@ export default function RadiologyResultForm({ publicId, onClose, onSuccess }) {
   const [impression, setImpression] = useState('');
   const [isAbnormal, setIsAbnormal] = useState(false);
   const [resultFileUrl, setResultFileUrl] = useState('');
-  const [verifiedBy, setVerifiedBy] = useState('');
+  const [isCritical, setIsCritical] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -24,7 +24,7 @@ export default function RadiologyResultForm({ publicId, onClose, onSuccess }) {
         impression,
         isAbnormal,
         resultFileUrl: resultFileUrl || undefined,
-        verifiedByName: verifiedBy || undefined,
+        isCritical,
       });
       onSuccess();
     } catch (err) {
@@ -109,19 +109,27 @@ export default function RadiologyResultForm({ publicId, onClose, onSuccess }) {
               />
               <span className="text-sm font-medium text-red-700">Mark as Abnormal Findings</span>
             </label>
+
+            <label className="flex items-center gap-3 cursor-pointer group w-fit mt-3">
+              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                isCritical ? 'bg-red-700 border-red-700' : 'border-gray-300 group-hover:border-red-500'
+              }`}>
+                {isCritical && <span className="text-white text-xs font-bold">✓</span>}
+              </div>
+              <input
+                type="checkbox"
+                checked={isCritical}
+                onChange={e => setIsCritical(e.target.checked)}
+                className="sr-only"
+              />
+              <span className="text-sm font-medium text-red-800">🚨 Critical Finding (fires immediate alert)</span>
+            </label>
           </div>
 
-          {/* Verified By */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Verified By / Reporting Radiologist <span className="font-normal text-gray-400">(optional)</span>
-            </label>
-            <input
-              value={verifiedBy}
-              onChange={e => setVerifiedBy(e.target.value)}
-              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-300"
-              placeholder="Dr. Rajesh Shah, MD Radiology"
-            />
+          {/* Radiologist verification note */}
+          <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-xs text-blue-800">
+            ℹ️ This report will be pending radiologist verification after submission. It cannot be released to the
+            patient/doctor until a radiologist reviews and signs off.
           </div>
 
           {/* Error */}
