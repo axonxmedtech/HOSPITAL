@@ -11,6 +11,7 @@ import NurseDashboard from './pages/hospital/NurseDashboard';
 import LabTechnicianDashboard from './pages/hospital/LabTechnicianDashboard';
 import RadiologyTechnicianDashboard from './pages/hospital/RadiologyTechnicianDashboard';
 import MrdArchive from './pages/hospital/MrdArchive';
+import PublicFeedbackPage from './pages/public/PublicFeedbackPage';
 import { ToastProvider } from './context/ToastContext';
 import PageMeta from './components/PageMeta';
 import authService from './services/authService';
@@ -122,6 +123,15 @@ function App() {
                         element={
                             <PageMeta title="HMS - Pharmacy Login">
                                 <HospitalLogin portalType="PHARMACY" />
+                            </PageMeta>
+                        }
+                    />
+
+                    <Route
+                        path="/feedback/:token"
+                        element={
+                            <PageMeta title="HMS - Share Your Feedback">
+                                <PublicFeedbackPage />
                             </PageMeta>
                         }
                     />

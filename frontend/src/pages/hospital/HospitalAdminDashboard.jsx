@@ -39,6 +39,7 @@ import MasterDataView from './MasterDataView';
 import OtRegisterDashboard from '../../components/ot/OtRegisterDashboard';
 import EmergencyBoard from '../../components/emergency/EmergencyBoard';
 import BloodBankView from '../../components/bloodbank/BloodBankView';
+import FeedbackView from '../../components/feedback/FeedbackView';
 
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -1325,6 +1326,7 @@ const HospitalAdminDashboard = () => {
         { id: 'ot', label: 'Operation Theatre', icon: null, requiredModule: 'OT' },
         { id: 'emergency', label: 'Emergency', icon: null, requiredModule: null },
         { id: 'blood-bank', label: 'Blood Bank', icon: null, requiredModule: null },
+        { id: 'feedback', label: 'Patient Feedback', icon: null, requiredModule: null },
         { id: 'fees', label: 'Fees', icon: null, requiredModule: 'BILLING' },
         { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
         { id: 'analytics', label: 'Reports & Analytics', icon: null, requiredModule: 'REPORTS' },
@@ -2569,6 +2571,9 @@ const HospitalAdminDashboard = () => {
                                 )}
                                 {activeTab === 'blood-bank' && (
                                     <BloodBankView />
+                                )}
+                                {activeTab === 'feedback' && (
+                                    <FeedbackView />
                                 )}
                                 {activeTab === 'analytics' && (
                                     <div className="p-6 space-y-8 bg-gray-50/50 min-h-screen">
