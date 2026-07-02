@@ -53,4 +53,10 @@ public interface BillingRepository extends JpaRepository<Billing, Long> {
     java.util.Optional<Billing> findByOpdId(Long opdId);
 
     java.util.List<Billing> findByHospitalIdAndCreatedAtAfter(Long hospitalId, java.time.LocalDateTime createdAt);
+
+    @Query("SELECT COALESCE(SUM(b.amount), 0) FROM Billing b WHERE b.hospitalId = :hospitalId AND b.paymentStatus = :paymentStatus AND b.createdAt >= :since")
+    java.math.BigDecimal sumAmountByHospitalIdAndPaymentStatusSince(
+            @org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
+            @org.springframework.data.repository.query.Param("paymentStatus") String paymentStatus,
+            @org.springframework.data.repository.query.Param("since") java.time.LocalDateTime since);
 }

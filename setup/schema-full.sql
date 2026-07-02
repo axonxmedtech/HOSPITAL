@@ -910,6 +910,20 @@ CREATE TABLE IF NOT EXISTS training_certification (
 ) ENGINE=InnoDB;
 CREATE INDEX IF NOT EXISTS idx_training_certification_hospital_expiry ON training_certification(hospital_id, expires_at);
 
+CREATE TABLE IF NOT EXISTS executive_alert (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    severity VARCHAR(20) NOT NULL,
+    title VARCHAR(100) NOT NULL,
+    description VARCHAR(250) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    remarks TEXT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at DATETIME NULL,
+    CONSTRAINT fk_executive_alert_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_executive_alert_hospital_status ON executive_alert(hospital_id, status);
+
 --
 -- Table structure for table `medicine_categories`
 --
