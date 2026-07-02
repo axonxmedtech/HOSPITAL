@@ -12,4 +12,6 @@ public interface EmergencyVisitRepository extends JpaRepository<EmergencyVisit, 
     List<EmergencyVisit> findByHospitalIdAndStatusInOrderByArrivalTimeDesc(Long hospitalId, List<String> statuses);
 
     long countByHospitalId(Long hospitalId);
+
+    List<EmergencyVisit> findByPatientIdAndHospitalIdOrderByArrivalTimeDesc(Long patientId, Long hospitalId);
 }

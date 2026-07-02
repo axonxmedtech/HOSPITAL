@@ -37,10 +37,33 @@ public class MrdController {
         try {
             Long ipdAdmissionId = Long.valueOf(body.get("ipdAdmissionId").toString());
             String rackLocation = body.get("rackLocation").toString();
-            MrdRecord record = mrdService.archiveAdmission(ipdAdmissionId, rackLocation);
+            String overrideReason = body.get("overrideReason") != null ? body.get("overrideReason").toString() : null;
+            MrdRecord record = mrdService.archiveAdmission(ipdAdmissionId, rackLocation, overrideReason);
             return ResponseEntity.ok(record);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("{\"message\":\"" + e.getMessage() + "\"}");
+        }
+    }
+
+    /** Form 02 — computed IPD-file completeness checklist. */
+    @GetMapping("/completeness/{ipdId}")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST', 'HOSPITAL_ADMIN', 'DOCTOR')")
+    public ResponseEntity<?> getCompleteness(@PathVariable Long ipdId) {
+        try {
+            return ResponseEntity.ok(mrdService.computeCompleteness(ipdId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    /** Form 31 — longitudinal patient EMR timeline. */
+    @GetMapping("/timeline/{patientId}")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST', 'HOSPITAL_ADMIN', 'DOCTOR', 'NURSE')")
+    public ResponseEntity<?> getPatientTimeline(@PathVariable Long patientId) {
+        try {
+            return ResponseEntity.ok(mrdService.getPatientTimeline(patientId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 }

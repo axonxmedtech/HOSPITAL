@@ -163,15 +163,22 @@ const MrdArchive = () => {
         try {
             await hospitalService.archiveMrdRecord({
                 ipdAdmissionId: archiveModal.ipdAdmissionId,
-                rackLocation: archiveModal.rackLocation
+                rackLocation: archiveModal.rackLocation,
+                overrideReason: archiveModal.overrideReason?.trim() || null
             });
             success('Admission archived successfully in MRD');
             setArchiveModal({ isOpen: false, ipdAdmissionId: null, rackLocation: '', saving: false });
             fetchData();
         } catch (err) {
             console.error(err);
-            toastError(err.response?.data?.error || err.message || 'Failed to archive record');
-            setArchiveModal(prev => ({ ...prev, saving: false }));
+            const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to archive record';
+            // Form 02 completeness gate: reveal the audited-override field
+            if (typeof msg === 'string' && msg.toLowerCase().includes('incomplete')) {
+                setArchiveModal(prev => ({ ...prev, saving: false, incompleteMsg: msg }));
+            } else {
+                toastError(msg);
+                setArchiveModal(prev => ({ ...prev, saving: false }));
+            }
         }
     };
 
@@ -321,6 +328,19 @@ const MrdArchive = () => {
                                 onChange={e => setArchiveModal(p => ({ ...p, rackLocation: e.target.value }))}
                                 autoFocus
                             />
+                            {archiveModal.incompleteMsg && (
+                                <div className="mb-6 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                                    <p className="text-xs font-semibold text-amber-800 mb-2">⚠️ {archiveModal.incompleteMsg}</p>
+                                    <label className="block text-xs font-semibold text-gray-700 mb-1">Override Reason (audited) *</label>
+                                    <textarea
+                                        rows={2}
+                                        className="w-full border-amber-300 rounded-lg shadow-sm focus:ring-amber-500 focus:border-amber-500 text-sm"
+                                        placeholder="e.g. Legacy paper file — documents verified physically"
+                                        value={archiveModal.overrideReason || ''}
+                                        onChange={e => setArchiveModal(p => ({ ...p, overrideReason: e.target.value }))}
+                                    />
+                                </div>
+                            )}
                             <div className="flex justify-end gap-3">
                                 <button 
                                     className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"

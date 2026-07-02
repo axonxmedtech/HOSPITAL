@@ -35,6 +35,27 @@ public class MrdService {
     @Autowired
     private SecurityContextHelper securityHelper;
 
+    @Autowired
+    private com.hms.repository.DischargeSummaryRepository dischargeSummaryRepository;
+
+    @Autowired
+    private com.hms.repository.VitalSignsRepository vitalSignsRepository;
+
+    @Autowired
+    private com.hms.repository.DoctorRoundRepository doctorRoundRepository;
+
+    @Autowired
+    private com.hms.repository.PatientConsentRepository patientConsentRepository;
+
+    @Autowired
+    private com.hms.repository.ClinicalAssessmentRepository clinicalAssessmentRepository;
+
+    @Autowired
+    private com.hms.repository.EmergencyVisitRepository emergencyVisitRepository;
+
+    @Autowired
+    private com.hms.service.AuditLogService auditLogService;
+
     public List<com.hms.dto.MrdPendingDTO> listPendingArchive() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
@@ -93,7 +114,94 @@ public class MrdService {
     }
 
     @Transactional
+    /**
+     * Form 02: server-computed IPD-file completeness checklist, read directly from
+     * the clinical source tables. Tenant-guarded via the admission.
+     */
+    public com.hms.dto.MrdCompletenessDTO computeCompleteness(Long ipdAdmissionId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+
+        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdAdmissionId)
+                .orElseThrow(() -> new RuntimeException("IPD admission not found"));
+        if (!ipd.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+
+        com.hms.dto.MrdCompletenessDTO dto = new com.hms.dto.MrdCompletenessDTO();
+        dto.setIpdAdmissionId(ipdAdmissionId);
+
+        boolean hasDischargeSummary = dischargeSummaryRepository.findByIpdAdmissionId(ipdAdmissionId).isPresent();
+        boolean hasVitals = !vitalSignsRepository.findByIpdAdmissionIdOrderByRecordedAtDesc(ipdAdmissionId).isEmpty();
+        boolean hasRounds = !doctorRoundRepository
+                .findByIpdAdmissionIdAndHospitalIdOrderByRoundDateTimeDesc(ipdAdmissionId, hospitalId).isEmpty();
+        boolean hasConsent = !patientConsentRepository
+                .findByHospitalIdAndAdmissionIdAndIsDeletedFalse(hospitalId, ipdAdmissionId).isEmpty();
+        boolean hasAssessment = clinicalAssessmentRepository
+                .findFirstByHospitalIdAndAdmissionIdAndStatusNotInOrderByVersionDesc(
+                        hospitalId, ipdAdmissionId, List.of("DELETED"))
+                .isPresent();
+
+        dto.getItems().put("DISCHARGE_SUMMARY", hasDischargeSummary ? "PASS" : "FAIL");
+        dto.getItems().put("INITIAL_ASSESSMENT", hasAssessment ? "PASS" : "FAIL");
+        dto.getItems().put("VITALS_CHART", hasVitals ? "PASS" : "FAIL");
+        dto.getItems().put("DOCTOR_ROUNDS", hasRounds ? "PASS" : "FAIL");
+        dto.getItems().put("CONSENT", hasConsent ? "PASS" : "FAIL");
+        dto.setComplete(hasDischargeSummary && hasVitals && hasRounds && hasConsent && hasAssessment);
+        return dto;
+    }
+
+    /**
+     * Form 31: longitudinal patient EMR timeline — admissions, discharges,
+     * emergency visits and clinical assessments merged chronologically.
+     */
+    public List<com.hms.dto.TimelineEventDTO> getPatientTimeline(Long patientId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+
+        com.hms.entity.Patient patient = patientRepository.findById(patientId)
+                .filter(p -> p.getHospitalId().equals(hospitalId))
+                .orElseThrow(() -> new RuntimeException("Patient not found under hospital tenant"));
+
+        List<com.hms.dto.TimelineEventDTO> events = new ArrayList<>();
+
+        for (IpdAdmission adm : ipdAdmissionRepository.findByPatientIdOrderByAdmissionDatetimeDesc(patient.getId())) {
+            if (!hospitalId.equals(adm.getHospitalId())) continue; // defense-in-depth
+            events.add(new com.hms.dto.TimelineEventDTO("ADMISSION", adm.getAdmissionDatetime(),
+                    "IPD Admission " + adm.getIpdNumber(),
+                    adm.getPrimaryDiagnosis() != null ? adm.getPrimaryDiagnosis() : "", adm.getId()));
+            if (adm.getDischargeDatetime() != null) {
+                events.add(new com.hms.dto.TimelineEventDTO("DISCHARGE", adm.getDischargeDatetime(),
+                        "Discharged (" + adm.getIpdNumber() + ")", "", adm.getId()));
+            }
+        }
+        for (com.hms.entity.EmergencyVisit ev : emergencyVisitRepository
+                .findByPatientIdAndHospitalIdOrderByArrivalTimeDesc(patient.getId(), hospitalId)) {
+            events.add(new com.hms.dto.TimelineEventDTO("EMERGENCY", ev.getArrivalTime(),
+                    "Emergency visit " + ev.getEmergencyNumber(),
+                    (ev.getTriageLevel() != null ? "Triage " + ev.getTriageLevel() : "")
+                            + (ev.getInitialDiagnosis() != null ? " — " + ev.getInitialDiagnosis() : ""), ev.getId()));
+        }
+        for (com.hms.entity.ClinicalAssessment ca : clinicalAssessmentRepository
+                .findByHospitalIdAndPatientId(hospitalId, patient.getId())) {
+            events.add(new com.hms.dto.TimelineEventDTO("ASSESSMENT", ca.getCreatedAt(),
+                    "Clinical assessment",
+                    ca.getChiefComplaint() != null ? ca.getChiefComplaint() : "", ca.getId()));
+        }
+
+        events.sort((a, b) -> {
+            if (a.getEventTime() == null) return 1;
+            if (b.getEventTime() == null) return -1;
+            return b.getEventTime().compareTo(a.getEventTime());
+        });
+        return events;
+    }
+
     public MrdRecord archiveAdmission(Long ipdAdmissionId, String rackLocation) {
+        return archiveAdmission(ipdAdmissionId, rackLocation, null);
+    }
+
+    public MrdRecord archiveAdmission(Long ipdAdmissionId, String rackLocation, String overrideReason) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
 
@@ -117,6 +225,32 @@ public class MrdService {
 
         if (rackLocation == null || rackLocation.trim().isEmpty()) {
             throw new IllegalArgumentException("Shelf/Rack location is required");
+        }
+
+        // Form 02 gate: the file must be completeness-checked before archival.
+        // Incomplete files require an explicit, audited override reason.
+        com.hms.dto.MrdCompletenessDTO completeness = computeCompleteness(ipdAdmissionId);
+        if (!completeness.isComplete()) {
+            if (overrideReason == null || overrideReason.trim().isEmpty()) {
+                String failing = completeness.getItems().entrySet().stream()
+                        .filter(e -> "FAIL".equals(e.getValue()))
+                        .map(java.util.Map.Entry::getKey)
+                        .reduce((a, b) -> a + ", " + b).orElse("");
+                throw new IllegalArgumentException(
+                        "File is incomplete (missing: " + failing + "). Provide an override reason to archive anyway.");
+            }
+            try {
+                auditLogService.logAction(
+                        "MRD_INCOMPLETE_OVERRIDE",
+                        "Incomplete IPD file " + ipdAdmissionId + " archived with override: " + overrideReason.trim(),
+                        securityHelper.getCurrentUserEmail(),
+                        hospitalId,
+                        "MRD",
+                        String.valueOf(ipdAdmissionId),
+                        overrideReason.trim());
+            } catch (Exception ignored) {
+                // audit failure must not block the archival itself
+            }
         }
 
         // Generate sequential MRD number
