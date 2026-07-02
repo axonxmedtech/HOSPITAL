@@ -36,6 +36,7 @@ public class PatientPortalDashboardService {
     @Autowired private PrescriptionRepository prescriptionRepository;
     @Autowired private BillingRepository billingRepository;
     @Autowired private AuditLogRepository auditLogRepository;
+    @Autowired private DoctorRepository doctorRepository;
 
     public PortalDashboardResponse getDashboard(Long hospitalId, Long portalUserId) {
         Long patientId = resolvePatientId(hospitalId, portalUserId);
@@ -73,8 +74,12 @@ public class PatientPortalDashboardService {
     public List<Appointment> getAppointments(Long hospitalId, Long portalUserId) {
         Long patientId = resolvePatientId(hospitalId, portalUserId);
         audit(hospitalId, patientId, "PATIENT_PORTAL_APPOINTMENTS_ACCESSED", "Appointments viewed");
-        return appointmentRepository
+        List<Appointment> appointments = appointmentRepository
                 .findByPatientIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(patientId, hospitalId);
+        for (Appointment appointment : appointments) {
+            doctorRepository.findById(appointment.getDoctorId()).ifPresent(d -> appointment.setDoctorName(d.getName()));
+        }
+        return appointments;
     }
 
     /** BR-2: only RELEASED lab/radiology orders are ever visible to the patient. */

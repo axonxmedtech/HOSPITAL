@@ -34,6 +34,7 @@ class PatientPortalDashboardServiceTest {
     @Mock private PrescriptionRepository prescriptionRepository;
     @Mock private BillingRepository billingRepository;
     @Mock private AuditLogRepository auditLogRepository;
+    @Mock private DoctorRepository doctorRepository;
 
     @InjectMocks
     private PatientPortalDashboardService service;
@@ -129,6 +130,25 @@ class PatientPortalDashboardServiceTest {
 
         org.mockito.Mockito.verify(appointmentRepository)
                 .findByPatientIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(PATIENT_ID, HOSPITAL_ID);
+    }
+
+    @Test
+    void getAppointments_populatesDoctorNameFromDoctorId() {
+        when(portalUserRepository.findById(PORTAL_USER_ID)).thenReturn(Optional.of(portalUser()));
+        Appointment appt = new Appointment();
+        appt.setId(30L);
+        appt.setDoctorId(99L);
+        when(appointmentRepository.findByPatientIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(PATIENT_ID, HOSPITAL_ID))
+                .thenReturn(List.of(appt));
+
+        Doctor doctor = new Doctor();
+        doctor.setId(99L);
+        doctor.setName("Dr. Mehta");
+        when(doctorRepository.findById(99L)).thenReturn(Optional.of(doctor));
+
+        List<Appointment> result = service.getAppointments(HOSPITAL_ID, PORTAL_USER_ID);
+
+        assertThat(result.get(0).getDoctorName()).isEqualTo("Dr. Mehta");
     }
 
     // ===== BR-4: every read is audit-logged =====
