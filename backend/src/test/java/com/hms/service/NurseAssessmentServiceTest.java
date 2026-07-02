@@ -6,6 +6,7 @@ import com.hms.repository.PatientRiskAssessmentRepository;
 import com.hms.repository.VitalSignsRepository;
 import com.hms.security.SecurityContextHelper;
 import com.hms.service.hospital.MrdService;
+import com.hms.exception.UnauthorizedException;
 import com.hms.service.hospital.NurseAssessmentService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,6 +31,7 @@ class NurseAssessmentServiceTest {
     @Mock private SecurityContextHelper securityHelper;
     @Mock private MrdService mrdService;
     @Mock private PatientRiskAssessmentRepository riskRepository;
+    @Mock private com.hms.repository.IpdAdmissionRepository ipdAdmissionRepository;
 
     @InjectMocks
     private NurseAssessmentService service;
@@ -122,5 +124,21 @@ class NurseAssessmentServiceTest {
         assertThat(saved.getPulseRhythm()).isEqualTo("REGULAR");
         assertThat(saved.getRespPattern()).isEqualTo("NORMAL");
         assertThat(saved.getBpPosition()).isEqualTo("SITTING");
+    }
+
+    @Test
+    void getVitals_enforcesTenantIsolation() {
+        Long hospitalId = 1L;
+        Long admissionId = 10L;
+
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+
+        com.hms.entity.IpdAdmission admission = new com.hms.entity.IpdAdmission();
+        admission.setId(admissionId);
+        admission.setHospitalId(999L); // foreign tenant
+        when(ipdAdmissionRepository.findById(admissionId)).thenReturn(java.util.Optional.of(admission));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.getVitals(admissionId))
+                .isInstanceOf(UnauthorizedException.class);
     }
 }

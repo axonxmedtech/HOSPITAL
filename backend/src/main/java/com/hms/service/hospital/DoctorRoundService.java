@@ -19,8 +19,19 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.hms.entity.CdssAlertLog;
+import com.hms.entity.PatientReferral;
+import com.hms.entity.ProgressOrder;
+import com.hms.entity.DoctorOrder;
+import com.hms.repository.CdssAlertLogRepository;
+import com.hms.repository.PatientReferralRepository;
+import com.hms.repository.ProgressOrderRepository;
+import com.hms.repository.DoctorOrderRepository;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.ArrayList;
+import java.util.Collections;
 
 @Service
 public class DoctorRoundService {
@@ -47,6 +58,18 @@ public class DoctorRoundService {
 
     @Autowired
     private HospitalWebSocketHandler webSocketHandler;
+
+    @Autowired
+    private CdssAlertLogRepository cdssAlertLogRepository;
+
+    @Autowired
+    private PatientReferralRepository patientReferralRepository;
+
+    @Autowired
+    private ProgressOrderRepository progressOrderRepository;
+
+    @Autowired
+    private DoctorOrderRepository doctorOrderRepository;
 
     public List<DoctorRound> getRoundsHistory(Long ipdAdmissionId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
@@ -97,7 +120,14 @@ public class DoctorRoundService {
         round.setSignedBy(email);
         round.setSignedAt(LocalDateTime.now());
 
+        // Reassessment fields
+        round.setClinicalStatus(request.getClinicalStatus());
+        round.setClinicalImpression(request.getClinicalImpression());
+        round.setBaselineAssessmentId(request.getBaselineAssessmentId());
+
         DoctorRound saved = roundRepository.save(round);
+
+        processRoundTriggers(saved, request, admission, doctor, hospitalId);
 
         audit("DOCTOR_ROUND_RECORDED", "Doctor round (" + saved.getAssessmentType() + ") recorded for IPD "
                 + ipdAdmissionId + " by Dr. " + doctor.getName(), hospitalId);
@@ -151,17 +181,110 @@ public class DoctorRoundService {
         amendment.setSignedAt(LocalDateTime.now());
         amendment.setAmendedFromId(original.getId());
         amendment.setAmendmentReason(request.getAmendmentReason());
+
+        // Reassessment fields
+        amendment.setClinicalStatus(request.getClinicalStatus());
+        amendment.setClinicalImpression(request.getClinicalImpression());
+        amendment.setBaselineAssessmentId(original.getBaselineAssessmentId() != null
+                ? original.getBaselineAssessmentId()
+                : request.getBaselineAssessmentId());
+
         DoctorRound saved = roundRepository.save(amendment);
 
         // Mark the original superseded — content untouched (immutable medico-legal record).
         original.setStatus("AMENDED");
         roundRepository.save(original);
 
+        IpdAdmission admission = ipdAdmissionRepository.findById(original.getIpdAdmissionId())
+                .orElseThrow(() -> new RuntimeException("IPD Admission not found: " + original.getIpdAdmissionId()));
+
+        processRoundTriggers(saved, request, admission, doctor, hospitalId);
+
         audit("DOCTOR_ROUND_AMENDED", "Doctor round " + roundId + " amended (new note " + saved.getId()
                 + ") by Dr. " + doctor.getName() + ": " + request.getAmendmentReason(), hospitalId);
         broadcast(hospitalId);
 
         return saved;
+    }
+
+    private void processRoundTriggers(DoctorRound saved, DoctorRoundRequest request, IpdAdmission admission, Doctor doctor, Long hospitalId) {
+        // Ready for Discharge transition (BR-5)
+        if ("Ready for Discharge".equalsIgnoreCase(saved.getClinicalImpression())) {
+            admission.setStatus("DISCHARGE_PLANNED");
+            ipdAdmissionRepository.save(admission);
+        }
+
+        // Deterioration alert (BR-4)
+        if ("Deteriorating".equalsIgnoreCase(saved.getClinicalImpression()) || "Requires ICU".equalsIgnoreCase(saved.getClinicalImpression())) {
+            CdssAlertLog alert = new CdssAlertLog();
+            alert.setHospitalId(hospitalId);
+            alert.setPatientId(admission.getPatientId());
+            alert.setIpdAdmissionId(admission.getId());
+            alert.setAlertType("CRITICAL_DETERIORATION");
+            alert.setAlertMessage("Critical patient condition round review impression: " + saved.getClinicalImpression() + ". Details: " + saved.getAssessment());
+            alert.setSeverity("HIGH");
+            cdssAlertLogRepository.save(alert);
+        }
+
+        // Spawned orders (BR-7 / link)
+        if (request.getSpawnedOrders() != null) {
+            for (DoctorOrder order : request.getSpawnedOrders()) {
+                order.setHospitalId(hospitalId);
+                order.setIpdAdmissionId(admission.getId());
+                if (order.getStatus() == null) {
+                    order.setStatus("ACTIVE");
+                }
+                if (order.getCreatedBy() == null) {
+                    order.setCreatedBy(securityHelper.getCurrentUserId());
+                }
+                if (order.getCreatedByName() == null) {
+                    order.setCreatedByName(doctor.getName());
+                }
+                DoctorOrder savedOrder = doctorOrderRepository.save(order);
+
+                ProgressOrder link = new ProgressOrder();
+                link.setHospitalId(hospitalId);
+                link.setProgressNoteId(saved.getId());
+                link.setOrderType("MEDICATION");
+                link.setReferenceId(savedOrder.getId());
+                progressOrderRepository.save(link);
+            }
+        }
+
+        // Stopped orders (BR-7 / link)
+        if (request.getStoppedOrderPublicIds() != null) {
+            for (String publicId : request.getStoppedOrderPublicIds()) {
+                doctorOrderRepository.findByPublicIdAndHospitalId(publicId, hospitalId).ifPresent(order -> {
+                    order.setStatus("STOPPED");
+                    doctorOrderRepository.save(order);
+
+                    ProgressOrder link = new ProgressOrder();
+                    link.setHospitalId(hospitalId);
+                    link.setProgressNoteId(saved.getId());
+                    link.setOrderType("MEDICATION");
+                    link.setReferenceId(order.getId());
+                    progressOrderRepository.save(link);
+                });
+            }
+        }
+
+        // Referrals
+        if (request.getReferrals() != null) {
+            for (DoctorRoundRequest.ReferralRequest refReq : request.getReferrals()) {
+                PatientReferral referral = new PatientReferral();
+                referral.setHospitalId(hospitalId);
+                referral.setPatientId(admission.getPatientId());
+                referral.setAdmissionId(admission.getId());
+                referral.setReassessmentId(saved.getId());
+                referral.setSpecialty(refReq.getSpecialty());
+                referral.setReason(refReq.getReason());
+                referral.setUrgency(refReq.getUrgency() != null ? refReq.getUrgency() : "ROUTINE");
+                referral.setStatus("REQUESTED");
+                referral.setRequestedBy(doctor.getId());
+                referral.setRequestedAt(LocalDateTime.now());
+                patientReferralRepository.save(referral);
+            }
+        }
     }
 
     private String normalizeAssessmentType(String type) {
@@ -191,5 +314,31 @@ public class DoctorRoundService {
         } catch (Exception e) {
             log.warn("WebSocket broadcast failed: {}", e.getMessage());
         }
+    }
+
+    public List<Map<String, String>> suggestActionsFromPlan(String plan) {
+        List<Map<String, String>> suggestions = new java.util.ArrayList<>();
+        if (plan == null || plan.isBlank()) return suggestions;
+
+        String lower = plan.toLowerCase();
+        if (lower.contains("cbc")) {
+            suggestions.add(Map.of("type", "LAB", "name", "CBC", "action", "Create CBC Lab Order"));
+        }
+        if (lower.contains("electrolyte") || lower.contains("potassium") || lower.contains("sodium")) {
+            suggestions.add(Map.of("type", "LAB", "name", "Serum Electrolytes", "action", "Create Serum Electrolytes Lab Order"));
+        }
+        if (lower.contains("x-ray") || lower.contains("xray")) {
+            suggestions.add(Map.of("type", "RADIOLOGY", "name", "Chest X-Ray", "action", "Create Chest X-Ray Radiology Order"));
+        }
+        if (lower.contains("discharge")) {
+            suggestions.add(Map.of("type", "DISCHARGE", "name", "Discharge Planning", "action", "Initiate Discharge summary workflow"));
+        }
+        if (lower.contains("icu")) {
+            suggestions.add(Map.of("type", "TRANSFER", "name", "ICU Transfer", "action", "Initiate transfer to ICU"));
+        }
+        if (lower.contains("refer to") || lower.contains("consult")) {
+            suggestions.add(Map.of("type", "REFERRAL", "name", "Specialist Consultation", "action", "Raise specialist referral request"));
+        }
+        return suggestions;
     }
 }

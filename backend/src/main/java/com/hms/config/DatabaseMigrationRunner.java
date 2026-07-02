@@ -46,6 +46,7 @@ public class DatabaseMigrationRunner {
         migrateBillingHardeningSchema();
         migrateInventoryProcurementSchema();
         migrateClinicalFanoutsSchema();
+        migrateClinicalDepthSchema();
     }
 
     /**
@@ -1149,6 +1150,84 @@ public class DatabaseMigrationRunner {
             log.info("DB migration: created/verified Clinical Fan-outs / Incident Report tables");
         } catch (Exception e) {
             log.warn("DB migration skipped (migrateClinicalFanoutsSchema): {}", e.getMessage());
+        }
+    }
+
+    private void migrateClinicalDepthSchema() {
+        try {
+            // 1. Add systemic exam and screening columns to clinical_assessment
+            String[] assessCols = {
+                "systemic_exam_cvs text DEFAULT NULL",
+                "systemic_exam_rs text DEFAULT NULL",
+                "systemic_exam_cns text DEFAULT NULL",
+                "systemic_exam_gi text DEFAULT NULL",
+                "systemic_exam_msk text DEFAULT NULL",
+                "systemic_exam_skin text DEFAULT NULL",
+                "nutritional_screening text DEFAULT NULL",
+                "functional_screening text DEFAULT NULL",
+                "pain_screening text DEFAULT NULL"
+            };
+            for (String col : assessCols) {
+                try {
+                    jdbcTemplate.execute("ALTER TABLE clinical_assessment ADD COLUMN " + col);
+                } catch (Exception e) {
+                    // already exists
+                }
+            }
+
+            // 2. Add clinical status/impression/baseline cols to doctor_rounds
+            String[] roundCols = {
+                "clinical_status text DEFAULT NULL",
+                "clinical_impression varchar(30) DEFAULT NULL",
+                "baseline_assessment_id bigint DEFAULT NULL"
+            };
+            for (String col : roundCols) {
+                try {
+                    jdbcTemplate.execute("ALTER TABLE doctor_rounds ADD COLUMN " + col);
+                } catch (Exception e) {
+                    // already exists
+                }
+            }
+
+            // 3. Create patient_referral table
+            jdbcTemplate.execute(
+                "CREATE TABLE IF NOT EXISTS patient_referral (" +
+                "  id bigint NOT NULL AUTO_INCREMENT," +
+                "  public_id varchar(50) NOT NULL UNIQUE," +
+                "  hospital_id bigint NOT NULL," +
+                "  patient_id bigint NOT NULL," +
+                "  admission_id bigint NOT NULL," +
+                "  reassessment_id bigint DEFAULT NULL," +
+                "  specialty varchar(50) NOT NULL," +
+                "  reason text DEFAULT NULL," +
+                "  urgency varchar(20) NOT NULL," +
+                "  status varchar(30) NOT NULL DEFAULT 'REQUESTED'," +
+                "  requested_by bigint DEFAULT NULL," +
+                "  requested_at datetime NOT NULL," +
+                "  responded_by bigint DEFAULT NULL," +
+                "  response_note text DEFAULT NULL," +
+                "  PRIMARY KEY (id)," +
+                "  KEY idx_pr_hospital (hospital_id)" +
+                ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+            );
+
+            // 4. Create progress_order table
+            jdbcTemplate.execute(
+                "CREATE TABLE IF NOT EXISTS progress_order (" +
+                "  id bigint NOT NULL AUTO_INCREMENT," +
+                "  hospital_id bigint NOT NULL," +
+                "  progress_note_id bigint NOT NULL," +
+                "  order_type varchar(30) NOT NULL," +
+                "  reference_id bigint NOT NULL," +
+                "  created_at datetime NOT NULL," +
+                "  PRIMARY KEY (id)," +
+                "  KEY idx_po_hospital (hospital_id)" +
+                ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+            );
+
+            log.info("DB migration: created/verified Clinical Depth / SOAP Progress / Reassessment / Referral tables");
+        } catch (Exception e) {
+            log.warn("DB migration skipped (migrateClinicalDepthSchema): {}", e.getMessage());
         }
     }
 }

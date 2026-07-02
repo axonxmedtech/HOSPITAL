@@ -47,4 +47,15 @@ public class DoctorRoundController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+
+    @GetMapping("/suggest-plan")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> suggestPlanActions(@PathVariable Long admissionId,
+                                                @RequestParam String plan) {
+        try {
+            return ResponseEntity.ok(roundService.suggestActionsFromPlan(plan));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
 }

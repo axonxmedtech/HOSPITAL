@@ -53,6 +53,18 @@ class DoctorRoundServiceTest {
     @Mock
     private com.hms.service.hospital.MrdService mrdService;
 
+    @Mock
+    private com.hms.repository.CdssAlertLogRepository cdssAlertLogRepository;
+
+    @Mock
+    private com.hms.repository.PatientReferralRepository patientReferralRepository;
+
+    @Mock
+    private com.hms.repository.ProgressOrderRepository progressOrderRepository;
+
+    @Mock
+    private com.hms.repository.DoctorOrderRepository doctorOrderRepository;
+
     @InjectMocks
     private DoctorRoundService doctorRoundService;
 
@@ -182,6 +194,10 @@ class DoctorRoundServiceTest {
     void amendRound_createsLinkedNoteAndMarksOriginalAmended() {
         Long hospitalId = 1L;
         stubDoctorContext(hospitalId);
+        IpdAdmission admission = new IpdAdmission();
+        admission.setId(10L);
+        admission.setHospitalId(hospitalId);
+        when(ipdAdmissionRepository.findById(10L)).thenReturn(Optional.of(admission));
         DoctorRound original = new DoctorRound();
         original.setId(7L);
         original.setHospitalId(hospitalId);
@@ -228,5 +244,54 @@ class DoctorRoundServiceTest {
         assertThatThrownBy(() -> doctorRoundService.amendRound(8L, req))
                 .isInstanceOf(UnauthorizedException.class);
         verify(roundRepository, never()).save(any());
+    }
+
+    @Test
+    void logRound_triggersSafetyActionsAndReferrals() {
+        Long hospitalId = 1L;
+        Long admissionId = 10L;
+
+        // Mock Security Context for Actor Auditing
+        Authentication authentication = mock(Authentication.class);
+        when(authentication.getName()).thenReturn("doctor@hospital.com");
+        SecurityContext securityContext = mock(SecurityContext.class);
+        when(securityContext.getAuthentication()).thenReturn(authentication);
+        SecurityContextHolder.setContext(securityContext);
+
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("doctor@hospital.com");
+
+        IpdAdmission admission = new IpdAdmission();
+        admission.setId(admissionId);
+        admission.setHospitalId(hospitalId);
+        when(ipdAdmissionRepository.findById(admissionId)).thenReturn(Optional.of(admission));
+
+        Doctor doctor = new Doctor();
+        doctor.setId(5L);
+        doctor.setName("Dr. John Smith");
+        when(doctorRepository.findByEmailAndHospitalId("doctor@hospital.com", hospitalId))
+                .thenReturn(Optional.of(doctor));
+
+        when(roundRepository.save(any(DoctorRound.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        DoctorRoundRequest req = new DoctorRoundRequest();
+        req.setSubjective("Patient condition worsening");
+        req.setClinicalImpression("Deteriorating");
+        req.setReferrals(java.util.Collections.singletonList(
+                new DoctorRoundRequest.ReferralRequest("Cardiology", "Consultation", "URGENT")
+        ));
+
+        DoctorRound round = doctorRoundService.logRound(admissionId, req);
+
+        assertThat(round.getClinicalImpression()).isEqualTo("Deteriorating");
+        verify(cdssAlertLogRepository, times(1)).save(any());
+        verify(patientReferralRepository, times(1)).save(any());
+    }
+
+    @Test
+    void suggestActionsFromPlan_identifiesKeywords() {
+        var suggestions = doctorRoundService.suggestActionsFromPlan("Suggest CBC and Chest X-ray. Patient fits for discharge.");
+        assertThat(suggestions).hasSize(3);
+        assertThat(suggestions.stream().map(m -> m.get("type"))).contains("LAB", "RADIOLOGY", "DISCHARGE");
     }
 }

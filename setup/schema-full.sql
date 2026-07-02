@@ -3205,3 +3205,47 @@ CREATE TABLE IF NOT EXISTS `incident_reports` (
   PRIMARY KEY (`id`),
   KEY `idx_ir_hospital` (`hospital_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+ALTER TABLE `clinical_assessment` ADD COLUMN `systemic_exam_cvs` text DEFAULT NULL;
+ALTER TABLE `clinical_assessment` ADD COLUMN `systemic_exam_rs` text DEFAULT NULL;
+ALTER TABLE `clinical_assessment` ADD COLUMN `systemic_exam_cns` text DEFAULT NULL;
+ALTER TABLE `clinical_assessment` ADD COLUMN `systemic_exam_gi` text DEFAULT NULL;
+ALTER TABLE `clinical_assessment` ADD COLUMN `systemic_exam_msk` text DEFAULT NULL;
+ALTER TABLE `clinical_assessment` ADD COLUMN `systemic_exam_skin` text DEFAULT NULL;
+ALTER TABLE `clinical_assessment` ADD COLUMN `nutritional_screening` text DEFAULT NULL;
+ALTER TABLE `clinical_assessment` ADD COLUMN `functional_screening` text DEFAULT NULL;
+ALTER TABLE `clinical_assessment` ADD COLUMN `pain_screening` text DEFAULT NULL;
+
+ALTER TABLE `doctor_rounds` ADD COLUMN `clinical_status` text DEFAULT NULL;
+ALTER TABLE `doctor_rounds` ADD COLUMN `clinical_impression` varchar(30) DEFAULT NULL;
+ALTER TABLE `doctor_rounds` ADD COLUMN `baseline_assessment_id` bigint DEFAULT NULL;
+
+CREATE TABLE IF NOT EXISTS `patient_referral` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(50) NOT NULL UNIQUE,
+  `hospital_id` bigint NOT NULL,
+  `patient_id` bigint NOT NULL,
+  `admission_id` bigint NOT NULL,
+  `reassessment_id` bigint DEFAULT NULL,
+  `specialty` varchar(50) NOT NULL,
+  `reason` text DEFAULT NULL,
+  `urgency` varchar(20) NOT NULL,
+  `status` varchar(30) NOT NULL DEFAULT 'REQUESTED',
+  `requested_by` bigint DEFAULT NULL,
+  `requested_at` datetime NOT NULL,
+  `responded_by` bigint DEFAULT NULL,
+  `response_note` text DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_pr_hospital` (`hospital_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `progress_order` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `progress_note_id` bigint NOT NULL,
+  `order_type` varchar(30) NOT NULL,
+  `reference_id` bigint NOT NULL,
+  `created_at` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_po_hospital` (`hospital_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

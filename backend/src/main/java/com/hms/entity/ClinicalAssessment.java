@@ -52,6 +52,33 @@ public class ClinicalAssessment {
     @Column(name = "treatment_plan", nullable = false, columnDefinition = "text")
     private String treatmentPlan;
 
+    @Column(name = "systemic_exam_cvs", columnDefinition = "text")
+    private String systemicExamCvs;
+
+    @Column(name = "systemic_exam_rs", columnDefinition = "text")
+    private String systemicExamRs;
+
+    @Column(name = "systemic_exam_cns", columnDefinition = "text")
+    private String systemicExamCns;
+
+    @Column(name = "systemic_exam_gi", columnDefinition = "text")
+    private String systemicExamGi;
+
+    @Column(name = "systemic_exam_msk", columnDefinition = "text")
+    private String systemicExamMsk;
+
+    @Column(name = "systemic_exam_skin", columnDefinition = "text")
+    private String systemicExamSkin;
+
+    @Column(name = "nutritional_screening", columnDefinition = "text")
+    private String nutritionalScreening;
+
+    @Column(name = "functional_screening", columnDefinition = "text")
+    private String functionalScreening;
+
+    @Column(name = "pain_screening", columnDefinition = "text")
+    private String painScreening;
+
     @Column(name = "status", nullable = false, length = 20)
     private String status = "DRAFT"; // e.g. "DRAFT", "FINALIZED", "AMENDED", "ARCHIVED"
 

@@ -22,6 +22,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.ArrayList;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -85,7 +86,7 @@ public class ClinicalAssessmentControllerTest {
         updated.setStatus("DRAFT");
         updated.setChiefComplaint("Chest pain");
 
-        when(clinicalAssessmentService.updateDraft(90L, "Chest pain", "Started 2 hours ago", null, null))
+        when(clinicalAssessmentService.updateDraft(eq(90L), any(ClinicalAssessmentUpdateRequest.class)))
                 .thenReturn(updated);
 
         mockMvc.perform(put("/hospital/clinical-assessments/90")

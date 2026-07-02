@@ -1,6 +1,7 @@
 package com.hms.service.hospital;
 
 import com.hms.entity.*;
+import com.hms.dto.ClinicalAssessmentUpdateRequest;
 import com.hms.exception.ResourceNotFoundException;
 import com.hms.exception.UnauthorizedException;
 import com.hms.repository.*;
@@ -134,6 +135,16 @@ public class ClinicalAssessmentService {
     @Transactional
     public ClinicalAssessment updateDraft(Long id, String chiefComplaint, String historyPresentIllness,
                                           String provisionalDiagnosis, String treatmentPlan) {
+        ClinicalAssessmentUpdateRequest req = new ClinicalAssessmentUpdateRequest();
+        req.setChiefComplaint(chiefComplaint);
+        req.setHistoryPresentIllness(historyPresentIllness);
+        req.setProvisionalDiagnosis(provisionalDiagnosis);
+        req.setTreatmentPlan(treatmentPlan);
+        return updateDraft(id, req);
+    }
+
+    @Transactional
+    public ClinicalAssessment updateDraft(Long id, ClinicalAssessmentUpdateRequest request) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         ClinicalAssessment assessment = clinicalAssessmentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Clinical assessment not found"));
@@ -146,10 +157,19 @@ public class ClinicalAssessmentService {
             throw new IllegalArgumentException("Cannot update a finalized or amended assessment");
         }
 
-        assessment.setChiefComplaint(chiefComplaint);
-        assessment.setHistoryPresentIllness(historyPresentIllness);
-        assessment.setProvisionalDiagnosis(provisionalDiagnosis);
-        assessment.setTreatmentPlan(treatmentPlan);
+        assessment.setChiefComplaint(request.getChiefComplaint());
+        assessment.setHistoryPresentIllness(request.getHistoryPresentIllness());
+        assessment.setProvisionalDiagnosis(request.getProvisionalDiagnosis());
+        assessment.setTreatmentPlan(request.getTreatmentPlan());
+        assessment.setSystemicExamCvs(request.getSystemicExamCvs());
+        assessment.setSystemicExamRs(request.getSystemicExamRs());
+        assessment.setSystemicExamCns(request.getSystemicExamCns());
+        assessment.setSystemicExamGi(request.getSystemicExamGi());
+        assessment.setSystemicExamMsk(request.getSystemicExamMsk());
+        assessment.setSystemicExamSkin(request.getSystemicExamSkin());
+        assessment.setNutritionalScreening(request.getNutritionalScreening());
+        assessment.setFunctionalScreening(request.getFunctionalScreening());
+        assessment.setPainScreening(request.getPainScreening());
 
         return clinicalAssessmentRepository.save(assessment);
     }

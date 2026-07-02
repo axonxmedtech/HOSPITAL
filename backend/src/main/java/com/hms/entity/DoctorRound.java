@@ -71,6 +71,15 @@ public class DoctorRound {
     @Column(name = "amendment_reason", length = 255)
     private String amendmentReason;
 
+    @Column(name = "clinical_status", columnDefinition = "text")
+    private String clinicalStatus;
+
+    @Column(name = "clinical_impression", length = 30)
+    private String clinicalImpression;
+
+    @Column(name = "baseline_assessment_id")
+    private Long baselineAssessmentId;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

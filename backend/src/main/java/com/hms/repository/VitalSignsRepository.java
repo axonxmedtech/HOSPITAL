@@ -6,4 +6,5 @@ import java.util.List;
 
 public interface VitalSignsRepository extends JpaRepository<VitalSigns, Long> {
     List<VitalSigns> findByIpdAdmissionIdOrderByRecordedAtDesc(Long ipdAdmissionId);
+    List<VitalSigns> findByIpdAdmissionIdAndHospitalIdOrderByRecordedAtDesc(Long ipdAdmissionId, Long hospitalId);
 }

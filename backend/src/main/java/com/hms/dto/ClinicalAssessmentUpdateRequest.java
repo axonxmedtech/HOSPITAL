@@ -14,4 +14,13 @@ public class ClinicalAssessmentUpdateRequest {
     private String historyPresentIllness;
     private String provisionalDiagnosis;
     private String treatmentPlan;
+    private String systemicExamCvs;
+    private String systemicExamRs;
+    private String systemicExamCns;
+    private String systemicExamGi;
+    private String systemicExamMsk;
+    private String systemicExamSkin;
+    private String nutritionalScreening;
+    private String functionalScreening;
+    private String painScreening;
 }

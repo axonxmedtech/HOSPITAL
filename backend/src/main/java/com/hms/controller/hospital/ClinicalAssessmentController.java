@@ -44,13 +44,7 @@ public class ClinicalAssessmentController {
     public ResponseEntity<ApiResponse<ClinicalAssessment>> updateDraft(
             @PathVariable Long id,
             @RequestBody ClinicalAssessmentUpdateRequest request) {
-        ClinicalAssessment updated = clinicalAssessmentService.updateDraft(
-                id,
-                request.getChiefComplaint(),
-                request.getHistoryPresentIllness(),
-                request.getProvisionalDiagnosis(),
-                request.getTreatmentPlan()
-        );
+        ClinicalAssessment updated = clinicalAssessmentService.updateDraft(id, request);
         return ResponseEntity.ok(ApiResponse.ok("Assessment draft updated successfully", updated));
     }
 

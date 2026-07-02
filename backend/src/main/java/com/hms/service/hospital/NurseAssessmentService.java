@@ -24,6 +24,7 @@ public class NurseAssessmentService {
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private MrdService mrdService;
     @Autowired private PatientRiskAssessmentRepository riskRepository;
+    @Autowired private com.hms.repository.IpdAdmissionRepository ipdAdmissionRepository;
 
     @Transactional
     public NurseAssessment createAssessment(Long admissionId, Map<String, Object> data) {
@@ -121,7 +122,14 @@ public class NurseAssessmentService {
     }
 
     public List<VitalSigns> getVitals(Long admissionId) {
-        return vitalsRepository.findByIpdAdmissionIdOrderByRecordedAtDesc(admissionId);
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        com.hms.entity.IpdAdmission admission = ipdAdmissionRepository.findById(admissionId)
+                .orElseThrow(() -> new com.hms.exception.ResourceNotFoundException("Admission record not found"));
+        if (!admission.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access Denied: Tenant mismatch");
+        }
+        return vitalsRepository.findByIpdAdmissionIdAndHospitalIdOrderByRecordedAtDesc(admissionId, hospitalId);
     }
 
     private Integer toInt(Object val) {
