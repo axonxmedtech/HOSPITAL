@@ -650,6 +650,51 @@ CREATE TABLE IF NOT EXISTS quality_complaint (
     CONSTRAINT fk_complaint_feedback FOREIGN KEY (feedback_id) REFERENCES patient_feedback(id)
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS cssd_tray (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    tray_name VARCHAR(100) NOT NULL,
+    specialty VARCHAR(50) NULL,
+    barcode VARCHAR(30) NOT NULL UNIQUE,
+    status VARCHAR(20) NOT NULL,
+    cycle_id BIGINT NULL,
+    expiry_date DATE NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_cssd_tray_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_cssd_tray_hospital_cycle ON cssd_tray(hospital_id, cycle_id);
+CREATE INDEX IF NOT EXISTS idx_cssd_tray_hospital_status ON cssd_tray(hospital_id, status);
+
+CREATE TABLE IF NOT EXISTS sterilization_cycle (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    cycle_number VARCHAR(30) NOT NULL,
+    machine_id VARCHAR(20) NOT NULL,
+    method VARCHAR(20) NOT NULL,
+    temperature DECIMAL(4,1) NOT NULL,
+    pressure DECIMAL(4,2) NOT NULL,
+    duration INT NOT NULL,
+    chemical_result VARCHAR(10) NULL,
+    biological_result VARCHAR(10) NULL,
+    status VARCHAR(20) NOT NULL,
+    approved_by BIGINT NULL,
+    approved_by_sig TEXT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_sterilization_cycle_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS cssd_issue (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    tray_id BIGINT NOT NULL,
+    issued_to_department VARCHAR(50) NOT NULL,
+    issued_by_name VARCHAR(150) NULL,
+    received_by BIGINT NULL,
+    issue_time DATETIME NOT NULL,
+    CONSTRAINT fk_cssd_issue_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
+    CONSTRAINT fk_cssd_issue_tray FOREIGN KEY (tray_id) REFERENCES cssd_tray(id)
+) ENGINE=InnoDB;
+
 --
 -- Table structure for table `medicine_categories`
 --
