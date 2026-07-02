@@ -59,6 +59,24 @@ public class RadiologyResult {
     @Column(name = "verified_by_name", length = 100)
     private String verifiedByName;
 
+    // --- Radiologist sign-off gate (Form 28 BR-4/BR-5/BR-6, all nullable/additive) ---
+
+    @Column(name = "verified_at")
+    private LocalDateTime verifiedAt;
+
+    @Column(name = "released_by_name", length = 100)
+    private String releasedByName;
+
+    @Column(name = "released_at")
+    private LocalDateTime releasedAt;
+
+    // BR-5: radiologist-flagged critical finding (e.g. intracranial haemorrhage, pneumothorax)
+    @Column(name = "is_critical", nullable = false)
+    private Boolean isCritical = false;
+
+    @Column(name = "critical_alert_sent_at")
+    private LocalDateTime criticalAlertSentAt;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

@@ -78,4 +78,25 @@ public class RadiologyController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+
+    /** BR-4: radiologist sign-off. Role check here is coarse (DOCTOR); the service enforces the actual is_radiologist flag. */
+    @PutMapping("/orders/{publicId}/verify")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> verifyResult(@PathVariable String publicId) {
+        try {
+            return ResponseEntity.ok(radiologyWorkflowService.verifyResult(publicId));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PutMapping("/orders/{publicId}/release")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> releaseResult(@PathVariable String publicId) {
+        try {
+            return ResponseEntity.ok(radiologyWorkflowService.releaseResult(publicId));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
 }

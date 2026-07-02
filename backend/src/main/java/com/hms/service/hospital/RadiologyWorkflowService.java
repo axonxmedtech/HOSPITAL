@@ -29,6 +29,7 @@ public class RadiologyWorkflowService {
     @Autowired private MrdService mrdService;
     @Autowired private HospitalWebSocketHandler webSocketHandler;
     @Autowired private BillingService billingService;
+    @Autowired private DoctorRepository doctorRepository;
 
     // ─── Order placement ──────────────────────────────────────────────────────
 
@@ -168,7 +169,8 @@ public class RadiologyWorkflowService {
             throw new IllegalStateException(
                     "Order must be in STUDY_CONDUCTED status before entering result; current: " + order.getStatus());
 
-        // Create result
+        // Create result — awaiting radiologist verification (BR-4); resulted-by is never
+        // treated as verified-by, so a technician cannot self-attest a radiologist sign-off.
         RadiologyResult result = new RadiologyResult();
         result.setHospitalId(hospitalId);
         result.setRadiologyOrderId(order.getId());
@@ -176,19 +178,36 @@ public class RadiologyWorkflowService {
         result.setFindings(req.getFindings());
         result.setImpression(req.getImpression());
         result.setIsAbnormal(req.getIsAbnormal() != null ? req.getIsAbnormal() : false);
+        result.setIsCritical(req.getIsCritical() != null ? req.getIsCritical() : false);
         result.setResultFileUrl(req.getResultFileUrl());
         result.setResultedByName(email);
         result.setResultedAt(LocalDateTime.now());
-        result.setVerifiedByName(req.getVerifiedByName());
         RadiologyResult savedResult = radiologyResultRepository.save(result);
 
-        // Complete the order
+        // Complete the order — result entered but not yet radiologist-verified.
         order.setStatus("COMPLETED");
         order.setUpdatedAt(LocalDateTime.now());
         radiologyOrderRepository.save(order);
 
         audit("RADIOLOGY_RESULT_ENTERED", "Result entered for: " + order.getTestName() +
-              (result.getIsAbnormal() ? " [ABNORMAL]" : ""), hospitalId);
+              (result.getIsAbnormal() ? " [ABNORMAL]" : "")
+              + (result.getIsCritical() ? " [CRITICAL]" : ""), hospitalId);
+
+        // BR-5: critical finding fires an immediate high-priority alert.
+        if (Boolean.TRUE.equals(result.getIsCritical())) {
+            savedResult.setCriticalAlertSentAt(LocalDateTime.now());
+            radiologyResultRepository.save(savedResult);
+            try {
+                webSocketHandler.broadcast(hospitalId,
+                        "{\"type\":\"CRITICAL_RADIOLOGY_ALERT\",\"testName\":\"" + escapeJson(order.getTestName())
+                                + "\",\"patientId\":" + order.getPatientId()
+                                + ",\"radiologyOrderId\":\"" + order.getPublicId() + "\"}");
+            } catch (Exception e) {
+                log.warn("Critical radiology alert broadcast failed: {}", e.getMessage());
+            }
+            audit("RADIOLOGY_CRITICAL_ALERT", "Critical finding alert fired for: " + order.getTestName(), hospitalId);
+        }
+
         broadcast(hospitalId);
 
         Map<String, Object> dto = new HashMap<>();
@@ -197,14 +216,93 @@ public class RadiologyWorkflowService {
         return dto;
     }
 
+    /**
+     * BR-4: radiologist sign-off. Only a doctor carrying the radiologist capacity flag
+     * (is_radiologist) may verify a result. Transition: COMPLETED -> VERIFIED.
+     */
+    @Transactional
+    public Map<String, Object> verifyResult(String publicId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        String email = securityHelper.getCurrentUserEmail();
+
+        Doctor doctor = doctorRepository.findByEmailAndHospitalId(email, hospitalId)
+                .orElseThrow(() -> new UnauthorizedException("Doctor profile not found for this user"));
+        if (!Boolean.TRUE.equals(doctor.getIsRadiologist())) {
+            throw new UnauthorizedException("Only a radiologist may verify radiology results (BR-4).");
+        }
+
+        RadiologyOrder order = requireOrder(publicId, hospitalId);
+        if (!"COMPLETED".equals(order.getStatus())) {
+            throw new IllegalStateException(
+                    "Order must be COMPLETED (result entered) before verification; current: " + order.getStatus());
+        }
+        RadiologyResult result = radiologyResultRepository.findByRadiologyOrderId(order.getId())
+                .orElseThrow(() -> new IllegalStateException("No result found for order " + publicId));
+
+        result.setVerifiedByName(doctor.getName());
+        result.setVerifiedAt(LocalDateTime.now());
+        RadiologyResult savedResult = radiologyResultRepository.save(result);
+
+        order.setStatus("VERIFIED");
+        order.setUpdatedAt(LocalDateTime.now());
+        RadiologyOrder savedOrder = radiologyOrderRepository.save(order);
+
+        audit("RADIOLOGY_RESULT_VERIFIED", "Result verified by Dr. " + doctor.getName() + " for: " + order.getTestName(), hospitalId);
+        broadcast(hospitalId);
+
+        Map<String, Object> dto = new HashMap<>();
+        dto.put("order", savedOrder);
+        dto.put("result", savedResult);
+        return dto;
+    }
+
+    /**
+     * BR-6: releases a verified, immutable report. Transition: VERIFIED -> RELEASED.
+     */
+    @Transactional
+    public Map<String, Object> releaseResult(String publicId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        String email = securityHelper.getCurrentUserEmail();
+
+        RadiologyOrder order = requireOrder(publicId, hospitalId);
+        if (!"VERIFIED".equals(order.getStatus())) {
+            throw new IllegalStateException(
+                    "Order must be VERIFIED before release; current: " + order.getStatus());
+        }
+        RadiologyResult result = radiologyResultRepository.findByRadiologyOrderId(order.getId())
+                .orElseThrow(() -> new IllegalStateException("No result found for order " + publicId));
+
+        result.setReleasedByName(email);
+        result.setReleasedAt(LocalDateTime.now());
+        RadiologyResult savedResult = radiologyResultRepository.save(result);
+
+        order.setStatus("RELEASED");
+        order.setUpdatedAt(LocalDateTime.now());
+        RadiologyOrder savedOrder = radiologyOrderRepository.save(order);
+
+        audit("RADIOLOGY_RESULT_RELEASED", "Result released for: " + order.getTestName(), hospitalId);
+        broadcast(hospitalId);
+
+        Map<String, Object> dto = new HashMap<>();
+        dto.put("order", savedOrder);
+        dto.put("result", savedResult);
+        return dto;
+    }
+
+    private String escapeJson(String s) {
+        return s == null ? "" : s.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
     @Transactional
     public RadiologyOrder cancelOrder(String publicId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
 
         RadiologyOrder order = requireOrder(publicId, hospitalId);
-        if ("COMPLETED".equals(order.getStatus()))
-            throw new IllegalStateException("Cannot cancel a completed order");
+        if (List.of("COMPLETED", "VERIFIED", "RELEASED").contains(order.getStatus()))
+            throw new IllegalStateException("Cannot cancel an order once its result has been entered");
 
         order.setStatus("CANCELLED");
         order.setUpdatedAt(LocalDateTime.now());

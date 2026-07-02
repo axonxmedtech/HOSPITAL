@@ -2026,10 +2026,21 @@ CREATE TABLE IF NOT EXISTS radiology_results (
     resulted_by_name VARCHAR(100) NOT NULL,
     resulted_at DATETIME NOT NULL,
     verified_by_name VARCHAR(100) NULL,
+    verified_at DATETIME NULL,
+    released_by_name VARCHAR(100) NULL,
+    released_at DATETIME NULL,
+    is_critical BOOLEAN NOT NULL DEFAULT FALSE,
+    critical_alert_sent_at DATETIME NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_rr_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
     CONSTRAINT fk_rr_radiology_order FOREIGN KEY (radiology_order_id) REFERENCES radiology_orders(id)
 ) ENGINE=InnoDB;
+-- Form 28 BR-4/5/6 additive migration (safe on live data):
+-- ALTER TABLE radiology_results
+--   ADD COLUMN verified_at DATETIME NULL, ADD COLUMN released_by_name VARCHAR(100) NULL,
+--   ADD COLUMN released_at DATETIME NULL, ADD COLUMN is_critical BOOLEAN NOT NULL DEFAULT FALSE,
+--   ADD COLUMN critical_alert_sent_at DATETIME NULL;
+-- radiology_orders.status now also takes VERIFIED / RELEASED values (existing VARCHAR column, no ALTER needed).
 
 -- Indexes for radiology queries
 CREATE INDEX IF NOT EXISTS idx_radiology_orders_hospital_id ON radiology_orders(hospital_id);

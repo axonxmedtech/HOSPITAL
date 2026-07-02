@@ -8,5 +8,6 @@ public class RadiologyResultRequest {
     private String impression;
     private Boolean isAbnormal = false;
     private String resultFileUrl;
-    private String verifiedByName;
+    // BR-5: radiologist flags a critical finding, triggering an immediate alert.
+    private Boolean isCritical = false;
 }
