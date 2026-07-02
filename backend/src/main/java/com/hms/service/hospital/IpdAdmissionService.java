@@ -99,6 +99,9 @@ public class IpdAdmissionService {
     @Autowired
     private MrdService mrdService;
 
+    @Autowired
+    private com.hms.repository.PatientConsentRepository patientConsentRepository;
+
     @Transactional
     public IpdAdmission admitFromOpd(Long opdId, Long wardId, Long bedId, String admissionType, String primaryDiagnosis) {
         // Load OPD
@@ -106,6 +109,8 @@ public class IpdAdmissionService {
 
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found in context");
+
+        checkGeneralConsentGate(hospitalId, opd.getPatient().getId(), admissionType);
 
         // Validate bed availability
         Bed bed = bedRepository.findById(bedId).orElseThrow(() -> new RuntimeException("Bed not found"));
@@ -239,6 +244,8 @@ public class IpdAdmissionService {
     public IpdAdmission admitFromEmergency(Long patientId, Long doctorId, Long wardId, Long bedId, String admissionType, String primaryDiagnosis) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found in context");
+
+        checkGeneralConsentGate(hospitalId, patientId, admissionType);
 
         // Validate bed availability
         Bed bed = bedRepository.findById(bedId).orElseThrow(() -> new RuntimeException("Bed not found"));
@@ -1407,6 +1414,25 @@ public class IpdAdmissionService {
             logger.warn("Failed to broadcast WebSocket refresh data from changeBed", e);
         }
         return saved;
+    }
+
+    private void checkGeneralConsentGate(Long hospitalId, Long patientId, String admissionType) {
+        String finalAdmissionType = admissionType != null ? admissionType : "ELECTIVE";
+        if ("ELECTIVE".equalsIgnoreCase(finalAdmissionType)) {
+            java.util.List<com.hms.entity.PatientConsent> generalConsents = patientConsentRepository
+                    .findByHospitalIdAndPatientIdAndIsDeletedFalse(hospitalId, patientId)
+                    .stream()
+                    .filter(c -> "GENERAL".equalsIgnoreCase(c.getConsentType()))
+                    .toList();
+
+            if (!generalConsents.isEmpty()) {
+                boolean hasLockedGeneralConsent = generalConsents.stream()
+                        .anyMatch(c -> "LOCKED".equalsIgnoreCase(c.getStatus()));
+                if (!hasLockedGeneralConsent) {
+                    throw new IllegalArgumentException("Elective IPD admission blocked: A GENERAL consent exists but is not locked.");
+                }
+            }
+        }
     }
 }
 

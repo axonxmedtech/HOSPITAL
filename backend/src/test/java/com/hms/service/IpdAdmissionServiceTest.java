@@ -58,6 +58,7 @@ class IpdAdmissionServiceTest {
     @Mock HospitalInventoryService hospitalInventoryService;
     @Mock HospitalWebSocketHandler webSocketHandler;
     @Mock com.hms.service.hospital.MrdService mrdService;
+    @Mock PatientConsentRepository patientConsentRepository;
 
     @InjectMocks
     IpdAdmissionService service;
@@ -302,5 +303,96 @@ class IpdAdmissionServiceTest {
                 .hasMessageContaining("Access Denied: Record belongs to another tenant");
 
         verify(medicalRecordRepository, never()).save(any());
+    }
+
+    @Test
+    void admitFromOpd_elective_withNoGeneralConsent_succeeds() {
+        Patient patient = new Patient();
+        patient.setId(5L);
+
+        Opd opd = new Opd();
+        opd.setId(1L);
+        opd.setPatient(patient);
+
+        when(opdRepository.findById(1L)).thenReturn(Optional.of(opd));
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("admin@test.com");
+
+        Bed bed = new Bed();
+        bed.setBedId(2L);
+        bed.setStatus("available");
+        when(bedRepository.findById(2L)).thenReturn(Optional.of(bed));
+
+        // Stub empty consents
+        when(patientConsentRepository.findByHospitalIdAndPatientIdAndIsDeletedFalse(1L, 5L))
+                .thenReturn(java.util.Collections.emptyList());
+
+        IpdAdmission savedIpd = new IpdAdmission();
+        savedIpd.setId(10L);
+        savedIpd.setPatientId(5L);
+        savedIpd.setHospitalId(1L);
+        when(ipdAdmissionRepository.save(any(IpdAdmission.class))).thenReturn(savedIpd);
+
+        IpdAdmission result = service.admitFromOpd(1L, 1L, 2L, "ELECTIVE", "Fever");
+        assertThat(result).isNotNull();
+    }
+
+    @Test
+    void admitFromOpd_elective_withDraftGeneralConsent_throwsIllegalArgumentException() {
+        Patient patient = new Patient();
+        patient.setId(5L);
+
+        Opd opd = new Opd();
+        opd.setId(1L);
+        opd.setPatient(patient);
+
+        when(opdRepository.findById(1L)).thenReturn(Optional.of(opd));
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+
+        // Stub draft general consent
+        com.hms.entity.PatientConsent draftConsent = new com.hms.entity.PatientConsent();
+        draftConsent.setConsentType("GENERAL");
+        draftConsent.setStatus("DRAFT");
+        when(patientConsentRepository.findByHospitalIdAndPatientIdAndIsDeletedFalse(1L, 5L))
+                .thenReturn(java.util.Collections.singletonList(draftConsent));
+
+        assertThatThrownBy(() -> service.admitFromOpd(1L, 1L, 2L, "ELECTIVE", "Fever"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Elective IPD admission blocked: A GENERAL consent exists but is not locked.");
+    }
+
+    @Test
+    void admitFromOpd_elective_withLockedGeneralConsent_succeeds() {
+        Patient patient = new Patient();
+        patient.setId(5L);
+
+        Opd opd = new Opd();
+        opd.setId(1L);
+        opd.setPatient(patient);
+
+        when(opdRepository.findById(1L)).thenReturn(Optional.of(opd));
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("admin@test.com");
+
+        Bed bed = new Bed();
+        bed.setBedId(2L);
+        bed.setStatus("available");
+        when(bedRepository.findById(2L)).thenReturn(Optional.of(bed));
+
+        // Stub locked general consent
+        com.hms.entity.PatientConsent lockedConsent = new com.hms.entity.PatientConsent();
+        lockedConsent.setConsentType("GENERAL");
+        lockedConsent.setStatus("LOCKED");
+        when(patientConsentRepository.findByHospitalIdAndPatientIdAndIsDeletedFalse(1L, 5L))
+                .thenReturn(java.util.Collections.singletonList(lockedConsent));
+
+        IpdAdmission savedIpd = new IpdAdmission();
+        savedIpd.setId(10L);
+        savedIpd.setPatientId(5L);
+        savedIpd.setHospitalId(1L);
+        when(ipdAdmissionRepository.save(any(IpdAdmission.class))).thenReturn(savedIpd);
+
+        IpdAdmission result = service.admitFromOpd(1L, 1L, 2L, "ELECTIVE", "Fever");
+        assertThat(result).isNotNull();
     }
 }

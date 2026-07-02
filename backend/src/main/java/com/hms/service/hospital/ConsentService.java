@@ -132,6 +132,22 @@ public class ConsentService {
             }
         }
 
+        if ("GENERAL".equalsIgnoreCase(consentType)) {
+            if (isPatientMinor(patient)) {
+                if (Boolean.TRUE.equals(request.getPatientSigned())) {
+                    throw new IllegalArgumentException("Minors cannot sign consents themselves; guardian signature is required");
+                }
+                if (request.getRelationship() == null || request.getRelationship().isBlank()) {
+                    request.setRelationship(patient.getGuardianRelationship());
+                }
+                if (patient.getGuardianRelationship() != null && !patient.getGuardianRelationship().isBlank()) {
+                    if (request.getRelationship() == null || !request.getRelationship().equalsIgnoreCase(patient.getGuardianRelationship())) {
+                        throw new IllegalArgumentException("Guardian relationship must match registered relationship: " + patient.getGuardianRelationship());
+                    }
+                }
+            }
+        }
+
         // Save consent draft
         PatientConsent consent = new PatientConsent();
         consent.setHospitalId(hospitalId);
@@ -182,7 +198,10 @@ public class ConsentService {
             saveSignatureSlotHelper(savedConsent.getId(), "PATIENT", patient.getName(), null, savedConsent.getSignatureType(), hospitalId);
         }
         if (Boolean.TRUE.equals(savedConsent.getGuardianSigned())) {
-            saveSignatureSlotHelper(savedConsent.getId(), "GUARDIAN", patient.getName() + "'s Guardian", savedConsent.getRelationship(), savedConsent.getSignatureType(), hospitalId);
+            String guardianName = (patient.getGuardianName() != null && !patient.getGuardianName().isBlank())
+                    ? patient.getGuardianName()
+                    : patient.getName() + "'s Guardian";
+            saveSignatureSlotHelper(savedConsent.getId(), "GUARDIAN", guardianName, savedConsent.getRelationship(), savedConsent.getSignatureType(), hospitalId);
         }
 
         audit("PATIENT_CONSENT_CREATED", "Created consent ID: " + savedConsent.getId() + " (Type: " + consentType + ")", hospitalId);
@@ -235,12 +254,21 @@ public class ConsentService {
 
         // Validate minor checks if signing as patient
         if (Boolean.TRUE.equals(request.getPatientSigned())) {
-            boolean isMinor = false;
-            if (patient.getAge() != null && patient.getAge() < 18) {
-                isMinor = true;
-            }
-            if (isMinor) {
+            if (isPatientMinor(patient)) {
                 throw new IllegalArgumentException("Minors cannot sign consents themselves; guardian signature is required");
+            }
+        }
+
+        if ("GENERAL".equalsIgnoreCase(consent.getConsentType()) && isPatientMinor(patient)) {
+            if (Boolean.TRUE.equals(request.getGuardianSigned())) {
+                if (request.getRelationship() == null || request.getRelationship().isBlank()) {
+                    request.setRelationship(patient.getGuardianRelationship());
+                }
+                if (patient.getGuardianRelationship() != null && !patient.getGuardianRelationship().isBlank()) {
+                    if (request.getRelationship() == null || !request.getRelationship().equalsIgnoreCase(patient.getGuardianRelationship())) {
+                        throw new IllegalArgumentException("Guardian relationship must match registered relationship: " + patient.getGuardianRelationship());
+                    }
+                }
             }
         }
 
@@ -252,7 +280,10 @@ public class ConsentService {
         if (Boolean.TRUE.equals(request.getGuardianSigned())) {
             consent.setGuardianSigned(true);
             consent.setRelationship(request.getRelationship());
-            saveSignatureSlotHelper(id, "GUARDIAN", patient.getName() + "'s Guardian", request.getRelationship(), request.getSignatureType(), hospitalId);
+            String guardianName = (patient.getGuardianName() != null && !patient.getGuardianName().isBlank())
+                    ? patient.getGuardianName()
+                    : patient.getName() + "'s Guardian";
+            saveSignatureSlotHelper(id, "GUARDIAN", guardianName, request.getRelationship(), request.getSignatureType(), hospitalId);
         }
 
         consent.setSignatureType(request.getSignatureType());
@@ -282,9 +313,23 @@ public class ConsentService {
             throw new UnauthorizedException("Access Denied: Tenant mismatch");
         }
 
+        Patient patient = patientRepository.findByIdAndHospitalIdAndIsActiveTrue(consent.getPatientId(), hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
+
         // Validate mandatory details on submit
-        if (!consent.getPatientSigned() && !consent.getGuardianSigned()) {
-            throw new IllegalArgumentException("Either Patient or Guardian signature must be captured");
+        if ("GENERAL".equalsIgnoreCase(consent.getConsentType()) && isPatientMinor(patient)) {
+            if (!consent.getGuardianSigned()) {
+                throw new IllegalArgumentException("Guardian signature is mandatory for minors");
+            }
+            if (patient.getGuardianRelationship() != null && !patient.getGuardianRelationship().isBlank()) {
+                if (consent.getRelationship() == null || !consent.getRelationship().equalsIgnoreCase(patient.getGuardianRelationship())) {
+                    throw new IllegalArgumentException("Guardian relationship must match registered relationship: " + patient.getGuardianRelationship());
+                }
+            }
+        } else {
+            if (!consent.getPatientSigned() && !consent.getGuardianSigned()) {
+                throw new IllegalArgumentException("Either Patient or Guardian signature must be captured");
+            }
         }
 
         if (consent.getGuardianSigned() && (consent.getRelationship() == null || consent.getRelationship().isBlank())) {
@@ -484,5 +529,12 @@ public class ConsentService {
         } catch (Exception e) {
             log.warn("Audit log failed: {}", e.getMessage());
         }
+    }
+
+    private boolean isPatientMinor(Patient patient) {
+        if (patient.getDateOfBirth() != null) {
+            return java.time.Period.between(patient.getDateOfBirth(), java.time.LocalDate.now()).getYears() < 18;
+        }
+        return patient.getAge() != null && patient.getAge() < 18;
     }
 }

@@ -263,7 +263,7 @@ class ConsentServiceTest {
     }
 
     @Test
-    void signConsent_Success_AsGuardianForMinor() {
+    void signConsent_MinorCheck_FailsWhenMinorSigns_BasedOnDOB() {
         // Arrange
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
 
@@ -277,8 +277,75 @@ class ConsentServiceTest {
         Patient patient = new Patient();
         patient.setId(10L);
         patient.setHospitalId(1L);
+        // DOB 5 years ago
+        patient.setDateOfBirth(java.time.LocalDate.now().minusYears(5));
+        when(patientRepository.findByIdAndHospitalIdAndIsActiveTrue(10L, 1L)).thenReturn(Optional.of(patient));
+
+        ConsentSignRequest signRequest = new ConsentSignRequest();
+        signRequest.setPatientSigned(true);
+        signRequest.setSignatureType("WET");
+
+        // Act & Assert
+        assertThatThrownBy(() -> consentService.signConsent(15L, signRequest))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Minors cannot sign consents themselves");
+    }
+
+    @Test
+    void signConsent_MinorCheck_SucceedsWhenAdultSigns_BasedOnDOB() {
+        // Arrange
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+
+        PatientConsent consent = new PatientConsent();
+        consent.setId(15L);
+        consent.setHospitalId(1L);
+        consent.setPatientId(10L);
+        consent.setStatus("DRAFT");
+        when(patientConsentRepository.findById(15L)).thenReturn(Optional.of(consent));
+
+        Patient patient = new Patient();
+        patient.setId(10L);
+        patient.setHospitalId(1L);
+        // DOB 25 years ago
+        patient.setDateOfBirth(java.time.LocalDate.now().minusYears(25));
+        patient.setName("Jane Adult");
+        when(patientRepository.findByIdAndHospitalIdAndIsActiveTrue(10L, 1L)).thenReturn(Optional.of(patient));
+
+        ConsentSignRequest signRequest = new ConsentSignRequest();
+        signRequest.setPatientSigned(true);
+        signRequest.setSignatureType("WET");
+
+        when(patientConsentRepository.save(any(PatientConsent.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Act
+        PatientConsent result = consentService.signConsent(15L, signRequest);
+
+        // Assert
+        assertThat(result).isNotNull();
+        assertThat(result.getPatientSigned()).isTrue();
+        assertThat(result.getStatus()).isEqualTo("SIGNED");
+    }
+
+    @Test
+    void signConsent_Success_AsGuardianForMinor() {
+        // Arrange
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+
+        PatientConsent consent = new PatientConsent();
+        consent.setId(15L);
+        consent.setHospitalId(1L);
+        consent.setPatientId(10L);
+        consent.setStatus("DRAFT");
+        consent.setConsentType("GENERAL");
+        when(patientConsentRepository.findById(15L)).thenReturn(Optional.of(consent));
+
+        Patient patient = new Patient();
+        patient.setId(10L);
+        patient.setHospitalId(1L);
         patient.setAge(15); // Minor
         patient.setName("Tiny Tim");
+        patient.setGuardianName("Tim Senior");
+        patient.setGuardianRelationship("Father");
         when(patientRepository.findByIdAndHospitalIdAndIsActiveTrue(10L, 1L)).thenReturn(Optional.of(patient));
 
         ConsentSignRequest signRequest = new ConsentSignRequest();
@@ -296,6 +363,42 @@ class ConsentServiceTest {
         assertThat(result.getGuardianSigned()).isTrue();
         assertThat(result.getRelationship()).isEqualTo("Father");
         assertThat(result.getStatus()).isEqualTo("SIGNED");
+        verify(signatureDocumentService).saveSignatureSlot(argThat(slot -> 
+            "Tim Senior".equals(slot.getSignerName()) && "Father".equals(slot.getSignerRelationship())
+        ));
+    }
+
+    @Test
+    void signConsent_FailsOnRelationshipMismatch_ForGeneralMinor() {
+        // Arrange
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+
+        PatientConsent consent = new PatientConsent();
+        consent.setId(15L);
+        consent.setHospitalId(1L);
+        consent.setPatientId(10L);
+        consent.setStatus("DRAFT");
+        consent.setConsentType("GENERAL");
+        when(patientConsentRepository.findById(15L)).thenReturn(Optional.of(consent));
+
+        Patient patient = new Patient();
+        patient.setId(10L);
+        patient.setHospitalId(1L);
+        patient.setAge(15); // Minor
+        patient.setName("Tiny Tim");
+        patient.setGuardianName("Tim Senior");
+        patient.setGuardianRelationship("Father");
+        when(patientRepository.findByIdAndHospitalIdAndIsActiveTrue(10L, 1L)).thenReturn(Optional.of(patient));
+
+        ConsentSignRequest signRequest = new ConsentSignRequest();
+        signRequest.setGuardianSigned(true);
+        signRequest.setRelationship("Uncle"); // Mismatch
+        signRequest.setSignatureType("WET");
+
+        // Act & Assert
+        assertThatThrownBy(() -> consentService.signConsent(15L, signRequest))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Guardian relationship must match registered relationship");
     }
 
     @Test
@@ -318,9 +421,16 @@ class ConsentServiceTest {
         // Arrange
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
 
+        Patient patient = new Patient();
+        patient.setId(10L);
+        patient.setHospitalId(1L);
+        patient.setAge(35); // adult
+        when(patientRepository.findByIdAndHospitalIdAndIsActiveTrue(10L, 1L)).thenReturn(Optional.of(patient));
+
         PatientConsent consent = new PatientConsent();
         consent.setId(15L);
         consent.setHospitalId(1L);
+        consent.setPatientId(10L);
         consent.setPatientSigned(true);
         consent.setConsentType("GENERAL");
         when(patientConsentRepository.findById(15L)).thenReturn(Optional.of(consent));
@@ -340,17 +450,53 @@ class ConsentServiceTest {
         // Arrange
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
 
+        Patient patient = new Patient();
+        patient.setId(10L);
+        patient.setHospitalId(1L);
+        patient.setAge(35); // adult
+        when(patientRepository.findByIdAndHospitalIdAndIsActiveTrue(10L, 1L)).thenReturn(Optional.of(patient));
+
         PatientConsent consent = new PatientConsent();
         consent.setId(15L);
         consent.setHospitalId(1L);
+        consent.setPatientId(10L);
         consent.setPatientSigned(false);
         consent.setGuardianSigned(false);
+        consent.setConsentType("GENERAL");
         when(patientConsentRepository.findById(15L)).thenReturn(Optional.of(consent));
 
         // Act & Assert
         assertThatThrownBy(() -> consentService.submitConsent(15L))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Either Patient or Guardian signature must be captured");
+    }
+
+    @Test
+    void submitConsent_Minor_FailsWithoutGuardianSignature() {
+        // Arrange
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+
+        Patient patient = new Patient();
+        patient.setId(10L);
+        patient.setHospitalId(1L);
+        patient.setAge(15); // Minor
+        patient.setGuardianName("Tim Senior");
+        patient.setGuardianRelationship("Father");
+        when(patientRepository.findByIdAndHospitalIdAndIsActiveTrue(10L, 1L)).thenReturn(Optional.of(patient));
+
+        PatientConsent consent = new PatientConsent();
+        consent.setId(15L);
+        consent.setHospitalId(1L);
+        consent.setPatientId(10L);
+        consent.setPatientSigned(true); // Signed by minor (which is invalid, and guardian signature is not present)
+        consent.setGuardianSigned(false);
+        consent.setConsentType("GENERAL");
+        when(patientConsentRepository.findById(15L)).thenReturn(Optional.of(consent));
+
+        // Act & Assert
+        assertThatThrownBy(() -> consentService.submitConsent(15L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Guardian signature is mandatory for minors");
     }
 
     // ===== Surgical Consent (Form 16) =====
