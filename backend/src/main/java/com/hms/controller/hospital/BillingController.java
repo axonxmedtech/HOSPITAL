@@ -83,6 +83,7 @@ public class BillingController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         validateBillingAccess();
+        Long hospitalId = securityHelper.getCurrentHospitalId();
         Pageable pageable = PageRequest.of(page, size, org.springframework.data.domain.Sort.by("createdAt").descending());
         // Fetch page of Billing
         org.springframework.data.domain.Page<com.hms.entity.Billing> billsPage = billingService.getAllBills(search, status, pageable);
@@ -195,6 +196,11 @@ public class BillingController {
             asMap.put("amount", totalAmt);
             asMap.put("paidAmount", paidAmt);
             asMap.put("balance", totalAmt.subtract(paidAmt));
+
+            java.util.List<com.hms.entity.InsuranceClaim> claims = insuranceClaimRepository.findByHospitalIdAndBillingId(hospitalId, b.getId());
+            if (claims != null && !claims.isEmpty()) {
+                asMap.put("insuranceClaim", claims.get(0));
+            }
             
             if (b.getPatientId() != null) {
                 com.hms.entity.Patient p = patientById.get(b.getPatientId());
@@ -585,6 +591,11 @@ public class BillingController {
             asMap.put("paidAmount", paidAmt);
             asMap.put("balance", totalAmt.subtract(paidAmt));
             asMap.put("patientName", patient.getName());
+
+            java.util.List<com.hms.entity.InsuranceClaim> claims = insuranceClaimRepository.findByHospitalIdAndBillingId(hospitalId, b.getId());
+            if (claims != null && !claims.isEmpty()) {
+                asMap.put("insuranceClaim", claims.get(0));
+            }
             mapped.add(asMap);
         }
         return ResponseEntity.ok(mapped);
