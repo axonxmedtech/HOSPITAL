@@ -695,6 +695,54 @@ CREATE TABLE IF NOT EXISTS cssd_issue (
     CONSTRAINT fk_cssd_issue_tray FOREIGN KEY (tray_id) REFERENCES cssd_tray(id)
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS medical_equipment (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    asset_code VARCHAR(20) NOT NULL UNIQUE,
+    equipment_name VARCHAR(100) NOT NULL,
+    category VARCHAR(50) NOT NULL,
+    manufacturer VARCHAR(100) NULL,
+    model VARCHAR(50) NULL,
+    serial_number VARCHAR(50) NOT NULL,
+    department VARCHAR(50) NOT NULL,
+    location VARCHAR(50) NULL,
+    status VARCHAR(20) NOT NULL,
+    warranty_expiry DATE NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_medical_equipment_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_equipment_hospital_status ON medical_equipment(hospital_id, status);
+
+CREATE TABLE IF NOT EXISTS breakdown_ticket (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    equipment_id BIGINT NOT NULL,
+    reported_by VARCHAR(100) NOT NULL,
+    reported_at DATETIME NOT NULL,
+    priority VARCHAR(20) NOT NULL,
+    remarks TEXT NULL,
+    status VARCHAR(20) NOT NULL,
+    engineer_sig TEXT NULL,
+    resolved_at DATETIME NULL,
+    CONSTRAINT fk_breakdown_ticket_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
+    CONSTRAINT fk_breakdown_ticket_equipment FOREIGN KEY (equipment_id) REFERENCES medical_equipment(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS calibration_record (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    equipment_id BIGINT NOT NULL,
+    calibration_date DATE NOT NULL,
+    due_date DATE NOT NULL,
+    agency VARCHAR(100) NOT NULL,
+    certificate_reference VARCHAR(100) NULL,
+    result VARCHAR(10) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_calibration_record_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
+    CONSTRAINT fk_calibration_record_equipment FOREIGN KEY (equipment_id) REFERENCES medical_equipment(id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_calibration_hospital_equipment ON calibration_record(hospital_id, equipment_id);
+
 --
 -- Table structure for table `medicine_categories`
 --
