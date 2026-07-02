@@ -924,6 +924,35 @@ CREATE TABLE IF NOT EXISTS executive_alert (
 ) ENGINE=InnoDB;
 CREATE INDEX IF NOT EXISTS idx_executive_alert_hospital_status ON executive_alert(hospital_id, status);
 
+CREATE TABLE IF NOT EXISTS patient_portal_user (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    patient_id BIGINT NOT NULL,
+    mobile VARCHAR(15) NOT NULL,
+    email VARCHAR(100) NULL,
+    status VARCHAR(20) NOT NULL,
+    lock_until DATETIME NULL,
+    last_login DATETIME NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_portal_user_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
+    CONSTRAINT fk_portal_user_patient FOREIGN KEY (patient_id) REFERENCES patients(id),
+    CONSTRAINT uq_portal_user_hospital_patient UNIQUE (hospital_id, patient_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS portal_otp (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    mobile VARCHAR(15) NOT NULL,
+    otp_hash VARCHAR(100) NOT NULL,
+    purpose VARCHAR(20) NOT NULL,
+    expires_at DATETIME NOT NULL,
+    consumed_at DATETIME NULL,
+    attempt_count INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_portal_otp_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_portal_otp_mobile ON portal_otp(hospital_id, mobile, consumed_at);
+
 --
 -- Table structure for table `medicine_categories`
 --
