@@ -848,6 +848,68 @@ CREATE TABLE IF NOT EXISTS payroll (
 ) ENGINE=InnoDB;
 CREATE INDEX IF NOT EXISTS idx_payroll_hospital_employee_month ON payroll(hospital_id, employee_id, salary_month);
 
+CREATE TABLE IF NOT EXISTS training_master (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    title VARCHAR(150) NOT NULL,
+    category VARCHAR(30) NOT NULL,
+    description TEXT NULL,
+    mandatory BIT NOT NULL DEFAULT 0,
+    validity_period INT NOT NULL DEFAULT 0,
+    target_roles VARCHAR(250) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_training_master_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS training_session (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    training_master_id BIGINT NOT NULL,
+    trainer_id BIGINT NOT NULL,
+    session_date DATE NOT NULL,
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    venue VARCHAR(100) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    cancel_reason TEXT NULL,
+    CONSTRAINT fk_training_session_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
+    CONSTRAINT fk_training_session_master FOREIGN KEY (training_master_id) REFERENCES training_master(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS training_attendance (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    session_id BIGINT NOT NULL,
+    employee_id BIGINT NOT NULL,
+    department VARCHAR(50) NULL,
+    attendance_status VARCHAR(20) NOT NULL,
+    check_in_time DATETIME NULL,
+    check_out_time DATETIME NULL,
+    verified BIT NOT NULL DEFAULT 0,
+    remarks TEXT NULL,
+    CONSTRAINT fk_training_attendance_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
+    CONSTRAINT fk_training_attendance_session FOREIGN KEY (session_id) REFERENCES training_session(id),
+    CONSTRAINT fk_training_attendance_employee FOREIGN KEY (employee_id) REFERENCES employee(id),
+    CONSTRAINT uq_training_attendance_session_employee UNIQUE (session_id, employee_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS training_certification (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    employee_id BIGINT NOT NULL,
+    training_master_id BIGINT NOT NULL,
+    session_id BIGINT NOT NULL,
+    completed_at DATE NOT NULL,
+    expires_at DATE NULL,
+    certificate_ref VARCHAR(100) NULL,
+    status VARCHAR(20) NOT NULL,
+    CONSTRAINT fk_training_certification_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
+    CONSTRAINT fk_training_certification_employee FOREIGN KEY (employee_id) REFERENCES employee(id),
+    CONSTRAINT fk_training_certification_master FOREIGN KEY (training_master_id) REFERENCES training_master(id),
+    CONSTRAINT uq_training_certification_employee_master UNIQUE (hospital_id, employee_id, training_master_id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_training_certification_hospital_expiry ON training_certification(hospital_id, expires_at);
+
 --
 -- Table structure for table `medicine_categories`
 --
