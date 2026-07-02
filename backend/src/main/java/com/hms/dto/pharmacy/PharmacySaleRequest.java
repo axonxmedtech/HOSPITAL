@@ -19,6 +19,9 @@ public class PharmacySaleRequest {
     private BigDecimal netAmount;
     private List<SaleItemRequest> items;
 
+    // BR-4: required when any item is a schedule-X / narcotic medicine.
+    private Long witnessUserId;
+
     @Data
     public static class SaleItemRequest {
         private Long medicineId;

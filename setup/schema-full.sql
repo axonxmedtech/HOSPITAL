@@ -456,6 +456,23 @@ CREATE TABLE `medicine_batches` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
+-- Form 29 BR-4 narcotic register. Additive; Hibernate ddl-auto creates it.
+CREATE TABLE IF NOT EXISTS narcotic_log (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    pharmacy_sale_id BIGINT NOT NULL,
+    medicine_id BIGINT NOT NULL,
+    batch_id BIGINT NOT NULL,
+    quantity_issued DECIMAL(10,2) NOT NULL,
+    quantity_wasted DECIMAL(10,2) NULL,
+    witness_user_id BIGINT NOT NULL,
+    witness_name VARCHAR(100) NOT NULL,
+    dispensed_by_name VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_narcotic_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_narcotic_log_hospital ON narcotic_log(hospital_id, created_at);
+
 --
 -- Table structure for table `medicine_categories`
 --

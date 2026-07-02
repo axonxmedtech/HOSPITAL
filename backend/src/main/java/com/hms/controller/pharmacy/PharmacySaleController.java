@@ -52,6 +52,20 @@ public class PharmacySaleController {
     public ResponseEntity<?> getSaleDetails(@PathVariable Long id) {
         return ResponseEntity.ok(saleService.getSaleDetails(id));
     }
+
+    /** Form 29 BR-4 — the narcotic/controlled-substance dispense register. */
+    @GetMapping("/narcotic-log")
+    @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> getNarcoticLog() {
+        return ResponseEntity.ok(saleService.getNarcoticLog());
+    }
+
+    /** BR-4 — staff (doctor/nurse) eligible to witness a controlled-substance dispense. */
+    @GetMapping("/eligible-witnesses")
+    @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> getEligibleWitnesses() {
+        return ResponseEntity.ok(saleService.getEligibleWitnesses());
+    }
  
     @GetMapping("/{id}/pdf")
     @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")

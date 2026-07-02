@@ -43,10 +43,22 @@ public class PharmacySaleService {
     @Autowired
     private com.hms.service.hospital.BillingService billingService;
 
+    @Autowired
+    private com.hms.repository.pharmacy.NarcoticLogRepository narcoticLogRepository;
+
+    @Autowired
+    private com.hms.repository.UserRepository userRepository;
+
+    private static final java.util.Set<String> CONTROLLED_SCHEDULES = java.util.Set.of("X", "NARCOTIC");
+
     @Transactional
     public PharmacySale createSale(PharmacySaleRequest request) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Long userId = securityHelper.getCurrentUserId();
+        String dispensedByName = securityHelper.getCurrentUserEmail();
+        // BR-4: resolved lazily on first controlled-substance item (method is @Transactional,
+        // so any rejection here rolls back stock already deducted for earlier items).
+        com.hms.entity.User witness = null;
 
         PharmacySale sale = new PharmacySale();
         sale.setHospitalId(hospitalId);
@@ -76,6 +88,7 @@ public class PharmacySaleService {
         sale.setPharmacistId(userId);
 
         List<PharmacySaleItem> items = new ArrayList<>();
+        List<com.hms.entity.pharmacy.NarcoticLog> pendingNarcoticLogs = new ArrayList<>();
         for (PharmacySaleRequest.SaleItemRequest itemReq : request.getItems()) {
             // Validation: Prevent negative or zero quantity theft
             if (itemReq.getQuantity().compareTo(BigDecimal.ZERO) <= 0) {
@@ -86,6 +99,17 @@ public class PharmacySaleService {
             // Also prevents IDOR by including hospitalId in query
             MedicineBatch batch = batchRepository.findByIdAndHospitalIdForUpdate(itemReq.getMedicineBatchId(), hospitalId)
                     .orElseThrow(() -> new RuntimeException("Batch not found or unauthorized: " + itemReq.getMedicineBatchId()));
+
+            // BR-1: expiry gate — never dispense an expired, quarantined or recalled batch.
+            if (batch.getExpiryDate() != null && !batch.getExpiryDate().isAfter(java.time.LocalDate.now())) {
+                throw new IllegalArgumentException("Cannot dispense batch " + batch.getBatchNumber()
+                        + ": it expired on " + batch.getExpiryDate());
+            }
+            java.util.Set<String> blockedStatuses = java.util.Set.of("EXPIRED", "QUARANTINED", "RECALLED");
+            if (batch.getStatus() != null && blockedStatuses.contains(batch.getStatus().toUpperCase())) {
+                throw new IllegalArgumentException("Cannot dispense batch " + batch.getBatchNumber()
+                        + ": status is " + batch.getStatus());
+            }
 
             if (batch.getCurrentQuantity().compareTo(itemReq.getQuantity()) < 0) {
                 throw new IllegalArgumentException("Insufficient stock for batch: " + batch.getBatchNumber());
@@ -124,10 +148,42 @@ public class PharmacySaleService {
             item.setTotalAmount(itemReq.getTotalAmount());
             item.setTotalAmountRaw(itemReq.getTotalAmount());
             items.add(item);
+
+            // BR-4: queue a narcotic register entry for this line (linked once the sale has an id).
+            if (batch.getMedicine() != null
+                    && CONTROLLED_SCHEDULES.contains(String.valueOf(batch.getMedicine().getScheduleType()).toUpperCase())) {
+                if (witness == null) {
+                    if (request.getWitnessUserId() == null) {
+                        throw new IllegalArgumentException(
+                                "A witness signature is required to dispense a controlled/narcotic substance (BR-4).");
+                    }
+                    witness = userRepository.findById(request.getWitnessUserId())
+                            .filter(u -> hospitalId.equals(u.getHospitalId()) && Boolean.TRUE.equals(u.getIsActive()))
+                            .orElseThrow(() -> new IllegalArgumentException("Witness user not found under this hospital"));
+                    if (witness.getId().equals(userId)) {
+                        throw new IllegalArgumentException(
+                                "The witness must be a different staff member from the dispensing pharmacist.");
+                    }
+                }
+                com.hms.entity.pharmacy.NarcoticLog nl = new com.hms.entity.pharmacy.NarcoticLog();
+                nl.setHospitalId(hospitalId);
+                nl.setMedicineId(itemReq.getMedicineId());
+                nl.setBatchId(batch.getId());
+                nl.setQuantityIssued(itemReq.getQuantity());
+                nl.setWitnessUserId(witness.getId());
+                nl.setWitnessName(witness.getName());
+                nl.setDispensedByName(dispensedByName);
+                pendingNarcoticLogs.add(nl);
+            }
         }
 
         sale.setItems(items);
         PharmacySale savedSale = saleRepository.save(sale);
+
+        for (com.hms.entity.pharmacy.NarcoticLog nl : pendingNarcoticLogs) {
+            nl.setPharmacySaleId(savedSale.getId());
+            narcoticLogRepository.save(nl);
+        }
 
         // Auto-complete the prescription status to DISPENSED for all consultation records
         if (request.getPrescriptionId() != null) {
@@ -167,6 +223,21 @@ public class PharmacySaleService {
         }
 
         return savedSale;
+    }
+
+    /** Form 29 narcotic register — the legal accounting log for controlled-substance dispenses. */
+    public List<com.hms.entity.pharmacy.NarcoticLog> getNarcoticLog() {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        return narcoticLogRepository.findByHospitalIdOrderByCreatedAtDesc(hospitalId);
+    }
+
+    /** BR-4: staff eligible to act as the second witness (doctor or nurse, per blueprint). */
+    public List<com.hms.entity.User> getEligibleWitnesses() {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        List<com.hms.entity.User> witnesses = new ArrayList<>();
+        witnesses.addAll(userRepository.findByHospitalIdAndRoleAndIsActiveTrue(hospitalId, "DOCTOR"));
+        witnesses.addAll(userRepository.findByHospitalIdAndRoleAndIsActiveTrue(hospitalId, "NURSE"));
+        return witnesses;
     }
 
     public Page<PharmacySale> getSalesHistory(Pageable pageable) {
