@@ -53,6 +53,12 @@ public class RiskAssessmentService {
     @Autowired
     private NotificationService notificationService;
 
+    @Autowired
+    private WardRepository wardRepository;
+
+    @Autowired
+    private NurseAssessmentRepository nurseAssessmentRepository;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -107,6 +113,14 @@ public class RiskAssessmentService {
         risk.setCreatedAt(LocalDateTime.now());
 
         PatientRiskAssessment saved = riskRepository.save(risk);
+
+        // Sync to NurseAssessment cached mirror if it exists
+        Optional<NurseAssessment> nurseAssessOpt = nurseAssessmentRepository.findByIpdAdmissionId(admissionId);
+        if (nurseAssessOpt.isPresent()) {
+            NurseAssessment na = nurseAssessOpt.get();
+            na.setFallRisk(saved.getFallRisk());
+            nurseAssessmentRepository.save(na);
+        }
 
         // Schedule safety tasks based on risk findings (BR-2, BR-3)
         scheduleSafetyTasks(saved);
@@ -205,6 +219,108 @@ public class RiskAssessmentService {
         order.setNotes(notes);
         order.setStatus("ACTIVE");
         doctorOrderRepository.save(order);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Object> getRiskDashboard() {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new UnauthorizedException("Hospital ID not found in security context");
+        }
+
+        List<IpdAdmission> activeAdmissions = ipdAdmissionRepository.findByHospitalIdAndStatus(hospitalId, "ADMITTED");
+
+        long highFallRisk = 0;
+        long highPressureUlcerRisk = 0;
+        long highNutritionRisk = 0;
+        long isolationPatients = 0;
+        long awaitingAssessment = 0;
+        long assessmentOverdue = 0;
+
+        LocalDateTime now = LocalDateTime.now();
+
+        for (IpdAdmission adm : activeAdmissions) {
+            List<PatientRiskAssessment> risks = riskRepository
+                    .findByHospitalIdAndAdmissionIdOrderByCreatedAtDesc(hospitalId, adm.getId());
+
+            if (risks.isEmpty()) {
+                if (adm.getAdmissionDatetime().plusHours(24).isBefore(now)) {
+                    assessmentOverdue++;
+                } else {
+                    awaitingAssessment++;
+                }
+            } else {
+                PatientRiskAssessment latest = risks.get(0);
+                if ("HIGH".equals(latest.getFallRisk())) {
+                    highFallRisk++;
+                }
+                if ("HIGH".equals(latest.getPressureUlcerRisk())) {
+                    highPressureUlcerRisk++;
+                }
+                if ("HIGH".equals(latest.getNutritionRisk())) {
+                    highNutritionRisk++;
+                }
+                if (latest.getIsolationRequired() != null && latest.getIsolationRequired()) {
+                    isolationPatients++;
+                }
+            }
+        }
+
+        java.util.Map<String, Object> dashboard = new java.util.HashMap<>();
+        dashboard.put("highFallRisk", highFallRisk);
+        dashboard.put("highPressureUlcerRisk", highPressureUlcerRisk);
+        dashboard.put("highNutritionRisk", highNutritionRisk);
+        dashboard.put("isolationPatients", isolationPatients);
+        dashboard.put("awaitingAssessment", awaitingAssessment);
+        dashboard.put("assessmentOverdue", assessmentOverdue);
+        return dashboard;
+    }
+
+    @Transactional(readOnly = true)
+    public List<java.util.Map<String, Object>> getHighRiskPatients() {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new UnauthorizedException("Hospital ID not found in security context");
+        }
+
+        List<IpdAdmission> activeAdmissions = ipdAdmissionRepository.findByHospitalIdAndStatus(hospitalId, "ADMITTED");
+        List<java.util.Map<String, Object>> highRiskList = new java.util.ArrayList<>();
+
+        for (IpdAdmission adm : activeAdmissions) {
+            List<PatientRiskAssessment> risks = riskRepository
+                    .findByHospitalIdAndAdmissionIdOrderByCreatedAtDesc(hospitalId, adm.getId());
+            if (!risks.isEmpty()) {
+                PatientRiskAssessment latest = risks.get(0);
+                if ("HIGH".equals(latest.getOverallRisk()) || "MED".equals(latest.getOverallRisk())) {
+                    Optional<Patient> pOpt = patientRepository.findByIdAndHospitalIdAndIsActiveTrue(adm.getPatientId(), hospitalId);
+                    String patientName = pOpt.isPresent() ? pOpt.get().getName() : "Unknown";
+
+                    String wardName = "General Ward";
+                    String bedName = "Bed " + adm.getBedId();
+                    Optional<Ward> wOpt = wardRepository.findById(adm.getWardId());
+                    if (wOpt.isPresent()) {
+                        wardName = wOpt.get().getName();
+                    }
+                    
+                    java.util.Map<String, Object> map = new java.util.HashMap<>();
+                    map.put("id", latest.getId());
+                    map.put("admissionId", adm.getId());
+                    map.put("patientId", adm.getPatientId());
+                    map.put("patientName", patientName);
+                    map.put("ipdNumber", adm.getIpdNumber());
+                    map.put("wardName", wardName);
+                    map.put("bedName", bedName);
+                    map.put("overallRisk", latest.getOverallRisk());
+                    map.put("fallRisk", latest.getFallRisk());
+                    map.put("pressureUlcerRisk", latest.getPressureUlcerRisk());
+                    map.put("nutritionRisk", latest.getNutritionRisk());
+                    map.put("isolationRequired", latest.getIsolationRequired());
+                    map.put("assessedAt", latest.getCreatedAt());
+                    highRiskList.add(map);
+                }
+            }
+        }
+        return highRiskList;
     }
 
     private ComputedRisk computeVulnerabilityRisk(String json) {

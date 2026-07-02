@@ -2,9 +2,11 @@ package com.hms.service.hospital;
 
 import com.hms.entity.NurseAssessment;
 import com.hms.entity.VitalSigns;
+import com.hms.entity.PatientRiskAssessment;
 import com.hms.exception.UnauthorizedException;
 import com.hms.repository.NurseAssessmentRepository;
 import com.hms.repository.VitalSignsRepository;
+import com.hms.repository.PatientRiskAssessmentRepository;
 import com.hms.security.SecurityContextHelper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -21,6 +23,7 @@ public class NurseAssessmentService {
     @Autowired private VitalSignsRepository vitalsRepository;
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private MrdService mrdService;
+    @Autowired private PatientRiskAssessmentRepository riskRepository;
 
     @Transactional
     public NurseAssessment createAssessment(Long admissionId, Map<String, Object> data) {
@@ -41,7 +44,14 @@ public class NurseAssessmentService {
         a.setWeight(toBigDecimal(data.get("weight")));
         a.setPainScore(toInt(data.get("painScore")));
         a.setAllergies((String) data.get("allergies"));
-        a.setFallRisk((String) data.get("fallRisk"));
+
+        String fallRisk = (String) data.get("fallRisk");
+        List<PatientRiskAssessment> risks = riskRepository.findByHospitalIdAndAdmissionIdOrderByCreatedAtDesc(hospitalId, admissionId);
+        if (risks != null && !risks.isEmpty()) {
+            fallRisk = risks.get(0).getFallRisk();
+        }
+        a.setFallRisk(fallRisk);
+
         a.setGeneralCondition((String) data.get("generalCondition"));
         a.setChiefComplaintOnAdmission((String) data.get("chiefComplaintOnAdmission"));
         a.setAssessedByName(securityHelper.getCurrentUserEmail());
@@ -50,7 +60,17 @@ public class NurseAssessmentService {
     }
 
     public NurseAssessment getAssessment(Long admissionId) {
-        return assessmentRepository.findByIpdAdmissionId(admissionId).orElse(null);
+        NurseAssessment a = assessmentRepository.findByIpdAdmissionId(admissionId).orElse(null);
+        if (a != null) {
+            Long hospitalId = securityHelper.getCurrentHospitalId();
+            if (hospitalId != null) {
+                List<PatientRiskAssessment> risks = riskRepository.findByHospitalIdAndAdmissionIdOrderByCreatedAtDesc(hospitalId, admissionId);
+                if (risks != null && !risks.isEmpty()) {
+                    a.setFallRisk(risks.get(0).getFallRisk());
+                }
+            }
+        }
+        return a;
     }
 
     @Transactional

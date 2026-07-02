@@ -35,6 +35,8 @@ class RiskAssessmentServiceTest {
     @Mock private DoctorRepository doctorRepository;
     @Mock private SecurityContextHelper securityHelper;
     @Mock private NotificationService notificationService;
+    @Mock private NurseAssessmentRepository nurseAssessmentRepository;
+    @Mock private WardRepository wardRepository;
 
     @InjectMocks private RiskAssessmentService riskService;
 
@@ -42,6 +44,7 @@ class RiskAssessmentServiceTest {
     void evaluateAndSaveRisk_successWithHighRisksSafetyTasksAndReferrals() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
         when(securityHelper.getCurrentUserId()).thenReturn(10L);
+        when(nurseAssessmentRepository.findByIpdAdmissionId(200L)).thenReturn(Optional.empty());
 
         Patient patient = new Patient();
         patient.setId(100L);
@@ -115,5 +118,35 @@ class RiskAssessmentServiceTest {
 
         assertThat(result.getStatus()).isEqualTo("REVIEWED");
         assertThat(result.getReviewedBy()).isEqualTo(9L);
+    }
+
+    @Test
+    void getRiskDashboard_success() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+
+        IpdAdmission adm = new IpdAdmission();
+        adm.setId(200L);
+        adm.setAdmissionDatetime(java.time.LocalDateTime.now().minusHours(2));
+        adm.setStatus("ADMITTED");
+        adm.setHospitalId(1L);
+
+        when(ipdAdmissionRepository.findByHospitalIdAndStatus(1L, "ADMITTED"))
+                .thenReturn(Collections.singletonList(adm));
+
+        PatientRiskAssessment risk = new PatientRiskAssessment();
+        risk.setFallRisk("HIGH");
+        risk.setPressureUlcerRisk("LOW");
+        risk.setNutritionRisk("LOW");
+        risk.setOverallRisk("HIGH");
+        risk.setIsolationRequired(true);
+
+        when(riskRepository.findByHospitalIdAndAdmissionIdOrderByCreatedAtDesc(1L, 200L))
+                .thenReturn(Collections.singletonList(risk));
+
+        java.util.Map<String, Object> stats = riskService.getRiskDashboard();
+
+        assertThat(stats.get("highFallRisk")).isEqualTo(1L);
+        assertThat(stats.get("isolationPatients")).isEqualTo(1L);
+        assertThat(stats.get("awaitingAssessment")).isEqualTo(0L);
     }
 }

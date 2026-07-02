@@ -2,6 +2,7 @@ package com.hms.service;
 
 import com.hms.entity.VitalSigns;
 import com.hms.repository.NurseAssessmentRepository;
+import com.hms.repository.PatientRiskAssessmentRepository;
 import com.hms.repository.VitalSignsRepository;
 import com.hms.security.SecurityContextHelper;
 import com.hms.service.hospital.MrdService;
@@ -28,6 +29,7 @@ class NurseAssessmentServiceTest {
     @Mock private VitalSignsRepository vitalsRepository;
     @Mock private SecurityContextHelper securityHelper;
     @Mock private MrdService mrdService;
+    @Mock private PatientRiskAssessmentRepository riskRepository;
 
     @InjectMocks
     private NurseAssessmentService service;
