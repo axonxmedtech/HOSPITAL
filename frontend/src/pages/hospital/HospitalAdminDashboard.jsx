@@ -45,6 +45,7 @@ import BiomedicalView from '../../components/biomedical/BiomedicalView';
 import HousekeepingView from '../../components/housekeeping/HousekeepingView';
 import HrView from '../../components/hr/HrView';
 import TrainingView from '../../components/training/TrainingView';
+import AdminDashboardView from '../../components/admindashboard/AdminDashboardView';
 
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -1336,6 +1337,7 @@ const HospitalAdminDashboard = () => {
         { id: 'housekeeping', label: 'Housekeeping', icon: null, requiredModule: null },
         { id: 'hr', label: 'HR & Workforce', icon: null, requiredModule: null },
         { id: 'training', label: 'Training & LMS', icon: null, requiredModule: null },
+        { id: 'mis-dashboard', label: 'MIS Dashboard', icon: null, requiredModule: null },
         { id: 'feedback', label: 'Patient Feedback', icon: null, requiredModule: null },
         { id: 'fees', label: 'Fees', icon: null, requiredModule: 'BILLING' },
         { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
@@ -2596,6 +2598,9 @@ const HospitalAdminDashboard = () => {
                                 )}
                                 {activeTab === 'training' && (
                                     <TrainingView />
+                                )}
+                                {activeTab === 'mis-dashboard' && (
+                                    <AdminDashboardView />
                                 )}
                                 {activeTab === 'feedback' && (
                                     <FeedbackView />
