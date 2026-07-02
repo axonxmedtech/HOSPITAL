@@ -509,6 +509,86 @@ CREATE TABLE IF NOT EXISTS narcotic_log (
 ) ENGINE=InnoDB;
 CREATE INDEX IF NOT EXISTS idx_narcotic_log_hospital ON narcotic_log(hospital_id, created_at);
 
+-- Phase 6.01 Blood Bank / BBTMS (Form 38 core). Additive; Hibernate ddl-auto creates them.
+CREATE TABLE IF NOT EXISTS blood_donor (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    donor_number VARCHAR(20) NOT NULL UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    phone VARCHAR(20) NULL,
+    blood_group VARCHAR(5) NOT NULL,
+    rh_type VARCHAR(10) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    deferral_expiry DATE NULL,
+    last_donation_date DATE NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_donor_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS blood_unit (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    unit_number VARCHAR(30) NOT NULL UNIQUE,
+    donor_id BIGINT NOT NULL,
+    component_type VARCHAR(20) NOT NULL,
+    blood_group VARCHAR(5) NOT NULL,
+    rh_type VARCHAR(10) NOT NULL,
+    hiv_result VARCHAR(20) NULL,
+    hbsag_result VARCHAR(20) NULL,
+    malaria_result VARCHAR(20) NULL,
+    status VARCHAR(20) NOT NULL,
+    expiry_date DATE NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_unit_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
+    CONSTRAINT fk_unit_donor FOREIGN KEY (donor_id) REFERENCES blood_donor(id)
+) ENGINE=InnoDB;
+CREATE INDEX IF NOT EXISTS idx_blood_unit_group_status ON blood_unit(hospital_id, blood_group, status);
+
+CREATE TABLE IF NOT EXISTS blood_request (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    patient_id BIGINT NOT NULL,
+    admission_id BIGINT NULL,
+    department VARCHAR(50) NOT NULL,
+    component VARCHAR(20) NOT NULL,
+    units_requested INT NOT NULL,
+    priority VARCHAR(20) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    requested_by_name VARCHAR(100) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_bloodreq_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS cross_match (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    request_id BIGINT NOT NULL,
+    blood_unit_id BIGINT NOT NULL,
+    patient_id BIGINT NOT NULL,
+    result VARCHAR(20) NOT NULL,
+    verified_by_name VARCHAR(100) NULL,
+    verified_at DATETIME NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_xmatch_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
+    CONSTRAINT fk_xmatch_request FOREIGN KEY (request_id) REFERENCES blood_request(id),
+    CONSTRAINT fk_xmatch_unit FOREIGN KEY (blood_unit_id) REFERENCES blood_unit(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS transfusion_record (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    patient_id BIGINT NOT NULL,
+    blood_unit_id BIGINT NOT NULL UNIQUE,
+    started_at DATETIME NOT NULL,
+    completed_at DATETIME NULL,
+    reaction VARCHAR(30) NOT NULL,
+    reaction_notes TEXT NULL,
+    nurse_name VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_transfusion_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
+    CONSTRAINT fk_transfusion_unit FOREIGN KEY (blood_unit_id) REFERENCES blood_unit(id)
+) ENGINE=InnoDB;
+
 --
 -- Table structure for table `medicine_categories`
 --
