@@ -16,6 +16,7 @@ public class UserRole {
     public static final String PHARMACIST = "PHARMACIST";
     public static final String LAB_TECHNICIAN = "LAB_TECHNICIAN";
     public static final String RADIOLOGY_TECHNICIAN = "RADIOLOGY_TECHNICIAN";
+    public static final String PATIENT = "PATIENT";
 
     // Extensible clinical and support roles (roadmap §1.2)
     public static final String MRD_OFFICER = "MRD_OFFICER";

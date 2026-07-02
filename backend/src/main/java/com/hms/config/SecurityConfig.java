@@ -74,6 +74,10 @@ public class SecurityConfig {
                         // Form 03: token-authenticated public feedback submission (no JWT — the
                         // single-use token itself resolves the patient/hospital server-side).
                         .requestMatchers("/api/public/feedback/**").permitAll()
+                        // Form 40 phase 1: patient portal — OTP request/verify are public,
+                        // everything else under /hospital/portal/** requires role PATIENT.
+                        .requestMatchers("/hospital/portal/otp/**").permitAll()
+                        .requestMatchers("/hospital/portal/**").hasRole("PATIENT")
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
 

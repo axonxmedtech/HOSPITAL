@@ -32,7 +32,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
         String uri = request.getRequestURI();
-        if (!uri.endsWith("/login")) {
+        boolean limited = uri.endsWith("/login") || uri.contains("/portal/otp/");
+        if (!limited) {
             chain.doFilter(request, response);
             return;
         }
