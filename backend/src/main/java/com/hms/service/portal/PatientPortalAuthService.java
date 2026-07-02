@@ -11,6 +11,7 @@ import com.hms.repository.PatientRepository;
 import com.hms.repository.PortalOtpRepository;
 import com.hms.security.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,7 +33,8 @@ public class PatientPortalAuthService {
     private static final int OTP_VALIDITY_MINUTES = 5;
     private static final int MAX_ATTEMPTS = 5;
     private static final int LOCK_MINUTES = 15;
-    private static final String OTP_HMAC_KEY = "patient-portal-otp-hmac";
+    @Value("${portal.otp.hmac-key}")
+    private String otpHmacKey = "patient-portal-otp-hmac";
 
     @Autowired private PatientRepository patientRepository;
     @Autowired private PatientPortalUserRepository portalUserRepository;
@@ -73,8 +75,15 @@ public class PatientPortalAuthService {
         smsGateway.send(request.getMobile(), otp);
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = {IllegalArgumentException.class, IllegalStateException.class})
     public PortalLoginResponse verifyOtp(Long hospitalId, PortalOtpVerifyRequest request) {
+        List<PatientPortalUser> accountsForMobile = portalUserRepository.findByHospitalIdAndMobile(hospitalId, request.getMobile());
+        boolean anyLocked = accountsForMobile.stream().anyMatch(u ->
+                "LOCKED".equals(u.getStatus()) && u.getLockUntil() != null && u.getLockUntil().isAfter(LocalDateTime.now()));
+        if (anyLocked) {
+            throw new IllegalStateException("This account is temporarily locked due to repeated failed attempts. Try again later.");
+        }
+
         PortalOtp otp = otpRepository
                 .findTopByHospitalIdAndMobileAndConsumedAtIsNullOrderByCreatedAtDesc(hospitalId, request.getMobile())
                 .orElseThrow(() -> new IllegalArgumentException("Invalid or expired OTP."));
@@ -83,15 +92,15 @@ public class PatientPortalAuthService {
             throw new IllegalArgumentException("Invalid or expired OTP.");
         }
 
-        if (!otp.getOtpHash().equals(hashOtp(request.getOtp()))) {
+        if (!constantTimeEquals(otp.getOtpHash(), hashOtp(request.getOtp()))) {
             otp.setAttemptCount(otp.getAttemptCount() + 1);
             otpRepository.save(otp);
             if (otp.getAttemptCount() >= MAX_ATTEMPTS) {
-                portalUserRepository.findByHospitalIdAndMobile(hospitalId, request.getMobile()).ifPresent(u -> {
+                for (PatientPortalUser u : accountsForMobile) {
                     u.setStatus("LOCKED");
                     u.setLockUntil(LocalDateTime.now().plusMinutes(LOCK_MINUTES));
                     portalUserRepository.save(u);
-                });
+                }
             }
             throw new IllegalArgumentException("Invalid or expired OTP.");
         }
@@ -138,11 +147,17 @@ public class PatientPortalAuthService {
     public String hashOtp(String otp) {
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(OTP_HMAC_KEY.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            mac.init(new SecretKeySpec(otpHmacKey.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
             byte[] hash = mac.doFinal(otp.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(hash);
         } catch (Exception e) {
             throw new RuntimeException("Failed to hash OTP", e);
         }
+    }
+
+    private boolean constantTimeEquals(String a, String b) {
+        return java.security.MessageDigest.isEqual(
+                a.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                b.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 }

@@ -179,7 +179,7 @@ class PatientPortalAuthServiceTest {
         otp.setAttemptCount(4);
         when(otpRepository.findTopByHospitalIdAndMobileAndConsumedAtIsNullOrderByCreatedAtDesc(HOSPITAL_ID, "9876543210"))
                 .thenReturn(Optional.of(otp));
-        when(portalUserRepository.findByHospitalIdAndMobile(HOSPITAL_ID, "9876543210")).thenReturn(Optional.empty());
+        when(portalUserRepository.findByHospitalIdAndMobile(HOSPITAL_ID, "9876543210")).thenReturn(List.of());
         when(otpRepository.save(any(PortalOtp.class))).thenAnswer(i -> i.getArgument(0));
 
         PortalOtpVerifyRequest req = new PortalOtpVerifyRequest();
@@ -192,7 +192,26 @@ class PatientPortalAuthServiceTest {
     }
 
     @Test
-    void verifyOtp_wrongCode_locksAccountEvenWhenMobileIsAmbiguous() {
+    void verifyOtp_rejectedImmediatelyWhenAccountAlreadyLocked() {
+        PatientPortalUser locked = new PatientPortalUser();
+        locked.setId(5L);
+        locked.setStatus("LOCKED");
+        locked.setLockUntil(LocalDateTime.now().plusMinutes(10));
+        when(portalUserRepository.findByHospitalIdAndMobile(HOSPITAL_ID, "9876543210"))
+                .thenReturn(List.of(locked));
+
+        PortalOtpVerifyRequest req = new PortalOtpVerifyRequest();
+        req.setMobile("9876543210");
+        req.setOtp("123456");
+
+        assertThatThrownBy(() -> service.verifyOtp(HOSPITAL_ID, req))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("locked");
+        verify(otpRepository, never()).findTopByHospitalIdAndMobileAndConsumedAtIsNullOrderByCreatedAtDesc(any(), any());
+    }
+
+    @Test
+    void verifyOtp_wrongCode_locksAllAccountsSharingTheMobile() {
         PortalOtp otp = new PortalOtp();
         otp.setId(9L);
         otp.setMobile("9876543210");
@@ -203,11 +222,14 @@ class PatientPortalAuthServiceTest {
                 .thenReturn(Optional.of(otp));
         when(otpRepository.save(any(PortalOtp.class))).thenAnswer(i -> i.getArgument(0));
 
-        PatientPortalUser sharedMobileUser = new PatientPortalUser();
-        sharedMobileUser.setId(7L);
-        sharedMobileUser.setStatus("ACTIVE");
+        PatientPortalUser userA = new PatientPortalUser();
+        userA.setId(7L);
+        userA.setStatus("ACTIVE");
+        PatientPortalUser userB = new PatientPortalUser();
+        userB.setId(8L);
+        userB.setStatus("ACTIVE");
         when(portalUserRepository.findByHospitalIdAndMobile(HOSPITAL_ID, "9876543210"))
-                .thenReturn(Optional.of(sharedMobileUser));
+                .thenReturn(List.of(userA, userB));
         when(portalUserRepository.save(any(PatientPortalUser.class))).thenAnswer(i -> i.getArgument(0));
 
         PortalOtpVerifyRequest req = new PortalOtpVerifyRequest();
@@ -217,9 +239,8 @@ class PatientPortalAuthServiceTest {
         assertThatThrownBy(() -> service.verifyOtp(HOSPITAL_ID, req))
                 .isInstanceOf(IllegalArgumentException.class);
 
-        assertThat(sharedMobileUser.getStatus()).isEqualTo("LOCKED");
-        assertThat(sharedMobileUser.getLockUntil()).isNotNull();
-        verify(patientRepository, never()).findByPhoneAndHospitalIdAndIsActiveTrue(any(), any());
+        assertThat(userA.getStatus()).isEqualTo("LOCKED");
+        assertThat(userB.getStatus()).isEqualTo("LOCKED");
     }
 
     @Test
