@@ -221,6 +221,16 @@ public class OtService {
             throw new IllegalArgumentException("Invalid surgery status");
         }
 
+        if ("IN_PROGRESS".equals(status)) {
+            java.time.LocalDate today = java.time.LocalDate.now();
+            Optional<OtReadiness> readinessOpt = readinessRepository.findByOtRoomAndReadinessDateAndHospitalId(
+                    booking.getOtRoomNumber(), today, hospitalId
+            );
+            if (readinessOpt.isPresent() && !"READY".equalsIgnoreCase(readinessOpt.get().getStatus())) {
+                throw new IllegalStateException("Room " + booking.getOtRoomNumber() + " is not READY on " + today);
+            }
+        }
+
         booking.setStatus(status);
         OtBooking saved = bookingRepository.save(booking);
 

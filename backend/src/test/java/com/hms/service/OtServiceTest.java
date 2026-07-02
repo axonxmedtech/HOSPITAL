@@ -1223,5 +1223,67 @@ class OtServiceTest {
 
         assertThat(saved.isSignInCompleted()).isTrue();
     }
+
+    @Test
+    void updateStatus_inProgress_blockedWhenRoomNotReady() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        
+        OtBooking booking = tenantBooking(bookingId, hospitalId, 10L);
+        booking.setOtRoomNumber("OT 1");
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
+
+        OtReadiness readiness = new OtReadiness();
+        readiness.setOtRoom("OT 1");
+        readiness.setReadinessDate(java.time.LocalDate.now());
+        readiness.setStatus("PENDING");
+        
+        when(readinessRepository.findByOtRoomAndReadinessDateAndHospitalId("OT 1", java.time.LocalDate.now(), hospitalId))
+                .thenReturn(Optional.of(readiness));
+
+        assertThatThrownBy(() -> otService.updateStatus(bookingId, "IN_PROGRESS"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("is not READY");
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void updateStatus_inProgress_allowedWhenRoomReady() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        
+        OtBooking booking = tenantBooking(bookingId, hospitalId, 10L);
+        booking.setOtRoomNumber("OT 1");
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
+
+        OtReadiness readiness = new OtReadiness();
+        readiness.setOtRoom("OT 1");
+        readiness.setReadinessDate(java.time.LocalDate.now());
+        readiness.setStatus("READY");
+        
+        when(readinessRepository.findByOtRoomAndReadinessDateAndHospitalId("OT 1", java.time.LocalDate.now(), hospitalId))
+                .thenReturn(Optional.of(readiness));
+        when(bookingRepository.save(any(OtBooking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        OtBooking saved = otService.updateStatus(bookingId, "IN_PROGRESS");
+        assertThat(saved.getStatus()).isEqualTo("IN_PROGRESS");
+    }
+
+    @Test
+    void updateStatus_inProgress_allowedWhenNoReadinessRecord() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        
+        OtBooking booking = tenantBooking(bookingId, hospitalId, 10L);
+        booking.setOtRoomNumber("OT 1");
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
+
+        when(readinessRepository.findByOtRoomAndReadinessDateAndHospitalId("OT 1", java.time.LocalDate.now(), hospitalId))
+                .thenReturn(Optional.empty());
+        when(bookingRepository.save(any(OtBooking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        OtBooking saved = otService.updateStatus(bookingId, "IN_PROGRESS");
+        assertThat(saved.getStatus()).isEqualTo("IN_PROGRESS");
+    }
 }
 
