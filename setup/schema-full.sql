@@ -3097,3 +3097,92 @@ CREATE TABLE IF NOT EXISTS `cdss_alert_log` (
   KEY `idx_cal_patient`      (`patient_id`),
   KEY `idx_cal_ipd`          (`ipd_admission_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Form 33: Inventory & Store Tables
+CREATE TABLE IF NOT EXISTS `department_indent` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `from_department` varchar(50) NOT NULL,
+  `inventory_item_id` bigint NOT NULL,
+  `requested_qty` decimal(10,2) NOT NULL,
+  `status` varchar(20) NOT NULL,
+  `requested_by` bigint DEFAULT NULL,
+  `approved_by` bigint DEFAULT NULL,
+  `approved_by_sig` text DEFAULT NULL,
+  `created_at` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_di_hospital` (`hospital_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `stock_transaction` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `inventory_item_id` bigint NOT NULL,
+  `batch_id` bigint DEFAULT NULL,
+  `transaction_type` varchar(30) NOT NULL,
+  `quantity` decimal(10,2) NOT NULL,
+  `from_store` varchar(50) DEFAULT NULL,
+  `to_store` varchar(50) DEFAULT NULL,
+  `performed_by` varchar(100) NOT NULL,
+  `transaction_time` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_st_hospital_time` (`hospital_id`, `transaction_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Form 34: Purchase & Procurement Tables
+CREATE TABLE IF NOT EXISTS `purchase_requisition` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(50) NOT NULL UNIQUE,
+  `hospital_id` bigint NOT NULL,
+  `department` varchar(50) NOT NULL,
+  `requested_by` bigint NOT NULL,
+  `priority` varchar(20) NOT NULL,
+  `status` varchar(20) NOT NULL,
+  `required_date` date NOT NULL,
+  `items_json` text NULL,
+  `created_at` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_pr_hospital` (`hospital_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `vendor` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `vendor_code` varchar(20) NOT NULL,
+  `vendor_name` varchar(150) NOT NULL,
+  `gst_number` varchar(15) NOT NULL,
+  `license_number` varchar(50) DEFAULT NULL,
+  `rating` decimal(3,2) DEFAULT NULL,
+  `status` varchar(20) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_vendor_code` (`hospital_id`, `vendor_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `purchase_order` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `vendor_id` bigint NOT NULL,
+  `po_number` varchar(25) NOT NULL,
+  `status` varchar(20) NOT NULL,
+  `approved_by` bigint DEFAULT NULL,
+  `approved_by_sig` text DEFAULT NULL,
+  `order_date` datetime NOT NULL,
+  `expected_delivery` date DEFAULT NULL,
+  `items_json` text NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_po_number` (`hospital_id`, `po_number`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `vendor_invoice` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `vendor_id` bigint NOT NULL,
+  `invoice_number` varchar(50) NOT NULL,
+  `invoice_date` date NOT NULL,
+  `amount` decimal(12,2) NOT NULL,
+  `status` varchar(20) NOT NULL,
+  `matched_po_id` bigint DEFAULT NULL,
+  `matched_grn_id` bigint DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_vendor_invoice` (`hospital_id`, `vendor_id`, `invoice_number`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

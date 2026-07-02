@@ -299,7 +299,7 @@ public class RiskAssessmentService {
                     String bedName = "Bed " + adm.getBedId();
                     Optional<Ward> wOpt = wardRepository.findById(adm.getWardId());
                     if (wOpt.isPresent()) {
-                        wardName = wOpt.get().getName();
+                        wardName = wOpt.get().getWardName();
                     }
                     
                     java.util.Map<String, Object> map = new java.util.HashMap<>();
