@@ -876,6 +876,110 @@ const hospitalService = {
         return response.data;
     },
 
+    // --- General Store Inventory (Form 33) ---
+
+    getStoreIndents: async () => {
+        const response = await apiClient.get('/hospital/inventory/indent');
+        return response.data;
+    },
+
+    raiseStoreIndent: async (data) => {
+        const response = await apiClient.post('/hospital/inventory/indent', data);
+        return response.data;
+    },
+
+    approveStoreIndent: async (id, data) => {
+        const response = await apiClient.post(`/hospital/inventory/indent/${id}/approve`, data);
+        return response.data;
+    },
+
+    issueStoreStock: async (data) => {
+        const response = await apiClient.post('/hospital/inventory/issue', data);
+        return response.data;
+    },
+
+    transferStoreStock: async (data) => {
+        const response = await apiClient.post('/hospital/inventory/transfer', data);
+        return response.data;
+    },
+
+    auditStoreStock: async (data) => {
+        const response = await apiClient.post('/hospital/inventory/audit', data);
+        return response.data;
+    },
+
+    getStoreTransactions: async () => {
+        const response = await apiClient.get('/hospital/inventory/transactions');
+        return response.data;
+    },
+
+    suggestFefo: async (itemId) => {
+        const response = await apiClient.get(`/hospital/inventory/suggest-fefo?itemId=${itemId}`);
+        return response.data;
+    },
+
+    // --- Purchase & Procurement (Form 34) ---
+
+    createPurchaseRequisition: async (data) => {
+        const response = await apiClient.post('/hospital/purchase/requisition', data);
+        return response.data;
+    },
+
+    approvePurchaseRequisition: async (id) => {
+        const response = await apiClient.post(`/hospital/purchase/requisition/${id}/approve`);
+        return response.data;
+    },
+
+    getPurchaseRequisitions: async () => {
+        const response = await apiClient.get('/hospital/purchase/requisitions');
+        return response.data;
+    },
+
+    createVendor: async (data) => {
+        const response = await apiClient.post('/hospital/purchase/vendor', data);
+        return response.data;
+    },
+
+    getVendors: async () => {
+        const response = await apiClient.get('/hospital/purchase/vendors');
+        return response.data;
+    },
+
+    createPurchaseOrder: async (data) => {
+        const response = await apiClient.post('/hospital/purchase/order', data);
+        return response.data;
+    },
+
+    approvePurchaseOrder: async (id, data) => {
+        const response = await apiClient.post(`/hospital/purchase/order/${id}/approve`, data);
+        return response.data;
+    },
+
+    getPurchaseOrders: async () => {
+        const response = await apiClient.get('/hospital/purchase/orders');
+        return response.data;
+    },
+
+    confirmGrn: async (id, items) => {
+        const response = await apiClient.post(`/hospital/purchase/order/${id}/confirm-grn`, items);
+        return response.data;
+    },
+
+    verifyVendorInvoice: async (data) => {
+        const response = await apiClient.post('/hospital/purchase/invoice-verify', data);
+        return response.data;
+    },
+
+    processVendorInvoicePayment: async (data) => {
+        const response = await apiClient.post('/hospital/purchase/payment', data);
+        return response.data;
+    },
+
+    getVendorInvoices: async () => {
+        const response = await apiClient.get('/hospital/purchase/invoices');
+        return response.data;
+    },
+
     getMedicinePurchases: async () => {
         const response = await apiClient.get('/hospital/medicines/purchases');
         return response.data;
