@@ -76,7 +76,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/public/feedback/**").permitAll()
                         // Form 40 phase 1: patient portal — OTP request/verify are public,
                         // everything else under /hospital/portal/** requires role PATIENT.
-                        .requestMatchers("/hospital/portal/otp/**").permitAll()
+                        .requestMatchers("/hospital/portal/otp/request", "/hospital/portal/otp/verify").permitAll()
                         .requestMatchers("/hospital/portal/**").hasRole("PATIENT")
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
