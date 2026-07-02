@@ -54,11 +54,13 @@ public class Billing {
         if (this.publicId == null) {
             this.publicId = java.util.UUID.randomUUID().toString();
         }
-        if (this.customId == null) {
-            // Generate simple random readable ID: BIL + 4 random digits
-            this.customId = "BIL" + (1000 + new java.util.Random().nextInt(9000));
-        }
     }
+
+    @Column(name = "payer_type", nullable = false, length = 20)
+    private String payerType = "PATIENT"; // PATIENT, INSURANCE, CORPORATE
+
+    @Column(name = "advance_applied", precision = 10, scale = 2)
+    private BigDecimal advanceApplied = BigDecimal.ZERO;
 
     /**
      * Hospital ID for multi-tenant isolation

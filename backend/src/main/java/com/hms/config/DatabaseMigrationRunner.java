@@ -43,6 +43,7 @@ public class DatabaseMigrationRunner {
         migrateAdmissionMonitoringSchema();
         migrateSignatureNotificationSchema();
         migrateAdmissionCoreSchema();
+        migrateBillingHardeningSchema();
     }
 
     /**
@@ -926,6 +927,71 @@ public class DatabaseMigrationRunner {
             log.info("DB migration: created/verified Nursing Engine tables");
         } catch (Exception e) {
             log.warn("DB migration skipped (migrateAdmissionCoreSchema): {}", e.getMessage());
+        }
+    }
+
+    private void migrateBillingHardeningSchema() {
+        try {
+            // Add columns to billing if they don't exist
+            addColumnIfNotExists("billing", "payer_type", "VARCHAR(20) NOT NULL DEFAULT 'PATIENT'");
+            addColumnIfNotExists("billing", "advance_applied", "DECIMAL(10,2) DEFAULT 0.00");
+
+            // Add composite unique key to billing(hospital_id, custom_id)
+            try {
+                Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.statistics " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'billing' AND INDEX_NAME = 'uq_billing_custom_id'",
+                    Integer.class
+                );
+                if (count != null && count == 0) {
+                    jdbcTemplate.execute(
+                        "ALTER TABLE billing ADD CONSTRAINT uq_billing_custom_id UNIQUE (hospital_id, custom_id)"
+                    );
+                    log.info("DB migration applied: unique constraint uq_billing_custom_id added to billing");
+                }
+            } catch (Exception e) {
+                log.warn("DB migration skipped (billing.uq_billing_custom_id): {}", e.getMessage());
+            }
+
+            // Create charge_master table
+            jdbcTemplate.execute(
+                "CREATE TABLE IF NOT EXISTS charge_master (" +
+                "  id bigint NOT NULL AUTO_INCREMENT," +
+                "  hospital_id bigint NOT NULL," +
+                "  service_code varchar(50) NOT NULL," +
+                "  name varchar(200) NOT NULL," +
+                "  category varchar(50) NOT NULL," +
+                "  active_price decimal(10,2) NOT NULL," +
+                "  effective_from date NOT NULL," +
+                "  is_active boolean NOT NULL DEFAULT true," +
+                "  created_at datetime NOT NULL," +
+                "  updated_at datetime NOT NULL," +
+                "  PRIMARY KEY (id)," +
+                "  UNIQUE KEY uq_cm_code (hospital_id, service_code)" +
+                ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+            );
+
+            // Create insurance_claim table
+            jdbcTemplate.execute(
+                "CREATE TABLE IF NOT EXISTS insurance_claim (" +
+                "  id bigint NOT NULL AUTO_INCREMENT," +
+                "  hospital_id bigint NOT NULL," +
+                "  billing_id bigint NOT NULL," +
+                "  payer varchar(100) NOT NULL," +
+                "  claim_amount decimal(10,2) NOT NULL," +
+                "  approved_amount decimal(10,2) DEFAULT NULL," +
+                "  status varchar(30) NOT NULL," +
+                "  submitted_at datetime DEFAULT NULL," +
+                "  created_at datetime NOT NULL," +
+                "  updated_at datetime NOT NULL," +
+                "  PRIMARY KEY (id)," +
+                "  KEY idx_ic_billing (billing_id)" +
+                ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+            );
+
+            log.info("DB migration: created/verified Billing Hardening / Charge Master tables");
+        } catch (Exception e) {
+            log.warn("DB migration skipped (migrateBillingHardeningSchema): {}", e.getMessage());
         }
     }
 }

@@ -245,12 +245,13 @@ public class BillingController {
                     continue;
                 }
                 BigDecimal amt = itemDto.getDefaultAmount() != null ? itemDto.getDefaultAmount() : BigDecimal.ZERO;
+                BigDecimal resolvedPrice = billingService.resolveItemPrice(hospitalId, itemDto.getName(), amt);
 
                 BillingItem item = new BillingItem();
                 item.setBillingId(id);
                 item.setHospitalId(hospitalId);
                 item.setDescription(itemDto.getName().trim());
-                item.setAmount(amt);
+                item.setAmount(resolvedPrice);
                 billingItemRepository.save(item);
             }
         }
@@ -300,6 +301,9 @@ public class BillingController {
     
     @Autowired
     private com.hms.repository.BillingItemRepository billingItemRepository;
+
+    @Autowired
+    private com.hms.repository.InsuranceClaimRepository insuranceClaimRepository;
 
     @Autowired
     private com.hms.repository.BillingMedicineRepository billingMedicineRepository;
@@ -649,6 +653,53 @@ public class BillingController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
+    }
+
+    @PostMapping("/insurance-preauth")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> insurancePreauth(@RequestBody java.util.Map<String, Object> request) {
+        validateBillingAccess();
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+
+        Long billingId = Long.valueOf(request.get("billingId").toString());
+        String payer = request.get("payer").toString();
+        java.math.BigDecimal claimAmount = new java.math.BigDecimal(request.get("claimAmount").toString());
+
+        // Validate bill exists and belongs to tenant
+        com.hms.entity.Billing bill = billingRepository.findById(billingId)
+                .filter(b -> b.getHospitalId().equals(hospitalId))
+                .orElseThrow(() -> new com.hms.exception.ResourceNotFoundException("Billing record not found"));
+
+        // Update payerType to INSURANCE
+        bill.setPayerType("INSURANCE");
+        billingRepository.save(bill);
+
+        // Check if a claim already exists for this billing record
+        java.util.List<com.hms.entity.InsuranceClaim> existing = insuranceClaimRepository.findByHospitalIdAndBillingId(hospitalId, billingId);
+        com.hms.entity.InsuranceClaim claim;
+        if (!existing.isEmpty()) {
+            claim = existing.get(0);
+            claim.setPayer(payer);
+            claim.setClaimAmount(claimAmount);
+            claim.setUpdatedAt(java.time.LocalDateTime.now());
+        } else {
+            claim = new com.hms.entity.InsuranceClaim();
+            claim.setHospitalId(hospitalId);
+            claim.setBillingId(billingId);
+            claim.setPayer(payer);
+            claim.setClaimAmount(claimAmount);
+            claim.setStatus("PENDING_AUTH");
+        }
+
+        if (request.containsKey("approvedAmount") && request.get("approvedAmount") != null) {
+            claim.setApprovedAmount(new java.math.BigDecimal(request.get("approvedAmount").toString()));
+        }
+        if (request.containsKey("status") && request.get("status") != null) {
+            claim.setStatus(request.get("status").toString());
+        }
+
+        com.hms.entity.InsuranceClaim saved = insuranceClaimRepository.save(claim);
+        return ResponseEntity.ok(saved);
     }
 }
 

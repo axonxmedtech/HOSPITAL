@@ -202,7 +202,7 @@ public class IpdAdmissionService {
             bill.setAmount(bedPrice);
             bill.setDescription("Bed Price");
             bill.setPaymentStatus("PENDING");
-            Billing savedBill = billingRepository.save(bill);
+            Billing savedBill = billingService.saveBillingWithSequentialId(bill);
 
             // Create billing item for bed price
             if (bedPrice != null) {
@@ -328,7 +328,7 @@ public class IpdAdmissionService {
             bill.setAmount(bedPrice);
             bill.setDescription("Bed Price");
             bill.setPaymentStatus("PENDING");
-            Billing savedBill = billingRepository.save(bill);
+            Billing savedBill = billingService.saveBillingWithSequentialId(bill);
 
             // Create billing item for bed price
             if (bedPrice != null) {

@@ -114,7 +114,7 @@ class IpdAdmissionServiceTest {
         hospital.setModules(java.util.List.of("BILLING"));
         when(hospitalRepository.findById(1L)).thenReturn(Optional.of(hospital));
         when(ipdAdmissionRepository.save(any(IpdAdmission.class))).thenReturn(savedIpd);
-        when(billingRepository.save(any(Billing.class))).thenAnswer(i -> i.getArguments()[0]);
+        when(billingService.saveBillingWithSequentialId(any(Billing.class))).thenAnswer(i -> i.getArguments()[0]);
         when(ipdBedHistoryRepository.save(any(com.hms.entity.IpdBedHistory.class))).thenAnswer(i -> i.getArguments()[0]);
         when(wardRepository.findById(1L)).thenReturn(Optional.empty());
         when(appointmentRepository.findByPatientIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(any(), any()))

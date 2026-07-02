@@ -39,6 +39,8 @@ class BillingServiceTest {
     @Mock com.hms.repository.MedicalRecordRepository medicalRecordRepository;
     @Mock com.hms.repository.PatientAdvanceRepository patientAdvanceRepository;
     @Mock com.hms.repository.BillingRefundRepository billingRefundRepository;
+    @Mock com.hms.repository.ChargeMasterRepository chargeMasterRepository;
+    @Mock com.hms.repository.InsuranceClaimRepository insuranceClaimRepository;
 
     @InjectMocks BillingService billingService;
 
@@ -60,7 +62,7 @@ class BillingServiceTest {
         savedBilling.setId(10L);
         savedBilling.setHospitalId(1L);
         savedBilling.setAmount(new BigDecimal("500.00"));
-        when(billingRepository.save(any(Billing.class))).thenReturn(savedBilling);
+        when(billingRepository.saveAndFlush(any(Billing.class))).thenReturn(savedBilling);
 
         BillingItem savedItem = new BillingItem();
         when(billingItemRepository.save(any(BillingItem.class))).thenReturn(savedItem);
@@ -71,7 +73,7 @@ class BillingServiceTest {
         assertThat(result.getAmount()).isEqualByComparingTo(new BigDecimal("500.00"));
 
         ArgumentCaptor<Billing> captor = ArgumentCaptor.forClass(Billing.class);
-        verify(billingRepository).save(captor.capture());
+        verify(billingRepository).saveAndFlush(captor.capture());
         assertThat(captor.getValue().getAmount()).isEqualByComparingTo(new BigDecimal("500.00"));
         assertThat(captor.getValue().getPaymentStatus()).isEqualTo("PENDING");
     }
@@ -170,12 +172,14 @@ class BillingServiceTest {
         savedBill.setId(500L);
         savedBill.setIpdAdmissionId(ipdAdmissionId);
         savedBill.setHospitalId(hospitalId);
+        when(billingRepository.saveAndFlush(any(Billing.class))).thenReturn(savedBill);
         when(billingRepository.save(any(Billing.class))).thenReturn(savedBill);
         when(billingRepository.findById(500L)).thenReturn(Optional.of(savedBill));
 
         billingService.postIpdCharge(ipdAdmissionId, "Test Charge", new BigDecimal("150.00"));
 
-        verify(billingRepository, times(2)).save(any(Billing.class));
+        verify(billingRepository, times(1)).saveAndFlush(any(Billing.class));
+        verify(billingRepository, times(1)).save(any(Billing.class));
         verify(billingItemRepository, times(1)).save(any(BillingItem.class));
     }
 
@@ -345,5 +349,87 @@ class BillingServiceTest {
         assertThatThrownBy(() -> billingService.approveRefund(1L))
                 .isInstanceOf(IllegalStateException.class);
         verify(billingRefundRepository, never()).save(any());
+    }
+
+    @Test
+    void saveBillingWithSequentialId_generatesIdCorrectly() {
+        try {
+            java.lang.reflect.Field selfField = BillingService.class.getDeclaredField("self");
+            selfField.setAccessible(true);
+            selfField.set(billingService, billingService);
+        } catch (Exception e) {
+            fail(e.getMessage());
+        }
+
+        Billing bill = new Billing();
+        bill.setHospitalId(1L);
+
+        when(billingRepository.countByHospitalId(1L)).thenReturn(44L);
+        when(billingRepository.saveAndFlush(any(Billing.class))).thenAnswer(i -> i.getArgument(0));
+
+        Billing result = billingService.saveBillingWithSequentialId(bill);
+
+        assertThat(result.getCustomId()).isEqualTo("BIL-" + java.time.LocalDate.now().getYear() + "-00045");
+    }
+
+    @Test
+    void saveBillingWithSequentialId_retryOnCollision() {
+        try {
+            java.lang.reflect.Field selfField = BillingService.class.getDeclaredField("self");
+            selfField.setAccessible(true);
+            selfField.set(billingService, billingService);
+        } catch (Exception e) {
+            fail(e.getMessage());
+        }
+
+        Billing bill = new Billing();
+        bill.setHospitalId(1L);
+
+        when(billingRepository.countByHospitalId(1L)).thenReturn(44L);
+        when(billingRepository.saveAndFlush(any(Billing.class)))
+                .thenThrow(new org.springframework.dao.DataIntegrityViolationException("collision"))
+                .thenAnswer(i -> i.getArgument(0));
+
+        Billing result = billingService.saveBillingWithSequentialId(bill);
+
+        assertThat(result.getCustomId()).isEqualTo("BIL-" + java.time.LocalDate.now().getYear() + "-00046");
+    }
+
+    @Test
+    void resolveItemPrice_returnsChargeMasterPriceIfExists() {
+        com.hms.entity.ChargeMaster cm = new com.hms.entity.ChargeMaster();
+        cm.setActivePrice(new BigDecimal("1200.00"));
+
+        when(chargeMasterRepository.findByHospitalIdAndNameAndIsActiveTrue(1L, "Consultation Fee"))
+                .thenReturn(Optional.of(cm));
+
+        BigDecimal result = billingService.resolveItemPrice(1L, "Consultation Fee", new BigDecimal("500.00"));
+
+        assertThat(result).isEqualByComparingTo(new BigDecimal("1200.00"));
+    }
+
+    @Test
+    void updateStatus_blocksDirectFinalizationIfPendingClaim() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+
+        Hospital hospital = new Hospital();
+        hospital.setId(1L);
+        hospital.setModules(List.of("BILLING"));
+        when(hospitalRepository.findById(1L)).thenReturn(Optional.of(hospital));
+
+        Billing bill = new Billing();
+        bill.setId(10L);
+        bill.setHospitalId(1L);
+
+        com.hms.entity.InsuranceClaim claim = new com.hms.entity.InsuranceClaim();
+        claim.setStatus("PENDING_AUTH");
+        claim.setPayer("Star Health");
+
+        when(billingRepository.findById(10L)).thenReturn(Optional.of(bill));
+        when(insuranceClaimRepository.findByHospitalIdAndBillingId(1L, 10L)).thenReturn(List.of(claim));
+
+        assertThatThrownBy(() -> billingService.updateStatus(10L, "PAID", "CASH", "REF"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("active cashless insurance claim");
     }
 }

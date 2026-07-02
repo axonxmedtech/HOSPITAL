@@ -31,6 +31,9 @@ public class BillingSchedulerService {
     @Autowired
     private BillingItemRepository billingItemRepository;
 
+    @Autowired
+    private BillingService billingService;
+
     /**
      * Runs at midnight IST (12:00 AM IST) to calculate charges for the day just ended.
      */
@@ -95,17 +98,19 @@ public class BillingSchedulerService {
             return; 
         }
 
+        BigDecimal resolvedPrice = billingService.resolveItemPrice(bill.getHospitalId(), description, bedPrice);
+
         // 4. Record the new Billing Item.
         BillingItem newItem = new BillingItem();
         newItem.setBillingId(bill.getId());
         newItem.setHospitalId(bill.getHospitalId());
         newItem.setDescription(description);
-        newItem.setAmount(bedPrice);
+        newItem.setAmount(resolvedPrice);
         billingItemRepository.save(newItem);
 
         // 5. Increment aggregate parent bill total.
         BigDecimal currentTotal = bill.getAmount() != null ? bill.getAmount() : BigDecimal.ZERO;
-        bill.setAmount(currentTotal.add(bedPrice));
+        bill.setAmount(currentTotal.add(resolvedPrice));
         billingRepository.save(bill);
     }
 }

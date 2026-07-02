@@ -62,6 +62,9 @@ public class BillingControllerTest {
     private BillingItemRepository billingItemRepository;
 
     @MockBean
+    private InsuranceClaimRepository insuranceClaimRepository;
+
+    @MockBean
     private IpdAdmissionRepository ipdAdmissionRepository;
 
     @MockBean

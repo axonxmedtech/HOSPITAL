@@ -13,6 +13,8 @@ import java.util.List;
 public interface BillingRepository extends JpaRepository<Billing, Long> {
     Page<Billing> findByHospitalId(Long hospitalId, Pageable pageable);
 
+    long countByHospitalId(Long hospitalId);
+
     List<Billing> findByHospitalId(Long hospitalId);
 
     Page<Billing> findByHospitalIdAndPaymentStatus(Long hospitalId, String paymentStatus, Pageable pageable);

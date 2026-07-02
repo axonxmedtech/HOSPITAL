@@ -16,6 +16,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,6 +26,15 @@ import java.math.BigDecimal;
 public class BillingService {
 
     private static final Logger logger = LoggerFactory.getLogger(BillingService.class);
+
+    @Autowired
+    private BillingService self;
+
+    @Autowired
+    private com.hms.repository.ChargeMasterRepository chargeMasterRepository;
+
+    @Autowired
+    private com.hms.repository.InsuranceClaimRepository insuranceClaimRepository;
 
     @Autowired
     private BillingRepository billingRepository;
@@ -93,12 +103,13 @@ public class BillingService {
         // Only generate if consultation fee is set and > 0
         BigDecimal fee = hospital.getConsultationFee();
         if (fee != null && fee.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal resolvedFee = resolveItemPrice(hospital.getId(), "Consultation Fee", fee);
             Billing bill = new Billing();
             bill.setHospitalId(hospital.getId());
             bill.setPatientId(appointment.getPatientId());
             bill.setDoctorId(appointment.getDoctorId());
             bill.setAppointmentId(appointment.getId());
-            bill.setAmount(fee);
+            bill.setAmount(resolvedFee);
             bill.setPaymentStatus("PENDING"); // Default to pending until collected
             bill.setDescription("Consultation Fee - Auto Generated");
 
@@ -110,7 +121,7 @@ public class BillingService {
                 logger.warn("Could not resolve related opdId for appointment {}", appointment.getId(), e);
             }
 
-            Billing saved = billingRepository.save(bill);
+            Billing saved = saveBillingWithSequentialId(bill);
 
             // Create a billing item for breakdown consistency in the UI
             try {
@@ -118,7 +129,7 @@ public class BillingService {
                 item.setBillingId(saved.getId());
                 item.setHospitalId(hospital.getId());
                 item.setDescription("Consultation Fee");
-                item.setAmount(fee);
+                item.setAmount(resolvedFee);
                 billingItemRepository.save(item);
             } catch (Exception e) {
                 logger.warn("Failed to create Consultation Fee billing item for auto-bill {}", saved.getId(), e);
@@ -178,6 +189,15 @@ public class BillingService {
                 .filter(b -> b.getHospitalId().equals(hospitalId))
                 .orElseThrow(() -> new RuntimeException("Bill not found"));
 
+        if ("PAID".equalsIgnoreCase(status) || "CLOSED".equalsIgnoreCase(status)) {
+            java.util.List<com.hms.entity.InsuranceClaim> claims = insuranceClaimRepository.findByHospitalIdAndBillingId(hospitalId, id);
+            for (com.hms.entity.InsuranceClaim claim : claims) {
+                if ("PENDING_AUTH".equalsIgnoreCase(claim.getStatus()) || "APPROVED".equalsIgnoreCase(claim.getStatus()) || "SUBMITTED".equalsIgnoreCase(claim.getStatus())) {
+                    throw new IllegalStateException("Cannot finalize billing: there is an active cashless insurance claim (" + claim.getPayer() + ") with status " + claim.getStatus() + " awaiting settlement.");
+                }
+            }
+        }
+
         bill.setPaymentStatus(status);
         if ("PAID".equalsIgnoreCase(status)) {
             try {
@@ -193,7 +213,7 @@ public class BillingService {
             bill.setPaymentReference(paymentReference);
         }
 
-        Billing saved = billingRepository.save(bill);
+        Billing saved = saveBillingWithSequentialId(bill);
 
         // Create audit log
         try {
@@ -334,24 +354,25 @@ public class BillingService {
         if (fee == null || fee.compareTo(BigDecimal.ZERO) <= 0) {
             fee = new BigDecimal("500.00"); // Default consultation fee
         }
+        BigDecimal resolvedFee = resolveItemPrice(hospitalId, "Consultation Fee", fee);
 
         Billing bill = new Billing();
         bill.setHospitalId(hospitalId);
         bill.setPatientId(patientId);
         bill.setDoctorId(doctorId);
-        bill.setAmount(fee);
+        bill.setAmount(resolvedFee);
         bill.setDescription("Consultation Fee");
         bill.setPaymentStatus("PENDING");
         bill.setAppointmentId(null); // No appointment for direct consultations
 
-        Billing saved = billingRepository.save(bill);
+        Billing saved = saveBillingWithSequentialId(bill);
 
         // Create single billing item
         com.hms.entity.BillingItem item = new com.hms.entity.BillingItem();
         item.setBillingId(saved.getId());
         item.setHospitalId(hospitalId);
         item.setDescription("Consultation Fee");
-        item.setAmount(fee);
+        item.setAmount(resolvedFee);
         billingItemRepository.save(item);
 
         // Broadcast real-time refresh
@@ -393,7 +414,9 @@ public class BillingService {
             consultFee = new java.math.BigDecimal("500.00");
         }
 
-        java.math.BigDecimal total = caseFee.add(consultFee);
+        java.math.BigDecimal resolvedCaseFee = resolveItemPrice(hospitalId, "Case Paper Fee", caseFee);
+        java.math.BigDecimal resolvedConsultFee = resolveItemPrice(hospitalId, "Consultation Fee", consultFee);
+        java.math.BigDecimal total = resolvedCaseFee.add(resolvedConsultFee);
 
         Billing bill = new Billing();
         bill.setHospitalId(hospitalId);
@@ -405,21 +428,21 @@ public class BillingService {
         bill.setPaymentStatus("PENDING");
         bill.setAppointmentId(null);
 
-        Billing saved = billingRepository.save(bill);
+        Billing saved = saveBillingWithSequentialId(bill);
 
         // Create billing items for breakdown
         com.hms.entity.BillingItem item1 = new com.hms.entity.BillingItem();
         item1.setBillingId(saved.getId());
         item1.setHospitalId(hospitalId);
         item1.setDescription("Case Paper Fee");
-        item1.setAmount(caseFee);
+        item1.setAmount(resolvedCaseFee);
         billingItemRepository.save(item1);
 
         com.hms.entity.BillingItem item2 = new com.hms.entity.BillingItem();
         item2.setBillingId(saved.getId());
         item2.setHospitalId(hospitalId);
         item2.setDescription("Consultation Fee");
-        item2.setAmount(consultFee);
+        item2.setAmount(resolvedConsultFee);
         billingItemRepository.save(item2);
 
         // Broadcast real-time refresh
@@ -493,14 +516,16 @@ public class BillingService {
             bill.setAmount(BigDecimal.ZERO);
             bill.setPaymentStatus("PENDING");
             bill.setDescription("IPD Bill - Admission #" + admission.getIpdNumber());
-            bill = billingRepository.save(bill);
+            bill = saveBillingWithSequentialId(bill);
         }
+
+        BigDecimal resolvedPrice = resolveItemPrice(hospitalId, description, amount);
 
         com.hms.entity.BillingItem item = new com.hms.entity.BillingItem();
         item.setBillingId(bill.getId());
         item.setHospitalId(hospitalId);
         item.setDescription(description);
-        item.setAmount(amount);
+        item.setAmount(resolvedPrice);
         billingItemRepository.save(item);
 
         recalculateTotal(bill.getId());
@@ -730,6 +755,54 @@ public class BillingService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
         return billingRefundRepository.findByHospitalIdOrderByRequestedAtDesc(hospitalId);
+    }
+
+    public BigDecimal resolveItemPrice(Long hospitalId, String itemName, BigDecimal manualAmount) {
+        if (itemName == null) {
+            return manualAmount;
+        }
+        String trimmedName = itemName.trim();
+        java.util.Optional<com.hms.entity.ChargeMaster> cmOpt = chargeMasterRepository
+                .findByHospitalIdAndNameAndIsActiveTrue(hospitalId, trimmedName);
+        if (cmOpt.isPresent()) {
+            return cmOpt.get().getActivePrice();
+        }
+        cmOpt = chargeMasterRepository.findByHospitalIdAndServiceCodeAndIsActiveTrue(hospitalId, trimmedName);
+        if (cmOpt.isPresent()) {
+            return cmOpt.get().getActivePrice();
+        }
+        return manualAmount;
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Billing saveBillAttempt(Billing bill, String customId) {
+        bill.setCustomId(customId);
+        return billingRepository.saveAndFlush(bill);
+    }
+
+    @Transactional
+    public Billing saveBillingWithSequentialId(Billing bill) {
+        if (bill.getCustomId() != null) {
+            return billingRepository.save(bill);
+        }
+
+        int maxRetries = 5;
+        int attempt = 0;
+        Exception lastEx = null;
+        while (attempt < maxRetries) {
+            try {
+                long count = billingRepository.countByHospitalId(bill.getHospitalId());
+                String customId = "BIL-" + java.time.LocalDate.now().getYear() + "-" + String.format("%05d", count + 1 + attempt);
+                // Call via self proxy to ensure Propagation.REQUIRES_NEW works, fallback to this for unit tests
+                BillingService serviceProxy = (self != null) ? self : this;
+                return serviceProxy.saveBillAttempt(bill, customId);
+            } catch (Exception e) {
+                lastEx = e;
+                attempt++;
+                logger.warn("Billing customId collision detected (attempt {}/{}): {}", attempt, maxRetries, e.getMessage());
+            }
+        }
+        throw new RuntimeException("Failed to generate unique custom_id for billing after " + maxRetries + " attempts", lastEx);
     }
 }
 
