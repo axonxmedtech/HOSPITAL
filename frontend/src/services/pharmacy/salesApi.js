@@ -31,6 +31,14 @@ const salesApi = {
     processReturn: async (id, returnItems) => {
         const response = await apiClient.post(`/api/pharmacy/sales/${id}/return`, returnItems);
         return response.data;
+    },
+    getNarcoticLog: async () => {
+        const response = await apiClient.get('/api/pharmacy/sales/narcotic-log');
+        return response.data;
+    },
+    getEligibleWitnesses: async () => {
+        const response = await apiClient.get('/api/pharmacy/sales/eligible-witnesses');
+        return response.data;
     }
 };
 

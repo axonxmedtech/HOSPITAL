@@ -120,6 +120,17 @@ const BillingCounterView = ({ initialData }) => {
     const [paymentMethod, setPaymentMethod] = useState('CASH');
     const [lastSavedSaleId, setLastSavedSaleId] = useState(null);
 
+    // BR-4: controlled-substance dual sign-off
+    const [witnessUserId, setWitnessUserId] = useState('');
+    const [eligibleWitnesses, setEligibleWitnesses] = useState([]);
+    const hasControlledItem = billItems.some(i => i.scheduleType && String(i.scheduleType).toUpperCase() === 'X');
+
+    useEffect(() => {
+        if (hasControlledItem && eligibleWitnesses.length === 0) {
+            salesApi.getEligibleWitnesses().then(setEligibleWitnesses).catch(() => setEligibleWitnesses([]));
+        }
+    }, [hasControlledItem, eligibleWitnesses.length]);
+
     useEffect(() => {
         if (initialData) {
             if (initialData.patient) {
@@ -210,7 +221,8 @@ const BillingCounterView = ({ initialData }) => {
                 price: selectedBatch.sellingPrice,
                 taxPercent: selectedBatch.gstPercentage !== null && selectedBatch.gstPercentage !== undefined ? selectedBatch.gstPercentage : (selectedBatch.medicine?.gstPercentage || 0),
                 discount: 0,
-                total: parseFloat(sellQty) * selectedBatch.sellingPrice
+                total: parseFloat(sellQty) * selectedBatch.sellingPrice,
+                scheduleType: selectedBatch.medicine?.scheduleType || null
             };
             newItems = [...billItems, newItem];
         }
@@ -262,6 +274,10 @@ const BillingCounterView = ({ initialData }) => {
             toast.error("Patient name is required!");
             return;
         }
+        if (hasControlledItem && !witnessUserId) {
+            toast.error("A witness signature (doctor/nurse) is required to dispense a controlled/narcotic substance.");
+            return;
+        }
 
         setIsSubmitting(true);
         try {
@@ -273,6 +289,7 @@ const BillingCounterView = ({ initialData }) => {
                 ipdAdmissionId: null,
                 prescriptionId: selectedRx ? selectedRx.medicalRecordId : null,
                 doctorId: doctorId,
+                witnessUserId: hasControlledItem ? Number(witnessUserId) : null,
                 subtotal: totals.subtotal,
                 taxAmount: totals.tax,
                 discountAmount: totals.discount,
@@ -305,6 +322,7 @@ const BillingCounterView = ({ initialData }) => {
             setDoctorId(null);
             setSelectedRx(null);
             setBillDiscount(0);
+            setWitnessUserId('');
             setTotals({ subtotal: 0, tax: 0, discount: 0, net: 0 });
         } catch (err) {
             toast.error(err.response?.data?.message || "Failed to complete sale");
@@ -507,6 +525,11 @@ const BillingCounterView = ({ initialData }) => {
                                                              Out of Stock
                                                          </span>
                                                      )}
+                                                     {item.scheduleType && String(item.scheduleType).toUpperCase() === 'X' && (
+                                                         <span className="bg-purple-100 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider">
+                                                             🔒 Narcotic
+                                                         </span>
+                                                     )}
                                                  </div>
                                                  <div className="text-[10px] text-gray-500 mt-0.5 flex gap-2">
                                                     <span className="bg-gray-100 px-1.5 rounded">Batch: {item.batch}</span>
@@ -613,6 +636,23 @@ const BillingCounterView = ({ initialData }) => {
                 </div>
             </div>
 
+            {/* BR-4: Controlled substance witness sign-off */}
+            {hasControlledItem && (
+                <div className="bg-purple-50 border border-purple-200 p-4 rounded-xl flex items-center gap-3">
+                    <span className="text-purple-700 font-bold text-xs uppercase tracking-wide">🔒 Witness Required (Controlled Substance)</span>
+                    <select
+                        value={witnessUserId}
+                        onChange={(e) => setWitnessUserId(e.target.value)}
+                        className="flex-1 px-3 py-2 border border-purple-300 rounded-xl text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none bg-white font-medium"
+                    >
+                        <option value="">Select witness (doctor or nurse)…</option>
+                        {eligibleWitnesses.map(w => (
+                            <option key={w.id} value={w.id}>{w.name} ({w.role})</option>
+                        ))}
+                    </select>
+                </div>
+            )}
+
             {/* BOTTOM ACTION BAR */}
             <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-xl flex items-center justify-between">
                 <div className="flex gap-3">
@@ -640,10 +680,10 @@ const BillingCounterView = ({ initialData }) => {
                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
                          Print Invoice
                      </button>
-                     <button 
+                     <button
                         onClick={handleCompleteSale}
-                        disabled={isSubmitting || !patientSearch.trim() || billItems.length === 0}
-                        className={`px-8 py-3 text-white text-sm font-bold rounded-xl flex items-center gap-3 transition-all active:scale-95 shadow-xl shadow-green-200 ${isSubmitting || !patientSearch.trim() || billItems.length === 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none' : 'bg-green-600 hover:bg-green-700'}`}
+                        disabled={isSubmitting || !patientSearch.trim() || billItems.length === 0 || (hasControlledItem && !witnessUserId)}
+                        className={`px-8 py-3 text-white text-sm font-bold rounded-xl flex items-center gap-3 transition-all active:scale-95 shadow-xl shadow-green-200 ${isSubmitting || !patientSearch.trim() || billItems.length === 0 || (hasControlledItem && !witnessUserId) ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none' : 'bg-green-600 hover:bg-green-700'}`}
                      >
                          {isSubmitting ? <LoadingSpinner size="xs" color="white" /> : <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
                          Complete & Save Sale (F12)
