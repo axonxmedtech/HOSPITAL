@@ -1147,6 +1147,16 @@ public class IpdAdmissionService {
         com.hms.entity.Hospital hospital = hospitalRepository.findById(ipd.getHospitalId()).orElse(null);
         boolean hasBillingModule = hospital != null && hospital.getModules() != null && hospital.getModules().contains("BILLING");
 
+        if (hasBillingModule) {
+            // Form 30 BR-7: auto-apply any active advance deposit before computing the
+            // outstanding balance, so a fully-covered advance doesn't block discharge.
+            try {
+                billingService.applyAdvanceToIpdBill(ipdId);
+            } catch (Exception e) {
+                logger.warn("Failed to auto-apply advance deposit during discharge for IPD {}", ipdId, e);
+            }
+        }
+
         java.util.List<Billing> bills = billingRepository.findByIpdAdmissionId(ipdId);
 
         if (hasBillingModule) {

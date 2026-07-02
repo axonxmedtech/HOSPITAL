@@ -65,6 +65,12 @@ public class BillingService {
     @Autowired
     private ApplicationEventPublisher eventPublisher;
 
+    @Autowired
+    private com.hms.repository.PatientAdvanceRepository patientAdvanceRepository;
+
+    @Autowired
+    private com.hms.repository.BillingRefundRepository billingRefundRepository;
+
     /**
      * Auto-generate a bill for a completed appointment
      */
@@ -504,6 +510,226 @@ public class BillingService {
         } catch (Exception e) {
             logger.warn("Failed to broadcast WebSocket refresh after direct IPD charge posting", e);
         }
+    }
+
+    // ===== Advance Deposits (Form 30 BR-7) =====
+
+    /** Records an advance deposit against an IPD admission. */
+    @Transactional
+    public com.hms.entity.PatientAdvance recordAdvance(com.hms.dto.AdvanceRequest request) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        if (request.getAmount() == null || request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Advance amount must be positive");
+        }
+        com.hms.entity.IpdAdmission admission = ipdAdmissionRepository.findById(request.getIpdAdmissionId())
+                .orElseThrow(() -> new RuntimeException("IPD admission not found"));
+        if (!admission.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+
+        com.hms.entity.PatientAdvance advance = new com.hms.entity.PatientAdvance();
+        advance.setHospitalId(hospitalId);
+        advance.setPatientId(admission.getPatientId());
+        advance.setIpdAdmissionId(request.getIpdAdmissionId());
+        advance.setAmount(request.getAmount());
+        advance.setBalance(request.getAmount());
+        advance.setPaymentMode(request.getPaymentMode());
+        advance.setReceivedByName(securityHelper.getCurrentUserEmail());
+        advance.setReceivedAt(java.time.LocalDateTime.now());
+        advance.setStatus("ACTIVE");
+        com.hms.entity.PatientAdvance saved = patientAdvanceRepository.save(advance);
+
+        try {
+            auditLogService.logAction("BILLING_ADVANCE_RECORDED",
+                    "Advance of " + request.getAmount() + " recorded for admission " + request.getIpdAdmissionId(),
+                    securityHelper.getCurrentUserEmail(), hospitalId, "BILLING", String.valueOf(saved.getId()), null);
+        } catch (Exception ignored) {
+        }
+        return saved;
+    }
+
+    /** Sum of unconsumed advance balance for an admission. */
+    public BigDecimal getAdvanceBalance(Long ipdAdmissionId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        return patientAdvanceRepository.findByHospitalIdAndIpdAdmissionIdAndStatus(hospitalId, ipdAdmissionId, "ACTIVE")
+                .stream().map(com.hms.entity.PatientAdvance::getBalance).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /**
+     * BR-7: auto-applies any active advance balance to the admission's IPD bill at
+     * discharge checkout, consuming advances FIFO and posting an ADVANCE payment line.
+     * Idempotent per call — only deducts up to the bill's currently-outstanding amount.
+     */
+    @Transactional
+    public BigDecimal applyAdvanceToIpdBill(Long ipdAdmissionId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+
+        java.util.List<Billing> bills = billingRepository.findByIpdAdmissionId(ipdAdmissionId);
+        if (bills == null || bills.isEmpty()) return BigDecimal.ZERO;
+        Billing bill = bills.get(0);
+        if (!bill.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+
+        java.util.List<com.hms.entity.PatientAdvance> advances = patientAdvanceRepository
+                .findByHospitalIdAndIpdAdmissionIdAndStatus(hospitalId, ipdAdmissionId, "ACTIVE");
+        if (advances.isEmpty()) return BigDecimal.ZERO;
+
+        BigDecimal alreadyPaid = billingPaymentRepository.findByBillingId(bill.getId()).stream()
+                .map(com.hms.entity.BillingPayment::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal outstanding = bill.getAmount() != null ? bill.getAmount().subtract(alreadyPaid) : BigDecimal.ZERO;
+        if (outstanding.compareTo(BigDecimal.ZERO) <= 0) return BigDecimal.ZERO;
+
+        BigDecimal totalApplied = BigDecimal.ZERO;
+        for (com.hms.entity.PatientAdvance advance : advances) {
+            if (outstanding.compareTo(BigDecimal.ZERO) <= 0) break;
+            BigDecimal apply = advance.getBalance().min(outstanding);
+            if (apply.compareTo(BigDecimal.ZERO) <= 0) continue;
+
+            advance.setBalance(advance.getBalance().subtract(apply));
+            if (advance.getBalance().compareTo(BigDecimal.ZERO) == 0) {
+                advance.setStatus("CONSUMED");
+            }
+            patientAdvanceRepository.save(advance);
+
+            com.hms.entity.BillingPayment payment = new com.hms.entity.BillingPayment();
+            payment.setBillingId(bill.getId());
+            payment.setHospitalId(hospitalId);
+            payment.setAmount(apply);
+            payment.setMode("ADVANCE");
+            payment.setReference("ADV-" + advance.getId());
+            billingPaymentRepository.save(payment);
+
+            outstanding = outstanding.subtract(apply);
+            totalApplied = totalApplied.add(apply);
+        }
+
+        if (totalApplied.compareTo(BigDecimal.ZERO) > 0) {
+            try {
+                auditLogService.logAction("BILLING_ADVANCE_APPLIED",
+                        "Applied " + totalApplied + " advance to bill " + bill.getId() + " for admission " + ipdAdmissionId,
+                        securityHelper.getCurrentUserEmail(), hospitalId, "BILLING", String.valueOf(bill.getId()), null);
+            } catch (Exception ignored) {
+            }
+            try {
+                webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+            } catch (Exception ignored) {
+            }
+        }
+        return totalApplied;
+    }
+
+    // ===== Refund Sign-off (Form 30 BR-5) =====
+
+    /** Any billing-authorized user requests a refund; it stays PENDING until a supervisor signs off. */
+    @Transactional
+    public com.hms.entity.BillingRefund requestRefund(com.hms.dto.RefundRequest request) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        if (request.getAmount() == null || request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Refund amount must be positive");
+        }
+        if (request.getReason() == null || request.getReason().isBlank()) {
+            throw new IllegalArgumentException("A documented refund reason is required (BR-5).");
+        }
+        Billing bill = billingRepository.findById(request.getBillingId())
+                .orElseThrow(() -> new RuntimeException("Bill not found"));
+        if (!bill.getHospitalId().equals(hospitalId)) {
+            throw new UnauthorizedException("Access denied: Tenant mismatch");
+        }
+
+        com.hms.entity.BillingRefund refund = new com.hms.entity.BillingRefund();
+        refund.setHospitalId(hospitalId);
+        refund.setBillingId(bill.getId());
+        refund.setPatientId(bill.getPatientId());
+        refund.setAmount(request.getAmount());
+        refund.setReason(request.getReason());
+        refund.setRequestedByName(securityHelper.getCurrentUserEmail());
+        refund.setRequestedAt(java.time.LocalDateTime.now());
+        refund.setStatus("PENDING");
+        com.hms.entity.BillingRefund saved = billingRefundRepository.save(refund);
+
+        try {
+            auditLogService.logAction("BILLING_REFUND_REQUESTED",
+                    "Refund of " + request.getAmount() + " requested for bill " + bill.getId() + ": " + request.getReason(),
+                    securityHelper.getCurrentUserEmail(), hospitalId, "BILLING", String.valueOf(saved.getId()), null);
+        } catch (Exception ignored) {
+        }
+        return saved;
+    }
+
+    /** BR-5: only a supervisor (HOSPITAL_ADMIN) may approve a refund. */
+    @Transactional
+    public com.hms.entity.BillingRefund approveRefund(Long refundId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        String role = securityHelper.getCurrentUserRole();
+        if (!"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
+            throw new UnauthorizedException("Only a supervisor (Hospital Admin) may approve a refund (BR-5).");
+        }
+
+        com.hms.entity.BillingRefund refund = billingRefundRepository.findByIdAndHospitalId(refundId, hospitalId)
+                .orElseThrow(() -> new RuntimeException("Refund request not found"));
+        if (!"PENDING".equalsIgnoreCase(refund.getStatus())) {
+            throw new IllegalStateException("Only a pending refund can be approved.");
+        }
+
+        refund.setStatus("APPROVED");
+        refund.setApprovedByName(securityHelper.getCurrentUserEmail());
+        refund.setApprovedAt(java.time.LocalDateTime.now());
+        com.hms.entity.BillingRefund saved = billingRefundRepository.save(refund);
+
+        try {
+            auditLogService.logAction("BILLING_REFUND_APPROVED",
+                    "Refund " + refundId + " approved by " + securityHelper.getCurrentUserEmail(),
+                    securityHelper.getCurrentUserEmail(), hospitalId, "BILLING", String.valueOf(refundId), null);
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception ignored) {
+        }
+        return saved;
+    }
+
+    /** BR-5: supervisor rejects a refund with a documented reason. */
+    @Transactional
+    public com.hms.entity.BillingRefund rejectRefund(Long refundId, String rejectionReason) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        String role = securityHelper.getCurrentUserRole();
+        if (!"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
+            throw new UnauthorizedException("Only a supervisor (Hospital Admin) may reject a refund.");
+        }
+        if (rejectionReason == null || rejectionReason.isBlank()) {
+            throw new IllegalArgumentException("A rejection reason is required.");
+        }
+
+        com.hms.entity.BillingRefund refund = billingRefundRepository.findByIdAndHospitalId(refundId, hospitalId)
+                .orElseThrow(() -> new RuntimeException("Refund request not found"));
+        if (!"PENDING".equalsIgnoreCase(refund.getStatus())) {
+            throw new IllegalStateException("Only a pending refund can be rejected.");
+        }
+
+        refund.setStatus("REJECTED");
+        refund.setApprovedByName(securityHelper.getCurrentUserEmail());
+        refund.setApprovedAt(java.time.LocalDateTime.now());
+        refund.setRejectionReason(rejectionReason);
+        com.hms.entity.BillingRefund saved = billingRefundRepository.save(refund);
+
+        try {
+            auditLogService.logAction("BILLING_REFUND_REJECTED",
+                    "Refund " + refundId + " rejected by " + securityHelper.getCurrentUserEmail() + ": " + rejectionReason,
+                    securityHelper.getCurrentUserEmail(), hospitalId, "BILLING", String.valueOf(refundId), null);
+        } catch (Exception ignored) {
+        }
+        return saved;
+    }
+
+    public java.util.List<com.hms.entity.BillingRefund> getRefunds() {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+        return billingRefundRepository.findByHospitalIdOrderByRequestedAtDesc(hospitalId);
     }
 }
 

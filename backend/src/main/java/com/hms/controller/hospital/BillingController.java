@@ -585,5 +585,70 @@ public class BillingController {
         }
         return ResponseEntity.ok(mapped);
     }
+
+    // ===== Advance Deposits (Form 30 BR-7) =====
+
+    @PostMapping("/advances")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> recordAdvance(@RequestBody com.hms.dto.AdvanceRequest request) {
+        try {
+            return ResponseEntity.ok(billingService.recordAdvance(request));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/advances/{ipdId}/balance")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST', 'HOSPITAL_ADMIN', 'DOCTOR')")
+    public ResponseEntity<?> getAdvanceBalance(@PathVariable Long ipdId) {
+        try {
+            return ResponseEntity.ok(java.util.Map.of("balance", billingService.getAdvanceBalance(ipdId)));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // ===== Refund Sign-off (Form 30 BR-5) =====
+
+    @PostMapping("/refunds")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> requestRefund(@RequestBody com.hms.dto.RefundRequest request) {
+        try {
+            return ResponseEntity.ok(billingService.requestRefund(request));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/refunds")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> getRefunds() {
+        try {
+            return ResponseEntity.ok(billingService.getRefunds());
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    /** BR-5: supervisor sign-off gate — restricted to HOSPITAL_ADMIN at both the route and service layer. */
+    @PutMapping("/refunds/{id}/approve")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN')")
+    public ResponseEntity<?> approveRefund(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(billingService.approveRefund(id));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PutMapping("/refunds/{id}/reject")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN')")
+    public ResponseEntity<?> rejectRefund(@PathVariable Long id, @RequestBody java.util.Map<String, String> body) {
+        try {
+            return ResponseEntity.ok(billingService.rejectRefund(id, body.get("rejectionReason")));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
 }
 

@@ -37,6 +37,8 @@ class BillingServiceTest {
     @Mock IpdAdmissionRepository ipdAdmissionRepository;
     @Mock com.hms.repository.WardRepository wardRepository;
     @Mock com.hms.repository.MedicalRecordRepository medicalRecordRepository;
+    @Mock com.hms.repository.PatientAdvanceRepository patientAdvanceRepository;
+    @Mock com.hms.repository.BillingRefundRepository billingRefundRepository;
 
     @InjectMocks BillingService billingService;
 
@@ -175,5 +177,173 @@ class BillingServiceTest {
 
         verify(billingRepository, times(2)).save(any(Billing.class));
         verify(billingItemRepository, times(1)).save(any(BillingItem.class));
+    }
+
+    // ===== Advance Deposits (Form 30 BR-7) =====
+
+    @Test
+    void recordAdvance_rejectsNonPositiveAmount() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        com.hms.dto.AdvanceRequest req = new com.hms.dto.AdvanceRequest();
+        req.setIpdAdmissionId(100L);
+        req.setAmount(BigDecimal.ZERO);
+
+        assertThatThrownBy(() -> billingService.recordAdvance(req))
+                .isInstanceOf(IllegalArgumentException.class);
+        verifyNoInteractions(patientAdvanceRepository);
+    }
+
+    @Test
+    void recordAdvance_savesActiveAdvanceWithFullBalance() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("reception@hospital.com");
+        com.hms.entity.IpdAdmission admission = new com.hms.entity.IpdAdmission();
+        admission.setId(100L);
+        admission.setHospitalId(1L);
+        admission.setPatientId(55L);
+        when(ipdAdmissionRepository.findById(100L)).thenReturn(Optional.of(admission));
+        when(patientAdvanceRepository.save(any(com.hms.entity.PatientAdvance.class))).thenAnswer(i -> i.getArgument(0));
+
+        com.hms.dto.AdvanceRequest req = new com.hms.dto.AdvanceRequest();
+        req.setIpdAdmissionId(100L);
+        req.setAmount(new BigDecimal("5000"));
+        req.setPaymentMode("CASH");
+
+        com.hms.entity.PatientAdvance saved = billingService.recordAdvance(req);
+
+        assertThat(saved.getBalance()).isEqualByComparingTo("5000");
+        assertThat(saved.getStatus()).isEqualTo("ACTIVE");
+        assertThat(saved.getPatientId()).isEqualTo(55L);
+    }
+
+    @Test
+    void applyAdvanceToIpdBill_deductsUpToOutstandingAndConsumesAdvance() {
+        Long hospitalId = 1L, ipdId = 100L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("reception@hospital.com");
+
+        Billing bill = new Billing();
+        bill.setId(5L);
+        bill.setHospitalId(hospitalId);
+        bill.setAmount(new BigDecimal("3000"));
+        when(billingRepository.findByIpdAdmissionId(ipdId)).thenReturn(List.of(bill));
+        when(billingPaymentRepository.findByBillingId(5L)).thenReturn(new ArrayList<>());
+
+        com.hms.entity.PatientAdvance advance = new com.hms.entity.PatientAdvance();
+        advance.setId(9L);
+        advance.setBalance(new BigDecimal("5000"));
+        when(patientAdvanceRepository.findByHospitalIdAndIpdAdmissionIdAndStatus(hospitalId, ipdId, "ACTIVE"))
+                .thenReturn(List.of(advance));
+        when(patientAdvanceRepository.save(any(com.hms.entity.PatientAdvance.class))).thenAnswer(i -> i.getArgument(0));
+        when(billingPaymentRepository.save(any(com.hms.entity.BillingPayment.class))).thenAnswer(i -> i.getArgument(0));
+
+        BigDecimal applied = billingService.applyAdvanceToIpdBill(ipdId);
+
+        assertThat(applied).isEqualByComparingTo("3000"); // capped at outstanding, not full advance
+        assertThat(advance.getBalance()).isEqualByComparingTo("2000"); // remainder kept
+        assertThat(advance.getStatus()).isNull(); // not fully consumed, status untouched
+        ArgumentCaptor<com.hms.entity.BillingPayment> captor = ArgumentCaptor.forClass(com.hms.entity.BillingPayment.class);
+        verify(billingPaymentRepository).save(captor.capture());
+        assertThat(captor.getValue().getMode()).isEqualTo("ADVANCE");
+    }
+
+    @Test
+    void applyAdvanceToIpdBill_noActiveAdvance_returnsZero() {
+        Long hospitalId = 1L, ipdId = 100L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        Billing bill = new Billing();
+        bill.setId(5L);
+        bill.setHospitalId(hospitalId);
+        bill.setAmount(new BigDecimal("3000"));
+        when(billingRepository.findByIpdAdmissionId(ipdId)).thenReturn(List.of(bill));
+        when(patientAdvanceRepository.findByHospitalIdAndIpdAdmissionIdAndStatus(hospitalId, ipdId, "ACTIVE"))
+                .thenReturn(new ArrayList<>());
+
+        BigDecimal applied = billingService.applyAdvanceToIpdBill(ipdId);
+
+        assertThat(applied).isEqualByComparingTo(BigDecimal.ZERO);
+        verifyNoInteractions(billingPaymentRepository);
+    }
+
+    // ===== Refund Sign-off (Form 30 BR-5) =====
+
+    @Test
+    void requestRefund_requiresReason() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        com.hms.dto.RefundRequest req = new com.hms.dto.RefundRequest();
+        req.setBillingId(5L);
+        req.setAmount(new BigDecimal("100"));
+        req.setReason("");
+
+        assertThatThrownBy(() -> billingService.requestRefund(req))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("reason");
+        verifyNoInteractions(billingRefundRepository);
+    }
+
+    @Test
+    void requestRefund_createsPendingRequest() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        when(securityHelper.getCurrentUserEmail()).thenReturn("cashier@hospital.com");
+        Billing bill = new Billing();
+        bill.setId(5L);
+        bill.setHospitalId(1L);
+        bill.setPatientId(55L);
+        when(billingRepository.findById(5L)).thenReturn(Optional.of(bill));
+        when(billingRefundRepository.save(any(com.hms.entity.BillingRefund.class))).thenAnswer(i -> i.getArgument(0));
+
+        com.hms.dto.RefundRequest req = new com.hms.dto.RefundRequest();
+        req.setBillingId(5L);
+        req.setAmount(new BigDecimal("500"));
+        req.setReason("Cancelled CT scan, patient refused");
+
+        com.hms.entity.BillingRefund saved = billingService.requestRefund(req);
+
+        assertThat(saved.getStatus()).isEqualTo("PENDING");
+        assertThat(saved.getRequestedByName()).isEqualTo("cashier@hospital.com");
+    }
+
+    @Test
+    void approveRefund_rejectedForNonAdminRole() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        when(securityHelper.getCurrentUserRole()).thenReturn("RECEPTIONIST");
+
+        assertThatThrownBy(() -> billingService.approveRefund(1L))
+                .isInstanceOf(com.hms.exception.UnauthorizedException.class)
+                .hasMessageContaining("supervisor");
+        verifyNoInteractions(billingRefundRepository);
+    }
+
+    @Test
+    void approveRefund_adminApprovesPendingRefund() {
+        Long hospitalId = 1L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserRole()).thenReturn("HOSPITAL_ADMIN");
+        when(securityHelper.getCurrentUserEmail()).thenReturn("admin@hospital.com");
+        com.hms.entity.BillingRefund refund = new com.hms.entity.BillingRefund();
+        refund.setId(1L);
+        refund.setStatus("PENDING");
+        when(billingRefundRepository.findByIdAndHospitalId(1L, hospitalId)).thenReturn(Optional.of(refund));
+        when(billingRefundRepository.save(any(com.hms.entity.BillingRefund.class))).thenAnswer(i -> i.getArgument(0));
+
+        com.hms.entity.BillingRefund approved = billingService.approveRefund(1L);
+
+        assertThat(approved.getStatus()).isEqualTo("APPROVED");
+        assertThat(approved.getApprovedByName()).isEqualTo("admin@hospital.com");
+    }
+
+    @Test
+    void approveRefund_rejectedWhenAlreadyDecided() {
+        Long hospitalId = 1L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(securityHelper.getCurrentUserRole()).thenReturn("HOSPITAL_ADMIN");
+        com.hms.entity.BillingRefund refund = new com.hms.entity.BillingRefund();
+        refund.setId(1L);
+        refund.setStatus("APPROVED");
+        when(billingRefundRepository.findByIdAndHospitalId(1L, hospitalId)).thenReturn(Optional.of(refund));
+
+        assertThatThrownBy(() -> billingService.approveRefund(1L))
+                .isInstanceOf(IllegalStateException.class);
+        verify(billingRefundRepository, never()).save(any());
     }
 }

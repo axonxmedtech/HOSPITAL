@@ -151,6 +151,42 @@ CREATE TABLE `billing_payments` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
+-- Form 30 BR-7 patient advance deposits. Additive; Hibernate ddl-auto creates it.
+CREATE TABLE IF NOT EXISTS patient_advance (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `patient_id` bigint NOT NULL,
+  `ipd_admission_id` bigint NOT NULL,
+  `amount` decimal(10,2) NOT NULL,
+  `balance` decimal(10,2) NOT NULL,
+  `payment_mode` varchar(30) DEFAULT NULL,
+  `received_by_name` varchar(100) DEFAULT NULL,
+  `received_at` datetime DEFAULT NULL,
+  `status` varchar(20) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_patient_advance_hospital_admission` (`hospital_id`, `ipd_admission_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Form 30 BR-5 refund sign-off register. Additive; Hibernate ddl-auto creates it.
+CREATE TABLE IF NOT EXISTS billing_refund (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `billing_id` bigint NOT NULL,
+  `patient_id` bigint DEFAULT NULL,
+  `amount` decimal(10,2) NOT NULL,
+  `reason` text NOT NULL,
+  `requested_by_name` varchar(100) NOT NULL,
+  `requested_at` datetime NOT NULL,
+  `status` varchar(20) DEFAULT NULL,
+  `approved_by_name` varchar(100) DEFAULT NULL,
+  `approved_at` datetime DEFAULT NULL,
+  `rejection_reason` text,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_billing_refund_hospital` (`hospital_id`, `billing_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 --
 -- Table structure for table `discharge_summary`
 --
