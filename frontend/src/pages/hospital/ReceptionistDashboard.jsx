@@ -24,6 +24,7 @@ import PrescriptionViewModal from '../../components/PrescriptionViewModal';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
 import { SkeletonDashboard, SkeletonStatsGrid, SkeletonOverviewDual, SkeletonTable } from '../../components/Skeleton';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
+import ChargeMasterTab from '../../components/ChargeMasterTab';
 
 const ReceptionistDashboard = () => {
     const navigate = useNavigate();
@@ -702,8 +703,9 @@ const ReceptionistDashboard = () => {
         ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
         ...(hasIPD ? [{ id: 'mrd', label: 'MRD Archive', icon: null }] : []),
         ...(hasBilling ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
+        ...(hasBilling ? [{ id: 'charge-master', label: 'Charge Master', icon: null }] : []),
         ...(hasMedicalInventory && user?.inClinic !== false ? [{ id: 'inventory', label: 'Medicine Inventory', icon: null }] : []),
-    ].filter(tab => tab.id !== 'billing' || user?.billingHandler !== 'DOCTOR');
+    ].filter(tab => (tab.id !== 'billing' && tab.id !== 'charge-master') || user?.billingHandler !== 'DOCTOR');
 
     // Fallback if the URL parameter tab is not currently valid/visible
     useEffect(() => {
@@ -1562,6 +1564,9 @@ const ReceptionistDashboard = () => {
                                     printingBillId={recPrintingId}
                                     onEditItems={handleOpenEditBillItems}
                                 />
+                            )}
+                            {activeTab === 'charge-master' && (
+                                <ChargeMasterTab />
                             )}
                             {activeTab === 'inventory' && (
                                 <MedicineInventoryTab />

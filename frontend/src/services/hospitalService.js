@@ -1103,6 +1103,33 @@ const hospitalService = {
         const response = await apiClient.get(`/hospital/nursing/progress/admission/${admissionId}`);
         return response.data;
     },
+
+    // ========== Charge Master & Insurance APIs (Form 30) ==========
+
+    getChargeMaster: async () => {
+        const response = await apiClient.get('/hospital/charge-master');
+        return response.data;
+    },
+
+    createChargeMaster: async (data) => {
+        const response = await apiClient.post('/hospital/charge-master', data);
+        return response.data;
+    },
+
+    updateChargeMaster: async (id, data) => {
+        const response = await apiClient.put(`/hospital/charge-master/${id}`, data);
+        return response.data;
+    },
+
+    deleteChargeMaster: async (id) => {
+        const response = await apiClient.delete(`/hospital/charge-master/${id}`);
+        return response.data;
+    },
+
+    postInsurancePreauth: async (payload) => {
+        const response = await apiClient.post('/hospital/billing/insurance-preauth', payload);
+        return response.data;
+    },
 };
 
 export default hospitalService;

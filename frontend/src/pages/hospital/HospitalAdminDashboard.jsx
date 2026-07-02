@@ -1,5 +1,6 @@
 import BillingTable from './BillingTable';
 import MessagesTab from './MessagesTab';
+import ChargeMasterTab from '../../components/ChargeMasterTab';
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import authService from '../../services/authService';
@@ -1322,6 +1323,7 @@ const HospitalAdminDashboard = () => {
             { id: 'lab-technicians', label: 'Lab Technicians', icon: null, requiredModule: 'OPD' },
             { id: 'radiology-technicians', label: 'Radiology Technicians', icon: null, requiredModule: 'OPD' },
         { id: 'billing', label: 'Billing', icon: null, requiredModule: 'BILLING' },
+        { id: 'charge-master', label: 'Charge Master', icon: null, requiredModule: 'BILLING' },
         { id: 'pharmacy', label: 'Pharmacy', icon: null, requiredModule: 'PHARMACY' },
         { id: 'pharmacists', label: 'Pharmacists', icon: null, requiredModule: 'PHARMACY' },
         { id: 'inventory', label: 'Medicine Inventory', icon: null, requiredModule: 'MEDICAL_INVENTORY' },
@@ -1952,6 +1954,11 @@ const HospitalAdminDashboard = () => {
                                         printingBillId={printingReceiptId}
                                         onEditItems={handleOpenEditBillItems}
                                     />
+                                )}
+                                {activeTab === 'charge-master' && (
+                                    <div className="p-6">
+                                        <ChargeMasterTab />
+                                    </div>
                                 )}
                                 {activeTab === 'fees' && (
                                     <div className="p-6 max-w-6xl mx-auto">
