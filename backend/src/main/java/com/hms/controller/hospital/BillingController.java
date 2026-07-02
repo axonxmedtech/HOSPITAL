@@ -437,11 +437,26 @@ public class BillingController {
             return ResponseEntity.status(403).body("Not allowed");
         }
 
-        Billing bill = billingRepository.findById(billingId).orElse(null);
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        Billing bill = billingRepository.findById(billingId)
+                .filter(b -> b.getHospitalId().equals(hospitalId))
+                .orElse(null);
         if (bill == null) return ResponseEntity.notFound().build();
 
         if (req.amount == null || req.amount.compareTo(BigDecimal.ZERO) <= 0) {
             return ResponseEntity.badRequest().body("Invalid amount");
+        }
+
+        // BR-6: a bill with an active cashless insurance claim awaiting settlement cannot be
+        // paid off directly — the same freeze enforced in updateStatus() must apply here too,
+        // otherwise this endpoint is a bypass of the claim workflow.
+        {
+            List<com.hms.entity.InsuranceClaim> activeClaims = insuranceClaimRepository.findByHospitalIdAndBillingId(hospitalId, billingId);
+            for (com.hms.entity.InsuranceClaim claim : activeClaims) {
+                if ("PENDING_AUTH".equalsIgnoreCase(claim.getStatus()) || "APPROVED".equalsIgnoreCase(claim.getStatus()) || "SUBMITTED".equalsIgnoreCase(claim.getStatus())) {
+                    return ResponseEntity.badRequest().body("Cannot record payment: there is an active cashless insurance claim (" + claim.getPayer() + ") with status " + claim.getStatus() + " awaiting settlement.");
+                }
+            }
         }
 
         // Calculate remaining balance before saving new payment

@@ -157,6 +157,42 @@ public class ProcurementService {
         PurchaseOrder po = purchaseOrderRepository.findByIdAndHospitalId(poId, hospitalId)
                 .orElseThrow(() -> new IllegalArgumentException("Purchase Order not found: " + poId));
 
+        // Idempotency guard: a PO already marked RECEIVED has had its stock incremented once
+        // already - confirming again would double-count stock for the same delivery.
+        if ("RECEIVED".equals(po.getStatus())) {
+            throw new IllegalStateException("Purchase Order " + po.getPoNumber() + " has already been received.");
+        }
+
+        // BR-3 quantity cap: total quantity received in this GRN must not exceed the PO's
+        // total ordered quantity (parsed from itemsJson: [{"itemId","quantity","rate"}]).
+        // Matched at the PO-total level rather than per-line-item since receivedItems
+        // (HospitalInventory batches) carry no itemId back-reference to itemsJson entries.
+        // Do-no-harm: a PO with no/blank itemsJson (legacy data) skips the cap rather than
+        // blocking the GRN outright.
+        if (po.getItemsJson() != null && !po.getItemsJson().isBlank()) {
+            double totalOrderedQty = 0;
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                com.fasterxml.jackson.databind.JsonNode itemsNode = mapper.readTree(po.getItemsJson());
+                if (itemsNode.isArray()) {
+                    for (com.fasterxml.jackson.databind.JsonNode item : itemsNode) {
+                        totalOrderedQty += item.path("quantity").asDouble(0);
+                    }
+                }
+            } catch (Exception e) {
+                throw new IllegalStateException("Purchase Order " + po.getPoNumber() + " has malformed ordered items and cannot be received against.");
+            }
+
+            double totalReceivedQty = 0;
+            for (HospitalInventory item : receivedItems) {
+                totalReceivedQty += item.getStockQuantity() != null ? item.getStockQuantity() : 0;
+            }
+
+            if (totalReceivedQty > totalOrderedQty) {
+                throw new IllegalStateException("Received quantity (" + totalReceivedQty + ") exceeds ordered quantity (" + totalOrderedQty + ") for Purchase Order " + po.getPoNumber());
+            }
+        }
+
         // Enforce BR-3: automatic stock update
         for (HospitalInventory item : receivedItems) {
             // Find existing inventory item or batch in active warehouse
@@ -223,6 +259,34 @@ public class ProcurementService {
 
         if (!"RECEIVED".equals(po.getStatus())) {
             throw new IllegalStateException("PO status must be RECEIVED to verify matched invoice. Current status: " + po.getStatus());
+        }
+
+        // BR-4 amount reconciliation: the invoice amount must not exceed the PO's own ordered
+        // value (parsed from itemsJson: sum of quantity*rate). A 10% tolerance covers taxes and
+        // rounding; anything beyond that means the invoice doesn't reconcile against what was
+        // actually ordered and must be rejected rather than silently "matched". Do-no-harm: a PO
+        // with no/blank itemsJson (legacy data) skips reconciliation rather than blocking verification.
+        if (po.getItemsJson() != null && !po.getItemsJson().isBlank()) {
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                com.fasterxml.jackson.databind.JsonNode itemsNode = mapper.readTree(po.getItemsJson());
+                BigDecimal poTotal = BigDecimal.ZERO;
+                if (itemsNode.isArray()) {
+                    for (com.fasterxml.jackson.databind.JsonNode item : itemsNode) {
+                        BigDecimal quantity = BigDecimal.valueOf(item.path("quantity").asDouble(0));
+                        BigDecimal rate = BigDecimal.valueOf(item.path("rate").asDouble(0));
+                        poTotal = poTotal.add(quantity.multiply(rate));
+                    }
+                }
+                BigDecimal tolerance = poTotal.multiply(new BigDecimal("1.10"));
+                if (amount != null && amount.compareTo(tolerance) > 0) {
+                    throw new IllegalStateException("Invoice amount (" + amount + ") exceeds the matched Purchase Order's ordered value (" + poTotal + ") beyond tolerance.");
+                }
+            } catch (IllegalStateException ise) {
+                throw ise;
+            } catch (Exception e) {
+                throw new IllegalStateException("Purchase Order " + po.getPoNumber() + " has malformed ordered items and cannot be reconciled against.");
+            }
         }
 
         VendorInvoice invoice = new VendorInvoice();

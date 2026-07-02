@@ -249,13 +249,7 @@ public class OtService {
         }
 
         if ("IN_PROGRESS".equals(status)) {
-            java.time.LocalDate today = java.time.LocalDate.now();
-            Optional<OtReadiness> readinessOpt = readinessRepository.findByOtRoomAndReadinessDateAndHospitalId(
-                    booking.getOtRoomNumber(), today, hospitalId
-            );
-            if (readinessOpt.isPresent() && !"READY".equalsIgnoreCase(readinessOpt.get().getStatus())) {
-                throw new IllegalStateException("Room " + booking.getOtRoomNumber() + " is not READY on " + today);
-            }
+            requireRoomReady(booking, hospitalId);
         }
 
         booking.setStatus(status);
@@ -265,6 +259,26 @@ public class OtService {
         broadcast(hospitalId);
 
         return saved;
+    }
+
+    /**
+     * Form 26 readiness gate: blocks a booking from starting (IN_PROGRESS) unless a readiness
+     * record for that room/date is READY. Do-no-harm: absent record = legacy behavior, allowed.
+     * Keyed off the booking's own scheduled date (matching scheduleBooking's lookup), not
+     * "today" — a readiness record logged against the scheduled date must still gate the case
+     * even if it's actually started a day later, and vice versa.
+     */
+    private void requireRoomReady(OtBooking booking, Long hospitalId) {
+        if (booking.getScheduledDateTime() == null) {
+            return; // no scheduled date to key the readiness lookup on — do-no-harm, skip the gate
+        }
+        java.time.LocalDate readinessDate = booking.getScheduledDateTime().toLocalDate();
+        Optional<OtReadiness> readinessOpt = readinessRepository.findByOtRoomAndReadinessDateAndHospitalId(
+                booking.getOtRoomNumber(), readinessDate, hospitalId
+        );
+        if (readinessOpt.isPresent() && !"READY".equalsIgnoreCase(readinessOpt.get().getStatus())) {
+            throw new IllegalStateException("Room " + booking.getOtRoomNumber() + " is not READY on " + readinessDate);
+        }
     }
 
     @Transactional
@@ -312,7 +326,11 @@ public class OtService {
             checklist.setTimeOutAt(now);
             checklist.setTimeOutNotes(request.getNotes());
 
-            // Auto-advance status to IN_PROGRESS when time-out is signed off
+            // Auto-advance status to IN_PROGRESS when time-out is signed off. This is the
+            // real-world path a case actually starts through (not the standalone updateStatus
+            // method), so the same room-readiness gate must apply here too — otherwise a case
+            // can begin in an un-READY room by simply never calling updateStatus directly.
+            requireRoomReady(booking, hospitalId);
             booking.setStatus("IN_PROGRESS");
             bookingRepository.save(booking);
         } else if ("SIGN_OUT".equalsIgnoreCase(phase)) {
@@ -452,6 +470,12 @@ public class OtService {
         Long patientId = admission.getPatientId();
         OperationRecord record = operationRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)
                 .orElseThrow(() -> new RuntimeException("Operation record not found for booking: " + bookingId));
+
+        // Re-entry guard: finalizing twice would re-run the specimen->LabOrder fan-out and
+        // double-deduct implant stock below.
+        if ("FINALIZED".equalsIgnoreCase(record.getStatus())) {
+            throw new IllegalStateException("Operation record is already finalized for booking: " + bookingId);
+        }
 
         if (record.getActualProcedure() == null || record.getActualProcedure().isBlank()) {
             throw new IllegalStateException("Cannot finalize: the actual procedure performed is required.");

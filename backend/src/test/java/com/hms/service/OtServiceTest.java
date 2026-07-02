@@ -225,6 +225,26 @@ class OtServiceTest {
     }
 
     @Test
+    void finalizeOperationRecord_blockedWhenAlreadyFinalized() {
+        Long hospitalId = 1L, bookingId = 5L;
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(tenantBooking(bookingId, hospitalId, 10L)));
+        IpdAdmission adm = new IpdAdmission();
+        adm.setPatientId(101L);
+        when(ipdAdmissionRepository.findById(10L)).thenReturn(Optional.of(adm));
+        OperationRecord record = new OperationRecord();
+        record.setStatus("FINALIZED");
+        record.setActualProcedure("Lap appendectomy");
+        record.setPostOpPlan("ICU overnight, IV antibiotics");
+        when(operationRecordRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId)).thenReturn(Optional.of(record));
+
+        assertThatThrownBy(() -> otService.finalizeOperationRecord(bookingId))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("already finalized");
+        verify(operationRecordRepository, never()).save(any());
+    }
+
+    @Test
     void finalizeOperationRecord_stampsSignatureWhenReady() {
         Long hospitalId = 1L, bookingId = 5L;
         when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
@@ -967,6 +987,46 @@ class OtServiceTest {
         assertThat(updated.getTimeOutBy()).isEqualTo("nurse@hospital.com");
         assertThat(booking.getStatus()).isEqualTo("IN_PROGRESS");
     }
+
+    @Test
+    void signChecklist_timeOut_blockedWhenRoomNotReady() {
+        Long hospitalId = 1L;
+        Long bookingId = 100L;
+
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+
+        OtBooking booking = new OtBooking();
+        booking.setId(bookingId);
+        booking.setHospitalId(hospitalId);
+        booking.setStatus("SCHEDULED");
+        booking.setOtRoomNumber("OT 1");
+        booking.setScheduledDateTime(java.time.LocalDateTime.now());
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
+
+        OtChecklist checklist = new OtChecklist();
+        checklist.setOtBookingId(bookingId);
+        checklist.setHospitalId(hospitalId);
+        checklist.setSignInCompleted(true);
+        when(checklistRepository.findByOtBookingIdAndHospitalId(bookingId, hospitalId))
+                .thenReturn(Optional.of(checklist));
+
+        OtReadiness readiness = new OtReadiness();
+        readiness.setOtRoom("OT 1");
+        readiness.setReadinessDate(java.time.LocalDate.now());
+        readiness.setStatus("PENDING");
+        when(readinessRepository.findByOtRoomAndReadinessDateAndHospitalId("OT 1", java.time.LocalDate.now(), hospitalId))
+                .thenReturn(Optional.of(readiness));
+
+        // This is the real-world path a case starts through (WHO time-out sign-off) — it must
+        // enforce the same room-readiness gate as the standalone updateStatus method, or the
+        // gate is trivially bypassed by never calling updateStatus directly.
+        OtChecklistRequest req = new OtChecklistRequest("TIME_OUT", "All prep check done");
+        assertThatThrownBy(() -> otService.signChecklist(bookingId, req))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("is not READY");
+        assertThat(booking.getStatus()).isEqualTo("SCHEDULED");
+        verify(bookingRepository, never()).save(any());
+    }
     // ===== Implant Record (Form 24) =====
 
     @Test
@@ -1327,6 +1387,7 @@ class OtServiceTest {
         
         OtBooking booking = tenantBooking(bookingId, hospitalId, 10L);
         booking.setOtRoomNumber("OT 1");
+        booking.setScheduledDateTime(java.time.LocalDateTime.now());
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
 
         OtReadiness readiness = new OtReadiness();
@@ -1350,6 +1411,7 @@ class OtServiceTest {
         
         OtBooking booking = tenantBooking(bookingId, hospitalId, 10L);
         booking.setOtRoomNumber("OT 1");
+        booking.setScheduledDateTime(java.time.LocalDateTime.now());
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
 
         OtReadiness readiness = new OtReadiness();
@@ -1372,6 +1434,7 @@ class OtServiceTest {
         
         OtBooking booking = tenantBooking(bookingId, hospitalId, 10L);
         booking.setOtRoomNumber("OT 1");
+        booking.setScheduledDateTime(java.time.LocalDateTime.now());
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
 
         when(readinessRepository.findByOtRoomAndReadinessDateAndHospitalId("OT 1", java.time.LocalDate.now(), hospitalId))

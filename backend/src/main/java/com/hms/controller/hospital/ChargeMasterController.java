@@ -36,14 +36,14 @@ public class ChargeMasterController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
+    @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<ApiResponse<ChargeMaster>> create(@RequestBody ChargeMaster request) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         return ResponseEntity.ok(ApiResponse.ok("Charge master entry created successfully", chargeMasterService.create(hospitalId, request)));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
+    @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<ApiResponse<ChargeMaster>> update(@PathVariable Long id, @RequestBody ChargeMaster request) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         return ResponseEntity.ok(ApiResponse.ok("Charge master entry updated successfully", chargeMasterService.update(hospitalId, id, request)));

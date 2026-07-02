@@ -17,7 +17,7 @@ public class IncidentReportController {
     private IncidentReportService incidentReportService;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('DOCTOR', 'NURSE', 'HOSPITAL_ADMIN')")
+    @PreAuthorize("hasAnyRole('QUALITY_OFFICER', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> getIncidentReports() {
         return ResponseEntity.ok(incidentReportService.getIncidentReports());
     }

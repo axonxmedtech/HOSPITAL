@@ -119,4 +119,69 @@ class ProcurementServiceTest {
         verify(inventoryRepository, times(1)).save(any(HospitalInventory.class));
         verify(transactionRepository, times(1)).save(any(StockTransaction.class));
     }
+
+    @Test
+    void confirmGrn_blockedWhenAlreadyReceived() {
+        Long hospitalId = 1L, poId = 51L;
+        stubTenant(hospitalId);
+
+        PurchaseOrder po = new PurchaseOrder();
+        po.setId(poId);
+        po.setHospitalId(hospitalId);
+        po.setStatus("RECEIVED");
+        when(purchaseOrderRepository.findByIdAndHospitalId(poId, hospitalId)).thenReturn(Optional.of(po));
+
+        HospitalInventory item = new HospitalInventory();
+        item.setName("LINENS");
+        item.setStockQuantity(50);
+
+        assertThatThrownBy(() -> service.confirmGrn(poId, java.util.List.of(item)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("already been received");
+        verify(inventoryRepository, never()).save(any());
+        verify(transactionRepository, never()).save(any());
+    }
+
+    @Test
+    void confirmGrn_blockedWhenReceivedQtyExceedsOrderedQty() {
+        Long hospitalId = 1L, poId = 52L;
+        stubTenant(hospitalId);
+
+        PurchaseOrder po = new PurchaseOrder();
+        po.setId(poId);
+        po.setHospitalId(hospitalId);
+        po.setStatus("SENT");
+        po.setItemsJson("[{\"itemId\":1,\"quantity\":10,\"rate\":5.0}]");
+        when(purchaseOrderRepository.findByIdAndHospitalId(poId, hospitalId)).thenReturn(Optional.of(po));
+
+        HospitalInventory item = new HospitalInventory();
+        item.setName("LINENS");
+        item.setStockQuantity(50);
+
+        assertThatThrownBy(() -> service.confirmGrn(poId, java.util.List.of(item)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("exceeds ordered quantity");
+        verify(inventoryRepository, never()).save(any());
+    }
+
+    @Test
+    void verifyInvoice_blockedWhenAmountExceedsPoValueBeyondTolerance() {
+        Long hospitalId = 1L, vendorId = 5L, poId = 60L;
+        stubTenant(hospitalId);
+
+        when(vendorInvoiceRepository.findByHospitalIdAndVendorIdAndInvoiceNumber(hospitalId, vendorId, "INV-100"))
+                .thenReturn(Optional.empty());
+
+        PurchaseOrder po = new PurchaseOrder();
+        po.setId(poId);
+        po.setHospitalId(hospitalId);
+        po.setPoNumber("PO-2026-00001");
+        po.setStatus("RECEIVED");
+        po.setItemsJson("[{\"itemId\":1,\"quantity\":10,\"rate\":5.0}]"); // PO total = 50
+        when(purchaseOrderRepository.findByIdAndHospitalId(poId, hospitalId)).thenReturn(Optional.of(po));
+
+        assertThatThrownBy(() -> service.verifyInvoice(vendorId, "INV-100", BigDecimal.valueOf(1000), poId, 1L))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("exceeds the matched Purchase Order's ordered value");
+    }
 }

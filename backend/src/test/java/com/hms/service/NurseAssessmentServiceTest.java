@@ -141,4 +141,31 @@ class NurseAssessmentServiceTest {
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.getVitals(admissionId))
                 .isInstanceOf(UnauthorizedException.class);
     }
+
+    @Test
+    void getAssessment_enforcesTenantIsolation() {
+        Long hospitalId = 1L;
+        Long admissionId = 10L;
+
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+
+        com.hms.entity.NurseAssessment assessment = new com.hms.entity.NurseAssessment();
+        assessment.setIpdAdmissionId(admissionId);
+        assessment.setHospitalId(999L); // foreign tenant
+        when(assessmentRepository.findByIpdAdmissionId(admissionId)).thenReturn(java.util.Optional.of(assessment));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.getAssessment(admissionId))
+                .isInstanceOf(UnauthorizedException.class);
+    }
+
+    @Test
+    void getAssessment_returnsNullWhenNoAssessmentExists() {
+        Long hospitalId = 1L;
+        Long admissionId = 10L;
+
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        when(assessmentRepository.findByIpdAdmissionId(admissionId)).thenReturn(java.util.Optional.empty());
+
+        assertThat(service.getAssessment(admissionId)).isNull();
+    }
 }

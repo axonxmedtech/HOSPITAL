@@ -38,13 +38,22 @@ public class PatientReferralController {
             throw new UnauthorizedException("Access Denied: Tenant mismatch");
         }
 
-        referral.setHospitalId(hospitalId);
-        referral.setPatientId(admission.getPatientId());
-        referral.setAdmissionId(admissionId);
-        referral.setStatus("REQUESTED");
-        referral.setRequestedAt(LocalDateTime.now());
-        
-        return ResponseEntity.ok(referralRepository.save(referral));
+        // Build a fresh entity from only the intended input fields rather than saving the
+        // client-supplied object directly - a caller-supplied id matching another hospital's
+        // referral row would otherwise turn this POST into a cross-tenant update via JPA merge.
+        PatientReferral toSave = new PatientReferral();
+        toSave.setHospitalId(hospitalId);
+        toSave.setPatientId(admission.getPatientId());
+        toSave.setAdmissionId(admissionId);
+        toSave.setReassessmentId(referral.getReassessmentId());
+        toSave.setSpecialty(referral.getSpecialty());
+        toSave.setReason(referral.getReason());
+        toSave.setUrgency(referral.getUrgency());
+        toSave.setRequestedBy(referral.getRequestedBy());
+        toSave.setStatus("REQUESTED");
+        toSave.setRequestedAt(LocalDateTime.now());
+
+        return ResponseEntity.ok(referralRepository.save(toSave));
     }
 
     @GetMapping

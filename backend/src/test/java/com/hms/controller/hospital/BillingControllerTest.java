@@ -23,7 +23,9 @@ import java.util.Optional;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 
 @WebMvcTest(BillingController.class)
 public class BillingControllerTest {
@@ -190,5 +192,49 @@ public class BillingControllerTest {
                 .param("size", "10")
                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "RECEPTIONIST")
+    public void testPayBilling_CrossTenantBill_ReturnsNotFound() throws Exception {
+        settings.setBillingHandler("RECEPTIONIST");
+        settings.setReceptionMode("HAS_RECEPTIONIST");
+        when(securityHelper.getCurrentUserRole()).thenReturn("RECEPTIONIST");
+
+        com.hms.entity.Billing otherHospitalBill = new com.hms.entity.Billing();
+        otherHospitalBill.setId(99L);
+        otherHospitalBill.setHospitalId(2L);
+        when(billingRepository.findById(99L)).thenReturn(Optional.of(otherHospitalBill));
+
+        mockMvc.perform(post("/hospital/billing/99/pay")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"amount\":100,\"mode\":\"CASH\",\"reference\":\"ref1\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @WithMockUser(roles = "RECEPTIONIST")
+    public void testPayBilling_ActiveInsuranceClaim_Blocked() throws Exception {
+        settings.setBillingHandler("RECEPTIONIST");
+        settings.setReceptionMode("HAS_RECEPTIONIST");
+        when(securityHelper.getCurrentUserRole()).thenReturn("RECEPTIONIST");
+
+        com.hms.entity.Billing bill = new com.hms.entity.Billing();
+        bill.setId(5L);
+        bill.setHospitalId(1L);
+        bill.setAmount(new java.math.BigDecimal("1000"));
+        when(billingRepository.findById(5L)).thenReturn(Optional.of(bill));
+
+        com.hms.entity.InsuranceClaim claim = new com.hms.entity.InsuranceClaim();
+        claim.setStatus("APPROVED");
+        claim.setPayer("Acme Insurance");
+        when(insuranceClaimRepository.findByHospitalIdAndBillingId(1L, 5L)).thenReturn(java.util.List.of(claim));
+
+        mockMvc.perform(post("/hospital/billing/5/pay")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"amount\":500,\"mode\":\"CASH\",\"reference\":\"ref2\"}"))
+                .andExpect(status().isBadRequest());
     }
 }

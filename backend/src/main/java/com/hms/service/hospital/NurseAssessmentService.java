@@ -61,14 +61,17 @@ public class NurseAssessmentService {
     }
 
     public NurseAssessment getAssessment(Long admissionId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found");
+
         NurseAssessment a = assessmentRepository.findByIpdAdmissionId(admissionId).orElse(null);
         if (a != null) {
-            Long hospitalId = securityHelper.getCurrentHospitalId();
-            if (hospitalId != null) {
-                List<PatientRiskAssessment> risks = riskRepository.findByHospitalIdAndAdmissionIdOrderByCreatedAtDesc(hospitalId, admissionId);
-                if (risks != null && !risks.isEmpty()) {
-                    a.setFallRisk(risks.get(0).getFallRisk());
-                }
+            if (!hospitalId.equals(a.getHospitalId())) {
+                throw new UnauthorizedException("Access Denied: Tenant mismatch");
+            }
+            List<PatientRiskAssessment> risks = riskRepository.findByHospitalIdAndAdmissionIdOrderByCreatedAtDesc(hospitalId, admissionId);
+            if (risks != null && !risks.isEmpty()) {
+                a.setFallRisk(risks.get(0).getFallRisk());
             }
         }
         return a;
