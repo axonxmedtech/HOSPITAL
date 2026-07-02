@@ -42,6 +42,7 @@ import BloodBankView from '../../components/bloodbank/BloodBankView';
 import FeedbackView from '../../components/feedback/FeedbackView';
 import CssdView from '../../components/cssd/CssdView';
 import BiomedicalView from '../../components/biomedical/BiomedicalView';
+import HousekeepingView from '../../components/housekeeping/HousekeepingView';
 
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -1330,6 +1331,7 @@ const HospitalAdminDashboard = () => {
         { id: 'blood-bank', label: 'Blood Bank', icon: null, requiredModule: null },
         { id: 'cssd', label: 'CSSD', icon: null, requiredModule: null },
         { id: 'biomedical', label: 'Biomedical Equipment', icon: null, requiredModule: null },
+        { id: 'housekeeping', label: 'Housekeeping', icon: null, requiredModule: null },
         { id: 'feedback', label: 'Patient Feedback', icon: null, requiredModule: null },
         { id: 'fees', label: 'Fees', icon: null, requiredModule: 'BILLING' },
         { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
@@ -2581,6 +2583,9 @@ const HospitalAdminDashboard = () => {
                                 )}
                                 {activeTab === 'biomedical' && (
                                     <BiomedicalView />
+                                )}
+                                {activeTab === 'housekeeping' && (
+                                    <HousekeepingView />
                                 )}
                                 {activeTab === 'feedback' && (
                                     <FeedbackView />
