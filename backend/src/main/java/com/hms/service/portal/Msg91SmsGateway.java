@@ -36,11 +36,17 @@ public class Msg91SmsGateway implements SmsGateway {
     @Value("${msg91.api.url}")
     private String apiUrl;
 
+    @Value("${msg91.dev.fallback.enabled}")
+    private boolean devFallbackEnabled;
+
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Override
     public void send(String mobile, String otp) {
         if (authKey == null || authKey.isBlank()) {
+            if (!devFallbackEnabled) {
+                throw new RuntimeException("MSG91 is not configured and dev fallback is disabled. Set MSG91_AUTH_KEY.");
+            }
             log.warn("[DEV-OTP] MSG91_AUTH_KEY not configured — OTP for {} is: {}", mobile, otp);
             return;
         }
@@ -58,7 +64,7 @@ public class Msg91SmsGateway implements SmsGateway {
             restTemplate.exchange(apiUrl, HttpMethod.POST, new HttpEntity<>(body, headers), String.class);
         } catch (Exception e) {
             log.error("MSG91 OTP dispatch failed for {}: {}", mobile, e.getMessage());
-            throw new RuntimeException("Failed to send OTP. Please try again.");
+            throw new RuntimeException("Failed to send OTP. Please try again.", e);
         }
     }
 }
