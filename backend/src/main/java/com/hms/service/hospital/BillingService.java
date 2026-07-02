@@ -11,6 +11,7 @@ import com.hms.security.SecurityContextHelper;
 import com.hms.exception.ResourceNotFoundException;
 import com.hms.exception.UnauthorizedException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -28,6 +29,7 @@ public class BillingService {
     private static final Logger logger = LoggerFactory.getLogger(BillingService.class);
 
     @Autowired
+    @Lazy
     private BillingService self;
 
     @Autowired
