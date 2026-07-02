@@ -1055,6 +1055,21 @@ const hospitalService = {
         return response.data;
     },
 
+    getRiskDashboard: async () => {
+        const response = await apiClient.get('/hospital/risk-assessments/risk-dashboard');
+        return response.data;
+    },
+
+    getHighRiskPatients: async () => {
+        const response = await apiClient.get('/hospital/risk-assessments/high-risk-patients');
+        return response.data;
+    },
+
+    getRiskAssessmentByPatient: async (patientId) => {
+        const response = await apiClient.get(`/hospital/risk-assessments/patient/${patientId}`);
+        return response.data;
+    },
+
     // ========== Fluid Chart APIs (Form 10) ==========
 
     recordFluidIntake: async (payload) => {

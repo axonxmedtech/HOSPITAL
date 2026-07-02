@@ -3,6 +3,7 @@ import nurseService from '../../services/nurseService';
 import NurseAssessmentForm from './NurseAssessmentForm';
 import VitalsForm from './VitalsForm';
 import MedicationAdministrationModal from './MedicationAdministrationModal';
+import RiskAssessmentPanel from '../ipd/RiskAssessmentPanel';
 
 export default function PatientClinicalRecord({ admission, onBack }) {
   const [tab, setTab] = useState('assessment');
@@ -49,13 +50,13 @@ export default function PatientClinicalRecord({ admission, onBack }) {
       </p>
 
       <div className="flex gap-2 mb-6 border-b border-gray-200">
-        {['assessment', 'vitals', 'orders', 'mar'].map(t => (
+        {['assessment', 'vitals', 'orders', 'mar', 'risk'].map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-4 py-2 text-sm font-medium capitalize border-b-2 transition-colors ${
               tab === t ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
-            {t === 'orders' ? 'Orders' : t === 'mar' ? 'MAR (Medication Chart)' : t.charAt(0).toUpperCase() + t.slice(1)}
+            {t === 'orders' ? 'Orders' : t === 'mar' ? 'MAR (Medication Chart)' : t === 'risk' ? 'Risk Assessment' : t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
         ))}
       </div>
@@ -96,6 +97,14 @@ export default function PatientClinicalRecord({ admission, onBack }) {
             </div>
           )
           : <NurseAssessmentForm admissionId={admission.id} onSaved={loadData} />
+      )}
+
+      {!loading && tab === 'risk' && (
+        <RiskAssessmentPanel
+          admissionId={admission.id}
+          patientId={admission.patientId}
+          isLocked={false}
+        />
       )}
 
       {!loading && tab === 'vitals' && (
