@@ -31,9 +31,23 @@ export const collectSample = (publicId) => api.put(`/hospital/lab/orders/${publi
  * Lab tech enters result.
  * Transitions order: SAMPLE_COLLECTED → COMPLETED
  * @param {string} publicId
- * @param {{parameters: string, resultSummary: string, isAbnormal: boolean, verifiedByName?: string}} data
+ * @param {{parameters: string, resultSummary: string, isAbnormal: boolean, isCritical?: boolean}} data
  */
 export const enterLabResult = (publicId, data) => api.post(`/hospital/lab/orders/${publicId}/result`, data);
+
+/**
+ * Pathologist verifies (signs off on) a result. Requires the is_pathologist capacity flag.
+ * Transitions order: COMPLETED → VERIFIED
+ * @param {string} publicId
+ */
+export const verifyLabResult = (publicId) => api.put(`/hospital/lab/orders/${publicId}/verify`);
+
+/**
+ * Releases a verified, now-immutable report to the doctor/patient.
+ * Transitions order: VERIFIED → RELEASED
+ * @param {string} publicId
+ */
+export const releaseLabResult = (publicId) => api.put(`/hospital/lab/orders/${publicId}/release`);
 
 /**
  * Doctor cancels a lab order (cannot cancel COMPLETED orders).

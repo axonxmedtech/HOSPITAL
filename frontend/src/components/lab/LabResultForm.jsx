@@ -25,7 +25,7 @@ export default function LabResultForm({ publicId, onClose, onSuccess }) {
   const [params, setParams] = useState([{ ...EMPTY_PARAM }]);
   const [summary, setSummary] = useState('');
   const [isAbnormal, setIsAbnormal] = useState(false);
-  const [verifiedBy, setVerifiedBy] = useState('');
+  const [isCritical, setIsCritical] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -43,11 +43,12 @@ export default function LabResultForm({ publicId, onClose, onSuccess }) {
     setSubmitting(true);
     setError('');
     try {
+      const hasCritical = params.some(p => p.flag === 'Critical');
       await enterLabResult(publicId, {
         parameters: JSON.stringify(params),
         resultSummary: summary,
         isAbnormal: isAbnormal || hasAbnormal,
-        verifiedByName: verifiedBy || undefined,
+        isCritical: isCritical || hasCritical,
       });
       onSuccess();
     } catch (err) {
@@ -193,19 +194,27 @@ export default function LabResultForm({ publicId, onClose, onSuccess }) {
               />
               <span className="text-sm font-medium text-red-700">Mark as Abnormal Result</span>
             </label>
+
+            <label className="flex items-center gap-3 cursor-pointer group">
+              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                isCritical ? 'bg-red-700 border-red-700' : 'border-gray-300 group-hover:border-red-500'
+              }`}>
+                {isCritical && <span className="text-white text-xs font-bold">✓</span>}
+              </div>
+              <input
+                type="checkbox"
+                checked={isCritical}
+                onChange={e => setIsCritical(e.target.checked)}
+                className="sr-only"
+              />
+              <span className="text-sm font-medium text-red-800">🚨 Critical Value (fires immediate alert)</span>
+            </label>
           </div>
 
-          {/* Verified By */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Verified By <span className="font-normal text-gray-400">(optional)</span>
-            </label>
-            <input
-              value={verifiedBy}
-              onChange={e => setVerifiedBy(e.target.value)}
-              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-300"
-              placeholder="Senior technician or pathologist name"
-            />
+          {/* Pathologist verification note */}
+          <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-xs text-blue-800">
+            ℹ️ This result will be pending pathologist verification after submission. It cannot be released to the
+            patient/doctor until a pathologist reviews and signs off.
           </div>
 
           {/* Error */}
