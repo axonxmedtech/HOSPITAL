@@ -128,8 +128,8 @@ public class OpdService {
             try {
                 opd.setVisitType(Opd.VisitType.valueOf(req.getVisitType().toUpperCase()));
             } catch (IllegalArgumentException e) {
-                logger.warn("Invalid visit type '{}'; defaulting to WALKIN", req.getVisitType());
-                opd.setVisitType(Opd.VisitType.WALKIN);
+                logger.warn("Invalid visit type '{}'; defaulting to NEW", req.getVisitType());
+                opd.setVisitType(Opd.VisitType.NEW);
             }
         }
 

@@ -55,7 +55,7 @@ class PlatformAuditControllerTest {
         log.setEntityType("Hospital");
         log.setEntityId("hosp-abc");
         log.setPerformedBy("superadmin@hms.com");
-        log.setPerformedAt(LocalDateTime.now());
+        log.setTimestamp(LocalDateTime.now());
 
         when(hospitalService.getAuditLogs()).thenReturn(List.of(log));
 
