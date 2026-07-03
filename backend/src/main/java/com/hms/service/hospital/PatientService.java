@@ -542,6 +542,7 @@ public class PatientService {
         patientData.put("publicId", patient.getPublicId());
         patientData.put("name", patient.getName());
         patientData.put("age", patient.getAge());
+        patientData.put("dateOfBirth", patient.getDateOfBirth());
         patientData.put("gender", patient.getGender());
         patientData.put("phone", patient.getPhone());
         patientData.put("address", patient.getAddress());
