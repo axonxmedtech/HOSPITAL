@@ -38,7 +38,7 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
 
         const rules = {
             name: ['required', 'name'],
-            age: ['required', 'age'],
+            dateOfBirth: ['required', 'dob'],
             gender: ['required'],
             phone: ['required', 'phone'],
             email: ['email'] // optional but valid if present
@@ -125,26 +125,34 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
                             maxLength={15}
                             placeholder="Enter phone number"
                             error={errors.phone}
+                            showCount={false}
                         />
                     </div>
 
-                    {/* Row: Age + Gender */}
+                    {/* Row: Date of Birth + Gender */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         <div>
                             <label className="block text-sm font-semibold text-neutral-700 mb-2">
-                                Age <span className="text-red-600">*</span>
+                                Date of Birth <span className="text-red-600">*</span>
                             </label>
                             <input
-                                type="number"
-                                min="0"
-                                max="120"
-                                value={formData.age || ''}
-                                onChange={(e) => handleChange('age', e.target.value)}
-                                className={`input-field ${errors.age ? 'border-error-300 focus:ring-error-500' : ''}`}
-                                placeholder="Age"
+                                type="date"
+                                max={new Date().toISOString().split('T')[0]}
+                                value={formData.dateOfBirth || ''}
+                                onChange={(e) => handleChange('dateOfBirth', e.target.value)}
+                                className={`input-field ${errors.dateOfBirth ? 'border-error-300 focus:ring-error-500' : ''}`}
                             />
-                            {errors.age && <p className="text-red-600 text-sm mt-1 flex items-center gap-1">
-                                {errors.age}
+                            {formData.dateOfBirth && !errors.dateOfBirth && (
+                                <p className="text-neutral-500 text-xs mt-1">
+                                    Age: {Math.max(0, new Date().getFullYear() - new Date(formData.dateOfBirth + 'T00:00:00').getFullYear() - (
+                                        (new Date().getMonth() < new Date(formData.dateOfBirth + 'T00:00:00').getMonth() ||
+                                            (new Date().getMonth() === new Date(formData.dateOfBirth + 'T00:00:00').getMonth() && new Date().getDate() < new Date(formData.dateOfBirth + 'T00:00:00').getDate()))
+                                            ? 1 : 0
+                                    ))} years
+                                </p>
+                            )}
+                            {errors.dateOfBirth && <p className="text-red-600 text-sm mt-1 flex items-center gap-1">
+                                {errors.dateOfBirth}
                             </p>}
                         </div>
                         <div>
