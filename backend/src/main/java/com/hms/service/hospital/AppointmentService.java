@@ -100,7 +100,7 @@ public class AppointmentService {
             String patientName = appointment.getPatientName();
             String patientPhone = appointment.getPatientPhone();
             String patientEmail = appointment.getPatientEmail();
-            Integer patientAge = appointment.getPatientAge();
+            java.time.LocalDate patientDateOfBirth = appointment.getPatientDateOfBirth();
             String patientGender = appointment.getPatientGender();
 
             if (patientName == null || patientPhone == null) {
@@ -122,9 +122,8 @@ public class AppointmentService {
                 newPatient.setName(patientName);
                 newPatient.setPhone(patientPhone);
                 newPatient.setEmail(patientEmail != null ? patientEmail : "");
-                // Set default age if not provided to avoid DB error, though frontend should
-                // require it
-                newPatient.setAge(patientAge != null ? patientAge : 0);
+                // Default to today (age 0) if not provided, though frontend should require it
+                newPatient.setDateOfBirth(patientDateOfBirth != null ? patientDateOfBirth : java.time.LocalDate.now());
                 newPatient.setGender(patientGender != null ? patientGender : "Unknown");
                 newPatient.setAddress("Walk-in"); // Default address for quick appointments
                 newPatient.setHospitalId(hospitalId);
