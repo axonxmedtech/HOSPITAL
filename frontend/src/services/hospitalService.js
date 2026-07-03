@@ -728,6 +728,26 @@ const hospitalService = {
         return response.data;
     },
 
+    getConsultationNotePresets: async (fieldType) => {
+        const response = await apiClient.get(`/hospital/consultation-note-presets?fieldType=${fieldType}`);
+        return response.data;
+    },
+
+    createConsultationNotePreset: async (data) => {
+        const response = await apiClient.post('/hospital/consultation-note-presets', data);
+        return response.data;
+    },
+
+    updateConsultationNotePreset: async (id, data) => {
+        const response = await apiClient.put(`/hospital/consultation-note-presets/${id}`, data);
+        return response.data;
+    },
+
+    deleteConsultationNotePreset: async (id) => {
+        const response = await apiClient.delete(`/hospital/consultation-note-presets/${id}`);
+        return response.data;
+    },
+
     updateBillItems: async (billId, items) => {
         const response = await apiClient.put(`/hospital/billing/${billId}/items`, items);
         return response.data;
