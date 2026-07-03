@@ -7,6 +7,7 @@ import hospitalService from '../../services/hospitalService';
 import { API_BASE_URL } from '../../services/apiService'; // BUG-028: single source-of-truth for base URL
 import { useToast } from '../../context/ToastContext';
 import ConfirmationModal from '../../components/ConfirmationModal';
+import NotePresetsManager from '../../components/NotePresetsManager';
 import { validateForm } from '../../utils/validation';
 import EmptyState from '../../components/EmptyState';
 import OverviewDashboard from '../../components/OverviewDashboard';
@@ -161,6 +162,11 @@ const HospitalAdminDashboard = () => {
     const [resetPasswordModal, setResetPasswordModal] = useState({ isOpen: false, staff: null, role: '' });
     const [resetPasswordForm, setResetPasswordForm] = useState({ newPassword: '', confirmPassword: '', showNew: false, showConfirm: false, submitting: false, error: '' });
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    // Manually-expanded sidebar groups (Hospital Admin's grouped sidebar only —
+    // see groupedSidebarTabs below). The group containing the active tab is
+    // always shown expanded regardless of this set; this only tracks groups
+    // the user has opened in addition to that.
+    const [expandedSidebarGroups, setExpandedSidebarGroups] = useState(() => new Set());
 
 
     // OPD Modal State (Admin)
@@ -189,6 +195,9 @@ const HospitalAdminDashboard = () => {
     // OPD tab: Live / Date toggle
     const [opdTabView, setOpdTabView] = useState('Live');
     const [opdDateFilter, setOpdDateFilter] = useState(getISTDateString);
+
+    // Appointments tab: Today / Upcoming toggle (mirrors Receptionist dashboard)
+    const [appointmentsViewFilter, setAppointmentsViewFilter] = useState('today');
 
 
     // Help & Support state variables
@@ -237,7 +246,7 @@ const HospitalAdminDashboard = () => {
         // Prevent double fetch when searchInput was just cleared but debounced searchTerm hasn't updated yet
         if (searchInput === '' && searchTerm !== '') return;
         loadData(page, pageSize);
-    }, [activeTab, searchTerm, page, billingStatus, auditLogRoleFilter, patientTabView, patientDateFilter, opdTabView, opdDateFilter]);
+    }, [activeTab, searchTerm, page, billingStatus, auditLogRoleFilter, patientTabView, patientDateFilter, opdTabView, opdDateFilter, appointmentsViewFilter]);
 
     // Periodic background polling replaced with WebSocket real-time sync
 
@@ -735,7 +744,7 @@ const HospitalAdminDashboard = () => {
                     // Note: getAppointments now supports page/size, getDoctors might not return all if paginated
                     // For now, we fetch paginated appointments and maybe "all" doctors for lookup if possible or handle missing names
                     const [apptData, docData, patData] = await Promise.all([
-                        hospitalService.getAppointments(searchTerm,page, pageSize),
+                        hospitalService.getAppointments(searchTerm, page, pageSize, appointmentsViewFilter),
                         hospitalService.getDoctors('', 0, 100), // Attempt to get more doctors for lookup
                         hospitalService.getPatients('', 0, 1000) // Fetch ALL patients for lookup
                     ]);
@@ -1278,31 +1287,84 @@ const HospitalAdminDashboard = () => {
 
     const allTabs = [
         { id: 'overview', label: 'Overview', icon: null, requiredModule: null },
+        // Clinical workflow
         { id: 'patients', label: 'Patients', icon: null, requiredModule: 'OPD' },
         { id: 'appointments', label: 'Appointments', icon: null, requiredModule: 'APPOINTMENTS' },
         { id: 'opd', label: 'OPD', icon: null, requiredModule: 'OPD' },
+        { id: 'ipd', label: 'IPD', icon: null, requiredModule: 'IPD' },
         { id: 'wards', label: 'Wards & Beds', icon: null, requiredModule: 'IPD' },
-        { id: 'doctors', label: 'Doctors', icon: null, requiredModule: 'OPD' },
-        { id: 'receptionists', label: 'Receptionists', icon: null, requiredModule: 'OPD' },
-        { id: 'billing', label: 'Billing', icon: null, requiredModule: 'BILLING' },
+        { id: 'ot', label: 'Operation Theatre', icon: null, requiredModule: 'OT' },
+        { id: 'pathology', label: 'Pathology', icon: null, requiredModule: 'PATHOLOGY' },
+        // Pharmacy & inventory
         { id: 'pharmacy', label: 'Pharmacy', icon: null, requiredModule: 'PHARMACY' },
         { id: 'pharmacists', label: 'Pharmacists', icon: null, requiredModule: 'PHARMACY' },
         { id: 'inventory', label: 'Medicine Inventory', icon: null, requiredModule: 'MEDICAL_INVENTORY' },
         { id: 'hospital-inventory', label: 'Hospital Inventory', icon: null, requiredModule: 'HOSPITAL_INVENTORY' },
-        { id: 'pathology', label: 'Pathology', icon: null, requiredModule: 'PATHOLOGY' },
-        { id: 'ipd', label: 'IPD', icon: null, requiredModule: 'IPD' },
-        { id: 'ot', label: 'Operation Theatre', icon: null, requiredModule: 'OT' },
+        // Financial
+        { id: 'billing', label: 'Billing', icon: null, requiredModule: 'BILLING' },
         { id: 'fees', label: 'Fees', icon: null, requiredModule: 'BILLING' },
-        { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
+        // Staff
+        { id: 'doctors', label: 'Doctors', icon: null, requiredModule: 'OPD' },
+        { id: 'receptionists', label: 'Receptionists', icon: null, requiredModule: 'OPD' },
+        // Admin & meta
         { id: 'analytics', label: 'Reports & Analytics', icon: null, requiredModule: 'REPORTS' },
+        { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
         { id: 'messages', label: 'Messages', icon: null, requiredModule: null },
         { id: 'settings', label: 'Settings', icon: null, requiredModule: null },
         { id: 'support', label: 'Support', icon: null, requiredModule: null },
+        { id: 'quick-notes', label: 'Quick Notes', icon: null, requiredModule: null },
     ];
 
     const tabs = allTabs.filter(tab =>
         !tab.requiredModule || modules.includes(tab.requiredModule)
     );
+
+    // Grouped sidebar — Hospital Admin only (user?.hospitalType === 'HOSPITAL').
+    // Clinic/Pharmacy admins and every other role keep the existing flat
+    // `tabs` list untouched; this is purely a presentational regrouping of
+    // the same tab ids/labels/routes computed above, so navigation, module
+    // gating, and permissions are unaffected.
+    // Dashboard/Overview is deliberately NOT one of these groups — it's a
+    // single item, so it stays a plain top-level link instead of a
+    // one-item dropdown (see groupedSidebarTabs below).
+    const SIDEBAR_GROUPS = [
+        { id: 'group-patient-management', label: 'Patient Management', tabIds: ['patients', 'appointments', 'opd', 'ipd', 'wards', 'ot', 'pathology'] },
+        { id: 'group-staff', label: 'Staff', tabIds: ['doctors', 'pharmacists', 'receptionists'] },
+        { id: 'group-pharmacy', label: 'Pharmacy', tabIds: ['pharmacy'] },
+        { id: 'group-inventory', label: 'Inventory', tabIds: ['inventory', 'hospital-inventory'] },
+        { id: 'group-finance', label: 'Finance', tabIds: ['billing', 'fees'] },
+        { id: 'group-reports', label: 'Reports', tabIds: ['analytics', 'audit-logs'] },
+        { id: 'group-communication', label: 'Communication', tabIds: ['messages'] },
+        { id: 'group-administration', label: 'Administration', tabIds: ['settings', 'support', 'quick-notes'] },
+    ];
+
+    const isHospitalAdminTenant = user?.hospitalType === 'HOSPITAL';
+
+    const groupedSidebarTabs = isHospitalAdminTenant
+        ? [
+            ...tabs.filter(t => t.id === 'overview'),
+            ...SIDEBAR_GROUPS
+                .map(group => ({
+                    id: group.id,
+                    label: group.label,
+                    subItems: group.tabIds
+                        .map(id => tabs.find(t => t.id === id))
+                        .filter(Boolean),
+                    isExpanded: expandedSidebarGroups.has(group.id) || group.tabIds.includes(activeTab),
+                }))
+                .filter(group => group.subItems.length > 0),
+        ]
+        : tabs;
+
+    const handleToggleSidebarGroup = (groupId) => {
+        setExpandedSidebarGroups(prev => {
+            const next = new Set(prev);
+            if (next.has(groupId)) next.delete(groupId);
+            else next.add(groupId);
+            return next;
+        });
+    };
+
     // Pagination Object
     const pagination = {
         pageIndex: page,
@@ -1443,9 +1505,10 @@ const HospitalAdminDashboard = () => {
             {/* Sidebar */}
             <Sidebar
                 title="HMS Portal"
-                tabs={tabs}
+                tabs={groupedSidebarTabs}
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
+                onToggleGroup={isHospitalAdminTenant ? handleToggleSidebarGroup : undefined}
                 footerTitle="Hospital"
                 footerData={user?.hospitalName}
                 variant="plain"
@@ -1714,6 +1777,22 @@ const HospitalAdminDashboard = () => {
                                         <span>Download PDF</span>
                                     </button>
                                 </div>
+                            ) : activeTab === 'appointments' ? (
+                                <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 h-[38px] items-center">
+                                    {['today', 'upcoming'].map(view => (
+                                        <button
+                                            key={view}
+                                            type="button"
+                                            onClick={() => { setAppointmentsViewFilter(view); setPage(0); }}
+                                            className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${appointmentsViewFilter === view
+                                                ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
+                                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                                }`}
+                                        >
+                                            {view.charAt(0).toUpperCase() + view.slice(1)}
+                                        </button>
+                                    ))}
+                                </div>
                             ) : activeTab === 'billing' ? (
                                 <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
                                     {['PENDING', 'PAID', 'PARTIAL'].map(status => (
@@ -1769,7 +1848,7 @@ const HospitalAdminDashboard = () => {
                         <>
                             {/* Overview tab content already rendered above */}
 
-                            {(activeTab === 'patients' || activeTab === 'doctors' || activeTab === 'pharmacists' || activeTab === 'receptionists' || activeTab === 'wards' || activeTab === 'billing' || activeTab === 'fees' || activeTab === 'opd') && (
+                            {(activeTab === 'patients' || activeTab === 'doctors' || activeTab === 'pharmacists' || activeTab === 'receptionists' || activeTab === 'wards' || activeTab === 'billing' || activeTab === 'fees' || activeTab === 'opd' || activeTab === 'appointments') && (
                                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
                                     {activeTab === 'patients' && (
                                         patients.length > 0 ? (
@@ -2039,6 +2118,12 @@ const HospitalAdminDashboard = () => {
 
                         {activeTab === 'hospital-inventory' && (
                             <HospitalInventoryTab />
+                        )}
+
+                        {activeTab === 'quick-notes' && (
+                            <div className="max-w-2xl mx-auto my-4">
+                                <NotePresetsManager fieldType="TREATMENT_NOTES" />
+                            </div>
                         )}
                                 {activeTab === 'settings' && (
                                     <div className="p-6 bg-white rounded-2xl border border-gray-200/80 shadow-sm max-w-4xl mx-auto my-4">
@@ -3146,6 +3231,48 @@ const HospitalAdminDashboard = () => {
                             e.preventDefault();
                             if (!adminOpdForm.patientId) { toastError('Please select a valid patient from the suggestions'); return; }
                             if (!adminOpdForm.doctorId) { toastError('Please select a doctor'); return; }
+                            if (adminOpdForm.bp) {
+                                const bpVal = adminOpdForm.bp.trim();
+                                const bpMatch = bpVal.match(/^(\d{2,3})\s*\/\s*(\d{2,3})$/);
+                                if (!bpMatch) {
+                                    toastError("Blood pressure must be in format Systolic/Diastolic, e.g., 120/80");
+                                    return;
+                                }
+                                const systolic = parseInt(bpMatch[1], 10);
+                                const diastolic = parseInt(bpMatch[2], 10);
+                                if (systolic <= diastolic) {
+                                    toastError("Systolic blood pressure must be greater than diastolic blood pressure");
+                                    return;
+                                }
+                            }
+                            if (adminOpdForm.temperature) {
+                                const temp = parseFloat(adminOpdForm.temperature);
+                                if (isNaN(temp) || temp < 30 || temp > 45) {
+                                    toastError("Temperature must be between 30.0°C and 45.0°C");
+                                    return;
+                                }
+                            }
+                            if (adminOpdForm.pulse) {
+                                const pulse = parseInt(adminOpdForm.pulse, 10);
+                                if (isNaN(pulse) || pulse < 30 || pulse > 250) {
+                                    toastError("Pulse must be between 30 and 250 bpm");
+                                    return;
+                                }
+                            }
+                            if (adminOpdForm.weight) {
+                                const weight = parseFloat(adminOpdForm.weight);
+                                if (isNaN(weight) || weight < 0.1 || weight > 500) {
+                                    toastError("Weight must be between 0.1 and 500.0 kg");
+                                    return;
+                                }
+                            }
+                            if (adminOpdForm.spo2) {
+                                const spo2 = parseInt(adminOpdForm.spo2, 10);
+                                if (isNaN(spo2) || spo2 < 0 || spo2 > 100) {
+                                    toastError("SpO2 must be between 0% and 100%");
+                                    return;
+                                }
+                            }
                             try {
                                 const payload = {
                                     patientId: adminOpdForm.patientId,
@@ -3219,25 +3346,25 @@ const HospitalAdminDashboard = () => {
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">BP</label>
-                                    <input className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.bp} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, bp: e.target.value }))} placeholder="120/80" />
+                                    <input className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.bp} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, bp: e.target.value.replace(/[^0-9/]/g, '') }))} placeholder="120/80" />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Temperature (°C)</label>
-                                    <input type="number" step="0.1" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.temperature} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, temperature: e.target.value }))} />
+                                    <input type="number" step="0.1" min="30" max="45" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.temperature} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, temperature: e.target.value }))} />
                                 </div>
                             </div>
                             <div className="grid grid-cols-3 gap-4">
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Pulse</label>
-                                    <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.pulse} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, pulse: e.target.value }))} />
+                                    <input type="number" min="30" max="250" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.pulse} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, pulse: e.target.value }))} />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Weight (kg)</label>
-                                    <input type="number" step="0.1" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.weight} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, weight: e.target.value }))} />
+                                    <input type="number" step="0.1" min="0.1" max="500" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.weight} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, weight: e.target.value }))} />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">SpO2 (%)</label>
-                                    <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.spo2} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, spo2: e.target.value }))} />
+                                    <input type="number" min="0" max="100" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.spo2} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, spo2: e.target.value }))} />
                                 </div>
                             </div>
                             <div>
