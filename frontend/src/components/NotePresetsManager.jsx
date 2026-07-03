@@ -99,6 +99,10 @@ const NotePresetsManager = ({ fieldType }) => {
             setPresets(next);
         } catch (err) {
             toastError('Failed to reorder quick notes');
+            // One of the two PUTs may have already succeeded, leaving the
+            // server's displayOrder out of sync with what's shown locally —
+            // refetch to reconcile rather than risk a stale/duplicate order.
+            loadPresets();
         }
     };
 
