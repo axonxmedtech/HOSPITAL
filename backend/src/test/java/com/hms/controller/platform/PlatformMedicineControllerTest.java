@@ -10,11 +10,14 @@ import com.hms.security.SecurityContextHelper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.MediaType;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -35,7 +38,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *  - Service errors map to 400 Bad Request responses.
  */
 @WebMvcTest(PlatformMedicineController.class)
+@Import(PlatformMedicineControllerTest.MethodSecurityTestConfig.class)
 class PlatformMedicineControllerTest {
+
+    // @WebMvcTest does not load SecurityConfig (a plain @Configuration bean), so
+    // @PreAuthorize on the controller is never enforced without this. Without it,
+    // any authenticated @WithMockUser reaches the handler regardless of role.
+    @TestConfiguration
+    @EnableMethodSecurity
+    static class MethodSecurityTestConfig {
+    }
 
     @Autowired
     private MockMvc mockMvc;
