@@ -162,7 +162,7 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
             Object.assign(rules, {
                 patientName: ['required', 'name'],
                 patientPhone: ['required', 'phone'],
-                patientAge: ['required', 'age'],
+                patientDateOfBirth: ['required', 'dob'],
                 patientGender: ['required']
             });
         } else {
@@ -264,18 +264,16 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="patient-age">Age *</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="patient-dob">Date of Birth *</label>
                                     <input
-                                        id="patient-age"
-                                        type="number"
-                                        min="0"
-                                        max="120"
-                                        placeholder="Age"
-                                        value={formData.patientAge || ''}
-                                        onChange={(e) => handleChange('patientAge', e.target.value)}
-                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.patientAge ? 'border-red-500' : 'border-gray-300'}`}
+                                        id="patient-dob"
+                                        type="date"
+                                        max={new Date().toISOString().split('T')[0]}
+                                        value={formData.patientDateOfBirth || ''}
+                                        onChange={(e) => handleChange('patientDateOfBirth', e.target.value)}
+                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.patientDateOfBirth ? 'border-red-500' : 'border-gray-300'}`}
                                     />
-                                    {errors.patientAge && <p className="text-red-500 text-xs mt-1">{errors.patientAge}</p>}
+                                    {errors.patientDateOfBirth && <p className="text-red-500 text-xs mt-1">{errors.patientDateOfBirth}</p>}
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="patient-gender">Gender *</label>
