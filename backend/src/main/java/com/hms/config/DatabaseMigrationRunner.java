@@ -34,6 +34,7 @@ public class DatabaseMigrationRunner {
         ensureMissingIndexes();
         simplifyMedicineListTable();
         migratePatientAgeToDateOfBirth(); // NEW
+        ensureConsultationNotePresetsTable(); // NEW
     }
 
     /**
@@ -291,6 +292,42 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped (patients.age -> date_of_birth): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Creates the consultation_note_presets table if it does not exist.
+     * Stores per-hospital quick-note phrases doctors can insert with one
+     * click into Treatment Notes (and, in future, other consultation
+     * fields — see field_type).
+     * ddl-auto=update cannot create tables from scratch — this runner
+     * bridges that gap.
+     */
+    private void ensureConsultationNotePresetsTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'consultation_note_presets'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE consultation_note_presets (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  field_type VARCHAR(30) NOT NULL," +
+                    "  text VARCHAR(255) NOT NULL," +
+                    "  display_order INT NOT NULL DEFAULT 0," +
+                    "  is_active TINYINT(1) NOT NULL DEFAULT 1," +
+                    "  created_at DATETIME(6) NOT NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                    ")"
+                );
+                log.info("DB migration applied: consultation_note_presets table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (consultation_note_presets): {}", e.getMessage());
         }
     }
 }

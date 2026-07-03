@@ -938,6 +938,24 @@ CREATE TABLE `hospital_settings` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 --
+-- Consultation note presets (per-hospital quick-note phrases doctors can
+-- insert with one click into Treatment Notes)
+--
+
+CREATE TABLE `consultation_note_presets` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `field_type` varchar(30) NOT NULL,
+  `text` varchar(255) NOT NULL,
+  `display_order` int NOT NULL DEFAULT '0',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `FK_consultation_note_presets_hospital` (`hospital_id`),
+  CONSTRAINT `FK_consultation_note_presets_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
 -- WhatsApp integration tables (added with V4 migration)
 --
 
