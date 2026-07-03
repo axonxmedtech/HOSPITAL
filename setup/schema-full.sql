@@ -527,9 +527,9 @@ DROP TABLE IF EXISTS `patients`;
 CREATE TABLE `patients` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `address` varchar(255) DEFAULT NULL,
-  `age` int NOT NULL,
   `created_at` datetime(6) NOT NULL,
   `custom_id` varchar(255) DEFAULT NULL,
+  `date_of_birth` date DEFAULT NULL,
   `email` varchar(100) DEFAULT NULL,
   `gender` varchar(10) NOT NULL,
   `hospital_id` bigint NOT NULL,

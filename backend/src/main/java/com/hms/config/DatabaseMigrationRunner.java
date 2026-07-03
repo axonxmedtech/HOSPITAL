@@ -33,6 +33,7 @@ public class DatabaseMigrationRunner {
         ensureWhatsAppMessageLogRetryColumns();
         ensureMissingIndexes();
         simplifyMedicineListTable();
+        migratePatientAgeToDateOfBirth(); // NEW
     }
 
     /**
@@ -247,6 +248,49 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped (simplifyMedicineListTable): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Replaces patients.age (stored, goes stale every year) with
+     * patients.date_of_birth (computed live by Patient.getAge()).
+     *
+     * date_of_birth is added and left nullable — NOT promoted to NOT NULL —
+     * deliberately. PatientService already enforces "always required" at
+     * the application layer, and this project has twice hit real incidents
+     * (hospital_settings.shift_mode, users.is_trainer) where a NOT NULL
+     * column with no default broke every insert on a populated table. This
+     * migration avoids adding a third one.
+     */
+    private void migratePatientAgeToDateOfBirth() {
+        try {
+            Integer dobExists = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'patients' AND COLUMN_NAME = 'date_of_birth'",
+                Integer.class
+            );
+            if (dobExists != null && dobExists == 0) {
+                jdbcTemplate.execute("ALTER TABLE patients ADD COLUMN date_of_birth DATE DEFAULT NULL");
+                log.info("DB migration applied: patients.date_of_birth column added");
+            }
+
+            Integer ageExists = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'patients' AND COLUMN_NAME = 'age'",
+                Integer.class
+            );
+            if (ageExists != null && ageExists > 0) {
+                int updated = jdbcTemplate.update(
+                    "UPDATE patients SET date_of_birth = DATE_SUB(CURDATE(), INTERVAL age YEAR) " +
+                    "WHERE date_of_birth IS NULL"
+                );
+                log.info("DB migration applied: backfilled date_of_birth for {} patient(s) from age", updated);
+
+                jdbcTemplate.execute("ALTER TABLE patients DROP COLUMN age");
+                log.info("DB migration applied: dropped patients.age column");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (patients.age -> date_of_birth): {}", e.getMessage());
         }
     }
 }
