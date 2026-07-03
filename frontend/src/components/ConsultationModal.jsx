@@ -5,6 +5,7 @@ import { useToast } from '../context/ToastContext';
 import MedicineAutocomplete from './MedicineAutocomplete';
 import CharCountInput from './CharCountInput';
 import IpdAdmitModal from './IpdAdmitModal';
+import ManageNotePresetsModal from './ManageNotePresetsModal';
 
 const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, opd }) => {
     console.log("ConsultationModal render:", { isOpen, appointment, patient, opd });
@@ -14,6 +15,8 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     const [showIpdAdmitModal, setShowIpdAdmitModal] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [admitModalOpd, setAdmitModalOpd] = useState(null);
+    const [notePresets, setNotePresets] = useState([]);
+    const [showManagePresets, setShowManagePresets] = useState(false);
 
     const user = authService.getCurrentUser();
     const modules = user?.modules || [];
@@ -64,6 +67,14 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
             fetchFees();
         }
     }, [isOpen, opd, hasBilling]);
+
+    useEffect(() => {
+        if (isOpen) {
+            hospitalService.getConsultationNotePresets('TREATMENT_NOTES')
+                .then(data => setNotePresets(data || []))
+                .catch(() => setNotePresets([]));
+        }
+    }, [isOpen]);
 
     const [hospitalInventory, setHospitalInventory] = useState([]);
     const [hospitalInventoryCatalog, setHospitalInventoryCatalog] = useState([]);
@@ -210,6 +221,13 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
 
     const handleChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
+    };
+
+    const handleInsertPreset = (text) => {
+        setFormData(prev => ({
+            ...prev,
+            treatmentNotes: prev.treatmentNotes ? `${prev.treatmentNotes}\n${text}` : text,
+        }));
     };
 
     const handleAddMedicine = () => {
@@ -847,6 +865,37 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                         placeholder="Enter treatment plan and notes..."
                                     />
 
+                                    <div className="flex flex-wrap items-center gap-2 -mt-2">
+                                        {notePresets.map(preset => (
+                                            <button
+                                                key={preset.id}
+                                                type="button"
+                                                onClick={() => handleInsertPreset(preset.text)}
+                                                className="inline-flex items-center px-3 py-1 text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200 rounded-full hover:bg-teal-100 transition"
+                                            >
+                                                {preset.text}
+                                            </button>
+                                        ))}
+                                        {notePresets.length === 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowManagePresets(true)}
+                                                className="text-xs text-gray-500 hover:text-gray-700 underline"
+                                            >
+                                                Add your first quick note
+                                            </button>
+                                        )}
+                                        {notePresets.length > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowManagePresets(true)}
+                                                className="text-xs text-gray-500 hover:text-gray-700 underline ml-1"
+                                            >
+                                                Manage
+                                            </button>
+                                        )}
+                                    </div>
+
                                     <div>
                                         <div className="flex items-center gap-3">
                                             <input
@@ -1044,6 +1093,16 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                     }}
                 />
             )}
+            <ManageNotePresetsModal
+                isOpen={showManagePresets}
+                onClose={() => {
+                    setShowManagePresets(false);
+                    hospitalService.getConsultationNotePresets('TREATMENT_NOTES')
+                        .then(data => setNotePresets(data || []))
+                        .catch(() => {});
+                }}
+                fieldType="TREATMENT_NOTES"
+            />
         </div>
     );
 };
