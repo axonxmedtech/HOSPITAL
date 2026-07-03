@@ -389,6 +389,14 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                             <span className="font-semibold text-gray-800">{patientDetails.patient.age} years</span>
                                         </div>
                                         <div className="flex justify-between py-2 border-b border-gray-200">
+                                            <span className="text-gray-500">Date of Birth</span>
+                                            <span className="font-semibold text-gray-800">
+                                                {patientDetails.patient.dateOfBirth
+                                                    ? new Date(patientDetails.patient.dateOfBirth + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                                                    : '—'}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between py-2 border-b border-gray-200">
                                             <span className="text-gray-500">Gender</span>
                                             <span className="font-semibold text-gray-800">{patientDetails.patient.gender}</span>
                                         </div>
