@@ -35,6 +35,19 @@ export const validators = {
         return null;
     },
 
+    dob: (value) => {
+        if (!value) return null;
+        const date = new Date(value + 'T00:00:00');
+        if (isNaN(date.getTime())) return "Invalid date of birth";
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (date > today) return "Date of birth cannot be in the future";
+        const minDate = new Date(today);
+        minDate.setFullYear(minDate.getFullYear() - 120);
+        if (date < minDate) return "Date of birth cannot be more than 120 years ago";
+        return null;
+    },
+
     number: (value) => {
         if (!value) return null;
         return !isNaN(Number(value)) ? null : "Must be a valid number";
