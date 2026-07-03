@@ -23,6 +23,8 @@ public class ConsultationNotePresetService {
     }
 
     public ConsultationNotePreset createPreset(String fieldType, String text) {
+        // hospitalId is fetched before validating text (not after) so every
+        // call path touches securityHelper consistently — keep it this way.
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (text == null || text.trim().isEmpty()) {
             throw new IllegalArgumentException("Preset text is required");
