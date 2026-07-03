@@ -54,6 +54,11 @@ public class PrescriptionPresetService {
         return saved;
     }
 
+    /**
+     * items == null means "leave the existing item list untouched" (e.g. a
+     * name-only rename); items == [] is rejected — a preset always needs at
+     * least one medicine, so an empty list is never a valid full replacement.
+     */
     public PrescriptionPreset updatePreset(Long id, String name, List<PrescriptionPresetItem> items, Integer displayOrder) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         PrescriptionPreset preset = presetRepository.findByIdAndHospitalId(id, hospitalId)
