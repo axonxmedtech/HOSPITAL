@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @Service
@@ -88,19 +89,43 @@ public class PatientService {
     private com.hms.service.PdfService pdfService;
 
     private void evictStatsCache(Long hospitalId) {
-        if (hospitalId != null && cacheManager != null) {
+        if (hospitalId == null || cacheManager == null) {
+            return;
+        }
+        try {
             org.springframework.cache.Cache cache = cacheManager.getCache("hospitalStats");
             if (cache != null) {
                 cache.evict(hospitalId);
                 logger.info("Evicted hospitalStats cache for hospitalId: {}", hospitalId);
             }
+        } catch (Exception e) {
+            // Cache eviction is a best-effort side effect (same tolerance as audit
+            // logging/websocket broadcast below) — a Redis outage must not fail the
+            // underlying patient operation.
+            logger.warn("Failed to evict hospitalStats cache for hospitalId: {}", hospitalId, e);
+        }
+    }
+
+    /**
+     * "Always required" for dateOfBirth is enforced here rather than at the
+     * DB/entity level — see the comment on Patient.dateOfBirth for why.
+     */
+    private void validateDateOfBirth(LocalDate dateOfBirth) {
+        if (dateOfBirth == null) {
+            throw new IllegalArgumentException("Date of birth is required");
+        }
+        if (dateOfBirth.isAfter(LocalDate.now())) {
+            throw new IllegalArgumentException("Date of birth cannot be in the future");
+        }
+        if (dateOfBirth.isBefore(LocalDate.now().minusYears(120))) {
+            throw new IllegalArgumentException("Date of birth cannot be more than 120 years ago");
         }
     }
 
     /**
      * Add a new patient
      * Automatically sets hospital_id from the authenticated user's context
-     * 
+     *
      * @param patient Patient entity to create
      * @return Created Patient entity
      */
@@ -109,6 +134,7 @@ public class PatientService {
         if (patient.getPhone() == null || !patient.getPhone().matches("^[0-9]{10}$")) {
             throw new IllegalArgumentException("Phone number must be exactly 10 digits");
         }
+        validateDateOfBirth(patient.getDateOfBirth());
 
         // Get hospital_id from security context (multi-tenant isolation)
         Long hospitalId = securityHelper.getCurrentHospitalId();
@@ -171,8 +197,10 @@ public class PatientService {
         // Ensure patient exists and belongs to this hospital
         Patient existingPatient = getPatientById(publicId);
 
+        validateDateOfBirth(updatedData.getDateOfBirth());
+
         existingPatient.setName(updatedData.getName());
-        existingPatient.setAge(updatedData.getAge());
+        existingPatient.setDateOfBirth(updatedData.getDateOfBirth());
         existingPatient.setGender(updatedData.getGender());
         existingPatient.setPhone(updatedData.getPhone());
         existingPatient.setAddress(updatedData.getAddress());
