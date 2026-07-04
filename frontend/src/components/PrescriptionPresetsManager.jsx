@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import hospitalService from '../services/hospitalService';
 import { useToast } from '../context/ToastContext';
 import ConfirmationModal from './ConfirmationModal';
+import MedicineAutocomplete from './MedicineAutocomplete';
 
 const EMPTY_ITEM = { medicineName: '', dosage: '', frequency: '', duration: '', instructions: '' };
 
@@ -166,14 +167,12 @@ const PrescriptionPresetsManager = () => {
 
                     {formItems.map((item, index) => (
                         <div key={index} className="grid grid-cols-2 gap-2 bg-white p-3 rounded-lg border border-gray-200">
-                            <input
-                                type="text"
-                                value={item.medicineName}
-                                onChange={(e) => updateFormItem(index, 'medicineName', e.target.value)}
-                                placeholder="Medicine name"
-                                maxLength={255}
-                                className="col-span-2 border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
-                            />
+                            <div className="col-span-2">
+                                <MedicineAutocomplete
+                                    value={item.medicineName}
+                                    onChange={(name) => updateFormItem(index, 'medicineName', name)}
+                                />
+                            </div>
                             <input
                                 type="text"
                                 value={item.dosage}
