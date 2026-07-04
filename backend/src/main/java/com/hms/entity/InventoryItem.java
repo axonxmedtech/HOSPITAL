@@ -55,7 +55,14 @@ public class InventoryItem {
      * entirely by its related items (see relativeItemIds); its own stock
      * is never checked or decremented. Defaults to true so every existing
      * catalog item keeps behaving exactly as it does today.
+     *
+     * columnDefinition carries the "DEFAULT 1" so that when Hibernate's
+     * ddl-auto=update adds this column to an already-populated table, MySQL
+     * backfills existing rows to 1 (true / stocked) -- without it, Hibernate
+     * adds the column with no DB default, silently defaulting existing rows
+     * to 0 (false), which would wrongly flip every pre-existing item to
+     * service-type. This matches the migration and setup/schema-full.sql.
      */
-    @Column(name = "has_own_stock", nullable = false)
+    @Column(name = "has_own_stock", nullable = false, columnDefinition = "tinyint(1) not null default 1")
     private Boolean hasOwnStock = true;
 }
