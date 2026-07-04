@@ -8,6 +8,7 @@ import { API_BASE_URL } from '../../services/apiService'; // BUG-028: single sou
 import { useToast } from '../../context/ToastContext';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import NotePresetsManager from '../../components/NotePresetsManager';
+import PrescriptionPresetsManager from '../../components/PrescriptionPresetsManager';
 import { validateForm } from '../../utils/validation';
 import EmptyState from '../../components/EmptyState';
 import OverviewDashboard from '../../components/OverviewDashboard';
@@ -1313,6 +1314,7 @@ const HospitalAdminDashboard = () => {
         { id: 'settings', label: 'Settings', icon: null, requiredModule: null },
         { id: 'support', label: 'Support', icon: null, requiredModule: null },
         { id: 'quick-notes', label: 'Quick Notes', icon: null, requiredModule: null },
+        { id: 'prescription-presets', label: 'Prescription Presets', icon: null, requiredModule: null },
     ];
 
     const tabs = allTabs.filter(tab =>
@@ -1335,7 +1337,7 @@ const HospitalAdminDashboard = () => {
         { id: 'group-finance', label: 'Finance', tabIds: ['billing', 'fees'] },
         { id: 'group-reports', label: 'Reports', tabIds: ['analytics', 'audit-logs'] },
         { id: 'group-communication', label: 'Communication', tabIds: ['messages'] },
-        { id: 'group-administration', label: 'Administration', tabIds: ['settings', 'support', 'quick-notes'] },
+        { id: 'group-administration', label: 'Administration', tabIds: ['settings', 'support', 'quick-notes', 'prescription-presets'] },
     ];
 
     const isHospitalAdminTenant = user?.hospitalType === 'HOSPITAL';
@@ -2123,6 +2125,12 @@ const HospitalAdminDashboard = () => {
                         {activeTab === 'quick-notes' && (
                             <div className="max-w-2xl mx-auto my-4">
                                 <NotePresetsManager fieldType="TREATMENT_NOTES" />
+                            </div>
+                        )}
+
+                        {activeTab === 'prescription-presets' && (
+                            <div className="max-w-3xl mx-auto my-4">
+                                <PrescriptionPresetsManager />
                             </div>
                         )}
                                 {activeTab === 'settings' && (
