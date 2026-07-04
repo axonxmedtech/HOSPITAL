@@ -69,56 +69,7 @@ public class PharmacySaleService {
 
         List<PharmacySaleItem> items = new ArrayList<>();
         for (PharmacySaleRequest.SaleItemRequest itemReq : request.getItems()) {
-            // Validation: Prevent negative or zero quantity theft
-            if (itemReq.getQuantity().compareTo(BigDecimal.ZERO) <= 0) {
-                throw new IllegalArgumentException("Sale quantity must be positive");
-            }
-            if (itemReq.getTaxPercentage() != null && (itemReq.getTaxPercentage().compareTo(BigDecimal.ZERO) < 0 || itemReq.getTaxPercentage().compareTo(BigDecimal.valueOf(100)) > 0)) {
-                throw new IllegalArgumentException("Tax percentage must be between 0% and 100%");
-            }
-
-            // 1. Fetch and update batch with Pessimistic Lock (Prevents Race Conditions)
-            // Also prevents IDOR by including hospitalId in query
-            MedicineBatch batch = batchRepository.findByIdAndHospitalIdForUpdate(itemReq.getMedicineBatchId(), hospitalId)
-                    .orElseThrow(() -> new RuntimeException("Batch not found or unauthorized: " + itemReq.getMedicineBatchId()));
-
-            if (batch.getCurrentQuantity().compareTo(itemReq.getQuantity()) < 0) {
-                throw new IllegalArgumentException("Insufficient stock for batch: " + batch.getBatchNumber());
-            }
-
-            BigDecimal qtyBefore = batch.getCurrentQuantity();
-            batch.setCurrentQuantity(qtyBefore.subtract(itemReq.getQuantity()));
-            batchRepository.save(batch);
-
-            // 2. Record Inventory Transaction
-            InventoryTransaction tx = new InventoryTransaction();
-            tx.setHospitalId(hospitalId);
-            tx.setMedicineBatchId(batch.getId());
-            tx.setTransactionType("SALE");
-            tx.setQuantity(itemReq.getQuantity().negate()); // Negative for sales
-            tx.setQuantityBefore(qtyBefore);
-            tx.setQuantityAfter(batch.getCurrentQuantity());
-            tx.setReferenceType("PHARMACY_SALE");
-            tx.setRemarks("Sale Bill #" + sale.getBillNumber());
-            tx.setCreatedBy(userId);
-            transactionRepository.save(tx);
-
-            // 3. Create Sale Item
-            PharmacySaleItem item = new PharmacySaleItem();
-            item.setPharmacySale(sale);
-            item.setMedicineId(itemReq.getMedicineId());
-            item.setMedicineBatchId(itemReq.getMedicineBatchId());
-            item.setQuantity(itemReq.getQuantity());
-            item.setQuantityRaw(itemReq.getQuantity());
-            item.setUnitPrice(itemReq.getUnitPrice());
-            item.setTaxPercentage(itemReq.getTaxPercentage());
-            item.setTaxPercentageRaw(itemReq.getTaxPercentage());
-            item.setTaxAmount(itemReq.getTaxAmount());
-            item.setDiscountPercentage(itemReq.getDiscountPercentage());
-            item.setDiscountAmount(itemReq.getDiscountAmount());
-            item.setTotalAmount(itemReq.getTotalAmount());
-            item.setTotalAmountRaw(itemReq.getTotalAmount());
-            items.add(item);
+            items.add(processSaleItem(itemReq, sale, hospitalId, userId));
         }
 
         sale.setItems(items);
@@ -126,18 +77,81 @@ public class PharmacySaleService {
 
         // Auto-complete the prescription status to DISPENSED for all consultation records
         if (request.getPrescriptionId() != null) {
-            try {
-                List<com.hms.entity.Prescription> rxList = prescriptionRepository.findByMedicalRecordId(request.getPrescriptionId());
-                for (com.hms.entity.Prescription rx : rxList) {
-                    rx.setStatus("DISPENSED");
-                    prescriptionRepository.save(rx);
-                }
-            } catch (Exception e) {
-                // Ensure prescription update failure does not crash the sale transaction
-            }
+            markPrescriptionsDispensed(request.getPrescriptionId());
         }
 
         return savedSale;
+    }
+
+    /**
+     * Validates a single sale line, deducts the batch under a pessimistic lock,
+     * records the inventory transaction, and returns the sale item. Extracted
+     * from createSale to keep that method's complexity manageable.
+     */
+    private PharmacySaleItem processSaleItem(PharmacySaleRequest.SaleItemRequest itemReq, PharmacySale sale, Long hospitalId, Long userId) {
+        // Validation: Prevent negative or zero quantity theft
+        if (itemReq.getQuantity().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Sale quantity must be positive");
+        }
+        if (itemReq.getTaxPercentage() != null && (itemReq.getTaxPercentage().compareTo(BigDecimal.ZERO) < 0 || itemReq.getTaxPercentage().compareTo(BigDecimal.valueOf(100)) > 0)) {
+            throw new IllegalArgumentException("Tax percentage must be between 0% and 100%");
+        }
+
+        // 1. Fetch and update batch with Pessimistic Lock (Prevents Race Conditions)
+        // Also prevents IDOR by including hospitalId in query
+        MedicineBatch batch = batchRepository.findByIdAndHospitalIdForUpdate(itemReq.getMedicineBatchId(), hospitalId)
+                .orElseThrow(() -> new RuntimeException("Batch not found or unauthorized: " + itemReq.getMedicineBatchId()));
+
+        if (batch.getCurrentQuantity().compareTo(itemReq.getQuantity()) < 0) {
+            throw new IllegalArgumentException("Insufficient stock for batch: " + batch.getBatchNumber());
+        }
+
+        BigDecimal qtyBefore = batch.getCurrentQuantity();
+        batch.setCurrentQuantity(qtyBefore.subtract(itemReq.getQuantity()));
+        batchRepository.save(batch);
+
+        // 2. Record Inventory Transaction
+        InventoryTransaction tx = new InventoryTransaction();
+        tx.setHospitalId(hospitalId);
+        tx.setMedicineBatchId(batch.getId());
+        tx.setTransactionType("SALE");
+        tx.setQuantity(itemReq.getQuantity().negate()); // Negative for sales
+        tx.setQuantityBefore(qtyBefore);
+        tx.setQuantityAfter(batch.getCurrentQuantity());
+        tx.setReferenceType("PHARMACY_SALE");
+        tx.setRemarks("Sale Bill #" + sale.getBillNumber());
+        tx.setCreatedBy(userId);
+        transactionRepository.save(tx);
+
+        // 3. Create Sale Item
+        PharmacySaleItem item = new PharmacySaleItem();
+        item.setPharmacySale(sale);
+        item.setMedicineId(itemReq.getMedicineId());
+        item.setMedicineBatchId(itemReq.getMedicineBatchId());
+        item.setQuantity(itemReq.getQuantity());
+        item.setQuantityRaw(itemReq.getQuantity());
+        item.setUnitPrice(itemReq.getUnitPrice());
+        item.setTaxPercentage(itemReq.getTaxPercentage());
+        item.setTaxPercentageRaw(itemReq.getTaxPercentage());
+        item.setTaxAmount(itemReq.getTaxAmount());
+        item.setDiscountPercentage(itemReq.getDiscountPercentage());
+        item.setDiscountAmount(itemReq.getDiscountAmount());
+        item.setTotalAmount(itemReq.getTotalAmount());
+        item.setTotalAmountRaw(itemReq.getTotalAmount());
+        return item;
+    }
+
+    /** Best-effort: a prescription update failure must not crash the sale transaction. */
+    private void markPrescriptionsDispensed(Long prescriptionId) {
+        try {
+            List<com.hms.entity.Prescription> rxList = prescriptionRepository.findByMedicalRecordId(prescriptionId);
+            for (com.hms.entity.Prescription rx : rxList) {
+                rx.setStatus("DISPENSED");
+                prescriptionRepository.save(rx);
+            }
+        } catch (Exception e) {
+            // Ensure prescription update failure does not crash the sale transaction
+        }
     }
 
     public Page<PharmacySale> getSalesHistory(Pageable pageable) {
