@@ -3289,7 +3289,7 @@ const HospitalAdminDashboard = () => {
                                 const payload = {
                                     patientId: adminOpdForm.patientId,
                                     doctorId: adminOpdForm.doctorId,
-                                    bp: adminOpdForm.bp,
+                                    bp: adminOpdForm.bp ? adminOpdForm.bp : null,
                                     temperature: adminOpdForm.temperature ? parseFloat(adminOpdForm.temperature) : null,
                                     pulse: adminOpdForm.pulse ? parseInt(adminOpdForm.pulse) : null,
                                     weight: adminOpdForm.weight ? parseFloat(adminOpdForm.weight) : null,

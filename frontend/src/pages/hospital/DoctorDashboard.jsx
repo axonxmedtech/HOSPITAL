@@ -1731,7 +1731,7 @@ const DoctorDashboard = () => {
                                     const payload = {
                                         patientId: opdForm.patientId,
                                         doctorId: opdForm.doctorId || doctorRecord?.id || user?.id,
-                                        bp: opdForm.bp,
+                                        bp: opdForm.bp ? opdForm.bp : null,
                                         temperature: opdForm.temperature ? parseFloat(opdForm.temperature) : null,
                                         pulse: opdForm.pulse ? parseInt(opdForm.pulse) : null,
                                         weight: opdForm.weight ? parseFloat(opdForm.weight) : null,
