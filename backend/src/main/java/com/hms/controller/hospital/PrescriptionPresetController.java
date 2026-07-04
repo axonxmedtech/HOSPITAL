@@ -36,7 +36,7 @@ public class PrescriptionPresetController {
     private PrescriptionPresetDTO toDto(PrescriptionPreset p) {
         List<PrescriptionPresetItemDTO> items = presetService.getItems(p.getId()).stream()
                 .map(this::toItemDto)
-                .collect(Collectors.toList());
+                .toList();
         return new PrescriptionPresetDTO(p.getId(), p.getName(), items, p.getDisplayOrder(),
                 p.getDoctorId(), doctorNameOrNull(p.getDoctorId()));
     }
@@ -56,7 +56,7 @@ public class PrescriptionPresetController {
     public ResponseEntity<?> listPresets() {
         List<PrescriptionPresetDTO> dtos = presetService.listPresets().stream()
                 .map(this::toDto)
-                .collect(Collectors.toList());
+                .toList();
         return ResponseEntity.ok(dtos);
     }
 

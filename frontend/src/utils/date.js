@@ -6,7 +6,7 @@ export const formatDate = (dateString) => {
   if (!dateString) return '-';
   try {
     const d = new Date(dateString);
-    if (isNaN(d.getTime())) return '-';
+    if (Number.isNaN(d.getTime())) return '-';
     return d.toLocaleDateString();
   } catch (e) {
     return '-';
@@ -17,7 +17,7 @@ export const formatDateTime = (dateString) => {
   if (!dateString) return '-';
   try {
     const d = new Date(dateString);
-    if (isNaN(d.getTime())) return '-';
+    if (Number.isNaN(d.getTime())) return '-';
     return d.toLocaleString();
   } catch (e) {
     return '-';
@@ -28,7 +28,7 @@ export const formatTime = (dateString) => {
   if (!dateString) return '-';
   try {
     const d = new Date(dateString);
-    if (isNaN(d.getTime())) return '-';
+    if (Number.isNaN(d.getTime())) return '-';
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   } catch (e) {
     return '-';

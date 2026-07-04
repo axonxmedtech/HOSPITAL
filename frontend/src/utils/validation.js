@@ -38,7 +38,7 @@ export const validators = {
     dob: (value) => {
         if (!value) return null;
         const date = new Date(value + 'T00:00:00');
-        if (isNaN(date.getTime())) return "Invalid date of birth";
+        if (Number.isNaN(date.getTime())) return "Invalid date of birth";
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         if (date > today) return "Date of birth cannot be in the future";
