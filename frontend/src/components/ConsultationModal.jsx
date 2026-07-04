@@ -6,6 +6,7 @@ import MedicineAutocomplete from './MedicineAutocomplete';
 import CharCountInput from './CharCountInput';
 import IpdAdmitModal from './IpdAdmitModal';
 import ManageNotePresetsModal from './ManageNotePresetsModal';
+import ManagePrescriptionPresetsModal from './ManagePrescriptionPresetsModal';
 
 const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, opd }) => {
     console.log("ConsultationModal render:", { isOpen, appointment, patient, opd });
@@ -17,6 +18,9 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     const [admitModalOpd, setAdmitModalOpd] = useState(null);
     const [notePresets, setNotePresets] = useState([]);
     const [showManagePresets, setShowManagePresets] = useState(false);
+    const [prescriptionPresets, setPrescriptionPresets] = useState([]);
+    const [showManagePrescriptionPresets, setShowManagePrescriptionPresets] = useState(false);
+    const [editingMedicineIndex, setEditingMedicineIndex] = useState(null);
 
     const user = authService.getCurrentUser();
     const modules = user?.modules || [];
@@ -73,6 +77,14 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
             hospitalService.getConsultationNotePresets('TREATMENT_NOTES')
                 .then(data => setNotePresets(data || []))
                 .catch(() => setNotePresets([]));
+        }
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (isOpen) {
+            hospitalService.getPrescriptionPresets()
+                .then(data => setPrescriptionPresets(data || []))
+                .catch(() => setPrescriptionPresets([]));
         }
     }, [isOpen]);
 
@@ -231,10 +243,14 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     };
 
     const handleAddMedicine = () => {
-        setFormData(prev => ({
-            ...prev,
-            prescription: [...prev.prescription, newMedicine]
-        }));
+        setFormData(prev => {
+            if (editingMedicineIndex !== null) {
+                const updated = [...prev.prescription];
+                updated[editingMedicineIndex] = newMedicine;
+                return { ...prev, prescription: updated };
+            }
+            return { ...prev, prescription: [...prev.prescription, newMedicine] };
+        });
         setNewMedicine({
             medicineName: '',
             dosage: '',
@@ -242,6 +258,53 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
             duration: '',
             instructions: ''
         });
+        setEditingMedicineIndex(null);
+    };
+
+    const handleEditMedicine = (index) => {
+        setNewMedicine(formData.prescription[index]);
+        setEditingMedicineIndex(index);
+    };
+
+    const handleCancelEditMedicine = () => {
+        setNewMedicine({
+            medicineName: '',
+            dosage: '',
+            frequency: '',
+            duration: '',
+            instructions: ''
+        });
+        setEditingMedicineIndex(null);
+    };
+
+    const handleApplyPrescriptionPreset = (presetId) => {
+        if (!presetId) return;
+        const preset = prescriptionPresets.find(p => String(p.id) === String(presetId));
+        if (!preset || !preset.items || preset.items.length === 0) return;
+        const itemsToAdd = preset.items.map(({ medicineName, dosage, frequency, duration, instructions }) => ({
+            medicineName, dosage: dosage || '', frequency: frequency || '', duration: duration || '', instructions: instructions || ''
+        }));
+        setFormData(prev => ({
+            ...prev,
+            prescription: [...prev.prescription, ...itemsToAdd]
+        }));
+    };
+
+    const handleSaveCurrentAsPreset = async () => {
+        if (formData.prescription.length === 0) {
+            toastError('Add at least one medicine before saving a preset');
+            return;
+        }
+        const name = window.prompt('Name this preset (e.g. "Fever Protocol"):');
+        if (!name || !name.trim()) return;
+        try {
+            await hospitalService.createPrescriptionPreset({ name: name.trim(), items: formData.prescription });
+            success('Preset saved');
+            const data = await hospitalService.getPrescriptionPresets();
+            setPrescriptionPresets(data || []);
+        } catch (err) {
+            toastError(err?.response?.data || 'Failed to save preset');
+        }
     };
 
     const handleRemoveMedicine = (index) => {
@@ -249,6 +312,9 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
             ...prev,
             prescription: prev.prescription.filter((_, i) => i !== index)
         }));
+        if (editingMedicineIndex === index) {
+            handleCancelEditMedicine();
+        }
     };
 
     const handleSubmit = async () => {
@@ -957,13 +1023,33 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                 </div>
                             ) : (
                                 <div className="space-y-4">
+                                    {/* Prescription Presets */}
+                                    <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-3 rounded-lg border border-gray-200">
+                                        <select
+                                            onChange={(e) => { handleApplyPrescriptionPreset(e.target.value); e.target.value = ''; }}
+                                            defaultValue=""
+                                            className="flex-1 min-w-[200px] border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+                                        >
+                                            <option value="" disabled>Apply a prescription preset...</option>
+                                            {prescriptionPresets.map(preset => (
+                                                <option key={preset.id} value={preset.id}>{preset.name} ({(preset.items || []).length} medicine{(preset.items || []).length === 1 ? '' : 's'})</option>
+                                            ))}
+                                        </select>
+                                        <button type="button" onClick={handleSaveCurrentAsPreset} className="text-xs text-gray-600 hover:text-gray-800 underline whitespace-nowrap">
+                                            Save current as preset
+                                        </button>
+                                        <button type="button" onClick={() => setShowManagePrescriptionPresets(true)} className="text-xs text-gray-600 hover:text-gray-800 underline whitespace-nowrap">
+                                            Manage Presets
+                                        </button>
+                                    </div>
+
                                     {/* Prescription List */}
                                     {formData.prescription.length > 0 && (
                                         <div className="mb-6">
                                             <h4 className="text-sm font-semibold text-gray-700 mb-3">Prescribed Medicines ({formData.prescription.length})</h4>
                                             <div className="space-y-2">
                                                 {formData.prescription.map((med, index) => (
-                                                    <div key={index} className="flex items-center justify-between bg-gray-50 p-3 rounded-lg border border-gray-200">
+                                                    <div key={index} className={`flex items-center justify-between p-3 rounded-lg border ${editingMedicineIndex === index ? 'bg-primary-50 border-primary-300' : 'bg-gray-50 border-gray-200'}`}>
                                                         <div className="flex-1">
                                                             <div className="font-semibold text-gray-800">{med.medicineName}</div>
                                                             <div className="text-xs text-gray-500 mt-1">
@@ -971,6 +1057,12 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                                                 {med.instructions && ` • ${med.instructions}`}
                                                             </div>
                                                         </div>
+                                                        <button
+                                                            onClick={() => handleEditMedicine(index)}
+                                                            className="ml-3 text-indigo-600 hover:text-indigo-800 text-xs font-semibold"
+                                                        >
+                                                            Edit
+                                                        </button>
                                                         <button
                                                             onClick={() => handleRemoveMedicine(index)}
                                                             className="ml-3 text-gray-500 hover:text-gray-700"
@@ -986,7 +1078,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                     )}
 
                                     <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                                        <h4 className="text-sm font-semibold text-gray-700 mb-3">Add Medicine</h4>
+                                        <h4 className="text-sm font-semibold text-gray-700 mb-3">{editingMedicineIndex !== null ? 'Edit Medicine' : 'Add Medicine'}</h4>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div className="col-span-2">
                                                 <MedicineAutocomplete
@@ -1033,13 +1125,23 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                                 className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500"
                                             />
                                         </div>
-                                        <button
-                                            onClick={handleAddMedicine}
-                                            disabled={!newMedicine.medicineName}
-                                            className="mt-3 w-full bg-primary-600 text-white py-2 rounded-lg hover:bg-primary-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-semibold"
-                                        >
-                                            + Add Medicine
-                                        </button>
+                                        <div className="mt-3 flex gap-2">
+                                            <button
+                                                onClick={handleAddMedicine}
+                                                disabled={!newMedicine.medicineName}
+                                                className="flex-1 bg-primary-600 text-white py-2 rounded-lg hover:bg-primary-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-semibold"
+                                            >
+                                                {editingMedicineIndex !== null ? 'Save Changes' : '+ Add Medicine'}
+                                            </button>
+                                            {editingMedicineIndex !== null && (
+                                                <button
+                                                    onClick={handleCancelEditMedicine}
+                                                    className="px-4 py-2 text-sm font-semibold text-gray-600 hover:text-gray-800"
+                                                >
+                                                    Cancel
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -1102,6 +1204,15 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                         .catch(() => {});
                 }}
                 fieldType="TREATMENT_NOTES"
+            />
+            <ManagePrescriptionPresetsModal
+                isOpen={showManagePrescriptionPresets}
+                onClose={() => {
+                    setShowManagePrescriptionPresets(false);
+                    hospitalService.getPrescriptionPresets()
+                        .then(data => setPrescriptionPresets(data || []))
+                        .catch(() => {});
+                }}
             />
         </div>
     );
