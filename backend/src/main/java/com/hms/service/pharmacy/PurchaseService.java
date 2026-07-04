@@ -43,7 +43,21 @@ public class PurchaseService {
     @Transactional
     public PurchaseInvoice createPurchase(PurchaseRequest req) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
-        
+
+        PurchaseInvoice invoice = buildInvoiceHeader(req, hospitalId);
+        invoice.setItems(buildInvoiceItems(req, invoice));
+
+        PurchaseInvoice saved = invoiceRepository.save(invoice);
+
+        if ("POSTED".equalsIgnoreCase(saved.getPostingStatus())) {
+            updateInventory(saved);
+            broadcastRefresh(hospitalId);
+        }
+
+        return saved;
+    }
+
+    private PurchaseInvoice buildInvoiceHeader(PurchaseRequest req, Long hospitalId) {
         PurchaseInvoice invoice = new PurchaseInvoice();
         invoice.setHospitalId(hospitalId);
         invoice.setSupplierId(req.getSupplierId());
@@ -56,67 +70,83 @@ public class PurchaseService {
         invoice.setPostingStatus(req.getPostingStatus());
         invoice.setPaymentStatus("PENDING");
         invoice.setCreatedBy(securityHelper.getCurrentUserId());
+        return invoice;
+    }
 
+    private List<PurchaseInvoiceItem> buildInvoiceItems(PurchaseRequest req, PurchaseInvoice invoice) {
         List<PurchaseInvoiceItem> items = new ArrayList<>();
         if (req.getItems() != null) {
             for (PurchaseRequest.PurchaseItemRequest itemReq : req.getItems()) {
-                if (itemReq.getQuantity() == null || itemReq.getQuantity().compareTo(java.math.BigDecimal.ZERO) <= 0) {
-                    throw new IllegalArgumentException("Purchase quantity must be positive");
-                }
-                if (itemReq.getFreeQuantity() == null || itemReq.getFreeQuantity().compareTo(java.math.BigDecimal.ZERO) < 0) {
-                    throw new IllegalArgumentException("Free quantity cannot be negative");
-                }
-                if (itemReq.getMrp() == null || itemReq.getMrp().compareTo(java.math.BigDecimal.ZERO) <= 0) {
-                    throw new IllegalArgumentException("MRP must be greater than zero");
-                }
-                if (itemReq.getPurchaseRate() == null || itemReq.getPurchaseRate().compareTo(java.math.BigDecimal.ZERO) <= 0) {
-                    throw new IllegalArgumentException("Purchase rate must be greater than zero");
-                }
-                if (itemReq.getSellingPrice() == null || itemReq.getSellingPrice().compareTo(java.math.BigDecimal.ZERO) <= 0) {
-                    throw new IllegalArgumentException("Selling price must be greater than zero");
-                }
-                if (itemReq.getSellingPrice().compareTo(itemReq.getMrp()) > 0) {
-                    throw new IllegalArgumentException("Selling price cannot exceed MRP");
-                }
-                if (itemReq.getPurchaseRate().compareTo(itemReq.getMrp()) > 0) {
-                    throw new IllegalArgumentException("Purchase rate cannot exceed MRP");
-                }
-                if (itemReq.getExpiryDate() == null) {
-                    throw new IllegalArgumentException("Expiry date is required");
-                }
-                if (itemReq.getExpiryDate().isBefore(java.time.LocalDate.now())) {
-                    throw new IllegalArgumentException("Expiry date cannot be in the past");
-                }
-                if (itemReq.getGstPercentage() != null && (itemReq.getGstPercentage().compareTo(java.math.BigDecimal.ZERO) < 0 || itemReq.getGstPercentage().compareTo(java.math.BigDecimal.valueOf(100)) > 0)) {
-                    throw new IllegalArgumentException("GST percentage must be between 0% and 100%");
-                }
-                PurchaseInvoiceItem item = new PurchaseInvoiceItem();
-                item.setMedicineId(itemReq.getMedicineId());
-                item.setBatchNumber(itemReq.getBatchNumber());
-                item.setExpiryDate(itemReq.getExpiryDate());
-                item.setQuantity(itemReq.getQuantity());
-                item.setFreeQuantity(itemReq.getFreeQuantity());
-                item.setPurchaseRate(itemReq.getPurchaseRate());
-                item.setMrp(itemReq.getMrp());
-                item.setSellingPrice(itemReq.getSellingPrice());
-                item.setGstPercentage(itemReq.getGstPercentage());
-                item.setLineTotal(itemReq.getLineTotal());
-                item.setPurchaseInvoice(invoice);
-                items.add(item);
+                validatePurchaseItem(itemReq);
+                items.add(buildInvoiceItem(itemReq, invoice));
             }
         }
-        invoice.setItems(items);
-        
-        PurchaseInvoice saved = invoiceRepository.save(invoice);
+        return items;
+    }
 
-        if ("POSTED".equalsIgnoreCase(saved.getPostingStatus())) {
-            updateInventory(saved);
-            try { webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}"); } catch (Exception e) {
-                logger.warn("Failed to broadcast WebSocket refresh after purchase invoice creation", e);
-            }
+    private void validatePurchaseItem(PurchaseRequest.PurchaseItemRequest itemReq) {
+        validatePurchaseItemPricing(itemReq);
+        validatePurchaseItemExpiryAndGst(itemReq);
+    }
+
+    private void validatePurchaseItemPricing(PurchaseRequest.PurchaseItemRequest itemReq) {
+        if (itemReq.getQuantity() == null || itemReq.getQuantity().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Purchase quantity must be positive");
         }
+        if (itemReq.getFreeQuantity() == null || itemReq.getFreeQuantity().compareTo(java.math.BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Free quantity cannot be negative");
+        }
+        if (itemReq.getMrp() == null || itemReq.getMrp().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("MRP must be greater than zero");
+        }
+        if (itemReq.getPurchaseRate() == null || itemReq.getPurchaseRate().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Purchase rate must be greater than zero");
+        }
+        if (itemReq.getSellingPrice() == null || itemReq.getSellingPrice().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Selling price must be greater than zero");
+        }
+        if (itemReq.getSellingPrice().compareTo(itemReq.getMrp()) > 0) {
+            throw new IllegalArgumentException("Selling price cannot exceed MRP");
+        }
+        if (itemReq.getPurchaseRate().compareTo(itemReq.getMrp()) > 0) {
+            throw new IllegalArgumentException("Purchase rate cannot exceed MRP");
+        }
+    }
 
-        return saved;
+    private void validatePurchaseItemExpiryAndGst(PurchaseRequest.PurchaseItemRequest itemReq) {
+        if (itemReq.getExpiryDate() == null) {
+            throw new IllegalArgumentException("Expiry date is required");
+        }
+        if (itemReq.getExpiryDate().isBefore(java.time.LocalDate.now(java.time.ZoneId.systemDefault()))) {
+            throw new IllegalArgumentException("Expiry date cannot be in the past");
+        }
+        if (itemReq.getGstPercentage() != null && (itemReq.getGstPercentage().compareTo(java.math.BigDecimal.ZERO) < 0 || itemReq.getGstPercentage().compareTo(java.math.BigDecimal.valueOf(100)) > 0)) {
+            throw new IllegalArgumentException("GST percentage must be between 0% and 100%");
+        }
+    }
+
+    private PurchaseInvoiceItem buildInvoiceItem(PurchaseRequest.PurchaseItemRequest itemReq, PurchaseInvoice invoice) {
+        PurchaseInvoiceItem item = new PurchaseInvoiceItem();
+        item.setMedicineId(itemReq.getMedicineId());
+        item.setBatchNumber(itemReq.getBatchNumber());
+        item.setExpiryDate(itemReq.getExpiryDate());
+        item.setQuantity(itemReq.getQuantity());
+        item.setFreeQuantity(itemReq.getFreeQuantity());
+        item.setPurchaseRate(itemReq.getPurchaseRate());
+        item.setMrp(itemReq.getMrp());
+        item.setSellingPrice(itemReq.getSellingPrice());
+        item.setGstPercentage(itemReq.getGstPercentage());
+        item.setLineTotal(itemReq.getLineTotal());
+        item.setPurchaseInvoice(invoice);
+        return item;
+    }
+
+    private void broadcastRefresh(Long hospitalId) {
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after purchase invoice creation", e);
+        }
     }
 
     @Transactional

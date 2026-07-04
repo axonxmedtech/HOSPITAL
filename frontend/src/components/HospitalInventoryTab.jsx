@@ -32,6 +32,9 @@ const HospitalInventoryTab = () => {
 
     // Service Modal States
     const [selectedMasterItems, setSelectedMasterItems] = useState([]);
+    // Extracted so the JSX handler isn't a deeply-nested arrow-in-arrow.
+    const removeSelectedMasterItem = (id) =>
+        setSelectedMasterItems(prev => prev.filter(x => x.id !== id));
     const [masterItemSearch, setMasterItemSearch] = useState('');
     const [showMasterSuggestions, setShowMasterSuggestions] = useState(false);
 
@@ -711,7 +714,7 @@ const HospitalInventoryTab = () => {
                                                 {item.name}
                                                 <button
                                                     type="button"
-                                                    onClick={() => setSelectedMasterItems(prev => prev.filter(x => x.id !== item.id))}
+                                                    onClick={() => removeSelectedMasterItem(item.id)}
                                                     className="hover:text-teal-900 focus:outline-none text-teal-500 font-bold"
                                                 >
                                                     &times;
