@@ -771,57 +771,24 @@ public class DoctorService {
             // --- Process Hospital Inventory Items Used (Stock Deductions) ---
             if (bill != null && request.getHospitalInventoryItems() != null && !request.getHospitalInventoryItems().isEmpty()) {
                 for (com.hms.dto.ConsultationRequest.HospitalInventoryItem item : request.getHospitalInventoryItems()) {
-                    if (item.getStockId() != null) {
-                        com.hms.entity.HospitalInventory stock = hospitalInventoryRepository.findByIdAndHospitalId(item.getStockId(), hospitalId)
-                            .orElseThrow(() -> new RuntimeException("Hospital item not found in active inventory: ID " + item.getStockId()));
+                    com.hms.entity.HospitalInventory stock = hospitalInventoryService.consumeChargeableItem(
+                            item.getStockId(), item.getName(), item.getQuantity(), hospitalId);
 
-                        if (stock.getStockQuantity() < item.getQuantity()) {
-                            throw new IllegalArgumentException("Insufficient stock for: " + stock.getName() + " (Requested: " + item.getQuantity() + ", Available: " + stock.getStockQuantity() + ")");
-                        }
+                    // Create BillingItem charge (only if it does not have a linked custom fee catalog mapping)
+                    boolean hasLinkedFee = false;
+                    java.util.Optional<com.hms.entity.InventoryItem> catalogItemOpt = inventoryItemRepository.findByNameAndHospitalId(item.getName(), hospitalId);
+                    if (catalogItemOpt.isPresent() && catalogItemOpt.get().getLinkedFeeId() != null) {
+                        hasLinkedFee = true;
+                    }
 
-                        // Deduct Stock
-                        int oldStock = stock.getStockQuantity();
-                        stock.setStockQuantity(oldStock - item.getQuantity());
-                        hospitalInventoryRepository.save(stock);
-
-                        // Degrade any relative catalog items
-                        try {
-                            hospitalInventoryService.degradeRelativeItems(stock.getName(), item.getQuantity(), hospitalId);
-                        } catch (Exception e) {
-                            logger.warn("Failed to degrade relative inventory items during OPD consultation", e);
-                        }
-
-                        // Audit Log for Stock deduction
-                        try {
-                            auditLogService.logAction(
-                                "INVENTORY_DEDUCTED",
-                                "Deducted " + item.getQuantity() + " units of " + stock.getName() + " for patient. Stock: " + oldStock + " -> " + stock.getStockQuantity(),
-                                securityHelper.getCurrentUserEmail(),
-                                hospitalId,
-                                "INVENTORY",
-                                stock.getId().toString(),
-                                null
-                            );
-                        } catch (Exception e) {
-                            logger.warn("Failed to write audit log for OPD hospital item deduction", e);
-                        }
-
-                        // Create BillingItem charge (only if it does not have a linked custom fee catalog mapping)
-                        boolean hasLinkedFee = false;
-                        java.util.Optional<com.hms.entity.InventoryItem> catalogItemOpt = inventoryItemRepository.findByNameAndHospitalId(stock.getName(), hospitalId);
-                        if (catalogItemOpt.isPresent() && catalogItemOpt.get().getLinkedFeeId() != null) {
-                            hasLinkedFee = true;
-                        }
-
-                        if (!hasLinkedFee) {
-                            com.hms.entity.BillingItem bi = new com.hms.entity.BillingItem();
-                            bi.setBillingId(bill.getId());
-                            bi.setHospitalId(hospitalId);
-                            bi.setDescription(stock.getName() + " (Qty: " + item.getQuantity() + ")");
-                            double price = stock.getUnitPrice() != null ? stock.getUnitPrice() : 0.0;
-                            bi.setAmount(java.math.BigDecimal.valueOf(price).multiply(java.math.BigDecimal.valueOf(item.getQuantity())));
-                            billingItemRepository.save(bi);
-                        }
+                    if (!hasLinkedFee) {
+                        com.hms.entity.BillingItem bi = new com.hms.entity.BillingItem();
+                        bi.setBillingId(bill.getId());
+                        bi.setHospitalId(hospitalId);
+                        bi.setDescription(item.getName() + " (Qty: " + item.getQuantity() + ")");
+                        double price = stock != null && stock.getUnitPrice() != null ? stock.getUnitPrice() : 0.0;
+                        bi.setAmount(java.math.BigDecimal.valueOf(price).multiply(java.math.BigDecimal.valueOf(item.getQuantity())));
+                        billingItemRepository.save(bi);
                     }
                 }
             }
