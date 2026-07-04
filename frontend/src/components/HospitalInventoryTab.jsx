@@ -232,6 +232,29 @@ const HospitalInventoryTab = () => {
         }
     };
 
+    const handleDuplicateCatalog = async (id) => {
+        try {
+            const source = await hospitalService.duplicateCatalogItem(id);
+            const matchedRelativeItems = (() => {
+                try {
+                    const ids = JSON.parse(source.relativeItemIds || '[]');
+                    return catalogList.filter(x => ids.includes(x.id)).map(x => ({ id: x.id, name: x.name }));
+                } catch (e) {
+                    return [];
+                }
+            })();
+            setSelectedRelativeItems(matchedRelativeItems);
+            setHasOwnStock(source.hasOwnStock !== false);
+            setCatalogModal({
+                isOpen: true,
+                isEdit: false,
+                data: { name: '', type: source.type, manufacturer: source.manufacturer, linkedFeeId: source.linkedFeeId }
+            });
+        } catch (err) {
+            toastError('Failed to load item for duplication.');
+        }
+    };
+
     const handleDeactivateStock = (id) => {
         setConfirmState({
             open: true,
@@ -471,6 +494,12 @@ const HospitalInventoryTab = () => {
                                             className="text-teal-600 hover:text-teal-800 font-semibold"
                                         >
                                             Edit
+                                        </button>
+                                        <button
+                                            onClick={() => handleDuplicateCatalog(item.id)}
+                                            className="text-indigo-600 hover:text-indigo-800 font-semibold"
+                                        >
+                                            Duplicate
                                         </button>
                                         <button
                                             onClick={() => handleDeactivateCatalog(item.id)}
