@@ -2,7 +2,6 @@ package com.hms.service.hospital;
 
 import com.hms.entity.PrescriptionPreset;
 import com.hms.entity.PrescriptionPresetItem;
-import com.hms.repository.DoctorRepository;
 import com.hms.repository.PrescriptionPresetItemRepository;
 import com.hms.repository.PrescriptionPresetRepository;
 import com.hms.security.SecurityContextHelper;
@@ -30,16 +29,16 @@ class PrescriptionPresetServiceTest {
 
     @Mock PrescriptionPresetRepository presetRepository;
     @Mock PrescriptionPresetItemRepository itemRepository;
-    @Mock DoctorRepository doctorRepository;
+    @Mock PresetOwnershipSupport ownership;
     @Mock SecurityContextHelper securityHelper;
 
     @InjectMocks PrescriptionPresetService service;
 
     // Tests exercise the admin path (admin manages any preset in the hospital).
+    // Ownership/broadcast is delegated to PresetOwnershipSupport (mocked here).
     @BeforeEach
     void asAdmin() {
-        when(securityHelper.getCurrentUserRole()).thenReturn("HOSPITAL_ADMIN");
-        when(doctorRepository.findByEmailAndHospitalId(any(), any())).thenReturn(Optional.empty());
+        when(ownership.isAdmin()).thenReturn(true);
     }
 
     private PrescriptionPresetItem item(String name) {

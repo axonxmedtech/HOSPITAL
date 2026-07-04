@@ -107,6 +107,9 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     const [hospitalInvSearch, setHospitalInvSearch] = useState('');
     const [hospitalInvDropdown, setHospitalInvDropdown] = useState(false);
     const [hospitalInvItems, setHospitalInvItems] = useState([]);
+    // Extracted so the JSX handler isn't a deeply-nested arrow-in-arrow.
+    const removeHospitalInvItem = (serviceId) =>
+        setHospitalInvItems(prev => prev.filter(x => x.serviceId !== serviceId));
 
     useEffect(() => {
         if (isOpen) {
@@ -739,7 +742,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                                                         ₹{(item.feeAmount * item.qty).toFixed(2)}
                                                                     </td>
                                                                     <td className="px-3 py-2 text-right">
-                                                                        <button type="button" onClick={() => setHospitalInvItems(prev => prev.filter(x => x.serviceId !== item.serviceId))} className="text-red-500 hover:text-red-700 font-semibold">Remove</button>
+                                                                        <button type="button" onClick={() => removeHospitalInvItem(item.serviceId)} className="text-red-500 hover:text-red-700 font-semibold">Remove</button>
                                                                     </td>
                                                                 </tr>
                                                             ))}

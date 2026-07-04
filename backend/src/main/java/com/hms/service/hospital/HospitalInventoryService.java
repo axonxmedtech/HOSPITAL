@@ -288,8 +288,21 @@ public class HospitalInventoryService {
 
         java.util.List<com.hms.entity.HospitalServiceItem> links = hospitalServiceItemRepository.findByServiceId(serviceId);
 
-        // Resolve each relevant item's name + its available stock rows, and
-        // validate availability BEFORE deducting anything.
+        // Validate availability BEFORE deducting anything, then deduct FEFO.
+        java.util.Map<String, java.util.List<com.hms.entity.HospitalInventory>> stocksByName =
+                collectAndValidateStocks(links, quantity, hospitalId);
+        deductStocksFefo(stocksByName, quantity, svc, hospitalId);
+
+        return svc.getCharge().multiply(java.math.BigDecimal.valueOf(quantity));
+    }
+
+    /**
+     * Resolves each relevant item's name -> its active stock rows, and throws
+     * IllegalArgumentException("Some items are out of stock: ...") if ANY item
+     * has fewer than {@code quantity} units available (deducting nothing).
+     */
+    private java.util.Map<String, java.util.List<com.hms.entity.HospitalInventory>> collectAndValidateStocks(
+            java.util.List<com.hms.entity.HospitalServiceItem> links, int quantity, Long hospitalId) {
         java.util.List<String> shortNames = new java.util.ArrayList<>();
         java.util.Map<String, java.util.List<com.hms.entity.HospitalInventory>> stocksByName = new java.util.LinkedHashMap<>();
         for (com.hms.entity.HospitalServiceItem link : links) {
@@ -297,50 +310,66 @@ public class HospitalInventoryService {
             if (!masterOpt.isPresent()) continue;
             String itemName = masterOpt.get().getName();
             java.util.List<com.hms.entity.HospitalInventory> stocks = hospitalInventoryRepository.findByNameAndHospitalIdAndIsActiveTrue(itemName, hospitalId);
-            int available = 0;
-            for (com.hms.entity.HospitalInventory s : stocks) {
-                available += (s.getStockQuantity() != null ? s.getStockQuantity() : 0);
-            }
-            if (available < quantity) {
+            if (totalAvailable(stocks) < quantity) {
                 shortNames.add(itemName);
             }
             stocksByName.put(itemName, stocks);
         }
-
         if (!shortNames.isEmpty()) {
             throw new IllegalArgumentException("Some items are out of stock: " + String.join(", ", shortNames));
         }
+        return stocksByName;
+    }
 
-        // All available -- deduct FEFO.
-        for (java.util.Map.Entry<String, java.util.List<com.hms.entity.HospitalInventory>> entry : stocksByName.entrySet()) {
-            java.util.List<com.hms.entity.HospitalInventory> stocks = entry.getValue();
-            stocks.sort((a, b) -> {
-                if (a.getExpiryDate() == null && b.getExpiryDate() == null) return a.getId().compareTo(b.getId());
-                if (a.getExpiryDate() == null) return 1;
-                if (b.getExpiryDate() == null) return -1;
-                return a.getExpiryDate().compareTo(b.getExpiryDate());
-            });
-            int required = quantity;
-            for (com.hms.entity.HospitalInventory s : stocks) {
-                if (required <= 0) break;
-                int avail = s.getStockQuantity() != null ? s.getStockQuantity() : 0;
-                if (avail <= 0) continue;
-                int toDeduct = Math.min(avail, required);
-                s.setStockQuantity(avail - toDeduct);
-                hospitalInventoryRepository.save(s);
-                required -= toDeduct;
-                try {
-                    auditLogService.logAction(
-                        "INVENTORY_DEDUCTED",
-                        "Deducted " + toDeduct + " units of " + s.getName() + " for service '" + svc.getName() + "'. Stock: " + avail + " -> " + s.getStockQuantity(),
-                        securityHelper.getCurrentUserEmail(), hospitalId, "INVENTORY", s.getId().toString(), null);
-                } catch (Exception e) {
-                    logger.warn("Failed to write audit log for service item deduction", e);
-                }
-            }
+    private int totalAvailable(java.util.List<com.hms.entity.HospitalInventory> stocks) {
+        int available = 0;
+        for (com.hms.entity.HospitalInventory s : stocks) {
+            available += (s.getStockQuantity() != null ? s.getStockQuantity() : 0);
         }
+        return available;
+    }
 
-        return svc.getCharge().multiply(java.math.BigDecimal.valueOf(quantity));
+    /** FEFO: earliest expiry first; nulls (no expiry) last; tie-break by id. */
+    private static int compareFefo(com.hms.entity.HospitalInventory a, com.hms.entity.HospitalInventory b) {
+        if (a.getExpiryDate() == null && b.getExpiryDate() == null) return a.getId().compareTo(b.getId());
+        if (a.getExpiryDate() == null) return 1;
+        if (b.getExpiryDate() == null) return -1;
+        return a.getExpiryDate().compareTo(b.getExpiryDate());
+    }
+
+    private void deductStocksFefo(java.util.Map<String, java.util.List<com.hms.entity.HospitalInventory>> stocksByName,
+            int quantity, com.hms.entity.HospitalServiceEntity svc, Long hospitalId) {
+        for (java.util.List<com.hms.entity.HospitalInventory> stocks : stocksByName.values()) {
+            stocks.sort(HospitalInventoryService::compareFefo);
+            deductFromStocks(stocks, quantity, svc, hospitalId);
+        }
+    }
+
+    private void deductFromStocks(java.util.List<com.hms.entity.HospitalInventory> stocks,
+            int quantity, com.hms.entity.HospitalServiceEntity svc, Long hospitalId) {
+        int required = quantity;
+        for (com.hms.entity.HospitalInventory s : stocks) {
+            if (required <= 0) break;
+            int avail = s.getStockQuantity() != null ? s.getStockQuantity() : 0;
+            if (avail <= 0) continue;
+            int toDeduct = Math.min(avail, required);
+            s.setStockQuantity(avail - toDeduct);
+            hospitalInventoryRepository.save(s);
+            required -= toDeduct;
+            logDeduction(s, toDeduct, avail, svc, hospitalId);
+        }
+    }
+
+    private void logDeduction(com.hms.entity.HospitalInventory s, int toDeduct, int avail,
+            com.hms.entity.HospitalServiceEntity svc, Long hospitalId) {
+        try {
+            auditLogService.logAction(
+                "INVENTORY_DEDUCTED",
+                "Deducted " + toDeduct + " units of " + s.getName() + " for service '" + svc.getName() + "'. Stock: " + avail + " -> " + s.getStockQuantity(),
+                securityHelper.getCurrentUserEmail(), hospitalId, "INVENTORY", s.getId().toString(), null);
+        } catch (Exception e) {
+            logger.warn("Failed to write audit log for service item deduction", e);
+        }
     }
 
     /**

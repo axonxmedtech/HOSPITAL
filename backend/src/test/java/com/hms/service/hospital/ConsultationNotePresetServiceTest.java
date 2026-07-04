@@ -2,7 +2,6 @@ package com.hms.service.hospital;
 
 import com.hms.entity.ConsultationNotePreset;
 import com.hms.repository.ConsultationNotePresetRepository;
-import com.hms.repository.DoctorRepository;
 import com.hms.security.SecurityContextHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,16 +26,16 @@ import static org.mockito.Mockito.verify;
 class ConsultationNotePresetServiceTest {
 
     @Mock ConsultationNotePresetRepository presetRepository;
-    @Mock DoctorRepository doctorRepository;
+    @Mock PresetOwnershipSupport ownership;
     @Mock SecurityContextHelper securityHelper;
 
     @InjectMocks ConsultationNotePresetService service;
 
     // Tests exercise the admin path (admin manages any preset in the hospital).
+    // Ownership/broadcast is delegated to PresetOwnershipSupport (mocked here).
     @BeforeEach
     void asAdmin() {
-        when(securityHelper.getCurrentUserRole()).thenReturn("HOSPITAL_ADMIN");
-        when(doctorRepository.findByEmailAndHospitalId(any(), any())).thenReturn(Optional.empty());
+        when(ownership.isAdmin()).thenReturn(true);
     }
 
     @Test

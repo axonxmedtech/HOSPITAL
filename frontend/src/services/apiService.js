@@ -43,32 +43,38 @@ apiClient.interceptors.request.use(
   }
 );
 
+// Map a tenant type to its login page — resilient to missing/invalid session data.
+const loginUrlForType = (hospitalType) => {
+  if (hospitalType === 'CLINIC') return '/login/clinic';
+  if (hospitalType === 'PHARMACY') return '/login/pharmacy';
+  return '/login/hospital';
+};
+
+// Clear the session and send the user to the correct login page (401 handling).
+const clearSessionAndRedirect = () => {
+  let hospitalType = null;
+  try {
+    const userStr = sessionStorage.getItem('user');
+    hospitalType = userStr ? JSON.parse(userStr)?.hospitalType : null;
+  } catch {
+    hospitalType = null; // fall back to the default hospital login
+  }
+  sessionStorage.removeItem('token');
+  sessionStorage.removeItem('user');
+  globalThis.location.href = loginUrlForType(hospitalType);
+};
+
 // Helper to handle standard response errors (such as unauthorized session redirect)
 const handleResponseError = (error) => {
-  const isLoginEndpoint = error.config?.url?.includes('/login');
-
   // Timeout error — surface a clean message instead of network error
   if (error.code === 'ECONNABORTED') {
     return Promise.reject(new Error('Request timed out. Please try again.'));
   }
 
-  // If 401 Unauthorized (token expired/missing), redirect to login
-  if (error.response && error.response.status === 401) {
-    if (!isLoginEndpoint) {
-      try {
-        const userStr = sessionStorage.getItem('user');
-        const hospitalType = userStr ? JSON.parse(userStr)?.hospitalType : null;
-        sessionStorage.removeItem('token');
-        sessionStorage.removeItem('user');
-        if (hospitalType === 'CLINIC') window.location.href = '/login/clinic';
-        else if (hospitalType === 'PHARMACY') window.location.href = '/login/pharmacy';
-        else window.location.href = '/login/hospital';
-      } catch (_) {
-        sessionStorage.removeItem('token');
-        sessionStorage.removeItem('user');
-        window.location.href = '/login/hospital';
-      }
-    }
+  // If 401 Unauthorized (token expired/missing) on a non-login call, redirect to login
+  const isLoginEndpoint = error.config?.url?.includes('/login');
+  if (error.response?.status === 401 && !isLoginEndpoint) {
+    clearSessionAndRedirect();
   }
 
   return Promise.reject(error);
