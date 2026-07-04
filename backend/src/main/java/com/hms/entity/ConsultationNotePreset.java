@@ -28,6 +28,13 @@ public class ConsultationNotePreset {
     @Column(name = "hospital_id", nullable = false)
     private Long hospitalId;
 
+    /**
+     * Owning doctor. NULL = shared preset (visible to every doctor in the
+     * hospital); a set value scopes the preset privately to that doctor.
+     */
+    @Column(name = "doctor_id")
+    private Long doctorId;
+
     @Column(name = "field_type", nullable = false, length = 30)
     private String fieldType;
 

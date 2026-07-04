@@ -66,6 +66,9 @@ public class HospitalAuthService {
     private JwtUtil jwtUtil;
 
     @Autowired
+    private com.hms.security.HospitalWebSocketHandler webSocketHandler;
+
+    @Autowired
     private HospitalAdminRepository hospitalAdminRepository;
 
     @Autowired
@@ -655,6 +658,15 @@ public class HospitalAuthService {
                 billingHandler,
                 inClinic != null ? inClinic : settings.getInClinic()
         );
+
+        // Broadcast so every connected client for this hospital (admin, doctor,
+        // receptionist) re-fetches its profile and re-renders tabs in real time —
+        // e.g. hiding the Medicine Inventory tab when In-Clinic is turned off.
+        try {
+            webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket settings update", e);
+        }
 
         return new HospitalSettingDTO(receptionMode, billingHandler,
                 inClinic != null ? inClinic : settings.getInClinic());

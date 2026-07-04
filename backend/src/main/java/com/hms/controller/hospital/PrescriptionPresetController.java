@@ -21,15 +21,24 @@ public class PrescriptionPresetController {
     @Autowired
     private PrescriptionPresetService presetService;
 
+    @Autowired
+    private com.hms.repository.DoctorRepository doctorRepository;
+
     private PrescriptionPresetItemDTO toItemDto(PrescriptionPresetItem i) {
         return new PrescriptionPresetItemDTO(i.getId(), i.getMedicineName(), i.getDosage(), i.getFrequency(), i.getDuration(), i.getInstructions());
+    }
+
+    private String doctorNameOrNull(Long doctorId) {
+        if (doctorId == null) return null;
+        return doctorRepository.findById(doctorId).map(com.hms.entity.Doctor::getName).orElse(null);
     }
 
     private PrescriptionPresetDTO toDto(PrescriptionPreset p) {
         List<PrescriptionPresetItemDTO> items = presetService.getItems(p.getId()).stream()
                 .map(this::toItemDto)
                 .collect(Collectors.toList());
-        return new PrescriptionPresetDTO(p.getId(), p.getName(), items, p.getDisplayOrder());
+        return new PrescriptionPresetDTO(p.getId(), p.getName(), items, p.getDisplayOrder(),
+                p.getDoctorId(), doctorNameOrNull(p.getDoctorId()));
     }
 
     private PrescriptionPresetItem toItemEntity(PrescriptionPresetItemDTO dto) {
@@ -58,7 +67,7 @@ public class PrescriptionPresetController {
             List<PrescriptionPresetItem> items = dto.getItems() == null ? Collections.emptyList() : dto.getItems().stream()
                     .map(this::toItemEntity)
                     .collect(Collectors.toList());
-            PrescriptionPreset saved = presetService.createPreset(dto.getName(), items);
+            PrescriptionPreset saved = presetService.createPreset(dto.getName(), items, dto.getDoctorId());
             return ResponseEntity.ok(toDto(saved));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
@@ -72,7 +81,7 @@ public class PrescriptionPresetController {
             List<PrescriptionPresetItem> items = dto.getItems() == null ? null : dto.getItems().stream()
                     .map(this::toItemEntity)
                     .collect(Collectors.toList());
-            PrescriptionPreset saved = presetService.updatePreset(id, dto.getName(), items, dto.getDisplayOrder());
+            PrescriptionPreset saved = presetService.updatePreset(id, dto.getName(), items, dto.getDisplayOrder(), dto.getDoctorId());
             return ResponseEntity.ok(toDto(saved));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());

@@ -41,6 +41,7 @@ class ConsultationNotePresetControllerTest {
     @MockBean private ConsultationNotePresetService presetService;
     @MockBean private JwtUtil jwtUtil;
     @MockBean private AuditLogService auditLogService;
+    @MockBean private com.hms.repository.DoctorRepository doctorRepository;
 
     @Test
     @WithMockUser(roles = "HOSPITAL_ADMIN")
@@ -81,7 +82,7 @@ class ConsultationNotePresetControllerTest {
         saved.setFieldType("TREATMENT_NOTES");
         saved.setText("Avoid oily food");
         saved.setDisplayOrder(0);
-        when(presetService.createPreset(eq("TREATMENT_NOTES"), eq("Avoid oily food"))).thenReturn(saved);
+        when(presetService.createPreset(eq("TREATMENT_NOTES"), eq("Avoid oily food"), any())).thenReturn(saved);
 
         mockMvc.perform(post("/hospital/consultation-note-presets")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -94,7 +95,7 @@ class ConsultationNotePresetControllerTest {
     @Test
     @WithMockUser(roles = "DOCTOR")
     void createPreset_returnsBadRequestWhenServiceThrows() throws Exception {
-        when(presetService.createPreset(anyString(), anyString()))
+        when(presetService.createPreset(anyString(), anyString(), any()))
                 .thenThrow(new IllegalArgumentException("Preset text is required"));
 
         mockMvc.perform(post("/hospital/consultation-note-presets")
@@ -120,7 +121,7 @@ class ConsultationNotePresetControllerTest {
         ConsultationNotePreset updated = new ConsultationNotePreset();
         updated.setId(5L);
         updated.setText("Updated text");
-        when(presetService.updatePreset(eq(5L), eq("Updated text"), any())).thenReturn(updated);
+        when(presetService.updatePreset(eq(5L), eq("Updated text"), any(), any())).thenReturn(updated);
 
         mockMvc.perform(put("/hospital/consultation-note-presets/5")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -133,7 +134,7 @@ class ConsultationNotePresetControllerTest {
     @Test
     @WithMockUser(roles = "HOSPITAL_ADMIN")
     void updatePreset_returnsBadRequestWhenNotFound() throws Exception {
-        when(presetService.updatePreset(eq(999L), any(), any()))
+        when(presetService.updatePreset(eq(999L), any(), any(), any()))
                 .thenThrow(new RuntimeException("Preset not found"));
 
         mockMvc.perform(put("/hospital/consultation-note-presets/999")

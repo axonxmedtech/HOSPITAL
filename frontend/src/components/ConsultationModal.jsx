@@ -88,6 +88,20 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         }
     }, [isOpen]);
 
+    // Real-time sync: refresh the preset dropdown/chips when a preset changes
+    // anywhere in this hospital (e.g. admin assigns one to this doctor).
+    useEffect(() => {
+        if (!isOpen) return;
+        const handler = () => {
+            hospitalService.getConsultationNotePresets('TREATMENT_NOTES')
+                .then(data => setNotePresets(data || [])).catch(() => {});
+            hospitalService.getPrescriptionPresets()
+                .then(data => setPrescriptionPresets(data || [])).catch(() => {});
+        };
+        window.addEventListener('hms:presets-updated', handler);
+        return () => window.removeEventListener('hms:presets-updated', handler);
+    }, [isOpen]);
+
     const [hospitalInventory, setHospitalInventory] = useState([]);
     const [hospitalInventoryCatalog, setHospitalInventoryCatalog] = useState([]);
     const [hospitalInvSearch, setHospitalInvSearch] = useState('');

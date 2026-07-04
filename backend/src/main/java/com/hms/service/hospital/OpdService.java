@@ -64,17 +64,17 @@ public class OpdService {
                 throw new IllegalArgumentException("Systolic blood pressure must be greater than diastolic blood pressure");
             }
         }
-        if (req.getTemperature() != null && (req.getTemperature() < 30.0 || req.getTemperature() > 45.0)) {
-            throw new IllegalArgumentException("Temperature must be between 30.0°C and 45.0°C");
+        if (req.getTemperature() != null && req.getTemperature() < 0) {
+            throw new IllegalArgumentException("Temperature cannot be negative");
         }
-        if (req.getPulse() != null && (req.getPulse() < 30 || req.getPulse() > 250)) {
-            throw new IllegalArgumentException("Pulse must be between 30 and 250 bpm");
+        if (req.getPulse() != null && req.getPulse() < 0) {
+            throw new IllegalArgumentException("Pulse cannot be negative");
         }
-        if (req.getWeight() != null && (req.getWeight() < 0.1 || req.getWeight() > 500.0)) {
-            throw new IllegalArgumentException("Weight must be between 0.1 and 500.0 kg");
+        if (req.getWeight() != null && req.getWeight() < 0) {
+            throw new IllegalArgumentException("Weight cannot be negative");
         }
-        if (req.getSpo2() != null && (req.getSpo2() < 0 || req.getSpo2() > 100)) {
-            throw new IllegalArgumentException("SpO2 must be between 0% and 100%");
+        if (req.getSpo2() != null && req.getSpo2() < 0) {
+            throw new IllegalArgumentException("SpO2 cannot be negative");
         }
 
         Opd opd = new Opd();

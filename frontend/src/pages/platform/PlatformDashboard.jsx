@@ -748,12 +748,12 @@ const PlatformDashboard = () => {
                                                         </td>
                                                         <td className="px-6 py-4">
                                                             <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${
-                                                                (hospital.plan || 'FREE') === 'PREMIUM' ? 'bg-purple-100 text-purple-700 border-purple-200'
-                                                                : (hospital.plan || 'FREE') === 'BASIC'   ? 'bg-blue-100 text-blue-700 border-blue-200'
-                                                                : (hospital.plan || 'FREE') === 'ENTERPRISE' ? 'bg-amber-100 text-amber-700 border-amber-200'
+                                                                (hospital.planName || 'FREE') === 'PREMIUM' ? 'bg-purple-100 text-purple-700 border-purple-200'
+                                                                : (hospital.planName || 'FREE') === 'BASIC'   ? 'bg-blue-100 text-blue-700 border-blue-200'
+                                                                : (hospital.planName || 'FREE') === 'ENTERPRISE' ? 'bg-amber-100 text-amber-700 border-amber-200'
                                                                 : 'bg-gray-100 text-gray-600 border-gray-200'
                                                             }`}>
-                                                                {hospital.plan || 'FREE'}
+                                                                {hospital.planName || 'FREE'}
                                                             </span>
                                                         </td>
                                                         <td className="px-6 py-4 text-sm text-gray-600">
@@ -1900,7 +1900,7 @@ const HospitalsTable = ({ hospitals, hospitalPage, handleToggleStatus, openEditH
             header: 'Name',
             cell: info => <span className="font-medium text-gray-900">{info.getValue()}</span>,
         }),
-        columnHelper.accessor('plan', {
+        columnHelper.accessor('planName', {
             header: 'Plan',
             cell: info => {
                 const plan = info.getValue() || 'FREE';

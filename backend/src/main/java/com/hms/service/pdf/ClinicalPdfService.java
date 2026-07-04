@@ -247,7 +247,7 @@ public class ClinicalPdfService {
                 vitalsTable.setSpacingAfter(15f);
 
                 helper.addTableHeaderCell(vitalsTable, "BP (mmHg)");
-                helper.addTableHeaderCell(vitalsTable, "Temp (°C)");
+                helper.addTableHeaderCell(vitalsTable, "Temp (°F)");
                 helper.addTableHeaderCell(vitalsTable, "Pulse (bpm)");
                 helper.addTableHeaderCell(vitalsTable, "Weight (kg)");
                 helper.addTableHeaderCell(vitalsTable, "SpO2 (%)");

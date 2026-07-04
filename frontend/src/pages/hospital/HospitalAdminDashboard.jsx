@@ -59,6 +59,8 @@ const HospitalAdminDashboard = () => {
     const modules = user?.modules || [];
     const hasOPD = modules.includes('OPD');
     const hasIPD = modules.includes('IPD');
+    // Tenant-aware label: clinic logins say "Clinic" wherever we'd otherwise say "Hospital".
+    const tenantWord = user?.hospitalType === 'CLINIC' ? 'Clinic' : 'Hospital';
     const defaultTab = 'overview';
     const activeTab = searchParams.get('tab') || defaultTab;
 
@@ -1301,7 +1303,7 @@ const HospitalAdminDashboard = () => {
         { id: 'pharmacy', label: 'Pharmacy', icon: null, requiredModule: 'PHARMACY' },
         { id: 'pharmacists', label: 'Pharmacists', icon: null, requiredModule: 'PHARMACY' },
         { id: 'inventory', label: 'Medicine Inventory', icon: null, requiredModule: 'MEDICAL_INVENTORY' },
-        { id: 'hospital-inventory', label: 'Hospital Inventory', icon: null, requiredModule: 'HOSPITAL_INVENTORY' },
+        { id: 'hospital-inventory', label: `${tenantWord} Inventory`, icon: null, requiredModule: 'HOSPITAL_INVENTORY' },
         // Financial
         { id: 'billing', label: 'Billing', icon: null, requiredModule: 'BILLING' },
         { id: 'fees', label: 'Fees', icon: null, requiredModule: 'BILLING' },
@@ -1318,9 +1320,24 @@ const HospitalAdminDashboard = () => {
         { id: 'prescription-presets', label: 'Prescription Presets', icon: null, requiredModule: null },
     ];
 
-    const tabs = allTabs.filter(tab =>
-        !tab.requiredModule || modules.includes(tab.requiredModule)
-    );
+    // In-Clinic medicine flow gates the Medicine Inventory tab. When an admin
+    // turns In-Clinic off, the tab is hidden (updated live via the SETTINGS_UPDATED
+    // WebSocket message, which refreshes user.inClinic — see useWebSocket).
+    const hasInClinic = user?.inClinic !== false;
+    const tabs = allTabs.filter(tab => {
+        if (tab.requiredModule && !modules.includes(tab.requiredModule)) return false;
+        if (tab.id === 'inventory' && !hasInClinic) return false;
+        return true;
+    });
+
+    // If the active tab is no longer visible (e.g. In-Clinic just got disabled
+    // while viewing Medicine Inventory), fall back to the overview tab.
+    useEffect(() => {
+        if (!tabs.some(t => t.id === activeTab)) {
+            setActiveTab(defaultTab);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [hasInClinic, activeTab]);
 
     // Grouped sidebar — Hospital Admin only (user?.hospitalType === 'HOSPITAL').
     // Clinic/Pharmacy admins and every other role keep the existing flat
@@ -1512,7 +1529,7 @@ const HospitalAdminDashboard = () => {
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
                 onToggleGroup={isHospitalAdminTenant ? handleToggleSidebarGroup : undefined}
-                footerTitle="Hospital"
+                footerTitle={tenantWord}
                 footerData={user?.hospitalName}
                 variant="plain"
                 isCollapsed={sidebarCollapsed}
@@ -1978,7 +1995,7 @@ const HospitalAdminDashboard = () => {
                                 )}
                                 {activeTab === 'fees' && (
                                     <div className="p-6 max-w-6xl mx-auto">
-                                        <h2 className="text-2xl font-bold mb-6 text-gray-900">Hospital Fees & Charges</h2>
+                                        <h2 className="text-2xl font-bold mb-6 text-gray-900">{tenantWord} Fees & Charges</h2>
                                         {feesLoading ? (
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                                 <SkeletonFormCard fields={2} />
@@ -2022,7 +2039,7 @@ const HospitalAdminDashboard = () => {
                                                                 user?.role === 'HOSPITAL_ADMIN' ? (
                                                                     <button onClick={() => setFeesEditing(true)} className="flex-1 bg-gray-950 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-800 transition">Edit Standard Fees</button>
                                                                 ) : (
-                                                                    <div className="text-sm text-gray-500 text-center w-full">Only Hospital Admin can edit standard fees</div>
+                                                                    <div className="text-sm text-gray-500 text-center w-full">Only {tenantWord} Admin can edit standard fees</div>
                                                                 )
                                                             ) : (
                                                                 <>
@@ -2128,13 +2145,13 @@ const HospitalAdminDashboard = () => {
 
                         {activeTab === 'quick-notes' && (
                             <div className="max-w-2xl mx-auto my-4">
-                                <NotePresetsManager fieldType="TREATMENT_NOTES" />
+                                <NotePresetsManager fieldType="TREATMENT_NOTES" isAdmin />
                             </div>
                         )}
 
                         {activeTab === 'prescription-presets' && (
                             <div className="max-w-3xl mx-auto my-4">
-                                <PrescriptionPresetsManager />
+                                <PrescriptionPresetsManager isAdmin />
                             </div>
                         )}
                                 {activeTab === 'settings' && (
@@ -3259,29 +3276,29 @@ const HospitalAdminDashboard = () => {
                             }
                             if (adminOpdForm.temperature) {
                                 const temp = parseFloat(adminOpdForm.temperature);
-                                if (isNaN(temp) || temp < 30 || temp > 45) {
-                                    toastError("Temperature must be between 30.0°C and 45.0°C");
+                                if (isNaN(temp) || temp < 0) {
+                                    toastError("Temperature cannot be negative");
                                     return;
                                 }
                             }
                             if (adminOpdForm.pulse) {
                                 const pulse = parseInt(adminOpdForm.pulse, 10);
-                                if (isNaN(pulse) || pulse < 30 || pulse > 250) {
-                                    toastError("Pulse must be between 30 and 250 bpm");
+                                if (isNaN(pulse) || pulse < 0) {
+                                    toastError("Pulse cannot be negative");
                                     return;
                                 }
                             }
                             if (adminOpdForm.weight) {
                                 const weight = parseFloat(adminOpdForm.weight);
-                                if (isNaN(weight) || weight < 0.1 || weight > 500) {
-                                    toastError("Weight must be between 0.1 and 500.0 kg");
+                                if (isNaN(weight) || weight < 0) {
+                                    toastError("Weight cannot be negative");
                                     return;
                                 }
                             }
                             if (adminOpdForm.spo2) {
                                 const spo2 = parseInt(adminOpdForm.spo2, 10);
-                                if (isNaN(spo2) || spo2 < 0 || spo2 > 100) {
-                                    toastError("SpO2 must be between 0% and 100%");
+                                if (isNaN(spo2) || spo2 < 0) {
+                                    toastError("SpO2 cannot be negative");
                                     return;
                                 }
                             }
@@ -3361,22 +3378,22 @@ const HospitalAdminDashboard = () => {
                                     <input className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.bp} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, bp: e.target.value.replace(/[^0-9/]/g, '') }))} placeholder="120/80" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-semibold text-neutral-700 mb-2">Temperature (°C)</label>
-                                    <input type="number" step="0.1" min="30" max="45" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.temperature} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, temperature: e.target.value }))} />
+                                    <label className="block text-sm font-semibold text-neutral-700 mb-2">Temperature (°F)</label>
+                                    <input type="number" step="0.1" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.temperature} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, temperature: e.target.value }))} />
                                 </div>
                             </div>
                             <div className="grid grid-cols-3 gap-4">
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Pulse</label>
-                                    <input type="number" min="30" max="250" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.pulse} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, pulse: e.target.value }))} />
+                                    <input type="number" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.pulse} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, pulse: e.target.value }))} />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Weight (kg)</label>
-                                    <input type="number" step="0.1" min="0.1" max="500" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.weight} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, weight: e.target.value }))} />
+                                    <input type="number" step="0.1" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.weight} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, weight: e.target.value }))} />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">SpO2 (%)</label>
-                                    <input type="number" min="0" max="100" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.spo2} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, spo2: e.target.value }))} />
+                                    <input type="number" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.spo2} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, spo2: e.target.value }))} />
                                 </div>
                             </div>
                             <div>
@@ -3660,7 +3677,7 @@ const HospitalAdminDashboard = () => {
                         <form onSubmit={handleSaveCustomFee} className="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full border border-gray-200">
                             <div className="bg-white px-6 pt-6 pb-4">
                                 <h3 className="text-lg leading-6 font-bold text-gray-900 mb-4">
-                                    {customFeeModal.mode === 'add' ? 'Add Custom Hospital Fee' : 'Edit Custom Hospital Fee'}
+                                    {customFeeModal.mode === 'add' ? `Add Custom ${tenantWord} Fee` : `Edit Custom ${tenantWord} Fee`}
                                 </h3>
                                 <div className="space-y-4">
                                     <div>

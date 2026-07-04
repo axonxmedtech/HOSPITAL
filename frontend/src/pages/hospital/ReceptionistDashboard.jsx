@@ -37,6 +37,8 @@ const ReceptionistDashboard = () => {
     const hasBilling = modules.includes('BILLING');
     const hasAppointments = modules.includes('APPOINTMENTS');
     const hasMedicalInventory = modules.includes('MEDICAL_INVENTORY');
+    // Tenant-aware label: clinic logins say "Clinic" wherever we'd otherwise say "Hospital".
+    const tenantWord = user?.hospitalType === 'CLINIC' ? 'Clinic' : 'Hospital';
     const [searchParams, setSearchParams] = useSearchParams();
     const activeTab = searchParams.get('tab') || 'overview';
     const viewFilter = searchParams.get('appointmentFilter') || 'today';
@@ -773,7 +775,7 @@ const ReceptionistDashboard = () => {
                 tabs={tabs}
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
-                footerTitle="Hospital"
+                footerTitle={tenantWord}
                 footerData={user?.hospitalName}
                 variant="plain"
                 isCollapsed={sidebarCollapsed}
@@ -1494,29 +1496,29 @@ const ReceptionistDashboard = () => {
                             }
                             if (opdForm.temperature) {
                                 const temp = parseFloat(opdForm.temperature);
-                                if (isNaN(temp) || temp < 30 || temp > 45) {
-                                    toastError("Temperature must be between 30.0°C and 45.0°C");
+                                if (isNaN(temp) || temp < 0) {
+                                    toastError("Temperature cannot be negative");
                                     return;
                                 }
                             }
                             if (opdForm.pulse) {
                                 const pulse = parseInt(opdForm.pulse, 10);
-                                if (isNaN(pulse) || pulse < 30 || pulse > 250) {
-                                    toastError("Pulse must be between 30 and 250 bpm");
+                                if (isNaN(pulse) || pulse < 0) {
+                                    toastError("Pulse cannot be negative");
                                     return;
                                 }
                             }
                             if (opdForm.weight) {
                                 const weight = parseFloat(opdForm.weight);
-                                if (isNaN(weight) || weight < 0.1 || weight > 500) {
-                                    toastError("Weight must be between 0.1 and 500.0 kg");
+                                if (isNaN(weight) || weight < 0) {
+                                    toastError("Weight cannot be negative");
                                     return;
                                 }
                             }
                             if (opdForm.spo2) {
                                 const spo2 = parseInt(opdForm.spo2, 10);
-                                if (isNaN(spo2) || spo2 < 0 || spo2 > 100) {
-                                    toastError("SpO2 must be between 0% and 100%");
+                                if (isNaN(spo2) || spo2 < 0) {
+                                    toastError("SpO2 cannot be negative");
                                     return;
                                 }
                             }
@@ -1635,22 +1637,22 @@ const ReceptionistDashboard = () => {
                                     <input className="input-field" value={opdForm.bp} onChange={(e) => setOpdForm(prev => ({ ...prev, bp: e.target.value.replace(/[^0-9/]/g, '') }))} placeholder="120/80" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-semibold text-neutral-700 mb-2">Temperature (°C)</label>
-                                    <input type="number" step="0.1" min="30" max="45" className="input-field" value={opdForm.temperature} onChange={(e) => setOpdForm(prev => ({ ...prev, temperature: e.target.value }))} />
+                                    <label className="block text-sm font-semibold text-neutral-700 mb-2">Temperature (°F)</label>
+                                    <input type="number" step="0.1" min="0" className="input-field" value={opdForm.temperature} onChange={(e) => setOpdForm(prev => ({ ...prev, temperature: e.target.value }))} />
                                 </div>
                             </div>
                             <div className="grid grid-cols-3 gap-4">
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Pulse</label>
-                                    <input type="number" min="30" max="250" className="input-field" value={opdForm.pulse} onChange={(e) => setOpdForm(prev => ({ ...prev, pulse: e.target.value }))} />
+                                    <input type="number" min="0" className="input-field" value={opdForm.pulse} onChange={(e) => setOpdForm(prev => ({ ...prev, pulse: e.target.value }))} />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Weight (kg)</label>
-                                    <input type="number" step="0.1" min="0.1" max="500" className="input-field" value={opdForm.weight} onChange={(e) => setOpdForm(prev => ({ ...prev, weight: e.target.value }))} />
+                                    <input type="number" step="0.1" min="0" className="input-field" value={opdForm.weight} onChange={(e) => setOpdForm(prev => ({ ...prev, weight: e.target.value }))} />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">SpO2 (%)</label>
-                                    <input type="number" min="0" max="100" className="input-field" value={opdForm.spo2} onChange={(e) => setOpdForm(prev => ({ ...prev, spo2: e.target.value }))} />
+                                    <input type="number" min="0" className="input-field" value={opdForm.spo2} onChange={(e) => setOpdForm(prev => ({ ...prev, spo2: e.target.value }))} />
                                 </div>
                             </div>
 

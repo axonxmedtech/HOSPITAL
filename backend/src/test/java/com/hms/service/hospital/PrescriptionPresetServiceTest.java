@@ -2,14 +2,18 @@ package com.hms.service.hospital;
 
 import com.hms.entity.PrescriptionPreset;
 import com.hms.entity.PrescriptionPresetItem;
+import com.hms.repository.DoctorRepository;
 import com.hms.repository.PrescriptionPresetItemRepository;
 import com.hms.repository.PrescriptionPresetRepository;
 import com.hms.security.SecurityContextHelper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.quality.Strictness;
 
 import java.util.List;
 import java.util.Optional;
@@ -21,13 +25,22 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class PrescriptionPresetServiceTest {
 
     @Mock PrescriptionPresetRepository presetRepository;
     @Mock PrescriptionPresetItemRepository itemRepository;
+    @Mock DoctorRepository doctorRepository;
     @Mock SecurityContextHelper securityHelper;
 
     @InjectMocks PrescriptionPresetService service;
+
+    // Tests exercise the admin path (admin manages any preset in the hospital).
+    @BeforeEach
+    void asAdmin() {
+        when(securityHelper.getCurrentUserRole()).thenReturn("HOSPITAL_ADMIN");
+        when(doctorRepository.findByEmailAndHospitalId(any(), any())).thenReturn(Optional.empty());
+    }
 
     private PrescriptionPresetItem item(String name) {
         PrescriptionPresetItem i = new PrescriptionPresetItem();
@@ -66,7 +79,7 @@ class PrescriptionPresetServiceTest {
     void createPreset_blankName_throws() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
 
-        assertThatThrownBy(() -> service.createPreset("   ", List.of(item("Paracetamol"))))
+        assertThatThrownBy(() -> service.createPreset("   ", List.of(item("Paracetamol")), null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("name is required");
     }
@@ -75,7 +88,7 @@ class PrescriptionPresetServiceTest {
     void createPreset_noItems_throws() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
 
-        assertThatThrownBy(() -> service.createPreset("Fever Protocol", List.of()))
+        assertThatThrownBy(() -> service.createPreset("Fever Protocol", List.of(), null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("at least one medicine");
     }
@@ -92,7 +105,7 @@ class PrescriptionPresetServiceTest {
         });
         when(itemRepository.save(any(PrescriptionPresetItem.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        PrescriptionPreset result = service.createPreset("  Fever Protocol  ", List.of(item("Paracetamol"), item("Cetirizine")));
+        PrescriptionPreset result = service.createPreset("  Fever Protocol  ", List.of(item("Paracetamol"), item("Cetirizine")), null);
 
         assertThat(result.getName()).isEqualTo("Fever Protocol");
         assertThat(result.getHospitalId()).isEqualTo(1L);
@@ -106,7 +119,7 @@ class PrescriptionPresetServiceTest {
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
         when(presetRepository.findByIdAndHospitalId(99L, 1L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.updatePreset(99L, "New Name", null, null))
+        assertThatThrownBy(() -> service.updatePreset(99L, "New Name", null, null, null))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("not found");
     }
@@ -122,7 +135,7 @@ class PrescriptionPresetServiceTest {
         when(presetRepository.save(any(PrescriptionPreset.class))).thenAnswer(inv -> inv.getArgument(0));
         when(itemRepository.save(any(PrescriptionPresetItem.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        PrescriptionPreset result = service.updatePreset(5L, "New Name", List.of(item("Ibuprofen")), 2);
+        PrescriptionPreset result = service.updatePreset(5L, "New Name", List.of(item("Ibuprofen")), 2, null);
 
         assertThat(result.getName()).isEqualTo("New Name");
         assertThat(result.getDisplayOrder()).isEqualTo(2);
@@ -138,7 +151,7 @@ class PrescriptionPresetServiceTest {
         existing.setHospitalId(1L);
         when(presetRepository.findByIdAndHospitalId(5L, 1L)).thenReturn(Optional.of(existing));
 
-        assertThatThrownBy(() -> service.updatePreset(5L, "Name", List.of(), null))
+        assertThatThrownBy(() -> service.updatePreset(5L, "Name", List.of(), null, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("at least one medicine");
     }

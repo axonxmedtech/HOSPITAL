@@ -8,14 +8,18 @@ import ConfirmationModal from './ConfirmationModal';
  * fieldType (currently only 'TREATMENT_NOTES' is used). Self-contained: does
  * its own data fetching, so it can be dropped into a modal or a full page.
  */
-const NotePresetsManager = ({ fieldType }) => {
+const NotePresetsManager = ({ fieldType, isAdmin = false }) => {
     const { success, error: toastError } = useToast();
     const [presets, setPresets] = useState([]);
+    const [doctors, setDoctors] = useState([]);
     const [loading, setLoading] = useState(true);
     const [newText, setNewText] = useState('');
+    // '' = shared (all doctors); a doctor id = private to that doctor. Admin-only.
+    const [newDoctorId, setNewDoctorId] = useState('');
     const [adding, setAdding] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [editingText, setEditingText] = useState('');
+    const [editingDoctorId, setEditingDoctorId] = useState('');
     const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, id: null });
 
     const loadPresets = useCallback(async () => {
@@ -34,14 +38,31 @@ const NotePresetsManager = ({ fieldType }) => {
         loadPresets();
     }, [loadPresets]);
 
+    // Real-time sync: reload when any client in this hospital changes a preset.
+    useEffect(() => {
+        const handler = () => loadPresets();
+        window.addEventListener('hms:presets-updated', handler);
+        return () => window.removeEventListener('hms:presets-updated', handler);
+    }, [loadPresets]);
+
+    // Admin assigns notes to specific doctors, so it needs the doctor list.
+    useEffect(() => {
+        if (!isAdmin) return;
+        hospitalService.getDoctors('', 0, 500)
+            .then(data => setDoctors(data?.content || []))
+            .catch(() => { /* dropdown just stays empty */ });
+    }, [isAdmin]);
+
     const handleAdd = async (e) => {
         e.preventDefault();
         if (!newText.trim()) return;
+        const assignment = isAdmin ? { doctorId: newDoctorId === '' ? null : Number(newDoctorId) } : {};
         setAdding(true);
         try {
-            const created = await hospitalService.createConsultationNotePreset({ fieldType, text: newText.trim() });
+            const created = await hospitalService.createConsultationNotePreset({ fieldType, text: newText.trim(), ...assignment });
             setPresets(prev => [...prev, created]);
             setNewText('');
+            setNewDoctorId('');
             success('Quick note added');
         } catch (err) {
             toastError(err?.response?.data || 'Failed to add quick note');
@@ -53,12 +74,14 @@ const NotePresetsManager = ({ fieldType }) => {
     const handleStartEdit = (preset) => {
         setEditingId(preset.id);
         setEditingText(preset.text);
+        setEditingDoctorId(preset.doctorId ?? '');
     };
 
     const handleSaveEdit = async (id) => {
         if (!editingText.trim()) return;
+        const assignment = isAdmin ? { doctorId: editingDoctorId === '' ? null : Number(editingDoctorId) } : {};
         try {
-            const updated = await hospitalService.updateConsultationNotePreset(id, { text: editingText.trim() });
+            const updated = await hospitalService.updateConsultationNotePreset(id, { text: editingText.trim(), ...assignment });
             setPresets(prev => prev.map(p => (p.id === id ? updated : p)));
             setEditingId(null);
             success('Quick note updated');
@@ -124,6 +147,18 @@ const NotePresetsManager = ({ fieldType }) => {
                     maxLength={255}
                     className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                 />
+                {isAdmin && (
+                    <select
+                        value={newDoctorId}
+                        onChange={(e) => setNewDoctorId(e.target.value)}
+                        className="border border-gray-300 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    >
+                        <option value="">Shared (all doctors)</option>
+                        {doctors.map(d => (
+                            <option key={d.id} value={d.id}>{d.name}</option>
+                        ))}
+                    </select>
+                )}
                 <button
                     type="submit"
                     disabled={adding || !newText.trim()}
@@ -165,16 +200,37 @@ const NotePresetsManager = ({ fieldType }) => {
                             </div>
 
                             {editingId === preset.id ? (
-                                <input
-                                    type="text"
-                                    value={editingText}
-                                    onChange={(e) => setEditingText(e.target.value)}
-                                    maxLength={255}
-                                    autoFocus
-                                    className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
-                                />
+                                <div className="flex-1 flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={editingText}
+                                        onChange={(e) => setEditingText(e.target.value)}
+                                        maxLength={255}
+                                        autoFocus
+                                        className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+                                    />
+                                    {isAdmin && (
+                                        <select
+                                            value={editingDoctorId}
+                                            onChange={(e) => setEditingDoctorId(e.target.value)}
+                                            className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                        >
+                                            <option value="">Shared (all doctors)</option>
+                                            {doctors.map(d => (
+                                                <option key={d.id} value={d.id}>{d.name}</option>
+                                            ))}
+                                        </select>
+                                    )}
+                                </div>
                             ) : (
-                                <span className="flex-1 text-sm text-gray-800">{preset.text}</span>
+                                <span className="flex-1 text-sm text-gray-800 flex items-center gap-2">
+                                    {preset.text}
+                                    {isAdmin && (
+                                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${preset.doctorId ? 'bg-indigo-50 text-indigo-700' : 'bg-gray-100 text-gray-500'}`}>
+                                            {preset.doctorName || 'Shared'}
+                                        </span>
+                                    )}
+                                </span>
                             )}
 
                             <div className="flex gap-2 text-sm">

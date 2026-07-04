@@ -18,8 +18,17 @@ public class ConsultationNotePresetController {
     @Autowired
     private ConsultationNotePresetService presetService;
 
+    @Autowired
+    private com.hms.repository.DoctorRepository doctorRepository;
+
+    private String doctorNameOrNull(Long doctorId) {
+        if (doctorId == null) return null;
+        return doctorRepository.findById(doctorId).map(com.hms.entity.Doctor::getName).orElse(null);
+    }
+
     private ConsultationNotePresetDTO toDto(ConsultationNotePreset p) {
-        return new ConsultationNotePresetDTO(p.getId(), p.getFieldType(), p.getText(), p.getDisplayOrder());
+        return new ConsultationNotePresetDTO(p.getId(), p.getFieldType(), p.getText(), p.getDisplayOrder(),
+                p.getDoctorId(), doctorNameOrNull(p.getDoctorId()));
     }
 
     @GetMapping
@@ -35,7 +44,7 @@ public class ConsultationNotePresetController {
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR')")
     public ResponseEntity<?> createPreset(@RequestBody ConsultationNotePresetDTO dto) {
         try {
-            ConsultationNotePreset saved = presetService.createPreset(dto.getFieldType(), dto.getText());
+            ConsultationNotePreset saved = presetService.createPreset(dto.getFieldType(), dto.getText(), dto.getDoctorId());
             return ResponseEntity.ok(toDto(saved));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
@@ -46,7 +55,7 @@ public class ConsultationNotePresetController {
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR')")
     public ResponseEntity<?> updatePreset(@PathVariable Long id, @RequestBody ConsultationNotePresetDTO dto) {
         try {
-            ConsultationNotePreset saved = presetService.updatePreset(id, dto.getText(), dto.getDisplayOrder());
+            ConsultationNotePreset saved = presetService.updatePreset(id, dto.getText(), dto.getDisplayOrder(), dto.getDoctorId());
             return ResponseEntity.ok(toDto(saved));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());

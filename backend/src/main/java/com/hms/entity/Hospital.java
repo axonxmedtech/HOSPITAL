@@ -93,6 +93,14 @@ public class Hospital {
     private String subscriptionStatus = "ACTIVE";
 
     /**
+     * Current subscription plan name — not persisted; populated on read (e.g. in
+     * the platform hospital list) from the hospital's current plan subscription
+     * so the UI can show the actual plan instead of a hardcoded default.
+     */
+    @Transient
+    private String planName;
+
+    /**
      * CMS: Standard consultation fee for OPD
      */
     @Column(name = "consultation_fee", precision = 10, scale = 2)

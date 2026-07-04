@@ -182,6 +182,12 @@ public class PlatformHospitalService {
         trialSub.setExpiresAt(trialSub.getExpiresAt().plusDays(7));
         subscriptionRepository.save(trialSub);
 
+        // In-Clinic must start OFF at creation for every tenant type. The plan grants
+        // the In-Clinic *capability* (module), but assignPlan() may have enabled the
+        // operational toggle — force it off so the admin explicitly opts in later.
+        settings.setInClinic(false);
+        hospitalSettingRepository.save(settings);
+
         logAction("HOSPITAL_CREATED",
             "Created " + type + ": " + hospital.getName() + " with admin: " + admin.getEmail());
 
@@ -197,10 +203,18 @@ public class PlatformHospitalService {
     public org.springframework.data.domain.Page<Hospital> getAllHospitals(
             org.springframework.data.domain.Pageable pageable,
             String type) {
-        if (type != null && !type.isBlank()) {
-            return hospitalRepository.findByTypeOrderByCreatedAtDesc(HospitalType.valueOf(type), pageable);
-        }
-        return hospitalRepository.findAllByOrderByCreatedAtDesc(pageable);
+        org.springframework.data.domain.Page<Hospital> hospitals =
+                (type != null && !type.isBlank())
+                        ? hospitalRepository.findByTypeOrderByCreatedAtDesc(HospitalType.valueOf(type), pageable)
+                        : hospitalRepository.findAllByOrderByCreatedAtDesc(pageable);
+
+        // Enrich each row with its current plan name (transient field) so the
+        // platform list shows the actual plan instead of a hardcoded default.
+        hospitals.forEach(hospital ->
+                subscriptionRepository.findByHospitalIdAndIsCurrentTrue(hospital.getId())
+                        .ifPresent(sub -> hospital.setPlanName(sub.getPlan().getName())));
+
+        return hospitals;
     }
 
     /**

@@ -11,9 +11,10 @@ const EMPTY_ITEM = { medicineName: '', dosage: '', frequency: '', duration: '', 
  * named bundle of one or more medicine rows). Self-contained: does its own
  * data fetching, so it can be dropped into a modal or a full page.
  */
-const PrescriptionPresetsManager = () => {
+const PrescriptionPresetsManager = ({ isAdmin = false }) => {
     const { success, error: toastError } = useToast();
     const [presets, setPresets] = useState([]);
+    const [doctors, setDoctors] = useState([]);
     const [loading, setLoading] = useState(true);
     const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, id: null });
 
@@ -23,6 +24,8 @@ const PrescriptionPresetsManager = () => {
     const [editingId, setEditingId] = useState(null);
     const [formName, setFormName] = useState('');
     const [formItems, setFormItems] = useState([{ ...EMPTY_ITEM }]);
+    // '' = shared (all doctors); a doctor id = private to that doctor. Admin-only.
+    const [formDoctorId, setFormDoctorId] = useState('');
     const [saving, setSaving] = useState(false);
 
     const loadPresets = useCallback(async () => {
@@ -41,10 +44,26 @@ const PrescriptionPresetsManager = () => {
         loadPresets();
     }, [loadPresets]);
 
+    // Real-time sync: reload when any client in this hospital changes a preset.
+    useEffect(() => {
+        const handler = () => loadPresets();
+        window.addEventListener('hms:presets-updated', handler);
+        return () => window.removeEventListener('hms:presets-updated', handler);
+    }, [loadPresets]);
+
+    // Admin assigns presets to specific doctors, so it needs the doctor list.
+    useEffect(() => {
+        if (!isAdmin) return;
+        hospitalService.getDoctors('', 0, 500)
+            .then(data => setDoctors(data?.content || []))
+            .catch(() => { /* dropdown just stays empty */ });
+    }, [isAdmin]);
+
     const openCreateForm = () => {
         setEditingId(null);
         setFormName('');
         setFormItems([{ ...EMPTY_ITEM }]);
+        setFormDoctorId('');
         setFormOpen(true);
     };
 
@@ -52,6 +71,7 @@ const PrescriptionPresetsManager = () => {
         setEditingId(preset.id);
         setFormName(preset.name);
         setFormItems(preset.items && preset.items.length > 0 ? preset.items.map(i => ({ ...i })) : [{ ...EMPTY_ITEM }]);
+        setFormDoctorId(preset.doctorId ?? '');
         setFormOpen(true);
     };
 
@@ -79,14 +99,16 @@ const PrescriptionPresetsManager = () => {
             .map(it => ({ ...it, medicineName: it.medicineName.trim() }));
         if (!formName.trim() || cleanItems.length === 0) return;
 
+        // Only admins assign a doctor; a doctor's own presets are auto-scoped by the backend.
+        const assignment = isAdmin ? { doctorId: formDoctorId === '' ? null : Number(formDoctorId) } : {};
         setSaving(true);
         try {
             if (editingId) {
-                const updated = await hospitalService.updatePrescriptionPreset(editingId, { name: formName.trim(), items: cleanItems });
+                const updated = await hospitalService.updatePrescriptionPreset(editingId, { name: formName.trim(), items: cleanItems, ...assignment });
                 setPresets(prev => prev.map(p => (p.id === editingId ? updated : p)));
                 success('Preset updated');
             } else {
-                const created = await hospitalService.createPrescriptionPreset({ name: formName.trim(), items: cleanItems });
+                const created = await hospitalService.createPrescriptionPreset({ name: formName.trim(), items: cleanItems, ...assignment });
                 setPresets(prev => [...prev, created]);
                 success('Preset created');
             }
@@ -164,6 +186,22 @@ const PrescriptionPresetsManager = () => {
                         maxLength={150}
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-semibold focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                     />
+
+                    {isAdmin && (
+                        <div>
+                            <label className="block text-xs font-medium text-gray-500 mb-1">Assign to doctor</label>
+                            <select
+                                value={formDoctorId}
+                                onChange={(e) => setFormDoctorId(e.target.value)}
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            >
+                                <option value="">Shared (all doctors)</option>
+                                {doctors.map(d => (
+                                    <option key={d.id} value={d.id}>{d.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
 
                     {formItems.map((item, index) => (
                         <div key={index} className="grid grid-cols-2 gap-2 bg-white p-3 rounded-lg border border-gray-200">
@@ -276,7 +314,14 @@ const PrescriptionPresetsManager = () => {
                             </div>
 
                             <div className="flex-1">
-                                <div className="text-sm font-semibold text-gray-800">{preset.name}</div>
+                                <div className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                                    {preset.name}
+                                    {isAdmin && (
+                                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${preset.doctorId ? 'bg-indigo-50 text-indigo-700' : 'bg-gray-100 text-gray-500'}`}>
+                                            {preset.doctorName || 'Shared'}
+                                        </span>
+                                    )}
+                                </div>
                                 <div className="text-xs text-gray-500 mt-0.5">
                                     {(preset.items || []).map(i => i.medicineName).join(', ') || 'No medicines'}
                                 </div>

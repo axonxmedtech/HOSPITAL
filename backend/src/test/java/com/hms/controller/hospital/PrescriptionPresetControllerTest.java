@@ -39,6 +39,7 @@ class PrescriptionPresetControllerTest {
     @MockBean private PrescriptionPresetService presetService;
     @MockBean private JwtUtil jwtUtil;
     @MockBean private AuditLogService auditLogService;
+    @MockBean private com.hms.repository.DoctorRepository doctorRepository;
 
     @Test
     @WithMockUser(roles = "HOSPITAL_ADMIN")
@@ -72,7 +73,7 @@ class PrescriptionPresetControllerTest {
         saved.setId(1L);
         saved.setName("Fever Protocol");
         saved.setDisplayOrder(0);
-        when(presetService.createPreset(eq("Fever Protocol"), anyList())).thenReturn(saved);
+        when(presetService.createPreset(eq("Fever Protocol"), anyList(), any())).thenReturn(saved);
         when(presetService.getItems(1L)).thenReturn(Collections.emptyList());
 
         mockMvc.perform(post("/hospital/prescription-presets")
@@ -86,7 +87,7 @@ class PrescriptionPresetControllerTest {
     @Test
     @WithMockUser(roles = "DOCTOR")
     void createPreset_returnsBadRequestWhenServiceThrows() throws Exception {
-        when(presetService.createPreset(anyString(), anyList()))
+        when(presetService.createPreset(anyString(), anyList(), any()))
                 .thenThrow(new IllegalArgumentException("Preset name is required"));
 
         mockMvc.perform(post("/hospital/prescription-presets")
@@ -112,7 +113,7 @@ class PrescriptionPresetControllerTest {
         PrescriptionPreset updated = new PrescriptionPreset();
         updated.setId(5L);
         updated.setName("Updated Name");
-        when(presetService.updatePreset(eq(5L), eq("Updated Name"), any(), any())).thenReturn(updated);
+        when(presetService.updatePreset(eq(5L), eq("Updated Name"), any(), any(), any())).thenReturn(updated);
         when(presetService.getItems(5L)).thenReturn(Collections.emptyList());
 
         mockMvc.perform(put("/hospital/prescription-presets/5")
@@ -126,7 +127,7 @@ class PrescriptionPresetControllerTest {
     @Test
     @WithMockUser(roles = "HOSPITAL_ADMIN")
     void updatePreset_returnsBadRequestWhenNotFound() throws Exception {
-        when(presetService.updatePreset(eq(999L), any(), any(), any()))
+        when(presetService.updatePreset(eq(999L), any(), any(), any(), any()))
                 .thenThrow(new RuntimeException("Preset not found"));
 
         mockMvc.perform(put("/hospital/prescription-presets/999")

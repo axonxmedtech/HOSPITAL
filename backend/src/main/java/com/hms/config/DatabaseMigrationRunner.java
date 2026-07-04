@@ -36,6 +36,7 @@ public class DatabaseMigrationRunner {
         migratePatientAgeToDateOfBirth(); // NEW
         ensureConsultationNotePresetsTable(); // NEW
         ensurePrescriptionPresetTables(); // NEW
+        ensurePresetDoctorIdColumns(); // NEW — per-doctor preset isolation
         ensureInventoryItemHasOwnStockColumn(); // NEW
         ensureInventoryServicesTables(); // NEW
     }
@@ -388,6 +389,34 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped (prescription presets): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Adds a nullable doctor_id column to prescription_presets and
+     * consultation_note_presets for per-doctor preset isolation. A NULL doctor_id
+     * means the preset is shared (visible to every doctor in the hospital); a set
+     * value scopes it privately to that doctor. Existing rows stay NULL, so they
+     * remain shared — no behaviour change for data created before this migration.
+     */
+    private void ensurePresetDoctorIdColumns() {
+        addNullableDoctorIdColumn("prescription_presets");
+        addNullableDoctorIdColumn("consultation_note_presets");
+    }
+
+    private void addNullableDoctorIdColumn(String table) {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '" + table + "' AND COLUMN_NAME = 'doctor_id'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute("ALTER TABLE " + table + " ADD COLUMN doctor_id BIGINT DEFAULT NULL");
+                log.info("DB migration applied: {}.doctor_id column added", table);
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped ({}.doctor_id): {}", table, e.getMessage());
         }
     }
 
