@@ -26,8 +26,8 @@ import PatientDetailsModal from '../../components/PatientDetailsModal';
 import ProfileModal from '../../components/ProfileModal';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
 import { SkeletonDashboard, SkeletonStatsGrid, SkeletonOverviewDual, SkeletonTable } from '../../components/Skeleton';
-import MedicineInventoryTab from '../../components/MedicineInventoryTab';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
+import LowStockBanner from '../../components/LowStockBanner';
 
 /**
  * DoctorDashboard - Doctor dashboard
@@ -69,7 +69,6 @@ const DoctorDashboard = () => {
     // the Today/Upcoming/History filter doesn't blow away the whole dashboard's
     // full-page skeleton (that's reserved for actual tab switches).
     const [appointmentsLoading, setAppointmentsLoading] = useState(false);
-    const [lowStockItems, setLowStockItems] = useState([]);
 
     // View Prescription Modal State
     const [viewPrescriptionModal, setViewPrescriptionModal] = useState({
@@ -454,50 +453,6 @@ const DoctorDashboard = () => {
                     console.error('Failed to load IPD admissions for doctor', err);
                     setOpds([]);
                 }
-            }
-
-            // Check for low-stock items if in Clinic mode or Solo mode
-            try {
-                let lowStock = [];
-                const promises = [];
-
-                if (user?.inClinic !== false) {
-                    promises.push(
-                        hospitalService.getInventoryMedicines()
-                            .then(inv => (inv || [])
-                                .filter(item => item.isActive !== false && item.stockQuantity <= item.minStockLevel)
-                                .map(item => ({ ...item, isMedicine: true }))
-                            )
-                            .catch(err => {
-                                console.error("Failed to load medicine inventory for low stock alerts", err);
-                                return [];
-                            })
-                    );
-                }
-
-                if (user?.receptionMode === 'SOLO') {
-                    promises.push(
-                        hospitalService.getHospitalInventory()
-                            .then(inv => (inv || [])
-                                .filter(item => item.isActive !== false && item.stockQuantity <= item.minStockLevel)
-                                .map(item => ({ ...item, isHospitalItem: true }))
-                            )
-                            .catch(err => {
-                                console.error("Failed to load hospital inventory for low stock alerts", err);
-                                return [];
-                            })
-                    );
-                }
-
-                if (promises.length > 0) {
-                    const results = await Promise.all(promises);
-                    lowStock = results.flat();
-                }
-
-                setLowStockItems(lowStock);
-            } catch (err) {
-                console.error("Failed to check for low-stock items", err);
-                setLowStockItems([]);
             }
         } catch (err) {
             toastError('Failed to load data');
@@ -962,48 +917,7 @@ const DoctorDashboard = () => {
                                     </div>
                                 )}
                             </div>
-                            {lowStockItems.length > 0 && (
-                                <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-4 flex items-start gap-3 shadow-sm hover:shadow transition-all duration-300 animate-fade-in">
-                                    <div className="p-2 bg-amber-100 text-amber-800 rounded-xl">
-                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                        </svg>
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <h3 className="text-sm font-bold text-amber-900">Low Stock Alert: {lowStockItems.length} items require restocking</h3>
-                                        <p className="text-xs text-amber-700/90 mt-1 leading-relaxed">
-                                            The physical stock levels for these items are below reorder thresholds:
-                                        </p>
-                                        <div className="flex flex-wrap gap-2 mt-2">
-                                            {lowStockItems.map(item => (
-                                                <span key={item.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200/40">
-                                                    {item.name} <span className="font-bold">({item.stockQuantity} left)</span>
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    {user?.receptionMode === 'SOLO' && (
-                                        <div className="flex flex-col sm:flex-row gap-2 shrink-0">
-                                            {lowStockItems.some(item => item.isMedicine) && (
-                                                <button 
-                                                    onClick={() => setActiveTab('inventory')}
-                                                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg transition-all whitespace-nowrap"
-                                                >
-                                                    Restock Medicines
-                                                </button>
-                                            )}
-                                            {lowStockItems.some(item => item.isHospitalItem) && (
-                                                <button 
-                                                    onClick={() => setActiveTab('hospital-inventory')}
-                                                    className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-lg transition-all whitespace-nowrap"
-                                                >
-                                                    Restock Hospital Inventory
-                                                </button>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
+                            {user?.hospitalType === 'CLINIC' && modules.includes('HOSPITAL_INVENTORY') && <LowStockBanner />}
                             <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
                                 <div className="bg-white rounded-lg border border-gray-200 p-6">
                                     <div className="flex justify-between items-center">

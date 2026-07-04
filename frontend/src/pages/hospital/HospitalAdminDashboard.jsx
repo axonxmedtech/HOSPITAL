@@ -36,6 +36,7 @@ import reportsApi from '../../services/pharmacy/reportsApi';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
+import LowStockBanner from '../../components/LowStockBanner';
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     BarChart, Bar, Legend, PieChart, Pie, Cell
@@ -96,7 +97,6 @@ const HospitalAdminDashboard = () => {
     const [feesEditing, setFeesEditing] = useState(false);
 
     const [customFees, setCustomFees] = useState([]);
-    const [lowStockItems, setLowStockItems] = useState([]);
     const [customFeeModal, setCustomFeeModal] = useState({
         isOpen: false,
         mode: 'add',
@@ -483,22 +483,6 @@ const HospitalAdminDashboard = () => {
         };
         loadPharmacyDashboard();
     }, [activeTab]);
-
-    // Check for low stock items in hospital inventory
-    useEffect(() => {
-        const checkLowStock = async () => {
-            if (user?.role === 'HOSPITAL_ADMIN' && modules.includes('HOSPITAL_INVENTORY')) {
-                try {
-                    const res = await hospitalService.getHospitalInventory();
-                    const warningItems = (res || []).filter(item => item.isActive !== false && item.stockQuantity <= item.minStockLevel);
-                    setLowStockItems(warningItems);
-                } catch (err) {
-                    console.error("Failed to fetch inventory for low stock check", err);
-                }
-            }
-        };
-        checkLowStock();
-    }, [activeTab, user, modules]);
 
     const handleExportLedger = async () => {
         try {
@@ -1550,29 +1534,7 @@ const HospitalAdminDashboard = () => {
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
 
                     {/* Low Stock Warning Banner */}
-                    {user?.role === 'HOSPITAL_ADMIN' && modules.includes('HOSPITAL_INVENTORY') && lowStockItems.length > 0 && (
-                        <div className="mb-6 bg-amber-50 border border-amber-300 p-4 rounded-xl flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <span className="p-2 bg-amber-100 text-amber-700 rounded-lg">
-                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                    </svg>
-                                </span>
-                                <div>
-                                    <h4 className="text-sm font-bold text-amber-900">Low Stock Alert</h4>
-                                    <p className="text-xs text-amber-700 mt-0.5">
-                                        The following items are running low on stock: <span className="font-semibold">{lowStockItems.map(x => x.name).join(', ')}</span>
-                                    </p>
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => setActiveTab('hospital-inventory')}
-                                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors cursor-pointer"
-                            >
-                                View Inventory
-                            </button>
-                        </div>
-                    )}
+                    {modules.includes('HOSPITAL_INVENTORY') && <LowStockBanner />}
 
                     {/* Overview Tab - Stats & Inline Tables Split Grid */}
                     {activeTab === 'overview' && !loading && (
