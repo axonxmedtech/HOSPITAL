@@ -124,12 +124,12 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                 try {
                     const [invRes, catRes] = await Promise.all([
                         hospitalService.getHospitalInventory(),
-                        hospitalService.getHospitalInventoryCatalog()
+                        hospitalService.getHospitalServices()
                     ]);
-                    setHospitalInventory((invRes || []).filter(x => x.isActive !== false && x.stockQuantity > 0));
+                    setHospitalInventory(invRes || []);
                     setHospitalInventoryCatalog(catRes || []);
                 } catch (err) {
-                    console.error('Failed to load hospital inventory', err);
+                    console.error('Failed to load hospital services/inventory', err);
                 }
             };
             fetchInventory();
@@ -343,22 +343,15 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
             duration: item.duration || '',
             instructions: item.instructions || ''
         }));
-        // Build charges: standard fees + hospital inventory items (via linked fee)
-        const inventoryCharges = hospitalInvItems.map(item => ({
-            description: `${item.feeName || item.name} (Qty: ${item.qty})`,
-            amount: (item.feeAmount || 0) * item.qty
-        }));
         payload.charges = [
-            ...appliedCharges,
-            ...inventoryCharges
+            ...appliedCharges
         ].map(c => ({
             description: c.description,
             amount: Number(c.amount || 0)
         }));
         // Include hospital inventory items used
         payload.hospitalInventoryItems = hospitalInvItems.map(item => ({
-            stockId: item.stockId,
-            name: item.name,
+            serviceId: item.serviceId,
             quantity: item.qty
         }));
 
@@ -399,22 +392,15 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
             duration: item.duration || '',
             instructions: item.instructions || ''
         }));
-        // Build charges: standard fees + hospital inventory items (via linked fee)
-        const inventoryCharges = hospitalInvItems.map(item => ({
-            description: `${item.feeName || item.name} (Qty: ${item.qty})`,
-            amount: (item.feeAmount || 0) * item.qty
-        }));
         payload.charges = [
-            ...appliedCharges,
-            ...inventoryCharges
+            ...appliedCharges
         ].map(c => ({
             description: c.description,
             amount: Number(c.amount || 0)
         }));
         // Include hospital inventory items used
         payload.hospitalInventoryItems = hospitalInvItems.map(item => ({
-            stockId: item.stockId,
-            name: item.name,
+            serviceId: item.serviceId,
             quantity: item.qty
         }));
 
@@ -630,7 +616,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                                 <div className="relative">
                                                     <input
                                                         type="text"
-                                                        placeholder="Search chargeable items (injection, dressing...)..."
+                                                        placeholder="Search services (nebulization, dressing...)..."
                                                         value={hospitalInvSearch}
                                                         onChange={(e) => { setHospitalInvSearch(e.target.value); setHospitalInvDropdown(true); }}
                                                         onFocus={() => setHospitalInvDropdown(true)}
@@ -640,52 +626,61 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                                     {hospitalInvDropdown && hospitalInvSearch.trim().length >= 1 && (
                                                         <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto divide-y divide-gray-100">
                                                             {hospitalInventoryCatalog
-                                                                .filter(catItem => catItem.isActive !== false && catItem.linkedFeeId && catItem.name?.toLowerCase().includes(hospitalInvSearch.toLowerCase()))
+                                                                .filter(catItem => catItem.name?.toLowerCase().includes(hospitalInvSearch.toLowerCase()))
                                                                 .map(catItem => {
-                                                                    const isStocked = catItem.hasOwnStock !== false;
-                                                                    const matchingStock = isStocked ? hospitalInventory.find(s => s.name?.toLowerCase() === catItem.name?.toLowerCase()) : null;
-                                                                    const stockQty = matchingStock ? matchingStock.stockQuantity : null;
-                                                                    const selectionKey = isStocked ? matchingStock?.id : catItem.name;
-                                                                    const disabled = isStocked && (!matchingStock || stockQty <= 0);
-
                                                                     return (
                                                                         <button
                                                                             key={catItem.id}
                                                                             type="button"
-                                                                            disabled={disabled}
                                                                             onClick={() => {
-                                                                                if (disabled) return;
-                                                                                const existing = hospitalInvItems.find(x => (isStocked ? x.stockId === selectionKey : x.name === selectionKey));
-                                                                                if (existing) {
-                                                                                    if (!isStocked || existing.qty < stockQty) {
-                                                                                        setHospitalInvItems(prev => prev.map(x => x === existing ? { ...x, qty: x.qty + 1 } : x));
+                                                                                // Check dependencies
+                                                                                if (catItem.itemNames && catItem.itemNames.length > 0) {
+                                                                                    for (const depName of catItem.itemNames) {
+                                                                                        const match = hospitalInventory.find(x => x.isActive !== false && x.name?.toLowerCase() === depName.toLowerCase());
+                                                                                        if (!match || match.stockQuantity < 1) {
+                                                                                            toastError(`Cannot perform ${catItem.name}: ${depName} is out of stock in hospital inventory.`);
+                                                                                            setHospitalInvSearch('');
+                                                                                            setHospitalInvDropdown(false);
+                                                                                            return;
+                                                                                        }
                                                                                     }
+                                                                                }
+
+                                                                                const existing = hospitalInvItems.find(x => x.serviceId === catItem.id);
+                                                                                if (existing) {
+                                                                                    // Check if quantity increments can be fulfilled
+                                                                                    if (catItem.itemNames && catItem.itemNames.length > 0) {
+                                                                                        for (const depName of catItem.itemNames) {
+                                                                                            const match = hospitalInventory.find(x => x.isActive !== false && x.name?.toLowerCase() === depName.toLowerCase());
+                                                                                            if (match && match.stockQuantity < (existing.qty + 1)) {
+                                                                                                toastError(`Cannot perform ${catItem.name}: ${depName} is out of stock in hospital inventory.`);
+                                                                                                return;
+                                                                                            }
+                                                                                        }
+                                                                                    }
+                                                                                    setHospitalInvItems(prev => prev.map(x => x === existing ? { ...x, qty: x.qty + 1 } : x));
                                                                                 } else {
-                                                                                    let feeName = null, feeAmount = 0;
-                                                                                    const fee = availableCustomFees.find(f => String(f.id) === String(catItem.linkedFeeId));
-                                                                                    if (fee) { feeName = fee.name; feeAmount = Number(fee.defaultAmount); }
                                                                                     setHospitalInvItems(prev => [...prev, {
-                                                                                        stockId: isStocked ? matchingStock?.id : null,
+                                                                                        serviceId: catItem.id,
                                                                                         name: catItem.name,
                                                                                         qty: 1,
-                                                                                        maxStock: isStocked ? stockQty : null,
-                                                                                        linkedFeeId: catItem.linkedFeeId,
-                                                                                        feeName: feeName || catItem.name,
-                                                                                        feeAmount
+                                                                                        feeAmount: catItem.charge || 0,
+                                                                                        feeName: catItem.name,
+                                                                                        itemNames: catItem.itemNames || []
                                                                                     }]);
                                                                                 }
                                                                                 setHospitalInvSearch('');
                                                                                 setHospitalInvDropdown(false);
                                                                             }}
-                                                                            className={`w-full text-left px-3 py-2 flex justify-between items-center text-xs ${disabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-50'}`}
+                                                                            className="w-full text-left px-3 py-2 flex justify-between items-center text-xs hover:bg-slate-50"
                                                                         >
                                                                             <span className="font-semibold text-gray-800">{catItem.name}</span>
-                                                                            <span className="text-gray-400">{isStocked ? `Stock: ${stockQty ?? 0}` : 'Service'}</span>
+                                                                            <span className="text-gray-455 font-bold">₹{catItem.charge?.toFixed(2)}</span>
                                                                         </button>
                                                                     );
                                                                 })}
-                                                            {hospitalInventoryCatalog.filter(catItem => catItem.isActive !== false && catItem.linkedFeeId && catItem.name?.toLowerCase().includes(hospitalInvSearch.toLowerCase())).length === 0 && (
-                                                                <div className="p-2 text-center text-xs text-gray-400">No matching chargeable items found.</div>
+                                                            {hospitalInventoryCatalog.filter(catItem => catItem.name?.toLowerCase().includes(hospitalInvSearch.toLowerCase())).length === 0 && (
+                                                                <div className="p-2 text-center text-xs text-gray-400">No matching services found.</div>
                                                             )}
                                                         </div>
                                                     )}
@@ -698,7 +693,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                                     <table className="min-w-full text-xs">
                                                         <thead className="bg-slate-50 text-gray-500 font-medium border-b border-gray-200">
                                                             <tr>
-                                                                <th className="px-3 py-2 text-left">Item</th>
+                                                                <th className="px-3 py-2 text-left">Service</th>
                                                                 <th className="px-3 py-2 text-center">Qty</th>
                                                                 <th className="px-3 py-2 text-right">Charge</th>
                                                                 <th className="px-3 py-2 text-right">Action</th>
@@ -706,27 +701,37 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                                         </thead>
                                                         <tbody className="divide-y divide-gray-100">
                                                             {hospitalInvItems.map((item) => (
-                                                                <tr key={item.stockId || item.name} className="hover:bg-slate-50/50">
+                                                                <tr key={item.serviceId} className="hover:bg-slate-50/50">
                                                                     <td className="px-3 py-2 font-semibold text-gray-800">{item.name}</td>
                                                                     <td className="px-3 py-2 text-center">
                                                                         <div className="inline-flex items-center gap-1">
-                                                                            <button type="button" onClick={() => { if (item.qty > 1) setHospitalInvItems(prev => prev.map(x => (x.stockId || x.name) === (item.stockId || item.name) ? {...x, qty: x.qty - 1} : x)); }} className="w-5 h-5 border border-gray-300 rounded text-gray-500 hover:bg-slate-100">-</button>
+                                                                            <button type="button" onClick={() => { if (item.qty > 1) setHospitalInvItems(prev => prev.map(x => x.serviceId === item.serviceId ? {...x, qty: x.qty - 1} : x)); }} className="w-5 h-5 border border-gray-300 rounded text-gray-500 hover:bg-slate-100">-</button>
                                                                             <span className="font-bold w-4 text-center">{item.qty}</span>
-                                                                            <button type="button" onClick={() => { if (item.maxStock == null || item.qty < item.maxStock) setHospitalInvItems(prev => prev.map(x => (x.stockId || x.name) === (item.stockId || item.name) ? {...x, qty: x.qty + 1} : x)); }} className="w-5 h-5 border border-gray-300 rounded text-gray-500 hover:bg-slate-100">+</button>
+                                                                            <button type="button" onClick={() => {
+                                                                                if (item.itemNames && item.itemNames.length > 0) {
+                                                                                    for (const depName of item.itemNames) {
+                                                                                        const match = hospitalInventory.find(x => x.isActive !== false && x.name?.toLowerCase() === depName.toLowerCase());
+                                                                                        if (!match || match.stockQuantity < (item.qty + 1)) {
+                                                                                            toastError(`Cannot perform ${item.name}: ${depName} is out of stock in hospital inventory.`);
+                                                                                            return;
+                                                                                        }
+                                                                                    }
+                                                                                }
+                                                                                setHospitalInvItems(prev => prev.map(x => x.serviceId === item.serviceId ? {...x, qty: x.qty + 1} : x));
+                                                                            }} className="w-5 h-5 border border-gray-300 rounded text-gray-500 hover:bg-slate-100">+</button>
                                                                         </div>
                                                                     </td>
                                                                     <td className="px-3 py-2 text-right text-teal-700 font-semibold">
-                                                                        {item.feeAmount ? `₹${item.feeAmount * item.qty}` : <span className="text-gray-400">No charge</span>}
-                                                                        {item.feeName && item.feeAmount ? <div className="text-[10px] text-gray-400">{item.feeName}</div> : null}
+                                                                        ₹{(item.feeAmount * item.qty).toFixed(2)}
                                                                     </td>
                                                                     <td className="px-3 py-2 text-right">
-                                                                        <button type="button" onClick={() => setHospitalInvItems(prev => prev.filter(x => (x.stockId || x.name) !== (item.stockId || item.name)))} className="text-red-500 hover:text-red-700 font-semibold">Remove</button>
+                                                                        <button type="button" onClick={() => setHospitalInvItems(prev => prev.filter(x => x.serviceId !== item.serviceId))} className="text-red-500 hover:text-red-700 font-semibold">Remove</button>
                                                                     </td>
                                                                 </tr>
                                                             ))}
                                                             <tr className="bg-slate-50 font-semibold border-t border-gray-200">
                                                                 <td colSpan={2} className="px-3 py-2 text-left text-gray-700">Total Added Charges</td>
-                                                                <td className="px-3 py-2 text-right text-teal-600 font-bold">₹{hospitalInvItems.reduce((s, x) => s + ((x.feeAmount || 0) * x.qty), 0)}</td>
+                                                                <td className="px-3 py-2 text-right text-teal-600 font-bold">₹{hospitalInvItems.reduce((s, x) => s + ((x.feeAmount || 0) * x.qty), 0).toFixed(2)}</td>
                                                                 <td />
                                                             </tr>
                                                         </tbody>
