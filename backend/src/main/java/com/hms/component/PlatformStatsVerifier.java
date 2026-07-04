@@ -21,11 +21,10 @@ public class PlatformStatsVerifier implements CommandLineRunner {
     public void run(String... args) throws Exception {
         logger.info("=== HOSPITAL STATS VERIFICATION ===");
         try {
-            Map<String, Long> stats = hospitalService.getHospitalStats();
+            Map<String, Map<String, Long>> stats = hospitalService.getHospitalStats();
             logger.info("RAW STATS FROM SERVICE:");
-            logger.info("Total: {}", stats.get("total"));
-            logger.info("Active: {}", stats.get("active"));
-            logger.info("Inactive: {}", stats.get("inactive"));
+            stats.forEach((type, counts) -> logger.info("{}: total={}, active={}, inactive={}",
+                    type, counts.get("total"), counts.get("active"), counts.get("inactive")));
 
             logger.info("Checking individual hospitals:");
             hospitalService.getAllHospitals(org.springframework.data.domain.Pageable.unpaged(), null)

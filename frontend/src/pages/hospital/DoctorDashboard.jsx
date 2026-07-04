@@ -44,6 +44,7 @@ const DoctorDashboard = () => {
     const [user, setUser] = useState(() => authService.getCurrentUser());
     const modules = user?.modules || [];
     const hasIPD = modules.includes('IPD');
+    const hasAppointments = modules.includes('APPOINTMENTS');
     const [searchParams, setSearchParams] = useSearchParams();
     const activeTab = searchParams.get('tab') || 'overview';
     const viewFilter = searchParams.get('appointmentFilter') || 'today';
@@ -64,6 +65,10 @@ const DoctorDashboard = () => {
     const [todaysFollowUps, setTodaysFollowUps] = useState([]);
     const [patients, setPatients] = useState([]);
     const [loading, setLoading] = useState(false);
+    // Scoped loading indicator for just the Appointments card/table, so switching
+    // the Today/Upcoming/History filter doesn't blow away the whole dashboard's
+    // full-page skeleton (that's reserved for actual tab switches).
+    const [appointmentsLoading, setAppointmentsLoading] = useState(false);
     const [lowStockItems, setLowStockItems] = useState([]);
 
     // View Prescription Modal State
@@ -281,8 +286,20 @@ const DoctorDashboard = () => {
         if (activeTab === 'patients') { setPatientTabView('All'); setPatientDateFilter(todayStr); }
     }, [activeTab]);
 
+    // Only an actual tab switch shows the full-page loading skeleton — a
+    // dedicated effect keyed on just [activeTab], so it can't misfire on
+    // filter/search/page changes within the same tab. (Deriving "is this a
+    // tab switch" from a manually-mutated ref compared against activeTab
+    // doesn't survive React 18 StrictMode's double-invocation of effects in
+    // dev: the ref update from the first invocation makes the second one
+    // think nothing changed, which can leave loading stuck true. Deriving
+    // purely from React's own dependency-array diffing avoids that.)
     useEffect(() => {
-        loadData();
+        setLoading(true);
+    }, [activeTab]);
+
+    useEffect(() => {
+        loadData(false);
     }, [activeTab, searchTerm, viewFilter, billingStatus, opdDateFilter, opdTabView, patientTabView, patientDateFilter, page]);
 
     // WebSocket connection will be initialized below loadData definition to avoid ReferenceError
@@ -309,21 +326,27 @@ const DoctorDashboard = () => {
         if (showSpinner) setLoading(true);
         try {
             if (activeTab === 'appointments') {
-                const localPage = page - 1;
-                const data = await hospitalService.getMyAppointments(viewFilter, searchTerm, localPage, ITEMS_PER_PAGE,);
-                // Handle both array and paginated response
-                const appointmentsArray = Array.isArray(data) ? data : (data.content || []);
-                setAppointments(appointmentsArray);
-                setTotalElements(data.totalElements || 0);
-                setTotalAppointments(data.totalElements || 0);
-                setTotalPages(data.totalPages || 1);
+                setAppointmentsLoading(true);
+                try {
+                    const localPage = page - 1;
+                    const data = await hospitalService.getMyAppointments(viewFilter, searchTerm, localPage, ITEMS_PER_PAGE,);
+                    // Handle both array and paginated response
+                    const appointmentsArray = Array.isArray(data) ? data : (data.content || []);
+                    setAppointments(appointmentsArray);
+                    setTotalElements(data.totalElements || 0);
+                    setTotalAppointments(data.totalElements || 0);
+                    setTotalPages(data.totalPages || 1);
+                } finally {
+                    setAppointmentsLoading(false);
+                }
             } else if (activeTab === 'overview') {
+                setAppointmentsLoading(true);
                 try {
                     const data = await hospitalService.getMyAppointments(viewFilter, searchTerm, 0, 100);
                     const appointmentsArray = Array.isArray(data) ? data : (data.content || []);
                     setAppointments(appointmentsArray);
                     setTotalAppointments(data.totalElements || appointmentsArray.length);
-                    
+
                     const followUpsData = await hospitalService.getTodaysFollowUps();
                     setTodaysFollowUps(followUpsData || []);
 
@@ -335,6 +358,8 @@ const DoctorDashboard = () => {
                     }
                 } catch (err) {
                     console.error('Failed to load overview appointments and followups', err);
+                } finally {
+                    setAppointmentsLoading(false);
                 }
             } else if (activeTab === 'patients') {
                 const dateParam = patientTabView === 'Date' ? patientDateFilter : '';
@@ -477,7 +502,10 @@ const DoctorDashboard = () => {
         } catch (err) {
             toastError('Failed to load data');
         } finally {
-            if (showSpinner) setLoading(false);
+            // Unconditionally clear — the request that's finishing is the one
+            // that should decide the final loading state, regardless of
+            // whether it was the call that originally turned it on.
+            setLoading(false);
         }
     };
 
@@ -721,9 +749,10 @@ const DoctorDashboard = () => {
 
     const tabs = [
         { id: 'overview', label: 'Overview', icon: null },
-        ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
-        { id: 'opd', label: 'OPD', icon: null },
         { id: 'patients', label: 'Patients', icon: null },
+        ...(hasAppointments ? [{ id: 'appointments', label: 'Appointments', icon: null }] : []),
+        { id: 'opd', label: 'OPD', icon: null },
+        ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
         ...((isSolo || hasBilling) ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
         ...((isSolo && hasInClinic && hasMedicalInventory) ? [{ id: 'inventory', label: 'Medicine Inventory', icon: null }] : []),
         ...(isSolo && hasHospitalInventory ? [{ id: 'hospital-inventory', label: 'Hospital Inventory', icon: null }] : []),
@@ -1080,7 +1109,9 @@ const DoctorDashboard = () => {
                                                 <span className="w-1.5 h-3 bg-gray-950 rounded-full"></span>
                                                 Today's Appointments
                                             </h4>
-                                            {appointments.length > 0 ? (
+                                            {appointmentsLoading ? (
+                                                <SkeletonTable rows={4} cols={5} />
+                                            ) : appointments.length > 0 ? (
                                                 <DoctorAppointmentsTable
                                                     appointments={appointments}
                                                     onStatusUpdate={handleStatusUpdate}
@@ -1388,7 +1419,9 @@ const DoctorDashboard = () => {
                     {!loading && activeTab !== 'overview' && (
                             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
                                 {activeTab === 'appointments' && (
-                                    appointments.length > 0 ? (
+                                    appointmentsLoading ? (
+                                        <SkeletonTable rows={6} cols={5} />
+                                    ) : appointments.length > 0 ? (
                                         <DoctorAppointmentsTable
                                             appointments={appointments}
                                             onStatusUpdate={handleStatusUpdate}
@@ -1869,25 +1902,25 @@ const DoctorDashboard = () => {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-semibold text-neutral-700 mb-2">BP</label>
-                                        <input className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.bp} onChange={(e) => setOpdForm(prev => ({ ...prev, bp: e.target.value }))} placeholder="120/80" />
+                                        <input className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.bp} onChange={(e) => setOpdForm(prev => ({ ...prev, bp: e.target.value.replace(/[^0-9/]/g, '') }))} placeholder="120/80" />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-semibold text-neutral-700 mb-2">Temperature (°C)</label>
-                                        <input type="number" step="0.1" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.temperature} onChange={(e) => setOpdForm(prev => ({ ...prev, temperature: e.target.value }))} />
+                                        <input type="number" step="0.1" min="30" max="45" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.temperature} onChange={(e) => setOpdForm(prev => ({ ...prev, temperature: e.target.value }))} />
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-3 gap-4">
                                     <div>
                                         <label className="block text-sm font-semibold text-neutral-700 mb-2">Pulse</label>
-                                        <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.pulse} onChange={(e) => setOpdForm(prev => ({ ...prev, pulse: e.target.value }))} />
+                                        <input type="number" min="30" max="250" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.pulse} onChange={(e) => setOpdForm(prev => ({ ...prev, pulse: e.target.value }))} />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-semibold text-neutral-700 mb-2">Weight (kg)</label>
-                                        <input type="number" step="0.1" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.weight} onChange={(e) => setOpdForm(prev => ({ ...prev, weight: e.target.value }))} />
+                                        <input type="number" step="0.1" min="0.1" max="500" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.weight} onChange={(e) => setOpdForm(prev => ({ ...prev, weight: e.target.value }))} />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-semibold text-neutral-700 mb-2">SpO2 (%)</label>
-                                        <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.spo2} onChange={(e) => setOpdForm(prev => ({ ...prev, spo2: e.target.value }))} />
+                                        <input type="number" min="0" max="100" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.spo2} onChange={(e) => setOpdForm(prev => ({ ...prev, spo2: e.target.value }))} />
                                     </div>
                                 </div>
 

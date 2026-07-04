@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import authService from '../../services/authService';
 import platformService from '../../services/platformService';
-import apiClient from '../../services/apiService';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import { validateForm } from '../../utils/validation';
 import ActionMenu from '../../components/ActionMenu';
@@ -49,6 +48,54 @@ const statsCache = {
         this.data = null;
         this.fetchedAt = 0;
     },
+};
+
+// Compact single-card summary (Total/Active/Inactive) for one business type
+// (Hospitals, Clinics, or Pharmacies). One component instead of three
+// near-identical cards per type so the counts can't drift out of sync again,
+// and one card per type instead of three keeps the Overview from sprawling.
+const STATS_ACCENTS = {
+    blue: { icon: 'text-blue-600', iconBg: 'bg-blue-100' },
+    purple: { icon: 'text-purple-600', iconBg: 'bg-purple-100' },
+    amber: { icon: 'text-amber-600', iconBg: 'bg-amber-100' },
+};
+
+const TYPE_ICON_PATHS = {
+    blue: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4',
+    purple: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4',
+    amber: 'M19 14l-7 7m0 0l-7-7m7 7V3',
+};
+
+const TypeStatsCard = ({ label, stats, accent }) => {
+    const { total = 0, active = 0, inactive = 0 } = stats || {};
+    const { icon, iconBg } = STATS_ACCENTS[accent] || STATS_ACCENTS.blue;
+
+    return (
+        <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow duration-200">
+            <div className="flex items-center gap-2 mb-3">
+                <div className={`w-7 h-7 ${iconBg} rounded-md flex items-center justify-center flex-shrink-0`}>
+                    <svg className={`w-4 h-4 ${icon}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={TYPE_ICON_PATHS[accent] || TYPE_ICON_PATHS.blue} />
+                    </svg>
+                </div>
+                <p className="text-sm font-semibold text-gray-700">{label}</p>
+            </div>
+            <div className="flex items-stretch divide-x divide-gray-100">
+                <div className="flex-1 text-center">
+                    <p className="text-xl font-bold text-gray-900">{total}</p>
+                    <p className="text-[11px] text-gray-500 uppercase tracking-wide">Total</p>
+                </div>
+                <div className="flex-1 text-center">
+                    <p className="text-xl font-bold text-green-600">{active}</p>
+                    <p className="text-[11px] text-gray-500 uppercase tracking-wide">Active</p>
+                </div>
+                <div className="flex-1 text-center">
+                    <p className={`text-xl font-bold ${inactive > 0 ? 'text-red-600' : 'text-gray-400'}`}>{inactive}</p>
+                    <p className="text-[11px] text-gray-500 uppercase tracking-wide">Inactive</p>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 const PlatformDashboard = () => {
@@ -120,9 +167,15 @@ const PlatformDashboard = () => {
     // Sidebar collapse state
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-    // Overview Stats State
-    const [hospitalStats, setHospitalStats] = useState({ total: 0, active: 0, inactive: 0 });
-    const [waStats, setWaStats] = useState({ failedToday: 0, affectedHospitalsToday: 0 });
+    // Overview Stats State — per business type (hospitals/clinics/pharmacies are
+    // separate HospitalType-discriminated rows in the same table; keep their
+    // counts segmented rather than merged)
+    const emptyTypeStats = { total: 0, active: 0, inactive: 0 };
+    const [hospitalStats, setHospitalStats] = useState({
+        hospitals: emptyTypeStats,
+        clinics: emptyTypeStats,
+        pharmacies: emptyTypeStats,
+    });
 
     // UI State - removed local activeTab state, now using URL params
     // const [activeTab, setActiveTab] = useState('dashboard');
@@ -179,8 +232,6 @@ const PlatformDashboard = () => {
         if (activeTab === 'dashboard') {
             loadHospitals();
             loadHospitalStats();
-            // BUG-027: only fetch WhatsApp stats if cache is cold
-            apiClient.get('/platform/whatsapp/stats').then(r => setWaStats(r.data)).catch(() => {});
         } else if (activeTab === 'hospitals' || activeTab === 'clinics' || activeTab === 'pharmacies') {
             // BUG-015: use PLATFORM_PAGE_SIZE constant instead of hard-coded 10
             loadHospitals(0, PLATFORM_PAGE_SIZE, getEntityType(activeTab));
@@ -543,11 +594,11 @@ const PlatformDashboard = () => {
         { id: 'hospitals', label: 'Hospitals' },
         { id: 'clinics', label: 'Clinics' },
         { id: 'pharmacies', label: 'Pharmacies' },
+        { id: 'medicines', label: 'Medicines' },
         { id: 'plans', label: 'Plans' },
-        { id: 'audit_logs', label: 'Audit Logs' },
         { id: 'tickets', label: 'Tickets' },
         { id: 'faqs', label: 'FAQs' },
-        { id: 'medicines', label: 'Medicines' },
+        { id: 'audit_logs', label: 'Audit Logs' },
     ];
 
     return (
@@ -631,69 +682,13 @@ const PlatformDashboard = () => {
                                 <p className="text-gray-600">Monitor and manage all hospitals from your central dashboard</p>
                             </div>
 
-                            {/* Stats Cards */}
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                                {/* Card 1 — Total Hospitals (Blue) */}
-                                <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow duration-200">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <p className="text-sm font-medium text-gray-600">Total Hospitals</p>
-                                        <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                            <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                                            </svg>
-                                        </div>
-                                    </div>
-                                    <p className="text-3xl font-bold text-gray-900">{hospitalStats.total || 0}</p>
-                                    <p className="text-sm text-gray-500 mt-1">Registered on platform</p>
-                                </div>
-
-                                {/* Card 2 — Active Hospitals (Green) */}
-                                <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow duration-200">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <p className="text-sm font-medium text-gray-600">Active Hospitals</p>
-                                        <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                            <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                            </svg>
-                                        </div>
-                                    </div>
-                                    <p className="text-3xl font-bold text-green-700">{hospitalStats.active || 0}</p>
-                                    <p className="text-sm text-gray-500 mt-1">Currently operational</p>
-                                </div>
-
-                                {/* Card 3 — Inactive Hospitals (Red, gray when 0) */}
-                                <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow duration-200">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <p className="text-sm font-medium text-gray-600">Inactive Hospitals</p>
-                                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${(hospitalStats.inactive || 0) > 0 ? 'bg-red-100' : 'bg-gray-100'}`}>
-                                            <svg className={`w-5 h-5 ${(hospitalStats.inactive || 0) > 0 ? 'text-red-500' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                            </svg>
-                                        </div>
-                                    </div>
-                                    <p className={`text-3xl font-bold ${(hospitalStats.inactive || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                                        {hospitalStats.inactive || 0}
-                                    </p>
-                                    <p className="text-sm text-gray-500 mt-1">Temporarily disabled</p>
-                                </div>
-
-                                {/* Card 4 — WhatsApp Failures (Red when >0) */}
-                                <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow duration-200">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <p className="text-sm font-medium text-gray-600">WhatsApp Failures</p>
-                                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${waStats.failedToday > 0 ? 'bg-red-100' : 'bg-gray-100'}`}>
-                                            <svg className={`w-5 h-5 ${waStats.failedToday > 0 ? 'text-red-500' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                                            </svg>
-                                        </div>
-                                    </div>
-                                    <p className={`text-3xl font-bold ${waStats.failedToday > 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                                        {waStats.failedToday || 0}
-                                    </p>
-                                    <p className="text-sm text-gray-500 mt-1">
-                                        {waStats.failedToday > 0 ? `today · ${waStats.affectedHospitalsToday} hospital${waStats.affectedHospitalsToday !== 1 ? 's' : ''}` : 'No failures today'}
-                                    </p>
-                                </div>
+                            {/* Stats Cards — hospitals/clinics/pharmacies are separate business
+                                types and must never be summed into one number (they share a
+                                table but are distinct tenants). */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <TypeStatsCard label="Hospitals" stats={hospitalStats.hospitals} accent="blue" />
+                                <TypeStatsCard label="Clinics" stats={hospitalStats.clinics} accent="purple" />
+                                <TypeStatsCard label="Pharmacies" stats={hospitalStats.pharmacies} accent="amber" />
                             </div>
 
                             {/* Recent Hospitals */}
@@ -929,7 +924,7 @@ const PlatformDashboard = () => {
                             
                             <form onSubmit={handleCreateHospital} className="space-y-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-900 mb-2">Hospital Name</label>
+                                    <label className="block text-sm font-medium text-gray-900 mb-2">{activeTab === 'clinics' ? 'Clinic Name' : activeTab === 'pharmacies' ? 'Pharmacy Name' : 'Hospital Name'}</label>
                                     <input
                                         type="text"
                                         value={formData.hospitalName}
@@ -937,12 +932,12 @@ const PlatformDashboard = () => {
                                             setFormData({ ...formData, hospitalName: e.target.value });
                                             if (errors.hospitalName) setErrors({ ...errors, hospitalName: null });
                                         }}
-                                        placeholder="Enter hospital name"
+                                        placeholder={activeTab === 'clinics' ? 'Enter clinic name' : activeTab === 'pharmacies' ? 'Enter pharmacy name' : 'Enter hospital name'}
                                         className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 ${errors.hospitalName ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
                                     />
                                     {errors.hospitalName && <p className="text-red-600 text-sm font-medium mt-1">{errors.hospitalName}</p>}
                                 </div>
-                                
+
                                 <div>
                                     <label className="block text-sm font-medium text-gray-900 mb-2">Admin Name</label>
                                     <input
@@ -957,7 +952,7 @@ const PlatformDashboard = () => {
                                     />
                                     {errors.adminName && <p className="text-red-600 text-sm font-medium mt-1">{errors.adminName}</p>}
                                 </div>
-                                
+
                                 <div>
                                     <label className="block text-sm font-medium text-gray-900 mb-2">Admin Email</label>
                                     <input
@@ -967,7 +962,7 @@ const PlatformDashboard = () => {
                                             setFormData({ ...formData, adminEmail: e.target.value });
                                             if (errors.adminEmail) setErrors({ ...errors, adminEmail: null });
                                         }}
-                                        placeholder="admin@hospital.com"
+                                        placeholder={activeTab === 'clinics' ? 'admin@clinic.com' : activeTab === 'pharmacies' ? 'admin@pharmacy.com' : 'admin@hospital.com'}
                                         className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 ${errors.adminEmail ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
                                     />
                                     {errors.adminEmail && <p className="text-red-600 text-sm font-medium mt-1">{errors.adminEmail}</p>}
@@ -1031,22 +1026,25 @@ const PlatformDashboard = () => {
                                     </div>
                                 </div>
 
-                                <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                                    <label className="flex items-center space-x-2.5 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={formData.isSingleDoctor}
-                                            onChange={(e) => {
-                                                setFormData({ ...formData, isSingleDoctor: e.target.checked });
-                                            }}
-                                            className="w-4 h-4 rounded text-gray-900 border-gray-300 focus:ring-gray-900"
-                                        />
-                                        <div>
-                                            <span className="text-sm font-bold text-gray-900">Single Doctor Hospital</span>
-                                            <p className="text-xs text-gray-500 mt-0.5">Enable unified doctor-admin dashboards for single-doctor clinics.</p>
-                                        </div>
-                                    </label>
-                                </div>
+                                {/* Doesn't apply to Pharmacy — pharmacies have no doctors */}
+                                {activeTab !== 'pharmacies' && (
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                                        <label className="flex items-center space-x-2.5 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={formData.isSingleDoctor}
+                                                onChange={(e) => {
+                                                    setFormData({ ...formData, isSingleDoctor: e.target.checked });
+                                                }}
+                                                className="w-4 h-4 rounded text-gray-900 border-gray-300 focus:ring-gray-900"
+                                            />
+                                            <div>
+                                                <span className="text-sm font-bold text-gray-900">{activeTab === 'clinics' ? 'Single Doctor Clinic' : 'Single Doctor Hospital'}</span>
+                                                <p className="text-xs text-gray-500 mt-0.5">Enable unified doctor-admin dashboards for single-doctor {activeTab === 'clinics' ? 'clinics' : 'hospitals'}.</p>
+                                            </div>
+                                        </label>
+                                    </div>
+                                )}
 
                                 <div className="flex gap-3 pt-4 border-t border-gray-200">
                                     <button
@@ -1151,7 +1149,9 @@ const PlatformDashboard = () => {
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                     </svg>
                                 </div>
-                                <h3 className="text-2xl font-bold text-gray-900 mb-2">Edit Hospital</h3>
+                                <h3 className="text-2xl font-bold text-gray-900 mb-2">
+                                    Edit {editHospitalModal.hospital?.type === 'CLINIC' ? 'Clinic' : editHospitalModal.hospital?.type === 'PHARMACY' ? 'Pharmacy' : 'Hospital'}
+                                </h3>
                                 <p className="text-gray-600">
                                     Update settings for <span className="font-semibold text-gray-900">{editHospitalModal.hospital?.name}</span>
                                 </p>
@@ -1159,7 +1159,9 @@ const PlatformDashboard = () => {
 
                             <div className="space-y-6">
                                 <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Hospital Name</label>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                        {editHospitalModal.hospital?.type === 'CLINIC' ? 'Clinic Name' : editHospitalModal.hospital?.type === 'PHARMACY' ? 'Pharmacy Name' : 'Hospital Name'}
+                                    </label>
                                     <input
                                         type="text"
                                         value={editHospitalModal.name}
@@ -1236,22 +1238,25 @@ const PlatformDashboard = () => {
                                     )}
                                 </div>
 
-                                <div className="p-4 bg-gray-50 border border-gray-200 rounded-2xl">
-                                    <label className="flex items-center space-x-3 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={editHospitalModal.isSingleDoctor}
-                                            onChange={(e) => {
-                                                setEditHospitalModal({ ...editHospitalModal, isSingleDoctor: e.target.checked });
-                                            }}
-                                            className="w-4 h-4 text-gray-900 bg-gray-100 border-gray-300 rounded focus:ring-gray-900 focus:ring-2"
-                                        />
-                                        <div>
-                                            <span className="text-sm font-bold text-gray-900">Single Doctor Hospital</span>
-                                            <p className="text-xs text-gray-500 mt-0.5">Enable unified doctor-admin dashboards for single-doctor clinics.</p>
-                                        </div>
-                                    </label>
-                                </div>
+                                {/* Doesn't apply to Pharmacy — pharmacies have no doctors */}
+                                {editHospitalModal.hospital?.type !== 'PHARMACY' && (
+                                    <div className="p-4 bg-gray-50 border border-gray-200 rounded-2xl">
+                                        <label className="flex items-center space-x-3 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={editHospitalModal.isSingleDoctor}
+                                                onChange={(e) => {
+                                                    setEditHospitalModal({ ...editHospitalModal, isSingleDoctor: e.target.checked });
+                                                }}
+                                                className="w-4 h-4 text-gray-900 bg-gray-100 border-gray-300 rounded focus:ring-gray-900 focus:ring-2"
+                                            />
+                                            <div>
+                                                <span className="text-sm font-bold text-gray-900">{editHospitalModal.hospital?.type === 'CLINIC' ? 'Single Doctor Clinic' : 'Single Doctor Hospital'}</span>
+                                                <p className="text-xs text-gray-500 mt-0.5">Enable unified doctor-admin dashboards for single-doctor {editHospitalModal.hospital?.type === 'CLINIC' ? 'clinics' : 'hospitals'}.</p>
+                                            </div>
+                                        </label>
+                                    </div>
+                                )}
 
                                 <div className="flex gap-4 pt-6 border-t border-gray-100">
                                     <button

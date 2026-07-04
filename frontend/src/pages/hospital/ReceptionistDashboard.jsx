@@ -65,7 +65,11 @@ const ReceptionistDashboard = () => {
     const [billingStatus, setBillingStatus] = useState('PENDING');
     const [recPrintingId, setRecPrintingId] = useState(null);
     const [loading, setLoading] = useState(false);
-    
+    // Scoped loading indicator for just the Appointments list, so switching the
+    // Today/Upcoming filter doesn't blow away the whole dashboard's full-page
+    // skeleton (that's reserved for actual tab switches).
+    const [appointmentsLoading, setAppointmentsLoading] = useState(false);
+
     const [customFees, setCustomFees] = useState([]);
     const [standardFees, setStandardFees] = useState({ consultationFee: '0', casePaperFee: '0' });
     const [editBillItemsModal, setEditBillItemsModal] = useState({
@@ -201,8 +205,22 @@ const ReceptionistDashboard = () => {
     // Stats
     const [stats, setStats] = useState({ today: 0, pending: 0, total: 0 });
 
+    // Only an actual tab switch shows the full-page loading skeleton — a
+    // dedicated effect keyed on just [activeTab], so it can't misfire on
+    // filter/search/page changes within the same tab. (An earlier version
+    // tracked "is this a tab switch" via a manually-mutated ref compared
+    // against activeTab, which doesn't survive React 18 StrictMode's
+    // double-invocation of effects in dev: the ref update from the first
+    // invocation made the second one think nothing had changed, so the
+    // request that "won" the stale-response race never had showSpinner set
+    // and loading got stuck true forever. Deriving purely from React's own
+    // dependency-array diffing avoids that class of bug entirely.)
     useEffect(() => {
-        loadData();
+        setLoading(true);
+    }, [activeTab]);
+
+    useEffect(() => {
+        loadData(false);
     }, [activeTab, page, searchTerm, viewFilter, pageSize, selectedDoctorForQueue, billingStatus, opdDateFilter, opdTabView, patientTabView, patientDateFilter]); // Add pageSize & doctor filter to dependencies
 
     // WebSocket connection will be initialized below loadData definition to avoid ReferenceError
@@ -224,6 +242,7 @@ const ReceptionistDashboard = () => {
             setStats(statsData);
 
             if (activeTab === 'overview' || activeTab === 'appointments' || activeTab === 'opd' || activeTab === 'queue' || activeTab === 'ipd') {
+                if (activeTab === 'overview' || activeTab === 'appointments') setAppointmentsLoading(true);
                 // Fetch appointments (Server-side) + Doctors + Patients for lookup
                 const promises = [
                     (activeTab === 'appointments' || activeTab === 'overview') ? hospitalService.getAppointments(searchTerm, page, pageSize, viewFilter) : Promise.resolve({ content: [] }),
@@ -368,7 +387,12 @@ const ReceptionistDashboard = () => {
             if (showSpinner) toastError('Failed to load data');
         } finally {
             if (requestId === activeRequestRef.current) {
-                if (showSpinner) setLoading(false);
+                // Unconditionally clear — whichever request is current when it
+                // finishes is the one that should decide the final loading
+                // state, regardless of whether *this* call was the one that
+                // originally turned it on.
+                setLoading(false);
+                setAppointmentsLoading(false);
             }
         }
     };
@@ -703,6 +727,11 @@ const ReceptionistDashboard = () => {
         setPatientDetailsModal({ isOpen: true, patient });
     };
 
+    const handleEditPatient = (patient) => {
+        setSelectedPatient(patient);
+        setIsAddModalOpen(true);
+    };
+
     const handlePrintOpd = (opd) => {
         openPdfInNewTab(`/hospital/opd/${opd.id}/pdf`);
     };
@@ -915,7 +944,9 @@ const ReceptionistDashboard = () => {
                                                  <span className="w-1.5 h-3 bg-gray-900 rounded-full"></span>
                                                  Active Appointments
                                              </h4>
-                                             {appointments.length > 0 ? (
+                                             {appointmentsLoading ? (
+                                                 <SkeletonTable rows={4} cols={5} />
+                                             ) : appointments.length > 0 ? (
                                                  <AppointmentsTable
                                                      appointments={appointments}
                                                      doctors={doctors}
@@ -1206,7 +1237,9 @@ const ReceptionistDashboard = () => {
                     {!loading && activeTab !== 'overview' && (
                                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
                             {activeTab === 'appointments' && (
-                                appointments.length > 0 ? (
+                                appointmentsLoading ? (
+                                    <SkeletonTable rows={6} cols={5} />
+                                ) : appointments.length > 0 ? (
                                     <AppointmentsTable
                                         appointments={appointments}
                                         doctors={doctors}
@@ -1379,6 +1412,7 @@ const ReceptionistDashboard = () => {
                                         onStatusUpdate={handlePatientStatusUpdate}
                                         onViewPrescription={handleViewPatientPrescription}
                                         onViewDetails={handleViewPatient}
+                                        onEdit={handleEditPatient}
                                         onOpenPayment={handleOpenPayment}
                                         onPrintReceipt={handlePrintReceipt}
                                         startIndex={page * pageSize}
@@ -1640,25 +1674,25 @@ const ReceptionistDashboard = () => {
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">BP</label>
-                                    <input className="input-field" value={opdForm.bp} onChange={(e) => setOpdForm(prev => ({ ...prev, bp: e.target.value }))} placeholder="120/80" />
+                                    <input className="input-field" value={opdForm.bp} onChange={(e) => setOpdForm(prev => ({ ...prev, bp: e.target.value.replace(/[^0-9/]/g, '') }))} placeholder="120/80" />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Temperature (°C)</label>
-                                    <input type="number" step="0.1" className="input-field" value={opdForm.temperature} onChange={(e) => setOpdForm(prev => ({ ...prev, temperature: e.target.value }))} />
+                                    <input type="number" step="0.1" min="30" max="45" className="input-field" value={opdForm.temperature} onChange={(e) => setOpdForm(prev => ({ ...prev, temperature: e.target.value }))} />
                                 </div>
                             </div>
                             <div className="grid grid-cols-3 gap-4">
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Pulse</label>
-                                    <input type="number" className="input-field" value={opdForm.pulse} onChange={(e) => setOpdForm(prev => ({ ...prev, pulse: e.target.value }))} />
+                                    <input type="number" min="30" max="250" className="input-field" value={opdForm.pulse} onChange={(e) => setOpdForm(prev => ({ ...prev, pulse: e.target.value }))} />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Weight (kg)</label>
-                                    <input type="number" step="0.1" className="input-field" value={opdForm.weight} onChange={(e) => setOpdForm(prev => ({ ...prev, weight: e.target.value }))} />
+                                    <input type="number" step="0.1" min="0.1" max="500" className="input-field" value={opdForm.weight} onChange={(e) => setOpdForm(prev => ({ ...prev, weight: e.target.value }))} />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">SpO2 (%)</label>
-                                    <input type="number" className="input-field" value={opdForm.spo2} onChange={(e) => setOpdForm(prev => ({ ...prev, spo2: e.target.value }))} />
+                                    <input type="number" min="0" max="100" className="input-field" value={opdForm.spo2} onChange={(e) => setOpdForm(prev => ({ ...prev, spo2: e.target.value }))} />
                                 </div>
                             </div>
 
@@ -2081,7 +2115,7 @@ const AppointmentsTable = ({ appointments, doctors, onStatusUpdate, onHistory, o
 };
 
 // Patients Table Component (Standardized with Admin)
-const PatientsTable = ({ patients, onStatusUpdate, onViewPrescription, onViewDetails, onOpenPayment, onPrintReceipt, startIndex = 0, pagination }) => {
+const PatientsTable = ({ patients, onStatusUpdate, onViewPrescription, onViewDetails, onEdit, onOpenPayment, onPrintReceipt, startIndex = 0, pagination }) => {
     const columnHelper = createColumnHelper();
 
     const columns = [
@@ -2123,6 +2157,11 @@ const PatientsTable = ({ patients, onStatusUpdate, onViewPrescription, onViewDet
                         label: 'View Details',
                         icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" /></svg>,
                         onClick: () => onViewDetails(patient)
+                    },
+                    {
+                        label: 'Edit',
+                        icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /></svg>,
+                        onClick: () => onEdit(patient)
                     }
                 ];
                 

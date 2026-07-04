@@ -39,8 +39,8 @@ public class PlatformHospitalController {
     }
 
     @GetMapping("/stats")
-    public ResponseEntity<Map<String, Long>> getHospitalStats() {
-        Map<String, Long> stats = hospitalService.getHospitalStats();
+    public ResponseEntity<Map<String, Map<String, Long>>> getHospitalStats() {
+        Map<String, Map<String, Long>> stats = hospitalService.getHospitalStats();
         return ResponseEntity.ok(stats);
     }
 

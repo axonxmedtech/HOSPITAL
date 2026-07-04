@@ -118,6 +118,38 @@ const ProfileModal = ({ isOpen, onClose }) => {
         }
     };
 
+    // Persists just the logo to the backend immediately after a successful
+    // Cloudinary upload, instead of waiting for the full "Save Settings"
+    // submit. The full-form save is gated behind validate() requiring a
+    // phone number — on accounts where that's still blank (common on older
+    // records), clicking Save silently no-ops and the logo never reaches the
+    // backend even though Cloudinary itself succeeded. This resends the
+    // *current* values of every other field so nothing gets overwritten —
+    // the backend's updateProfile applies phone/age/gender unconditionally,
+    // so an empty payload would null them out.
+    const persistLogoUrl = async (logoUrl) => {
+        try {
+            const updatePayload = {
+                name: profile.name,
+                phone: profile.role !== 'SUPER_ADMIN' ? profile.phone : null,
+                age: (profile.role !== 'SUPER_ADMIN' && profile.role !== 'DOCTOR' && profile.age !== '') ? parseInt(profile.age, 10) : null,
+                gender: (profile.role !== 'SUPER_ADMIN' && profile.role !== 'DOCTOR') ? profile.gender : null,
+                specialization: (profile.role === 'DOCTOR' || (profile.role === 'HOSPITAL_ADMIN' && authService.getCurrentUser()?.isSingleDoctor)) ? profile.specialization : null,
+                hospitalName: profile.hospitalName,
+                hospitalAddress: profile.hospitalAddress,
+                hospitalPhone: profile.hospitalPhone,
+                parentOrganization: profile.parentOrganization,
+                logoUrl
+            };
+            await authService.updateProfile(updatePayload);
+            return true;
+        } catch (err) {
+            console.error("Failed to save logo to profile:", err);
+            toastError("Logo uploaded but could not be saved. Please try again.");
+            return false;
+        }
+    };
+
     const handleLogoUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -148,7 +180,10 @@ const ProfileModal = ({ isOpen, onClose }) => {
                     ...prev,
                     logoUrl: res.data.secure_url
                 }));
-                success("Logo uploaded successfully!");
+                const saved = await persistLogoUrl(res.data.secure_url);
+                if (saved) {
+                    success("Logo uploaded and saved successfully!");
+                }
             } else {
                 toastError("Failed to upload logo.");
             }

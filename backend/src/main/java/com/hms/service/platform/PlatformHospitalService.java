@@ -204,22 +204,31 @@ public class PlatformHospitalService {
     }
 
     /**
-     * Get hospital statistics for Super Admin Overview dashboard
-     * Returns counts for total, active, and inactive hospitals
-     * 
-     * @return Map with hospital statistics
+     * Get tenant statistics for Super Admin Overview dashboard, broken down
+     * by business type (hospitals, clinics, pharmacies) since all three are
+     * stored as HospitalType-discriminated rows in the same table.
+     *
+     * @return Map keyed by "hospitals"/"clinics"/"pharmacies", each holding
+     *         its own total/active/inactive counts
      */
-    public Map<String, Long> getHospitalStats() {
-        long total = hospitalRepository.count();
-        long active = hospitalRepository.countByIsActive(true);
+    public Map<String, Map<String, Long>> getHospitalStats() {
+        Map<String, Map<String, Long>> stats = new HashMap<>();
+        stats.put("hospitals", getStatsByType(HospitalType.HOSPITAL));
+        stats.put("clinics", getStatsByType(HospitalType.CLINIC));
+        stats.put("pharmacies", getStatsByType(HospitalType.PHARMACY));
+        return stats;
+    }
+
+    private Map<String, Long> getStatsByType(HospitalType type) {
+        long total = hospitalRepository.countByType(type);
+        long active = hospitalRepository.countByTypeAndIsActive(type, true);
         long inactive = total - active;
 
-        Map<String, Long> stats = new HashMap<>();
-        stats.put("total", total);
-        stats.put("active", active);
-        stats.put("inactive", inactive);
-
-        return stats;
+        Map<String, Long> typeStats = new HashMap<>();
+        typeStats.put("total", total);
+        typeStats.put("active", active);
+        typeStats.put("inactive", inactive);
+        return typeStats;
     }
 
     /**
