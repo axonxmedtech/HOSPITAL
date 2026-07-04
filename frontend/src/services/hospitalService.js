@@ -813,38 +813,33 @@ const hospitalService = {
         return response.data;
     },
 
-    searchHospitalInventoryCatalog: async (query) => {
-        const response = await apiClient.get(`/hospital/hospital-inventory/search?query=${encodeURIComponent(query)}`);
+    getGlobalMasterItems: async () => {
+        const response = await apiClient.get('/hospital/inventory-master');
         return response.data;
     },
 
-    getHospitalInventoryCatalog: async () => {
-        const response = await apiClient.get('/hospital/hospital-inventory/catalog');
+    getHospitalServices: async () => {
+        const response = await apiClient.get('/hospital/services');
         return response.data;
     },
 
-    addHospitalInventoryCatalog: async (item) => {
-        const response = await apiClient.post('/hospital/hospital-inventory/catalog', item);
+    createHospitalService: async (data) => {
+        const response = await apiClient.post('/hospital/services', data);
         return response.data;
     },
 
-    updateHospitalInventoryCatalog: async (id, item) => {
-        const response = await apiClient.put(`/hospital/hospital-inventory/catalog/${id}`, item);
+    updateHospitalService: async (id, data) => {
+        const response = await apiClient.put(`/hospital/services/${id}`, data);
         return response.data;
     },
 
-    deleteHospitalInventoryCatalog: async (id) => {
-        const response = await apiClient.delete(`/hospital/hospital-inventory/catalog/${id}`);
+    deleteHospitalService: async (id) => {
+        const response = await apiClient.delete(`/hospital/services/${id}`);
         return response.data;
     },
 
-    getCatalogTemplates: async () => {
-        const response = await apiClient.get('/hospital/hospital-inventory/catalog/templates');
-        return response.data;
-    },
-
-    duplicateCatalogItem: async (id) => {
-        const response = await apiClient.get(`/hospital/hospital-inventory/catalog/${id}/duplicate`);
+    getLowStockItems: async () => {
+        const response = await apiClient.get('/hospital/hospital-inventory/low-stock');
         return response.data;
     },
 
