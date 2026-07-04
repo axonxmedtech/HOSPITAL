@@ -53,6 +53,18 @@ public class HospitalInventoryController {
         return ResponseEntity.ok().build();
     }
 
+    @GetMapping("/catalog/templates")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    public ResponseEntity<List<com.hms.dto.InventoryTemplateDTO>> getCatalogTemplates() {
+        return ResponseEntity.ok(hospitalInventoryService.getCatalogTemplates());
+    }
+
+    @GetMapping("/catalog/{id}/duplicate")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    public ResponseEntity<InventoryItem> duplicateCatalogItem(@PathVariable Long id) {
+        return ResponseEntity.ok(hospitalInventoryService.duplicateCatalogItem(id));
+    }
+
     // --- Purchase History Management ---
 
     @GetMapping("/purchases")

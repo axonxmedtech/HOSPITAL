@@ -2,6 +2,7 @@ package com.hms.service.hospital;
 
 import com.hms.entity.HospitalInventory;
 import com.hms.entity.InventoryItem;
+import com.hms.dto.InventoryTemplateDTO;
 import com.hms.repository.HospitalInventoryRepository;
 import com.hms.repository.InventoryItemRepository;
 import com.hms.security.SecurityContextHelper;
@@ -507,6 +508,38 @@ public class HospitalInventoryService {
         }
 
         return stock;
+    }
+
+    /**
+     * Fixed, hardcoded starter list of common procedure templates (not a
+     * database table -- this is a static reference list any hospital can
+     * use as a one-click starting point for the catalog item form, not
+     * per-hospital editable data). Suggested related-item names are just
+     * search hints for the existing name-based related-items picker, not
+     * IDs -- matching a hospital's actual stock still happens by name
+     * search, same as manual catalog entry today.
+     */
+    public java.util.List<InventoryTemplateDTO> getCatalogTemplates() {
+        return java.util.List.of(
+            new InventoryTemplateDTO("Injection", "Surgical", true, java.util.List.of("Syringe 5ml", "Spirit Swab", "Cotton")),
+            new InventoryTemplateDTO("Dressing (Small)", "Consumable", false, java.util.List.of("Cotton", "Bandage")),
+            new InventoryTemplateDTO("Dressing (Large)", "Consumable", false, java.util.List.of("Cotton", "Bandage", "Adhesive Tape")),
+            new InventoryTemplateDTO("IV Cannula", "Surgical", true, java.util.List.of("IV Cannula Set", "Spirit Swab", "Adhesive Tape")),
+            new InventoryTemplateDTO("Nebulization", "Equipment", false, java.util.List.of("Nebulizer Mask", "Saline")),
+            new InventoryTemplateDTO("Suturing", "Surgical", false, java.util.List.of("Suture Kit", "Cotton", "Spirit Swab")),
+            new InventoryTemplateDTO("Catheterization", "Surgical", true, java.util.List.of("Foley Catheter", "Urine Bag", "Spirit Swab"))
+        );
+    }
+
+    /**
+     * Returns the source item's field values so the frontend can prefill a
+     * new catalog item form with them (name left for the admin to change).
+     * Does not persist anything -- purely a read for prefill convenience.
+     */
+    public InventoryItem duplicateCatalogItem(Long id) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        return inventoryItemRepository.findByIdAndHospitalId(id, hospitalId)
+                .orElseThrow(() -> new RuntimeException("Catalog item not found"));
     }
 }
 
