@@ -37,6 +37,7 @@ public class DatabaseMigrationRunner {
         ensureConsultationNotePresetsTable(); // NEW
         ensurePrescriptionPresetTables(); // NEW
         ensureInventoryItemHasOwnStockColumn(); // NEW
+        ensureInventoryServicesTables(); // NEW
     }
 
     /**
@@ -412,6 +413,66 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped (inventory_items.has_own_stock): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Creates the global inventory catalog + per-hospital services tables if
+     * absent: inventory_master_items (platform-global item names),
+     * hospital_services (per-hospital billable procedures), and
+     * hospital_service_items (join to master items). Idempotent, each checked
+     * independently.
+     */
+    private void ensureInventoryServicesTables() {
+        try {
+            Integer masterCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'inventory_master_items'",
+                Integer.class);
+            if (masterCount != null && masterCount == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE inventory_master_items (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  name VARCHAR(255) NOT NULL," +
+                    "  created_at DATETIME(6) NOT NULL," +
+                    "  PRIMARY KEY (id)" +
+                    ")");
+                log.info("DB migration applied: inventory_master_items table created");
+            }
+
+            Integer svcCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'hospital_services'",
+                Integer.class);
+            if (svcCount != null && svcCount == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE hospital_services (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  name VARCHAR(150) NOT NULL," +
+                    "  charge DECIMAL(10,2) NOT NULL," +
+                    "  is_active TINYINT(1) NOT NULL DEFAULT 1," +
+                    "  created_at DATETIME(6) NOT NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                    ")");
+                log.info("DB migration applied: hospital_services table created");
+            }
+
+            Integer itemCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'hospital_service_items'",
+                Integer.class);
+            if (itemCount != null && itemCount == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE hospital_service_items (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  service_id BIGINT NOT NULL," +
+                    "  master_item_id BIGINT NOT NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  FOREIGN KEY (service_id) REFERENCES hospital_services(id) ON DELETE CASCADE" +
+                    ")");
+                log.info("DB migration applied: hospital_service_items table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (inventory services tables): {}", e.getMessage());
         }
     }
 }

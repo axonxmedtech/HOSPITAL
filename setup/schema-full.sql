@@ -1,4 +1,4 @@
-﻿CREATE DATABASE  IF NOT EXISTS `railway` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
+CREATE DATABASE  IF NOT EXISTS `railway` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
 USE `railway`;
 -- MySQL dump 10.13  Distrib 8.0.36, for Win64 (x86_64)
 --
@@ -1049,4 +1049,32 @@ CREATE TABLE `inventory_items` (
   `relative_item_ids` varchar(1000) DEFAULT NULL,
   `has_own_stock` tinyint(1) NOT NULL DEFAULT '1',
   PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `inventory_master_items` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `hospital_services` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `name` varchar(150) NOT NULL,
+  `charge` decimal(10,2) NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `FK_hospital_services_hospital` (`hospital_id`),
+  CONSTRAINT `FK_hospital_services_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `hospital_service_items` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `service_id` bigint NOT NULL,
+  `master_item_id` bigint NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `FK_hospital_service_items_service` (`service_id`),
+  CONSTRAINT `FK_hospital_service_items_service` FOREIGN KEY (`service_id`) REFERENCES `hospital_services` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
