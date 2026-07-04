@@ -313,7 +313,13 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
             prescription: prev.prescription.filter((_, i) => i !== index)
         }));
         if (editingMedicineIndex === index) {
+            // The row being edited was itself removed — clear the edit form.
             handleCancelEditMedicine();
+        } else if (editingMedicineIndex !== null && index < editingMedicineIndex) {
+            // A row before the one being edited was removed — the array
+            // shifted, so the edit target's index must shift down too, or
+            // "Save Changes" would write into the wrong (now-shifted) slot.
+            setEditingMedicineIndex(editingMedicineIndex - 1);
         }
     };
 
