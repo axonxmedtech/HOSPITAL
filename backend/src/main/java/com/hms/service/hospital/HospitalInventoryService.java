@@ -447,5 +447,66 @@ public class HospitalInventoryService {
             logger.error("Failed to degrade relative items for parent: " + parentItemName, e);
         }
     }
+
+    /**
+     * Resolves a catalog item by name and, if it's marked as having its own
+     * physical stock (hasOwnStock == true, or null for legacy rows created
+     * before this flag existed), validates and decrements that stock --
+     * exactly the logic that used to be duplicated inline in both
+     * DoctorService.submitConsultation and
+     * IpdAdmissionService.administerHospitalItems. If the item is a pure
+     * service (hasOwnStock == false), its own stock is never checked or
+     * touched. Either way, degradeRelativeItems always runs afterward to
+     * cascade to the item's linked consumables.
+     *
+     * @return the decremented HospitalInventory row, or null if the item is
+     *         service-type (has no stock of its own to return).
+     */
+    @Transactional
+    public HospitalInventory consumeChargeableItem(Long stockId, String itemName, int quantity, Long hospitalId) {
+        InventoryItem catalogItem = inventoryItemRepository.findByNameAndHospitalId(itemName, hospitalId)
+                .orElseThrow(() -> new RuntimeException("Catalog item not found: " + itemName));
+
+        boolean hasOwnStock = catalogItem.getHasOwnStock() == null || catalogItem.getHasOwnStock();
+        HospitalInventory stock = null;
+
+        if (hasOwnStock) {
+            if (stockId == null) {
+                throw new IllegalArgumentException("Stock ID is required for: " + itemName);
+            }
+            stock = hospitalInventoryRepository.findByIdAndHospitalId(stockId, hospitalId)
+                    .orElseThrow(() -> new RuntimeException("Hospital item not found in active inventory: ID " + stockId));
+
+            if (stock.getStockQuantity() < quantity) {
+                throw new IllegalArgumentException("Insufficient stock for: " + stock.getName() + " (Requested: " + quantity + ", Available: " + stock.getStockQuantity() + ")");
+            }
+
+            int oldStock = stock.getStockQuantity();
+            stock.setStockQuantity(oldStock - quantity);
+            hospitalInventoryRepository.save(stock);
+
+            try {
+                auditLogService.logAction(
+                        "INVENTORY_DEDUCTED",
+                        "Deducted " + quantity + " units of " + stock.getName() + " for patient. Stock: " + oldStock + " -> " + stock.getStockQuantity(),
+                        securityHelper.getCurrentUserEmail(),
+                        hospitalId,
+                        "INVENTORY",
+                        stock.getId().toString(),
+                        null
+                );
+            } catch (Exception e) {
+                logger.warn("Failed to write audit log for chargeable item deduction", e);
+            }
+        }
+
+        try {
+            degradeRelativeItems(itemName, quantity, hospitalId);
+        } catch (Exception e) {
+            logger.warn("Failed to degrade relative inventory items for: " + itemName, e);
+        }
+
+        return stock;
+    }
 }
 
