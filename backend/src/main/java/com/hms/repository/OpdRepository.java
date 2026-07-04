@@ -7,9 +7,22 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Optional;
+
 public interface OpdRepository extends JpaRepository<Opd, Long> {
 
 	Page<Opd> findByPatient_HospitalId(Long hospitalId, Pageable pageable);
+
+	/**
+	 * Eagerly fetches patient/doctor so callers can safely read their fields
+	 * (e.g. PDF generation) after this method returns, even with
+	 * spring.jpa.open-in-view=false closing the session at the transaction
+	 * boundary -- a plain findById() leaves patient/doctor as lazy proxies
+	 * that throw LazyInitializationException once touched outside that
+	 * transaction.
+	 */
+	@Query("SELECT o FROM Opd o LEFT JOIN FETCH o.patient LEFT JOIN FETCH o.doctor WHERE o.id = :id")
+	Optional<Opd> findByIdWithPatientAndDoctor(@Param("id") Long id);
 
 	@Query(value = "SELECT DISTINCT o FROM Opd o " +
 			"INNER JOIN FETCH o.patient p " +
