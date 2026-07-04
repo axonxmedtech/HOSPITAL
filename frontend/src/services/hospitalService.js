@@ -838,6 +838,16 @@ const hospitalService = {
         return response.data;
     },
 
+    getCatalogTemplates: async () => {
+        const response = await apiClient.get('/hospital/hospital-inventory/catalog/templates');
+        return response.data;
+    },
+
+    duplicateCatalogItem: async (id) => {
+        const response = await apiClient.get(`/hospital/hospital-inventory/catalog/${id}/duplicate`);
+        return response.data;
+    },
+
     getHospitalInventory: async () => {
         const response = await apiClient.get('/hospital/hospital-inventory/inventory');
         return response.data;
