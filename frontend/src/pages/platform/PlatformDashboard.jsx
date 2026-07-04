@@ -16,6 +16,7 @@ import ProfileModal from '../../components/ProfileModal';
 import { SkeletonTable, SkeletonDashboard, SkeletonStatsGrid } from '../../components/Skeleton';
 import PlansTab from '../../components/PlansTab';
 import PlatformMedicinesTab from '../../components/PlatformMedicinesTab';
+import PlatformInventoryItemsTab from '../../components/PlatformInventoryItemsTab';
 
 /**
  * PlatformDashboard - Super Admin dashboard
@@ -595,6 +596,7 @@ const PlatformDashboard = () => {
         { id: 'clinics', label: 'Clinics' },
         { id: 'pharmacies', label: 'Pharmacies' },
         { id: 'medicines', label: 'Medicines' },
+        { id: 'inventory_items', label: 'Inventory Items' },
         { id: 'plans', label: 'Plans' },
         { id: 'tickets', label: 'Tickets' },
         { id: 'faqs', label: 'FAQs' },
@@ -646,6 +648,8 @@ const PlatformDashboard = () => {
                                         ? 'Manage global frequently asked questions for hospital admins.'
                                         : activeTab === 'medicines'
                                         ? 'Manage the central unified global medicine catalog directory.'
+                                        : activeTab === 'inventory_items'
+                                        ? 'Manage the central unified global hospital inventory item directory.'
                                         : 'Track system activities and administrative actions across the platform.'
                                 }
                                 onAdd={
@@ -824,6 +828,11 @@ const PlatformDashboard = () => {
                     {/* Medicines Tab */}
                     {activeTab === 'medicines' && (
                         <PlatformMedicinesTab />
+                    )}
+
+                    {/* Inventory Items Tab */}
+                    {activeTab === 'inventory_items' && (
+                        <PlatformInventoryItemsTab />
                     )}
 
                     {/* Content Sections */}
