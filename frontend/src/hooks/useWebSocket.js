@@ -81,7 +81,7 @@ export default function useWebSocket(user, setUser, loadData) {
                     // Preset lists are owned by self-contained components (managers,
                     // consultation dropdowns). Fan out via a window event so they can
                     // reload without opening their own WebSocket connections.
-                    window.dispatchEvent(new CustomEvent('hms:presets-updated'));
+                    globalThis.dispatchEvent(new CustomEvent('hms:presets-updated'));
                 }
             } catch (err) {
                 // message parse failed silently

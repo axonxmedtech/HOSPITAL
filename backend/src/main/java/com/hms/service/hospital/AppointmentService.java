@@ -123,7 +123,7 @@ public class AppointmentService {
                 newPatient.setPhone(patientPhone);
                 newPatient.setEmail(patientEmail != null ? patientEmail : "");
                 // Default to today (age 0) if not provided, though frontend should require it
-                newPatient.setDateOfBirth(patientDateOfBirth != null ? patientDateOfBirth : java.time.LocalDate.now());
+                newPatient.setDateOfBirth(patientDateOfBirth != null ? patientDateOfBirth : java.time.LocalDate.now(java.time.ZoneId.systemDefault()));
                 newPatient.setGender(patientGender != null ? patientGender : "Unknown");
                 newPatient.setAddress("Walk-in"); // Default address for quick appointments
                 newPatient.setHospitalId(hospitalId);

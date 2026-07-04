@@ -12,7 +12,9 @@ export default defineConfig({
         css: false,
         coverage: {
             provider: 'v8',
-            reporter: ['text', 'lcov', 'json-summary'],
+            // 'lcovonly' (not 'lcov') so no HTML report dir is generated — the
+            // istanbul HTML assets (sorter.js) trip a CodeQL DOM-XSS finding.
+            reporter: ['text', 'lcovonly', 'json-summary'],
             reportsDirectory: './coverage',
         },
     },

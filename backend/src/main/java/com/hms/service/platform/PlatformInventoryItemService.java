@@ -61,7 +61,7 @@ public class PlatformInventoryItemService {
                 String trimmed = line.trim();
                 if (trimmed.isEmpty()) { continue; }
                 if (lineNum == 1 && trimmed.toLowerCase().startsWith("name")) { continue; }
-                String name = trimmed.split(",", -1)[0].trim().replaceAll("^\"|\"$", "");
+                String name = trimmed.split(",", -1)[0].trim().replaceAll("(^\")|(\"$)", "");
                 if (name.isEmpty()) { continue; }
                 if (repository.existsByNameIgnoreCase(name)) { skipped++; continue; }
                 InventoryMasterItem item = new InventoryMasterItem();

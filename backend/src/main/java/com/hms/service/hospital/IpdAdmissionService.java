@@ -843,7 +843,7 @@ public class IpdAdmissionService {
         if (req.getRoute() == null || req.getRoute().trim().isEmpty()) {
             throw new IllegalArgumentException("Prescription route is required");
         }
-        if (req.getStartDate() == null || req.getStartDate().isBefore(java.time.LocalDate.now())) {
+        if (req.getStartDate() == null || req.getStartDate().isBefore(java.time.LocalDate.now(java.time.ZoneId.systemDefault()))) {
             throw new IllegalArgumentException("Prescription start date cannot be in the past");
         }
         if (req.getDurationDays() == null || req.getDurationDays() <= 0) {

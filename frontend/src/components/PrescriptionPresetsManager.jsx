@@ -47,8 +47,8 @@ const PrescriptionPresetsManager = ({ isAdmin = false }) => {
     // Real-time sync: reload when any client in this hospital changes a preset.
     useEffect(() => {
         const handler = () => loadPresets();
-        window.addEventListener('hms:presets-updated', handler);
-        return () => window.removeEventListener('hms:presets-updated', handler);
+        globalThis.addEventListener('hms:presets-updated', handler);
+        return () => globalThis.removeEventListener('hms:presets-updated', handler);
     }, [loadPresets]);
 
     // Admin assigns presets to specific doctors, so it needs the doctor list.

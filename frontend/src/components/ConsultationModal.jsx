@@ -94,12 +94,12 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         if (!isOpen) return;
         const handler = () => {
             hospitalService.getConsultationNotePresets('TREATMENT_NOTES')
-                .then(data => setNotePresets(data || [])).catch(() => {});
+                .then(data => setNotePresets(data || [])).catch(() => { /* non-critical refresh */ });
             hospitalService.getPrescriptionPresets()
-                .then(data => setPrescriptionPresets(data || [])).catch(() => {});
+                .then(data => setPrescriptionPresets(data || [])).catch(() => { /* non-critical refresh */ });
         };
-        window.addEventListener('hms:presets-updated', handler);
-        return () => window.removeEventListener('hms:presets-updated', handler);
+        globalThis.addEventListener('hms:presets-updated', handler);
+        return () => globalThis.removeEventListener('hms:presets-updated', handler);
     }, [isOpen]);
 
     const [hospitalInventory, setHospitalInventory] = useState([]);

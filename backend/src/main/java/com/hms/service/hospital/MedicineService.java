@@ -354,7 +354,7 @@ public class MedicineService {
         if (request.getExpiryDate() == null) {
             throw new IllegalArgumentException("Expiry date is required");
         }
-        if (request.getExpiryDate().isBefore(java.time.LocalDate.now())) {
+        if (request.getExpiryDate().isBefore(java.time.LocalDate.now(java.time.ZoneId.systemDefault()))) {
             throw new IllegalArgumentException("Expiry date cannot be in the past");
         }
  
