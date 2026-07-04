@@ -956,6 +956,37 @@ CREATE TABLE `consultation_note_presets` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 --
+-- Prescription presets (per-hospital named bundles of medicines a doctor
+-- can apply to a prescription in one action)
+--
+
+CREATE TABLE `prescription_presets` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `name` varchar(150) NOT NULL,
+  `display_order` int NOT NULL DEFAULT '0',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `FK_prescription_presets_hospital` (`hospital_id`),
+  CONSTRAINT `FK_prescription_presets_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `prescription_preset_items` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `preset_id` bigint NOT NULL,
+  `medicine_name` varchar(255) NOT NULL,
+  `dosage` varchar(50) DEFAULT NULL,
+  `frequency` varchar(50) DEFAULT NULL,
+  `duration` varchar(50) DEFAULT NULL,
+  `instructions` varchar(200) DEFAULT NULL,
+  `sort_order` int NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  KEY `FK_prescription_preset_items_preset` (`preset_id`),
+  CONSTRAINT `FK_prescription_preset_items_preset` FOREIGN KEY (`preset_id`) REFERENCES `prescription_presets` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
 -- WhatsApp integration tables (added with V4 migration)
 --
 

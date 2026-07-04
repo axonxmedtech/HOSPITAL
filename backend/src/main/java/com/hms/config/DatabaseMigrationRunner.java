@@ -35,6 +35,7 @@ public class DatabaseMigrationRunner {
         simplifyMedicineListTable();
         migratePatientAgeToDateOfBirth(); // NEW
         ensureConsultationNotePresetsTable(); // NEW
+        ensurePrescriptionPresetTables(); // NEW
     }
 
     /**
@@ -328,6 +329,63 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped (consultation_note_presets): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Creates the prescription_presets and prescription_preset_items tables
+     * if they do not exist. Stores per-hospital named bundles of medicines
+     * a doctor can apply to a prescription in one action.
+     * ddl-auto=update cannot create tables from scratch — this runner
+     * bridges that gap.
+     */
+    private void ensurePrescriptionPresetTables() {
+        try {
+            Integer presetCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'prescription_presets'",
+                Integer.class
+            );
+            if (presetCount != null && presetCount == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE prescription_presets (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  name VARCHAR(150) NOT NULL," +
+                    "  display_order INT NOT NULL DEFAULT 0," +
+                    "  is_active TINYINT(1) NOT NULL DEFAULT 1," +
+                    "  created_at DATETIME(6) NOT NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                    ")"
+                );
+                log.info("DB migration applied: prescription_presets table created");
+            }
+
+            Integer itemCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'prescription_preset_items'",
+                Integer.class
+            );
+            if (itemCount != null && itemCount == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE prescription_preset_items (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  preset_id BIGINT NOT NULL," +
+                    "  medicine_name VARCHAR(255) NOT NULL," +
+                    "  dosage VARCHAR(50) DEFAULT NULL," +
+                    "  frequency VARCHAR(50) DEFAULT NULL," +
+                    "  duration VARCHAR(50) DEFAULT NULL," +
+                    "  instructions VARCHAR(200) DEFAULT NULL," +
+                    "  sort_order INT NOT NULL DEFAULT 0," +
+                    "  PRIMARY KEY (id)," +
+                    "  FOREIGN KEY (preset_id) REFERENCES prescription_presets(id) ON DELETE CASCADE" +
+                    ")"
+                );
+                log.info("DB migration applied: prescription_preset_items table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (prescription presets): {}", e.getMessage());
         }
     }
 }
