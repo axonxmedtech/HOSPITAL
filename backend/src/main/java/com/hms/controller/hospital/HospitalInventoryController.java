@@ -19,52 +19,6 @@ public class HospitalInventoryController {
     @Autowired
     private HospitalInventoryService hospitalInventoryService;
 
-    // --- Search Autocomplete Endpoint ---
-    @GetMapping("/search")
-    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN', 'RECEPTIONIST')")
-    public ResponseEntity<List<InventoryItem>> searchInventoryCatalog(@RequestParam String query) {
-        return ResponseEntity.ok(hospitalInventoryService.searchInventoryCatalog(query));
-    }
-
-    // --- Catalog Lookup CRUD ---
-
-    @GetMapping("/catalog")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<List<InventoryItem>> getCatalogItems() {
-        return ResponseEntity.ok(hospitalInventoryService.getCatalogItems());
-    }
-
-    @PostMapping("/catalog")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> addCatalogItem(@RequestBody InventoryItem catalog) {
-        return ResponseEntity.ok(hospitalInventoryService.addCatalogItem(catalog));
-    }
-
-    @PutMapping("/catalog/{id}")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> updateCatalogItem(@PathVariable Long id, @RequestBody InventoryItem catalog) {
-        return ResponseEntity.ok(hospitalInventoryService.updateCatalogItem(id, catalog));
-    }
-
-    @DeleteMapping("/catalog/{id}")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> deleteCatalogItem(@PathVariable Long id) {
-        hospitalInventoryService.deleteCatalogItem(id);
-        return ResponseEntity.ok().build();
-    }
-
-    @GetMapping("/catalog/templates")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<List<com.hms.dto.InventoryTemplateDTO>> getCatalogTemplates() {
-        return ResponseEntity.ok(hospitalInventoryService.getCatalogTemplates());
-    }
-
-    @GetMapping("/catalog/{id}/duplicate")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<InventoryItem> duplicateCatalogItem(@PathVariable Long id) {
-        return ResponseEntity.ok(hospitalInventoryService.duplicateCatalogItem(id));
-    }
-
     // --- Purchase History Management ---
 
     @GetMapping("/purchases")
