@@ -33,6 +33,7 @@ const HospitalInventoryTab = () => {
 
     // Relative items states for catalog item
     const [selectedRelativeItems, setSelectedRelativeItems] = useState([]);
+    const [hasOwnStock, setHasOwnStock] = useState(true);
     const [relativeItemSearch, setRelativeItemSearch] = useState('');
     const [showRelativeSuggestions, setShowRelativeSuggestions] = useState(false);
 
@@ -60,8 +61,10 @@ const HospitalInventoryTab = () => {
                 } catch (e) {
                     setSelectedRelativeItems([]);
                 }
+                setHasOwnStock(catalogModal.data.hasOwnStock !== false);
             } else {
                 setSelectedRelativeItems([]);
+                setHasOwnStock(true);
             }
             setRelativeItemSearch('');
             setShowRelativeSuggestions(false);
@@ -193,7 +196,8 @@ const HospitalInventoryTab = () => {
             manufacturer: manufacturer ? manufacturer : null,
             // Parse as number (custom fee ID is a Long in DB); null if empty/invalid
             linkedFeeId: linkedFeeId && !isNaN(linkedFeeId) ? Number(linkedFeeId) : null,
-            relativeItemIds: JSON.stringify(selectedRelativeItems.map(x => x.id))
+            relativeItemIds: JSON.stringify(selectedRelativeItems.map(x => x.id)),
+            hasOwnStock
         };
 
         try {
@@ -411,6 +415,7 @@ const HospitalInventoryTab = () => {
                                 <th className="pb-3 text-center">Type</th>
                                 <th className="pb-3 text-left">Manufacturer</th>
                                 <th className="pb-3 text-left">Linked Charge</th>
+                                <th className="pb-3 text-center">Stock Type</th>
                                 <th className="pb-3 text-right">Actions</th>
                             </tr>
                         </thead>
@@ -431,6 +436,13 @@ const HospitalInventoryTab = () => {
                                             <span className="text-xs text-gray-400">No charge linked</span>
                                         )}
                                     </td>
+                                    <td className="py-3 text-center">
+                                        {item.hasOwnStock === false ? (
+                                            <span className="px-2 py-0.5 text-xs bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full font-medium">Service</span>
+                                        ) : (
+                                            <span className="px-2 py-0.5 text-xs bg-slate-100 text-gray-600 rounded-full font-medium">Stocked</span>
+                                        )}
+                                    </td>
                                     <td className="py-3 text-right space-x-2">
                                         <button
                                             onClick={() => setCatalogModal({ isOpen: true, isEdit: true, data: item })}
@@ -449,7 +461,7 @@ const HospitalInventoryTab = () => {
                             ))}
                             {catalogList.filter(x => x.isActive !== false).length === 0 && (
                                 <tr>
-                                    <td colSpan={5} className="py-8 text-center text-gray-400">
+                                    <td colSpan={6} className="py-8 text-center text-gray-400">
                                         No catalog items registered.
                                     </td>
                                 </tr>
@@ -710,6 +722,31 @@ const HospitalInventoryTab = () => {
                                      ))}
                                  </select>
                                  <p className="text-xs text-gray-400 mt-1">Link a custom fee from the Fees tab. When this item is used in a consultation/IPD, the linked fee will be auto-applied to the bill.</p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-1">Stock Type</label>
+                                <div className="flex gap-4">
+                                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                                        <input
+                                            type="radio"
+                                            name="hasOwnStock"
+                                            checked={hasOwnStock === true}
+                                            onChange={() => setHasOwnStock(true)}
+                                        />
+                                        Stocked — has its own physical quantity
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                                        <input
+                                            type="radio"
+                                            name="hasOwnStock"
+                                            checked={hasOwnStock === false}
+                                            onChange={() => setHasOwnStock(false)}
+                                        />
+                                        Service — stock comes from related items
+                                    </label>
+                                </div>
+                                <p className="text-xs text-gray-400 mt-1">Choose "Service" for procedures like Dressing that aren't purchased in units themselves — their availability is determined entirely by the related items below.</p>
                             </div>
 
                             {/* Relative Items search and select */}
