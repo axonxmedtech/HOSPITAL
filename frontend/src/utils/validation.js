@@ -30,7 +30,7 @@ export const validators = {
     age: (value) => {
         if (!value) return null;
         const num = Number(value);
-        if (isNaN(num)) return "Age must be a number";
+        if (Number.isNaN(num)) return "Age must be a number";
         if (num < 0 || num > 120) return "Age must be between 0 and 120";
         return null;
     },
@@ -50,13 +50,13 @@ export const validators = {
 
     number: (value) => {
         if (!value) return null;
-        return !isNaN(Number(value)) ? null : "Must be a valid number";
+        return !Number.isNaN(Number(value)) ? null : "Must be a valid number";
     },
 
     positiveNumber: (value) => {
         if (!value) return null;
         const num = Number(value);
-        return (!isNaN(num) && num > 0) ? null : "Must be a positive number";
+        return (!Number.isNaN(num) && num > 0) ? null : "Must be a positive number";
     },
 
     name: (value) => {

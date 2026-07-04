@@ -228,7 +228,7 @@ const ProfileModal = ({ isOpen, onClose }) => {
             if (profile.role !== 'DOCTOR') {
                 if (profile.age !== '') {
                     const parsedAge = parseInt(profile.age, 10);
-                    if (isNaN(parsedAge) || parsedAge < 0 || parsedAge > 125) {
+                    if (Number.isNaN(parsedAge) || parsedAge < 0 || parsedAge > 125) {
                         errors.age = 'Please specify a realistic age (0-125)';
                     }
                 }

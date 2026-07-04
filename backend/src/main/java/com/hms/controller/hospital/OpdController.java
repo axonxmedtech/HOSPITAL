@@ -82,9 +82,9 @@ public class OpdController {
         if (patient != null && patient.getHospitalId() != null) {
             hospital = hospitalRepository.findById(patient.getHospitalId()).orElse(null);
         }
-        MedicalRecord record = medicalRecordRepository.findByOpdId(opdId).orElse(null);
+        MedicalRecord medicalRecord = medicalRecordRepository.findByOpdId(opdId).orElse(null);
 
-        try (java.io.ByteArrayInputStream pdfStream = pdfService.generateCasePaperPdf(hospital, doctor, patient, opd, record)) {
+        try (java.io.ByteArrayInputStream pdfStream = pdfService.generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord)) {
             byte[] pdfBytes = pdfStream.readAllBytes();
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_PDF);
