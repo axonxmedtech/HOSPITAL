@@ -13,14 +13,11 @@ public class AdministerHospitalItemsRequest {
 
     @Data
     public static class HospitalItem {
-        private Long stockId;
-        private String name;
+        @NotNull(message = "Service ID is required")
+        private Long serviceId;
 
         @NotNull(message = "Quantity is required")
         @Min(value = 1, message = "Quantity must be positive")
         private Integer quantity;
-
-        private String feeName;
-        private java.math.BigDecimal feeAmount;
     }
 }

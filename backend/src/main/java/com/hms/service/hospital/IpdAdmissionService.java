@@ -94,6 +94,9 @@ public class IpdAdmissionService {
     private HospitalInventoryService hospitalInventoryService;
 
     @Autowired
+    private com.hms.repository.HospitalServiceRepository hospitalServiceRepository;
+
+    @Autowired
     private com.hms.security.HospitalWebSocketHandler webSocketHandler;
 
     @Transactional
@@ -738,18 +741,17 @@ public class IpdAdmissionService {
 
         if (items != null && !items.isEmpty()) {
             for (com.hms.dto.AdministerHospitalItemsRequest.HospitalItem item : items) {
-                com.hms.entity.HospitalInventory stock = hospitalInventoryService.consumeChargeableItem(
-                        item.getStockId(), item.getName(), item.getQuantity(), hospitalId);
+                java.math.BigDecimal serviceCharge = hospitalInventoryService.consumeService(
+                        item.getServiceId(), item.getQuantity(), hospitalId);
 
                 if (hasBillingModule && ipdBill != null) {
-                    // Create BillingItem charge
+                    com.hms.entity.HospitalServiceEntity svc = hospitalServiceRepository.findByIdAndHospitalId(item.getServiceId(), hospitalId).orElse(null);
+                    String svcName = svc != null ? svc.getName() : ("Service #" + item.getServiceId());
                     com.hms.entity.BillingItem bi = new com.hms.entity.BillingItem();
                     bi.setBillingId(ipdBill.getId());
                     bi.setHospitalId(hospitalId);
-                    bi.setDescription(item.getName() + " (Qty: " + item.getQuantity() + ")");
-                    java.math.BigDecimal unitPrice = item.getFeeAmount() != null ? item.getFeeAmount() :
-                            (stock != null && stock.getUnitPrice() != null ? java.math.BigDecimal.valueOf(stock.getUnitPrice()) : java.math.BigDecimal.ZERO);
-                    bi.setAmount(unitPrice.multiply(java.math.BigDecimal.valueOf(item.getQuantity())));
+                    bi.setDescription(svcName + " (Qty: " + item.getQuantity() + ")");
+                    bi.setAmount(serviceCharge);
                     billingItemRepository.save(bi);
                 }
             }
