@@ -738,52 +738,19 @@ public class IpdAdmissionService {
 
         if (items != null && !items.isEmpty()) {
             for (com.hms.dto.AdministerHospitalItemsRequest.HospitalItem item : items) {
-                if (item.getStockId() != null) {
-                    com.hms.entity.HospitalInventory stock = hospitalInventoryRepository.findById(item.getStockId())
-                            .orElseThrow(() -> new RuntimeException("Hospital item not found in active inventory: ID " + item.getStockId()));
+                com.hms.entity.HospitalInventory stock = hospitalInventoryService.consumeChargeableItem(
+                        item.getStockId(), item.getName(), item.getQuantity(), hospitalId);
 
-                    if (stock.getStockQuantity() < item.getQuantity()) {
-                        throw new IllegalArgumentException("Insufficient stock for: " + stock.getName() + " (Requested: " + item.getQuantity() + ", Available: " + stock.getStockQuantity() + ")");
-                    }
-
-                    // Deduct Stock
-                    int oldStock = stock.getStockQuantity();
-                    stock.setStockQuantity(oldStock - item.getQuantity());
-                    hospitalInventoryRepository.save(stock);
-
-                    // Degrade relative items
-                    try {
-                        hospitalInventoryService.degradeRelativeItems(stock.getName(), item.getQuantity(), hospitalId);
-                    } catch (Exception e) {
-                        logger.warn("Failed to degrade relative inventory items during hospital item administration", e);
-                    }
-
-                    // Audit Log for Stock deduction
-                    try {
-                        auditLogService.logAction(
-                                "INVENTORY_DEDUCTED",
-                                "Deducted " + item.getQuantity() + " units of " + stock.getName() + " for patient. Stock: " + oldStock + " -> " + stock.getStockQuantity(),
-                                securityHelper.getCurrentUserEmail(),
-                                hospitalId,
-                                "INVENTORY",
-                                stock.getId().toString(),
-                                null
-                        );
-                    } catch (Exception e) {
-                        logger.warn("Failed to write audit log for hospital item deduction", e);
-                    }
-
-                    if (hasBillingModule && ipdBill != null) {
-                        // Create BillingItem charge
-                        com.hms.entity.BillingItem bi = new com.hms.entity.BillingItem();
-                        bi.setBillingId(ipdBill.getId());
-                        bi.setHospitalId(hospitalId);
-                        bi.setDescription(stock.getName() + " (Qty: " + item.getQuantity() + ")");
-                        java.math.BigDecimal unitPrice = item.getFeeAmount() != null ? item.getFeeAmount() :
-                                (stock.getUnitPrice() != null ? java.math.BigDecimal.valueOf(stock.getUnitPrice()) : java.math.BigDecimal.ZERO);
-                        bi.setAmount(unitPrice.multiply(java.math.BigDecimal.valueOf(item.getQuantity())));
-                        billingItemRepository.save(bi);
-                    }
+                if (hasBillingModule && ipdBill != null) {
+                    // Create BillingItem charge
+                    com.hms.entity.BillingItem bi = new com.hms.entity.BillingItem();
+                    bi.setBillingId(ipdBill.getId());
+                    bi.setHospitalId(hospitalId);
+                    bi.setDescription(item.getName() + " (Qty: " + item.getQuantity() + ")");
+                    java.math.BigDecimal unitPrice = item.getFeeAmount() != null ? item.getFeeAmount() :
+                            (stock != null && stock.getUnitPrice() != null ? java.math.BigDecimal.valueOf(stock.getUnitPrice()) : java.math.BigDecimal.ZERO);
+                    bi.setAmount(unitPrice.multiply(java.math.BigDecimal.valueOf(item.getQuantity())));
+                    billingItemRepository.save(bi);
                 }
             }
 
