@@ -171,6 +171,7 @@ const PrescriptionPresetsManager = () => {
                                 value={item.medicineName}
                                 onChange={(e) => updateFormItem(index, 'medicineName', e.target.value)}
                                 placeholder="Medicine name"
+                                maxLength={255}
                                 className="col-span-2 border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
                             />
                             <input
@@ -178,6 +179,7 @@ const PrescriptionPresetsManager = () => {
                                 value={item.dosage}
                                 onChange={(e) => updateFormItem(index, 'dosage', e.target.value)}
                                 placeholder="Dosage (e.g. 500mg)"
+                                maxLength={50}
                                 className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
                             />
                             <input
@@ -185,6 +187,7 @@ const PrescriptionPresetsManager = () => {
                                 value={item.frequency}
                                 onChange={(e) => updateFormItem(index, 'frequency', e.target.value)}
                                 placeholder="Frequency (e.g. 1-0-1)"
+                                maxLength={50}
                                 className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
                             />
                             <input
@@ -192,6 +195,7 @@ const PrescriptionPresetsManager = () => {
                                 value={item.duration}
                                 onChange={(e) => updateFormItem(index, 'duration', e.target.value)}
                                 placeholder="Duration (e.g. 5 Days)"
+                                maxLength={50}
                                 className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
                             />
                             <input
@@ -199,6 +203,7 @@ const PrescriptionPresetsManager = () => {
                                 value={item.instructions}
                                 onChange={(e) => updateFormItem(index, 'instructions', e.target.value)}
                                 placeholder="Instructions (e.g. After food)"
+                                maxLength={200}
                                 className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
                             />
                             {formItems.length > 1 && (
