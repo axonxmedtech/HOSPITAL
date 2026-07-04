@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/platform/inventory-items")
+@RequestMapping("/platform/inventory-master")
 @PreAuthorize("hasRole('SUPER_ADMIN')")
 public class PlatformInventoryItemController {
 
@@ -20,8 +20,10 @@ public class PlatformInventoryItemController {
     private PlatformInventoryItemService service;
 
     @GetMapping
-    public ResponseEntity<List<InventoryMasterItem>> getItems() {
-        return ResponseEntity.ok(service.listItems());
+    public ResponseEntity<org.springframework.data.domain.Page<InventoryMasterItem>> getItems(
+            @RequestParam(value = "search", required = false) String search,
+            org.springframework.data.domain.Pageable pageable) {
+        return ResponseEntity.ok(service.listItems(search, pageable));
     }
 
     @PostMapping

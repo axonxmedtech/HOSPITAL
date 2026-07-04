@@ -22,6 +22,18 @@ public class PlatformInventoryItemService {
         return repository.findAllByOrderByNameAsc();
     }
 
+    public org.springframework.data.domain.Page<InventoryMasterItem> listItems(String search, org.springframework.data.domain.Pageable pageable) {
+        org.springframework.data.domain.Pageable sortedPageable = org.springframework.data.domain.PageRequest.of(
+            pageable.getPageNumber(),
+            pageable.getPageSize(),
+            org.springframework.data.domain.Sort.by("name").ascending()
+        );
+        if (search == null || search.trim().isEmpty()) {
+            return repository.findAll(sortedPageable);
+        }
+        return repository.findByNameContainingIgnoreCaseOrderByNameAsc(search.trim(), sortedPageable);
+    }
+
     public InventoryMasterItem createItem(String name) {
         if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("Item name is required");
