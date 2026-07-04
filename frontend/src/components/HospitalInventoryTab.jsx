@@ -34,6 +34,8 @@ const HospitalInventoryTab = () => {
     // Relative items states for catalog item
     const [selectedRelativeItems, setSelectedRelativeItems] = useState([]);
     const [hasOwnStock, setHasOwnStock] = useState(true);
+    const [templates, setTemplates] = useState([]);
+    const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
     const [relativeItemSearch, setRelativeItemSearch] = useState('');
     const [showRelativeSuggestions, setShowRelativeSuggestions] = useState(false);
 
@@ -62,7 +64,10 @@ const HospitalInventoryTab = () => {
                     setSelectedRelativeItems([]);
                 }
                 setHasOwnStock(catalogModal.data.hasOwnStock !== false);
-            } else {
+            } else if (!catalogModal.data) {
+                // Only reset for a truly blank "+ Add Catalog Item" open;
+                // a template/duplicate prefill passes a non-null data object
+                // and sets selectedRelativeItems/hasOwnStock itself beforehand.
                 setSelectedRelativeItems([]);
                 setHasOwnStock(true);
             }
@@ -78,6 +83,15 @@ const HospitalInventoryTab = () => {
             setCatalogList(res || []);
         } catch (err) {
             console.error(err);
+        }
+    };
+
+    const fetchTemplates = async () => {
+        try {
+            const res = await hospitalService.getCatalogTemplates();
+            setTemplates(res || []);
+        } catch (err) {
+            console.error('Failed to load inventory templates', err);
         }
     };
 
@@ -129,7 +143,7 @@ const HospitalInventoryTab = () => {
                 await fetchPurchases();
                 await fetchCatalog(); // For autocomplete in add stock
             } else {
-                await Promise.all([fetchCatalog(), fetchFees()]);
+                await Promise.all([fetchCatalog(), fetchFees(), fetchTemplates()]);
             }
         } catch (err) {
             toastError('Failed to load hospital inventory data.');
@@ -293,12 +307,20 @@ const HospitalInventoryTab = () => {
                     </button>
                 )}
                 {subTab === 'catalog' && (
-                    <button
-                        onClick={() => setCatalogModal({ isOpen: true, isEdit: false, data: null })}
-                        className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition font-semibold text-sm shadow-md shadow-teal-600/10 active:scale-95"
-                    >
-                        + Add Catalog Item
-                    </button>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => setTemplatePickerOpen(true)}
+                            className="px-4 py-2 border border-teal-600 text-teal-700 rounded-lg hover:bg-teal-50 transition font-semibold text-sm active:scale-95"
+                        >
+                            Add from Template
+                        </button>
+                        <button
+                            onClick={() => setCatalogModal({ isOpen: true, isEdit: false, data: null })}
+                            className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition font-semibold text-sm shadow-md shadow-teal-600/10 active:scale-95"
+                        >
+                            + Add Catalog Item
+                        </button>
+                    </div>
                 )}
             </div>
 
@@ -657,6 +679,42 @@ const HospitalInventoryTab = () => {
                 onConfirm={confirmState.onConfirm}
                 onCancel={() => setConfirmState({ open: false })}
             />
+
+            {/* TEMPLATE PICKER */}
+            {templatePickerOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setTemplatePickerOpen(false)}>
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in-up" onClick={e => e.stopPropagation()}>
+                        <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-slate-50">
+                            <h3 className="text-lg font-bold text-gray-800">Add from Template</h3>
+                            <button onClick={() => setTemplatePickerOpen(false)} className="text-gray-400 hover:text-gray-600">
+                                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
+                        <div className="p-4 divide-y divide-gray-100 max-h-96 overflow-y-auto">
+                            {templates.map((t, i) => (
+                                <button
+                                    key={i}
+                                    type="button"
+                                    onClick={() => {
+                                        const matchedRelativeItems = t.suggestedRelativeItemNames
+                                            .map(suggestedName => catalogList.find(c => c.isActive !== false && c.name.toLowerCase() === suggestedName.toLowerCase()))
+                                            .filter(Boolean)
+                                            .map(c => ({ id: c.id, name: c.name }));
+                                        setSelectedRelativeItems(matchedRelativeItems);
+                                        setHasOwnStock(t.hasOwnStock !== false);
+                                        setCatalogModal({ isOpen: true, isEdit: false, data: { name: t.name, type: t.type } });
+                                        setTemplatePickerOpen(false);
+                                    }}
+                                    className="w-full text-left px-2 py-3 hover:bg-slate-50 transition"
+                                >
+                                    <div className="font-semibold text-gray-800 text-sm">{t.name}</div>
+                                    <div className="text-xs text-gray-400 mt-0.5">Suggests: {t.suggestedRelativeItemNames.join(', ')}</div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* MODAL 2: ADD/EDIT CATALOG DICTIONARY ITEM */}
             {catalogModal.isOpen && (
