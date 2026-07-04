@@ -411,7 +411,7 @@ public class DoctorService {
     private HospitalInventoryService hospitalInventoryService;
 
     @Autowired
-    private com.hms.repository.InventoryItemRepository inventoryItemRepository;
+    private com.hms.repository.HospitalServiceRepository hospitalServiceRepository;
 
     /**
      * Submit a consultation
@@ -768,28 +768,21 @@ public class DoctorService {
                 }
             }
             
-            // --- Process Hospital Inventory Items Used (Stock Deductions) ---
+            // --- Process Services Used (charge + relevant-item stock deduction) ---
             if (bill != null && request.getHospitalInventoryItems() != null && !request.getHospitalInventoryItems().isEmpty()) {
                 for (com.hms.dto.ConsultationRequest.HospitalInventoryItem item : request.getHospitalInventoryItems()) {
-                    com.hms.entity.HospitalInventory stock = hospitalInventoryService.consumeChargeableItem(
-                            item.getStockId(), item.getName(), item.getQuantity(), hospitalId);
+                    java.math.BigDecimal serviceCharge = hospitalInventoryService.consumeService(
+                            item.getServiceId(), item.getQuantity(), hospitalId);
 
-                    // Create BillingItem charge (only if it does not have a linked custom fee catalog mapping)
-                    boolean hasLinkedFee = false;
-                    java.util.Optional<com.hms.entity.InventoryItem> catalogItemOpt = inventoryItemRepository.findByNameAndHospitalId(item.getName(), hospitalId);
-                    if (catalogItemOpt.isPresent() && catalogItemOpt.get().getLinkedFeeId() != null) {
-                        hasLinkedFee = true;
-                    }
+                    com.hms.entity.HospitalServiceEntity svc = hospitalServiceRepository.findByIdAndHospitalId(item.getServiceId(), hospitalId).orElse(null);
+                    String svcName = svc != null ? svc.getName() : ("Service #" + item.getServiceId());
 
-                    if (!hasLinkedFee) {
-                        com.hms.entity.BillingItem bi = new com.hms.entity.BillingItem();
-                        bi.setBillingId(bill.getId());
-                        bi.setHospitalId(hospitalId);
-                        bi.setDescription(item.getName() + " (Qty: " + item.getQuantity() + ")");
-                        double price = stock != null && stock.getUnitPrice() != null ? stock.getUnitPrice() : 0.0;
-                        bi.setAmount(java.math.BigDecimal.valueOf(price).multiply(java.math.BigDecimal.valueOf(item.getQuantity())));
-                        billingItemRepository.save(bi);
-                    }
+                    com.hms.entity.BillingItem bi = new com.hms.entity.BillingItem();
+                    bi.setBillingId(bill.getId());
+                    bi.setHospitalId(hospitalId);
+                    bi.setDescription(svcName + " (Qty: " + item.getQuantity() + ")");
+                    bi.setAmount(serviceCharge);
+                    billingItemRepository.save(bi);
                 }
             }
 

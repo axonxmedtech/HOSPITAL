@@ -34,10 +34,8 @@ public class ConsultationRequest {
 
     @Data
     public static class HospitalInventoryItem {
-        private Long stockId;
-
-        @NotBlank(message = "Item name is required")
-        private String name;
+        @NotNull(message = "Service ID is required")
+        private Long serviceId;
 
         @NotNull(message = "Quantity is required")
         @Min(value = 1, message = "Quantity must be positive")
