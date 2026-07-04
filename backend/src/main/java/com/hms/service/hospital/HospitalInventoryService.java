@@ -104,6 +104,9 @@ public class HospitalInventoryService {
         catalog.setManufacturer(request.getManufacturer());
         catalog.setLinkedFeeId(request.getLinkedFeeId()); // persist fee link
         catalog.setRelativeItemIds(request.getRelativeItemIds()); // persist relative items
+        if (request.getHasOwnStock() != null) {
+            catalog.setHasOwnStock(request.getHasOwnStock()); // persist stock-type toggle
+        }
         if (request.getIsActive() != null) {
             catalog.setIsActive(request.getIsActive());
         }

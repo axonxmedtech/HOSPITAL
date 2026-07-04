@@ -19,6 +19,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -95,5 +96,26 @@ class HospitalInventoryServiceTemplateTest {
         assertThatThrownBy(() -> service.duplicateCatalogItem(99L))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("not found");
+    }
+
+    @Test
+    void updateCatalogItem_persistsHasOwnStockToggle() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        InventoryItem existing = new InventoryItem();
+        existing.setId(5L);
+        existing.setName("Dressing");
+        existing.setHospitalId(1L);
+        existing.setHasOwnStock(true); // currently stocked
+        when(inventoryItemRepository.findById(5L)).thenReturn(Optional.of(existing));
+        when(inventoryItemRepository.save(any(InventoryItem.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        InventoryItem request = new InventoryItem();
+        request.setName("Dressing");
+        request.setType("Consumable");
+        request.setHasOwnStock(false); // admin flips it to service-type
+
+        InventoryItem result = service.updateCatalogItem(5L, request);
+
+        assertThat(result.getHasOwnStock()).isFalse();
     }
 }
