@@ -105,4 +105,10 @@ public class HospitalInventoryController {
         hospitalInventoryService.deleteInventoryItem(id);
         return ResponseEntity.ok().build();
     }
+
+    @GetMapping("/low-stock")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    public ResponseEntity<List<HospitalInventory>> getLowStockItems() {
+        return ResponseEntity.ok(hospitalInventoryService.getLowStockItems());
+    }
 }
