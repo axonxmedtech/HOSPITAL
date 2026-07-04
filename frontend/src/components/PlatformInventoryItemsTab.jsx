@@ -227,13 +227,7 @@ export default function PlatformInventoryItemsTab() {
                                         <td className="px-6 py-4 text-gray-400 font-mono">#{item.id}</td>
                                         <td className="px-6 py-4 font-bold text-gray-800">{item.name}</td>
                                         <td className="px-6 py-4 text-gray-500">{item.description || '—'}</td>
-                                        <td className="px-6 py-4 text-right space-x-3">
-                                            <button
-                                                onClick={() => openEdit(item)}
-                                                className="text-blue-600 hover:text-blue-800 font-semibold transition"
-                                            >
-                                                Edit
-                                            </button>
+                                        <td className="px-6 py-4 text-right">
                                             <button
                                                 onClick={() => handleDelete(item)}
                                                 className="text-red-500 hover:text-red-700 font-semibold transition"
