@@ -7,6 +7,7 @@ import com.hms.repository.PrescriptionPresetRepository;
 import com.hms.security.SecurityContextHelper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -31,6 +32,7 @@ public class PrescriptionPresetService {
         return itemRepository.findByPresetIdOrderBySortOrderAsc(presetId);
     }
 
+    @Transactional
     public PrescriptionPreset createPreset(String name, List<PrescriptionPresetItem> items) {
         // hospitalId is fetched first so every call path touches securityHelper
         // consistently, matching the pattern established in ConsultationNotePresetService.
@@ -59,6 +61,7 @@ public class PrescriptionPresetService {
      * name-only rename); items == [] is rejected — a preset always needs at
      * least one medicine, so an empty list is never a valid full replacement.
      */
+    @Transactional
     public PrescriptionPreset updatePreset(Long id, String name, List<PrescriptionPresetItem> items, Integer displayOrder) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         PrescriptionPreset preset = presetRepository.findByIdAndHospitalId(id, hospitalId)
@@ -82,6 +85,7 @@ public class PrescriptionPresetService {
         return preset;
     }
 
+    @Transactional
     public void deletePreset(Long id) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         PrescriptionPreset preset = presetRepository.findByIdAndHospitalId(id, hospitalId)
