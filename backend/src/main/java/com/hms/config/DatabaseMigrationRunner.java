@@ -36,6 +36,7 @@ public class DatabaseMigrationRunner {
         migratePatientAgeToDateOfBirth(); // NEW
         ensureConsultationNotePresetsTable(); // NEW
         ensurePrescriptionPresetTables(); // NEW
+        ensureInventoryItemHasOwnStockColumn(); // NEW
     }
 
     /**
@@ -386,6 +387,31 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped (prescription presets): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Adds inventory_items.has_own_stock if it does not exist, defaulting
+     * every existing row to true (1) so current catalog items keep their
+     * exact current behavior (own-stock check + cascade to related items)
+     * until an admin explicitly marks one as a service item.
+     * ddl-auto=update can add columns but not backfill a specific default
+     * for pre-existing rows in every MySQL configuration -- this runner
+     * makes that explicit and idempotent.
+     */
+    private void ensureInventoryItemHasOwnStockColumn() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'inventory_items' AND COLUMN_NAME = 'has_own_stock'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute("ALTER TABLE inventory_items ADD COLUMN has_own_stock TINYINT(1) NOT NULL DEFAULT 1");
+                log.info("DB migration applied: inventory_items.has_own_stock column added (defaulted to true for existing rows)");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (inventory_items.has_own_stock): {}", e.getMessage());
         }
     }
 }

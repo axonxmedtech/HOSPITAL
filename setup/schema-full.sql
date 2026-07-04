@@ -1028,3 +1028,25 @@ CREATE TABLE IF NOT EXISTS `whatsapp_message_log` (
   KEY `idx_wml_hospital_status` (`hospital_id`, `status`),
   KEY `idx_wml_retry` (`status`, `next_retry_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Inventory items catalog (non-medicine hospital inventory: syringes,
+-- fluids, consumables, surgical items, gloves, etc.). This table was
+-- previously created only via Hibernate ddl-auto=update from the
+-- InventoryItem entity and had never been added to this canonical dump;
+-- documented here now, including has_own_stock added by
+-- DatabaseMigrationRunner.ensureInventoryItemHasOwnStockColumn().
+--
+
+CREATE TABLE `inventory_items` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `type` varchar(50) DEFAULT NULL,
+  `manufacturer` varchar(100) DEFAULT NULL,
+  `hospital_id` bigint NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `linked_fee_id` bigint DEFAULT NULL,
+  `relative_item_ids` varchar(1000) DEFAULT NULL,
+  `has_own_stock` tinyint(1) NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

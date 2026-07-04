@@ -46,4 +46,16 @@ public class InventoryItem {
 
     @Column(name = "relative_item_ids", length = 1000)
     private String relativeItemIds; // JSON array of numbers, e.g. "[12, 15]"
+
+    /**
+     * true (default) = this item has its own physical stock, tracked in
+     * HospitalInventory and checked/decremented when used (e.g. an
+     * injection ampule). false = this is a pure service/procedure with no
+     * stock of its own (e.g. "Dressing") -- its availability is determined
+     * entirely by its related items (see relativeItemIds); its own stock
+     * is never checked or decremented. Defaults to true so every existing
+     * catalog item keeps behaving exactly as it does today.
+     */
+    @Column(name = "has_own_stock", nullable = false)
+    private Boolean hasOwnStock = true;
 }
