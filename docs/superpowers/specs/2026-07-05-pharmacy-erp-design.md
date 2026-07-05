@@ -10,8 +10,10 @@ A pharmacy tenant (`hospitalType = 'PHARMACY'`) can be provisioned by the platfo
 
 ## Non-goals / guardrails
 
+- **This ERP is for the standalone pharmacy tenant only** — a pharmacy created by the platform admin (`hospitalType === 'PHARMACY'`). The **in-house pharmacy module inside a HOSPITAL or CLINIC tenant is explicitly out of scope** and must keep its current behavior. Upgrading the hospital/clinic pharmacy is a separate, later effort.
+- **Shared components must be gated.** The pharmacist-dashboard views (`PurchaseForm`, `InventoryView`, `SuppliersView`, `ExpiryView`, `PharmacyDashboard`) are the same files a hospital/clinic PHARMACY module renders. Every Phase 1 change is therefore applied **conditionally** on standalone-pharmacy context (`isStandalonePharmacy` — i.e. `hospitalType === 'PHARMACY'`, equivalently PHARMACY module present without OPD). When that condition is false, render exactly as today.
 - **Do not change hospital or clinic behavior.** Hospital/clinic code is fully working; every change here is gated on pharmacy context (`hospitalType === 'PHARMACY'` or the pharmacy plan type).
-- The platform **medicine master** (`medicine_list`) is shared by hospital/clinic. Do **not** alter it or its API. Pharmacy-side relabeling of "type"→"category" is frontend-only and pharmacy-only.
+- The platform **medicine master** (`medicine_list`) is shared by hospital/clinic. Do **not** alter it or its API. Pharmacy-side relabeling of "type"→"category" is frontend-only and standalone-pharmacy-only.
 
 ## Key decisions (from brainstorming)
 
@@ -68,9 +70,11 @@ Sidebar: **Overview · Pharmacies · Billing · Analytics · Audit Logs · Setti
 
 ---
 
-## D. Pharmacist dashboard (common to all modes) — Phase 1
+## D. Pharmacist dashboard (standalone pharmacy only) — Phase 1
 
 Tabs: **Dashboard · Billing Counter · Inventory · Purchase Management · Suppliers · Returns & Refunds · Expiry Management · Reports & Analytics**. (Medicine Master already removed.)
+
+> **Gating:** all four changes below apply only when `isStandalonePharmacy` is true. A hospital/clinic in-house pharmacy renders these views unchanged.
 
 1. **Purchase form** (`PurchaseForm.jsx`):
    - **Medicine name** — searched from the platform medicine list (`name`).
