@@ -167,16 +167,38 @@ jobs:
             fi
 
       # ── Copy Deployment Package via SCP ──────────────────────────────────
+      # Raw scp with keepalives + a hard per-attempt timeout and retries. The
+      # previous appleboy/scp-action only bounded the connection (timeout: 60s),
+      # not the transfer, so a stalled upload hung until the 30-min job timeout
+      # ("operation was canceled"). Now a stall aborts in <=5 min and retries.
       - name: Copy Deployment Package via SCP
-        uses: appleboy/scp-action@v1
-        with:
-          host: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
-          username: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
-          key: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
-          port: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
-          timeout: 60s
-          source: "deploy.tar.gz"
-          target: "${{ inputs.repo_path || vars.DEPLOY_PATH }}"
+        env:
+          SSH_KEY: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
+          SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
+          SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
+          SSH_USER: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
+          TARGET: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
+        run: |
+          echo "$SSH_KEY" > /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+          SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=4"
+          ls -lh deploy.tar.gz
+          ok=false
+          for attempt in 1 2 3; do
+            echo "SCP attempt $attempt/3 ..."
+            if timeout 300 scp -i /tmp/deploy_key $SSH_OPTS -P "$SSH_PORT" deploy.tar.gz "$SSH_USER@$SSH_HOST:$TARGET/"; then
+              ok=true
+              break
+            fi
+            echo "Attempt $attempt failed (stall/timeout); retrying in 10s..."
+            sleep 10
+          done
+          rm -f /tmp/deploy_key
+          if [ "$ok" != "true" ]; then
+            echo "SCP failed after 3 attempts."
+            exit 1
+          fi
+          echo "Deployment package uploaded."
 
       # ── Restart Service and Health Check ─────────────────────────────────
       - name: Restart Service and Health Check
