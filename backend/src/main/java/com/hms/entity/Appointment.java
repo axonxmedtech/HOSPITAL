@@ -59,6 +59,10 @@ public class Appointment {
     @Column(name = "custom_id")
     private String customId;
 
+    // Reused across inserts — creating a new Random (or seeding one) per call is
+    // both wasteful and a reliability smell. SecureRandom avoids predictable IDs.
+    private static final java.security.SecureRandom ID_RANDOM = new java.security.SecureRandom();
+
     @PrePersist
     public void generateIds() {
         if (this.publicId == null) {
@@ -66,7 +70,7 @@ public class Appointment {
         }
         if (this.customId == null) {
             // Generate simple random readable ID: APT + 4 random digits
-            this.customId = "APT" + (1000 + new java.util.Random().nextInt(9000));
+            this.customId = "APT" + (1000 + ID_RANDOM.nextInt(9000));
         }
     }
 
@@ -149,10 +153,13 @@ public class Appointment {
     private String patientEmail;
 
     /**
-     * Patient age for new patient creation (not stored in appointments table)
+     * Patient date of birth for new patient creation (not stored in
+     * appointments table). See Patient.dateOfBirth for why Patient itself
+     * computes age instead of storing it.
      */
+    @JsonFormat(pattern = "yyyy-MM-dd")
     @Transient
-    private Integer patientAge;
+    private LocalDate patientDateOfBirth;
 
     /**
      * Patient gender for new patient creation (not stored in appointments table)

@@ -8,8 +8,8 @@ const purchaseApi = {
         return response.data;
     },
     getAll: async (page = 0, size = 10) => {
-        const p = isNaN(parseInt(page)) ? 0 : page;
-        const s = isNaN(parseInt(size)) ? 10 : size;
+        const p = Number.isNaN(parseInt(page, 10)) ? 0 : page;
+        const s = Number.isNaN(parseInt(size, 10)) ? 10 : size;
         const response = await apiClient.get(`${API_URL}?page=${p}&size=${s}`);
         return response.data;
     },

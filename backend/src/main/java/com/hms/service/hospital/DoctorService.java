@@ -67,6 +67,11 @@ public class DoctorService {
      */
     @Transactional
     public Doctor addDoctor(Doctor doctor, String password) {
+        // Validate phone number
+        if (doctor.getPhone() == null || !doctor.getPhone().matches("^[0-9]{10}$")) {
+            throw new IllegalArgumentException("Phone number must be exactly 10 digits");
+        }
+
         // Get hospital_id from security context (multi-tenant isolation)
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
@@ -196,9 +201,14 @@ public class DoctorService {
      * @return Updated Doctor entity
      */
     public Doctor updateDoctor(String publicId, Doctor updatedData) {
+        // Validate phone number
+        if (updatedData.getPhone() == null || !updatedData.getPhone().matches("^[0-9]{10}$")) {
+            throw new IllegalArgumentException("Phone number must be exactly 10 digits");
+        }
+
         // Ensure doctor exists and belongs to this hospital
         Doctor existingDoctor = getDoctorByPublicId(publicId);
-
+ 
         existingDoctor.setName(updatedData.getName());
         existingDoctor.setSpecialization(updatedData.getSpecialization());
         existingDoctor.setPhone(updatedData.getPhone());
@@ -401,7 +411,7 @@ public class DoctorService {
     private HospitalInventoryService hospitalInventoryService;
 
     @Autowired
-    private com.hms.repository.InventoryItemRepository inventoryItemRepository;
+    private com.hms.repository.HospitalServiceRepository hospitalServiceRepository;
 
     /**
      * Submit a consultation
@@ -410,6 +420,40 @@ public class DoctorService {
      */
     @Transactional
     public com.hms.entity.Opd submitConsultation(com.hms.dto.ConsultationRequest request) {
+        // Validate administered items quantity
+        if (request.getAdministeredItems() != null) {
+            for (com.hms.dto.ConsultationRequest.AdministeredItem item : request.getAdministeredItems()) {
+                if (item.getQuantity() == null || item.getQuantity() <= 0) {
+                    throw new IllegalArgumentException("Administered item quantity must be positive");
+                }
+            }
+        }
+        // Validate hospital inventory items quantity
+        if (request.getHospitalInventoryItems() != null) {
+            for (com.hms.dto.ConsultationRequest.HospitalInventoryItem item : request.getHospitalInventoryItems()) {
+                if (item.getQuantity() == null || item.getQuantity() <= 0) {
+                    throw new IllegalArgumentException("Hospital inventory item quantity must be positive");
+                }
+            }
+        }
+        // Validate prescriptions
+        if (request.getPrescription() != null) {
+            for (com.hms.dto.ConsultationRequest.PrescriptionItem item : request.getPrescription()) {
+                if (item.getMedicineName() == null || item.getMedicineName().trim().isEmpty()) {
+                    throw new IllegalArgumentException("Prescription medicine name is required");
+                }
+                if (item.getDosage() == null || item.getDosage().trim().isEmpty()) {
+                    throw new IllegalArgumentException("Prescription dosage is required");
+                }
+                if (item.getFrequency() == null || item.getFrequency().trim().isEmpty()) {
+                    throw new IllegalArgumentException("Prescription frequency is required");
+                }
+                if (item.getDuration() == null || item.getDuration().trim().isEmpty()) {
+                    throw new IllegalArgumentException("Prescription duration is required");
+                }
+            }
+        }
+
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Long currentDoctorId = securityHelper.getCurrentUserId(); // Get current doctor's user ID
 
@@ -592,13 +636,17 @@ public class DoctorService {
                                 "OPD",
                                 o.getId().toString(),
                                 null);
-                    } catch (Exception ignored) {}
+                    } catch (Exception e) {
+                        logger.warn("Failed to write audit log for OPD status change during consultation", e);
+                    }
                 }
 
                 // Remove queue entries for this OPD so it doesn't appear again
                 try {
                     queueEntryRepository.deleteByOpdId(opdIdToUse);
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    logger.warn("Failed to delete queue entry for OPD during consultation completion", e);
+                }
             } catch (Exception e) {
                 // Don't fail consultation if OPD update fails
             }
@@ -702,7 +750,9 @@ public class DoctorService {
                                 med.getId().toString(),
                                 null
                             );
-                        } catch (Exception ignored) {}
+                        } catch (Exception e) {
+                            logger.warn("Failed to write audit log for OPD medicine deduction", e);
+                        }
                         
                         // Create BillingMedicine charge
                         com.hms.entity.BillingMedicine bm = new com.hms.entity.BillingMedicine();
@@ -718,57 +768,21 @@ public class DoctorService {
                 }
             }
             
-            // --- Process Hospital Inventory Items Used (Stock Deductions) ---
+            // --- Process Services Used (charge + relevant-item stock deduction) ---
             if (bill != null && request.getHospitalInventoryItems() != null && !request.getHospitalInventoryItems().isEmpty()) {
                 for (com.hms.dto.ConsultationRequest.HospitalInventoryItem item : request.getHospitalInventoryItems()) {
-                    if (item.getStockId() != null) {
-                        com.hms.entity.HospitalInventory stock = hospitalInventoryRepository.findByIdAndHospitalId(item.getStockId(), hospitalId)
-                            .orElseThrow(() -> new RuntimeException("Hospital item not found in active inventory: ID " + item.getStockId()));
+                    java.math.BigDecimal serviceCharge = hospitalInventoryService.consumeService(
+                            item.getServiceId(), item.getQuantity(), hospitalId);
 
-                        if (stock.getStockQuantity() < item.getQuantity()) {
-                            throw new IllegalArgumentException("Insufficient stock for: " + stock.getName() + " (Requested: " + item.getQuantity() + ", Available: " + stock.getStockQuantity() + ")");
-                        }
+                    com.hms.entity.HospitalServiceEntity svc = hospitalServiceRepository.findByIdAndHospitalId(item.getServiceId(), hospitalId).orElse(null);
+                    String svcName = svc != null ? svc.getName() : ("Service #" + item.getServiceId());
 
-                        // Deduct Stock
-                        int oldStock = stock.getStockQuantity();
-                        stock.setStockQuantity(oldStock - item.getQuantity());
-                        hospitalInventoryRepository.save(stock);
-
-                        // Degrade any relative catalog items
-                        try {
-                            hospitalInventoryService.degradeRelativeItems(stock.getName(), item.getQuantity(), hospitalId);
-                        } catch (Exception ignored) {}
-
-                        // Audit Log for Stock deduction
-                        try {
-                            auditLogService.logAction(
-                                "INVENTORY_DEDUCTED",
-                                "Deducted " + item.getQuantity() + " units of " + stock.getName() + " for patient. Stock: " + oldStock + " -> " + stock.getStockQuantity(),
-                                securityHelper.getCurrentUserEmail(),
-                                hospitalId,
-                                "INVENTORY",
-                                stock.getId().toString(),
-                                null
-                            );
-                        } catch (Exception ignored) {}
-
-                        // Create BillingItem charge (only if it does not have a linked custom fee catalog mapping)
-                        boolean hasLinkedFee = false;
-                        java.util.Optional<com.hms.entity.InventoryItem> catalogItemOpt = inventoryItemRepository.findByNameAndHospitalId(stock.getName(), hospitalId);
-                        if (catalogItemOpt.isPresent() && catalogItemOpt.get().getLinkedFeeId() != null) {
-                            hasLinkedFee = true;
-                        }
-
-                        if (!hasLinkedFee) {
-                            com.hms.entity.BillingItem bi = new com.hms.entity.BillingItem();
-                            bi.setBillingId(bill.getId());
-                            bi.setHospitalId(hospitalId);
-                            bi.setDescription(stock.getName() + " (Qty: " + item.getQuantity() + ")");
-                            double price = stock.getUnitPrice() != null ? stock.getUnitPrice() : 0.0;
-                            bi.setAmount(java.math.BigDecimal.valueOf(price).multiply(java.math.BigDecimal.valueOf(item.getQuantity())));
-                            billingItemRepository.save(bi);
-                        }
-                    }
+                    com.hms.entity.BillingItem bi = new com.hms.entity.BillingItem();
+                    bi.setBillingId(bill.getId());
+                    bi.setHospitalId(hospitalId);
+                    bi.setDescription(svcName + " (Qty: " + item.getQuantity() + ")");
+                    bi.setAmount(serviceCharge);
+                    billingItemRepository.save(bi);
                 }
             }
 

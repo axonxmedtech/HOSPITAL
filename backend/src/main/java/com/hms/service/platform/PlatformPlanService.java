@@ -10,6 +10,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -17,6 +19,8 @@ import java.util.List;
 
 @Service
 public class PlatformPlanService {
+
+    private static final Logger logger = LoggerFactory.getLogger(PlatformPlanService.class);
 
     @Autowired private PlanRepository planRepository;
     @Autowired private HospitalRepository hospitalRepository;
@@ -198,7 +202,7 @@ public class PlatformPlanService {
             log.setPerformedBy(performedBy);
             auditLogRepository.save(log);
         } catch (Exception e) {
-            System.err.println("Audit log failed: " + e.getMessage());
+            logger.error("Audit log failed: {}", e.getMessage(), e);
         }
     }
 }

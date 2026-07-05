@@ -30,13 +30,18 @@ export default function MedicineAutocomplete({ value, onChange, onSelect }) {
         return () => clearTimeout(timeoutId);
     }, [query]);
 
-    // Reset when parent clears value
+    // Sync external value changes to selectedMedicine
     useEffect(() => {
-        if (!value) {
-            setSelectedMedicine(null);
-            setQuery('');
+        const currentName = selectedMedicine ? selectedMedicine.name : '';
+        if (currentName !== value) {
+            if (value) {
+                setSelectedMedicine({ name: value });
+            } else {
+                setSelectedMedicine(null);
+                setQuery('');
+            }
         }
-    }, [value]);
+    }, [value, selectedMedicine]);
 
     return (
         <Combobox

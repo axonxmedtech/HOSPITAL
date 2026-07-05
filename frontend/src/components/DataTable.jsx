@@ -27,6 +27,16 @@ const DataTable = ({ data, columns, pagination, loading, emptyState, expandedRow
         return emptyState;
     }
 
+    // Page-number buttons are shown in fixed windows of 10 (1-10, 11-20, ...)
+    // instead of one button per page — with many pages that grew unbounded and
+    // broke the pagination bar's layout. The Previous/Next arrows still move
+    // one page at a time, which naturally slides the visible window once the
+    // page count crosses a window boundary.
+    const PAGE_WINDOW_SIZE = 10;
+    const pageCount = Math.max(0, Number.isFinite(pagination?.pageCount) ? pagination.pageCount : 1);
+    const windowStart = pagination ? Math.floor(pagination.pageIndex / PAGE_WINDOW_SIZE) * PAGE_WINDOW_SIZE : 0;
+    const windowEnd = Math.min(windowStart + PAGE_WINDOW_SIZE, pageCount);
+
     return (
         <div className="overflow-x-auto">
             <div className="inline-block min-w-full align-middle">
@@ -132,18 +142,21 @@ const DataTable = ({ data, columns, pagination, loading, emptyState, expandedRow
                                             <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
                                         </svg>
                                     </button>
-                                    {[...Array(Math.max(0, Number.isFinite(pagination.pageCount) ? pagination.pageCount : 1))].map((_, i) => (
-                                        <button
-                                            key={i}
-                                            onClick={() => pagination.onPageChange(i)}
-                                            className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium transition-colors ${pagination.pageIndex === i
-                                                    ? 'z-10 bg-primary-50 border-primary-500 text-primary-600'
-                                                    : 'bg-white border-neutral-300 text-slate-500 hover:bg-neutral-50'
-                                                }`}
-                                        >
-                                            {i + 1}
-                                        </button>
-                                    ))}
+                                    {[...Array(windowEnd - windowStart)].map((_, offset) => {
+                                        const i = windowStart + offset;
+                                        return (
+                                            <button
+                                                key={i}
+                                                onClick={() => pagination.onPageChange(i)}
+                                                className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium transition-colors ${pagination.pageIndex === i
+                                                        ? 'z-10 bg-primary-50 border-primary-500 text-primary-600'
+                                                        : 'bg-white border-neutral-300 text-slate-500 hover:bg-neutral-50'
+                                                    }`}
+                                            >
+                                                {i + 1}
+                                            </button>
+                                        );
+                                    })}
                                     <button
                                         onClick={() => pagination.onPageChange(pagination.pageIndex + 1)}
                                         disabled={pagination.pageIndex >= pagination.pageCount - 1}

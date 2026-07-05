@@ -33,6 +33,12 @@ public class DatabaseMigrationRunner {
         ensureWhatsAppMessageLogRetryColumns();
         ensureMissingIndexes();
         simplifyMedicineListTable();
+        migratePatientAgeToDateOfBirth(); // NEW
+        ensureConsultationNotePresetsTable(); // NEW
+        ensurePrescriptionPresetTables(); // NEW
+        ensurePresetDoctorIdColumns(); // NEW — per-doctor preset isolation
+        ensureInventoryItemHasOwnStockColumn(); // NEW
+        ensureInventoryServicesTables(); // NEW
     }
 
     /**
@@ -247,6 +253,255 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped (simplifyMedicineListTable): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Replaces patients.age (stored, goes stale every year) with
+     * patients.date_of_birth (computed live by Patient.getAge()).
+     *
+     * date_of_birth is added and left nullable — NOT promoted to NOT NULL —
+     * deliberately. PatientService already enforces "always required" at
+     * the application layer, and this project has twice hit real incidents
+     * (hospital_settings.shift_mode, users.is_trainer) where a NOT NULL
+     * column with no default broke every insert on a populated table. This
+     * migration avoids adding a third one.
+     */
+    private void migratePatientAgeToDateOfBirth() {
+        try {
+            Integer dobExists = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'patients' AND COLUMN_NAME = 'date_of_birth'",
+                Integer.class
+            );
+            if (dobExists != null && dobExists == 0) {
+                jdbcTemplate.execute("ALTER TABLE patients ADD COLUMN date_of_birth DATE DEFAULT NULL");
+                log.info("DB migration applied: patients.date_of_birth column added");
+            }
+
+            Integer ageExists = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'patients' AND COLUMN_NAME = 'age'",
+                Integer.class
+            );
+            if (ageExists != null && ageExists > 0) {
+                int updated = jdbcTemplate.update(
+                    "UPDATE patients SET date_of_birth = DATE_SUB(CURDATE(), INTERVAL age YEAR) " +
+                    "WHERE date_of_birth IS NULL"
+                );
+                log.info("DB migration applied: backfilled date_of_birth for {} patient(s) from age", updated);
+
+                jdbcTemplate.execute("ALTER TABLE patients DROP COLUMN age");
+                log.info("DB migration applied: dropped patients.age column");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (patients.age -> date_of_birth): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Creates the consultation_note_presets table if it does not exist.
+     * Stores per-hospital quick-note phrases doctors can insert with one
+     * click into Treatment Notes (and, in future, other consultation
+     * fields — see field_type).
+     * ddl-auto=update cannot create tables from scratch — this runner
+     * bridges that gap.
+     */
+    private void ensureConsultationNotePresetsTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'consultation_note_presets'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE consultation_note_presets (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  field_type VARCHAR(30) NOT NULL," +
+                    "  text VARCHAR(255) NOT NULL," +
+                    "  display_order INT NOT NULL DEFAULT 0," +
+                    "  is_active TINYINT(1) NOT NULL DEFAULT 1," +
+                    "  created_at DATETIME(6) NOT NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                    ")"
+                );
+                log.info("DB migration applied: consultation_note_presets table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (consultation_note_presets): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Creates the prescription_presets and prescription_preset_items tables
+     * if they do not exist. Stores per-hospital named bundles of medicines
+     * a doctor can apply to a prescription in one action.
+     * ddl-auto=update cannot create tables from scratch — this runner
+     * bridges that gap.
+     */
+    private void ensurePrescriptionPresetTables() {
+        try {
+            Integer presetCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'prescription_presets'",
+                Integer.class
+            );
+            if (presetCount != null && presetCount == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE prescription_presets (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  name VARCHAR(150) NOT NULL," +
+                    "  display_order INT NOT NULL DEFAULT 0," +
+                    "  is_active TINYINT(1) NOT NULL DEFAULT 1," +
+                    "  created_at DATETIME(6) NOT NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                    ")"
+                );
+                log.info("DB migration applied: prescription_presets table created");
+            }
+
+            Integer itemCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'prescription_preset_items'",
+                Integer.class
+            );
+            if (itemCount != null && itemCount == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE prescription_preset_items (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  preset_id BIGINT NOT NULL," +
+                    "  medicine_name VARCHAR(255) NOT NULL," +
+                    "  dosage VARCHAR(50) DEFAULT NULL," +
+                    "  frequency VARCHAR(50) DEFAULT NULL," +
+                    "  duration VARCHAR(50) DEFAULT NULL," +
+                    "  instructions VARCHAR(200) DEFAULT NULL," +
+                    "  sort_order INT NOT NULL DEFAULT 0," +
+                    "  PRIMARY KEY (id)," +
+                    "  FOREIGN KEY (preset_id) REFERENCES prescription_presets(id) ON DELETE CASCADE" +
+                    ")"
+                );
+                log.info("DB migration applied: prescription_preset_items table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (prescription presets): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Adds a nullable doctor_id column to prescription_presets and
+     * consultation_note_presets for per-doctor preset isolation. A NULL doctor_id
+     * means the preset is shared (visible to every doctor in the hospital); a set
+     * value scopes it privately to that doctor. Existing rows stay NULL, so they
+     * remain shared — no behaviour change for data created before this migration.
+     */
+    private void ensurePresetDoctorIdColumns() {
+        addNullableDoctorIdColumn("prescription_presets");
+        addNullableDoctorIdColumn("consultation_note_presets");
+    }
+
+    private void addNullableDoctorIdColumn(String table) {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '" + table + "' AND COLUMN_NAME = 'doctor_id'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute("ALTER TABLE " + table + " ADD COLUMN doctor_id BIGINT DEFAULT NULL");
+                log.info("DB migration applied: {}.doctor_id column added", table);
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped ({}.doctor_id): {}", table, e.getMessage());
+        }
+    }
+
+    /**
+     * Adds inventory_items.has_own_stock if it does not exist, defaulting
+     * every existing row to true (1) so current catalog items keep their
+     * exact current behavior (own-stock check + cascade to related items)
+     * until an admin explicitly marks one as a service item.
+     * ddl-auto=update can add columns but not backfill a specific default
+     * for pre-existing rows in every MySQL configuration -- this runner
+     * makes that explicit and idempotent.
+     */
+    private void ensureInventoryItemHasOwnStockColumn() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'inventory_items' AND COLUMN_NAME = 'has_own_stock'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute("ALTER TABLE inventory_items ADD COLUMN has_own_stock TINYINT(1) NOT NULL DEFAULT 1");
+                log.info("DB migration applied: inventory_items.has_own_stock column added (defaulted to true for existing rows)");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (inventory_items.has_own_stock): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Creates the global inventory catalog + per-hospital services tables if
+     * absent: inventory_master_items (platform-global item names),
+     * hospital_services (per-hospital billable procedures), and
+     * hospital_service_items (join to master items). Idempotent, each checked
+     * independently.
+     */
+    private void ensureInventoryServicesTables() {
+        try {
+            Integer masterCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'inventory_master_items'",
+                Integer.class);
+            if (masterCount != null && masterCount == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE inventory_master_items (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  name VARCHAR(255) NOT NULL," +
+                    "  created_at DATETIME(6) NOT NULL," +
+                    "  PRIMARY KEY (id)" +
+                    ")");
+                log.info("DB migration applied: inventory_master_items table created");
+            }
+
+            Integer svcCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'hospital_services'",
+                Integer.class);
+            if (svcCount != null && svcCount == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE hospital_services (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  name VARCHAR(150) NOT NULL," +
+                    "  charge DECIMAL(10,2) NOT NULL," +
+                    "  is_active TINYINT(1) NOT NULL DEFAULT 1," +
+                    "  created_at DATETIME(6) NOT NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                    ")");
+                log.info("DB migration applied: hospital_services table created");
+            }
+
+            Integer itemCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'hospital_service_items'",
+                Integer.class);
+            if (itemCount != null && itemCount == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE hospital_service_items (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  service_id BIGINT NOT NULL," +
+                    "  master_item_id BIGINT NOT NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  FOREIGN KEY (service_id) REFERENCES hospital_services(id) ON DELETE CASCADE" +
+                    ")");
+                log.info("DB migration applied: hospital_service_items table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (inventory services tables): {}", e.getMessage());
         }
     }
 }

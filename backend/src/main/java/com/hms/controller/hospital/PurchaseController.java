@@ -19,7 +19,7 @@ public class PurchaseController {
     private PurchaseService purchaseService;
 
     @PostMapping
-    public ResponseEntity<PurchaseInvoice> create(@RequestBody PurchaseRequest req) {
+    public ResponseEntity<PurchaseInvoice> create(@jakarta.validation.Valid @RequestBody PurchaseRequest req) {
         return ResponseEntity.ok(purchaseService.createPurchase(req));
     }
 

@@ -215,6 +215,38 @@ const platformService = {
         });
         return response.data;
     },
+
+    // ─── Global Master Item Catalog Management (Platform Admin) ──────────────
+    getMasterItems: async (search = '', page = 0, size = 10) => {
+        const params = { page, size };
+        if (search) params.search = search;
+        const response = await apiClient.get('/platform/inventory-master', { params });
+        return response.data;
+    },
+
+    createMasterItem: async (data) => {
+        const response = await apiClient.post('/platform/inventory-master', data);
+        return response.data;
+    },
+
+    updateMasterItem: async (id, data) => {
+        const response = await apiClient.put(`/platform/inventory-master/${id}`, data);
+        return response.data;
+    },
+
+    deleteMasterItem: async (id) => {
+        const response = await apiClient.delete(`/platform/inventory-master/${id}`);
+        return response.data;
+    },
+
+    importMasterItemsCsv: async (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await apiClient.post('/platform/inventory-master/import-csv', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        return response.data;
+    },
 };
 
 export default platformService;

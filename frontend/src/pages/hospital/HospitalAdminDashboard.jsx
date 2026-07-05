@@ -4,8 +4,11 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
+import { API_BASE_URL } from '../../services/apiService'; // BUG-028: single source-of-truth for base URL
 import { useToast } from '../../context/ToastContext';
 import ConfirmationModal from '../../components/ConfirmationModal';
+import NotePresetsManager from '../../components/NotePresetsManager';
+import PrescriptionPresetsManager from '../../components/PrescriptionPresetsManager';
 import { validateForm } from '../../utils/validation';
 import EmptyState from '../../components/EmptyState';
 import OverviewDashboard from '../../components/OverviewDashboard';
@@ -27,11 +30,13 @@ import PageHeader from '../../components/PageHeader';
 import WardsAndBeds from './WardsAndBeds';
 import WardModal from '../../components/WardModal';
 import useWebSocket from '../../hooks/useWebSocket';
+import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
 import { SkeletonDashboard, SkeletonFormCard, SkeletonSettingsCard, SkeletonTable, SkeletonStatsGrid, SkeletonOverviewDual } from '../../components/Skeleton';
 import reportsApi from '../../services/pharmacy/reportsApi';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
+import LowStockBanner from '../../components/LowStockBanner';
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     BarChart, Bar, Legend, PieChart, Pie, Cell
@@ -54,6 +59,8 @@ const HospitalAdminDashboard = () => {
     const modules = user?.modules || [];
     const hasOPD = modules.includes('OPD');
     const hasIPD = modules.includes('IPD');
+    // Tenant-aware label: clinic logins say "Clinic" wherever we'd otherwise say "Hospital".
+    const tenantWord = user?.hospitalType === 'CLINIC' ? 'Clinic' : 'Hospital';
     const defaultTab = 'overview';
     const activeTab = searchParams.get('tab') || defaultTab;
 
@@ -61,7 +68,7 @@ const HospitalAdminDashboard = () => {
     const setActiveTab = (tab) => {
         const newParams = { tab };
         setSearchParams(newParams);
-        setSearchTerm(''); // Clear search on tab switch
+        setSearchInput(''); // Clear search input on tab switch
         setPage(0); // Reset page to 0
     };
 
@@ -125,13 +132,15 @@ const HospitalAdminDashboard = () => {
     const { success, error: toastError, info } = useToast();
 
     // Confirmation Modal State
-    const [searchTerm, setSearchTerm] = useState('');
+    const [searchInput, setSearchInput] = useState('');
+    const searchTerm = useDebounce(searchInput, 500); // BUG-017: debounce main search input
 
     // Modal tracking state instead of activeTab
     const [modalType, setModalType] = useState(null);
 
     // Patients state for Overview tab
-    const [patientsSearchTerm, setPatientsSearchTerm] = useState('');
+    const [patientsSearchInput, setPatientsSearchInput] = useState('');
+    const patientsSearchTerm = useDebounce(patientsSearchInput, 500); // BUG-017: debounce overview patients search
     const [patientsPage, setPatientsPage] = useState(0);
     const [patientsTotalPages, setPatientsTotalPages] = useState(1);
     const [patientsTotalElements, setPatientsTotalElements] = useState(0);
@@ -157,6 +166,11 @@ const HospitalAdminDashboard = () => {
     const [resetPasswordModal, setResetPasswordModal] = useState({ isOpen: false, staff: null, role: '' });
     const [resetPasswordForm, setResetPasswordForm] = useState({ newPassword: '', confirmPassword: '', showNew: false, showConfirm: false, submitting: false, error: '' });
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    // Manually-expanded sidebar groups (Hospital Admin's grouped sidebar only —
+    // see groupedSidebarTabs below). The group containing the active tab is
+    // always shown expanded regardless of this set; this only tracks groups
+    // the user has opened in addition to that.
+    const [expandedSidebarGroups, setExpandedSidebarGroups] = useState(() => new Set());
 
 
     // OPD Modal State (Admin)
@@ -185,6 +199,9 @@ const HospitalAdminDashboard = () => {
     // OPD tab: Live / Date toggle
     const [opdTabView, setOpdTabView] = useState('Live');
     const [opdDateFilter, setOpdDateFilter] = useState(getISTDateString);
+
+    // Appointments tab: Today / Upcoming toggle (mirrors Receptionist dashboard)
+    const [appointmentsViewFilter, setAppointmentsViewFilter] = useState('today');
 
 
     // Help & Support state variables
@@ -222,38 +239,26 @@ const HospitalAdminDashboard = () => {
         }
     });
 
-    // Effect for loading data - Immediate for Tab change, Debounced for Search
+    // Clear searchInput when tab changes
     useEffect(() => {
-        const fetchImmediate = async () => {
-            // Reset page when tab changes (already handled in setTab but good for safety)
-            if (!searchTerm) loadData(page, pageSize);
-        };
+        setSearchInput('');
+        setPage(0);
+    }, [activeTab]);
 
-        if (searchTerm) {
-            const timer = setTimeout(() => {
-                setPage(0); // Reset to first page on search
-                loadData(0, pageSize);
-            }, 500);
-            return () => clearTimeout(timer);
-        } else {
-            fetchImmediate();
-        }
-    }, [activeTab, searchTerm, page, billingStatus, auditLogRoleFilter, patientTabView, patientDateFilter, opdTabView, opdDateFilter]);
+    // Effect for loading data
+    useEffect(() => {
+        // Prevent double fetch when searchInput was just cleared but debounced searchTerm hasn't updated yet
+        if (searchInput === '' && searchTerm !== '') return;
+        loadData(page, pageSize);
+    }, [activeTab, searchTerm, page, billingStatus, auditLogRoleFilter, patientTabView, patientDateFilter, opdTabView, opdDateFilter, appointmentsViewFilter]);
 
     // Periodic background polling replaced with WebSocket real-time sync
 
     // Effect for Patients list loading (Overview Tab specific)
     useEffect(() => {
         if (activeTab !== 'overview') return;
-
-        if (patientsSearchTerm) {
-            const timer = setTimeout(() => {
-                loadPatients(patientsSearchTerm, patientsPage);
-            }, 500);
-            return () => clearTimeout(timer);
-        } else {
-            loadPatients(patientsSearchTerm, patientsPage);
-        }
+        if (patientsSearchInput === '' && patientsSearchTerm !== '') return;
+        loadPatients(patientsSearchTerm, patientsPage);
     }, [activeTab, patientsSearchTerm, patientsPage, pageSize]);
 
     // Load hospital fees when Fees tab is active
@@ -743,7 +748,7 @@ const HospitalAdminDashboard = () => {
                     // Note: getAppointments now supports page/size, getDoctors might not return all if paginated
                     // For now, we fetch paginated appointments and maybe "all" doctors for lookup if possible or handle missing names
                     const [apptData, docData, patData] = await Promise.all([
-                        hospitalService.getAppointments(searchTerm,page, pageSize),
+                        hospitalService.getAppointments(searchTerm, page, pageSize, appointmentsViewFilter),
                         hospitalService.getDoctors('', 0, 100), // Attempt to get more doctors for lookup
                         hospitalService.getPatients('', 0, 1000) // Fetch ALL patients for lookup
                     ]);
@@ -978,9 +983,8 @@ const HospitalAdminDashboard = () => {
 
     const openPdfInNewTab = (endpointPath) => {
         const token = sessionStorage.getItem('token');
-        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
         const separator = endpointPath.includes('?') ? '&' : '?';
-        const url = `${baseUrl}${endpointPath}${separator}token=${encodeURIComponent(token)}`;
+        const url = `${API_BASE_URL}${endpointPath}${separator}token=${encodeURIComponent(token)}`;
         window.open(url, '_blank');
     };
 
@@ -1287,31 +1291,100 @@ const HospitalAdminDashboard = () => {
 
     const allTabs = [
         { id: 'overview', label: 'Overview', icon: null, requiredModule: null },
+        // Clinical workflow
         { id: 'patients', label: 'Patients', icon: null, requiredModule: 'OPD' },
         { id: 'appointments', label: 'Appointments', icon: null, requiredModule: 'APPOINTMENTS' },
         { id: 'opd', label: 'OPD', icon: null, requiredModule: 'OPD' },
+        { id: 'ipd', label: 'IPD', icon: null, requiredModule: 'IPD' },
         { id: 'wards', label: 'Wards & Beds', icon: null, requiredModule: 'IPD' },
-        { id: 'doctors', label: 'Doctors', icon: null, requiredModule: 'OPD' },
-        { id: 'receptionists', label: 'Receptionists', icon: null, requiredModule: 'OPD' },
-        { id: 'billing', label: 'Billing', icon: null, requiredModule: 'BILLING' },
+        { id: 'ot', label: 'Operation Theatre', icon: null, requiredModule: 'OT' },
+        { id: 'pathology', label: 'Pathology', icon: null, requiredModule: 'PATHOLOGY' },
+        // Pharmacy & inventory
         { id: 'pharmacy', label: 'Pharmacy', icon: null, requiredModule: 'PHARMACY' },
         { id: 'pharmacists', label: 'Pharmacists', icon: null, requiredModule: 'PHARMACY' },
         { id: 'inventory', label: 'Medicine Inventory', icon: null, requiredModule: 'MEDICAL_INVENTORY' },
-        { id: 'hospital-inventory', label: 'Hospital Inventory', icon: null, requiredModule: 'HOSPITAL_INVENTORY' },
-        { id: 'pathology', label: 'Pathology', icon: null, requiredModule: 'PATHOLOGY' },
-        { id: 'ipd', label: 'IPD', icon: null, requiredModule: 'IPD' },
-        { id: 'ot', label: 'Operation Theatre', icon: null, requiredModule: 'OT' },
+        { id: 'hospital-inventory', label: `${tenantWord} Inventory`, icon: null, requiredModule: 'HOSPITAL_INVENTORY' },
+        // Financial
+        { id: 'billing', label: 'Billing', icon: null, requiredModule: 'BILLING' },
         { id: 'fees', label: 'Fees', icon: null, requiredModule: 'BILLING' },
-        { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
+        // Staff
+        { id: 'doctors', label: 'Doctors', icon: null, requiredModule: 'OPD' },
+        { id: 'receptionists', label: 'Receptionists', icon: null, requiredModule: 'OPD' },
+        // Admin & meta
         { id: 'analytics', label: 'Reports & Analytics', icon: null, requiredModule: 'REPORTS' },
+        { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
         { id: 'messages', label: 'Messages', icon: null, requiredModule: null },
         { id: 'settings', label: 'Settings', icon: null, requiredModule: null },
         { id: 'support', label: 'Support', icon: null, requiredModule: null },
+        { id: 'quick-notes', label: 'Quick Notes', icon: null, requiredModule: null },
+        { id: 'prescription-presets', label: 'Prescription Presets', icon: null, requiredModule: null },
     ];
 
-    const tabs = allTabs.filter(tab =>
-        !tab.requiredModule || modules.includes(tab.requiredModule)
-    );
+    // In-Clinic medicine flow gates the Medicine Inventory tab. When an admin
+    // turns In-Clinic off, the tab is hidden (updated live via the SETTINGS_UPDATED
+    // WebSocket message, which refreshes user.inClinic — see useWebSocket).
+    const hasInClinic = user?.inClinic !== false;
+    const tabs = allTabs.filter(tab => {
+        if (tab.requiredModule && !modules.includes(tab.requiredModule)) return false;
+        if (tab.id === 'inventory' && !hasInClinic) return false;
+        return true;
+    });
+
+    // If the active tab is no longer visible (e.g. In-Clinic just got disabled
+    // while viewing Medicine Inventory), fall back to the overview tab.
+    useEffect(() => {
+        if (!tabs.some(t => t.id === activeTab)) {
+            setActiveTab(defaultTab);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [hasInClinic, activeTab]);
+
+    // Grouped sidebar — Hospital Admin only (user?.hospitalType === 'HOSPITAL').
+    // Clinic/Pharmacy admins and every other role keep the existing flat
+    // `tabs` list untouched; this is purely a presentational regrouping of
+    // the same tab ids/labels/routes computed above, so navigation, module
+    // gating, and permissions are unaffected.
+    // Dashboard/Overview is deliberately NOT one of these groups — it's a
+    // single item, so it stays a plain top-level link instead of a
+    // one-item dropdown (see groupedSidebarTabs below).
+    const SIDEBAR_GROUPS = [
+        { id: 'group-patient-management', label: 'Patient Management', tabIds: ['patients', 'appointments', 'opd', 'ipd', 'wards', 'ot', 'pathology'] },
+        { id: 'group-staff', label: 'Staff', tabIds: ['doctors', 'pharmacists', 'receptionists'] },
+        { id: 'group-pharmacy', label: 'Pharmacy', tabIds: ['pharmacy'] },
+        { id: 'group-inventory', label: 'Inventory', tabIds: ['inventory', 'hospital-inventory'] },
+        { id: 'group-finance', label: 'Finance', tabIds: ['billing', 'fees'] },
+        { id: 'group-reports', label: 'Reports', tabIds: ['analytics', 'audit-logs'] },
+        { id: 'group-communication', label: 'Communication', tabIds: ['messages'] },
+        { id: 'group-administration', label: 'Administration', tabIds: ['settings', 'support', 'quick-notes', 'prescription-presets'] },
+    ];
+
+    const isHospitalAdminTenant = user?.hospitalType === 'HOSPITAL';
+
+    const groupedSidebarTabs = isHospitalAdminTenant
+        ? [
+            ...tabs.filter(t => t.id === 'overview'),
+            ...SIDEBAR_GROUPS
+                .map(group => ({
+                    id: group.id,
+                    label: group.label,
+                    subItems: group.tabIds
+                        .map(id => tabs.find(t => t.id === id))
+                        .filter(Boolean),
+                    isExpanded: expandedSidebarGroups.has(group.id) || group.tabIds.includes(activeTab),
+                }))
+                .filter(group => group.subItems.length > 0),
+        ]
+        : tabs;
+
+    const handleToggleSidebarGroup = (groupId) => {
+        setExpandedSidebarGroups(prev => {
+            const next = new Set(prev);
+            if (next.has(groupId)) next.delete(groupId);
+            else next.add(groupId);
+            return next;
+        });
+    };
+
     // Pagination Object
     const pagination = {
         pageIndex: page,
@@ -1452,10 +1525,11 @@ const HospitalAdminDashboard = () => {
             {/* Sidebar */}
             <Sidebar
                 title="HMS Portal"
-                tabs={tabs}
+                tabs={groupedSidebarTabs}
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
-                footerTitle="Hospital"
+                onToggleGroup={isHospitalAdminTenant ? handleToggleSidebarGroup : undefined}
+                footerTitle={tenantWord}
                 footerData={user?.hospitalName}
                 variant="plain"
                 isCollapsed={sidebarCollapsed}
@@ -1475,6 +1549,9 @@ const HospitalAdminDashboard = () => {
 
                 {/* Main Content Area */}
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
+
+                    {/* Low Stock Warning Banner */}
+                    {modules.includes('HOSPITAL_INVENTORY') && <LowStockBanner />}
 
                     {/* Overview Tab - Stats & Inline Tables Split Grid */}
                     {activeTab === 'overview' && !loading && (
@@ -1535,8 +1612,8 @@ const HospitalAdminDashboard = () => {
                                             <input
                                                 type="text"
                                                 placeholder="Search patients..."
-                                                value={patientsSearchTerm}
-                                                onChange={(e) => setPatientsSearchTerm(e.target.value)}
+                                                value={patientsSearchInput}
+                                                onChange={(e) => setPatientsSearchInput(e.target.value)}
                                                 className="pl-9 pr-4 py-2 border border-neutral-300 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent w-full transition-all bg-neutral-50 focus:bg-white text-slate-800 placeholder-slate-400"
                                             />
                                             <span className="absolute left-3 top-2.5 text-slate-400">
@@ -1636,8 +1713,8 @@ const HospitalAdminDashboard = () => {
                         <PageHeader
                             title={tabs.find(t => t.id === activeTab)?.label}
                             subtitle={activeTab === 'settings' ? 'Configure operational settings and permissions' : activeTab === 'opd' ? 'Active patients currently in queue or being consulted' : `Manage hospital ${activeTab} records`}
-                            onSearch={(activeTab === 'fees' || activeTab === 'settings') ? null : (e) => setSearchTerm(e.target.value)}
-                            searchValue={(activeTab === 'fees' || activeTab === 'settings') ? '' : searchTerm}
+                            onSearch={(activeTab === 'fees' || activeTab === 'settings') ? null : (e) => setSearchInput(e.target.value)}
+                            searchValue={(activeTab === 'fees' || activeTab === 'settings') ? '' : searchInput}
                             searchPlaceholder={(activeTab === 'fees' || activeTab === 'settings') ? '' : `Search ${activeTab}...`}
                             onAdd={activeTab === 'opd' ? () => setIsAdminOpdModalOpen(true) : (activeTab !== 'billing' && activeTab !== 'audit-logs' && activeTab !== 'fees' && activeTab !== 'settings' && user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null)}
                             addLabel={activeTab === 'opd' ? 'New OPD' : (activeTab === 'fees' || activeTab === 'settings') ? '' : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`}
@@ -1651,7 +1728,7 @@ const HospitalAdminDashboard = () => {
                                                 onClick={() => {
                                                     setPatientTabView(view);
                                                     setPage(0);
-                                                    setSearchTerm('');
+                                                    setSearchInput('');
                                                 }}
                                                 className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${patientTabView === view
                                                     ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
@@ -1692,7 +1769,7 @@ const HospitalAdminDashboard = () => {
                                                 onClick={() => {
                                                     setOpdTabView(view);
                                                     setPage(0);
-                                                    setSearchTerm('');
+                                                    setSearchInput('');
                                                 }}
                                                 className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${opdTabView === view
                                                     ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
@@ -1722,6 +1799,22 @@ const HospitalAdminDashboard = () => {
                                         </svg>
                                         <span>Download PDF</span>
                                     </button>
+                                </div>
+                            ) : activeTab === 'appointments' ? (
+                                <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 h-[38px] items-center">
+                                    {['today', 'upcoming'].map(view => (
+                                        <button
+                                            key={view}
+                                            type="button"
+                                            onClick={() => { setAppointmentsViewFilter(view); setPage(0); }}
+                                            className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${appointmentsViewFilter === view
+                                                ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
+                                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                                }`}
+                                        >
+                                            {view.charAt(0).toUpperCase() + view.slice(1)}
+                                        </button>
+                                    ))}
                                 </div>
                             ) : activeTab === 'billing' ? (
                                 <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
@@ -1778,7 +1871,7 @@ const HospitalAdminDashboard = () => {
                         <>
                             {/* Overview tab content already rendered above */}
 
-                            {(activeTab === 'patients' || activeTab === 'doctors' || activeTab === 'pharmacists' || activeTab === 'receptionists' || activeTab === 'wards' || activeTab === 'billing' || activeTab === 'fees' || activeTab === 'opd') && (
+                            {(activeTab === 'patients' || activeTab === 'doctors' || activeTab === 'pharmacists' || activeTab === 'receptionists' || activeTab === 'wards' || activeTab === 'billing' || activeTab === 'fees' || activeTab === 'opd' || activeTab === 'appointments') && (
                                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
                                     {activeTab === 'patients' && (
                                         patients.length > 0 ? (
@@ -1902,7 +1995,7 @@ const HospitalAdminDashboard = () => {
                                 )}
                                 {activeTab === 'fees' && (
                                     <div className="p-6 max-w-6xl mx-auto">
-                                        <h2 className="text-2xl font-bold mb-6 text-gray-900">Hospital Fees & Charges</h2>
+                                        <h2 className="text-2xl font-bold mb-6 text-gray-900">{tenantWord} Fees & Charges</h2>
                                         {feesLoading ? (
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                                 <SkeletonFormCard fields={2} />
@@ -1946,7 +2039,7 @@ const HospitalAdminDashboard = () => {
                                                                 user?.role === 'HOSPITAL_ADMIN' ? (
                                                                     <button onClick={() => setFeesEditing(true)} className="flex-1 bg-gray-950 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-800 transition">Edit Standard Fees</button>
                                                                 ) : (
-                                                                    <div className="text-sm text-gray-500 text-center w-full">Only Hospital Admin can edit standard fees</div>
+                                                                    <div className="text-sm text-gray-500 text-center w-full">Only {tenantWord} Admin can edit standard fees</div>
                                                                 )
                                                             ) : (
                                                                 <>
@@ -2048,6 +2141,18 @@ const HospitalAdminDashboard = () => {
 
                         {activeTab === 'hospital-inventory' && (
                             <HospitalInventoryTab />
+                        )}
+
+                        {activeTab === 'quick-notes' && (
+                            <div className="max-w-2xl mx-auto my-4">
+                                <NotePresetsManager fieldType="TREATMENT_NOTES" isAdmin />
+                            </div>
+                        )}
+
+                        {activeTab === 'prescription-presets' && (
+                            <div className="max-w-3xl mx-auto my-4">
+                                <PrescriptionPresetsManager isAdmin />
+                            </div>
                         )}
                                 {activeTab === 'settings' && (
                                     <div className="p-6 bg-white rounded-2xl border border-gray-200/80 shadow-sm max-w-4xl mx-auto my-4">
@@ -3155,11 +3260,53 @@ const HospitalAdminDashboard = () => {
                             e.preventDefault();
                             if (!adminOpdForm.patientId) { toastError('Please select a valid patient from the suggestions'); return; }
                             if (!adminOpdForm.doctorId) { toastError('Please select a doctor'); return; }
+                            if (adminOpdForm.bp) {
+                                const bpVal = adminOpdForm.bp.trim();
+                                const bpMatch = bpVal.match(/^(\d{2,3})\s*\/\s*(\d{2,3})$/);
+                                if (!bpMatch) {
+                                    toastError("Blood pressure must be in format Systolic/Diastolic, e.g., 120/80");
+                                    return;
+                                }
+                                const systolic = parseInt(bpMatch[1], 10);
+                                const diastolic = parseInt(bpMatch[2], 10);
+                                if (systolic <= diastolic) {
+                                    toastError("Systolic blood pressure must be greater than diastolic blood pressure");
+                                    return;
+                                }
+                            }
+                            if (adminOpdForm.temperature) {
+                                const temp = parseFloat(adminOpdForm.temperature);
+                                if (isNaN(temp) || temp < 0) {
+                                    toastError("Temperature cannot be negative");
+                                    return;
+                                }
+                            }
+                            if (adminOpdForm.pulse) {
+                                const pulse = parseInt(adminOpdForm.pulse, 10);
+                                if (isNaN(pulse) || pulse < 0) {
+                                    toastError("Pulse cannot be negative");
+                                    return;
+                                }
+                            }
+                            if (adminOpdForm.weight) {
+                                const weight = parseFloat(adminOpdForm.weight);
+                                if (isNaN(weight) || weight < 0) {
+                                    toastError("Weight cannot be negative");
+                                    return;
+                                }
+                            }
+                            if (adminOpdForm.spo2) {
+                                const spo2 = parseInt(adminOpdForm.spo2, 10);
+                                if (isNaN(spo2) || spo2 < 0) {
+                                    toastError("SpO2 cannot be negative");
+                                    return;
+                                }
+                            }
                             try {
                                 const payload = {
                                     patientId: adminOpdForm.patientId,
                                     doctorId: adminOpdForm.doctorId,
-                                    bp: adminOpdForm.bp,
+                                    bp: adminOpdForm.bp ? adminOpdForm.bp : null,
                                     temperature: adminOpdForm.temperature ? parseFloat(adminOpdForm.temperature) : null,
                                     pulse: adminOpdForm.pulse ? parseInt(adminOpdForm.pulse) : null,
                                     weight: adminOpdForm.weight ? parseFloat(adminOpdForm.weight) : null,
@@ -3228,25 +3375,25 @@ const HospitalAdminDashboard = () => {
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">BP</label>
-                                    <input className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.bp} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, bp: e.target.value }))} placeholder="120/80" />
+                                    <input className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.bp} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, bp: e.target.value.replace(/[^0-9/]/g, '') }))} placeholder="120/80" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-semibold text-neutral-700 mb-2">Temperature (°C)</label>
-                                    <input type="number" step="0.1" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.temperature} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, temperature: e.target.value }))} />
+                                    <label className="block text-sm font-semibold text-neutral-700 mb-2">Temperature (°F)</label>
+                                    <input type="number" step="0.1" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.temperature} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, temperature: e.target.value }))} />
                                 </div>
                             </div>
                             <div className="grid grid-cols-3 gap-4">
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Pulse</label>
-                                    <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.pulse} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, pulse: e.target.value }))} />
+                                    <input type="number" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.pulse} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, pulse: e.target.value }))} />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Weight (kg)</label>
-                                    <input type="number" step="0.1" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.weight} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, weight: e.target.value }))} />
+                                    <input type="number" step="0.1" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.weight} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, weight: e.target.value }))} />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">SpO2 (%)</label>
-                                    <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.spo2} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, spo2: e.target.value }))} />
+                                    <input type="number" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.spo2} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, spo2: e.target.value }))} />
                                 </div>
                             </div>
                             <div>
@@ -3530,7 +3677,7 @@ const HospitalAdminDashboard = () => {
                         <form onSubmit={handleSaveCustomFee} className="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full border border-gray-200">
                             <div className="bg-white px-6 pt-6 pb-4">
                                 <h3 className="text-lg leading-6 font-bold text-gray-900 mb-4">
-                                    {customFeeModal.mode === 'add' ? 'Add Custom Hospital Fee' : 'Edit Custom Hospital Fee'}
+                                    {customFeeModal.mode === 'add' ? `Add Custom ${tenantWord} Fee` : `Edit Custom ${tenantWord} Fee`}
                                 </h3>
                                 <div className="space-y-4">
                                     <div>

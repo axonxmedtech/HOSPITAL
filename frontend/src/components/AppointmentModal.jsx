@@ -162,7 +162,7 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
             Object.assign(rules, {
                 patientName: ['required', 'name'],
                 patientPhone: ['required', 'phone'],
-                patientAge: ['required', 'age'],
+                patientDateOfBirth: ['required', 'dob'],
                 patientGender: ['required']
             });
         } else {
@@ -208,6 +208,7 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
                     <h3 className="text-xl font-bold text-gray-800">Add Appointment</h3>
                     <button
                         onClick={handleClose}
+                        aria-label="Close modal"
                         className="text-gray-400 hover:text-gray-600 transition text-2xl leading-none"
                     >
                         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -219,8 +220,9 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
                 <form onSubmit={handleSubmit} className="space-y-4">
                     {/* Toggle for Existing/New Patient */}
                     <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-                        <label className="flex items-center cursor-pointer">
+                        <label className="flex items-center cursor-pointer" htmlFor="is-new-patient">
                             <input
+                                id="is-new-patient"
                                 type="checkbox"
                                 checked={isNewPatient}
                                 onChange={(e) => setIsNewPatient(e.target.checked)}
@@ -236,8 +238,9 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
                     {isNewPatient ? (
                         <>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Patient Name *</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="patient-name">Patient Name *</label>
                                 <input
+                                    id="patient-name"
                                     type="text"
                                     placeholder="Enter patient name"
                                     value={formData.patientName || ''}
@@ -247,8 +250,9 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
                                 {errors.patientName && <p className="text-red-500 text-xs mt-1">{errors.patientName}</p>}
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Patient Phone *</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="patient-phone">Patient Phone *</label>
                                 <input
+                                    id="patient-phone"
                                     type="tel"
                                     placeholder="Enter 10-digit phone number"
                                     value={formData.patientPhone || ''}
@@ -260,21 +264,21 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Age *</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="patient-dob">Date of Birth *</label>
                                     <input
-                                        type="number"
-                                        min="0"
-                                        max="120"
-                                        placeholder="Age"
-                                        value={formData.patientAge || ''}
-                                        onChange={(e) => handleChange('patientAge', e.target.value)}
-                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.patientAge ? 'border-red-500' : 'border-gray-300'}`}
+                                        id="patient-dob"
+                                        type="date"
+                                        max={new Date().toISOString().split('T')[0]}
+                                        value={formData.patientDateOfBirth || ''}
+                                        onChange={(e) => handleChange('patientDateOfBirth', e.target.value)}
+                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.patientDateOfBirth ? 'border-red-500' : 'border-gray-300'}`}
                                     />
-                                    {errors.patientAge && <p className="text-red-500 text-xs mt-1">{errors.patientAge}</p>}
+                                    {errors.patientDateOfBirth && <p className="text-red-500 text-xs mt-1">{errors.patientDateOfBirth}</p>}
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Gender *</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="patient-gender">Gender *</label>
                                     <select
+                                        id="patient-gender"
                                         value={formData.patientGender || ''}
                                         onChange={(e) => handleChange('patientGender', e.target.value)}
                                         className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.patientGender ? 'border-red-500' : 'border-gray-300'}`}
@@ -288,8 +292,9 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="patient-email">Email</label>
                                 <input
+                                    id="patient-email"
                                     type="email"
                                     placeholder="Enter email (optional)"
                                     value={formData.patientEmail || ''}
@@ -300,7 +305,7 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
                         </>
                     ) : (
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Patient *</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="patient-search">Patient *</label>
 
                             <div className="relative">
                                 <div className="relative">
@@ -310,6 +315,7 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
                                         </svg>
                                     </span>
                                     <input
+                                        id="patient-search"
                                         type="text"
                                         placeholder="Search by name or phone..."
                                         value={formData.patientName || ''}
@@ -362,7 +368,7 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
 
                     {/* Doctor Selection */}
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Doctor *</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="doctor-select">Doctor *</label>
                         {doctors && doctors.length === 1 ? (
                             <div className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 text-gray-800 rounded-lg text-sm font-semibold flex items-center justify-between">
                                 <span>{doctors[0].name} - {doctors[0].specialization}</span>
@@ -370,6 +376,7 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
                             </div>
                         ) : (
                             <select
+                                id="doctor-select"
                                 value={formData.doctorId || ''}
                                 onChange={(e) => handleChange('doctorId', parseInt(e.target.value))}
                                 className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.doctorId ? 'border-red-500' : 'border-gray-300'}`}
@@ -383,8 +390,9 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
 
                     {/* Date */}
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="appointment-date">Date *</label>
                         <input
+                            id="appointment-date"
                             type="date"
                             value={formData.appointmentDate || ''}
                             onChange={(e) => handleChange('appointmentDate', e.target.value)}
@@ -415,6 +423,8 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
                                                 type="button"
                                                 onClick={() => !isBooked && handleSlotSelect(time)}
                                                 disabled={isBooked}
+                                                aria-label={`Select slot for ${time}${isBooked ? ' (booked)' : ''}`}
+                                                aria-pressed={isSelected}
                                                 className={`
                                                     py-2 px-1 text-sm rounded-lg border transition-all
                                                     ${isBooked
@@ -437,8 +447,9 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
 
                     {/* Notes */}
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="appointment-notes">Notes</label>
                         <textarea
+                            id="appointment-notes"
                             value={formData.notes || ''}
                             onChange={(e) => handleChange('notes', e.target.value)}
                             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"

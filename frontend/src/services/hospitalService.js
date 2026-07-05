@@ -728,6 +728,46 @@ const hospitalService = {
         return response.data;
     },
 
+    getConsultationNotePresets: async (fieldType) => {
+        const response = await apiClient.get(`/hospital/consultation-note-presets?fieldType=${fieldType}`);
+        return response.data;
+    },
+
+    createConsultationNotePreset: async (data) => {
+        const response = await apiClient.post('/hospital/consultation-note-presets', data);
+        return response.data;
+    },
+
+    updateConsultationNotePreset: async (id, data) => {
+        const response = await apiClient.put(`/hospital/consultation-note-presets/${id}`, data);
+        return response.data;
+    },
+
+    deleteConsultationNotePreset: async (id) => {
+        const response = await apiClient.delete(`/hospital/consultation-note-presets/${id}`);
+        return response.data;
+    },
+
+    getPrescriptionPresets: async () => {
+        const response = await apiClient.get('/hospital/prescription-presets');
+        return response.data;
+    },
+
+    createPrescriptionPreset: async (data) => {
+        const response = await apiClient.post('/hospital/prescription-presets', data);
+        return response.data;
+    },
+
+    updatePrescriptionPreset: async (id, data) => {
+        const response = await apiClient.put(`/hospital/prescription-presets/${id}`, data);
+        return response.data;
+    },
+
+    deletePrescriptionPreset: async (id) => {
+        const response = await apiClient.delete(`/hospital/prescription-presets/${id}`);
+        return response.data;
+    },
+
     updateBillItems: async (billId, items) => {
         const response = await apiClient.put(`/hospital/billing/${billId}/items`, items);
         return response.data;
@@ -773,28 +813,33 @@ const hospitalService = {
         return response.data;
     },
 
-    searchHospitalInventoryCatalog: async (query) => {
-        const response = await apiClient.get(`/hospital/hospital-inventory/search?query=${encodeURIComponent(query)}`);
+    getGlobalMasterItems: async () => {
+        const response = await apiClient.get('/hospital/inventory-master');
         return response.data;
     },
 
-    getHospitalInventoryCatalog: async () => {
-        const response = await apiClient.get('/hospital/hospital-inventory/catalog');
+    getHospitalServices: async () => {
+        const response = await apiClient.get('/hospital/services');
         return response.data;
     },
 
-    addHospitalInventoryCatalog: async (item) => {
-        const response = await apiClient.post('/hospital/hospital-inventory/catalog', item);
+    createHospitalService: async (data) => {
+        const response = await apiClient.post('/hospital/services', data);
         return response.data;
     },
 
-    updateHospitalInventoryCatalog: async (id, item) => {
-        const response = await apiClient.put(`/hospital/hospital-inventory/catalog/${id}`, item);
+    updateHospitalService: async (id, data) => {
+        const response = await apiClient.put(`/hospital/services/${id}`, data);
         return response.data;
     },
 
-    deleteHospitalInventoryCatalog: async (id) => {
-        const response = await apiClient.delete(`/hospital/hospital-inventory/catalog/${id}`);
+    deleteHospitalService: async (id) => {
+        const response = await apiClient.delete(`/hospital/services/${id}`);
+        return response.data;
+    },
+
+    getLowStockItems: async () => {
+        const response = await apiClient.get('/hospital/hospital-inventory/low-stock');
         return response.data;
     },
 

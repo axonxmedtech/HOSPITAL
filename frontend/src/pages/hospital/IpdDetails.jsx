@@ -672,6 +672,20 @@ const IpdDetails = () => {
                                                 <button onClick={() => setMedicineModal(prev => ({ ...prev, isOpen: false }))} className="px-3 py-1 bg-gray-100 rounded text-sm">Cancel</button>
                                                 <button onClick={async () => {
                                                     if (!medicineModal.medicineName) return toastError('Medicine name required');
+                                                    if (!medicineModal.dose || !medicineModal.dose.trim()) return toastError('Dose is required');
+                                                    if (!medicineModal.frequency || !medicineModal.frequency.trim()) return toastError('Frequency is required');
+                                                    if (!medicineModal.type) return toastError('Type is required');
+                                                    if (!medicineModal.route) return toastError('Route is required');
+                                                    if (!medicineModal.startDate) return toastError('Start date is required');
+                                                    
+                                                    const today = new Date().toISOString().split('T')[0];
+                                                    if (medicineModal.startDate < today) {
+                                                        return toastError('Prescription start date cannot be in the past');
+                                                    }
+                                                    if (!medicineModal.durationDays || medicineModal.durationDays <= 0) {
+                                                        return toastError('Duration must be at least 1 day');
+                                                    }
+
                                                     setMedicineModal(prev => ({ ...prev, saving: true }));
                                                     try {
                                                         const payload = {

@@ -11,7 +11,7 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, onAdjustmentComplete }) =
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!adjustmentQty || isNaN(adjustmentQty)) {
+        if (!adjustmentQty || Number.isNaN(Number(adjustmentQty))) {
             setError("Please enter a valid quantity.");
             return;
         }

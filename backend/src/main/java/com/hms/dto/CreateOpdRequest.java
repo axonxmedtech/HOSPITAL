@@ -1,23 +1,42 @@
 package com.hms.dto;
 
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+
 public class CreateOpdRequest {
-    private Long patientId;
+    @NotBlank(message = "Patient ID is required")
+    private String patientId;
     private Long receptionistId;
-    private Long doctorId;
+    private String doctorId;
+
+    @Pattern(regexp = "^(\\d{2,3})\\s*/\\s*(\\d{2,3})$", message = "Blood pressure must be in format Systolic/Diastolic, e.g., 120/80")
     private String bp;
+
+    @DecimalMin(value = "0.0", message = "Temperature cannot be negative")
     private Double temperature;
+
+    @Min(value = 0, message = "Pulse cannot be negative")
     private Integer pulse;
+
+    @DecimalMin(value = "0.0", message = "Weight cannot be negative")
     private Double weight;
+
+    @Min(value = 0, message = "SpO2 cannot be negative")
     private Integer spo2;
+
     private String problem;
+
+    @NotBlank(message = "Visit type is required")
     private String visitType; // NEW or FOLLOWUP
 
-    public Long getPatientId() { return patientId; }
-    public void setPatientId(Long patientId) { this.patientId = patientId; }
+    public String getPatientId() { return patientId; }
+    public void setPatientId(String patientId) { this.patientId = patientId; }
     public Long getReceptionistId() { return receptionistId; }
     public void setReceptionistId(Long receptionistId) { this.receptionistId = receptionistId; }
-    public Long getDoctorId() { return doctorId; }
-    public void setDoctorId(Long doctorId) { this.doctorId = doctorId; }
+    public String getDoctorId() { return doctorId; }
+    public void setDoctorId(String doctorId) { this.doctorId = doctorId; }
     public String getBp() { return bp; }
     public void setBp(String bp) { this.bp = bp; }
     public Double getTemperature() { return temperature; }

@@ -13,13 +13,14 @@ import React from 'react';
  * @param {number} rows - Number of rows for textarea
  * @param {string} placeholder - Placeholder text
  * @param {string} type - Input type (text, email, number, etc.)
+ * @param {boolean} showCount - Whether to display the character counter (default true)
  * @param {object} rest - Other props
  */
-const CharCountInput = ({ 
-    value = '', 
-    onChange, 
-    maxLength, 
-    label, 
+const CharCountInput = ({
+    value = '',
+    onChange,
+    maxLength,
+    label,
     required = false,
     error = '',
     textarea = false,
@@ -27,7 +28,8 @@ const CharCountInput = ({
     placeholder = '',
     type = 'text',
     className = '',
-    ...rest 
+    showCount = true,
+    ...rest
 }) => {
     const currentLength = value?.length || 0;
     const isNearLimit = maxLength && currentLength > maxLength * 0.8;
@@ -60,7 +62,7 @@ const CharCountInput = ({
                     {...rest}
                 />
                 
-                {maxLength && (
+                {maxLength && showCount && (
                     <div className={`absolute bottom-2 right-2 text-xs font-medium ${
                         isOverLimit ? 'text-red-600' : 
                         isNearLimit ? 'text-orange-600' : 

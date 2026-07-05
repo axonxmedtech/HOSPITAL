@@ -1,4 +1,4 @@
-﻿CREATE DATABASE  IF NOT EXISTS `railway` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
+CREATE DATABASE  IF NOT EXISTS `railway` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
 USE `railway`;
 -- MySQL dump 10.13  Distrib 8.0.36, for Win64 (x86_64)
 --
@@ -527,9 +527,9 @@ DROP TABLE IF EXISTS `patients`;
 CREATE TABLE `patients` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `address` varchar(255) DEFAULT NULL,
-  `age` int NOT NULL,
   `created_at` datetime(6) NOT NULL,
   `custom_id` varchar(255) DEFAULT NULL,
+  `date_of_birth` date DEFAULT NULL,
   `email` varchar(100) DEFAULT NULL,
   `gender` varchar(10) NOT NULL,
   `hospital_id` bigint NOT NULL,
@@ -938,6 +938,55 @@ CREATE TABLE `hospital_settings` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 --
+-- Consultation note presets (per-hospital quick-note phrases doctors can
+-- insert with one click into Treatment Notes)
+--
+
+CREATE TABLE `consultation_note_presets` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `field_type` varchar(30) NOT NULL,
+  `text` varchar(255) NOT NULL,
+  `display_order` int NOT NULL DEFAULT '0',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `FK_consultation_note_presets_hospital` (`hospital_id`),
+  CONSTRAINT `FK_consultation_note_presets_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Prescription presets (per-hospital named bundles of medicines a doctor
+-- can apply to a prescription in one action)
+--
+
+CREATE TABLE `prescription_presets` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `name` varchar(150) NOT NULL,
+  `display_order` int NOT NULL DEFAULT '0',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `FK_prescription_presets_hospital` (`hospital_id`),
+  CONSTRAINT `FK_prescription_presets_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `prescription_preset_items` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `preset_id` bigint NOT NULL,
+  `medicine_name` varchar(255) NOT NULL,
+  `dosage` varchar(50) DEFAULT NULL,
+  `frequency` varchar(50) DEFAULT NULL,
+  `duration` varchar(50) DEFAULT NULL,
+  `instructions` varchar(200) DEFAULT NULL,
+  `sort_order` int NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  KEY `FK_prescription_preset_items_preset` (`preset_id`),
+  CONSTRAINT `FK_prescription_preset_items_preset` FOREIGN KEY (`preset_id`) REFERENCES `prescription_presets` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
 -- WhatsApp integration tables (added with V4 migration)
 --
 
@@ -978,4 +1027,54 @@ CREATE TABLE IF NOT EXISTS `whatsapp_message_log` (
   PRIMARY KEY (`id`),
   KEY `idx_wml_hospital_status` (`hospital_id`, `status`),
   KEY `idx_wml_retry` (`status`, `next_retry_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Inventory items catalog (non-medicine hospital inventory: syringes,
+-- fluids, consumables, surgical items, gloves, etc.). This table was
+-- previously created only via Hibernate ddl-auto=update from the
+-- InventoryItem entity and had never been added to this canonical dump;
+-- documented here now, including has_own_stock added by
+-- DatabaseMigrationRunner.ensureInventoryItemHasOwnStockColumn().
+--
+
+CREATE TABLE `inventory_items` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `type` varchar(50) DEFAULT NULL,
+  `manufacturer` varchar(100) DEFAULT NULL,
+  `hospital_id` bigint NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `linked_fee_id` bigint DEFAULT NULL,
+  `relative_item_ids` varchar(1000) DEFAULT NULL,
+  `has_own_stock` tinyint(1) NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `inventory_master_items` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `hospital_services` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `name` varchar(150) NOT NULL,
+  `charge` decimal(10,2) NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `FK_hospital_services_hospital` (`hospital_id`),
+  CONSTRAINT `FK_hospital_services_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `hospital_service_items` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `service_id` bigint NOT NULL,
+  `master_item_id` bigint NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `FK_hospital_service_items_service` (`service_id`),
+  CONSTRAINT `FK_hospital_service_items_service` FOREIGN KEY (`service_id`) REFERENCES `hospital_services` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

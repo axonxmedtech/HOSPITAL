@@ -12,8 +12,8 @@ import axios from 'axios';
  * @version Phase-1
  */
 
-// Base URL for backend API
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+// Base URL for backend API — exported so components can import instead of redeclaring (BUG-028)
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
 // Create axios instance
 const apiClient = axios.create({
@@ -43,38 +43,69 @@ apiClient.interceptors.request.use(
   }
 );
 
-// Response interceptor to handle authentication errors
+// Map a tenant type to its login page — resilient to missing/invalid session data.
+const loginUrlForType = (hospitalType) => {
+  if (hospitalType === 'CLINIC') return '/login/clinic';
+  if (hospitalType === 'PHARMACY') return '/login/pharmacy';
+  return '/login/hospital';
+};
+
+// Clear the session and send the user to the correct login page (401 handling).
+const clearSessionAndRedirect = () => {
+  let hospitalType = null;
+  try {
+    const userStr = sessionStorage.getItem('user');
+    hospitalType = userStr ? JSON.parse(userStr)?.hospitalType : null;
+  } catch {
+    hospitalType = null; // fall back to the default hospital login
+  }
+  sessionStorage.removeItem('token');
+  sessionStorage.removeItem('user');
+  globalThis.location.href = loginUrlForType(hospitalType);
+};
+
+// Helper to handle standard response errors (such as unauthorized session redirect)
+const handleResponseError = (error) => {
+  // Timeout error — surface a clean message instead of network error
+  if (error.code === 'ECONNABORTED') {
+    return Promise.reject(new Error('Request timed out. Please try again.'));
+  }
+
+  // If 401 Unauthorized (token expired/missing) on a non-login call, redirect to login
+  const isLoginEndpoint = error.config?.url?.includes('/login');
+  if (error.response?.status === 401 && !isLoginEndpoint) {
+    clearSessionAndRedirect();
+  }
+
+  return Promise.reject(error);
+};
+
+// Response interceptor to handle retries and authentication errors
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
-    // Don't redirect on login endpoints - let the login page handle errors
-    const isLoginEndpoint = error.config?.url?.includes('/login');
-
-    // Timeout error — surface a clean message instead of network error
-    if (error.code === 'ECONNABORTED') {
-      return Promise.reject(new Error('Request timed out. Please try again.'));
+  async (error) => {
+    const config = error.config;
+    // Only retry safe GET requests on network errors, timeout errors, or 5xx server errors
+    if (!config || !config.method || config.method.toLowerCase() !== 'get') {
+      return handleResponseError(error);
     }
 
-    // If 401 Unauthorized (token expired/missing), redirect to login
-    if (error.response && error.response.status === 401) {
-      if (!isLoginEndpoint) {
-        try {
-          const userStr = sessionStorage.getItem('user');
-          const hospitalType = userStr ? JSON.parse(userStr)?.hospitalType : null;
-          sessionStorage.removeItem('token');
-          sessionStorage.removeItem('user');
-          if (hospitalType === 'CLINIC') window.location.href = '/login/clinic';
-          else if (hospitalType === 'PHARMACY') window.location.href = '/login/pharmacy';
-          else window.location.href = '/login/hospital';
-        } catch (_) {
-          sessionStorage.removeItem('token');
-          sessionStorage.removeItem('user');
-          window.location.href = '/login/hospital';
-        }
-      }
+    config.__retryCount = config.__retryCount || 0;
+
+    if (config.__retryCount >= 3) {
+      return handleResponseError(error);
     }
 
-    return Promise.reject(error);
+    const shouldRetry = !error.response || (error.response.status >= 500 && error.response.status <= 599) || error.code === 'ECONNABORTED';
+
+    if (shouldRetry) {
+      config.__retryCount += 1;
+      const delay = 1000 * config.__retryCount;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      return apiClient(config);
+    }
+
+    return handleResponseError(error);
   }
 );
 

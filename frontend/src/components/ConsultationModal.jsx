@@ -5,6 +5,8 @@ import { useToast } from '../context/ToastContext';
 import MedicineAutocomplete from './MedicineAutocomplete';
 import CharCountInput from './CharCountInput';
 import IpdAdmitModal from './IpdAdmitModal';
+import ManageNotePresetsModal from './ManageNotePresetsModal';
+import ManagePrescriptionPresetsModal from './ManagePrescriptionPresetsModal';
 
 const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, opd }) => {
     console.log("ConsultationModal render:", { isOpen, appointment, patient, opd });
@@ -14,6 +16,11 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     const [showIpdAdmitModal, setShowIpdAdmitModal] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [admitModalOpd, setAdmitModalOpd] = useState(null);
+    const [notePresets, setNotePresets] = useState([]);
+    const [showManagePresets, setShowManagePresets] = useState(false);
+    const [prescriptionPresets, setPrescriptionPresets] = useState([]);
+    const [showManagePrescriptionPresets, setShowManagePrescriptionPresets] = useState(false);
+    const [editingMedicineIndex, setEditingMedicineIndex] = useState(null);
 
     const user = authService.getCurrentUser();
     const modules = user?.modules || [];
@@ -65,11 +72,106 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         }
     }, [isOpen, opd, hasBilling]);
 
+    useEffect(() => {
+        if (isOpen) {
+            hospitalService.getConsultationNotePresets('TREATMENT_NOTES')
+                .then(data => setNotePresets(data || []))
+                .catch(() => setNotePresets([]));
+        }
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (isOpen) {
+            hospitalService.getPrescriptionPresets()
+                .then(data => setPrescriptionPresets(data || []))
+                .catch(() => setPrescriptionPresets([]));
+        }
+    }, [isOpen]);
+
+    // Real-time sync: refresh the preset dropdown/chips when a preset changes
+    // anywhere in this hospital (e.g. admin assigns one to this doctor).
+    useEffect(() => {
+        if (!isOpen) return;
+        const handler = () => {
+            hospitalService.getConsultationNotePresets('TREATMENT_NOTES')
+                .then(data => setNotePresets(data || [])).catch(() => { /* non-critical refresh */ });
+            hospitalService.getPrescriptionPresets()
+                .then(data => setPrescriptionPresets(data || [])).catch(() => { /* non-critical refresh */ });
+        };
+        globalThis.addEventListener('hms:presets-updated', handler);
+        return () => globalThis.removeEventListener('hms:presets-updated', handler);
+    }, [isOpen]);
+
     const [hospitalInventory, setHospitalInventory] = useState([]);
     const [hospitalInventoryCatalog, setHospitalInventoryCatalog] = useState([]);
     const [hospitalInvSearch, setHospitalInvSearch] = useState('');
     const [hospitalInvDropdown, setHospitalInvDropdown] = useState(false);
     const [hospitalInvItems, setHospitalInvItems] = useState([]);
+    // Extracted so the JSX handlers aren't deeply-nested arrows-in-arrows.
+    const removeHospitalInvItem = (serviceId) =>
+        setHospitalInvItems(prev => prev.filter(x => x.serviceId !== serviceId));
+
+    // Returns the first dependency name that lacks `needed` units of stock, or
+    // null. `blockOnMissing` preserves the original per-call semantics: some
+    // paths treat an entirely-missing dependency as out of stock, one does not.
+    const firstDepletedDependency = (itemNames, needed, blockOnMissing) => {
+        for (const depName of (itemNames || [])) {
+            const match = hospitalInventory.find(x => x.isActive !== false && x.name?.toLowerCase() === depName.toLowerCase());
+            if (!match) {
+                if (blockOnMissing) return depName;
+                continue;
+            }
+            if (match.stockQuantity < needed) return depName;
+        }
+        return null;
+    };
+
+    const decrementHospitalInvItem = (item) => {
+        if (item.qty > 1) {
+            setHospitalInvItems(prev => prev.map(x => x.serviceId === item.serviceId ? { ...x, qty: x.qty - 1 } : x));
+        }
+    };
+
+    const incrementHospitalInvItem = (item) => {
+        const depleted = firstDepletedDependency(item.itemNames, item.qty + 1, true);
+        if (depleted) {
+            toastError(`Cannot perform ${item.name}: ${depleted} is out of stock in hospital inventory.`);
+            return;
+        }
+        setHospitalInvItems(prev => prev.map(x => x.serviceId === item.serviceId ? { ...x, qty: x.qty + 1 } : x));
+    };
+
+    const addOrIncrementHospitalInvItem = (catItem) => {
+        const existing = hospitalInvItems.find(x => x.serviceId === catItem.id);
+        if (existing) {
+            // Increment: original ignores a fully-missing dependency here.
+            const depleted = firstDepletedDependency(catItem.itemNames, existing.qty + 1, false);
+            if (depleted) {
+                toastError(`Cannot perform ${catItem.name}: ${depleted} is out of stock in hospital inventory.`);
+                return;
+            }
+            setHospitalInvItems(prev => prev.map(x => x === existing ? { ...x, qty: x.qty + 1 } : x));
+        } else {
+            // First add: original blocks when a dependency is missing or below 1.
+            const depleted = firstDepletedDependency(catItem.itemNames, 1, true);
+            if (depleted) {
+                toastError(`Cannot perform ${catItem.name}: ${depleted} is out of stock in hospital inventory.`);
+                setHospitalInvSearch('');
+                setHospitalInvDropdown(false);
+                return;
+            }
+            setHospitalInvItems(prev => [...prev, {
+                serviceId: catItem.id,
+                name: catItem.name,
+                qty: 1,
+                feeAmount: catItem.charge || 0,
+                feeName: catItem.name,
+                itemNames: catItem.itemNames || []
+            }]);
+        }
+        setHospitalInvSearch('');
+        setHospitalInvDropdown(false);
+    };
 
     useEffect(() => {
         if (isOpen) {
@@ -101,12 +203,12 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                 try {
                     const [invRes, catRes] = await Promise.all([
                         hospitalService.getHospitalInventory(),
-                        hospitalService.getHospitalInventoryCatalog()
+                        hospitalService.getHospitalServices()
                     ]);
-                    setHospitalInventory((invRes || []).filter(x => x.isActive !== false && x.stockQuantity > 0));
+                    setHospitalInventory(invRes || []);
                     setHospitalInventoryCatalog(catRes || []);
                 } catch (err) {
-                    console.error('Failed to load hospital inventory', err);
+                    console.error('Failed to load hospital services/inventory', err);
                 }
             };
             fetchInventory();
@@ -212,11 +314,22 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         setFormData(prev => ({ ...prev, [field]: value }));
     };
 
-    const handleAddMedicine = () => {
+    const handleInsertPreset = (text) => {
         setFormData(prev => ({
             ...prev,
-            prescription: [...prev.prescription, newMedicine]
+            treatmentNotes: prev.treatmentNotes ? `${prev.treatmentNotes}\n${text}` : text,
         }));
+    };
+
+    const handleAddMedicine = () => {
+        setFormData(prev => {
+            if (editingMedicineIndex !== null) {
+                const updated = [...prev.prescription];
+                updated[editingMedicineIndex] = newMedicine;
+                return { ...prev, prescription: updated };
+            }
+            return { ...prev, prescription: [...prev.prescription, newMedicine] };
+        });
         setNewMedicine({
             medicineName: '',
             dosage: '',
@@ -224,6 +337,53 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
             duration: '',
             instructions: ''
         });
+        setEditingMedicineIndex(null);
+    };
+
+    const handleEditMedicine = (index) => {
+        setNewMedicine(formData.prescription[index]);
+        setEditingMedicineIndex(index);
+    };
+
+    const handleCancelEditMedicine = () => {
+        setNewMedicine({
+            medicineName: '',
+            dosage: '',
+            frequency: '',
+            duration: '',
+            instructions: ''
+        });
+        setEditingMedicineIndex(null);
+    };
+
+    const handleApplyPrescriptionPreset = (presetId) => {
+        if (!presetId) return;
+        const preset = prescriptionPresets.find(p => String(p.id) === String(presetId));
+        if (!preset || !preset.items || preset.items.length === 0) return;
+        const itemsToAdd = preset.items.map(({ medicineName, dosage, frequency, duration, instructions }) => ({
+            medicineName, dosage: dosage || '', frequency: frequency || '', duration: duration || '', instructions: instructions || ''
+        }));
+        setFormData(prev => ({
+            ...prev,
+            prescription: [...prev.prescription, ...itemsToAdd]
+        }));
+    };
+
+    const handleSaveCurrentAsPreset = async () => {
+        if (formData.prescription.length === 0) {
+            toastError('Add at least one medicine before saving a preset');
+            return;
+        }
+        const name = window.prompt('Name this preset (e.g. "Fever Protocol"):');
+        if (!name || !name.trim()) return;
+        try {
+            await hospitalService.createPrescriptionPreset({ name: name.trim(), items: formData.prescription });
+            success('Preset saved');
+            const data = await hospitalService.getPrescriptionPresets();
+            setPrescriptionPresets(data || []);
+        } catch (err) {
+            toastError(err?.response?.data || 'Failed to save preset');
+        }
     };
 
     const handleRemoveMedicine = (index) => {
@@ -231,6 +391,15 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
             ...prev,
             prescription: prev.prescription.filter((_, i) => i !== index)
         }));
+        if (editingMedicineIndex === index) {
+            // The row being edited was itself removed — clear the edit form.
+            handleCancelEditMedicine();
+        } else if (editingMedicineIndex !== null && index < editingMedicineIndex) {
+            // A row before the one being edited was removed — the array
+            // shifted, so the edit target's index must shift down too, or
+            // "Save Changes" would write into the wrong (now-shifted) slot.
+            setEditingMedicineIndex(editingMedicineIndex - 1);
+        }
     };
 
     const handleSubmit = async () => {
@@ -253,22 +422,15 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
             duration: item.duration || '',
             instructions: item.instructions || ''
         }));
-        // Build charges: standard fees + hospital inventory items (via linked fee)
-        const inventoryCharges = hospitalInvItems.map(item => ({
-            description: `${item.feeName || item.name} (Qty: ${item.qty})`,
-            amount: (item.feeAmount || 0) * item.qty
-        }));
         payload.charges = [
-            ...appliedCharges,
-            ...inventoryCharges
+            ...appliedCharges
         ].map(c => ({
             description: c.description,
             amount: Number(c.amount || 0)
         }));
         // Include hospital inventory items used
         payload.hospitalInventoryItems = hospitalInvItems.map(item => ({
-            stockId: item.stockId,
-            name: item.name,
+            serviceId: item.serviceId,
             quantity: item.qty
         }));
 
@@ -309,22 +471,15 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
             duration: item.duration || '',
             instructions: item.instructions || ''
         }));
-        // Build charges: standard fees + hospital inventory items (via linked fee)
-        const inventoryCharges = hospitalInvItems.map(item => ({
-            description: `${item.feeName || item.name} (Qty: ${item.qty})`,
-            amount: (item.feeAmount || 0) * item.qty
-        }));
         payload.charges = [
-            ...appliedCharges,
-            ...inventoryCharges
+            ...appliedCharges
         ].map(c => ({
             description: c.description,
             amount: Number(c.amount || 0)
         }));
         // Include hospital inventory items used
         payload.hospitalInventoryItems = hospitalInvItems.map(item => ({
-            stockId: item.stockId,
-            name: item.name,
+            serviceId: item.serviceId,
             quantity: item.qty
         }));
 
@@ -387,6 +542,14 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                         <div className="flex justify-between py-2 border-b border-gray-200">
                                             <span className="text-gray-500">Age</span>
                                             <span className="font-semibold text-gray-800">{patientDetails.patient.age} years</span>
+                                        </div>
+                                        <div className="flex justify-between py-2 border-b border-gray-200">
+                                            <span className="text-gray-500">Date of Birth</span>
+                                            <span className="font-semibold text-gray-800">
+                                                {patientDetails.patient.dateOfBirth
+                                                    ? new Date(patientDetails.patient.dateOfBirth + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                                                    : '—'}
+                                            </span>
                                         </div>
                                         <div className="flex justify-between py-2 border-b border-gray-200">
                                             <span className="text-gray-500">Gender</span>
@@ -527,12 +690,12 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                                 </div>
                                             )}
 
-                                            {/* Hospital Inventory Search */}
+                                            {/* Hospital Inventory Search — chargeable catalog items only */}
                                             {hasHospitalInventory && (
                                                 <div className="relative">
                                                     <input
                                                         type="text"
-                                                        placeholder="Search hospital stock items (saline, syringe, gloves...)..."
+                                                        placeholder="Search services (nebulization, dressing...)..."
                                                         value={hospitalInvSearch}
                                                         onChange={(e) => { setHospitalInvSearch(e.target.value); setHospitalInvDropdown(true); }}
                                                         onFocus={() => setHospitalInvDropdown(true)}
@@ -541,55 +704,23 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                                     />
                                                     {hospitalInvDropdown && hospitalInvSearch.trim().length >= 1 && (
                                                         <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto divide-y divide-gray-100">
-                                                            {hospitalInventory
-                                                                .filter(item => item.name?.toLowerCase().includes(hospitalInvSearch.toLowerCase()))
-                                                                .map(item => {
-                                                                    const catItem = hospitalInventoryCatalog.find(c => c.name?.toLowerCase() === item.name?.toLowerCase());
-                                                                    const linkedFeeId = catItem?.linkedFeeId || null;
+                                                            {hospitalInventoryCatalog
+                                                                .filter(catItem => catItem.name?.toLowerCase().includes(hospitalInvSearch.toLowerCase()))
+                                                                .map(catItem => {
                                                                     return (
                                                                         <button
-                                                                            key={item.id}
+                                                                            key={catItem.id}
                                                                             type="button"
-                                                                            onClick={() => {
-                                                                                const existing = hospitalInvItems.find(x => x.stockId === item.id);
-                                                                                if (existing) {
-                                                                                    if (existing.qty < item.stockQuantity) {
-                                                                                        setHospitalInvItems(prev => prev.map(x => x.stockId === item.id ? { ...x, qty: x.qty + 1 } : x));
-                                                                                    }
-                                                                                } else {
-                                                                                    // Resolve fee info from linkedFeeId
-                                                                                    // linkedFeeId is a numeric HospitalFee.id (custom fee only)
-                                                                                    // Standard fees (consultation/casepaper) are applied universally via appliedCharges
-                                                                                    let feeName = null, feeAmount = 0;
-                                                                                    if (linkedFeeId) {
-                                                                                        const fee = availableCustomFees.find(f => String(f.id) === String(linkedFeeId));
-                                                                                        if (fee) { feeName = fee.name; feeAmount = Number(fee.defaultAmount); }
-                                                                                    }
-                                                                                    setHospitalInvItems(prev => [...prev, {
-                                                                                        stockId: item.id,
-                                                                                        name: item.name,
-                                                                                        qty: 1,
-                                                                                        maxStock: item.stockQuantity,
-                                                                                        linkedFeeId,
-                                                                                        feeName: feeName || item.name,
-                                                                                        feeAmount
-                                                                                    }]);
-                                                                                }
-                                                                                setHospitalInvSearch('');
-                                                                                setHospitalInvDropdown(false);
-                                                                            }}
-                                                                            className="w-full text-left px-3 py-2 hover:bg-slate-50 flex justify-between items-center text-xs"
+                                                                            onClick={() => addOrIncrementHospitalInvItem(catItem)}
+                                                                            className="w-full text-left px-3 py-2 flex justify-between items-center text-xs hover:bg-slate-50"
                                                                         >
-                                                                            <div>
-                                                                                <span className="font-semibold text-gray-800">{item.name}</span>
-                                                                                {catItem?.linkedFeeId && <span className="ml-2 text-xs text-teal-600">+fee</span>}
-                                                                            </div>
-                                                                            <span className="text-gray-400">Stock: {item.stockQuantity}</span>
+                                                                            <span className="font-semibold text-gray-800">{catItem.name}</span>
+                                                                            <span className="text-gray-455 font-bold">₹{catItem.charge?.toFixed(2)}</span>
                                                                         </button>
                                                                     );
                                                                 })}
-                                                            {hospitalInventory.filter(item => item.name?.toLowerCase().includes(hospitalInvSearch.toLowerCase())).length === 0 && (
-                                                                <div className="p-2 text-center text-xs text-gray-400">No matching stock items found.</div>
+                                                            {hospitalInventoryCatalog.filter(catItem => catItem.name?.toLowerCase().includes(hospitalInvSearch.toLowerCase())).length === 0 && (
+                                                                <div className="p-2 text-center text-xs text-gray-400">No matching services found.</div>
                                                             )}
                                                         </div>
                                                     )}
@@ -602,7 +733,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                                     <table className="min-w-full text-xs">
                                                         <thead className="bg-slate-50 text-gray-500 font-medium border-b border-gray-200">
                                                             <tr>
-                                                                <th className="px-3 py-2 text-left">Item</th>
+                                                                <th className="px-3 py-2 text-left">Service</th>
                                                                 <th className="px-3 py-2 text-center">Qty</th>
                                                                 <th className="px-3 py-2 text-right">Charge</th>
                                                                 <th className="px-3 py-2 text-right">Action</th>
@@ -610,27 +741,26 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                                         </thead>
                                                         <tbody className="divide-y divide-gray-100">
                                                             {hospitalInvItems.map((item) => (
-                                                                <tr key={item.stockId} className="hover:bg-slate-50/50">
+                                                                <tr key={item.serviceId} className="hover:bg-slate-50/50">
                                                                     <td className="px-3 py-2 font-semibold text-gray-800">{item.name}</td>
                                                                     <td className="px-3 py-2 text-center">
                                                                         <div className="inline-flex items-center gap-1">
-                                                                            <button type="button" onClick={() => { if (item.qty > 1) setHospitalInvItems(prev => prev.map(x => x.stockId === item.stockId ? {...x, qty: x.qty - 1} : x)); }} className="w-5 h-5 border border-gray-300 rounded text-gray-500 hover:bg-slate-100">-</button>
+                                                                            <button type="button" onClick={() => decrementHospitalInvItem(item)} className="w-5 h-5 border border-gray-300 rounded text-gray-500 hover:bg-slate-100">-</button>
                                                                             <span className="font-bold w-4 text-center">{item.qty}</span>
-                                                                            <button type="button" onClick={() => { if (item.qty < item.maxStock) setHospitalInvItems(prev => prev.map(x => x.stockId === item.stockId ? {...x, qty: x.qty + 1} : x)); }} className="w-5 h-5 border border-gray-300 rounded text-gray-500 hover:bg-slate-100">+</button>
+                                                                            <button type="button" onClick={() => incrementHospitalInvItem(item)} className="w-5 h-5 border border-gray-300 rounded text-gray-500 hover:bg-slate-100">+</button>
                                                                         </div>
                                                                     </td>
                                                                     <td className="px-3 py-2 text-right text-teal-700 font-semibold">
-                                                                        {item.feeAmount ? `₹${item.feeAmount * item.qty}` : <span className="text-gray-400">No charge</span>}
-                                                                        {item.feeName && item.feeAmount ? <div className="text-[10px] text-gray-400">{item.feeName}</div> : null}
+                                                                        ₹{(item.feeAmount * item.qty).toFixed(2)}
                                                                     </td>
                                                                     <td className="px-3 py-2 text-right">
-                                                                        <button type="button" onClick={() => setHospitalInvItems(prev => prev.filter(x => x.stockId !== item.stockId))} className="text-red-500 hover:text-red-700 font-semibold">Remove</button>
+                                                                        <button type="button" onClick={() => removeHospitalInvItem(item.serviceId)} className="text-red-500 hover:text-red-700 font-semibold">Remove</button>
                                                                     </td>
                                                                 </tr>
                                                             ))}
                                                             <tr className="bg-slate-50 font-semibold border-t border-gray-200">
                                                                 <td colSpan={2} className="px-3 py-2 text-left text-gray-700">Total Added Charges</td>
-                                                                <td className="px-3 py-2 text-right text-teal-600 font-bold">₹{hospitalInvItems.reduce((s, x) => s + ((x.feeAmount || 0) * x.qty), 0)}</td>
+                                                                <td className="px-3 py-2 text-right text-teal-600 font-bold">₹{hospitalInvItems.reduce((s, x) => s + ((x.feeAmount || 0) * x.qty), 0).toFixed(2)}</td>
                                                                 <td />
                                                             </tr>
                                                         </tbody>
@@ -839,6 +969,37 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                         placeholder="Enter treatment plan and notes..."
                                     />
 
+                                    <div className="flex flex-wrap items-center gap-2 -mt-2">
+                                        {notePresets.map(preset => (
+                                            <button
+                                                key={preset.id}
+                                                type="button"
+                                                onClick={() => handleInsertPreset(preset.text)}
+                                                className="inline-flex items-center px-3 py-1 text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200 rounded-full hover:bg-teal-100 transition"
+                                            >
+                                                {preset.text}
+                                            </button>
+                                        ))}
+                                        {notePresets.length === 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowManagePresets(true)}
+                                                className="text-xs text-gray-500 hover:text-gray-700 underline"
+                                            >
+                                                Add your first quick note
+                                            </button>
+                                        )}
+                                        {notePresets.length > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowManagePresets(true)}
+                                                className="text-xs text-gray-500 hover:text-gray-700 underline ml-1"
+                                            >
+                                                Manage
+                                            </button>
+                                        )}
+                                    </div>
+
                                     <div>
                                         <div className="flex items-center gap-3">
                                             <input
@@ -900,13 +1061,33 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                 </div>
                             ) : (
                                 <div className="space-y-4">
+                                    {/* Prescription Presets */}
+                                    <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-3 rounded-lg border border-gray-200">
+                                        <select
+                                            onChange={(e) => { handleApplyPrescriptionPreset(e.target.value); e.target.value = ''; }}
+                                            defaultValue=""
+                                            className="flex-1 min-w-[200px] border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+                                        >
+                                            <option value="" disabled>Apply a prescription preset...</option>
+                                            {prescriptionPresets.map(preset => (
+                                                <option key={preset.id} value={preset.id}>{preset.name} ({(preset.items || []).length} medicine{(preset.items || []).length === 1 ? '' : 's'})</option>
+                                            ))}
+                                        </select>
+                                        <button type="button" onClick={handleSaveCurrentAsPreset} className="text-xs text-gray-600 hover:text-gray-800 underline whitespace-nowrap">
+                                            Save current as preset
+                                        </button>
+                                        <button type="button" onClick={() => setShowManagePrescriptionPresets(true)} className="text-xs text-gray-600 hover:text-gray-800 underline whitespace-nowrap">
+                                            Manage Presets
+                                        </button>
+                                    </div>
+
                                     {/* Prescription List */}
                                     {formData.prescription.length > 0 && (
                                         <div className="mb-6">
                                             <h4 className="text-sm font-semibold text-gray-700 mb-3">Prescribed Medicines ({formData.prescription.length})</h4>
                                             <div className="space-y-2">
                                                 {formData.prescription.map((med, index) => (
-                                                    <div key={index} className="flex items-center justify-between bg-gray-50 p-3 rounded-lg border border-gray-200">
+                                                    <div key={index} className={`flex items-center justify-between p-3 rounded-lg border ${editingMedicineIndex === index ? 'bg-primary-50 border-primary-300' : 'bg-gray-50 border-gray-200'}`}>
                                                         <div className="flex-1">
                                                             <div className="font-semibold text-gray-800">{med.medicineName}</div>
                                                             <div className="text-xs text-gray-500 mt-1">
@@ -914,6 +1095,12 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                                                 {med.instructions && ` • ${med.instructions}`}
                                                             </div>
                                                         </div>
+                                                        <button
+                                                            onClick={() => handleEditMedicine(index)}
+                                                            className="ml-3 text-indigo-600 hover:text-indigo-800 text-xs font-semibold"
+                                                        >
+                                                            Edit
+                                                        </button>
                                                         <button
                                                             onClick={() => handleRemoveMedicine(index)}
                                                             className="ml-3 text-gray-500 hover:text-gray-700"
@@ -929,7 +1116,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                     )}
 
                                     <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                                        <h4 className="text-sm font-semibold text-gray-700 mb-3">Add Medicine</h4>
+                                        <h4 className="text-sm font-semibold text-gray-700 mb-3">{editingMedicineIndex !== null ? 'Edit Medicine' : 'Add Medicine'}</h4>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div className="col-span-2">
                                                 <MedicineAutocomplete
@@ -976,13 +1163,23 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                                 className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500"
                                             />
                                         </div>
-                                        <button
-                                            onClick={handleAddMedicine}
-                                            disabled={!newMedicine.medicineName}
-                                            className="mt-3 w-full bg-primary-600 text-white py-2 rounded-lg hover:bg-primary-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-semibold"
-                                        >
-                                            + Add Medicine
-                                        </button>
+                                        <div className="mt-3 flex gap-2">
+                                            <button
+                                                onClick={handleAddMedicine}
+                                                disabled={!newMedicine.medicineName}
+                                                className="flex-1 bg-primary-600 text-white py-2 rounded-lg hover:bg-primary-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-semibold"
+                                            >
+                                                {editingMedicineIndex !== null ? 'Save Changes' : '+ Add Medicine'}
+                                            </button>
+                                            {editingMedicineIndex !== null && (
+                                                <button
+                                                    onClick={handleCancelEditMedicine}
+                                                    className="px-4 py-2 text-sm font-semibold text-gray-600 hover:text-gray-800"
+                                                >
+                                                    Cancel
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -1036,6 +1233,25 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                     }}
                 />
             )}
+            <ManageNotePresetsModal
+                isOpen={showManagePresets}
+                onClose={() => {
+                    setShowManagePresets(false);
+                    hospitalService.getConsultationNotePresets('TREATMENT_NOTES')
+                        .then(data => setNotePresets(data || []))
+                        .catch(() => {});
+                }}
+                fieldType="TREATMENT_NOTES"
+            />
+            <ManagePrescriptionPresetsModal
+                isOpen={showManagePrescriptionPresets}
+                onClose={() => {
+                    setShowManagePrescriptionPresets(false);
+                    hospitalService.getPrescriptionPresets()
+                        .then(data => setPrescriptionPresets(data || []))
+                        .catch(() => {});
+                }}
+            />
         </div>
     );
 };

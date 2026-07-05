@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import authService from '../services/authService';
+import { API_BASE_URL } from '../services/apiService'; // BUG-028: central base URL
 
 /**
  * useWebSocket - Custom hook for managing multi-tenant real-time WebSocket sync.
@@ -36,7 +37,6 @@ export default function useWebSocket(user, setUser, loadData) {
             wsRef.current = null;
         }
 
-        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
         const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         
         const token = sessionStorage.getItem('token');
@@ -77,6 +77,11 @@ export default function useWebSocket(user, setUser, loadData) {
                     if (loadDataRef.current) {
                         loadDataRef.current(false);
                     }
+                } else if (data.type === 'PRESETS_UPDATED') {
+                    // Preset lists are owned by self-contained components (managers,
+                    // consultation dropdowns). Fan out via a window event so they can
+                    // reload without opening their own WebSocket connections.
+                    globalThis.dispatchEvent(new CustomEvent('hms:presets-updated'));
                 }
             } catch (err) {
                 // message parse failed silently

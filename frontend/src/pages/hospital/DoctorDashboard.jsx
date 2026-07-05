@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
+import { API_BASE_URL } from '../../services/apiService'; // BUG-028: single source-of-truth for base URL
 import { useToast } from '../../context/ToastContext';
 import EmptyState from '../../components/EmptyState';
 import ConfirmationModal from '../../components/ConfirmationModal';
@@ -12,6 +13,7 @@ import HistoryDrawer from '../../components/HistoryDrawer';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import useWebSocket from '../../hooks/useWebSocket';
+import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
 
 import PageHeader from '../../components/PageHeader';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -24,8 +26,8 @@ import PatientDetailsModal from '../../components/PatientDetailsModal';
 import ProfileModal from '../../components/ProfileModal';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
 import { SkeletonDashboard, SkeletonStatsGrid, SkeletonOverviewDual, SkeletonTable } from '../../components/Skeleton';
-import MedicineInventoryTab from '../../components/MedicineInventoryTab';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
+import LowStockBanner from '../../components/LowStockBanner';
 
 /**
  * DoctorDashboard - Doctor dashboard
@@ -42,6 +44,7 @@ const DoctorDashboard = () => {
     const [user, setUser] = useState(() => authService.getCurrentUser());
     const modules = user?.modules || [];
     const hasIPD = modules.includes('IPD');
+    const hasAppointments = modules.includes('APPOINTMENTS');
     const [searchParams, setSearchParams] = useSearchParams();
     const activeTab = searchParams.get('tab') || 'overview';
     const viewFilter = searchParams.get('appointmentFilter') || 'today';
@@ -62,7 +65,10 @@ const DoctorDashboard = () => {
     const [todaysFollowUps, setTodaysFollowUps] = useState([]);
     const [patients, setPatients] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [lowStockItems, setLowStockItems] = useState([]);
+    // Scoped loading indicator for just the Appointments card/table, so switching
+    // the Today/Upcoming/History filter doesn't blow away the whole dashboard's
+    // full-page skeleton (that's reserved for actual tab switches).
+    const [appointmentsLoading, setAppointmentsLoading] = useState(false);
 
     // View Prescription Modal State
     const [viewPrescriptionModal, setViewPrescriptionModal] = useState({
@@ -85,7 +91,8 @@ const DoctorDashboard = () => {
     const [totalPages, setTotalPages] = useState(1);
     const [totalElements, setTotalElements] = useState(0);
     const [totalAppointments, setTotalAppointments] = useState(0);
-    const [searchTerm, setSearchTerm] = useState('');
+    const [searchInput, setSearchInput] = useState('');
+    const searchTerm = useDebounce(searchInput, 500); // BUG-017: debounce search input
 
     const { success, error: toastError, info } = useToast();
     const navigate = useNavigate();
@@ -272,16 +279,26 @@ const DoctorDashboard = () => {
     };
 
     useEffect(() => {
+        setSearchInput('');
         setPage(1);
         if (activeTab === 'opd') { setOpdTabView('Live'); setOpdDateFilter(todayStr); }
         if (activeTab === 'patients') { setPatientTabView('All'); setPatientDateFilter(todayStr); }
-    }, [activeTab, searchTerm, viewFilter, billingStatus]);
+    }, [activeTab]);
+
+    // Only an actual tab switch shows the full-page loading skeleton — a
+    // dedicated effect keyed on just [activeTab], so it can't misfire on
+    // filter/search/page changes within the same tab. (Deriving "is this a
+    // tab switch" from a manually-mutated ref compared against activeTab
+    // doesn't survive React 18 StrictMode's double-invocation of effects in
+    // dev: the ref update from the first invocation makes the second one
+    // think nothing changed, which can leave loading stuck true. Deriving
+    // purely from React's own dependency-array diffing avoids that.)
+    useEffect(() => {
+        setLoading(true);
+    }, [activeTab]);
 
     useEffect(() => {
-        const timer = setTimeout(() => {
-            loadData();
-        }, 500);
-        return () => clearTimeout(timer);
+        loadData(false);
     }, [activeTab, searchTerm, viewFilter, billingStatus, opdDateFilter, opdTabView, patientTabView, patientDateFilter, page]);
 
     // WebSocket connection will be initialized below loadData definition to avoid ReferenceError
@@ -308,21 +325,27 @@ const DoctorDashboard = () => {
         if (showSpinner) setLoading(true);
         try {
             if (activeTab === 'appointments') {
-                const localPage = page - 1;
-                const data = await hospitalService.getMyAppointments(viewFilter, searchTerm, localPage, ITEMS_PER_PAGE,);
-                // Handle both array and paginated response
-                const appointmentsArray = Array.isArray(data) ? data : (data.content || []);
-                setAppointments(appointmentsArray);
-                setTotalElements(data.totalElements || 0);
-                setTotalAppointments(data.totalElements || 0);
-                setTotalPages(data.totalPages || 1);
+                setAppointmentsLoading(true);
+                try {
+                    const localPage = page - 1;
+                    const data = await hospitalService.getMyAppointments(viewFilter, searchTerm, localPage, ITEMS_PER_PAGE,);
+                    // Handle both array and paginated response
+                    const appointmentsArray = Array.isArray(data) ? data : (data.content || []);
+                    setAppointments(appointmentsArray);
+                    setTotalElements(data.totalElements || 0);
+                    setTotalAppointments(data.totalElements || 0);
+                    setTotalPages(data.totalPages || 1);
+                } finally {
+                    setAppointmentsLoading(false);
+                }
             } else if (activeTab === 'overview') {
+                setAppointmentsLoading(true);
                 try {
                     const data = await hospitalService.getMyAppointments(viewFilter, searchTerm, 0, 100);
                     const appointmentsArray = Array.isArray(data) ? data : (data.content || []);
                     setAppointments(appointmentsArray);
                     setTotalAppointments(data.totalElements || appointmentsArray.length);
-                    
+
                     const followUpsData = await hospitalService.getTodaysFollowUps();
                     setTodaysFollowUps(followUpsData || []);
 
@@ -334,6 +357,8 @@ const DoctorDashboard = () => {
                     }
                 } catch (err) {
                     console.error('Failed to load overview appointments and followups', err);
+                } finally {
+                    setAppointmentsLoading(false);
                 }
             } else if (activeTab === 'patients') {
                 const dateParam = patientTabView === 'Date' ? patientDateFilter : '';
@@ -429,54 +454,13 @@ const DoctorDashboard = () => {
                     setOpds([]);
                 }
             }
-
-            // Check for low-stock items if in Clinic mode or Solo mode
-            try {
-                let lowStock = [];
-                const promises = [];
-
-                if (user?.inClinic !== false) {
-                    promises.push(
-                        hospitalService.getInventoryMedicines()
-                            .then(inv => (inv || [])
-                                .filter(item => item.isActive !== false && item.stockQuantity <= item.minStockLevel)
-                                .map(item => ({ ...item, isMedicine: true }))
-                            )
-                            .catch(err => {
-                                console.error("Failed to load medicine inventory for low stock alerts", err);
-                                return [];
-                            })
-                    );
-                }
-
-                if (user?.receptionMode === 'SOLO') {
-                    promises.push(
-                        hospitalService.getHospitalInventory()
-                            .then(inv => (inv || [])
-                                .filter(item => item.isActive !== false && item.stockQuantity <= item.minStockLevel)
-                                .map(item => ({ ...item, isHospitalItem: true }))
-                            )
-                            .catch(err => {
-                                console.error("Failed to load hospital inventory for low stock alerts", err);
-                                return [];
-                            })
-                    );
-                }
-
-                if (promises.length > 0) {
-                    const results = await Promise.all(promises);
-                    lowStock = results.flat();
-                }
-
-                setLowStockItems(lowStock);
-            } catch (err) {
-                console.error("Failed to check for low-stock items", err);
-                setLowStockItems([]);
-            }
         } catch (err) {
             toastError('Failed to load data');
         } finally {
-            if (showSpinner) setLoading(false);
+            // Unconditionally clear — the request that's finishing is the one
+            // that should decide the final loading state, regardless of
+            // whether it was the call that originally turned it on.
+            setLoading(false);
         }
     };
 
@@ -522,11 +506,14 @@ const DoctorDashboard = () => {
                 'Cancel Appointment',
                 'Are you sure you want to cancel this appointment? This action cannot be undone.',
                 async (reason) => {
+                    const oldAppointments = [...appointments];
+                    setAppointments(prev => prev.map(appt => appt.id === id ? { ...appt, status: newStatus } : appt));
                     try {
-                        await hospitalService.updateAppointmentStatus(id, newStatus);
+                        await hospitalService.updateAppointmentStatus(id, newStatus, reason);
                         success('Appointment cancelled successfully');
-                        loadData();
+                        loadData(false);
                     } catch (err) {
+                        setAppointments(oldAppointments);
                         toastError('Failed to cancel appointment');
                     }
                 },
@@ -538,11 +525,14 @@ const DoctorDashboard = () => {
                 `${action} Appointment`,
                 `Are you sure you want to mark this appointment as ${newStatus.toLowerCase()}?`,
                 async () => {
+                    const oldAppointments = [...appointments];
+                    setAppointments(prev => prev.map(appt => appt.id === id ? { ...appt, status: newStatus } : appt));
                     try {
                         await hospitalService.updateAppointmentStatus(id, newStatus);
                         success(`Appointment ${newStatus.toLowerCase()} successfully`);
-                        loadData();
+                        loadData(false);
                     } catch (err) {
+                        setAppointments(oldAppointments);
                         toastError(`Failed to ${action.toLowerCase()} appointment`);
                     }
                 }
@@ -711,15 +701,18 @@ const DoctorDashboard = () => {
     const hasInClinic = user?.inClinic !== false;
     const hasMedicalInventory = modules.includes('MEDICAL_INVENTORY');
     const hasHospitalInventory = modules.includes('HOSPITAL_INVENTORY');
+    // Tenant-aware label: clinic logins say "Clinic" wherever we'd otherwise say "Hospital".
+    const tenantWord = user?.hospitalType === 'CLINIC' ? 'Clinic' : 'Hospital';
 
     const tabs = [
         { id: 'overview', label: 'Overview', icon: null },
-        ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
-        { id: 'opd', label: 'OPD', icon: null },
         { id: 'patients', label: 'Patients', icon: null },
+        ...(hasAppointments ? [{ id: 'appointments', label: 'Appointments', icon: null }] : []),
+        { id: 'opd', label: 'OPD', icon: null },
+        ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
         ...((isSolo || hasBilling) ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
         ...((isSolo && hasInClinic && hasMedicalInventory) ? [{ id: 'inventory', label: 'Medicine Inventory', icon: null }] : []),
-        ...(isSolo && hasHospitalInventory ? [{ id: 'hospital-inventory', label: 'Hospital Inventory', icon: null }] : []),
+        ...(isSolo && hasHospitalInventory ? [{ id: 'hospital-inventory', label: `${tenantWord} Inventory`, icon: null }] : []),
     ];
 
     // Fallback if the URL parameter tab is not currently valid/visible
@@ -768,9 +761,8 @@ const DoctorDashboard = () => {
 
     const openPdfInNewTab = (endpointPath) => {
         const token = sessionStorage.getItem('token');
-        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
         const separator = endpointPath.includes('?') ? '&' : '?';
-        const url = `${baseUrl}${endpointPath}${separator}token=${encodeURIComponent(token)}`;
+        const url = `${API_BASE_URL}${endpointPath}${separator}token=${encodeURIComponent(token)}`;
         const win = window.open(url, '_blank');
         if (!win || win.closed || typeof win.closed === 'undefined') {
             return false;
@@ -887,7 +879,7 @@ const DoctorDashboard = () => {
                     tabs={tabs}
                     activeTab={activeTab}
                     onTabChange={setActiveTab}
-                    footerTitle="Hospital"
+                    footerTitle={tenantWord}
                     footerData={user?.hospitalName}
                     variant="plain"
                     isCollapsed={sidebarCollapsed}
@@ -927,48 +919,7 @@ const DoctorDashboard = () => {
                                     </div>
                                 )}
                             </div>
-                            {lowStockItems.length > 0 && (
-                                <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-4 flex items-start gap-3 shadow-sm hover:shadow transition-all duration-300 animate-fade-in">
-                                    <div className="p-2 bg-amber-100 text-amber-800 rounded-xl">
-                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                        </svg>
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <h3 className="text-sm font-bold text-amber-900">Low Stock Alert: {lowStockItems.length} items require restocking</h3>
-                                        <p className="text-xs text-amber-700/90 mt-1 leading-relaxed">
-                                            The physical stock levels for these items are below reorder thresholds:
-                                        </p>
-                                        <div className="flex flex-wrap gap-2 mt-2">
-                                            {lowStockItems.map(item => (
-                                                <span key={item.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200/40">
-                                                    {item.name} <span className="font-bold">({item.stockQuantity} left)</span>
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    {user?.receptionMode === 'SOLO' && (
-                                        <div className="flex flex-col sm:flex-row gap-2 shrink-0">
-                                            {lowStockItems.some(item => item.isMedicine) && (
-                                                <button 
-                                                    onClick={() => setActiveTab('inventory')}
-                                                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg transition-all whitespace-nowrap"
-                                                >
-                                                    Restock Medicines
-                                                </button>
-                                            )}
-                                            {lowStockItems.some(item => item.isHospitalItem) && (
-                                                <button 
-                                                    onClick={() => setActiveTab('hospital-inventory')}
-                                                    className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-lg transition-all whitespace-nowrap"
-                                                >
-                                                    Restock Hospital Inventory
-                                                </button>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
+                            {user?.hospitalType === 'CLINIC' && modules.includes('HOSPITAL_INVENTORY') && <LowStockBanner />}
                             <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
                                 <div className="bg-white rounded-lg border border-gray-200 p-6">
                                     <div className="flex justify-between items-center">
@@ -1045,8 +996,8 @@ const DoctorDashboard = () => {
                                             <input
                                                 type="text"
                                                 placeholder="Search appointments..."
-                                                value={searchTerm}
-                                                onChange={(e) => setSearchTerm(e.target.value)}
+                                                value={searchInput}
+                                                onChange={(e) => setSearchInput(e.target.value)}
                                                 className="w-full pl-9 pr-4 py-1.5 text-xs bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 transition-all"
                                             />
                                         </div>
@@ -1074,7 +1025,9 @@ const DoctorDashboard = () => {
                                                 <span className="w-1.5 h-3 bg-gray-950 rounded-full"></span>
                                                 Today's Appointments
                                             </h4>
-                                            {appointments.length > 0 ? (
+                                            {appointmentsLoading ? (
+                                                <SkeletonTable rows={4} cols={5} />
+                                            ) : appointments.length > 0 ? (
                                                 <DoctorAppointmentsTable
                                                     appointments={appointments}
                                                     onStatusUpdate={handleStatusUpdate}
@@ -1236,8 +1189,8 @@ const DoctorDashboard = () => {
                             activeTab === 'billing' ? 'bills' :
                             'patients'
                         } here.`}
-                        onSearch={(e) => setSearchTerm(e.target.value)}
-                        searchValue={searchTerm}
+                        onSearch={(e) => setSearchInput(e.target.value)}
+                        searchValue={searchInput}
                         searchPlaceholder={`Search ${activeTab}...`}
                         onAdd={(user?.receptionMode === 'SOLO' && (activeTab === 'patients' || activeTab === 'opd' || activeTab === 'appointments')) ? () => {
                             if (activeTab === 'patients') setIsAddPatientModalOpen(true);
@@ -1382,7 +1335,9 @@ const DoctorDashboard = () => {
                     {!loading && activeTab !== 'overview' && (
                             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
                                 {activeTab === 'appointments' && (
-                                    appointments.length > 0 ? (
+                                    appointmentsLoading ? (
+                                        <SkeletonTable rows={6} cols={5} />
+                                    ) : appointments.length > 0 ? (
                                         <DoctorAppointmentsTable
                                             appointments={appointments}
                                             onStatusUpdate={handleStatusUpdate}
@@ -1731,11 +1686,54 @@ const DoctorDashboard = () => {
                                     toastError('Please select a valid patient from the suggestions');
                                     return;
                                 }
+                                // Validate vitals
+                                if (opdForm.bp) {
+                                    const bpVal = opdForm.bp.trim();
+                                    const bpMatch = bpVal.match(/^(\d{2,3})\s*\/\s*(\d{2,3})$/);
+                                    if (!bpMatch) {
+                                        toastError("Blood pressure must be in format Systolic/Diastolic, e.g., 120/80");
+                                        return;
+                                    }
+                                    const systolic = parseInt(bpMatch[1], 10);
+                                    const diastolic = parseInt(bpMatch[2], 10);
+                                    if (systolic <= diastolic) {
+                                        toastError("Systolic blood pressure must be greater than diastolic blood pressure");
+                                        return;
+                                    }
+                                }
+                                if (opdForm.temperature) {
+                                    const temp = parseFloat(opdForm.temperature);
+                                    if (isNaN(temp) || temp < 0) {
+                                        toastError("Temperature cannot be negative");
+                                        return;
+                                    }
+                                }
+                                if (opdForm.pulse) {
+                                    const pulse = parseInt(opdForm.pulse, 10);
+                                    if (isNaN(pulse) || pulse < 0) {
+                                        toastError("Pulse cannot be negative");
+                                        return;
+                                    }
+                                }
+                                if (opdForm.weight) {
+                                    const weight = parseFloat(opdForm.weight);
+                                    if (isNaN(weight) || weight < 0) {
+                                        toastError("Weight cannot be negative");
+                                        return;
+                                    }
+                                }
+                                if (opdForm.spo2) {
+                                    const spo2 = parseInt(opdForm.spo2, 10);
+                                    if (isNaN(spo2) || spo2 < 0) {
+                                        toastError("SpO2 cannot be negative");
+                                        return;
+                                    }
+                                }
                                 try {
                                     const payload = {
                                         patientId: opdForm.patientId,
                                         doctorId: opdForm.doctorId || doctorRecord?.id || user?.id,
-                                        bp: opdForm.bp,
+                                        bp: opdForm.bp ? opdForm.bp : null,
                                         temperature: opdForm.temperature ? parseFloat(opdForm.temperature) : null,
                                         pulse: opdForm.pulse ? parseInt(opdForm.pulse) : null,
                                         weight: opdForm.weight ? parseFloat(opdForm.weight) : null,
@@ -1820,25 +1818,25 @@ const DoctorDashboard = () => {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-semibold text-neutral-700 mb-2">BP</label>
-                                        <input className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.bp} onChange={(e) => setOpdForm(prev => ({ ...prev, bp: e.target.value }))} placeholder="120/80" />
+                                        <input className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.bp} onChange={(e) => setOpdForm(prev => ({ ...prev, bp: e.target.value.replace(/[^0-9/]/g, '') }))} placeholder="120/80" />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-semibold text-neutral-700 mb-2">Temperature (°C)</label>
-                                        <input type="number" step="0.1" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.temperature} onChange={(e) => setOpdForm(prev => ({ ...prev, temperature: e.target.value }))} />
+                                        <label className="block text-sm font-semibold text-neutral-700 mb-2">Temperature (°F)</label>
+                                        <input type="number" step="0.1" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.temperature} onChange={(e) => setOpdForm(prev => ({ ...prev, temperature: e.target.value }))} />
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-3 gap-4">
                                     <div>
                                         <label className="block text-sm font-semibold text-neutral-700 mb-2">Pulse</label>
-                                        <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.pulse} onChange={(e) => setOpdForm(prev => ({ ...prev, pulse: e.target.value }))} />
+                                        <input type="number" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.pulse} onChange={(e) => setOpdForm(prev => ({ ...prev, pulse: e.target.value }))} />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-semibold text-neutral-700 mb-2">Weight (kg)</label>
-                                        <input type="number" step="0.1" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.weight} onChange={(e) => setOpdForm(prev => ({ ...prev, weight: e.target.value }))} />
+                                        <input type="number" step="0.1" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.weight} onChange={(e) => setOpdForm(prev => ({ ...prev, weight: e.target.value }))} />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-semibold text-neutral-700 mb-2">SpO2 (%)</label>
-                                        <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.spo2} onChange={(e) => setOpdForm(prev => ({ ...prev, spo2: e.target.value }))} />
+                                        <input type="number" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.spo2} onChange={(e) => setOpdForm(prev => ({ ...prev, spo2: e.target.value }))} />
                                     </div>
                                 </div>
 

@@ -42,6 +42,11 @@ public class AppointmentService {
 
     private static final Logger logger = LoggerFactory.getLogger(AppointmentService.class);
 
+    // Appointment status values, defined once instead of repeating the literals.
+    private static final String STATUS_SCHEDULED = "SCHEDULED";
+    private static final String STATUS_COMPLETED = "COMPLETED";
+    private static final String STATUS_CANCELLED = "CANCELLED";
+
     @Autowired
     private AppointmentRepository appointmentRepository;
 
@@ -100,7 +105,7 @@ public class AppointmentService {
             String patientName = appointment.getPatientName();
             String patientPhone = appointment.getPatientPhone();
             String patientEmail = appointment.getPatientEmail();
-            Integer patientAge = appointment.getPatientAge();
+            java.time.LocalDate patientDateOfBirth = appointment.getPatientDateOfBirth();
             String patientGender = appointment.getPatientGender();
 
             if (patientName == null || patientPhone == null) {
@@ -122,9 +127,8 @@ public class AppointmentService {
                 newPatient.setName(patientName);
                 newPatient.setPhone(patientPhone);
                 newPatient.setEmail(patientEmail != null ? patientEmail : "");
-                // Set default age if not provided to avoid DB error, though frontend should
-                // require it
-                newPatient.setAge(patientAge != null ? patientAge : 0);
+                // Default to today (age 0) if not provided, though frontend should require it
+                newPatient.setDateOfBirth(patientDateOfBirth != null ? patientDateOfBirth : java.time.LocalDate.now(java.time.ZoneId.systemDefault()));
                 newPatient.setGender(patientGender != null ? patientGender : "Unknown");
                 newPatient.setAddress("Walk-in"); // Default address for quick appointments
                 newPatient.setHospitalId(hospitalId);
@@ -176,8 +180,8 @@ public class AppointmentService {
                         appointment.getAppointmentDate());
 
         for (Appointment existing : existingAppointments) {
-            // Check for exact time match (assuming strict 30 min slots)
-            if (existing.getAppointmentTime().equals(appointment.getAppointmentTime())) {
+            // Check for exact time match (assuming strict 30 min slots) for non-cancelled appointments
+            if (!STATUS_CANCELLED.equals(existing.getStatus()) && existing.getAppointmentTime().equals(appointment.getAppointmentTime())) {
                 throw new IllegalArgumentException("Slot " + appointment.getAppointmentTime() + " is already booked.");
             }
 
@@ -190,7 +194,7 @@ public class AppointmentService {
 
         // Set hospital_id to ensure multi-tenant isolation
         appointment.setHospitalId(hospitalId);
-        appointment.setStatus("SCHEDULED"); // Default status
+        appointment.setStatus(STATUS_SCHEDULED); // Default status
 
         logger.info("Hospital {} scheduling appointment for patient {} with doctor {} at {}", hospitalId,
                 appointment.getPatientId(), appointment.getDoctorId(), appointment.getAppointmentTime());
@@ -334,7 +338,7 @@ public class AppointmentService {
                         page = appointmentRepository
                                 .findByHospitalIdAndIsActiveTrueAndAppointmentDateBeforeOrHospitalIdAndIsActiveTrueAndStatusInOrderByAppointmentDateDescAppointmentTimeDesc(
                                         hospitalId, today, hospitalId,
-                                        java.util.Arrays.asList("COMPLETED", "CANCELLED"),
+                                        java.util.Arrays.asList(STATUS_COMPLETED, STATUS_CANCELLED),
                                         pageable);
                     }
                     break;
@@ -401,7 +405,7 @@ public class AppointmentService {
                 case "history":
                     appointments = appointmentRepository
                             .findByDoctorIdAndIsActiveTrueAndAppointmentDateBeforeOrDoctorIdAndIsActiveTrueAndStatusInOrderByAppointmentDateDescAppointmentTimeDesc(
-                                    doctorId, today, doctorId, java.util.Arrays.asList("COMPLETED", "CANCELLED"));
+                                    doctorId, today, doctorId, java.util.Arrays.asList(STATUS_COMPLETED, STATUS_CANCELLED));
                     break;
                 default:
                     appointments = appointmentRepository
@@ -591,7 +595,7 @@ public class AppointmentService {
         Appointment appointment = apptOpt.orElseThrow(() -> new RuntimeException("Appointment not found"));
 
         // Basic validation
-        if (!status.equals("SCHEDULED") && !status.equals("COMPLETED") && !status.equals("CANCELLED")) {
+        if (!status.equals(STATUS_SCHEDULED) && !status.equals(STATUS_COMPLETED) && !status.equals(STATUS_CANCELLED)) {
             throw new IllegalArgumentException("Invalid status. Allowed: SCHEDULED, COMPLETED, CANCELLED");
         }
 
@@ -600,7 +604,7 @@ public class AppointmentService {
         Appointment saved = appointmentRepository.save(appointment);
 
         // Trigger Billing if Completed
-        if ("COMPLETED".equals(status) && !oldStatus.equals("COMPLETED")) {
+        if (STATUS_COMPLETED.equals(status) && !oldStatus.equals(STATUS_COMPLETED)) {
             try {
                 billingService.autoGenerateOpdBill(saved);
             } catch (Exception e) {
@@ -665,7 +669,7 @@ public class AppointmentService {
         String oldStatus = appointment.getStatus();
         if (status != null && !status.isEmpty()) {
             // Basic validation
-            if (!status.equals("SCHEDULED") && !status.equals("COMPLETED") && !status.equals("CANCELLED")) {
+            if (!status.equals(STATUS_SCHEDULED) && !status.equals(STATUS_COMPLETED) && !status.equals(STATUS_CANCELLED)) {
                 throw new IllegalArgumentException("Invalid status. Allowed: SCHEDULED, COMPLETED, CANCELLED");
             }
             appointment.setStatus(status);
@@ -681,7 +685,7 @@ public class AppointmentService {
         }
 
         // Trigger Billing if Completed and previously wasn't
-        if ("COMPLETED".equals(status) && !"COMPLETED".equals(oldStatus)) {
+        if (STATUS_COMPLETED.equals(status) && !STATUS_COMPLETED.equals(oldStatus)) {
             try {
                 billingService.autoGenerateOpdBill(saved);
             } catch (Exception e) {
@@ -724,7 +728,7 @@ public class AppointmentService {
         LocalDate today = LocalDate.now();
 
         long todayCount = appointmentRepository.countByHospitalIdAndIsActiveTrueAndAppointmentDate(hospitalId, today);
-        long pendingCount = appointmentRepository.countByHospitalIdAndIsActiveTrueAndStatus(hospitalId, "SCHEDULED");
+        long pendingCount = appointmentRepository.countByHospitalIdAndIsActiveTrueAndStatus(hospitalId, STATUS_SCHEDULED);
         long totalCount = appointmentRepository.countByHospitalIdAndIsActiveTrue(hospitalId);
 
         Map<String, Long> stats = new HashMap<>();
@@ -811,7 +815,7 @@ public class AppointmentService {
                     } else {
                         page = appointmentRepository
                                 .findByDoctorIdAndIsActiveTrueAndAppointmentDateBeforeOrDoctorIdAndIsActiveTrueAndStatusInOrderByAppointmentDateDescAppointmentTimeDesc(
-                                        doctorId, today, doctorId, java.util.Arrays.asList("COMPLETED", "CANCELLED"),
+                                        doctorId, today, doctorId, java.util.Arrays.asList(STATUS_COMPLETED, STATUS_CANCELLED),
                                         pageable);
                     }
                     break;

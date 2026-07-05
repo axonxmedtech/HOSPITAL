@@ -49,7 +49,7 @@ jobs:
           npx vitest run
           --coverage
           --coverage.provider v8
-          --coverage.reporter lcov
+          --coverage.reporter lcovonly
           --coverage.reporter json-summary
           --passWithNoTests
           --reporter verbose

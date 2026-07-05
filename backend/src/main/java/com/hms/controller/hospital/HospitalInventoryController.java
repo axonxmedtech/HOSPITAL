@@ -19,40 +19,6 @@ public class HospitalInventoryController {
     @Autowired
     private HospitalInventoryService hospitalInventoryService;
 
-    // --- Search Autocomplete Endpoint ---
-    @GetMapping("/search")
-    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN', 'RECEPTIONIST')")
-    public ResponseEntity<List<InventoryItem>> searchInventoryCatalog(@RequestParam String query) {
-        return ResponseEntity.ok(hospitalInventoryService.searchInventoryCatalog(query));
-    }
-
-    // --- Catalog Lookup CRUD ---
-
-    @GetMapping("/catalog")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<List<InventoryItem>> getCatalogItems() {
-        return ResponseEntity.ok(hospitalInventoryService.getCatalogItems());
-    }
-
-    @PostMapping("/catalog")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> addCatalogItem(@RequestBody InventoryItem catalog) {
-        return ResponseEntity.ok(hospitalInventoryService.addCatalogItem(catalog));
-    }
-
-    @PutMapping("/catalog/{id}")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> updateCatalogItem(@PathVariable Long id, @RequestBody InventoryItem catalog) {
-        return ResponseEntity.ok(hospitalInventoryService.updateCatalogItem(id, catalog));
-    }
-
-    @DeleteMapping("/catalog/{id}")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> deleteCatalogItem(@PathVariable Long id) {
-        hospitalInventoryService.deleteCatalogItem(id);
-        return ResponseEntity.ok().build();
-    }
-
     // --- Purchase History Management ---
 
     @GetMapping("/purchases")
@@ -92,5 +58,11 @@ public class HospitalInventoryController {
     public ResponseEntity<?> deleteInventoryItem(@PathVariable Long id) {
         hospitalInventoryService.deleteInventoryItem(id);
         return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/low-stock")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    public ResponseEntity<List<HospitalInventory>> getLowStockItems() {
+        return ResponseEntity.ok(hospitalInventoryService.getLowStockItems());
     }
 }

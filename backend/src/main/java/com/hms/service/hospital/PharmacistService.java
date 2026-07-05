@@ -234,7 +234,7 @@ public class PharmacistService {
             log.setHospitalId(hospitalId);
             auditLogRepository.save(log);
         } catch (Exception e) {
-            System.err.println("Failed to save audit log: " + e.getMessage());
+            logger.error("Failed to save audit log: {}", e.getMessage(), e);
         }
     }
 }

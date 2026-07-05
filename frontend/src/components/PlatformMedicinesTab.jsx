@@ -2,6 +2,20 @@ import React, { useState, useEffect, useRef } from 'react';
 import platformService from '../services/platformService';
 import { useToast } from '../context/ToastContext';
 
+// BUG-015: Single source of truth for medicines page size.
+const PAGE_SIZE = 10;
+
+// BUG-013: Local error extractor aligned with the PlatformDashboard pattern.
+const extractError = (err, fallback) => {
+    const d = err?.response?.data;
+    if (!d) return fallback;
+    if (typeof d === 'string') return d;
+    if (d.errors && typeof d.errors === 'object') {
+        return Object.values(d.errors).join(', ');
+    }
+    return d.message || d.error || d.detail || fallback;
+};
+
 export default function PlatformMedicinesTab() {
     const { success, error: toastError } = useToast();
     const [medicines, setMedicines] = useState([]);
@@ -22,6 +36,12 @@ export default function PlatformMedicinesTab() {
 
     const fileInputRef = useRef(null);
 
+    // BUG-014: isMountedRef ensures the page-change effect does NOT fire on the
+    // initial render, preventing a duplicate loadMedicines(0) call caused by
+    // both this effect and the search-debounce effect running on mount.
+    const isMountedRef = useRef(false);
+
+    // Effect 1: fires on search change (with debounce). Also fires once on mount.
     useEffect(() => {
         const delayDebounce = setTimeout(() => {
             loadMedicines(0);
@@ -29,21 +49,28 @@ export default function PlatformMedicinesTab() {
         return () => clearTimeout(delayDebounce);
     }, [search]);
 
+    // Effect 2: fires on explicit page navigation. Skips the initial mount to
+    // avoid duplicating the call that Effect 1 already makes.
     useEffect(() => {
+        if (!isMountedRef.current) {
+            isMountedRef.current = true;
+            return; // skip first render
+        }
         loadMedicines(page);
     }, [page]);
 
+    // BUG-015: use PAGE_SIZE constant
     const loadMedicines = async (pageNum) => {
         setLoading(true);
         try {
-            const data = await platformService.getPlatformMedicines(search, pageNum, 10);
+            const data = await platformService.getPlatformMedicines(search, pageNum, PAGE_SIZE);
             setMedicines(data.content || []);
             setTotalPages(data.totalPages || 0);
             setTotalElements(data.totalElements || 0);
             setPage(pageNum);
         } catch (err) {
-            console.error(err);
-            toastError('Failed to load medicines list.');
+            // BUG-013: removed console.error; use toast with extracted message
+            toastError(extractError(err, 'Failed to load medicines list.'));
         } finally {
             setLoading(false);
         }
@@ -90,7 +117,8 @@ export default function PlatformMedicinesTab() {
             setShowModal(false);
             loadMedicines(editingMedicine ? page : 0);
         } catch (err) {
-            setError(err.response?.data || 'Failed to save medicine');
+            // BUG-013: use extractError for consistent server message
+            setError(extractError(err, 'Failed to save medicine'));
         } finally {
             setSubmitting(false);
         }
@@ -105,7 +133,8 @@ export default function PlatformMedicinesTab() {
             const newPage = medicines.length === 1 && page > 0 ? page - 1 : page;
             loadMedicines(newPage);
         } catch (err) {
-            toastError(err.response?.data || 'Failed to delete medicine');
+            // BUG-013: use extractError for consistent server message
+            toastError(extractError(err, 'Failed to delete medicine'));
         }
     };
 
@@ -217,7 +246,8 @@ export default function PlatformMedicinesTab() {
                             <tbody className="divide-y divide-gray-100">
                                 {medicines.map((med, index) => (
                                     <tr key={med.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="px-6 py-4 font-medium text-gray-500">{page * 10 + index + 1}</td>
+                                        {/* BUG-015: derive row serial number from PAGE_SIZE constant */}
+                                        <td className="px-6 py-4 font-medium text-gray-500">{page * PAGE_SIZE + index + 1}</td>
                                         <td className="px-6 py-4 text-gray-400 font-mono">#{med.id}</td>
                                         <td className="px-6 py-4 font-bold text-gray-800">{med.name}</td>
                                         <td className="px-6 py-4 text-center">
@@ -250,8 +280,9 @@ export default function PlatformMedicinesTab() {
                 {totalPages > 1 && (
                     <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex items-center justify-between">
                         <div className="text-sm text-gray-500">
-                            Showing <span className="font-semibold">{page * 10 + 1}</span> to{' '}
-                            <span className="font-semibold">{Math.min((page + 1) * 10, totalElements)}</span> of{' '}
+                            {/* BUG-015: derive offsets from PAGE_SIZE constant */}
+                            Showing <span className="font-semibold">{page * PAGE_SIZE + 1}</span> to{' '}
+                            <span className="font-semibold">{Math.min((page + 1) * PAGE_SIZE, totalElements)}</span> of{' '}
                             <span className="font-semibold">{totalElements}</span> medicines
                         </div>
                         <div className="flex gap-2">

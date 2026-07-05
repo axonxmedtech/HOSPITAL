@@ -35,7 +35,7 @@ public class PharmacySaleController {
  
     @PostMapping
     @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
-    public ResponseEntity<?> createSale(@RequestBody PharmacySaleRequest request) {
+    public ResponseEntity<?> createSale(@jakarta.validation.Valid @RequestBody PharmacySaleRequest request) {
         return ResponseEntity.ok(saleService.createSale(request));
     }
  

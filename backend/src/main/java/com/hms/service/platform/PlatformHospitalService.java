@@ -25,6 +25,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.List;
@@ -47,6 +49,8 @@ import java.util.Map;
  */
 @Service
 public class PlatformHospitalService {
+
+    private static final Logger logger = LoggerFactory.getLogger(PlatformHospitalService.class);
 
     @Autowired
     private HospitalRepository hospitalRepository;
@@ -178,6 +182,12 @@ public class PlatformHospitalService {
         trialSub.setExpiresAt(trialSub.getExpiresAt().plusDays(7));
         subscriptionRepository.save(trialSub);
 
+        // In-Clinic must start OFF at creation for every tenant type. The plan grants
+        // the In-Clinic *capability* (module), but assignPlan() may have enabled the
+        // operational toggle — force it off so the admin explicitly opts in later.
+        settings.setInClinic(false);
+        hospitalSettingRepository.save(settings);
+
         logAction("HOSPITAL_CREATED",
             "Created " + type + ": " + hospital.getName() + " with admin: " + admin.getEmail());
 
@@ -193,29 +203,46 @@ public class PlatformHospitalService {
     public org.springframework.data.domain.Page<Hospital> getAllHospitals(
             org.springframework.data.domain.Pageable pageable,
             String type) {
-        if (type != null && !type.isBlank()) {
-            return hospitalRepository.findByTypeOrderByCreatedAtDesc(HospitalType.valueOf(type), pageable);
-        }
-        return hospitalRepository.findAllByOrderByCreatedAtDesc(pageable);
+        org.springframework.data.domain.Page<Hospital> hospitals =
+                (type != null && !type.isBlank())
+                        ? hospitalRepository.findByTypeOrderByCreatedAtDesc(HospitalType.valueOf(type), pageable)
+                        : hospitalRepository.findAllByOrderByCreatedAtDesc(pageable);
+
+        // Enrich each row with its current plan name (transient field) so the
+        // platform list shows the actual plan instead of a hardcoded default.
+        hospitals.forEach(hospital ->
+                subscriptionRepository.findByHospitalIdAndIsCurrentTrue(hospital.getId())
+                        .ifPresent(sub -> hospital.setPlanName(sub.getPlan().getName())));
+
+        return hospitals;
     }
 
     /**
-     * Get hospital statistics for Super Admin Overview dashboard
-     * Returns counts for total, active, and inactive hospitals
-     * 
-     * @return Map with hospital statistics
+     * Get tenant statistics for Super Admin Overview dashboard, broken down
+     * by business type (hospitals, clinics, pharmacies) since all three are
+     * stored as HospitalType-discriminated rows in the same table.
+     *
+     * @return Map keyed by "hospitals"/"clinics"/"pharmacies", each holding
+     *         its own total/active/inactive counts
      */
-    public Map<String, Long> getHospitalStats() {
-        long total = hospitalRepository.count();
-        long active = hospitalRepository.countByIsActive(true);
+    public Map<String, Map<String, Long>> getHospitalStats() {
+        Map<String, Map<String, Long>> stats = new HashMap<>();
+        stats.put("hospitals", getStatsByType(HospitalType.HOSPITAL));
+        stats.put("clinics", getStatsByType(HospitalType.CLINIC));
+        stats.put("pharmacies", getStatsByType(HospitalType.PHARMACY));
+        return stats;
+    }
+
+    private Map<String, Long> getStatsByType(HospitalType type) {
+        long total = hospitalRepository.countByType(type);
+        long active = hospitalRepository.countByTypeAndIsActive(type, true);
         long inactive = total - active;
 
-        Map<String, Long> stats = new HashMap<>();
-        stats.put("total", total);
-        stats.put("active", active);
-        stats.put("inactive", inactive);
-
-        return stats;
+        Map<String, Long> typeStats = new HashMap<>();
+        typeStats.put("total", total);
+        typeStats.put("active", active);
+        typeStats.put("inactive", inactive);
+        return typeStats;
     }
 
     /**
@@ -555,8 +582,8 @@ public class PlatformHospitalService {
             log.setHospitalId(hospitalId);
             auditLogRepository.save(log);
         } catch (Exception e) {
-            // Improve: Log error to console, but don't fail the operation
-            System.err.println("Failed to save audit log: " + e.getMessage());
+            // Improve: Log error using SLF4J, but don't fail the operation
+            logger.error("Failed to save audit log: {}", e.getMessage(), e);
         }
     }
 }

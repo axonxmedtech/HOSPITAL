@@ -178,7 +178,9 @@ public class BillingService {
                 String userEmail = securityHelper.getCurrentUserEmail();
                 String userRole = securityHelper.getCurrentUserRole();
                 bill.setMarkedPaidBy(userRole + " (" + userEmail + ")");
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                logger.warn("Failed to set markedPaidBy during billing payment status update: {}", e.getMessage());
+            }
         }
         if (paymentMethod != null && !paymentMethod.isEmpty()) {
             bill.setPaymentMethod(paymentMethod);
@@ -280,7 +282,9 @@ public class BillingService {
                                 "OPD",
                                 opd.getId().toString(),
                                 null);
-                    } catch (Exception ignored) {}
+                    } catch (Exception e) {
+                        logger.warn("Failed to create audit log for OPD status change during bill payment: {}", e.getMessage());
+                    }
                 }
             }
         } catch (Exception e) {

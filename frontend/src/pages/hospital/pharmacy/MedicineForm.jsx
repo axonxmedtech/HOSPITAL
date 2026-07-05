@@ -102,6 +102,13 @@ const MedicineForm = ({
     if (!formData.categoryId) newErrors.categoryId = 'Select a category';
     if (!formData.manufacturerId)
       newErrors.manufacturerId = 'Select a manufacturer';
+    if (!formData.unitOfMeasure) newErrors.unitOfMeasure = 'Required';
+    if (formData.gstPercentage !== '') {
+      const gst = parseFloat(formData.gstPercentage);
+      if (isNaN(gst) || gst < 0 || gst > 100) {
+        newErrors.gstPercentage = 'GST must be between 0% and 100%';
+      }
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -362,6 +369,9 @@ const MedicineForm = ({
                 <option value="TUBE">TUBE</option>
                 <option value="VIAL">VIAL</option>
               </select>
+              {errors.unitOfMeasure && (
+                <p className="text-xs text-red-600 ml-1">{errors.unitOfMeasure}</p>
+              )}
             </div>
 
             {/* --- SECTION D: Inventory & Tax --- */}
@@ -395,6 +405,9 @@ const MedicineForm = ({
                 onChange={handleDecimalChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-900 transition-all"
               />
+              {errors.gstPercentage && (
+                <p className="text-xs text-red-600 ml-1">{errors.gstPercentage}</p>
+              )}
             </div>
 
             {/* --- SECTION E: Compliance --- */}
