@@ -1,6 +1,6 @@
 import BillingTable from './BillingTable';
 import MessagesTab from './MessagesTab';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
@@ -33,8 +33,12 @@ import useWebSocket from '../../hooks/useWebSocket';
 import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
 import { SkeletonDashboard, SkeletonFormCard, SkeletonSettingsCard, SkeletonTable, SkeletonStatsGrid, SkeletonOverviewDual } from '../../components/Skeleton';
 import reportsApi from '../../services/pharmacy/reportsApi';
+import salesApi from '../../services/pharmacy/salesApi';
+import branchesApi from '../../services/pharmacy/branchesApi';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
+import SuppliersView from './pharmacy/SuppliersView';
+import inventoryApi from '../../services/pharmacy/inventoryApi';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
 import LowStockBanner from '../../components/LowStockBanner';
 import {
@@ -61,6 +65,10 @@ const HospitalAdminDashboard = () => {
     const hasIPD = modules.includes('IPD');
     // Tenant-aware label: clinic logins say "Clinic" wherever we'd otherwise say "Hospital".
     const tenantWord = user?.hospitalType === 'CLINIC' ? 'Clinic' : 'Hospital';
+    const isPharmacyTenant = user?.hospitalType === 'PHARMACY';
+    const pharmacyMode = modules.includes('MULTI_PHARMACY') ? 'MULTI'
+        : modules.includes('SINGLE_PHARMACIST_ADMIN') ? 'SOLO'
+        : 'SINGLE'; // default single pharmacy
     const defaultTab = 'overview';
     const activeTab = searchParams.get('tab') || defaultTab;
 
@@ -88,6 +96,16 @@ const HospitalAdminDashboard = () => {
     const [pharmacyStatsLoading, setPharmacyStatsLoading] = useState(false);
     const [analyticsData, setAnalyticsData] = useState(null);
     const [analyticsTimePeriod, setAnalyticsTimePeriod] = useState('Last 6 Months');
+
+    // Pharmacy Branch filter state (multi pharmacy)
+    const [filterBranches, setFilterBranches] = useState([]);
+    const [selectedFilterBranchId, setSelectedFilterBranchId] = useState('ALL');
+    const [pharmacyRefreshKey, setPharmacyRefreshKey] = useState(0);
+
+    // Pharmacy Admin Overview Dashboard States
+    const [pharmacyRecentBills, setPharmacyRecentBills] = useState([]);
+    const [pharmacyLowStock, setPharmacyLowStock] = useState([]);
+    const [pharmacyRightTab, setPharmacyRightTab] = useState('low-stock');
 
     // Dashboard state
     const [dashboardStats, setDashboardStats] = useState({ totalPatients: 0, totalDoctors: 0, todaysAppointments: 0 });
@@ -250,7 +268,7 @@ const HospitalAdminDashboard = () => {
         // Prevent double fetch when searchInput was just cleared but debounced searchTerm hasn't updated yet
         if (searchInput === '' && searchTerm !== '') return;
         loadData(page, pageSize);
-    }, [activeTab, searchTerm, page, billingStatus, auditLogRoleFilter, patientTabView, patientDateFilter, opdTabView, opdDateFilter, appointmentsViewFilter]);
+    }, [activeTab, searchTerm, page, billingStatus, auditLogRoleFilter, patientTabView, patientDateFilter, opdTabView, opdDateFilter, appointmentsViewFilter, pharmacyRefreshKey]);
 
     // Periodic background polling replaced with WebSocket real-time sync
 
@@ -432,7 +450,8 @@ const HospitalAdminDashboard = () => {
                 const loaded = {
                     receptionMode: data.receptionMode || 'HAS_RECEPTIONIST',
                     billingHandler: data.billingHandler || 'RECEPTIONIST',
-                    inClinic: data.inClinic !== false
+                    inClinic: data.inClinic !== false,
+                    barcodeEnabled: data.barcodeEnabled !== false
                 };
                 setOperationsSettings(loaded);
                 setOrigOperationsSettings(loaded);
@@ -468,6 +487,17 @@ const HospitalAdminDashboard = () => {
         loadSupportData();
     }, [activeTab]);
 
+    // Fetch branches for Multi-Pharmacy admin filter dropdown
+    useEffect(() => {
+        if (isPharmacyTenant && pharmacyMode === 'MULTI') {
+            branchesApi.getAll().then(data => {
+                setFilterBranches(Array.isArray(data) ? data : []);
+            }).catch(err => {
+                console.error("Failed to fetch branches for filter:", err);
+            });
+        }
+    }, [isPharmacyTenant, pharmacyMode]);
+
     // Load Pharmacy Dashboard Analytics when Pharmacy tab is active
     useEffect(() => {
         const loadPharmacyDashboard = async () => {
@@ -484,7 +514,7 @@ const HospitalAdminDashboard = () => {
             }
         };
         loadPharmacyDashboard();
-    }, [activeTab]);
+    }, [activeTab, pharmacyRefreshKey]);
 
     const handleExportLedger = async () => {
         try {
@@ -617,7 +647,8 @@ const HospitalAdminDashboard = () => {
                 const loaded = {
                     receptionMode: data.receptionMode || 'HAS_RECEPTIONIST',
                     billingHandler: data.billingHandler || 'RECEPTIONIST',
-                    inClinic: data.inClinic !== false
+                    inClinic: data.inClinic !== false,
+                    barcodeEnabled: data.barcodeEnabled !== false
                 };
                 setOperationsSettings(loaded);
                 setOrigOperationsSettings(loaded);
@@ -629,6 +660,35 @@ const HospitalAdminDashboard = () => {
                 setUser(profile);
             } catch (err) {
                 const msg = err.response?.data || 'Failed to update In-Clinic mode';
+                toastError(msg);
+            } finally {
+                setSettingsLoading(false);
+            }
+        }, false);
+    };
+
+    const toggleBarcode = () => {
+        const isCurrentlyEnabled = operationsSettings.barcodeEnabled !== false;
+        const nextValue = !isCurrentlyEnabled;
+        const title = isCurrentlyEnabled ? 'Disable Barcode Workflow' : 'Enable Barcode Workflow';
+        const message = isCurrentlyEnabled
+            ? 'Disable barcode scanning and label printing? The barcode mode at the Billing Counter and barcode label printing in Inventory will be hidden.'
+            : 'Enable barcode scanning and label printing across the Billing Counter and Inventory?';
+
+        openConfirmation(title, message, async () => {
+            try {
+                setSettingsLoading(true);
+                const data = await hospitalService.updateBarcodeSetting(nextValue);
+                setOperationsSettings(prev => ({ ...prev, barcodeEnabled: data.barcodeEnabled !== false }));
+                setOrigOperationsSettings(prev => ({ ...prev, barcodeEnabled: data.barcodeEnabled !== false }));
+                success('Barcode setting updated successfully.');
+
+                // Refresh local user profile so the pharmacist views pick up the change
+                const profile = await authService.getProfile();
+                authService.updateCurrentUser(profile);
+                setUser(profile);
+            } catch (err) {
+                const msg = err.response?.data || 'Failed to update barcode setting';
                 toastError(msg);
             } finally {
                 setSettingsLoading(false);
@@ -666,24 +726,69 @@ const HospitalAdminDashboard = () => {
         }
     };
 
+    const renderBranchFilterBar = () => {
+        if (!isPharmacyTenant || pharmacyMode !== 'MULTI') return null;
+        return (
+            <div className="flex items-center gap-3 bg-slate-50 border border-slate-200/60 p-4 rounded-2xl mb-6 shadow-sm">
+                <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
+                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">Select Branch:</span>
+                </div>
+                <select
+                    value={selectedFilterBranchId}
+                    onChange={(e) => {
+                        const val = e.target.value;
+                        setSelectedFilterBranchId(val);
+                        if (val === 'ALL') {
+                            sessionStorage.removeItem('selectedBranchId');
+                        } else {
+                            sessionStorage.setItem('selectedBranchId', val);
+                        }
+                        // Trigger a refetch
+                        setPharmacyRefreshKey(k => k + 1);
+                    }}
+                    className="px-3.5 py-1.5 border border-slate-300 rounded-xl text-xs font-semibold outline-none focus:border-slate-900 bg-white transition-all cursor-pointer hover:border-slate-400"
+                >
+                    <option value="ALL">All Branches (Aggregated)</option>
+                    {filterBranches.map(b => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                </select>
+            </div>
+        );
+    };
+
     const loadData = async (pageNum = page, sizeNum = pageSize, showSpinner = true) => {
         if (showSpinner) setLoading(true);
         try {
             if (activeTab === 'overview') {
-                const [statsData, globalStatsData, todaysAppts, docData] = await Promise.all([
-                    hospitalService.getAppointmentStats(),
-                    hospitalService.getGlobalStats(),
-                    hospitalService.getTodaysAppointments(),
-                    hospitalService.getDoctors('', 0, 100)
-                ]);
-                setStats({ ...statsData, ...globalStatsData });
-                setTodaysAppointments(todaysAppts);
-                if (docData.content) {
-                    setDoctors(docData.content);
+                if (isPharmacyTenant) {
+                    const [dashboardData, recentBillsData, lowStockData] = await Promise.all([
+                        reportsApi.getDashboardData(),
+                        salesApi.getHistory(0, 5),
+                        inventoryApi.getLowStock(0, 5)
+                    ]);
+                    setPharmacyStats(dashboardData);
+                    setPharmacyRecentBills(recentBillsData.content || recentBillsData || []);
+                    setPharmacyLowStock(lowStockData.content || lowStockData || []);
                 } else {
-                    setDoctors(docData);
+                    const [statsData, globalStatsData, todaysAppts, docData] = await Promise.all([
+                        hospitalService.getAppointmentStats(),
+                        hospitalService.getGlobalStats(),
+                        hospitalService.getTodaysAppointments(),
+                        hospitalService.getDoctors('', 0, 100)
+                    ]);
+                    setStats({ ...statsData, ...globalStatsData });
+                    setTodaysAppointments(todaysAppts);
+                    if (docData.content) {
+                        setDoctors(docData.content);
+                    } else {
+                        setDoctors(docData);
+                    }
+                    await loadPatients(patientsSearchTerm, patientsPage);
                 }
-                await loadPatients(patientsSearchTerm, patientsPage);
             } else if (activeTab === 'dashboard') {
                 // Load dashboard data
                 const [statsData, todaysAppts] = await Promise.all([
@@ -694,8 +799,10 @@ const HospitalAdminDashboard = () => {
                 setTodaysAppointments(todaysAppts);
             } else {
                 // Always fetch stats when loading data to keep numbers fresh
-                const statsData = await hospitalService.getAppointmentStats();
-                setStats(statsData);
+                if (!isPharmacyTenant) {
+                    const statsData = await hospitalService.getAppointmentStats();
+                    setStats(statsData);
+                }
 
                 if (activeTab === 'patients') {
                     const dateParam = patientTabView === 'Date' ? patientDateFilter : '';
@@ -1324,11 +1431,33 @@ const HospitalAdminDashboard = () => {
     // turns In-Clinic off, the tab is hidden (updated live via the SETTINGS_UPDATED
     // WebSocket message, which refreshes user.inClinic — see useWebSocket).
     const hasInClinic = user?.inClinic !== false;
-    const tabs = allTabs.filter(tab => {
-        if (tab.requiredModule && !modules.includes(tab.requiredModule)) return false;
-        if (tab.id === 'inventory' && !hasInClinic) return false;
-        return true;
-    });
+    // Standalone pharmacy tenants get a dedicated sidebar driven by the pharmacy plan tier.
+
+    let tabs;
+    if (isPharmacyTenant) {
+        const pick = (id) => allTabs.find(t => t.id === id);
+        tabs = [
+            pick('overview'),
+            // SINGLE Pharmacy manages pharmacists; SOLO is a one-person shop (no staff tab);
+            // MULTI manages branches (Pharmacies tab).
+            ...(pharmacyMode === 'SINGLE' ? [{ id: 'pharmacists', label: 'Pharmacists', icon: null, requiredModule: null }] : []),
+            ...(pharmacyMode === 'MULTI' ? [
+                { id: 'pharmacies', label: 'Pharmacies', icon: null, requiredModule: null },
+                { id: 'suppliers', label: 'Suppliers', icon: null, requiredModule: null }
+            ] : []),
+            { id: 'pharmacy-billing', label: 'Billing', icon: null, requiredModule: null },
+            { id: 'pharmacy', label: 'Analytics', icon: null, requiredModule: null },
+            pick('audit-logs'),
+            pick('settings'),
+            pick('support'),
+        ].filter(Boolean);
+    } else {
+        tabs = allTabs.filter(tab => {
+            if (tab.requiredModule && !modules.includes(tab.requiredModule)) return false;
+            if (tab.id === 'inventory' && !hasInClinic) return false;
+            return true;
+        });
+    }
 
     // If the active tab is no longer visible (e.g. In-Clinic just got disabled
     // while viewing Medicine Inventory), fall back to the overview tab.
@@ -1554,7 +1683,189 @@ const HospitalAdminDashboard = () => {
                     {modules.includes('HOSPITAL_INVENTORY') && <LowStockBanner />}
 
                     {/* Overview Tab - Stats & Inline Tables Split Grid */}
-                    {activeTab === 'overview' && !loading && (
+                    {activeTab === 'overview' && !loading && isPharmacyTenant ? (
+                        <div className="space-y-6 animate-in fade-in duration-300">
+                            {renderBranchFilterBar()}
+                            
+                            {/* KPI Metrics Cards */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                {/* Total Sales Card */}
+                                <div className="bg-white p-6 rounded-2xl border border-gray-150 shadow-sm relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 w-20 h-20 bg-blue-50/50 rounded-bl-full -z-10"></div>
+                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Gross Sales</p>
+                                    <h3 className="text-2xl font-black text-gray-900 mt-2">
+                                        ₹{(pharmacyStats?.kpis?.totalSales || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </h3>
+                                    <p className="text-[10px] text-gray-400 mt-1 font-semibold">Total processed invoices</p>
+                                </div>
+
+                                {/* Net Sales Card */}
+                                <div className="bg-white p-6 rounded-2xl border border-gray-150 shadow-sm relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 w-20 h-20 bg-green-50/50 rounded-bl-full -z-10"></div>
+                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Net Revenue</p>
+                                    <h3 className="text-2xl font-black text-emerald-600 mt-2">
+                                        ₹{(pharmacyStats?.kpis?.netRevenue || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </h3>
+                                    <p className="text-[10px] text-emerald-600/80 mt-1 font-semibold">Net profit after customer returns</p>
+                                </div>
+
+                                {/* Inventory Valuation Card */}
+                                <div className="bg-white p-6 rounded-2xl border border-gray-150 shadow-sm relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 w-20 h-20 bg-indigo-50/50 rounded-bl-full -z-10"></div>
+                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Stock Valuation</p>
+                                    <h3 className="text-2xl font-black text-indigo-600 mt-2">
+                                        ₹{(pharmacyStats?.kpis?.inventoryValue || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </h3>
+                                    <p className="text-[10px] text-indigo-500/80 mt-1 font-semibold">Cash value of active shelf stock</p>
+                                </div>
+
+                                {/* Profit Margin Card */}
+                                <div className="bg-white p-6 rounded-2xl border border-gray-150 shadow-sm relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 w-20 h-20 bg-amber-50/50 rounded-bl-full -z-10"></div>
+                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Profit Margin</p>
+                                    <h3 className="text-2xl font-black text-amber-600 mt-2">
+                                        {pharmacyStats?.kpis?.profitMargin || 0}%
+                                    </h3>
+                                    <p className="text-[10px] text-amber-600/80 mt-1 font-semibold">Average mark-up profit margin</p>
+                                </div>
+                            </div>
+
+                            {/* Split Grid */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-6">
+                                {/* Left Panel: Recent Invoices */}
+                                <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-sm flex flex-col">
+                                    <div className="px-6 py-5 border-b border-neutral-100 bg-neutral-50/50 flex flex-row justify-between items-center">
+                                        <div>
+                                            <h3 className="text-base font-bold text-slate-800">Recent Sales Invoices</h3>
+                                            <p className="text-xs text-slate-500 mt-0.5">Summary of the latest customer sales counter bills</p>
+                                        </div>
+                                    </div>
+                                    <div className="p-6 flex-1 overflow-x-auto">
+                                        {pharmacyRecentBills.length > 0 ? (
+                                            <table className="w-full text-left text-xs">
+                                                <thead className="bg-gray-50 text-[10px] uppercase tracking-widest text-gray-400 font-black border-b border-gray-100">
+                                                    <tr>
+                                                        <th className="px-4 py-3">Bill Number</th>
+                                                        <th className="px-4 py-3">Patient Name</th>
+                                                        <th className="px-4 py-3 text-right">Net Amount</th>
+                                                        <th className="px-4 py-3 text-center">Status</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100">
+                                                    {pharmacyRecentBills.map(bill => (
+                                                        <tr key={bill.id} className="hover:bg-gray-50/50 transition-colors">
+                                                            <td className="px-4 py-3.5 font-bold text-gray-900">{bill.billNumber}</td>
+                                                            <td className="px-4 py-3.5 text-gray-600 font-medium">{bill.patientName || 'Walk-in'}</td>
+                                                            <td className="px-4 py-3.5 text-right font-bold text-gray-900">₹{bill.netAmount}</td>
+                                                            <td className="px-4 py-3.5 text-center">
+                                                                <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase border ${
+                                                                    bill.paymentStatus === 'PAID' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+                                                                }`}>
+                                                                    {bill.paymentStatus}
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        ) : (
+                                            <div className="text-center py-12 text-gray-400 italic">No recent bills found.</div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Right Panel: Tabbed widget for Low Stock & Fast Movers */}
+                                <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-sm flex flex-col">
+                                    <div className="px-6 py-4 border-b border-neutral-100 bg-neutral-50/50 flex flex-row justify-between items-center">
+                                        <div className="flex bg-gray-100 rounded-lg p-0.5 border border-gray-200 items-center">
+                                            <button
+                                                onClick={() => setPharmacyRightTab('low-stock')}
+                                                className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
+                                                    pharmacyRightTab === 'low-stock'
+                                                        ? 'bg-white text-gray-900 shadow-sm border border-gray-100'
+                                                        : 'text-gray-500 hover:text-gray-700'
+                                                }`}
+                                            >
+                                                Low Stock Alerts
+                                            </button>
+                                            <button
+                                                onClick={() => setPharmacyRightTab('fast-movers')}
+                                                className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
+                                                    pharmacyRightTab === 'fast-movers'
+                                                        ? 'bg-white text-gray-900 shadow-sm border border-gray-100'
+                                                        : 'text-gray-500 hover:text-gray-700'
+                                                }`}
+                                            >
+                                                Best Selling Items
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-6 flex-1 overflow-x-auto">
+                                        {pharmacyRightTab === 'low-stock' ? (
+                                            pharmacyLowStock.length > 0 ? (
+                                                <table className="w-full text-left text-xs">
+                                                    <thead className="bg-gray-50 text-[10px] uppercase tracking-widest text-gray-400 font-black border-b border-gray-100">
+                                                        <tr>
+                                                            <th className="px-4 py-3">Medicine</th>
+                                                            <th className="px-4 py-3">Batch</th>
+                                                            <th className="px-4 py-3 text-right">Available Qty</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-100">
+                                                        {pharmacyLowStock.map((item, idx) => (
+                                                            <tr key={item.id || idx} className="hover:bg-gray-50/50 transition-colors">
+                                                                <td className="px-4 py-3.5">
+                                                                    <div className="flex flex-col">
+                                                                        <span className="font-bold text-gray-900">{item.medicine?.medicineName || 'Unknown Medicine'}</span>
+                                                                        <span className="text-[10px] text-gray-400 font-bold uppercase">{item.medicine?.genericName || '-'}</span>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-4 py-3.5 text-gray-600 font-bold">{item.batchNumber || '-'}</td>
+                                                                <td className="px-4 py-3.5 text-right font-black text-red-650 bg-red-50/30 rounded-lg">
+                                                                    {item.currentQuantity}
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            ) : (
+                                                <div className="text-center py-12 text-green-600 font-bold text-xs flex items-center justify-center gap-1">
+                                                    <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                    </svg>
+                                                    All medicine stocks are healthy!
+                                                </div>
+                                            )
+                                        ) : (
+                                            (pharmacyStats?.fastMoving || []).length > 0 ? (
+                                                <table className="w-full text-left text-xs">
+                                                    <thead className="bg-gray-50 text-[10px] uppercase tracking-widest text-gray-400 font-black border-b border-gray-100">
+                                                        <tr>
+                                                            <th className="px-4 py-3">Medicine</th>
+                                                            <th className="px-4 py-3 text-right">Sold Qty</th>
+                                                            <th className="px-4 py-3 text-right">Total Revenue</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-100">
+                                                        {(pharmacyStats?.fastMoving || []).map((item, idx) => (
+                                                            <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
+                                                                <td className="px-4 py-3.5 font-bold text-gray-900">{item.name}</td>
+                                                                <td className="px-4 py-3.5 text-right font-bold text-gray-700">{item.quantity}</td>
+                                                                <td className="px-4 py-3.5 text-right font-black text-emerald-600">₹{item.revenue}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            ) : (
+                                                <div className="text-center py-12 text-gray-400 italic">No sales data recorded yet.</div>
+                                            )
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    ) : activeTab === 'overview' && !loading && (
                         <div className="space-y-6">
                             <h2 className="text-2xl font-bold text-gray-900">Overview</h2>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -2156,13 +2467,54 @@ const HospitalAdminDashboard = () => {
                         )}
                                 {activeTab === 'settings' && (
                                     <div className="p-6 bg-white rounded-2xl border border-gray-200/80 shadow-sm max-w-4xl mx-auto my-4">
-                                        <h2 className="text-xl font-bold mb-1 text-gray-900">Operations Settings</h2>
-                                        <p className="text-sm text-gray-500 mb-8">Configure operational scenarios, staff access permissions, and billing responsibilities.</p>
-                                        
+                                        <h2 className="text-xl font-bold mb-1 text-gray-900">{isPharmacyTenant ? 'Pharmacy Settings' : 'Operations Settings'}</h2>
+                                        <p className="text-sm text-gray-500 mb-8">{isPharmacyTenant ? 'Configure your pharmacy workflow options.' : 'Configure operational scenarios, staff access permissions, and billing responsibilities.'}</p>
+
                                         {settingsLoading ? (
                                             <SkeletonSettingsCard />
                                         ) : (
                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                                                {/* Barcode Workflow Card — pharmacy tenants only */}
+                                                {isPharmacyTenant && (
+                                                <div className="bg-slate-50/50 rounded-2xl border border-gray-200 p-6 flex flex-col justify-between hover:shadow-md transition-all duration-300">
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-4">
+                                                            <div className="p-3 bg-violet-50 rounded-xl text-violet-600">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5h1v14H4V5zm3 0h1v14H7V5zm3 0h2v14h-2V5zm4 0h1v14h-1V5zm3 0h2v14h-2V5z" />
+                                                                </svg>
+                                                            </div>
+                                                            <span className={`px-3 py-1 text-xs font-semibold rounded-full ${operationsSettings.barcodeEnabled !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                                                                {operationsSettings.barcodeEnabled !== false ? 'Barcode Enabled' : 'Barcode Disabled'}
+                                                            </span>
+                                                        </div>
+                                                        <h3 className="text-lg font-bold text-gray-900 mb-2">Barcode Workflow</h3>
+                                                        <p className="text-sm text-gray-600 leading-relaxed mb-6">
+                                                            Enable barcode scanning at the Billing Counter and barcode label printing in Inventory. Turn this off if your pharmacy does not use barcodes.
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                                                        <span className="text-sm font-medium text-gray-700">
+                                                            {operationsSettings.barcodeEnabled !== false ? 'Barcode Active' : 'Barcode Off'}
+                                                        </span>
+                                                        <button
+                                                            onClick={toggleBarcode}
+                                                            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 ${
+                                                                operationsSettings.barcodeEnabled !== false ? 'bg-sky-600' : 'bg-gray-200'
+                                                            }`}
+                                                        >
+                                                            <span className="sr-only">Toggle Barcode Workflow</span>
+                                                            <span
+                                                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                                                    operationsSettings.barcodeEnabled !== false ? 'translate-x-5' : 'translate-x-0'
+                                                                }`}
+                                                            />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                )}
+                                                {/* Clinic-oriented cards — hidden for standalone pharmacy tenants */}
+                                                {!isPharmacyTenant && (<>
                                                 {/* Receptionist Access Card */}
                                                 <div className="bg-slate-50/50 rounded-2xl border border-gray-200 p-6 flex flex-col justify-between hover:shadow-md transition-all duration-300">
                                                     <div>
@@ -2285,13 +2637,30 @@ const HospitalAdminDashboard = () => {
                                                         </button>
                                                     </div>
                                                 </div>}
+                                                </>)}
                                             </div>
                                         )}
                                     </div>
                                 )}
+                                {activeTab === 'pharmacy-billing' && (
+                                    <div className="space-y-6">
+                                        {renderBranchFilterBar()}
+                                        <PharmacyBillingTab refreshKey={pharmacyRefreshKey} />
+                                    </div>
+                                )}
+                                {activeTab === 'pharmacies' && (
+                                    <PharmaciesTab />
+                                )}
+                                {activeTab === 'suppliers' && (
+                                    <div className="space-y-6">
+                                        {renderBranchFilterBar()}
+                                        <SuppliersView key={pharmacyRefreshKey} />
+                                    </div>
+                                )}
                                 {activeTab === 'pharmacy' && (
                                     <div className="space-y-6 animate-in fade-in duration-300">
-                                        
+                                        {renderBranchFilterBar()}
+
                                         {/* Header Controls Panel */}
                                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-emerald-600 to-teal-600 p-6 rounded-2xl text-white shadow-lg relative overflow-hidden">
                                             <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_107%,rgba(255,255,255,0.1)_0%,rgba(255,255,255,0)_50%)]"></div>
@@ -2942,15 +3311,18 @@ const HospitalAdminDashboard = () => {
                                     )
                                 )}
                                 {activeTab === 'audit-logs' && (
-                                    auditLogs.length > 0 ? (
-                                        <AuditLogsTable auditLogs={auditLogs} />
-                                    ) : (
-                                        <EmptyState
-                                            icon={null}
-                                            title="No Audit Logs"
-                                            message="No activity has been logged yet for your hospital."
-                                        />
-                                    )
+                                    <div className="space-y-6">
+                                        {renderBranchFilterBar()}
+                                        {auditLogs.length > 0 ? (
+                                            <AuditLogsTable auditLogs={auditLogs} />
+                                        ) : (
+                                            <EmptyState
+                                                icon={null}
+                                                title="No Audit Logs"
+                                                message="No activity has been logged yet for your hospital."
+                                            />
+                                        )}
+                                    </div>
                                 )}
 
                             {activeTab === 'support' && (
@@ -4893,6 +5265,291 @@ const AuditLogsTable = ({ auditLogs, startIndex = 0 }) => {
     };
 
     return <DataTable data={paginatedLogs} columns={columns} pagination={pagination} />;
+};
+
+// Pharmacies Tab — Multi Pharmacy owner manages branch outlets (each with one login).
+const PharmaciesTab = () => {
+    const navigate = useNavigate();
+    const { success, error: toastError } = useToast();
+    const [branches, setBranches] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [modalOpen, setModalOpen] = useState(false);
+    const [editing, setEditing] = useState(null); // branch being edited, or null for create
+    const [form, setForm] = useState({ name: '', address: '', phone: '', email: '', password: '' });
+    const [submitting, setSubmitting] = useState(false);
+
+    const load = useCallback(async () => {
+        setLoading(true);
+        try {
+            const data = await branchesApi.getAll();
+            setBranches(Array.isArray(data) ? data : []);
+        } catch (e) {
+            setBranches([]);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => { load(); }, [load]);
+
+    const openCreate = () => {
+        setEditing(null);
+        setForm({ name: '', address: '', phone: '', email: '', password: '' });
+        setModalOpen(true);
+    };
+
+    const openEdit = (branch) => {
+        setEditing(branch);
+        setForm({ name: branch.name || '', address: branch.address || '', phone: branch.phone || '', email: '', password: '' });
+        setModalOpen(true);
+    };
+
+    const handleSubmit = async () => {
+        if (!form.name.trim()) { toastError('Branch name is required'); return; }
+        if (!editing && (!form.email.trim() || !form.password.trim())) { toastError('Login email and password are required'); return; }
+        setSubmitting(true);
+        try {
+            if (editing) {
+                await branchesApi.update(editing.id, { name: form.name, address: form.address, phone: form.phone });
+                success('Branch updated');
+            } else {
+                await branchesApi.create({ name: form.name, address: form.address, phone: form.phone, email: form.email, password: form.password });
+                success('Branch created');
+            }
+            setModalOpen(false);
+            load();
+        } catch (e) {
+            toastError(e.response?.data?.message || e.response?.data || 'Failed to save branch');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const handleResetPassword = async (branch) => {
+        const pw = window.prompt(`Enter a new login password for "${branch.name}":`);
+        if (!pw) return;
+        try {
+            await branchesApi.resetPassword(branch.id, pw);
+            success('Branch password reset');
+        } catch (e) {
+            toastError(e.response?.data?.message || 'Failed to reset password');
+        }
+    };
+
+    const handleDelete = async (branch) => {
+        if (!window.confirm(`Delete branch "${branch.name}"? Its login will be disabled.`)) return;
+        try {
+            await branchesApi.delete(branch.id);
+            success('Branch deleted');
+            load();
+        } catch (e) {
+            toastError(e.response?.data?.message || 'Failed to delete branch');
+        }
+    };
+
+    return (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                    <h2 className="text-lg font-bold text-gray-900">Pharmacies</h2>
+                    <p className="text-xs text-gray-500 mt-0.5">Branch outlets under your ownership · {branches.length} active</p>
+                </div>
+                <button onClick={openCreate} className="px-4 py-2 bg-gray-900 text-white text-sm font-bold rounded-lg hover:bg-gray-800 transition-all shadow-md">
+                    + Create Branch
+                </button>
+            </div>
+            <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                    <thead className="bg-gray-50 text-[10px] uppercase tracking-widest text-gray-400 font-black border-b border-gray-100">
+                        <tr>
+                            <th className="px-6 py-3">Branch</th>
+                            <th className="px-6 py-3">Phone</th>
+                            <th className="px-6 py-3">Address</th>
+                            <th className="px-6 py-3 text-center">Status</th>
+                            <th className="px-6 py-3 text-center">Open</th>
+                            <th className="px-6 py-3 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {loading ? (
+                            <tr><td colSpan={6} className="py-16 text-center text-gray-400">Loading branches...</td></tr>
+                        ) : branches.length > 0 ? branches.map(b => (
+                            <tr key={b.id} className="hover:bg-gray-50/50">
+                                <td className="px-6 py-3 font-bold text-gray-900">{b.name}</td>
+                                <td className="px-6 py-3 text-gray-600">{b.phone || '-'}</td>
+                                <td className="px-6 py-3 text-gray-600">{b.address || '-'}</td>
+                                <td className="px-6 py-3 text-center">
+                                    <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${b.isActive !== false ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{b.isActive !== false ? 'Active' : 'Inactive'}</span>
+                                </td>
+                                <td className="px-6 py-3 text-center">
+                                    <button
+                                        onClick={() => {
+                                            sessionStorage.setItem('selectedBranchId', b.id);
+                                            sessionStorage.setItem('selectedBranchName', b.name);
+                                            navigate('/hospital/pharmacy');
+                                        }}
+                                        className="inline-flex items-center gap-1 px-3 py-1 bg-green-50 hover:bg-green-100 text-green-700 hover:text-green-800 text-xs font-bold rounded-lg border border-green-200/50 transition-all cursor-pointer"
+                                    >
+                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                        </svg>
+                                        Open
+                                    </button>
+                                </td>
+                                <td className="px-6 py-3 text-right">
+                                    <ActionMenu actions={[
+                                        { label: 'Edit details', onClick: () => openEdit(b) },
+                                        { label: 'Reset password', onClick: () => handleResetPassword(b) },
+                                        { label: 'Delete branch', danger: true, onClick: () => handleDelete(b) },
+                                    ]} />
+                                </td>
+                            </tr>
+                        )) : (
+                            <tr><td colSpan={6} className="py-16 text-center text-gray-400 italic">No branches yet. Create your first outlet.</td></tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+
+            {modalOpen && (
+                <div className="fixed inset-0 bg-gray-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-2xl border border-gray-150 max-w-md w-full p-6">
+                        <div className="flex justify-between items-start mb-4">
+                            <h3 className="font-bold text-gray-900 text-lg">{editing ? 'Edit Branch' : 'Create Branch'}</h3>
+                            <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Branch Name</label>
+                                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-900" placeholder="e.g. MG Road Outlet" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Address</label>
+                                <input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-900" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone</label>
+                                <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-900" />
+                            </div>
+                            {!editing && (
+                                <>
+                                    <div className="pt-2 border-t border-gray-100">
+                                        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-2">Branch Login (one per outlet)</p>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Login Email</label>
+                                        <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-900" placeholder="branch@pharmacy.com" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Password</label>
+                                        <input type="text" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-900" />
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                        <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-gray-100">
+                            <button onClick={() => setModalOpen(false)} disabled={submitting} className="px-4 py-2 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+                            <button onClick={handleSubmit} disabled={submitting} className={`px-4 py-2 text-white text-xs font-bold rounded-lg ${submitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-900 hover:bg-gray-800'}`}>{submitting ? 'Saving...' : (editing ? 'Save' : 'Create Branch')}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// Pharmacy Billing Tab — paginated list of all pharmacy sales bills (Single Pharmacy admin).
+const PharmacyBillingTab = () => {
+    const [bills, setBills] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [page, setPage] = useState(0);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalElements, setTotalElements] = useState(0);
+    const pageSize = 10;
+
+    useEffect(() => {
+        let active = true;
+        setLoading(true);
+        salesApi.getHistory(page, pageSize)
+            .then(data => {
+                if (!active) return;
+                const content = data.content || data || [];
+                setBills(content);
+                setTotalPages(data.totalPages || 1);
+                setTotalElements(data.totalElements != null ? data.totalElements : content.length);
+            })
+            .catch(() => { if (active) setBills([]); })
+            .finally(() => { if (active) setLoading(false); });
+        return () => { active = false; };
+    }, [page]);
+
+    const handlePdf = async (bill) => {
+        try {
+            const blob = await salesApi.downloadPDF(bill.id);
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${bill.billNumber || 'bill'}.pdf`;
+            link.click();
+            window.URL.revokeObjectURL(url);
+        } catch (e) { /* ignore download errors */ }
+    };
+
+    return (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                    <h2 className="text-lg font-bold text-gray-900">Billing</h2>
+                    <p className="text-xs text-gray-500 mt-0.5">All pharmacy sales bills</p>
+                </div>
+                <span className="text-xs font-medium text-gray-500">{totalElements} bills</span>
+            </div>
+            <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                    <thead className="bg-gray-50 text-[10px] uppercase tracking-widest text-gray-400 font-black border-b border-gray-100">
+                        <tr>
+                            <th className="px-6 py-3">Bill No.</th>
+                            <th className="px-6 py-3">Date</th>
+                            <th className="px-6 py-3">Customer</th>
+                            <th className="px-6 py-3 text-center">Items</th>
+                            <th className="px-6 py-3">Payment</th>
+                            <th className="px-6 py-3 text-right">Amount</th>
+                            <th className="px-6 py-3 text-right">Invoice</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {loading ? (
+                            <tr><td colSpan={7} className="py-16 text-center text-gray-400">Loading bills...</td></tr>
+                        ) : bills.length > 0 ? bills.map(b => (
+                            <tr key={b.id} className="hover:bg-gray-50/50">
+                                <td className="px-6 py-3 font-bold text-gray-900">{b.billNumber}</td>
+                                <td className="px-6 py-3 text-gray-600">{b.createdAt ? new Date(b.createdAt).toLocaleDateString() : '-'}</td>
+                                <td className="px-6 py-3 text-gray-700">{b.patientName || 'Walk-in'}</td>
+                                <td className="px-6 py-3 text-center text-gray-600">{b.items?.length ?? '-'}</td>
+                                <td className="px-6 py-3">
+                                    <span className="text-xs font-medium text-gray-600">{b.paymentMethod || '-'}</span>
+                                    <span className={`ml-2 px-2 py-0.5 rounded text-[9px] font-black uppercase ${b.paymentStatus === 'PAID' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{b.paymentStatus || '-'}</span>
+                                </td>
+                                <td className="px-6 py-3 text-right font-bold text-gray-900">₹{Number(b.netAmount || 0).toLocaleString()}</td>
+                                <td className="px-6 py-3 text-right">
+                                    <button onClick={() => handlePdf(b)} className="px-3 py-1 text-xs font-bold text-gray-700 border border-gray-300 rounded hover:bg-gray-50">PDF</button>
+                                </td>
+                            </tr>
+                        )) : (
+                            <tr><td colSpan={7} className="py-16 text-center text-gray-400 italic">No bills yet.</td></tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+            <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
+                <span className="text-xs text-gray-500">Page {page + 1} of {Math.max(totalPages, 1)}</span>
+                <div className="flex gap-2">
+                    <button disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))} className={`px-3 py-1.5 rounded border text-xs font-bold ${page === 0 ? 'text-gray-300 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}>← Prev</button>
+                    <button disabled={page + 1 >= totalPages} onClick={() => setPage(p => p + 1)} className={`px-3 py-1.5 rounded border text-xs font-bold ${page + 1 >= totalPages ? 'text-gray-300 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}>Next →</button>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 // Pharmacists Table Component (Reusing similar structure)

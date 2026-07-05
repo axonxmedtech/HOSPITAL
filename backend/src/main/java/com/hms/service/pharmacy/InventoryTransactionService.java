@@ -40,7 +40,7 @@ public class InventoryTransactionService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         
         // Use Pessimistic Locking to prevent race conditions during manual adjustment
-        MedicineBatch batch = batchRepository.findByIdAndHospitalIdForUpdate(batchId, hospitalId)
+        MedicineBatch batch = batchRepository.findByIdAndHospitalIdForUpdate(batchId, hospitalId, securityHelper.getCurrentBranchId())
                 .orElseThrow(() -> new RuntimeException("Medicine batch not found or unauthorized"));
 
         BigDecimal qtyBefore = batch.getCurrentQuantity() != null ? batch.getCurrentQuantity() : BigDecimal.ZERO;

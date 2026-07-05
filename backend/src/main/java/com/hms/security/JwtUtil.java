@@ -57,11 +57,17 @@ public class JwtUtil {
      */
     public String generateToken(Long userId, String email, String role, Long hospitalId,
             java.util.List<String> modules) {
+        return generateToken(userId, email, role, hospitalId, modules, null);
+    }
+
+    public String generateToken(Long userId, String email, String role, Long hospitalId,
+            java.util.List<String> modules, Long branchId) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", userId);
         claims.put("role", role);
         claims.put("hospitalId", hospitalId); // null for Super Admin
         claims.put("modules", modules);
+        claims.put("branchId", branchId); // Multi Pharmacy branch login; null otherwise
 
         return Jwts.builder()
                 .claims(claims)
@@ -126,6 +132,14 @@ public class JwtUtil {
     public Long extractHospitalId(String token) {
         Object hospitalId = extractClaims(token).get("hospitalId");
         return hospitalId != null ? ((Number) hospitalId).longValue() : null;
+    }
+
+    /**
+     * Extract the Multi Pharmacy branch ID from the token. Null for non-branch users.
+     */
+    public Long extractBranchId(String token) {
+        Object branchId = extractClaims(token).get("branchId");
+        return branchId != null ? ((Number) branchId).longValue() : null;
     }
 
     /**

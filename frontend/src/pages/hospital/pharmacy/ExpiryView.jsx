@@ -1,10 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import inventoryApi from '../../../services/pharmacy/inventoryApi';
+import authService from '../../../services/authService';
 import { useToast } from '../../../context/ToastContext';
 import ConfirmationModal from '../../../components/ConfirmationModal';
 
 const ExpiryView = () => {
     const { success, error: toastError } = useToast();
+    const currentUser = authService.getCurrentUser();
+    // Standalone pharmacy ERP: expired stock can be dispatched back to supplier at a lower rate.
+    const isStandalonePharmacy = currentUser?.modules?.includes('PHARMACY') && !currentUser?.modules?.includes('OPD');
     const [batches, setBatches] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -150,6 +154,45 @@ const ExpiryView = () => {
                 }
             }
         });
+    };
+
+    // ↩️ Dispatch expired stock back to supplier at a (usually lower) rate
+    const [returnBatch, setReturnBatch] = useState(null);
+    const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
+    const [returnQty, setReturnQty] = useState('');
+    const [returnRate, setReturnRate] = useState('');
+    const [processingReturn, setProcessingReturn] = useState(false);
+
+    const openReturnModal = (batch) => {
+        setReturnBatch(batch);
+        setReturnQty(String(parseFloat(batch.currentQuantity || 0)));
+        setReturnRate(batch.purchaseRate != null ? String(batch.purchaseRate) : '');
+        setIsReturnModalOpen(true);
+    };
+
+    const handleReturnToSupplier = async () => {
+        if (!returnBatch || processingReturn) return;
+        const qty = parseFloat(returnQty);
+        const rate = parseFloat(returnRate);
+        if (!(qty > 0)) { toastError('Enter a valid return quantity.'); return; }
+        if (qty > parseFloat(returnBatch.currentQuantity)) { toastError('Return quantity exceeds available stock.'); return; }
+        if (!(rate >= 0)) { toastError('Enter a valid return rate.'); return; }
+        if (!returnBatch.supplierId) { toastError('This batch has no linked supplier to return to.'); return; }
+        setProcessingReturn(true);
+        try {
+            await inventoryApi.processSupplierReturn(returnBatch.supplierId, [
+                { medicineBatchId: returnBatch.id, quantityToReturn: qty, returnRate: rate }
+            ]);
+            success('Expired stock dispatched back to supplier.');
+            setIsReturnModalOpen(false);
+            setReturnBatch(null);
+            fetchExpiryAlerts();
+        } catch (err) {
+            console.error('Supplier return failed', err);
+            toastError(err.response?.data?.message || 'Failed to dispatch stock back to supplier.');
+        } finally {
+            setProcessingReturn(false);
+        }
     };
 
     // 🗑️ Dispose batch write-off operation
@@ -348,8 +391,17 @@ const ExpiryView = () => {
                                                         {blockingId === b.id ? 'Blocking...' : 'Block'}
                                                     </button>
                                                 )}
+                                                {isStandalonePharmacy && b.status !== 'DISPOSED' && b.supplierId && parseFloat(b.currentQuantity) > 0 && (
+                                                    <button
+                                                        onClick={() => openReturnModal(b)}
+                                                        className="px-2.5 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded font-bold text-[10px] uppercase tracking-wide active:scale-95 transition-all"
+                                                        title="Dispatch expired stock back to supplier at a lower rate"
+                                                    >
+                                                        Return
+                                                    </button>
+                                                )}
                                                 {b.status !== 'DISPOSED' && (
-                                                    <button 
+                                                    <button
                                                         onClick={() => { setSelectedBatch(b); setIsDisposalModalOpen(true); }}
                                                         className="px-2.5 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 rounded font-bold text-[10px] uppercase tracking-wide active:scale-95 transition-all"
                                                         title="Write off stock value to 0"
@@ -383,6 +435,69 @@ const ExpiryView = () => {
                 onConfirm={confirmState.onConfirm}
                 onCancel={() => setConfirmState({ open: false })}
             />
+
+            {/* Dispatch-back-to-supplier modal */}
+            {isReturnModalOpen && returnBatch && (
+                <div className="fixed inset-0 bg-gray-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-2xl border border-gray-150 max-w-md w-full p-6 animate-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-start mb-4">
+                            <div>
+                                <h3 className="font-bold text-gray-900 text-lg">Return to Supplier</h3>
+                                <p className="text-xs text-gray-500 mt-1">{returnBatch.medicine?.medicineName} · Batch {returnBatch.batchNumber}</p>
+                            </div>
+                            <button onClick={() => { setIsReturnModalOpen(false); setReturnBatch(null); }} className="text-gray-400 hover:text-gray-600">
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
+                        <div className="space-y-4">
+                            <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-lg text-xs text-indigo-700">
+                                Dispatch expired/near-expiry stock back to the supplier. Enter the agreed return rate (often lower than purchase). Available: <strong>{parseFloat(returnBatch.currentQuantity)}</strong> units.
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1.5">Quantity</label>
+                                    <input
+                                        type="number" min="0" step="0.01"
+                                        value={returnQty}
+                                        onChange={(e) => setReturnQty(e.target.value)}
+                                        className="w-full border border-gray-300 rounded p-2 text-sm outline-none focus:border-gray-900 transition-colors"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1.5">Return Rate (₹)</label>
+                                    <input
+                                        type="number" min="0" step="0.01"
+                                        value={returnRate}
+                                        onChange={(e) => setReturnRate(e.target.value)}
+                                        className="w-full border border-gray-300 rounded p-2 text-sm outline-none focus:border-gray-900 transition-colors"
+                                        placeholder="e.g. lower than purchase"
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex justify-between text-xs text-gray-500 px-1">
+                                <span>Estimated credit</span>
+                                <span className="font-bold text-gray-800">₹{((parseFloat(returnQty) || 0) * (parseFloat(returnRate) || 0)).toLocaleString()}</span>
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-gray-100">
+                            <button
+                                onClick={() => { setIsReturnModalOpen(false); setReturnBatch(null); }}
+                                disabled={processingReturn}
+                                className={`px-4 py-2 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg ${processingReturn ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleReturnToSupplier}
+                                disabled={processingReturn}
+                                className={`px-4 py-2 text-white text-xs font-bold rounded-lg shadow-md shadow-indigo-200 ${processingReturn ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+                            >
+                                {processingReturn ? 'Dispatching...' : 'Dispatch Return'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Disposal remarks Modal overlay */}
             {isDisposalModalOpen && selectedBatch && (

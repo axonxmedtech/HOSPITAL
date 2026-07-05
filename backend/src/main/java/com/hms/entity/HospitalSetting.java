@@ -39,6 +39,11 @@ public class HospitalSetting {
     @Column(name = "in_clinic", nullable = false)
     private Boolean inClinic = true;
 
+    // Pharmacy: enables the barcode scan/print workflow (billing barcode mode,
+    // inventory label printing). Defaults on; toggled from the pharmacy Settings tab.
+    @Column(name = "barcode_enabled", nullable = false)
+    private Boolean barcodeEnabled = true;
+
     public Long getId() {
         return id;
     }
@@ -77,5 +82,13 @@ public class HospitalSetting {
 
     public void setInClinic(Boolean inClinic) {
         this.inClinic = inClinic;
+    }
+
+    public Boolean getBarcodeEnabled() {
+        return barcodeEnabled;
+    }
+
+    public void setBarcodeEnabled(Boolean barcodeEnabled) {
+        this.barcodeEnabled = barcodeEnabled;
     }
 }

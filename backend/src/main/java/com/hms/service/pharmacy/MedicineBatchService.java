@@ -28,25 +28,27 @@ public class MedicineBatchService {
 
     public Page<MedicineBatch> getInventory(String query, Long categoryId, Pageable pageable) {
         Long hid = securityHelper.getCurrentHospitalId();
-        
+        Long branchId = securityHelper.getCurrentBranchId();
+
         if (categoryId != null) {
             if (query != null && !query.trim().isEmpty()) {
-                return repository.searchInventoryWithCategory(hid, query, categoryId, pageable);
+                return repository.searchInventoryWithCategory(hid, branchId, query, categoryId, pageable);
             }
-            return repository.findByHospitalIdAndMedicine_CategoryId(hid, categoryId, pageable);
+            return repository.findScopedByCategory(hid, branchId, categoryId, pageable);
         }
 
         if (query != null && !query.trim().isEmpty()) {
-            return repository.searchInventory(hid, query, pageable);
+            return repository.searchInventory(hid, branchId, query, pageable);
         }
-        return repository.findByHospitalId(hid, pageable);
+        return repository.findScopedInventory(hid, branchId, pageable);
     }
 
     public Page<MedicineBatch> getLowStockInventory(Pageable pageable) {
         Long hid = securityHelper.getCurrentHospitalId();
-        Page<MedicineBatch> page = repository.findLowStock(hid, pageable);
+        Long branchId = securityHelper.getCurrentBranchId();
+        Page<MedicineBatch> page = repository.findLowStock(hid, branchId, pageable);
         for (MedicineBatch b : page.getContent()) {
-            java.math.BigDecimal totalQty = repository.sumCurrentQuantityByMedicineId(hid, b.getMedicineId());
+            java.math.BigDecimal totalQty = repository.sumCurrentQuantityByMedicineId(hid, branchId, b.getMedicineId());
             if (totalQty == null) totalQty = java.math.BigDecimal.ZERO;
             b.setCurrentQuantity(totalQty);
         }
@@ -55,7 +57,8 @@ public class MedicineBatchService {
 
     public Page<MedicineBatch> getExpiringInventory(Integer daysThreshold, Pageable pageable) {
         LocalDate dateLimit = LocalDate.now().plusDays(daysThreshold != null ? daysThreshold : 30);
-        return repository.findExpiringSoon(securityHelper.getCurrentHospitalId(), dateLimit, pageable);
+        return repository.findExpiringSoon(securityHelper.getCurrentHospitalId(),
+                securityHelper.getCurrentBranchId(), dateLimit, pageable);
     }
 
     @org.springframework.transaction.annotation.Transactional
@@ -102,11 +105,12 @@ public class MedicineBatchService {
  
         Long hid = securityHelper.getCurrentHospitalId();
         batch.setHospitalId(hid);
+        batch.setBranchId(securityHelper.getCurrentBranchId());
         batch.setStatus("ACTIVE");
         
         // Ensure we don't have a duplicate batch for the same medicine and number
         java.util.Optional<MedicineBatch> existing = repository.findByHospitalIdAndMedicineIdAndBatchNumber(
-            hid, batch.getMedicineId(), batch.getBatchNumber());
+            hid, securityHelper.getCurrentBranchId(), batch.getMedicineId(), batch.getBatchNumber());
         
         if (existing.isPresent()) {
             throw new IllegalArgumentException("Batch with this number already exists for this medicine. Please use adjustment instead.");
@@ -117,6 +121,7 @@ public class MedicineBatchService {
         // Create audit transaction
         InventoryTransaction tx = new InventoryTransaction();
         tx.setHospitalId(hid);
+        tx.setBranchId(securityHelper.getCurrentBranchId());
         tx.setMedicineBatchId(saved.getId());
         tx.setTransactionType("OPENING_STOCK");
         tx.setQuantity(saved.getCurrentQuantity());
@@ -131,13 +136,13 @@ public class MedicineBatchService {
 
     public java.util.List<MedicineBatch> searchAvailableBatchesFEFO(String query) {
         Long hid = securityHelper.getCurrentHospitalId();
-        return repository.searchAvailableBatchesFEFO(hid, query != null ? query.trim() : "");
+        return repository.searchAvailableBatchesFEFO(hid, securityHelper.getCurrentBranchId(), query != null ? query.trim() : "");
     }
 
     @org.springframework.transaction.annotation.Transactional
     public MedicineBatch blockBatch(Long id) {
         Long hid = securityHelper.getCurrentHospitalId();
-        MedicineBatch batch = repository.findByIdAndHospitalIdForUpdate(id, hid)
+        MedicineBatch batch = repository.findByIdAndHospitalIdForUpdate(id, hid, securityHelper.getCurrentBranchId())
                 .orElseThrow(() -> new RuntimeException("Batch not found"));
         batch.setStatus("BLOCKED");
         return repository.save(batch);
@@ -146,7 +151,7 @@ public class MedicineBatchService {
     @org.springframework.transaction.annotation.Transactional
     public MedicineBatch disposeBatch(Long id, String remarks) {
         Long hid = securityHelper.getCurrentHospitalId();
-        MedicineBatch batch = repository.findByIdAndHospitalIdForUpdate(id, hid)
+        MedicineBatch batch = repository.findByIdAndHospitalIdForUpdate(id, hid, securityHelper.getCurrentBranchId())
                 .orElseThrow(() -> new RuntimeException("Batch not found"));
         
         java.math.BigDecimal qtyBefore = batch.getCurrentQuantity();
@@ -158,6 +163,7 @@ public class MedicineBatchService {
             
             InventoryTransaction tx = new InventoryTransaction();
             tx.setHospitalId(hid);
+            tx.setBranchId(securityHelper.getCurrentBranchId());
             tx.setMedicineBatchId(batch.getId());
             tx.setTransactionType("ADJUSTMENT");
             tx.setQuantity(qtyBefore.negate());
@@ -188,7 +194,7 @@ public class MedicineBatchService {
                 throw new IllegalArgumentException("Return quantity must be positive");
             }
             
-            MedicineBatch batch = repository.findByIdAndHospitalIdForUpdate(batchId, hid)
+            MedicineBatch batch = repository.findByIdAndHospitalIdForUpdate(batchId, hid, securityHelper.getCurrentBranchId())
                     .orElseThrow(() -> new RuntimeException("Batch not found or unauthorized"));
             
             if (batch.getCurrentQuantity().compareTo(qtyToReturn) < 0) {
@@ -200,19 +206,31 @@ public class MedicineBatchService {
             repository.save(batch);
             
             // Calculate claim total
-            java.math.BigDecimal rate = batch.getPurchaseRate() != null ? batch.getPurchaseRate() : java.math.BigDecimal.ZERO;
+            // An explicit returnRate (e.g. expired stock taken back at a lower rate)
+            // overrides the batch purchase rate when provided.
+            Object returnRateObj = item.get("returnRate");
+            java.math.BigDecimal rate;
+            if (returnRateObj != null && !returnRateObj.toString().trim().isEmpty()) {
+                rate = new java.math.BigDecimal(returnRateObj.toString());
+                if (rate.compareTo(java.math.BigDecimal.ZERO) < 0) {
+                    throw new IllegalArgumentException("Return rate cannot be negative");
+                }
+            } else {
+                rate = batch.getPurchaseRate() != null ? batch.getPurchaseRate() : java.math.BigDecimal.ZERO;
+            }
             totalClaimed = totalClaimed.add(qtyToReturn.multiply(rate));
             
             // Record Return Transaction
             InventoryTransaction tx = new InventoryTransaction();
             tx.setHospitalId(hid);
+            tx.setBranchId(securityHelper.getCurrentBranchId());
             tx.setMedicineBatchId(batch.getId());
             tx.setTransactionType("RETURN");
             tx.setQuantity(qtyToReturn.negate()); // Negative because stock leaves inventory
             tx.setQuantityBefore(qtyBefore);
             tx.setQuantityAfter(batch.getCurrentQuantity());
             tx.setReferenceType("SUPPLIER_RETURN");
-            tx.setRemarks("Returned to Supplier ID: " + supplierId);
+            tx.setRemarks("Returned to Supplier ID: " + supplierId + " @ rate " + rate);
             tx.setCreatedBy(userId);
             transactionRepository.save(tx);
         }

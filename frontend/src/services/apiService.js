@@ -36,6 +36,12 @@ apiClient.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
 
+    // Add branch impersonation header if set (multi pharmacy)
+    const selectedBranchId = sessionStorage.getItem('selectedBranchId');
+    if (selectedBranchId) {
+      config.headers['X-Branch-ID'] = selectedBranchId;
+    }
+
     return config;
   },
   (error) => {

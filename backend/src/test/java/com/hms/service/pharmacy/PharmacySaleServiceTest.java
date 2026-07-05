@@ -22,6 +22,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -80,7 +81,7 @@ class PharmacySaleServiceTest {
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Sale quantity must be positive");
 
-        verify(batchRepository, never()).findByIdAndHospitalIdForUpdate(any(), any());
+        verify(batchRepository, never()).findByIdAndHospitalIdForUpdate(any(), any(), any());
     }
 
     @Test
@@ -94,7 +95,7 @@ class PharmacySaleServiceTest {
         batch.setCurrentQuantity(BigDecimal.valueOf(5));
         batch.setBatchNumber("B001");
 
-        when(batchRepository.findByIdAndHospitalIdForUpdate(1L, 1L)).thenReturn(Optional.of(batch));
+        when(batchRepository.findByIdAndHospitalIdForUpdate(eq(1L), eq(1L), any())).thenReturn(Optional.of(batch));
 
         assertThatThrownBy(() -> saleService.createSale(request))
                 .isInstanceOf(RuntimeException.class)
@@ -104,7 +105,7 @@ class PharmacySaleServiceTest {
     @Test
     void getSaleDetails_withUnknownId_throwsRuntimeException() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
-        when(saleRepository.findByIdAndHospitalId(99L, 1L)).thenReturn(Optional.empty());
+        when(saleRepository.findByIdScoped(eq(99L), eq(1L), any())).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> saleService.getSaleDetails(99L))
                 .isInstanceOf(RuntimeException.class)
@@ -122,7 +123,7 @@ class PharmacySaleServiceTest {
         batch.setCurrentQuantity(BigDecimal.valueOf(10));
         batch.setBatchNumber("B001");
 
-        when(batchRepository.findByIdAndHospitalIdForUpdate(1L, 1L)).thenReturn(Optional.of(batch));
+        when(batchRepository.findByIdAndHospitalIdForUpdate(eq(1L), eq(1L), any())).thenReturn(Optional.of(batch));
 
         PharmacySale savedSale = new PharmacySale();
         savedSale.setId(5L);

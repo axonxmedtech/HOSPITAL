@@ -55,6 +55,20 @@ public class SecurityContextHelper {
     }
 
     /**
+     * Get the current user's Multi Pharmacy branch ID.
+     *
+     * @return branch ID for a branch login, or null (admins, single-shop pharmacists,
+     *         hospital/clinic pharmacists) — meaning "not scoped to a branch".
+     */
+    public Long getCurrentBranchId() {
+        try {
+            return getCurrentUserDetails().getBranchId();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
      * Get the current user's ID
      * 
      * @return User ID

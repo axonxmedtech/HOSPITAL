@@ -49,6 +49,26 @@ public class UserAuthenticationDetails {
      */
     private java.util.List<String> modules;
 
+    /**
+     * Multi Pharmacy branch ID for branch logins; null otherwise.
+     */
+    private Long branchId;
+
+    public UserAuthenticationDetails(Long userId, String role, Long hospitalId, java.util.List<String> modules) {
+        this.userId = userId;
+        this.role = role;
+        this.hospitalId = hospitalId;
+        this.modules = modules;
+    }
+
+    public Long getBranchId() {
+        return branchId;
+    }
+
+    public void setBranchId(Long branchId) {
+        this.branchId = branchId;
+    }
+
     public Long getUserId() {
         return userId;
     }

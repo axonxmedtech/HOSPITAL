@@ -105,6 +105,14 @@ public class User {
     private Long hospitalId;
 
     /**
+     * Branch ID for Multi Pharmacy tenants — the pharmacy_branch a PHARMACIST login
+     * belongs to. NULL for all non-branch users (admins, single-shop pharmacists,
+     * doctors, etc.).
+     */
+    @Column(name = "branch_id")
+    private Long branchId;
+
+    /**
      * Soft delete flag
      */
     @Column(nullable = false)
@@ -187,6 +195,14 @@ public class User {
 
     public void setHospitalId(Long hospitalId) {
         this.hospitalId = hospitalId;
+    }
+
+    public Long getBranchId() {
+        return branchId;
+    }
+
+    public void setBranchId(Long branchId) {
+        this.branchId = branchId;
     }
 
     public LocalDateTime getCreatedAt() {

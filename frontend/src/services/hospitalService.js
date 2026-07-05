@@ -783,6 +783,11 @@ const hospitalService = {
         return response.data;
     },
 
+    updateBarcodeSetting: async (barcodeEnabled) => {
+        const response = await apiClient.put('/hospital/settings/barcode', { barcodeEnabled });
+        return response.data;
+    },
+
     /**
      * Get history for specific entity
      */

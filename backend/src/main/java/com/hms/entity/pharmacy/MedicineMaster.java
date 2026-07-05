@@ -24,6 +24,10 @@ public class MedicineMaster {
     @Column(name = "hospital_id", nullable = false)
     private Long hospitalId;
 
+    /** Multi Pharmacy branch scope; null for non-branch tenants. */
+    @Column(name = "branch_id")
+    private Long branchId;
+
     @Column(name = "medicine_code", unique = true)
     private String medicineCode;
 
@@ -36,7 +40,7 @@ public class MedicineMaster {
     @Column(name = "category_id")
     private Long categoryId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "category_id", insertable = false, updatable = false)
     private MedicineCategory category;
 
@@ -45,10 +49,16 @@ public class MedicineMaster {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "manufacturer_id", insertable = false, updatable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private Manufacturer manufacturer;
 
     @Column(name = "medicine_type")
     private String medicineType; // TABLET, SYRUP, INJECTION
+
+    // Free-text manufacturer captured at purchase time (standalone pharmacy ERP).
+    // Separate from manufacturer_id, which links the pharmacy's manufacturer master.
+    @Column(name = "manufacturer_name")
+    private String manufacturerName;
 
     @Column(name = "schedule_type")
     private String scheduleType; // H, H1, X, OTC

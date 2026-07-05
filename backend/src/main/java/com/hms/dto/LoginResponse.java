@@ -80,6 +80,7 @@ public class LoginResponse {
     private String specialization;
     private Boolean isSingleDoctor;
     private Boolean inClinic;
+    private Boolean barcodeEnabled;
     private String logoUrl;
     private String parentOrganization;
     private String hospitalAddress;

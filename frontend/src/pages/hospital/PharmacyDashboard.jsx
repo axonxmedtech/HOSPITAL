@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import authService from '../../services/authService';
-import MedicineMasterView from './pharmacy/MedicineMasterView';
 import ProfileModal from '../../components/ProfileModal';
 import useWebSocket from '../../hooks/useWebSocket';
 
@@ -18,6 +17,8 @@ import PrescriptionsView from './pharmacy/PrescriptionsView';
 import SuppliersView from './pharmacy/SuppliersView';
 import ExpiryView from './pharmacy/ExpiryView';
 import ReturnsView from './pharmacy/ReturnsView';
+import BranchAuditLogsView from './pharmacy/BranchAuditLogsView';
+import BranchSettingsView from './pharmacy/BranchSettingsView';
 
 const PharmacyDashboard = () => {
     const [user] = useState(authService.getCurrentUser());
@@ -52,6 +53,8 @@ const PharmacyDashboard = () => {
     };
 
     const isStandalonePharmacy = user?.modules?.includes('PHARMACY') && !user?.modules?.includes('OPD');
+    const selectedBranchId = sessionStorage.getItem('selectedBranchId');
+    const selectedBranchName = sessionStorage.getItem('selectedBranchName');
 
     // Flat Sidebar definition matching Receptionist/Doctor layouts to support clean minimalist icons
     const sidebarTabs = [
@@ -59,12 +62,15 @@ const PharmacyDashboard = () => {
         { id: 'billing', label: 'Billing Counter' },
         ...(!isStandalonePharmacy ? [{ id: 'prescriptions', label: 'Prescriptions' }] : []),
         { id: 'inventory', label: 'Inventory' },
-        { id: 'medicine_master', label: 'Medicine Master' },
         { id: 'purchase', label: 'Purchase Management' },
         { id: 'suppliers', label: 'Suppliers' },
         { id: 'returns', label: 'Returns & Refunds' },
         { id: 'expiry', label: 'Expiry Management' },
-        { id: 'reports', label: 'Reports & Analytics' }
+        { id: 'reports', label: 'Reports & Analytics' },
+        ...(user?.role === 'HOSPITAL_ADMIN' ? [
+            { id: 'audit-logs', label: 'Audit Logs' },
+            { id: 'settings', label: 'Settings' }
+        ] : [])
     ];
 
     // Router-like rendering component based on selected state
@@ -88,9 +94,6 @@ const PharmacyDashboard = () => {
             case 'suppliers':
                 return <SuppliersView refreshKey={refreshKey} />;
 
-            case 'medicine_master':
-                return <MedicineMasterView refreshKey={refreshKey} />;
-
             case 'reports':
                 return <ReportsView refreshKey={refreshKey} />;
 
@@ -99,6 +102,12 @@ const PharmacyDashboard = () => {
 
             case 'returns':
                 return <ReturnsView refreshKey={refreshKey} />;
+
+            case 'audit-logs':
+                return <BranchAuditLogsView refreshKey={refreshKey} />;
+
+            case 'settings':
+                return <BranchSettingsView refreshKey={refreshKey} />;
 
             default:
                 return (
@@ -138,15 +147,15 @@ const PharmacyDashboard = () => {
                 tabs={sidebarTabs}
                 activeTab={activeTab}
                 onTabChange={handleTabChange}
-                footerTitle="Hospital"
-                footerData={user?.hospitalName || 'HMS Medical Center'}
+                footerTitle={selectedBranchId ? "Branch Outlet" : "Hospital"}
+                footerData={selectedBranchId ? selectedBranchName : (user?.hospitalName || 'HMS Medical Center')}
                 variant="plain"
                 isCollapsed={sidebarCollapsed}
             />
 
             <div className="flex-1 flex flex-col h-full relative overflow-hidden">
                 <Navbar
-                    title={`Pharmacy & Inventory Operations`}
+                    title={selectedBranchId ? `Branch: ${selectedBranchName}` : `Pharmacy & Inventory Operations`}
                     user={user}
                     onLogout={handleLogout}
                     onProfile={() => setProfileOpen(true)}
@@ -155,12 +164,37 @@ const PharmacyDashboard = () => {
 
                 {/* Main Dashboard Content Area */}
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-[#fafafa] p-4 md:p-6">
+                    {/* Impersonation Banner */}
+                    {selectedBranchId && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-6 flex items-center justify-between shadow-sm">
+                            <div className="flex items-center gap-2.5">
+                                <span className="flex h-2.5 w-2.5 relative">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                                </span>
+                                <span className="text-xs font-semibold text-amber-800">
+                                    Viewing branch: <strong className="font-bold text-amber-900">{selectedBranchName}</strong> (Admin Impersonation Mode)
+                                </span>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    sessionStorage.removeItem('selectedBranchId');
+                                    sessionStorage.removeItem('selectedBranchName');
+                                    navigate('/hospital/admin?tab=pharmacies');
+                                }}
+                                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-black text-[10px] uppercase tracking-wider rounded-lg transition-all shadow cursor-pointer"
+                            >
+                                Exit Branch
+                            </button>
+                        </div>
+                    )}
+
                     {/* Page Title Bar */}
                     <div className="flex items-center justify-between mb-6">
                         <div className="flex items-center gap-3">
                             <div className="w-1 h-6 bg-gray-900 rounded-full"></div>
                             <h2 className="text-lg font-bold text-gray-800 capitalize flex items-center gap-2">
-                                {activeTab.replace('_', ' ')}
+                                {activeTab.replace('-', ' ')}
                             </h2>
                         </div>
                         <div className="flex items-center gap-2 text-xs font-medium text-gray-500 bg-white px-3 py-1.5 rounded border border-gray-200">

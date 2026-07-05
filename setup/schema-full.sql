@@ -250,6 +250,7 @@ DROP TABLE IF EXISTS `inventory_transactions`;
 CREATE TABLE `inventory_transactions` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `hospital_id` bigint NOT NULL,
+  `branch_id` bigint DEFAULT NULL,
   `medicine_batch_id` bigint NOT NULL,
   `transaction_type` varchar(50) DEFAULT NULL,
   `quantity` decimal(38,2) NOT NULL,
@@ -376,6 +377,7 @@ DROP TABLE IF EXISTS `medicine_batches`;
 CREATE TABLE `medicine_batches` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `hospital_id` bigint NOT NULL,
+  `branch_id` bigint DEFAULT NULL,
   `medicine_id` bigint NOT NULL,
   `batch_number` varchar(100) NOT NULL,
   `expiry_date` date NOT NULL,
@@ -431,11 +433,13 @@ DROP TABLE IF EXISTS `medicine_master`;
 CREATE TABLE `medicine_master` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `hospital_id` bigint NOT NULL,
+  `branch_id` bigint DEFAULT NULL,
   `medicine_code` varchar(50) DEFAULT NULL,
   `medicine_name` varchar(255) NOT NULL,
   `generic_name` varchar(255) DEFAULT NULL,
   `category_id` bigint DEFAULT NULL,
   `manufacturer_id` bigint DEFAULT NULL,
+  `manufacturer_name` varchar(255) DEFAULT NULL,
   `medicine_type` varchar(50) DEFAULT NULL,
   `schedule_type` varchar(20) DEFAULT NULL,
   `dosage_form` varchar(100) DEFAULT NULL,
@@ -604,6 +608,7 @@ DROP TABLE IF EXISTS `pharmacy_sales`;
 CREATE TABLE `pharmacy_sales` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `hospital_id` bigint NOT NULL,
+  `branch_id` bigint DEFAULT NULL,
   `invoice_number` varchar(100) DEFAULT NULL,
   `patient_id` bigint DEFAULT NULL,
   `prescription_id` bigint DEFAULT NULL,
@@ -685,6 +690,7 @@ DROP TABLE IF EXISTS `purchase_invoices`;
 CREATE TABLE `purchase_invoices` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `hospital_id` bigint NOT NULL,
+  `branch_id` bigint DEFAULT NULL,
   `supplier_id` bigint NOT NULL,
   `invoice_number` varchar(100) DEFAULT NULL,
   `invoice_date` date DEFAULT NULL,
@@ -778,6 +784,7 @@ CREATE TABLE `suppliers` (
   `email` varchar(255) DEFAULT NULL,
   `gst_number` varchar(255) DEFAULT NULL,
   `hospital_id` bigint NOT NULL,
+  `branch_id` bigint DEFAULT NULL,
   `is_active` bit(1) DEFAULT NULL,
   `phone` varchar(255) DEFAULT NULL,
   `supplier_name` varchar(255) NOT NULL,
@@ -799,6 +806,7 @@ CREATE TABLE `users` (
   `custom_id` varchar(255) DEFAULT NULL,
   `email` varchar(100) NOT NULL,
   `hospital_id` bigint DEFAULT NULL,
+  `branch_id` bigint DEFAULT NULL,
   `is_active` bit(1) NOT NULL,
   `name` varchar(100) NOT NULL,
   `password` varchar(255) NOT NULL,
@@ -809,6 +817,25 @@ CREATE TABLE `users` (
   UNIQUE KEY `UK_s24bux761rbgowsl7a4b386ba` (`public_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `pharmacy_branch`
+-- (Multi Pharmacy branches/outlets under one owner tenant)
+--
+DROP TABLE IF EXISTS `pharmacy_branch`;
+CREATE TABLE `pharmacy_branch` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `address` varchar(255) DEFAULT NULL,
+  `phone` varchar(30) DEFAULT NULL,
+  `login_user_id` bigint DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `created_at` datetime(6) DEFAULT NULL,
+  `updated_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_pharmacy_branch_hospital` (`hospital_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 --
 -- Table structure for table `wards`
@@ -865,6 +892,8 @@ CREATE TABLE `plans` (
   `monthly_price` decimal(10,2) NOT NULL DEFAULT 0.00,
   `yearly_price` decimal(10,2) NOT NULL DEFAULT 0.00,
   `in_clinic` tinyint(1) NOT NULL DEFAULT 0,
+  `multi_outlet` tinyint(1) NOT NULL DEFAULT 0,
+  `max_outlets` int DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
   `created_at` datetime(6) NOT NULL,
   `updated_at` datetime(6) DEFAULT NULL,
@@ -932,6 +961,7 @@ CREATE TABLE `hospital_settings` (
   `reception_mode` varchar(20) NOT NULL DEFAULT 'HAS_RECEPTIONIST',
   `billing_handler` varchar(20) NOT NULL DEFAULT 'RECEPTIONIST',
   `in_clinic` tinyint(1) NOT NULL DEFAULT 1,
+  `barcode_enabled` tinyint(1) NOT NULL DEFAULT 1,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_hospital_settings_hospital_id` (`hospital_id`),
   CONSTRAINT `FK_hospital_settings_hospital_id` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`)

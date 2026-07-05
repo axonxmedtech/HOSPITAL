@@ -52,4 +52,11 @@ public class SupplierController {
     public ResponseEntity<?> update(@PathVariable Long id, @Valid @RequestBody SupplierRequest req) {
         return ResponseEntity.ok(service.update(id, req));
     }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> delete(@PathVariable Long id) {
+        service.delete(id);
+        return ResponseEntity.noContent().build();
+    }
 }

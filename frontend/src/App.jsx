@@ -38,8 +38,9 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
     const isAllowed = !allowedRoles || allowedRoles.some(role => {
         if (role === user.role) return true;
         if (role === 'DOCTOR' && user.role === 'HOSPITAL_ADMIN' && user.isSingleDoctor) return true;
-        const isStandalonePharmacy = user.modules?.includes('PHARMACY') && !user.modules?.includes('OPD');
-        if (role === 'PHARMACIST' && user.role === 'HOSPITAL_ADMIN' && isStandalonePharmacy) return true;
+        // Only the Single Pharmacist Admin (solo) doubles as the pharmacist.
+        const isSoloPharmacistAdmin = user.modules?.includes('SINGLE_PHARMACIST_ADMIN');
+        if (role === 'PHARMACIST' && user.role === 'HOSPITAL_ADMIN' && isSoloPharmacistAdmin) return true;
         return false;
     });
 
@@ -59,14 +60,15 @@ const LandingRedirect = () => {
         case 'SUPER_ADMIN':
             return <Navigate to="/platform/dashboard" replace />;
         case 'HOSPITAL_ADMIN': {
-            const isStandalonePharmacy = user.modules?.includes('PHARMACY') && !user.modules?.includes('OPD');
+            // Only Single Pharmacist Admin (solo) gets the dual pharmacist/admin landing.
+            const isSoloPharmacistAdmin = user.modules?.includes('SINGLE_PHARMACIST_ADMIN');
             if (user.isSingleDoctor) {
                 const preference = sessionStorage.getItem('activeDashboard');
                 if (preference === 'admin') {
                     return <Navigate to="/hospital/admin" replace />;
                 }
                 return <Navigate to="/hospital/doctor" replace />;
-            } else if (isStandalonePharmacy) {
+            } else if (isSoloPharmacistAdmin) {
                 const preference = sessionStorage.getItem('activeDashboard');
                 if (preference === 'admin') {
                     return <Navigate to="/hospital/admin" replace />;
@@ -180,7 +182,7 @@ function App() {
                     <Route
                         path="/hospital/pharmacy"
                         element={
-                            <ProtectedRoute allowedRoles={['PHARMACIST']}>
+                            <ProtectedRoute allowedRoles={['PHARMACIST', 'HOSPITAL_ADMIN']}>
                                 <PageMeta title="HMS - Pharmacy">
                                     <PharmacyDashboard />
                                 </PageMeta>

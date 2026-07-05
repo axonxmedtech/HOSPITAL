@@ -28,6 +28,12 @@ public class PurchaseRequest {
     @Data
     public static class PurchaseItemRequest {
         private Long medicineId;
+        // For standalone pharmacy: medicine sourced from the platform catalog by name.
+        // When medicineId is absent, the purchase find-or-creates the local medicine
+        // from these fields.
+        private String medicineName;
+        private String medicineType;
+        private String manufacturerName;
         private String batchNumber;
         private LocalDate expiryDate;
 

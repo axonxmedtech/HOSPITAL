@@ -92,6 +92,15 @@ public class HospitalAuthController {
         return ResponseEntity.ok(updated);
     }
 
+    /** Toggle the pharmacy barcode workflow. Body: { "barcodeEnabled": true|false }. */
+    @PutMapping("/hospital/settings/barcode")
+    public ResponseEntity<?> updateBarcodeSetting(java.security.Principal principal, @RequestBody java.util.Map<String, Boolean> body) {
+        if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
+        Boolean enabled = body.get("barcodeEnabled");
+        if (enabled == null) return ResponseEntity.badRequest().body("barcodeEnabled is required");
+        return ResponseEntity.ok(authService.updateBarcodeSetting(principal.getName(), enabled));
+    }
+
     @GetMapping("/hospital/subscription")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<?> getSubscriptionInfo() {

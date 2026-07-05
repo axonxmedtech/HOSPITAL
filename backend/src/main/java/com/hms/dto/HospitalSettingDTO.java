@@ -45,9 +45,21 @@ public class HospitalSettingDTO {
 
     private Boolean inClinic = true;
 
+    /**
+     * Pharmacy barcode workflow toggle. Defaults on.
+     */
+    private Boolean barcodeEnabled = true;
+
     public HospitalSettingDTO(String receptionMode, String billingHandler) {
         this.receptionMode = receptionMode;
         this.billingHandler = billingHandler;
         this.inClinic = true;
+    }
+
+    public HospitalSettingDTO(String receptionMode, String billingHandler, Boolean inClinic) {
+        this.receptionMode = receptionMode;
+        this.billingHandler = billingHandler;
+        this.inClinic = inClinic;
+        this.barcodeEnabled = true;
     }
 }

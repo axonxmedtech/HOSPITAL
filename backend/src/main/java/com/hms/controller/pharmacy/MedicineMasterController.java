@@ -64,6 +64,13 @@ public class MedicineMasterController {
         return ResponseEntity.ok(service.autocomplete(query));
     }
 
+    /** Search the platform medicine catalog (name + type) for the purchase form. */
+    @GetMapping("/catalog/search")
+    @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> searchPlatformCatalog(@RequestParam("q") String query) {
+        return ResponseEntity.ok(service.searchPlatformCatalog(query));
+    }
+
     @PatchMapping("/medicines/{id}/status")
     @PreAuthorize("hasAnyRole('PHARMACIST', 'PHARMACY_ADMIN', 'HOSPITAL_ADMIN', 'INVENTORY_MANAGER')")
     public ResponseEntity<?> toggleStatus(

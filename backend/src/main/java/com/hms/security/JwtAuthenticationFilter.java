@@ -77,10 +77,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             null,
                             Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + role)));
 
-                    // Store additional details (userId, hospitalId, modules) in authentication
+                    // Store additional details (userId, hospitalId, modules, branchId) in authentication
                     java.util.List<String> modules = jwtUtil.extractModules(token);
+                    Long branchId = jwtUtil.extractBranchId(token);
+
+                    // Multi Pharmacy branch impersonation for Hospital Admin
+                    String branchHeader = request.getHeader("X-Branch-ID");
+                    if (branchHeader != null && !branchHeader.trim().isEmpty() && "HOSPITAL_ADMIN".equals(role)) {
+                        try {
+                            branchId = Long.parseLong(branchHeader.trim());
+                        } catch (NumberFormatException e) {
+                            // ignore malformed branch header
+                        }
+                    }
+
                     UserAuthenticationDetails details = new UserAuthenticationDetails(userId, role, hospitalId,
                             modules);
+                    details.setBranchId(branchId);
                     authentication.setDetails(details);
 
                     // Set authentication in security context

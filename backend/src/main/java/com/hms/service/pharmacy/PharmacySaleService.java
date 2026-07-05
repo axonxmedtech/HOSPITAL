@@ -42,6 +42,7 @@ public class PharmacySaleService {
 
         PharmacySale sale = new PharmacySale();
         sale.setHospitalId(hospitalId);
+        sale.setBranchId(securityHelper.getCurrentBranchId());
         sale.setPatientId(request.getPatientId());
         sale.setPatientName(request.getPatientName());
         sale.setSubtotal(request.getSubtotal());
@@ -99,7 +100,7 @@ public class PharmacySaleService {
 
         // 1. Fetch and update batch with Pessimistic Lock (Prevents Race Conditions)
         // Also prevents IDOR by including hospitalId in query
-        MedicineBatch batch = batchRepository.findByIdAndHospitalIdForUpdate(itemReq.getMedicineBatchId(), hospitalId)
+        MedicineBatch batch = batchRepository.findByIdAndHospitalIdForUpdate(itemReq.getMedicineBatchId(), hospitalId, securityHelper.getCurrentBranchId())
                 .orElseThrow(() -> new RuntimeException("Batch not found or unauthorized: " + itemReq.getMedicineBatchId()));
 
         if (batch.getCurrentQuantity().compareTo(itemReq.getQuantity()) < 0) {
@@ -113,6 +114,7 @@ public class PharmacySaleService {
         // 2. Record Inventory Transaction
         InventoryTransaction tx = new InventoryTransaction();
         tx.setHospitalId(hospitalId);
+        tx.setBranchId(securityHelper.getCurrentBranchId());
         tx.setMedicineBatchId(batch.getId());
         tx.setTransactionType("SALE");
         tx.setQuantity(itemReq.getQuantity().negate()); // Negative for sales
@@ -155,11 +157,11 @@ public class PharmacySaleService {
     }
 
     public Page<PharmacySale> getSalesHistory(Pageable pageable) {
-        return saleRepository.findByHospitalIdOrderByCreatedAtDesc(securityHelper.getCurrentHospitalId(), pageable);
+        return saleRepository.findScopedHistory(securityHelper.getCurrentHospitalId(), securityHelper.getCurrentBranchId(), pageable);
     }
 
     public PharmacySale getSaleDetails(Long id) {
-        return saleRepository.findByIdAndHospitalId(id, securityHelper.getCurrentHospitalId())
+        return saleRepository.findByIdScoped(id, securityHelper.getCurrentHospitalId(), securityHelper.getCurrentBranchId())
                 .orElseThrow(() -> new RuntimeException("Sale record not found"));
     }
 
@@ -189,7 +191,7 @@ public class PharmacySaleService {
     }
 
     public PharmacySale findByBillNumber(String billNumber, Long hospitalId) {
-        return saleRepository.findByBillNumberAndHospitalId(billNumber, hospitalId)
+        return saleRepository.findByBillNumberScoped(billNumber, hospitalId, securityHelper.getCurrentBranchId())
                 .orElseThrow(() -> new RuntimeException("Invoice not found: " + billNumber));
     }
 
@@ -198,7 +200,7 @@ public class PharmacySaleService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Long userId = securityHelper.getCurrentUserId();
 
-        PharmacySale sale = saleRepository.findByIdAndHospitalId(saleId, hospitalId)
+        PharmacySale sale = saleRepository.findByIdScoped(saleId, hospitalId, securityHelper.getCurrentBranchId())
                 .orElseThrow(() -> new RuntimeException("Pharmacy sale invoice not found"));
 
         BigDecimal refundTotal = BigDecimal.ZERO;
@@ -237,7 +239,7 @@ public class PharmacySaleService {
 
             if (restock) {
                 // Return stock back to inventory batch with Pessimistic Lock
-                MedicineBatch batch = batchRepository.findByIdAndHospitalIdForUpdate(batchId, hospitalId)
+                MedicineBatch batch = batchRepository.findByIdAndHospitalIdForUpdate(batchId, hospitalId, securityHelper.getCurrentBranchId())
                         .orElseThrow(() -> new RuntimeException("Batch not found or unauthorized"));
 
                 BigDecimal qtyBefore = batch.getCurrentQuantity();
@@ -247,6 +249,7 @@ public class PharmacySaleService {
                 // Record Restock Transaction
                 InventoryTransaction tx = new InventoryTransaction();
                 tx.setHospitalId(hospitalId);
+                tx.setBranchId(securityHelper.getCurrentBranchId());
                 tx.setMedicineBatchId(batch.getId());
                 tx.setTransactionType("RETURN");
                 tx.setQuantity(qtyToReturn); // Positive because stock enters inventory
@@ -261,6 +264,7 @@ public class PharmacySaleService {
                 // Record Return without restock (Disposal / Waste)
                 InventoryTransaction tx = new InventoryTransaction();
                 tx.setHospitalId(hospitalId);
+                tx.setBranchId(securityHelper.getCurrentBranchId());
                 tx.setMedicineBatchId(batchId);
                 tx.setTransactionType("RETURN");
                 tx.setQuantity(BigDecimal.ZERO);

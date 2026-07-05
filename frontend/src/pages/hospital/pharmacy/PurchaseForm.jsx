@@ -1,10 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import medicinesApi from '../../../services/pharmacy/medicinesApi';
 import suppliersApi from '../../../services/pharmacy/suppliersApi';
+import authService from '../../../services/authService';
 import { useToast } from '../../../context/ToastContext';
 
 const PurchaseForm = ({ isOpen, onClose, onSave }) => {
     const toast = useToast();
+    const currentUser = authService.getCurrentUser();
+    // Standalone pharmacy: medicine sourced from the platform catalog; type is editable,
+    // manufacturer is free text, GST is typable. Hospital/clinic keep the current form.
+    const isStandalonePharmacy = currentUser?.modules?.includes('PHARMACY') && !currentUser?.modules?.includes('OPD');
     const [suppliers, setSuppliers] = useState([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -19,7 +24,7 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
     });
 
     const [items, setItems] = useState([
-        { medicineId: '', medicineName: '', batchNumber: '', expiryDate: '', quantity: '', freeQuantity: 0, purchaseRate: '', mrp: '', sellingPrice: '', gstPercentage: 0, lineTotal: 0 }
+        { medicineId: '', medicineName: '', medicineType: '', manufacturerName: '', batchNumber: '', expiryDate: '', quantity: '', freeQuantity: 0, purchaseRate: '', mrp: '', sellingPrice: '', gstPercentage: 0, lineTotal: 0 }
     ]);
 
     const resetForm = () => {
@@ -33,7 +38,7 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
             totalAmount: 0,
         });
         setItems([
-            { medicineId: '', medicineName: '', batchNumber: '', expiryDate: '', quantity: '', freeQuantity: 0, purchaseRate: '', mrp: '', sellingPrice: '', gstPercentage: 0, lineTotal: 0 }
+            { medicineId: '', medicineName: '', medicineType: '', manufacturerName: '', batchNumber: '', expiryDate: '', quantity: '', freeQuantity: 0, purchaseRate: '', mrp: '', sellingPrice: '', gstPercentage: 0, lineTotal: 0 }
         ]);
     };
 
@@ -78,7 +83,7 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
     };
 
     const addItem = () => {
-        setItems([...items, { medicineId: '', medicineName: '', batchNumber: '', expiryDate: '', quantity: '', freeQuantity: 0, purchaseRate: '', mrp: '', sellingPrice: '', gstPercentage: 0, lineTotal: 0 }]);
+        setItems([...items, { medicineId: '', medicineName: '', medicineType: '', manufacturerName: '', batchNumber: '', expiryDate: '', quantity: '', freeQuantity: 0, purchaseRate: '', mrp: '', sellingPrice: '', gstPercentage: 0, lineTotal: 0 }]);
     };
 
     const removeItem = (index) => {
@@ -122,10 +127,13 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
 
         // Clean items: filter out invalid ones and cast strings to numbers/nulls
         const validItems = items
-            .filter(it => it.medicineId && (parseFloat(it.quantity) > 0 || parseFloat(it.freeQuantity) > 0))
+            .filter(it => (it.medicineId || (it.medicineName && it.medicineName.trim())) && (parseFloat(it.quantity) > 0 || parseFloat(it.freeQuantity) > 0))
             .map(it => ({
                 ...it,
-                medicineId: parseInt(it.medicineId),
+                medicineId: it.medicineId ? parseInt(it.medicineId) : null,
+                medicineName: it.medicineName ? it.medicineName.trim() : null,
+                medicineType: it.medicineType || null,
+                manufacturerName: it.manufacturerName || null,
                 quantity: parseFloat(it.quantity) || 0,
                 freeQuantity: parseFloat(it.freeQuantity) || 0,
                 purchaseRate: parseFloat(it.purchaseRate) || 0,
@@ -227,6 +235,8 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
                             <thead className="bg-gray-900 text-white text-[10px] uppercase tracking-wider">
                                 <tr>
                                     <th className="px-3 py-3 font-medium">Medicine</th>
+                                    {isStandalonePharmacy && <th className="px-3 py-3 font-medium w-24">Type</th>}
+                                    {isStandalonePharmacy && <th className="px-3 py-3 font-medium w-28">Manufacturer</th>}
                                     <th className="px-3 py-3 font-medium w-24">Batch</th>
                                     <th className="px-3 py-3 font-medium w-28">Expiry</th>
                                     <th className="px-3 py-3 font-medium w-20">Qty</th>
@@ -243,15 +253,44 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
                                 {items.map((item, index) => (
                                     <tr key={index} className="hover:bg-gray-50/50 group transition-colors">
                                         <td className="px-3 py-3">
-                                            <MedicineSearch 
-                                                value={item.medicineName} 
-                                                onSelect={(med) => handleItemChange(index, 'medicineId', med.id) || handleItemChange(index, 'medicineName', med.medicineName)} 
+                                            <MedicineSearch
+                                                value={item.medicineName}
+                                                usePlatform={isStandalonePharmacy}
+                                                onPick={({ name, type, localId }) => {
+                                                    const newItems = [...items];
+                                                    newItems[index].medicineName = name;
+                                                    newItems[index].medicineId = localId || '';
+                                                    if (type) newItems[index].medicineType = type;
+                                                    setItems(newItems);
+                                                }}
                                             />
                                         </td>
+                                        {isStandalonePharmacy && (
                                         <td className="px-3 py-3">
-                                            <input 
-                                                type="text" 
-                                                value={item.batchNumber} 
+                                            <input
+                                                type="text"
+                                                value={item.medicineType}
+                                                onChange={(e) => handleItemChange(index, 'medicineType', e.target.value)}
+                                                className="w-full border-b border-transparent group-hover:border-gray-200 focus:border-gray-900 focus:ring-0 text-sm py-1 bg-transparent outline-none"
+                                                placeholder="Tablet / Syrup..."
+                                            />
+                                        </td>
+                                        )}
+                                        {isStandalonePharmacy && (
+                                        <td className="px-3 py-3">
+                                            <input
+                                                type="text"
+                                                value={item.manufacturerName}
+                                                onChange={(e) => handleItemChange(index, 'manufacturerName', e.target.value)}
+                                                className="w-full border-b border-transparent group-hover:border-gray-200 focus:border-gray-900 focus:ring-0 text-sm py-1 bg-transparent outline-none"
+                                                placeholder="Manufacturer"
+                                            />
+                                        </td>
+                                        )}
+                                        <td className="px-3 py-3">
+                                            <input
+                                                type="text"
+                                                value={item.batchNumber}
                                                 onChange={(e) => handleItemChange(index, 'batchNumber', e.target.value)}
                                                 className="w-full border-b border-transparent group-hover:border-gray-200 focus:border-gray-900 focus:ring-0 text-sm py-1 bg-transparent outline-none"
                                                 placeholder="Batch"
@@ -311,17 +350,30 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
                                             />
                                         </td>
                                         <td className="px-3 py-3">
-                                            <select 
-                                                value={item.gstPercentage} 
-                                                onChange={(e) => handleItemChange(index, 'gstPercentage', e.target.value)}
-                                                className="w-full border-b border-transparent group-hover:border-gray-200 focus:border-gray-900 focus:ring-0 text-xs py-1 bg-transparent outline-none"
-                                            >
-                                                <option value="0">0%</option>
-                                                <option value="5">5%</option>
-                                                <option value="12">12%</option>
-                                                <option value="18">18%</option>
-                                                <option value="28">28%</option>
-                                            </select>
+                                            {isStandalonePharmacy ? (
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    max="100"
+                                                    step="0.01"
+                                                    value={item.gstPercentage}
+                                                    onChange={(e) => handleItemChange(index, 'gstPercentage', e.target.value)}
+                                                    className="w-full border-b border-transparent group-hover:border-gray-200 focus:border-gray-900 focus:ring-0 text-xs py-1 bg-transparent outline-none"
+                                                    placeholder="0"
+                                                />
+                                            ) : (
+                                                <select
+                                                    value={item.gstPercentage}
+                                                    onChange={(e) => handleItemChange(index, 'gstPercentage', e.target.value)}
+                                                    className="w-full border-b border-transparent group-hover:border-gray-200 focus:border-gray-900 focus:ring-0 text-xs py-1 bg-transparent outline-none"
+                                                >
+                                                    <option value="0">0%</option>
+                                                    <option value="5">5%</option>
+                                                    <option value="12">12%</option>
+                                                    <option value="18">18%</option>
+                                                    <option value="28">28%</option>
+                                                </select>
+                                            )}
                                         </td>
                                         <td className="px-3 py-3 text-right font-bold text-gray-900">
                                             ₹{item.lineTotal.toFixed(2)}
@@ -412,8 +464,11 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
     );
 };
 
-// Helper Search Component
-const MedicineSearch = ({ value, onSelect }) => {
+// Helper Search Component.
+// usePlatform=true → search the platform catalog (name+type); the picked item has no
+// local id (backend find-or-creates). Otherwise search the pharmacy's local medicines.
+// onPick receives a normalized { name, type, localId }.
+const MedicineSearch = ({ value, usePlatform, onPick }) => {
     const [query, setQuery] = useState(value || '');
     const [results, setResults] = useState([]);
     const [showResults, setShowResults] = useState(false);
@@ -426,8 +481,13 @@ const MedicineSearch = ({ value, onSelect }) => {
         const timer = setTimeout(async () => {
             if (query.length > 1) {
                 try {
-                    const data = await medicinesApi.autocomplete(query);
-                    setResults(data || []);
+                    if (usePlatform) {
+                        const data = await medicinesApi.searchCatalog(query);
+                        setResults((data || []).map(m => ({ localId: null, name: m.name, type: m.type })));
+                    } else {
+                        const data = await medicinesApi.autocomplete(query);
+                        setResults((data || []).map(m => ({ localId: m.id, name: m.medicineName, type: m.medicineType, strength: m.strength })));
+                    }
                     setShowResults(true);
                 } catch (err) {}
             } else {
@@ -435,12 +495,12 @@ const MedicineSearch = ({ value, onSelect }) => {
             }
         }, 300);
         return () => clearTimeout(timer);
-    }, [query]);
+    }, [query, usePlatform]);
 
     return (
         <div className="relative">
-            <input 
-                type="text" 
+            <input
+                type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onFocus={() => query.length > 1 && setShowResults(true)}
@@ -449,18 +509,18 @@ const MedicineSearch = ({ value, onSelect }) => {
             />
             {showResults && results.length > 0 && (
                 <div className="absolute z-[60] left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-2xl max-h-48 overflow-auto py-1">
-                    {results.map((r) => (
-                        <div 
-                            key={r.id} 
+                    {results.map((r, i) => (
+                        <div
+                            key={i}
                             onClick={() => {
-                                onSelect(r);
-                                setQuery(r.medicineName);
+                                onPick({ name: r.name, type: r.type, localId: r.localId });
+                                setQuery(r.name);
                                 setShowResults(false);
                             }}
                             className="px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm"
                         >
-                            <div className="font-bold text-gray-900">{r.medicineName}</div>
-                            <div className="text-[10px] text-gray-500 uppercase">{r.medicineType} • {r.strength}</div>
+                            <div className="font-bold text-gray-900">{r.name}</div>
+                            <div className="text-[10px] text-gray-500 uppercase">{r.type}{r.strength ? ` • ${r.strength}` : ''}</div>
                         </div>
                     ))}
                 </div>

@@ -52,6 +52,15 @@ public class Plan {
     @Column(name = "in_clinic", nullable = false)
     private Boolean inClinic = false;
 
+    // Pharmacy chains: one owner operating multiple medical shops (outlets).
+    // multiOutlet gates the capability; maxOutlets caps how many outlets are allowed
+    // (null = unlimited). Only meaningful for PHARMACY-type plans.
+    @Column(name = "multi_outlet", nullable = false)
+    private Boolean multiOutlet = false;
+
+    @Column(name = "max_outlets")
+    private Integer maxOutlets;
+
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
 

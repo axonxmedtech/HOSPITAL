@@ -103,6 +103,14 @@ const medicinesApi = {
         );
 
         return response.data;
+    },
+
+    // Search the platform medicine catalog (name + type) for the purchase form
+    searchCatalog: async (query) => {
+        const response = await apiClient.get(
+            `/api/pharmacy/catalog/search?q=${encodeURIComponent(query)}`
+        );
+        return response.data;
     }
 };
 

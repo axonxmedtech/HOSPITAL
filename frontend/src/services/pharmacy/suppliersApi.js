@@ -17,6 +17,10 @@ const suppliersApi = {
     update: async (id, data) => {
         const response = await apiClient.put(`/api/pharmacy/suppliers/${id}`, data);
         return response.data;
+    },
+    delete: async (id) => {
+        const response = await apiClient.delete(`/api/pharmacy/suppliers/${id}`);
+        return response.data;
     }
 };
 

@@ -303,7 +303,8 @@ public class HospitalAuthService {
                 user.getEmail(),
                 user.getRole(),
                 user.getHospitalId(), // Include hospital_id for multi-tenant filtering
-                hospital.getModules());
+                hospital.getModules(),
+                user.getBranchId()); // Multi Pharmacy branch login scoping
 
         // Create response
         LoginResponse response = new LoginResponse();
@@ -320,6 +321,7 @@ public class HospitalAuthService {
         response.setIsSingleDoctor(hospital.getIsSingleDoctor());
         boolean inClinicAllowed = hospital.getModules() != null && hospital.getModules().contains("IN_CLINIC");
         response.setInClinic(inClinicAllowed && Boolean.TRUE.equals(settings.getInClinic()));
+        response.setBarcodeEnabled(settings.getBarcodeEnabled() == null ? Boolean.TRUE : settings.getBarcodeEnabled());
         response.setHospitalType(hospital.getType() != null ? hospital.getType().name() : "HOSPITAL");
 
         // Populate profile details
@@ -393,6 +395,7 @@ public class HospitalAuthService {
         response.setIsSingleDoctor(hospital.getIsSingleDoctor());
         boolean inClinicAllowed = hospital.getModules() != null && hospital.getModules().contains("IN_CLINIC");
         response.setInClinic(inClinicAllowed && Boolean.TRUE.equals(settings.getInClinic()));
+        response.setBarcodeEnabled(settings.getBarcodeEnabled() == null ? Boolean.TRUE : settings.getBarcodeEnabled());
         response.setLogoUrl(hospital.getLogoUrl());
         response.setParentOrganization(hospital.getParentOrganization());
         response.setHospitalAddress(hospital.getAddress());
@@ -592,8 +595,48 @@ public class HospitalAuthService {
         User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
         if (user.getHospitalId() == null) throw new UnauthorizedException("Invalid hospital user account");
         return hospitalSettingRepository.findByHospital_Id(user.getHospitalId())
-                .map(s -> new HospitalSettingDTO(s.getReceptionMode(), s.getBillingHandler(), s.getInClinic()))
+                .map(s -> {
+                    HospitalSettingDTO dto = new HospitalSettingDTO(s.getReceptionMode(), s.getBillingHandler(), s.getInClinic());
+                    dto.setBarcodeEnabled(s.getBarcodeEnabled() == null ? Boolean.TRUE : s.getBarcodeEnabled());
+                    return dto;
+                })
                 .orElse(new HospitalSettingDTO("HAS_RECEPTIONIST", "RECEPTIONIST", true));
+    }
+
+    /**
+     * Update the pharmacy barcode workflow toggle. Only `HOSPITAL_ADMIN` may change it.
+     * Kept separate from operations settings so pharmacy tenants (which have no
+     * reception/billing config) can update it without tripping those validations.
+     */
+    @Transactional
+    public HospitalSettingDTO updateBarcodeSetting(String email, boolean barcodeEnabled) {
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (user.getHospitalId() == null) throw new UnauthorizedException("Invalid hospital user account");
+        if (!"HOSPITAL_ADMIN".equals(user.getRole())) {
+            throw new UnauthorizedException("Access denied: requires HOSPITAL_ADMIN role");
+        }
+
+        Hospital hospital = hospitalRepository.findById(user.getHospitalId())
+                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+
+        HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(user.getHospitalId())
+                .orElseGet(() -> {
+                    HospitalSetting newSettings = new HospitalSetting();
+                    newSettings.setHospital(hospital);
+                    return newSettings;
+                });
+        settings.setBarcodeEnabled(barcodeEnabled);
+        hospitalSettingRepository.save(settings);
+
+        try {
+            webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket settings update", e);
+        }
+
+        HospitalSettingDTO dto = new HospitalSettingDTO(settings.getReceptionMode(), settings.getBillingHandler(), settings.getInClinic());
+        dto.setBarcodeEnabled(barcodeEnabled);
+        return dto;
     }
 
     /**

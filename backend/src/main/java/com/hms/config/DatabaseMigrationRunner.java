@@ -39,6 +39,181 @@ public class DatabaseMigrationRunner {
         ensurePresetDoctorIdColumns(); // NEW — per-doctor preset isolation
         ensureInventoryItemHasOwnStockColumn(); // NEW
         ensureInventoryServicesTables(); // NEW
+        ensureHospitalSettingsBarcodeEnabled(); // NEW — pharmacy barcode toggle
+        ensurePlanMultiOutletColumns(); // NEW — pharmacy multi-outlet plan support
+        dropLegacyNotNullNoDefaultColumns(); // NEW — remove NOT-NULL-no-default landmines
+        ensureMedicineMasterManufacturerName(); // NEW — free-text manufacturer from purchase
+        ensurePharmacyBranchSupport(); // NEW — Multi Pharmacy branches
+        ensurePharmacyDataBranchColumns(); // NEW — branch_id on pharmacy data tables
+    }
+
+    /**
+     * Add nullable branch_id to the branch-scoped pharmacy data tables (Multi Pharmacy
+     * isolation). Null = not branch-scoped (single-shop / hospital / clinic pharmacy).
+     */
+    private void ensurePharmacyDataBranchColumns() {
+        String[] tables = {
+            "medicine_master", "medicine_batches", "suppliers",
+            "purchase_invoices", "inventory_transactions", "pharmacy_sales"
+        };
+        for (String table : tables) {
+            try {
+                Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'branch_id'",
+                    Integer.class, table
+                );
+                if (count != null && count == 0) {
+                    jdbcTemplate.execute("ALTER TABLE `" + table + "` ADD COLUMN branch_id BIGINT DEFAULT NULL");
+                    log.info("DB migration applied: {}.branch_id column added", table);
+                }
+            } catch (Exception e) {
+                log.warn("DB migration skipped ({}.branch_id): {}", table, e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Ensure the pharmacy_branch table and users.branch_id column exist (Multi Pharmacy).
+     */
+    private void ensurePharmacyBranchSupport() {
+        try {
+            Integer tableExists = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pharmacy_branch'",
+                Integer.class
+            );
+            if (tableExists != null && tableExists == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE pharmacy_branch (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  name VARCHAR(255) NOT NULL," +
+                    "  address VARCHAR(255) DEFAULT NULL," +
+                    "  phone VARCHAR(30) DEFAULT NULL," +
+                    "  login_user_id BIGINT DEFAULT NULL," +
+                    "  is_active TINYINT(1) NOT NULL DEFAULT 1," +
+                    "  created_at DATETIME(6) DEFAULT NULL," +
+                    "  updated_at DATETIME(6) DEFAULT NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  KEY idx_pharmacy_branch_hospital (hospital_id)" +
+                    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+                );
+                log.info("DB migration applied: pharmacy_branch table created");
+            }
+
+            Integer colExists = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'branch_id'",
+                Integer.class
+            );
+            if (colExists != null && colExists == 0) {
+                jdbcTemplate.execute("ALTER TABLE users ADD COLUMN branch_id BIGINT DEFAULT NULL");
+                log.info("DB migration applied: users.branch_id column added");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (pharmacy_branch support): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Ensure medicine_master.manufacturer_name exists. Nullable free-text manufacturer
+     * captured on the pharmacy purchase form (standalone pharmacy ERP).
+     */
+    private void ensureMedicineMasterManufacturerName() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'medicine_master' AND COLUMN_NAME = 'manufacturer_name'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute("ALTER TABLE medicine_master ADD COLUMN manufacturer_name VARCHAR(255) DEFAULT NULL");
+                log.info("DB migration applied: medicine_master.manufacturer_name column added");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (medicine_master.manufacturer_name): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Drop orphaned columns that are NOT NULL with no default and no longer mapped by
+     * any entity (hospital_settings.shift_mode, users.is_trainer). Hibernate omits them
+     * on INSERT, so MySQL rejects every insert on those tables (error 1364), breaking
+     * hospital/clinic/pharmacy onboarding and user creation. The canonical schema has
+     * no such columns — this realigns older databases with it.
+     */
+    private void dropLegacyNotNullNoDefaultColumns() {
+        String[][] orphanColumns = {
+            {"hospital_settings", "shift_mode"},
+            {"users", "is_trainer"},
+        };
+        for (String[] tc : orphanColumns) {
+            String table = tc[0], column = tc[1];
+            try {
+                Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
+                    Integer.class, table, column
+                );
+                if (count != null && count > 0) {
+                    jdbcTemplate.execute("ALTER TABLE `" + table + "` DROP COLUMN `" + column + "`");
+                    log.info("DB migration applied: dropped legacy {}.{} column", table, column);
+                }
+            } catch (Exception e) {
+                log.warn("DB migration skipped (drop {}.{}): {}", table, column, e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Ensure plans.multi_outlet and plans.max_outlets exist for pharmacy chain plans.
+     */
+    private void ensurePlanMultiOutletColumns() {
+        try {
+            Integer hasMulti = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'plans' AND COLUMN_NAME = 'multi_outlet'",
+                Integer.class
+            );
+            if (hasMulti != null && hasMulti == 0) {
+                jdbcTemplate.execute("ALTER TABLE plans ADD COLUMN multi_outlet TINYINT(1) NOT NULL DEFAULT 0");
+                log.info("DB migration applied: plans.multi_outlet column added");
+            }
+            Integer hasMax = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'plans' AND COLUMN_NAME = 'max_outlets'",
+                Integer.class
+            );
+            if (hasMax != null && hasMax == 0) {
+                jdbcTemplate.execute("ALTER TABLE plans ADD COLUMN max_outlets INT DEFAULT NULL");
+                log.info("DB migration applied: plans.max_outlets column added");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (plans.multi_outlet/max_outlets): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Ensure hospital_settings.barcode_enabled exists. Defaults to enabled so
+     * existing pharmacies keep their barcode workflow until an admin turns it off.
+     */
+    private void ensureHospitalSettingsBarcodeEnabled() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'hospital_settings' AND COLUMN_NAME = 'barcode_enabled'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "ALTER TABLE hospital_settings ADD COLUMN barcode_enabled TINYINT(1) NOT NULL DEFAULT 1"
+                );
+                log.info("DB migration applied: hospital_settings.barcode_enabled column added");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (hospital_settings.barcode_enabled): {}", e.getMessage());
+        }
     }
 
     /**

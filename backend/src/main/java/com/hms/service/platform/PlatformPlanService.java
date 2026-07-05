@@ -41,10 +41,37 @@ public class PlatformPlanService {
         plan.setModules(req.getModules() != null ? req.getModules() : new ArrayList<>());
         plan.setFeatures(req.getFeatures() != null ? req.getFeatures() : new ArrayList<>());
         plan.setInClinic(Boolean.TRUE.equals(req.getInClinic()));
+        applyOutletSettings(plan, req);
+        ensurePharmacyBaseModule(plan);
         plan.setIsActive(true);
         Plan saved = planRepository.save(plan);
         logAction("PLAN_CREATED", "Created plan: " + saved.getName() + " [" + saved.getType() + "]");
         return saved;
+    }
+
+    /**
+     * Multi-outlet is a PHARMACY-only capability (one owner, several medical shops).
+     * For any other plan type it is forced off so the flag can never leak into
+     * hospital/clinic plans. When enabled, maxOutlets (null = unlimited) is preserved.
+     */
+    private void applyOutletSettings(Plan plan, CreatePlanRequest req) {
+        boolean isPharmacy = plan.getType() == HospitalType.PHARMACY;
+        boolean multiOutlet = isPharmacy && Boolean.TRUE.equals(req.getMultiOutlet());
+        plan.setMultiOutlet(multiOutlet);
+        plan.setMaxOutlets(multiOutlet ? req.getMaxOutlets() : null);
+    }
+
+    /**
+     * Pharmacy tenants are detected across the app by the "PHARMACY" module. The
+     * pharmacy plan tiers (SINGLE_PHARMACY / SINGLE_PHARMACIST_ADMIN / MULTI_PHARMACY)
+     * drive the mode, but we also keep the base PHARMACY module present so existing
+     * detection (standalone-pharmacy gating, dashboards) keeps working.
+     */
+    private void ensurePharmacyBaseModule(Plan plan) {
+        if (plan.getType() == HospitalType.PHARMACY && plan.getModules() != null
+                && !plan.getModules().contains("PHARMACY")) {
+            plan.getModules().add("PHARMACY");
+        }
     }
 
     @Transactional
@@ -56,6 +83,7 @@ public class PlatformPlanService {
         plan.setMonthlyPrice(req.getMonthlyPrice());
         plan.setYearlyPrice(req.getYearlyPrice());
         plan.setInClinic(Boolean.TRUE.equals(req.getInClinic()));
+        applyOutletSettings(plan, req);
 
         if (req.getModules() != null) {
             plan.getModules().clear();
@@ -65,6 +93,7 @@ public class PlatformPlanService {
             plan.getFeatures().clear();
             plan.getFeatures().addAll(req.getFeatures());
         }
+        ensurePharmacyBaseModule(plan);
 
         Plan saved = planRepository.save(plan);
         propagateModulesToSubscribers(saved);

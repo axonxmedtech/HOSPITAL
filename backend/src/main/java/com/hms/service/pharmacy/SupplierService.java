@@ -25,6 +25,7 @@ public class SupplierService {
     public Supplier createSupplier(SupplierRequest req) {
         Supplier s = new Supplier();
         s.setHospitalId(securityHelper.getCurrentHospitalId());
+        s.setBranchId(securityHelper.getCurrentBranchId());
         s.setSupplierName(req.getSupplierName());
         s.setContactPerson(req.getContactPerson());
         s.setPhone(req.getPhone());
@@ -42,14 +43,12 @@ public class SupplierService {
         if (hid == null) {
             throw new UnauthorizedException("Unauthenticated request - hospital ID missing");
         }
-        if (search != null && !search.trim().isEmpty()) {
-            return supplierRepository.findByHospitalIdAndSupplierNameContainingIgnoreCase(hid, search, pageable);
-        }
-        return supplierRepository.findByHospitalId(hid, pageable);
+        String s = (search != null && !search.trim().isEmpty()) ? search.trim() : null;
+        return supplierRepository.findScoped(hid, securityHelper.getCurrentBranchId(), s, pageable);
     }
 
     public Supplier getById(Long id) {
-        return supplierRepository.findByIdAndHospitalId(id, securityHelper.getCurrentHospitalId())
+        return supplierRepository.findByIdScoped(id, securityHelper.getCurrentHospitalId(), securityHelper.getCurrentBranchId())
                 .orElseThrow(() -> new ResourceNotFoundException("Supplier not found"));
     }
 
@@ -67,5 +66,11 @@ public class SupplierService {
         if (req.getIsActive() != null)
             s.setIsActive(req.getIsActive());
         return supplierRepository.save(s);
+    }
+
+    @Transactional
+    public void delete(Long id) {
+        Supplier s = getById(id); // enforces tenant ownership + existence
+        supplierRepository.delete(s);
     }
 }

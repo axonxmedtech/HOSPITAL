@@ -9,12 +9,19 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 
+/**
+ * PharmacyBranch - a medical shop (outlet) operated under one Multi Pharmacy owner tenant.
+ *
+ * Branches are sub-entities of a single pharmacy tenant (hospital_id). Each branch has
+ * exactly one login (a PHARMACIST User, referenced by login_user_id). Branch-scoped
+ * pharmacy data carries branch_id (added in a later phase).
+ */
 @Entity
-@Table(name = "suppliers")
+@Table(name = "pharmacy_branch")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class Supplier {
+public class PharmacyBranch {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -23,36 +30,20 @@ public class Supplier {
     @Column(name = "hospital_id", nullable = false)
     private Long hospitalId;
 
-    /** Multi Pharmacy branch scope; null for non-branch tenants. */
-    @Column(name = "branch_id")
-    private Long branchId;
+    @Column(name = "name", nullable = false)
+    private String name;
 
-    @Column(name = "supplier_name", nullable = false)
-    private String supplierName;
-
-    @Column(name = "contact_person")
-    private String contactPerson;
-
-    private String phone;
-    
-    private String email;
-
-    @Column(columnDefinition = "TEXT")
+    @Column(name = "address")
     private String address;
 
-    @Column(name = "gst_number")
-    private String gstNumber;
+    @Column(name = "phone")
+    private String phone;
 
-    @Column(name = "pan_number")
-    private String panNumber;
+    /** The single PHARMACIST User that logs in for this branch. */
+    @Column(name = "login_user_id")
+    private Long loginUserId;
 
-    @Column(name = "drug_license_number")
-    private String drugLicenseNumber;
-
-    @Column(name = "credit_days")
-    private Integer creditDays = 0;
-
-    @Column(name = "is_active")
+    @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
 
     @CreationTimestamp
