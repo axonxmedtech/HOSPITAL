@@ -53,16 +53,21 @@ public class PlatformMedicineController {
 
     @PostMapping
     public ResponseEntity<?> createMedicine(
-            @RequestParam String hospitalType,
+            @RequestParam(required = false) String hospitalType,
             @RequestBody MedicineList medicine) {
         try {
-            medicine.setHospitalType(hospitalType);
-            MedicineList result = platformMedicineListService.createMedicine(
-                hospitalType,
-                medicine.getName(),
-                medicine.getType()
-            );
-            return ResponseEntity.ok(result);
+            // Typed catalog (legacy per-tenant-type isolation)
+            if (hospitalType != null && !hospitalType.isEmpty()) {
+                medicine.setHospitalType(hospitalType);
+                MedicineList result = platformMedicineListService.createMedicine(
+                    hospitalType,
+                    medicine.getName(),
+                    medicine.getType()
+                );
+                return ResponseEntity.ok(result);
+            }
+            // Global catalog — shared by hospital, clinic and pharmacy searches
+            return ResponseEntity.ok(medicineService.addCatalogMedicine(medicine));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
@@ -71,16 +76,20 @@ public class PlatformMedicineController {
     @PutMapping("/{id}")
     public ResponseEntity<?> updateMedicine(
             @PathVariable Long id,
-            @RequestParam String hospitalType,
+            @RequestParam(required = false) String hospitalType,
             @RequestBody MedicineList request) {
         try {
-            MedicineList result = platformMedicineListService.updateMedicine(
-                id,
-                hospitalType,
-                request.getName(),
-                request.getType()
-            );
-            return ResponseEntity.ok(result);
+            if (hospitalType != null && !hospitalType.isEmpty()) {
+                MedicineList result = platformMedicineListService.updateMedicine(
+                    id,
+                    hospitalType,
+                    request.getName(),
+                    request.getType()
+                );
+                return ResponseEntity.ok(result);
+            }
+            // Global catalog update (no tenant-type isolation)
+            return ResponseEntity.ok(medicineService.updateCatalogMedicine(id, request));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
@@ -89,9 +98,14 @@ public class PlatformMedicineController {
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteMedicine(
             @PathVariable Long id,
-            @RequestParam String hospitalType) {
+            @RequestParam(required = false) String hospitalType) {
         try {
-            platformMedicineListService.deleteMedicine(id, hospitalType);
+            if (hospitalType != null && !hospitalType.isEmpty()) {
+                platformMedicineListService.deleteMedicine(id, hospitalType);
+            } else {
+                // Global catalog delete (no tenant-type isolation)
+                medicineService.deleteCatalogMedicine(id);
+            }
             return ResponseEntity.ok().build();
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());

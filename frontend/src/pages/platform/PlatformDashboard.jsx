@@ -649,7 +649,6 @@ const PlatformDashboard = () => {
             isExpanded: !!expandedGroups['hospital'],
             subItems: [
                 { id: 'hospital:hospitals', label: 'Hospitals' },
-                { id: 'hospital:medicines', label: 'Medicines' },
                 { id: 'hospital:inventory_items', label: 'Inventory Items' },
                 { id: 'hospital:plans', label: 'Plans' },
                 { id: 'hospital:tickets', label: 'Tickets' },
@@ -663,7 +662,6 @@ const PlatformDashboard = () => {
             isExpanded: !!expandedGroups['clinic'],
             subItems: [
                 { id: 'clinic:clinics', label: 'Clinics' },
-                { id: 'clinic:medicines', label: 'Medicines' },
                 { id: 'clinic:inventory_items', label: 'Inventory Items' },
                 { id: 'clinic:plans', label: 'Plans' },
                 { id: 'clinic:tickets', label: 'Tickets' },
@@ -677,12 +675,14 @@ const PlatformDashboard = () => {
             isExpanded: !!expandedGroups['pharmacy'],
             subItems: [
                 { id: 'pharmacy:pharmacies', label: 'Pharmacies' },
-                { id: 'pharmacy:medicines', label: 'Medicines' },
                 { id: 'pharmacy:plans', label: 'Plans' },
                 { id: 'pharmacy:tickets', label: 'Tickets' },
                 { id: 'pharmacy:faqs', label: 'FAQs' },
             ]
         },
+        // Global medicine catalog — one shared list used by hospital, clinic and
+        // pharmacy searches alike, so it lives outside the tenant-type groups.
+        { id: 'medicines', label: 'Medicines', isTopLevel: true },
         { id: 'audit_logs', label: 'Audit Logs', isTopLevel: true },
     ];
 
@@ -734,7 +734,7 @@ const PlatformDashboard = () => {
                         <div className="mb-6">
                             {(() => {
                                 const parsed = parseTab(activeTab);
-                                const subtab = parsed.isTopLevel ? null : activeTab.split(':')[1];
+                                const subtab = parsed.isTopLevel ? parsed.tab : activeTab.split(':')[1];
 
                                 // Determine if this is a manageable entity (hospitals, clinics, pharmacies)
                                 const isEntityTab = subtab === 'hospitals' || subtab === 'clinics' || subtab === 'pharmacies';
@@ -932,12 +932,8 @@ const PlatformDashboard = () => {
                         return subtab === 'plans' && <PlansTab hospitalType={hospitalType} />;
                     })()}
 
-                    {/* Medicines Tab */}
-                    {(() => {
-                        const subtab = activeTab.split(':')[1];
-                        const hospitalType = getCurrentHospitalType();
-                        return subtab === 'medicines' && <PlatformMedicinesTab hospitalType={hospitalType} />;
-                    })()}
+                    {/* Medicines Tab — global catalog, shared by all tenant types */}
+                    {activeTab === 'medicines' && <PlatformMedicinesTab hospitalType={null} />}
 
                     {/* Inventory Items Tab */}
                     {(() => {
