@@ -105,8 +105,27 @@ const PlatformDashboard = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const activeTab = searchParams.get('tab') || 'dashboard';
 
-    // Helper to switch tabs
+    // Which sidebar groups are currently expanded. Auto-expands the group that
+    // owns the active subtab so a page refresh keeps the correct group open.
+    const [expandedGroups, setExpandedGroups] = useState(() => {
+        if (activeTab.includes(':')) {
+            return { [activeTab.split(':')[0]]: true };
+        }
+        return {};
+    });
+
+    // Toggle a sidebar group open/closed (does NOT change the active tab)
+    const toggleGroup = (groupId) => {
+        setExpandedGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
+    };
+
+    // Helper to switch tabs. When navigating to a subtab, ensure its parent
+    // group is expanded so the selection stays visible.
     const setActiveTab = (tab) => {
+        if (tab && tab.includes(':')) {
+            const group = tab.split(':')[0];
+            setExpandedGroups((prev) => ({ ...prev, [group]: true }));
+        }
         setSearchParams({ tab });
     };
 
@@ -345,7 +364,7 @@ const PlatformDashboard = () => {
     const loadTickets = async () => {
         setTicketsLoading(true);
         try {
-            const data = await platformService.getTickets();
+            const data = await platformService.getTickets(getCurrentHospitalType());
             setTickets(data);
         } catch {
             setTickets([]); // graceful fallback if endpoint not yet live
@@ -359,7 +378,7 @@ const PlatformDashboard = () => {
         if (resolvingTicketId) return;
         setResolvingTicketId(ticketId);
         try {
-            await platformService.resolveTicket(ticketId);
+            await platformService.resolveTicket(ticketId, getCurrentHospitalType());
             loadTickets();
         } catch {
             setError('Failed to resolve ticket');
@@ -371,7 +390,7 @@ const PlatformDashboard = () => {
     const loadFaqs = async () => {
         setFaqsLoading(true);
         try {
-            const data = await platformService.getFaqs();
+            const data = await platformService.getPlatformFaqs(getCurrentHospitalType());
             setFaqs(data || []);
         } catch {
             setError('Failed to load FAQs');
@@ -388,7 +407,7 @@ const PlatformDashboard = () => {
         }
         setFaqSubmitting(true);
         try {
-            await platformService.addFaq(faqForm);
+            await platformService.addFaq(faqForm, getCurrentHospitalType());
             success('FAQ added successfully');
             setShowFaqModal(false);
             setFaqForm({ question: '', answer: '' });
@@ -406,7 +425,7 @@ const PlatformDashboard = () => {
             'Are you sure you want to delete this FAQ? This action cannot be undone.',
             async () => {
                 try {
-                    await platformService.deleteFaq(faqId);
+                    await platformService.deleteFaq(faqId, getCurrentHospitalType());
                     setConfirmModal(prev => ({ ...prev, isOpen: false }));
                     success('FAQ deleted successfully');
                     loadFaqs();
@@ -627,6 +646,7 @@ const PlatformDashboard = () => {
             id: 'hospital',
             label: 'Hospital',
             group: true,
+            isExpanded: !!expandedGroups['hospital'],
             subItems: [
                 { id: 'hospital:hospitals', label: 'Hospitals' },
                 { id: 'hospital:medicines', label: 'Medicines' },
@@ -640,6 +660,7 @@ const PlatformDashboard = () => {
             id: 'clinic',
             label: 'Clinic',
             group: true,
+            isExpanded: !!expandedGroups['clinic'],
             subItems: [
                 { id: 'clinic:clinics', label: 'Clinics' },
                 { id: 'clinic:medicines', label: 'Medicines' },
@@ -653,6 +674,7 @@ const PlatformDashboard = () => {
             id: 'pharmacy',
             label: 'Pharmacy',
             group: true,
+            isExpanded: !!expandedGroups['pharmacy'],
             subItems: [
                 { id: 'pharmacy:pharmacies', label: 'Pharmacies' },
                 { id: 'pharmacy:medicines', label: 'Medicines' },
@@ -687,6 +709,7 @@ const PlatformDashboard = () => {
                 tabs={tabs}
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
+                onToggleGroup={toggleGroup}
                 footerTitle="Platform"
                 footerData="Super Admin"
                 variant="plain"
