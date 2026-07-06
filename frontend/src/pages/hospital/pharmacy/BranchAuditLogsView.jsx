@@ -17,11 +17,11 @@ const BranchAuditLogsView = ({ refreshKey = 0 }) => {
         setLoading(true);
         try {
             const mappedRole = roleFilter === 'ALL' ? null : roleFilter;
-            const data = await hospitalService.getAuditLogs(debouncedSearch, mappedRole);
+            const data = await hospitalService.getPharmacyAuditLogs(debouncedSearch, mappedRole);
             setLogs(Array.isArray(data) ? data : []);
             setPage(0); // Reset page on new search/filter
         } catch (err) {
-            console.error('Failed to load audit logs:', err);
+            console.error('Failed to load pharmacy audit logs:', err);
             setLogs([]);
         } finally {
             setLoading(false);
@@ -62,8 +62,8 @@ const BranchAuditLogsView = ({ refreshKey = 0 }) => {
             {/* Header and Filters */}
             <div className="px-6 py-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gray-50/50">
                 <div>
-                    <h3 className="font-bold text-gray-900 text-base">Branch Audit Trails</h3>
-                    <p className="text-xs text-gray-500 mt-1">Real-time log of actions performed within this branch outlet</p>
+                    <h3 className="font-bold text-gray-900 text-base">Pharmacy Audit Trails</h3>
+                    <p className="text-xs text-gray-500 mt-1">Real-time log of pharmacy operations (suppliers, inventory, purchases, sales)</p>
                 </div>
                 <div className="flex items-center gap-3">
                     {/* Search Input */}
@@ -80,15 +80,15 @@ const BranchAuditLogsView = ({ refreshKey = 0 }) => {
                         </svg>
                     </div>
 
-                    {/* Role Filter */}
+                    {/* Role Filter - Pharmacy Only Roles */}
                     <select
                         value={roleFilter}
                         onChange={(e) => setRoleFilter(e.target.value)}
                         className="px-3 py-2 border border-gray-300 rounded-xl text-xs font-semibold outline-none focus:border-gray-900 bg-white transition-all cursor-pointer"
                     >
-                        <option value="ALL">All Roles</option>
+                        <option value="ALL">All Pharmacy Users</option>
+                        <option value="HOSPITAL_ADMIN">Pharmacy Admin</option>
                         <option value="PHARMACIST">Pharmacists</option>
-                        <option value="HOSPITAL_ADMIN">Admins</option>
                     </select>
                 </div>
             </div>

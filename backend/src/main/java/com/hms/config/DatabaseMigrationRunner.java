@@ -45,6 +45,7 @@ public class DatabaseMigrationRunner {
         ensureMedicineMasterManufacturerName(); // NEW — free-text manufacturer from purchase
         ensurePharmacyBranchSupport(); // NEW — Multi Pharmacy branches
         ensurePharmacyDataBranchColumns(); // NEW — branch_id on pharmacy data tables
+        ensureAuditLogsBranchColumn(); // NEW — branch_id on audit_logs for pharmacy audit trails
     }
 
     /**
@@ -677,6 +678,26 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped (inventory services tables): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Add nullable branch_id to audit_logs for pharmacy audit trail isolation.
+     * Null = not branch-scoped (single-shop / hospital / clinic pharmacy, platform actions).
+     */
+    private void ensureAuditLogsBranchColumn() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'audit_logs' AND COLUMN_NAME = 'branch_id'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute("ALTER TABLE audit_logs ADD COLUMN branch_id BIGINT DEFAULT NULL");
+                log.info("DB migration applied: audit_logs.branch_id column added");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (audit_logs.branch_id): {}", e.getMessage());
         }
     }
 }

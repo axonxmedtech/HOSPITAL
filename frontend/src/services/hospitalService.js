@@ -697,6 +697,19 @@ const hospitalService = {
         return response.data;
     },
 
+    // Pharmacy-specific audit logs (SUPPLIER, MEDICINE_BATCH, PURCHASE_INVOICE, PHARMACY_SALE)
+    getPharmacyAuditLogs: async (searchTerm, role) => {
+        let url = '/hospital/audit-logs/pharmacy';
+        const params = [];
+        if (searchTerm) params.push(`search=${encodeURIComponent(searchTerm)}`);
+        if (role) params.push(`role=${encodeURIComponent(role)}`);
+        if (params.length > 0) {
+            url += `?${params.join('&')}`;
+        }
+        const response = await apiClient.get(url);
+        return response.data;
+    },
+
     // ========== Hospital Settings / Fees ==========
     getHospitalFees: async () => {
         const response = await apiClient.get('/hospital/settings/fees');

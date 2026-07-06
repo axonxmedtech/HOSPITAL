@@ -4,6 +4,7 @@ import com.hms.dto.pharmacy.SupplierRequest;
 import com.hms.entity.pharmacy.Supplier;
 import com.hms.repository.pharmacy.SupplierRepository;
 import com.hms.security.SecurityContextHelper;
+import com.hms.service.AuditLogService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -21,11 +22,16 @@ public class SupplierService {
     @Autowired
     private SecurityContextHelper securityHelper;
 
+    @Autowired
+    private AuditLogService auditLogService;
+
     @Transactional
     public Supplier createSupplier(SupplierRequest req) {
         Supplier s = new Supplier();
-        s.setHospitalId(securityHelper.getCurrentHospitalId());
-        s.setBranchId(securityHelper.getCurrentBranchId());
+        Long hid = securityHelper.getCurrentHospitalId();
+        Long branchId = securityHelper.getCurrentBranchId();
+        s.setHospitalId(hid);
+        s.setBranchId(branchId);
         s.setSupplierName(req.getSupplierName());
         s.setContactPerson(req.getContactPerson());
         s.setPhone(req.getPhone());
@@ -35,7 +41,16 @@ public class SupplierService {
         s.setDrugLicenseNumber(req.getDrugLicenseNumber());
         s.setCreditDays(req.getCreditDays() != null ? req.getCreditDays() : 0);
         s.setIsActive(req.getIsActive() != null ? req.getIsActive() : true);
-        return supplierRepository.save(s);
+        s = supplierRepository.save(s);
+
+        auditLogService.logAction(
+            "SUPPLIER_CREATED",
+            "Supplier '" + s.getSupplierName() + "' created",
+            securityHelper.getCurrentUserEmail(),
+            hid, branchId,
+            "SUPPLIER", String.valueOf(s.getId()), null
+        );
+        return s;
     }
 
     public Page<Supplier> getAll(String search, Pageable pageable) {
@@ -65,12 +80,32 @@ public class SupplierService {
         s.setCreditDays(req.getCreditDays());
         if (req.getIsActive() != null)
             s.setIsActive(req.getIsActive());
-        return supplierRepository.save(s);
+        s = supplierRepository.save(s);
+
+        auditLogService.logAction(
+            "SUPPLIER_UPDATED",
+            "Supplier '" + s.getSupplierName() + "' updated",
+            securityHelper.getCurrentUserEmail(),
+            securityHelper.getCurrentHospitalId(), securityHelper.getCurrentBranchId(),
+            "SUPPLIER", String.valueOf(s.getId()), null
+        );
+        return s;
     }
 
     @Transactional
     public void delete(Long id) {
         Supplier s = getById(id); // enforces tenant ownership + existence
+        String supplierName = s.getSupplierName();
+        Long hid = securityHelper.getCurrentHospitalId();
+        Long branchId = securityHelper.getCurrentBranchId();
         supplierRepository.delete(s);
+
+        auditLogService.logAction(
+            "SUPPLIER_DELETED",
+            "Supplier '" + supplierName + "' deleted",
+            securityHelper.getCurrentUserEmail(),
+            hid, branchId,
+            "SUPPLIER", String.valueOf(id), null
+        );
     }
 }

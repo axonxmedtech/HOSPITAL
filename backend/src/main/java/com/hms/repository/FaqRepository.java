@@ -21,4 +21,11 @@ public interface FaqRepository extends JpaRepository<Faq, Long> {
     @Override
     @CacheEvict(value = "faqs", allEntries = true)
     void deleteById(Long id);
+
+    // Platform admin: Tenant-type isolated FAQs
+    List<Faq> findByHospitalType(String hospitalType);
+
+    List<Faq> findByHospitalTypeOrderByIdAsc(String hospitalType);
+
+    long countByHospitalType(String hospitalType);
 }

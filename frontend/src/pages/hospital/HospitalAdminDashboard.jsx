@@ -955,7 +955,9 @@ const HospitalAdminDashboard = () => {
                         setTotalElements(0);
                     }
                 } else if (activeTab === 'audit-logs') {
-                    const data = await hospitalService.getAuditLogs(searchTerm, auditLogRoleFilter);
+                    const data = isPharmacyTenant
+                        ? await hospitalService.getPharmacyAuditLogs(searchTerm, auditLogRoleFilter === 'ALL' ? null : auditLogRoleFilter)
+                        : await hospitalService.getAuditLogs(searchTerm, auditLogRoleFilter);
                     setAuditLogs(data);
                     setTotalPages(1); // Audit logs don't have pagination yet
                 } else if (activeTab === 'analytics') {
@@ -2144,13 +2146,19 @@ const HospitalAdminDashboard = () => {
                                 </div>
                             ) : activeTab === 'audit-logs' ? (
                                 <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 gap-1">
-                                    {[
-                                        { id: 'ALL', label: 'All' },
-                                        { id: 'DOCTOR', label: 'Doctor' },
-                                        { id: 'HOSPITAL_ADMIN', label: 'Admin' },
-                                        ...(operationsSettings.receptionMode !== 'SOLO' ? [{ id: 'RECEPTIONIST', label: 'Reception' }] : []),
-                                        ...(modules.includes('PHARMACY') ? [{ id: 'PHARMACIST', label: 'Pharmacy' }] : [])
-                                    ].map(item => (
+                                    {(isPharmacyTenant
+                                        ? [
+                                            { id: 'ALL', label: 'All Pharmacy Users' },
+                                            { id: 'HOSPITAL_ADMIN', label: 'Pharmacy Admin' },
+                                            { id: 'PHARMACIST', label: 'Pharmacists' }
+                                        ]
+                                        : [
+                                            { id: 'ALL', label: 'All' },
+                                            { id: 'DOCTOR', label: 'Doctor' },
+                                            { id: 'HOSPITAL_ADMIN', label: 'Admin' },
+                                            ...(operationsSettings.receptionMode !== 'SOLO' ? [{ id: 'RECEPTIONIST', label: 'Reception' }] : [])
+                                        ]
+                                    ).map(item => (
                                         <button
                                             key={item.id}
                                             onClick={() => setAuditLogRoleFilter(item.id)}

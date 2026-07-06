@@ -65,4 +65,7 @@ public class InventoryItem {
      */
     @Column(name = "has_own_stock", nullable = false, columnDefinition = "tinyint(1) not null default 1")
     private Boolean hasOwnStock = true;
+
+    @Column(name = "hospital_type")
+    private String hospitalType; // HOSPITAL, CLINIC, or PHARMACY - for tenant isolation
 }

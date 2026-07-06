@@ -29,7 +29,7 @@ public interface MedicineBatchRepository extends JpaRepository<MedicineBatch, Lo
     Page<MedicineBatch> findScopedInventory(@Param("hospitalId") Long hospitalId,
             @Param("branchId") Long branchId, Pageable pageable);
 
-    @Query("SELECT b FROM MedicineBatch b WHERE b.hospitalId = :hospitalId AND b.medicine.categoryId = :categoryId " +
+    @Query("SELECT b FROM MedicineBatch b JOIN b.medicine m WHERE b.hospitalId = :hospitalId AND m.categoryId = :categoryId " +
            "AND (:branchId IS NULL OR b.branchId = :branchId)")
     Page<MedicineBatch> findScopedByCategory(@Param("hospitalId") Long hospitalId,
             @Param("branchId") Long branchId, @Param("categoryId") Long categoryId, Pageable pageable);
@@ -58,13 +58,13 @@ public interface MedicineBatchRepository extends JpaRepository<MedicineBatch, Lo
     java.math.BigDecimal sumCurrentQuantityByMedicineId(@Param("hospitalId") Long hospitalId,
             @Param("branchId") Long branchId, @Param("medicineId") Long medicineId);
 
-    @Query("SELECT b FROM MedicineBatch b WHERE b.hospitalId = :hospitalId " +
+    @Query("SELECT b FROM MedicineBatch b JOIN b.medicine m WHERE b.hospitalId = :hospitalId " +
            "AND (:branchId IS NULL OR b.branchId = :branchId) AND b.id IN (" +
            "  SELECT MIN(sub.id) FROM MedicineBatch sub " +
-           "  JOIN sub.medicine m " +
-           "  WHERE sub.hospitalId = :hospitalId AND (:branchId IS NULL OR sub.branchId = :branchId) AND m.minStockLevel > 0 " +
-           "  GROUP BY sub.medicineId, m.minStockLevel " +
-           "  HAVING SUM(sub.currentQuantity) < m.minStockLevel" +
+           "  JOIN sub.medicine subm " +
+           "  WHERE sub.hospitalId = :hospitalId AND (:branchId IS NULL OR sub.branchId = :branchId) AND subm.minStockLevel > 0 " +
+           "  GROUP BY sub.medicineId, subm.minStockLevel " +
+           "  HAVING SUM(sub.currentQuantity) < subm.minStockLevel" +
            ")")
     Page<MedicineBatch> findLowStock(@Param("hospitalId") Long hospitalId,
             @Param("branchId") Long branchId, Pageable pageable);

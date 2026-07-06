@@ -31,6 +31,9 @@ public class Faq {
     @Column(name = "answer", nullable = false, columnDefinition = "TEXT")
     private String answer;
 
+    @Column(name = "hospital_type")
+    private String hospitalType; // HOSPITAL, CLINIC, or PHARMACY - for tenant isolation
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
@@ -56,6 +59,14 @@ public class Faq {
 
     public void setAnswer(String answer) {
         this.answer = answer;
+    }
+
+    public String getHospitalType() {
+        return hospitalType;
+    }
+
+    public void setHospitalType(String hospitalType) {
+        this.hospitalType = hospitalType;
     }
 
     public LocalDateTime getCreatedAt() {

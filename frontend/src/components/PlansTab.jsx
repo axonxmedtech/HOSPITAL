@@ -34,11 +34,11 @@ const emptyForm = {
     maxOutlets: '',
 };
 
-export default function PlansTab() {
+export default function PlansTab({ hospitalType = null }) {
     const { success } = useToast();
     const [plans, setPlans] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [typeFilter, setTypeFilter] = useState('');
+    const [typeFilter, setTypeFilter] = useState(hospitalType || '');
     const [showModal, setShowModal] = useState(false);
     const [editingPlan, setEditingPlan] = useState(null);
     const [form, setForm] = useState(emptyForm);

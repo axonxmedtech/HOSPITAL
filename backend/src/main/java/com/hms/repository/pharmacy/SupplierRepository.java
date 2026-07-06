@@ -17,14 +17,14 @@ public interface SupplierRepository extends JpaRepository<Supplier, Long> {
     Optional<Supplier> findByIdAndHospitalId(Long id, Long hospitalId);
 
     // Branch-scoped. When branchId is null (admin / single-shop) all rows for the
-    // hospital are returned; otherwise only the given branch's rows.
+    // hospital are returned; otherwise show admin-shared suppliers (branchId IS NULL) + branch's own suppliers.
     @Query("SELECT s FROM Supplier s WHERE s.hospitalId = :hid " +
-           "AND (:branchId IS NULL OR s.branchId = :branchId) " +
+           "AND (:branchId IS NULL OR s.branchId IS NULL OR s.branchId = :branchId) " +
            "AND (:search IS NULL OR LOWER(s.supplierName) LIKE LOWER(CONCAT('%', :search, '%')))")
     Page<Supplier> findScoped(@Param("hid") Long hid, @Param("branchId") Long branchId,
                               @Param("search") String search, Pageable pageable);
 
     @Query("SELECT s FROM Supplier s WHERE s.id = :id AND s.hospitalId = :hid " +
-           "AND (:branchId IS NULL OR s.branchId = :branchId)")
+           "AND (:branchId IS NULL OR s.branchId IS NULL OR s.branchId = :branchId)")
     Optional<Supplier> findByIdScoped(@Param("id") Long id, @Param("hid") Long hid, @Param("branchId") Long branchId);
 }

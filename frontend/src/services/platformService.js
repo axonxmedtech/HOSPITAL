@@ -116,16 +116,21 @@ const platformService = {
     /**
      * Get all support tickets (submitted by hospital admins)
      */
-    getTickets: async () => {
-        const response = await apiClient.get('/platform/tickets');
+    getTickets: async (hospitalType = null, status = null) => {
+        const params = {};
+        if (hospitalType) params.hospitalType = hospitalType;
+        if (status) params.status = status;
+        const response = await apiClient.get('/platform/tickets', { params });
         return response.data;
     },
 
     /**
      * Resolve a ticket by ID
      */
-    resolveTicket: async (ticketId) => {
-        const response = await apiClient.put(`/platform/tickets/${ticketId}/status`, { status: 'RESOLVED' });
+    resolveTicket: async (ticketId, hospitalType = null) => {
+        const params = {};
+        if (hospitalType) params.hospitalType = hospitalType;
+        const response = await apiClient.put(`/platform/tickets/${ticketId}/status`, { status: 'RESOLVED' }, { params });
         return response.data;
     },
 
@@ -138,18 +143,42 @@ const platformService = {
     },
 
     /**
+     * Get platform FAQs filtered by tenant type (HOSPITAL, CLINIC, PHARMACY)
+     */
+    getPlatformFaqs: async (hospitalType = null) => {
+        const params = {};
+        if (hospitalType) params.hospitalType = hospitalType;
+        const response = await apiClient.get('/platform/faqs', { params });
+        return response.data;
+    },
+
+    /**
      * Add a new FAQ
      */
-    addFaq: async (faqData) => {
-        const response = await apiClient.post('/platform/faqs', faqData);
+    addFaq: async (faqData, hospitalType = null) => {
+        const params = {};
+        if (hospitalType) params.hospitalType = hospitalType;
+        const response = await apiClient.post('/platform/faqs', faqData, { params });
+        return response.data;
+    },
+
+    /**
+     * Update an FAQ by ID
+     */
+    updateFaq: async (id, faqData, hospitalType = null) => {
+        const params = {};
+        if (hospitalType) params.hospitalType = hospitalType;
+        const response = await apiClient.put(`/platform/faqs/${id}`, faqData, { params });
         return response.data;
     },
 
     /**
      * Delete an FAQ by ID
      */
-    deleteFaq: async (id) => {
-        const response = await apiClient.delete(`/platform/faqs/${id}`);
+    deleteFaq: async (id, hospitalType = null) => {
+        const params = {};
+        if (hospitalType) params.hospitalType = hospitalType;
+        const response = await apiClient.delete(`/platform/faqs/${id}`, { params });
         return response.data;
     },
 
@@ -185,25 +214,32 @@ const platformService = {
     },
 
     // ─── Medicine Catalog Management (Global) ──────────────────────────────
-    getPlatformMedicines: async (search = '', page = 0, size = 10) => {
+    getPlatformMedicines: async (search = '', page = 0, size = 10, hospitalType = null) => {
         const params = { page, size };
         if (search) params.search = search;
+        if (hospitalType) params.hospitalType = hospitalType;
         const response = await apiClient.get('/platform/medicines', { params });
         return response.data;
     },
 
-    createPlatformMedicine: async (data) => {
-        const response = await apiClient.post('/platform/medicines', data);
+    createPlatformMedicine: async (data, hospitalType = null) => {
+        const params = {};
+        if (hospitalType) params.hospitalType = hospitalType;
+        const response = await apiClient.post('/platform/medicines', data, { params });
         return response.data;
     },
 
-    updatePlatformMedicine: async (id, data) => {
-        const response = await apiClient.put(`/platform/medicines/${id}`, data);
+    updatePlatformMedicine: async (id, data, hospitalType = null) => {
+        const params = {};
+        if (hospitalType) params.hospitalType = hospitalType;
+        const response = await apiClient.put(`/platform/medicines/${id}`, data, { params });
         return response.data;
     },
 
-    deletePlatformMedicine: async (id) => {
-        const response = await apiClient.delete(`/platform/medicines/${id}`);
+    deletePlatformMedicine: async (id, hospitalType = null) => {
+        const params = {};
+        if (hospitalType) params.hospitalType = hospitalType;
+        const response = await apiClient.delete(`/platform/medicines/${id}`, { params });
         return response.data;
     },
 
@@ -217,25 +253,32 @@ const platformService = {
     },
 
     // ─── Global Master Item Catalog Management (Platform Admin) ──────────────
-    getMasterItems: async (search = '', page = 0, size = 10) => {
+    getMasterItems: async (search = '', page = 0, size = 10, hospitalType = null) => {
         const params = { page, size };
         if (search) params.search = search;
+        if (hospitalType) params.hospitalType = hospitalType;
         const response = await apiClient.get('/platform/inventory-master', { params });
         return response.data;
     },
 
-    createMasterItem: async (data) => {
-        const response = await apiClient.post('/platform/inventory-master', data);
+    createMasterItem: async (data, hospitalType = null) => {
+        const params = {};
+        if (hospitalType) params.hospitalType = hospitalType;
+        const response = await apiClient.post('/platform/inventory-master', data, { params });
         return response.data;
     },
 
-    updateMasterItem: async (id, data) => {
-        const response = await apiClient.put(`/platform/inventory-master/${id}`, data);
+    updateMasterItem: async (id, data, hospitalType = null) => {
+        const params = {};
+        if (hospitalType) params.hospitalType = hospitalType;
+        const response = await apiClient.put(`/platform/inventory-master/${id}`, data, { params });
         return response.data;
     },
 
-    deleteMasterItem: async (id) => {
-        const response = await apiClient.delete(`/platform/inventory-master/${id}`);
+    deleteMasterItem: async (id, hospitalType = null) => {
+        const params = {};
+        if (hospitalType) params.hospitalType = hospitalType;
+        const response = await apiClient.delete(`/platform/inventory-master/${id}`, { params });
         return response.data;
     },
 
