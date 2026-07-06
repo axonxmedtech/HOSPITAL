@@ -28,9 +28,11 @@ const PageLoading = () => (
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
     const user = authService.getCurrentUser();
-    
+
     if (!user || !authService.isAuthenticated()) {
-        return <Navigate to="/login/hospital" replace />;
+        // getLoginUrl falls back to the last-used portal, so an expired
+        // clinic/pharmacy session returns to its own login page.
+        return <Navigate to={authService.getLoginUrl()} replace />;
     }
     
     // In Single Doctor Hospital mode, the Hospital Admin role can access BOTH doctor and admin routes
@@ -54,7 +56,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 const LandingRedirect = () => {
     const user = authService.getCurrentUser();
     if (!user) {
-        return <Navigate to="/login/hospital" replace />;
+        return <Navigate to={authService.getLoginUrl()} replace />;
     }
     switch (user.role) {
         case 'SUPER_ADMIN':
@@ -84,7 +86,7 @@ const LandingRedirect = () => {
         case 'PHARMACIST':
             return <Navigate to="/hospital/pharmacy" replace />;
         default:
-            return <Navigate to="/login/hospital" replace />;
+            return <Navigate to={authService.getLoginUrl()} replace />;
     }
 };
 

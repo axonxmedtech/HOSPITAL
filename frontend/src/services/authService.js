@@ -29,6 +29,9 @@ const authService = {
         if (response.data.token) {
             sessionStorage.setItem('token', response.data.token);
             sessionStorage.setItem('user', JSON.stringify(response.data));
+            try {
+                localStorage.setItem('lastPortal', 'PLATFORM');
+            } catch (_) { /* storage unavailable — fall back to default login */ }
         }
 
         return response.data;
@@ -48,6 +51,12 @@ const authService = {
         if (response.data.token) {
             sessionStorage.setItem('token', response.data.token);
             sessionStorage.setItem('user', JSON.stringify(response.data));
+            // Remember the portal type in localStorage so that redirects AFTER
+            // the session is cleared (logout, expiry, deep links) still land on
+            // the correct login page instead of defaulting to the hospital one.
+            try {
+                localStorage.setItem('lastPortal', response.data.hospitalType || entityType || 'HOSPITAL');
+            } catch (_) { /* storage unavailable — fall back to default login */ }
         }
 
         return response.data;
@@ -55,15 +64,20 @@ const authService = {
 
     /**
      * Returns the login page URL for the current user's portal type.
-     * Must be called BEFORE logout() clears sessionStorage.
+     * Falls back to the last-used portal (localStorage) when the session is
+     * already cleared, so expired clinic/pharmacy sessions still return to
+     * their own login page.
      */
     getLoginUrl: () => {
+        let hospitalType = null;
         try {
             const userStr = sessionStorage.getItem('user');
-            const hospitalType = userStr ? JSON.parse(userStr)?.hospitalType : null;
-            if (hospitalType === 'CLINIC') return '/login/clinic';
-            if (hospitalType === 'PHARMACY') return '/login/pharmacy';
-        } catch (_) {}
+            hospitalType = userStr ? JSON.parse(userStr)?.hospitalType : null;
+            if (!hospitalType) hospitalType = localStorage.getItem('lastPortal');
+        } catch (_) { /* fall through to default */ }
+        if (hospitalType === 'CLINIC') return '/login/clinic';
+        if (hospitalType === 'PHARMACY') return '/login/pharmacy';
+        if (hospitalType === 'PLATFORM') return '/platform/login';
         return '/login/hospital';
     },
 

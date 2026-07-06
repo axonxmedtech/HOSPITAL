@@ -78,6 +78,7 @@ apiClient.interceptors.request.use(
 const loginUrlForType = (hospitalType) => {
   if (hospitalType === 'CLINIC') return '/login/clinic';
   if (hospitalType === 'PHARMACY') return '/login/pharmacy';
+  if (hospitalType === 'PLATFORM') return '/platform/login';
   return '/login/hospital';
 };
 
@@ -87,6 +88,9 @@ const clearSessionAndRedirect = () => {
   try {
     const userStr = sessionStorage.getItem('user');
     hospitalType = userStr ? JSON.parse(userStr)?.hospitalType : null;
+    // Session already gone (expired tab) — use the last-used portal instead
+    // of defaulting a clinic/pharmacy user to the hospital login.
+    if (!hospitalType) hospitalType = localStorage.getItem('lastPortal');
   } catch {
     hospitalType = null; // fall back to the default hospital login
   }
