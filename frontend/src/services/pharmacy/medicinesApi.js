@@ -6,7 +6,7 @@ const medicinesApi = {
         const query = `?search=${encodeURIComponent(search)}&page=${page}&size=${size}`;
 
         const response = await apiClient.get(
-            `/api/pharmacy/medicines${query}`
+            `/pharmacy/medicines${query}`
         );
 
         return response.data;
@@ -15,7 +15,7 @@ const medicinesApi = {
     // Get medicine by ID
     getById: async (id) => {
         const response = await apiClient.get(
-            `/api/pharmacy/medicines/${id}`
+            `/pharmacy/medicines/${id}`
         );
 
         return response.data;
@@ -24,7 +24,7 @@ const medicinesApi = {
     // Create medicine
     create: async (data) => {
         const response = await apiClient.post(
-            '/api/pharmacy/medicines',
+            '/pharmacy/medicines',
             data
         );
 
@@ -34,7 +34,7 @@ const medicinesApi = {
     // Update medicine
     update: async (id, data) => {
         const response = await apiClient.put(
-            `/api/pharmacy/medicines/${id}`,
+            `/pharmacy/medicines/${id}`,
             data
         );
 
@@ -44,7 +44,7 @@ const medicinesApi = {
     // Toggle active/inactive status
     toggleStatus: async (id, isActive) => {
         const response = await apiClient.patch(
-            `/api/pharmacy/medicines/${id}/status`,
+            `/pharmacy/medicines/${id}/status`,
             { isActive }
         );
 
@@ -54,7 +54,7 @@ const medicinesApi = {
     // Get medicine categories
     getCategories: async () => {
         const response = await apiClient.get(
-            '/api/pharmacy/categories?page=0&size=1000'
+            '/pharmacy/categories?page=0&size=1000'
         );
         return response.data;
     },
@@ -62,7 +62,7 @@ const medicinesApi = {
     // Get manufacturers
     getManufacturers: async () => {
         const response = await apiClient.get(
-            '/api/pharmacy/manufacturers?page=0&size=1000'
+            '/pharmacy/manufacturers?page=0&size=1000'
         );
         return response.data;
     },
@@ -70,7 +70,7 @@ const medicinesApi = {
     // Create new category
     createCategory: async (payload) => {
         const response = await apiClient.post(
-            '/api/pharmacy/categories',
+            '/pharmacy/categories',
             payload
         );
         return response.data;
@@ -79,7 +79,7 @@ const medicinesApi = {
     // Create new manufacturer
     createManufacturer: async (payload) => {
         const response = await apiClient.post(
-            '/api/pharmacy/manufacturers',
+            '/pharmacy/manufacturers',
             payload
         );
         return response.data;
@@ -90,7 +90,7 @@ const medicinesApi = {
         const q = `?q=${encodeURIComponent(query)}&page=${page}&size=${size}`;
 
         const response = await apiClient.get(
-            `/api/pharmacy/search/medicines${q}`
+            `/pharmacy/search/medicines${q}`
         );
 
         return response.data;
@@ -99,7 +99,7 @@ const medicinesApi = {
     // Dropdown autocomplete
     autocomplete: async (query) => {
         const response = await apiClient.get(
-            `/api/pharmacy/autocomplete/medicines?q=${encodeURIComponent(query)}`
+            `/pharmacy/autocomplete/medicines?q=${encodeURIComponent(query)}`
         );
 
         return response.data;
@@ -108,7 +108,7 @@ const medicinesApi = {
     // Search the platform medicine catalog (name + type) for the purchase form
     searchCatalog: async (query) => {
         const response = await apiClient.get(
-            `/api/pharmacy/catalog/search?q=${encodeURIComponent(query)}`
+            `/pharmacy/catalog/search?q=${encodeURIComponent(query)}`
         );
         return response.data;
     }

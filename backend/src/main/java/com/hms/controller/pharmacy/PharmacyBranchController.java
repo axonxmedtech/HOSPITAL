@@ -13,7 +13,7 @@ import java.util.Map;
  * manages the medical shops (outlets) under their tenant.
  */
 @RestController
-@RequestMapping("/hospital/pharmacy-branches")
+@RequestMapping("/pharmacy/branches")
 @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
 public class PharmacyBranchController {
 

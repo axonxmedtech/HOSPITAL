@@ -12,7 +12,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
 @RestController
-@RequestMapping("/hospital/patients")
+@RequestMapping({"/hospital/patients", "/clinic/patients", "/pharmacy/patients"})
 public class PatientController {
 
     @Autowired

@@ -11,7 +11,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/pharmacy/manufacturers")
+@RequestMapping("/pharmacy/manufacturers")
 public class ManufacturerController {
 
     @Autowired

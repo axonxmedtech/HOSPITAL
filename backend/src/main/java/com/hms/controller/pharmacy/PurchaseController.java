@@ -1,4 +1,4 @@
-package com.hms.controller.hospital;
+package com.hms.controller.pharmacy;
 
 import com.hms.dto.pharmacy.PurchaseRequest;
 import com.hms.entity.pharmacy.PurchaseInvoice;
@@ -11,7 +11,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/pharmacy/purchases")
+@RequestMapping("/pharmacy/purchases")
 @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','PHARMACIST')")
 public class PurchaseController {
 

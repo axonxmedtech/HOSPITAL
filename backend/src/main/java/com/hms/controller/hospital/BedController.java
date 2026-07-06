@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/beds")
+@RequestMapping({"/hospital/beds", "/clinic/beds", "/pharmacy/beds"})
 @Validated
 @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','DOCTOR','RECEPTIONIST','PHARMACIST')")
 public class BedController {

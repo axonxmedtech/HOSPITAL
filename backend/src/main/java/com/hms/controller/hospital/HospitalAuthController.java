@@ -57,7 +57,7 @@ public class HospitalAuthController {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/hospital/settings/fees")
+    @GetMapping({"/hospital/settings/fees", "/clinic/settings/fees", "/pharmacy/settings/fees"})
     @RequireModule("BILLING")
     public ResponseEntity<?> getHospitalFees(java.security.Principal principal) {
         if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
@@ -65,7 +65,7 @@ public class HospitalAuthController {
         return ResponseEntity.ok(dto);
     }
 
-    @PutMapping("/hospital/settings/fees")
+    @PutMapping({"/hospital/settings/fees", "/clinic/settings/fees", "/pharmacy/settings/fees"})
     @RequireModule("BILLING")
     public ResponseEntity<?> updateHospitalFees(java.security.Principal principal, @RequestBody com.hms.dto.HospitalFeesDTO fees) {
         if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
@@ -76,13 +76,13 @@ public class HospitalAuthController {
         return ResponseEntity.ok(updated);
     }
 
-    @GetMapping("/hospital/settings/operations")
+    @GetMapping({"/hospital/settings/operations", "/clinic/settings/operations", "/pharmacy/settings/operations"})
     public ResponseEntity<?> getOperationsSettings(java.security.Principal principal) {
         if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
         return ResponseEntity.ok(authService.getHospitalOperationsSettings(principal.getName()));
     }
 
-    @PutMapping("/hospital/settings/operations")
+    @PutMapping({"/hospital/settings/operations", "/clinic/settings/operations", "/pharmacy/settings/operations"})
     public ResponseEntity<?> updateOperationsSettings(java.security.Principal principal, @RequestBody com.hms.dto.HospitalSettingDTO dto) {
         if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
         com.hms.dto.HospitalSettingDTO updated = authService.updateHospitalOperationsSettings(principal.getName(), dto);
@@ -93,7 +93,7 @@ public class HospitalAuthController {
     }
 
     /** Toggle the pharmacy barcode workflow. Body: { "barcodeEnabled": true|false }. */
-    @PutMapping("/hospital/settings/barcode")
+    @PutMapping({"/hospital/settings/barcode", "/clinic/settings/barcode", "/pharmacy/settings/barcode"})
     public ResponseEntity<?> updateBarcodeSetting(java.security.Principal principal, @RequestBody java.util.Map<String, Boolean> body) {
         if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
         Boolean enabled = body.get("barcodeEnabled");
@@ -101,7 +101,7 @@ public class HospitalAuthController {
         return ResponseEntity.ok(authService.updateBarcodeSetting(principal.getName(), enabled));
     }
 
-    @GetMapping("/hospital/subscription")
+    @GetMapping({"/hospital/subscription", "/clinic/subscription", "/pharmacy/subscription"})
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<?> getSubscriptionInfo() {
         try {

@@ -17,7 +17,7 @@ import java.util.List;
  * Controller for retrieving Audit Logs for Hospital Admins.
  */
 @RestController
-@RequestMapping("/hospital/audit-logs")
+@RequestMapping({"/hospital/audit-logs", "/clinic/audit-logs", "/pharmacy/audit-logs"})
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
 public class HospitalAuditController {

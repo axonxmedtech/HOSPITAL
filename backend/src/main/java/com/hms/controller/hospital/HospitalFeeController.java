@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/hospital/settings/fees/custom")
+@RequestMapping({"/hospital/settings/fees/custom", "/clinic/settings/fees/custom", "/pharmacy/settings/fees/custom"})
 @RequireModule("BILLING")
 public class HospitalFeeController {
 

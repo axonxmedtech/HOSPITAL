@@ -26,7 +26,7 @@ import com.hms.service.hospital.PatientService;
 import com.hms.service.PdfService;
 
 @RestController
-@RequestMapping("/hospital/billing")
+@RequestMapping({"/hospital/billing", "/clinic/billing", "/pharmacy/billing"})
 public class BillingController {
 
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(BillingController.class);

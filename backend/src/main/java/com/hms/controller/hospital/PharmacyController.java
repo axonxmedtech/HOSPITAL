@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/hospital/pharmacy")
+@RequestMapping({"/hospital/pharmacy", "/clinic/pharmacy", "/pharmacy/pharmacy"})
 public class PharmacyController {
 
     @Autowired

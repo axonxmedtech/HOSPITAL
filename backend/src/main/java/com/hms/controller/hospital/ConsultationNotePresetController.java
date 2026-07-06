@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/hospital/consultation-note-presets")
+@RequestMapping({"/hospital/consultation-note-presets", "/clinic/consultation-note-presets", "/pharmacy/consultation-note-presets"})
 public class ConsultationNotePresetController {
 
     @Autowired

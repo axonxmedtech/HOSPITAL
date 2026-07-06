@@ -459,31 +459,31 @@ const hospitalService = {
         return response.data;
     },
     createIpdAdmission: async (payload) => {
-        const response = await apiClient.post('/api/ipd/admit', payload);
+        const response = await apiClient.post('/hospital/ipd/admit', payload);
         return response.data;
     },
     getIpdAdmissions: async (page = 0, size = 10, search = '') => {
-        const response = await apiClient.get('/api/ipd', { params: { page, size, search } });
+        const response = await apiClient.get('/hospital/ipd', { params: { page, size, search } });
         return response.data;
     },
     getMyIpdAdmissions: async () => {
-        const response = await apiClient.get('/api/ipd/my');
+        const response = await apiClient.get('/hospital/ipd/my');
         return response.data;
     },
     getAdmittedIpdAdmissions: async () => {
-        const response = await apiClient.get('/api/ipd/admissions');
+        const response = await apiClient.get('/hospital/ipd/admissions');
         return response.data; // returns array of DTOs
     },
     getIpdDetails: async (id) => {
-        const response = await apiClient.get(`/api/ipd/${id}`, { timeout: 30000 });
+        const response = await apiClient.get(`/hospital/ipd/${id}`, { timeout: 30000 });
         return response.data;
     },
     planDischarge: async (id, payload) => {
-        const response = await apiClient.post(`/api/ipd/${id}/plan-discharge`, payload);
+        const response = await apiClient.post(`/hospital/ipd/${id}/plan-discharge`, payload);
         return response.data;
     },
     confirmDischarge: async (id) => {
-        const response = await apiClient.post(`/api/ipd/${id}/confirm-discharge`);
+        const response = await apiClient.post(`/hospital/ipd/${id}/confirm-discharge`);
         return response.data;
     },
     getIpdBill: async (ipdId) => {
@@ -495,27 +495,27 @@ const hospitalService = {
         return response.data;
     },
     addIpdFollowup: async (id, payload) => {
-        const response = await apiClient.post(`/api/ipd/${id}/followup`, payload);
+        const response = await apiClient.post(`/hospital/ipd/${id}/followup`, payload);
         return response.data;
     },
     administerIpdItems: async (id, items) => {
-        const response = await apiClient.post(`/api/ipd/${id}/administer`, { administeredItems: items });
+        const response = await apiClient.post(`/hospital/ipd/${id}/administer`, { administeredItems: items });
         return response.data;
     },
     administerIpdHospitalItems: async (id, items) => {
-        const response = await apiClient.post(`/api/ipd/${id}/administer-hospital-items`, { items });
+        const response = await apiClient.post(`/hospital/ipd/${id}/administer-hospital-items`, { items });
         return response.data;
     },
     addIpdPrescription: async (id, payload) => {
-        const response = await apiClient.post(`/api/ipd/${id}/prescriptions`, payload);
+        const response = await apiClient.post(`/hospital/ipd/${id}/prescriptions`, payload);
         return response.data;
     },
     stopPrescription: async (prescriptionId) => {
-        const response = await apiClient.put(`/api/ipd/prescriptions/${prescriptionId}/stop`);
+        const response = await apiClient.put(`/hospital/ipd/prescriptions/${prescriptionId}/stop`);
         return response.data;
     },
     changeBed: async (ipdId, newBedId) => {
-        const response = await apiClient.put(`/api/ipd/${ipdId}/change-bed?newBedId=${newBedId}`);
+        const response = await apiClient.put(`/hospital/ipd/${ipdId}/change-bed?newBedId=${newBedId}`);
         return response.data;
     },
 

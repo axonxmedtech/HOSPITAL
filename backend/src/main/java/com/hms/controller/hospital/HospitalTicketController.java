@@ -13,7 +13,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/hospital/tickets")
+@RequestMapping({"/hospital/tickets", "/clinic/tickets", "/pharmacy/tickets"})
 @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
 public class HospitalTicketController {
 

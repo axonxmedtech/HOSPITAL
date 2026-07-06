@@ -17,7 +17,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
 @RestController
-@RequestMapping("/hospital/doctors")
+@RequestMapping({"/hospital/doctors", "/clinic/doctors", "/pharmacy/doctors"})
 public class DoctorController {
 
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(DoctorController.class);

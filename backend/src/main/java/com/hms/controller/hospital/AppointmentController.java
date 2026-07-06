@@ -28,7 +28,7 @@ import org.springframework.data.domain.Pageable;
  * @version Phase-1
  */
 @RestController
-@RequestMapping("/hospital/appointments")
+@RequestMapping({"/hospital/appointments", "/clinic/appointments", "/pharmacy/appointments"})
 @RequireModule("APPOINTMENTS")
 public class AppointmentController {
 

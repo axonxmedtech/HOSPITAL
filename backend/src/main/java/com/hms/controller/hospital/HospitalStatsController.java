@@ -32,7 +32,7 @@ import java.util.Map;
  * @version Phase-1
  */
 @RestController
-@RequestMapping("/hospital/stats")
+@RequestMapping({"/hospital/stats", "/clinic/stats", "/pharmacy/stats"})
 @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
 public class HospitalStatsController {
 

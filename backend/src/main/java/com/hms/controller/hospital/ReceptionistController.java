@@ -12,7 +12,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
 @RestController
-@RequestMapping("/hospital/receptionists")
+@RequestMapping({"/hospital/receptionists", "/clinic/receptionists", "/pharmacy/receptionists"})
 @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
 public class ReceptionistController {
 

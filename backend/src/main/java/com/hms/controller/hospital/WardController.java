@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/wards")
+@RequestMapping({"/hospital/wards", "/clinic/wards", "/pharmacy/wards"})
 @Validated
 @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','DOCTOR','RECEPTIONIST','PHARMACIST')")
 public class WardController {

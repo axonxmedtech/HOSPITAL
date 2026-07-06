@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 
 @RestController
-@RequestMapping("/api/pharmacy/inventory")
+@RequestMapping("/pharmacy/inventory")
 public class InventoryController {
 
     @Autowired

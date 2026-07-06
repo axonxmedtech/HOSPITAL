@@ -20,7 +20,7 @@ import java.util.Map;
 import java.util.Optional;
 
 @RestController
-@RequestMapping("/hospital/whatsapp")
+@RequestMapping({"/hospital/whatsapp", "/clinic/whatsapp", "/pharmacy/whatsapp"})
 public class WhatsAppController {
 
     private final WhatsAppConfigRepository configRepository;
