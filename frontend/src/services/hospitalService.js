@@ -299,30 +299,6 @@ const hospitalService = {
         return response.data;
     },
 
-    addCatalogMedicine: async (data) => {
-        const response = await apiClient.post('/hospital/medicines/catalog', data);
-        return response.data;
-    },
-
-    updateCatalogMedicine: async (id, data) => {
-        const response = await apiClient.put(`/hospital/medicines/catalog/${id}`, data);
-        return response.data;
-    },
-
-    deleteCatalogMedicine: async (id) => {
-        const response = await apiClient.delete(`/hospital/medicines/catalog/${id}`);
-        return response.data;
-    },
-
-    importCatalogCsv: async (file) => {
-        const formData = new FormData();
-        formData.append('file', file);
-        const response = await apiClient.post('/hospital/medicines/catalog/import-csv', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-        });
-        return response.data;
-    },
-
     getInventoryMedicines: async () => {
         const response = await apiClient.get('/hospital/medicines/inventory');
         return response.data;
