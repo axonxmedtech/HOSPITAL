@@ -6,6 +6,7 @@ import com.hms.security.JwtUtil;
 import com.hms.security.HospitalWebSocketHandler;
 import com.hms.service.AuditLogService;
 import com.hms.service.hospital.MedicineService;
+import com.hms.service.platform.PlatformMedicineListService;
 import com.hms.security.SecurityContextHelper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -53,6 +54,7 @@ class PlatformMedicineControllerTest {
     private MockMvc mockMvc;
 
     @MockBean private MedicineService medicineService;
+    @MockBean private PlatformMedicineListService platformMedicineListService;
     @MockBean private JwtUtil jwtUtil;
     @MockBean private AuditLogService auditLogService;
     @MockBean private SecurityContextHelper securityHelper;
@@ -95,9 +97,11 @@ class PlatformMedicineControllerTest {
         saved.setName("Ibuprofen 400mg");
         saved.setType("Tablet");
 
-        when(medicineService.addCatalogMedicine(any(MedicineList.class))).thenReturn(saved);
+        when(platformMedicineListService.createMedicine(eq("HOSPITAL"), eq("Ibuprofen 400mg"), eq("Tablet")))
+                .thenReturn(saved);
 
         mockMvc.perform(post("/platform/medicines")
+                        .param("hospitalType", "HOSPITAL")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"Ibuprofen 400mg\",\"type\":\"Tablet\"}")
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
@@ -108,10 +112,11 @@ class PlatformMedicineControllerTest {
     @Test
     @WithMockUser(roles = "SUPER_ADMIN")
     void createMedicine_returnsBadRequestWhenServiceThrows() throws Exception {
-        when(medicineService.addCatalogMedicine(any(MedicineList.class)))
+        when(platformMedicineListService.createMedicine(eq("HOSPITAL"), any(), any()))
                 .thenThrow(new IllegalArgumentException("Medicine already exists in catalog"));
 
         mockMvc.perform(post("/platform/medicines")
+                        .param("hospitalType", "HOSPITAL")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"Paracetamol\"}")
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
@@ -128,9 +133,11 @@ class PlatformMedicineControllerTest {
         updated.setName("Cetirizine 10mg");
         updated.setType("Tablet");
 
-        when(medicineService.updateCatalogMedicine(eq(5L), any(MedicineList.class))).thenReturn(updated);
+        when(platformMedicineListService.updateMedicine(eq(5L), eq("HOSPITAL"), eq("Cetirizine 10mg"), eq("Tablet")))
+                .thenReturn(updated);
 
         mockMvc.perform(put("/platform/medicines/5")
+                        .param("hospitalType", "HOSPITAL")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"Cetirizine 10mg\",\"type\":\"Tablet\"}")
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
@@ -141,10 +148,11 @@ class PlatformMedicineControllerTest {
     @Test
     @WithMockUser(roles = "SUPER_ADMIN")
     void updateMedicine_returnsBadRequestWhenNotFound() throws Exception {
-        when(medicineService.updateCatalogMedicine(eq(999L), any(MedicineList.class)))
+        when(platformMedicineListService.updateMedicine(eq(999L), eq("HOSPITAL"), any(), any()))
                 .thenThrow(new RuntimeException("Catalog medicine not found"));
 
         mockMvc.perform(put("/platform/medicines/999")
+                        .param("hospitalType", "HOSPITAL")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"X\"}")
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
@@ -156,9 +164,10 @@ class PlatformMedicineControllerTest {
     @Test
     @WithMockUser(roles = "SUPER_ADMIN")
     void deleteMedicine_returnsOkWhenSuccessful() throws Exception {
-        // medicineService.deleteCatalogMedicine is void – no stub needed for happy path
+        // platformMedicineListService.deleteMedicine is void – no stub needed for happy path
 
         mockMvc.perform(delete("/platform/medicines/7")
+                        .param("hospitalType", "HOSPITAL")
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
                 .andExpect(status().isOk());
     }
@@ -167,9 +176,10 @@ class PlatformMedicineControllerTest {
     @WithMockUser(roles = "SUPER_ADMIN")
     void deleteMedicine_returnsBadRequestWhenNotFound() throws Exception {
         org.mockito.Mockito.doThrow(new RuntimeException("Catalog medicine not found"))
-                .when(medicineService).deleteCatalogMedicine(999L);
+                .when(platformMedicineListService).deleteMedicine(999L, "HOSPITAL");
 
         mockMvc.perform(delete("/platform/medicines/999")
+                        .param("hospitalType", "HOSPITAL")
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
                 .andExpect(status().isBadRequest());
     }
