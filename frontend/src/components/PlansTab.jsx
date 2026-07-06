@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import platformService from '../services/platformService';
 import { useToast } from '../context/ToastContext';
 
-const ENTITY_TYPES = ['HOSPITAL', 'CLINIC', 'PHARMACY'];
 const AVAILABLE_MODULES = ['OPD', 'IPD', 'PHARMACY', 'BILLING', 'APPOINTMENTS', 'MEDICAL_INVENTORY', 'HOSPITAL_INVENTORY', 'REPORTS', 'OT', 'PATHOLOGY'];
 
 // Pharmacy plans are defined by a single mutually-exclusive tier rather than the
@@ -38,19 +37,22 @@ export default function PlansTab({ hospitalType = null }) {
     const { success } = useToast();
     const [plans, setPlans] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [typeFilter, setTypeFilter] = useState(hospitalType || '');
     const [showModal, setShowModal] = useState(false);
     const [editingPlan, setEditingPlan] = useState(null);
     const [form, setForm] = useState(emptyForm);
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
 
-    useEffect(() => { loadPlans(); }, [typeFilter]);
+    // The tab is always opened from a tenant-type group (Hospital / Clinic /
+    // Pharmacy), so the plan type comes from the tab — never from the user.
+    const planType = hospitalType || 'HOSPITAL';
+
+    useEffect(() => { loadPlans(); }, [hospitalType]);
 
     const loadPlans = async () => {
         setLoading(true);
         try {
-            const data = await platformService.getPlans(typeFilter);
+            const data = await platformService.getPlans(planType);
             setPlans(data);
         } catch {
             setError('Failed to load plans');
@@ -61,7 +63,7 @@ export default function PlansTab({ hospitalType = null }) {
 
     const openCreate = () => {
         setEditingPlan(null);
-        setForm(emptyForm);
+        setForm({ ...emptyForm, type: planType });
         setError('');
         setShowModal(true);
     };
@@ -165,22 +167,7 @@ export default function PlansTab({ hospitalType = null }) {
                 </div>
             )}
 
-            <div className="flex items-center justify-between mb-4">
-                <div className="flex gap-2">
-                    {['', ...ENTITY_TYPES].map(t => (
-                        <button
-                            key={t}
-                            onClick={() => setTypeFilter(t)}
-                            className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors ${
-                                typeFilter === t
-                                    ? 'bg-gray-900 text-white border-gray-900'
-                                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                            }`}
-                        >
-                            {t || 'All'}
-                        </button>
-                    ))}
-                </div>
+            <div className="flex items-center justify-end mb-4">
                 <button
                     onClick={openCreate}
                     className="px-4 py-2 bg-gray-900 text-white text-sm font-medium hover:bg-gray-700 transition-colors"
@@ -242,7 +229,8 @@ export default function PlansTab({ hospitalType = null }) {
                     <div className="bg-white w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl shadow-xl">
                         <div className="flex items-center justify-between px-6 py-4 border-b">
                             <h3 className="text-lg font-bold text-gray-900">
-                                {editingPlan ? 'Edit Plan' : 'Create Plan'}
+                                {editingPlan ? 'Edit Plan' : 'Create Plan'}{' '}
+                                {typeBadge(editingPlan ? form.type : planType)}
                             </h3>
                             <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
                         </div>
@@ -257,29 +245,6 @@ export default function PlansTab({ hospitalType = null }) {
                                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
                                     placeholder="e.g. Clinic Essential"
                                 />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Type *</label>
-                                <select
-                                    value={form.type}
-                                    onChange={e => {
-                                        const type = e.target.value;
-                                        const allowed = modulesForType(type);
-                                        setForm(p => ({
-                                            ...p,
-                                            type,
-                                            // drop modules that aren't valid for the new type
-                                            modules: p.modules.filter(m => allowed.includes(m) || m.startsWith('WA_') || m.startsWith('WHATSAPP')),
-                                            ...(type !== 'PHARMACY' ? { multiOutlet: false, maxOutlets: '' } : {}),
-                                        }));
-                                    }}
-                                    disabled={!!editingPlan}
-                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:bg-gray-50"
-                                >
-                                    {ENTITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                                </select>
-                                {editingPlan && <p className="text-xs text-gray-500 mt-1">Type cannot be changed after creation.</p>}
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
