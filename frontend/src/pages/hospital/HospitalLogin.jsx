@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import authService from '../../services/authService';
 import { validateForm } from '../../utils/validation';
 
@@ -17,10 +17,6 @@ const PORTAL_CONFIG = {
             { value: 'RECEPTIONIST', label: 'Reception & Registration' },
             { value: 'PHARMACIST', label: 'Pharmacy Services' },
         ],
-        otherPortals: [
-            { label: 'Login as Clinic', path: '/login/clinic' },
-            { label: 'Login as Pharmacy', path: '/login/pharmacy' },
-        ],
     },
     CLINIC: {
         title: 'Clinic Staff Login',
@@ -34,10 +30,6 @@ const PORTAL_CONFIG = {
             { value: 'RECEPTIONIST', label: 'Reception & Registration' },
             { value: 'PHARMACIST', label: 'Pharmacy Services' },
         ],
-        otherPortals: [
-            { label: 'Login as Hospital', path: '/login/hospital' },
-            { label: 'Login as Pharmacy', path: '/login/pharmacy' },
-        ],
     },
     PHARMACY: {
         title: 'Pharmacy Login',
@@ -48,10 +40,6 @@ const PORTAL_CONFIG = {
         roles: [
             { value: 'HOSPITAL_ADMIN', label: 'Pharmacy Administration' },
             { value: 'PHARMACIST', label: 'Pharmacist' },
-        ],
-        otherPortals: [
-            { label: 'Login as Hospital', path: '/login/hospital' },
-            { label: 'Login as Clinic', path: '/login/clinic' },
         ],
     },
 };
@@ -291,22 +279,6 @@ const HospitalLogin = ({ portalType = 'HOSPITAL' }) => {
                                     </button>
                                 </div>
                             </form>
-                        </div>
-
-                        {/* Portal Switcher Links */}
-                        <div className="px-6 pb-6 text-center">
-                            <p className="text-xs text-gray-500 mb-2">Other portals:</p>
-                            <div className="flex justify-center gap-4">
-                                {config.otherPortals.map(p => (
-                                    <Link
-                                        key={p.path}
-                                        to={p.path}
-                                        className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
-                                    >
-                                        {p.label}
-                                    </Link>
-                                ))}
-                            </div>
                         </div>
                     </div>
                 </div>
