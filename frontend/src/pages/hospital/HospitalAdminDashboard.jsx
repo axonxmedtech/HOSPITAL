@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
+import wardService from '../../services/wardService';
 import { API_BASE_URL } from '../../services/apiService'; // BUG-028: single source-of-truth for base URL
 import { useToast } from '../../context/ToastContext';
 import ConfirmationModal from '../../components/ConfirmationModal';
@@ -83,6 +84,12 @@ const HospitalAdminDashboard = () => {
     const [patients, setPatients] = useState([]);
     const [doctors, setDoctors] = useState([]);
     const [receptionists, setReceptionists] = useState([]);
+    const [nurses, setNurses] = useState([]);
+    const [nurseAssignments, setNurseAssignments] = useState([]);
+    const [nurseOptions, setNurseOptions] = useState([]);
+    const [assignNurseModal, setAssignNurseModal] = useState({ isOpen: false, row: null });
+    const [nurseTasks, setNurseTasks] = useState([]);
+    const [createTaskModal, setCreateTaskModal] = useState(false);
     const [pharmacists, setPharmacists] = useState([]);
     const [appointments, setAppointments] = useState([]);
     const [billing, setBilling] = useState([]);
@@ -839,6 +846,39 @@ const HospitalAdminDashboard = () => {
                         setTotalPages(1);
                         setTotalElements(data.length);
                     }
+                } else if (activeTab === 'nurses') {
+                    const data = await hospitalService.getNurses(searchTerm, page, pageSize);
+                    if (data.content) {
+                        setNurses(data.content);
+                        setTotalPages(data.totalPages);
+                        setTotalElements(data.totalElements);
+                    } else {
+                        setNurses(data);
+                        setTotalPages(1);
+                        setTotalElements(data.length);
+                    }
+                } else if (activeTab === 'nurse-assignments') {
+                    // Overview of active admissions + their nurse, plus the nurse
+                    // list for the assign dropdown (fetch a large page = "all").
+                    const [overview, nurseList] = await Promise.all([
+                        hospitalService.getNurseAssignmentsOverview(),
+                        hospitalService.getNurses('', 0, 500),
+                    ]);
+                    setNurseAssignments(Array.isArray(overview) ? overview : []);
+                    setNurseOptions(nurseList.content || nurseList || []);
+                    setTotalPages(1);
+                    setTotalElements(Array.isArray(overview) ? overview.length : 0);
+                } else if (activeTab === 'nurse-tasks') {
+                    const [tasks, nurseList, overview] = await Promise.all([
+                        hospitalService.getNurseTasks(),
+                        hospitalService.getNurses('', 0, 500),
+                        hospitalService.getNurseAssignmentsOverview(),
+                    ]);
+                    setNurseTasks(Array.isArray(tasks) ? tasks : []);
+                    setNurseOptions(nurseList.content || nurseList || []);
+                    setNurseAssignments(Array.isArray(overview) ? overview : []);
+                    setTotalPages(1);
+                    setTotalElements(Array.isArray(tasks) ? tasks.length : 0);
                 } else if (activeTab === 'pharmacists') {
                     const data = await hospitalService.getPharmacists(searchTerm,page, pageSize);
                     if (data.content) {
@@ -1067,6 +1107,88 @@ const HospitalAdminDashboard = () => {
             "Reason for deletion?"
         );
     };
+
+    const handleDeleteNurse = (id) => {
+        openConfirmation(
+            'Delete Nurse',
+            'Are you sure you want to delete this nurse?',
+            async (reason) => {
+                try {
+                    await hospitalService.deleteNurse(id, reason);
+                    success('Nurse deleted successfully');
+                    loadData();
+                } catch (err) {
+                    toastError('Failed to delete nurse');
+                }
+            },
+            true,
+            "Why are you deleting this nurse?"
+        );
+    };
+
+    const handleUnassignNurse = (assignmentPublicId) => {
+        openConfirmation(
+            'Unassign Nurse',
+            'Remove this nurse from the patient? The patient will drop off the nurse\'s list.',
+            async () => {
+                try {
+                    await hospitalService.unassignNurse(assignmentPublicId);
+                    success('Nurse unassigned');
+                    loadData();
+                } catch (err) {
+                    toastError('Failed to unassign nurse');
+                }
+            }
+        );
+    };
+
+    const handleCreateNurseTask = async (payload) => {
+        try {
+            await hospitalService.createNurseTask(payload);
+            success('Task created successfully');
+            setCreateTaskModal(false);
+            loadData();
+        } catch (err) {
+            const msg = err.response?.data?.message || err.response?.data || 'Failed to create task';
+            toastError(typeof msg === 'string' ? msg : 'Failed to create task');
+        }
+    };
+
+    const handleCancelNurseTask = async (publicId) => {
+        openConfirmation(
+            'Cancel Task',
+            'Are you sure you want to cancel this task?',
+            async () => {
+                try {
+                    await hospitalService.updateNurseTaskStatus(publicId, { status: 'CANCELLED' });
+                    success('Task cancelled');
+                    loadData();
+                } catch (err) {
+                    const msg = err.response?.data?.message || err.response?.data || 'Failed to cancel task';
+                    toastError(typeof msg === 'string' ? msg : 'Failed to cancel task');
+                }
+            }
+        );
+    };
+
+    const handleSubmitAssignNurse = async (nurseUserId, notes) => {
+        const row = assignNurseModal.row;
+        if (!row || !nurseUserId) return;
+        try {
+            if (row.assignmentPublicId) {
+                await hospitalService.reassignNurse(row.assignmentPublicId, { nurseUserId, notes });
+                success('Nurse reassigned');
+            } else {
+                await hospitalService.assignNurse({ ipdAdmissionId: row.ipdAdmissionId, nurseUserId, notes });
+                success('Nurse assigned');
+            }
+            setAssignNurseModal({ isOpen: false, row: null });
+            loadData();
+        } catch (err) {
+            const msg = err.response?.data?.message || err.response?.data || 'Failed to assign nurse';
+            toastError(typeof msg === 'string' ? msg : 'Failed to assign nurse');
+        }
+    };
     
     const handlePrintOpd = async (opd) => {
         try {
@@ -1225,6 +1347,8 @@ const HospitalAdminDashboard = () => {
                 await hospitalService.resetReceptionistPassword(id, newPassword);
             } else if (role === 'pharmacist') {
                 await hospitalService.resetPharmacistPassword(id, newPassword);
+            } else if (role === 'nurse') {
+                await hospitalService.resetNursePassword(id, newPassword);
             }
             success('Password reset successfully');
             setResetPasswordModal({ isOpen: false, staff: null, role: '' });
@@ -1419,6 +1543,9 @@ const HospitalAdminDashboard = () => {
         // Staff
         { id: 'doctors', label: 'Doctors', icon: null, requiredModule: 'OPD' },
         { id: 'receptionists', label: 'Receptionists', icon: null, requiredModule: 'OPD' },
+        { id: 'nurses', label: 'Nurses', icon: null, requiredModule: 'NURSING' },
+        { id: 'nurse-assignments', label: 'Nurse Assignments', icon: null, requiredModule: 'NURSING' },
+        { id: 'nurse-tasks', label: 'Nurse Tasks', icon: null, requiredModule: 'NURSING' },
         // Admin & meta
         { id: 'analytics', label: 'Reports & Analytics', icon: null, requiredModule: 'REPORTS' },
         { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
@@ -1481,6 +1608,7 @@ const HospitalAdminDashboard = () => {
     const SIDEBAR_GROUPS = [
         { id: 'group-patient-management', label: 'Patient Management', tabIds: ['patients', 'appointments', 'opd', 'ipd', 'wards', 'ot', 'pathology'] },
         { id: 'group-staff', label: 'Staff', tabIds: ['doctors', 'pharmacists', 'receptionists'] },
+        { id: 'group-nursing', label: 'Nursing', tabIds: ['nurses', 'nurse-assignments', 'nurse-tasks'] },
         { id: 'group-pharmacy', label: 'Pharmacy', tabIds: ['pharmacy'] },
         { id: 'group-inventory', label: 'Inventory', tabIds: ['inventory', 'hospital-inventory'] },
         { id: 'group-finance', label: 'Finance', tabIds: ['billing', 'fees'] },
@@ -2029,8 +2157,8 @@ const HospitalAdminDashboard = () => {
                             onSearch={(activeTab === 'fees' || activeTab === 'settings') ? null : (e) => setSearchInput(e.target.value)}
                             searchValue={(activeTab === 'fees' || activeTab === 'settings') ? '' : searchInput}
                             searchPlaceholder={(activeTab === 'fees' || activeTab === 'settings') ? '' : `Search ${activeTab}...`}
-                            onAdd={activeTab === 'opd' ? () => setIsAdminOpdModalOpen(true) : (activeTab !== 'billing' && activeTab !== 'audit-logs' && activeTab !== 'fees' && activeTab !== 'settings' && user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null)}
-                            addLabel={activeTab === 'opd' ? 'New OPD' : (activeTab === 'fees' || activeTab === 'settings') ? '' : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`}
+                            onAdd={activeTab === 'opd' ? () => setIsAdminOpdModalOpen(true) : activeTab === 'nurse-tasks' ? () => setCreateTaskModal(true) : (activeTab !== 'billing' && activeTab !== 'audit-logs' && activeTab !== 'fees' && activeTab !== 'settings' && user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null)}
+                            addLabel={activeTab === 'opd' ? 'New OPD' : activeTab === 'nurse-tasks' ? 'New Task' : (activeTab === 'fees' || activeTab === 'settings') ? '' : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'nurses' ? 'Nurse' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`}
                             filter={activeTab === 'patients' ? (
                                 <div className="flex items-center gap-2">
                                     <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 h-[38px] items-center">
@@ -2190,7 +2318,7 @@ const HospitalAdminDashboard = () => {
                         <>
                             {/* Overview tab content already rendered above */}
 
-                            {(activeTab === 'patients' || activeTab === 'doctors' || activeTab === 'pharmacists' || activeTab === 'receptionists' || activeTab === 'wards' || activeTab === 'billing' || activeTab === 'fees' || activeTab === 'opd' || activeTab === 'appointments') && (
+                            {(activeTab === 'patients' || activeTab === 'doctors' || activeTab === 'pharmacists' || activeTab === 'receptionists' || activeTab === 'nurses' || activeTab === 'nurse-assignments' || activeTab === 'nurse-tasks' || activeTab === 'wards' || activeTab === 'billing' || activeTab === 'fees' || activeTab === 'opd' || activeTab === 'appointments') && (
                                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
                                     {activeTab === 'patients' && (
                                         patients.length > 0 ? (
@@ -2286,6 +2414,47 @@ const HospitalAdminDashboard = () => {
                                             onAction={user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
                                         />
                                     )
+                                )}
+
+                                {activeTab === 'nurses' && (
+                                    nurses.length > 0 ? (
+                                        <NursesTable
+                                            nurses={nurses}
+                                            isAdmin={user?.role === 'HOSPITAL_ADMIN'}
+                                            onDelete={handleDeleteNurse}
+                                            onEdit={(n) => handleEdit(n, 'nurses')}
+                                            onViewDetails={(n) => handleViewStaffDetails(n, 'nurse')}
+                                            onResetPassword={(n) => handleResetStaffPassword(n, 'nurse')}
+                                            startIndex={page * pageSize}
+                                            pagination={pagination}
+                                        />
+                                    ) : (
+                                        <EmptyState
+                                            icon={null}
+                                            title="No Nurses Found"
+                                            message="Add nurses to record vitals, medication, and nursing notes for admitted patients."
+                                            actionLabel="Add Nurse"
+                                            onAction={user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
+                                        />
+                                    )
+                                )}
+
+                                {activeTab === 'nurse-assignments' && (
+                                    <NurseAssignmentsTable
+                                        rows={nurseAssignments}
+                                        isAdmin={user?.role === 'HOSPITAL_ADMIN'}
+                                        onAssign={(row) => setAssignNurseModal({ isOpen: true, row })}
+                                        onUnassign={handleUnassignNurse}
+                                    />
+                                )}
+
+                                {activeTab === 'nurse-tasks' && (
+                                    <NurseTasksTable
+                                        rows={nurseTasks}
+                                        nurseOptions={nurseOptions}
+                                        onCancel={handleCancelNurseTask}
+                                        isAdmin={user?.role === 'HOSPITAL_ADMIN'}
+                                    />
                                 )}
 
                                 {activeTab === 'wards' && (
@@ -3861,6 +4030,24 @@ const HospitalAdminDashboard = () => {
                 />
             )}
 
+            {assignNurseModal.isOpen && (
+                <AssignNurseModal
+                    row={assignNurseModal.row}
+                    nurseOptions={nurseOptions}
+                    onSubmit={handleSubmitAssignNurse}
+                    onClose={() => setAssignNurseModal({ isOpen: false, row: null })}
+                />
+            )}
+
+            {createTaskModal && (
+                <CreateNurseTaskModal
+                    nurseOptions={nurseOptions}
+                    activeAdmissions={nurseAssignments}
+                    onSubmit={handleCreateNurseTask}
+                    onClose={() => setCreateTaskModal(false)}
+                />
+            )}
+
             {/* Password Reset Result Modal */}
             {resetPasswordModal.isOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
@@ -4556,6 +4743,18 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
         }
     }, [type, doctors, initialData]);
 
+    // Load wards for the nurse form's "Select Ward" dropdown (nurses are assigned
+    // to a ward created in the Wards & Beds tab).
+    const [wardOptions, setWardOptions] = useState([]);
+    useEffect(() => {
+        if (type !== 'nurses') return;
+        let active = true;
+        wardService.getWards()
+            .then(data => { if (active) setWardOptions(Array.isArray(data) ? data : (data?.content || [])); })
+            .catch(() => { if (active) setWardOptions([]); });
+        return () => { active = false; };
+    }, [type]);
+
     const handleChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
         // Clear error for this field
@@ -4606,6 +4805,16 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
             if (!isEdit) {
                 rules.password = ['required', 'password'];
             }
+        } else if (type === 'nurses') {
+            Object.assign(rules, {
+                name: ['required', 'name'],
+                email: ['required', 'email'],
+                phone: ['required', 'phone'],
+                wardId: ['required']
+            });
+            if (!isEdit) {
+                rules.password = ['required', 'password'];
+            }
         } else if (type === 'billing') {
             rules.amount = ['required', 'positiveNumber'];
         } else if (type === 'appointments') {
@@ -4630,7 +4839,7 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
         }
 
         const action = isEdit ? 'Update' : 'Add';
-        const entity = type === 'patients' ? 'Patient' : type === 'doctors' ? 'Doctor' : type === 'receptionists' ? 'Receptionist' : type === 'pharmacists' ? 'Pharmacist' : type === 'appointments' ? 'Appointment' : 'Billing Record';
+        const entity = type === 'patients' ? 'Patient' : type === 'doctors' ? 'Doctor' : type === 'receptionists' ? 'Receptionist' : type === 'nurses' ? 'Nurse' : type === 'pharmacists' ? 'Pharmacist' : type === 'appointments' ? 'Appointment' : 'Billing Record';
 
         openConfirmation(
             `${action} ${entity}`,
@@ -4649,6 +4858,9 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
                     } else if (type === 'pharmacists') {
                         if (isEdit) await hospitalService.updatePharmacist(initialData.publicId || initialData.id, formData);
                         else await hospitalService.addPharmacist(formData);
+                    } else if (type === 'nurses') {
+                        if (isEdit) await hospitalService.updateNurse(initialData.publicId || initialData.id, formData);
+                        else await hospitalService.addNurse(formData);
                     } else if (type === 'appointments') {
                         // Appointments editing not supported in this modal yet
                         await hospitalService.createAppointment(formData);
@@ -4667,7 +4879,7 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
     const isFieldDisabled = (field) => {
         if (!isEdit) return false;
         // Disable email/password editing for doctors, receptionists, pharmacists as per security rules
-        if ((type === 'doctors' || type === 'receptionists' || type === 'pharmacists') && (field === 'email' || field === 'password')) return true;
+        if ((type === 'doctors' || type === 'receptionists' || type === 'pharmacists' || type === 'nurses') && (field === 'email' || field === 'password')) return true;
         return false;
     };
 
@@ -4894,6 +5106,87 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
                                         className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.phone ? 'border-red-500' : 'border-gray-300'}`}
                                     />
                                     {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone}</p>}
+                                </div>
+                                {!isEdit && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                                        <input
+                                            type="password"
+                                            placeholder="******"
+                                            value={formData.password || ''}
+                                            onChange={(e) => handleChange('password', e.target.value)}
+                                            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.password ? 'border-red-500' : 'border-gray-300'}`}
+                                        />
+                                        {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
+                                    </div>
+                                )}
+                            </>
+                        )}
+
+                        {type === 'nurses' && (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Name</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Nurse Name"
+                                        value={formData.name || ''}
+                                        onChange={(e) => handleChange('name', e.target.value)}
+                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.name ? 'border-red-500' : 'border-gray-300'}`}
+                                    />
+                                    {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                                    <input
+                                        type="email"
+                                        placeholder="nurse@hospital.com"
+                                        value={formData.email || ''}
+                                        onChange={(e) => handleChange('email', e.target.value)}
+                                        disabled={isFieldDisabled('email')}
+                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.email ? 'border-red-500' : 'border-gray-300'} ${isFieldDisabled('email') ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                                    />
+                                    {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                                    <input
+                                        type="tel"
+                                        placeholder="10-digit number"
+                                        value={formData.phone || ''}
+                                        onChange={(e) => handleChange('phone', e.target.value)}
+                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.phone ? 'border-red-500' : 'border-gray-300'}`}
+                                    />
+                                    {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone}</p>}
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Select Ward</label>
+                                    <select
+                                        value={formData.wardId || ''}
+                                        onChange={(e) => handleChange('wardId', e.target.value)}
+                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.wardId ? 'border-red-500' : 'border-gray-300'}`}
+                                    >
+                                        <option value="">Select a ward…</option>
+                                        {wardOptions.map((w) => (
+                                            <option key={w.wardId} value={w.wardId}>
+                                                {w.wardName}{w.floorNumber != null ? ` (Floor ${w.floorNumber})` : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {errors.wardId && <p className="text-red-500 text-xs mt-1">{errors.wardId}</p>}
+                                    {wardOptions.length === 0 && (
+                                        <p className="text-amber-600 text-xs mt-1">No wards yet — create wards in the Wards &amp; Beds tab first.</p>
+                                    )}
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">License Number (optional)</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Nursing council registration no."
+                                        value={formData.licenseNumber || ''}
+                                        onChange={(e) => handleChange('licenseNumber', e.target.value)}
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                    />
                                 </div>
                                 {!isEdit && (
                                     <div>
@@ -5176,6 +5469,414 @@ const ReceptionistsTable = ({ receptionists, isAdmin, onDelete, onEdit, onViewDe
     ];
 
     return <DataTable data={receptionists} columns={columns} pagination={pagination} />;
+};
+
+// NursesTable Component (Phase 1 Nurse module) — mirrors ReceptionistsTable.
+const NursesTable = ({ nurses, isAdmin, onDelete, onEdit, onViewDetails, onResetPassword, startIndex = 0, pagination }) => {
+    const columnHelper = createColumnHelper();
+
+    const columns = [
+        columnHelper.display({
+            id: 'sno',
+            header: 'S.NO.',
+            cell: info => startIndex + info.row.index + 1,
+        }),
+        columnHelper.accessor(row => row.customId || row.id, {
+            id: 'id',
+            header: 'ID',
+            cell: info => <span title="Serial Number">{info.getValue()}</span>,
+        }),
+        columnHelper.accessor('name', {
+            header: 'NAME',
+            cell: info => <span className="font-medium text-gray-900">{info.getValue()}</span>,
+        }),
+        columnHelper.accessor('email', {
+            header: 'EMAIL',
+        }),
+        columnHelper.accessor('wardName', {
+            header: 'WARD',
+            cell: info => info.getValue() || <span className="text-gray-400">—</span>,
+        }),
+        ...(isAdmin ? [
+            columnHelper.display({
+                id: 'actions',
+                header: () => <div className="text-right">ACTIONS</div>,
+                cell: info => (
+                    <div className="text-right">
+                        <ActionMenu actions={[
+                            {
+                                label: 'View Details',
+                                onClick: () => onViewDetails(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                            },
+                            {
+                                label: 'Edit',
+                                onClick: () => onEdit(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /></svg>
+                            },
+                            {
+                                label: 'Reset Password',
+                                onClick: () => onResetPassword(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v-2l2-2 1-.743A6 6 0 1118 8zm-6-2a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" /></svg>
+                            },
+                            {
+                                label: 'Delete',
+                                onClick: () => onDelete(info.row.original.publicId || info.row.original.id),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>,
+                                danger: true
+                            }
+                        ]} />
+                    </div>
+                ),
+            })
+        ] : []),
+    ];
+
+    return <DataTable data={nurses} columns={columns} pagination={pagination} />;
+};
+
+// NurseAssignmentsTable Component (Phase 1 Nurse module).
+// Lists active IPD admissions with their currently assigned nurse (or none),
+// and lets a Hospital Admin assign / reassign / unassign.
+const NurseAssignmentsTable = ({ rows, isAdmin, onAssign, onUnassign }) => {
+    if (!rows || rows.length === 0) {
+        return (
+            <EmptyState
+                icon={null}
+                title="No Active Admissions"
+                message="Nurse assignments appear here once patients are admitted (IPD)."
+            />
+        );
+    }
+    const fmt = (dt) => dt ? new Date(dt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+    return (
+        <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+                <thead>
+                    <tr className="text-left text-xs font-semibold text-gray-500 border-b border-gray-200">
+                        <th className="px-4 py-3">IPD NO.</th>
+                        <th className="px-4 py-3">PATIENT</th>
+                        <th className="px-4 py-3">DOCTOR</th>
+                        <th className="px-4 py-3">ADMITTED</th>
+                        <th className="px-4 py-3">ASSIGNED NURSE</th>
+                        {isAdmin && <th className="px-4 py-3 text-right">ACTIONS</th>}
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map((r) => (
+                        <tr key={r.ipdAdmissionId} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="px-4 py-3 font-medium text-gray-900">{r.ipdNumber}</td>
+                            <td className="px-4 py-3">{r.patientName || '—'}</td>
+                            <td className="px-4 py-3">{r.doctorName || '—'}</td>
+                            <td className="px-4 py-3 text-gray-500">{fmt(r.admissionDateTime)}</td>
+                            <td className="px-4 py-3">
+                                {r.nurseName
+                                    ? <span className="font-medium text-gray-900">{r.nurseName}</span>
+                                    : <span className="text-amber-600">Unassigned</span>}
+                            </td>
+                            {isAdmin && (
+                                <td className="px-4 py-3 text-right whitespace-nowrap">
+                                    <button
+                                        onClick={() => onAssign(r)}
+                                        className="px-3 py-1 text-xs font-semibold rounded-lg bg-gray-900 text-white hover:bg-gray-800"
+                                    >
+                                        {r.assignmentPublicId ? 'Reassign' : 'Assign'}
+                                    </button>
+                                    {r.assignmentPublicId && (
+                                        <button
+                                            onClick={() => onUnassign(r.assignmentPublicId)}
+                                            className="ml-2 px-3 py-1 text-xs font-semibold rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
+                                        >
+                                            Unassign
+                                        </button>
+                                    )}
+                                </td>
+                            )}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+};
+
+// AssignNurseModal Component (Phase 1 Nurse module).
+const AssignNurseModal = ({ row, nurseOptions, onSubmit, onClose }) => {
+    const [nurseUserId, setNurseUserId] = useState(row?.nurseUserId ? String(row.nurseUserId) : '');
+    const [notes, setNotes] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+
+    const handleSave = async () => {
+        if (!nurseUserId) return;
+        setSubmitting(true);
+        await onSubmit(Number(nurseUserId), notes);
+        setSubmitting(false);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+            <div className="bg-white rounded-lg border border-gray-200 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+                <div className="p-6">
+                    <h2 className="text-xl font-bold text-gray-900 mb-1">
+                        {row?.assignmentPublicId ? 'Reassign Nurse' : 'Assign Nurse'}
+                    </h2>
+                    <p className="text-xs text-gray-500 mb-5">
+                        {row?.ipdNumber} &middot; {row?.patientName}
+                    </p>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Nurse</label>
+                            <select
+                                value={nurseUserId}
+                                onChange={(e) => setNurseUserId(e.target.value)}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            >
+                                <option value="">Select a nurse…</option>
+                                {nurseOptions.map((n) => (
+                                    <option key={n.id} value={n.id}>
+                                        {n.name}{n.customId ? ` (${n.customId})` : ''}
+                                    </option>
+                                ))}
+                            </select>
+                            {nurseOptions.length === 0 && (
+                                <p className="text-amber-600 text-xs mt-1">No nurses yet — add nurses in the Nurses tab first.</p>
+                            )}
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Notes (optional)</label>
+                            <input
+                                type="text"
+                                placeholder="e.g. beds 1-8"
+                                value={notes}
+                                onChange={(e) => setNotes(e.target.value)}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            />
+                        </div>
+                    </div>
+                    <div className="mt-6 flex justify-end gap-3">
+                        <button onClick={onClose} className="px-4 py-2 text-sm font-semibold rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100">Cancel</button>
+                        <button
+                            onClick={handleSave}
+                            disabled={!nurseUserId || submitting}
+                            className={`px-4 py-2 text-sm font-semibold text-white rounded-lg ${(!nurseUserId || submitting) ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-900 hover:bg-gray-800'}`}
+                        >
+                            {submitting ? 'Saving…' : (row?.assignmentPublicId ? 'Reassign' : 'Assign')}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// NurseTasksTable Component (Phase 1 Nurse module, M7).
+const NurseTasksTable = ({ rows, nurseOptions, onCancel, isAdmin }) => {
+    if (!rows || rows.length === 0) {
+        return (
+            <EmptyState
+                icon={null}
+                title="No Tasks Found"
+                message="Create a task to assign duties to a nurse."
+            />
+        );
+    }
+
+    const getNurseName = (id) => {
+        const found = nurseOptions.find(n => n.id === id);
+        return found ? found.name : `Nurse ID: ${id}`;
+    };
+
+    const fmt = (dt) => dt ? new Date(dt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+
+    const getStatusColor = (s) => {
+        switch (s) {
+            case 'PENDING': return 'bg-yellow-100 text-yellow-800';
+            case 'IN_PROGRESS': return 'bg-blue-100 text-blue-800';
+            case 'COMPLETED': return 'bg-green-100 text-green-800';
+            case 'CANCELLED': return 'bg-red-100 text-red-800';
+            default: return 'bg-gray-100 text-gray-800';
+        }
+    };
+
+    return (
+        <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+                <thead>
+                    <tr className="text-left text-xs font-semibold text-gray-500 border-b border-gray-200">
+                        <th className="px-4 py-3">TITLE</th>
+                        <th className="px-4 py-3">DESCRIPTION</th>
+                        <th className="px-4 py-3">ASSIGNED TO</th>
+                        <th className="px-4 py-3">PRIORITY</th>
+                        <th className="px-4 py-3">STATUS</th>
+                        <th className="px-4 py-3">DUE DATE</th>
+                        <th className="px-4 py-3">COMPLETED AT</th>
+                        {isAdmin && <th className="px-4 py-3 text-right">ACTIONS</th>}
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map((r) => (
+                        <tr key={r.publicId || r.id} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="px-4 py-3 font-medium text-gray-900">{r.title}</td>
+                            <td className="px-4 py-3 max-w-xs truncate text-gray-500" title={r.description}>{r.description || '—'}</td>
+                            <td className="px-4 py-3">{getNurseName(r.assignedToNurseUserId)}</td>
+                            <td className="px-4 py-3">
+                                <span className={`px-2 py-0.5 text-xs font-semibold rounded ${r.priority === 'HIGH' ? 'bg-red-50 text-red-700' : r.priority === 'LOW' ? 'bg-gray-50 text-gray-600' : 'bg-blue-50 text-blue-700'}`}>
+                                    {r.priority}
+                                </span>
+                            </td>
+                            <td className="px-4 py-3">
+                                <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${getStatusColor(r.status)}`}>
+                                    {r.status}
+                                </span>
+                            </td>
+                            <td className="px-4 py-3 text-gray-500">{fmt(r.dueDate)}</td>
+                            <td className="px-4 py-3 text-gray-500">
+                                {r.completedAt ? (
+                                    <div>
+                                        <div>{fmt(r.completedAt)}</div>
+                                        {r.completionRemarks && <div className="text-xxs italic text-gray-400">"{r.completionRemarks}"</div>}
+                                    </div>
+                                ) : '—'}
+                            </td>
+                            {isAdmin && (
+                                <td className="px-4 py-3 text-right whitespace-nowrap">
+                                    {(r.status === 'PENDING' || r.status === 'IN_PROGRESS') && (
+                                        <button
+                                            onClick={() => onCancel(r.publicId)}
+                                            className="px-3 py-1 text-xs font-semibold rounded-lg border border-red-200 text-red-600 hover:bg-red-50"
+                                        >
+                                            Cancel
+                                        </button>
+                                    )}
+                                </td>
+                            )}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+};
+
+// CreateNurseTaskModal Component (Phase 1 Nurse module, M7).
+const CreateNurseTaskModal = ({ nurseOptions, activeAdmissions, onSubmit, onClose }) => {
+    const [title, setTitle] = useState('');
+    const [description, setDescription] = useState('');
+    const [assignedToNurseUserId, setAssignedToNurseUserId] = useState('');
+    const [ipdAdmissionId, setIpdAdmissionId] = useState('');
+    const [priority, setPriority] = useState('MEDIUM');
+    const [dueDate, setDueDate] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+
+    const handleSave = async () => {
+        if (!title.trim() || !assignedToNurseUserId) return;
+        setSubmitting(true);
+        const payload = {
+            title: title.trim(),
+            description: description.trim() || null,
+            assignedToNurseUserId: Number(assignedToNurseUserId),
+            ipdAdmissionId: ipdAdmissionId ? Number(ipdAdmissionId) : null,
+            priority,
+            dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+        };
+        await onSubmit(payload);
+        setSubmitting(false);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+            <div className="bg-white rounded-lg border border-gray-200 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+                <div className="p-6">
+                    <h2 className="text-xl font-bold text-gray-900 mb-5">Create Nurse Task</h2>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Title *</label>
+                            <input
+                                type="text"
+                                placeholder="e.g. Change dressing, check vitals"
+                                value={title}
+                                onChange={(e) => setTitle(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>
+                            <textarea
+                                placeholder="Details about the task..."
+                                value={description}
+                                onChange={(e) => setDescription(e.target.value)}
+                                rows={3}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Assign Nurse *</label>
+                            <select
+                                value={assignedToNurseUserId}
+                                onChange={(e) => setAssignedToNurseUserId(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            >
+                                <option value="">Select a nurse…</option>
+                                {nurseOptions.map((n) => (
+                                    <option key={n.id} value={n.id}>
+                                        {n.name} ({n.customId || 'No ID'})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Patient Admission (optional)</label>
+                            <select
+                                value={ipdAdmissionId}
+                                onChange={(e) => setIpdAdmissionId(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            >
+                                <option value="">Select admission…</option>
+                                {activeAdmissions.map((adm) => (
+                                    <option key={adm.ipdAdmissionId || adm.id} value={adm.ipdAdmissionId || adm.id}>
+                                        {adm.ipdNumber} - {adm.patientName}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Priority</label>
+                                <select
+                                    value={priority}
+                                    onChange={(e) => setPriority(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                >
+                                    <option value="LOW">LOW</option>
+                                    <option value="MEDIUM">MEDIUM</option>
+                                    <option value="HIGH">HIGH</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Due Date</label>
+                                <input
+                                    type="datetime-local"
+                                    value={dueDate}
+                                    onChange={(e) => setDueDate(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                    <div className="mt-6 flex justify-end gap-3">
+                        <button onClick={onClose} className="px-4 py-2 text-sm font-semibold rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100">Cancel</button>
+                        <button
+                            onClick={handleSave}
+                            disabled={!title.trim() || !assignedToNurseUserId || submitting}
+                            className={`px-4 py-2 text-sm font-semibold text-white rounded-lg ${(!title.trim() || !assignedToNurseUserId || submitting) ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-900 hover:bg-gray-800'}`}
+                        >
+                            {submitting ? 'Creating…' : 'Create Task'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 // AuditLogsTable Component
@@ -5676,7 +6377,7 @@ const AdminOpdTable = ({ opds, onPrintOpd, onAdmitToIpd, startIndex = 0, paginat
                         </svg>
                         Print
                     </button>
-                    {info.row.original.status !== 'IN_IPD' && (
+                    {info.row.original.status !== 'IN_IPD' && info.row.original.ipdAdmitRecommended && (
                         <button
                             onClick={() => onAdmitToIpd && onAdmitToIpd(info.row.original)}
                             className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 px-3 py-1 rounded-md text-xs font-semibold shadow-sm transition-all inline-flex items-center gap-1"

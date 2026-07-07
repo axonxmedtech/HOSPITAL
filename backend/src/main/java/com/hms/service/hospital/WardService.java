@@ -27,14 +27,17 @@ public class WardService {
     private final BedRepository bedRepository;
     private final SecurityContextHelper securityHelper;
     private final HospitalWebSocketHandler webSocketHandler;
+    private final com.hms.repository.NurseProfileRepository nurseProfileRepository;
 
     public WardService(WardRepository wardRepository, BedRepository bedRepository,
                        SecurityContextHelper securityHelper,
-                       HospitalWebSocketHandler webSocketHandler) {
+                       HospitalWebSocketHandler webSocketHandler,
+                       com.hms.repository.NurseProfileRepository nurseProfileRepository) {
         this.wardRepository = wardRepository;
         this.bedRepository = bedRepository;
         this.securityHelper = securityHelper;
         this.webSocketHandler = webSocketHandler;
+        this.nurseProfileRepository = nurseProfileRepository;
     }
 
     @Transactional
@@ -139,6 +142,14 @@ public class WardService {
         List<Bed> beds = bedRepository.findByWardIdAndHospitalId(wardId, hospitalId);
         boolean hasOccupied = beds.stream().anyMatch(b -> !"available".equalsIgnoreCase(b.getStatus()));
         if (hasOccupied) throw new IllegalArgumentException("Cannot delete ward with occupied beds");
+
+        // A ward with nurses assigned to it cannot be deleted — reassign those
+        // nurses to another ward first.
+        long assignedNurses = nurseProfileRepository.countByWardIdAndIsActiveTrue(wardId);
+        if (assignedNurses > 0) {
+            throw new IllegalArgumentException(
+                "Cannot delete ward: " + assignedNurses + " nurse(s) are assigned to it. Reassign them to another ward first.");
+        }
 
         bedRepository.deleteAll(beds);
         wardRepository.delete(w);

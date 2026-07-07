@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import platformService from '../services/platformService';
 import { useToast } from '../context/ToastContext';
 
-const AVAILABLE_MODULES = ['OPD', 'IPD', 'PHARMACY', 'BILLING', 'APPOINTMENTS', 'MEDICAL_INVENTORY', 'HOSPITAL_INVENTORY', 'REPORTS', 'OT', 'PATHOLOGY'];
+// NURSING is HOSPITAL-only: it lives in AVAILABLE_MODULES (used by MODULES_BY_TYPE.HOSPITAL)
+// and is deliberately absent from the CLINIC and PHARMACY module lists below.
+const AVAILABLE_MODULES = ['OPD', 'IPD', 'PHARMACY', 'BILLING', 'APPOINTMENTS', 'MEDICAL_INVENTORY', 'HOSPITAL_INVENTORY', 'REPORTS', 'OT', 'PATHOLOGY', 'NURSING'];
 
 // Pharmacy plans are defined by a single mutually-exclusive tier rather than the
 // generic hospital module list. These are the only options offered for PHARMACY.

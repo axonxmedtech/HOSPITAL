@@ -16,6 +16,7 @@ const PORTAL_CONFIG = {
             { value: 'DOCTOR', label: 'Doctor' },
             { value: 'RECEPTIONIST', label: 'Reception & Registration' },
             { value: 'PHARMACIST', label: 'Pharmacy Services' },
+            { value: 'NURSE', label: 'Nursing' },
         ],
     },
     CLINIC: {
@@ -103,6 +104,8 @@ const HospitalLogin = ({ portalType = 'HOSPITAL' }) => {
                 navigate('/hospital/receptionist');
             } else if (response.role === 'PHARMACIST') {
                 navigate('/hospital/pharmacy');
+            } else if (response.role === 'NURSE') {
+                navigate('/hospital/nurse');
             } else {
                 setErrors({ submit: 'Invalid user role' });
             }

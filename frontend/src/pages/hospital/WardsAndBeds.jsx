@@ -48,6 +48,10 @@ const WardsAndBeds = () => {
                 try {
                     await WardService.deleteWard(ward.wardId);
                     await fetchWards();
+                } catch (e) {
+                    const msg = e.response?.data?.message || e.response?.data
+                        || 'Failed to delete ward';
+                    toastError(typeof msg === 'string' ? msg : 'Failed to delete ward');
                 } finally {
                     setDeleting(null);
                 }

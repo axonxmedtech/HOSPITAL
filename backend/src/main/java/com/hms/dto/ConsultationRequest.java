@@ -20,6 +20,7 @@ public class ConsultationRequest {
     private String diagnosis;
     private String treatmentNotes;
     private LocalDate followUpDate;
+    private Boolean ipdAdmitRecommended;
 
     @Valid
     private List<PrescriptionItem> prescription;

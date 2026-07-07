@@ -32,6 +32,14 @@ public class IpdAdmissionService {
     @Autowired
     private com.hms.repository.PatientRepository patientRepository;
 
+    // Nurse module (Phase 1): close active nurse assignments on discharge.
+    @Autowired
+    private com.hms.repository.PatientNurseAssignmentRepository patientNurseAssignmentRepository;
+
+    // Nurse module: auto-assign the admitted patient to a ward nurse.
+    @Autowired
+    private NurseAssignmentService nurseAssignmentService;
+
     @Autowired
     private com.hms.repository.HospitalSettingRepository hospitalSettingRepository;
 
@@ -69,6 +77,8 @@ public class IpdAdmissionService {
     private com.hms.repository.BillingMedicineRepository billingMedicineRepository;
     @Autowired
     private com.hms.repository.DischargeSummaryRepository dischargeSummaryRepository;
+    @Autowired
+    private com.hms.service.hospital.NotificationService notificationService;
     @Autowired
     private com.hms.repository.BillingPaymentRepository billingPaymentRepository;
 
@@ -127,6 +137,7 @@ public class IpdAdmissionService {
         ipd.setWardId(wardId);
         ipd.setBedId(bedId);
         ipd.setPrimaryDiagnosis(primaryDiagnosis != null ? primaryDiagnosis : "");
+        ipd.setAdmittedByUserId(securityHelper.getCurrentUserId());
 
         IpdAdmission saved = ipdAdmissionRepository.save(ipd);
 
@@ -146,6 +157,16 @@ public class IpdAdmissionService {
         bed.setStatus("occupied");
         bed.setCurrentIpdAdmissionId(saved.getId());
         bedRepository.save(bed);
+
+        // Nurse module: auto-assign the patient to the least-loaded available
+        // on-shift nurse in this ward. Best-effort — never block the admission.
+        try {
+            nurseAssignmentService.autoAssignForAdmission(
+                    saved.getId(), saved.getWardId(), saved.getPatientId(),
+                    hospitalId, securityHelper.getCurrentUserId());
+        } catch (Exception e) {
+            logger.warn("Failed to auto-assign nurse for admission {}", saved.getId(), e);
+        }
 
         // Mark OPD as completed/closed
         // OPD status is stored as a string in many places; set to string to avoid enum mismatch
@@ -330,6 +351,7 @@ public class IpdAdmissionService {
             bedRepository.findById(ipd.getBedId()).ifPresent(b -> dto.setBedNumber(b.getBedCode()));
             // doctor
             doctorRepository.findById(ipd.getDoctorId()).ifPresent(d -> dto.setDoctorName(d.getName()));
+            dto.setAdmissionConfirmed(Boolean.TRUE.equals(ipd.getAdmissionConfirmed()));
             dto.setAdmissionDateTime(ipd.getAdmissionDatetime());
             dto.setStatus(ipd.getStatus());
             result.add(dto);
@@ -868,6 +890,24 @@ public class IpdAdmissionService {
 
         com.hms.entity.Prescription saved = prescriptionRepository.save(p);
 
+        // Trigger notification to the assigned nurse, if any
+        try {
+            patientNurseAssignmentRepository.findByIpdAdmissionIdAndIsActiveTrue(ipdId)
+                .ifPresent(assignment -> {
+                    notificationService.create(
+                        assignment.getNurseUserId(),
+                        hospitalId,
+                        "PRESCRIPTION_ACTIVE",
+                        "New Active Prescription",
+                        "A new prescription for " + saved.getDosage() + " of " + saved.getMedicineName() + " has been added.",
+                        "PRESCRIPTION",
+                        saved.getId()
+                    );
+                });
+        } catch (Exception e) {
+            logger.error("Failed to trigger prescription add notification: {}", e.getMessage(), e);
+        }
+
         // Standard prescriptions are now strictly informative (no auto-deduction/billing)
         return saved;
     }
@@ -887,6 +927,25 @@ public class IpdAdmissionService {
 
         pres.setStatus("STOPPED");
         com.hms.entity.Prescription saved = prescriptionRepository.save(pres);
+
+        // Trigger notification to the assigned nurse, if any
+        try {
+            patientNurseAssignmentRepository.findByIpdAdmissionIdAndIsActiveTrue(mr.getIpdAdmissionId())
+                .ifPresent(assignment -> {
+                    notificationService.create(
+                        assignment.getNurseUserId(),
+                        saved.getHospitalId(),
+                        "PRESCRIPTION_STOPPED",
+                        "Prescription Stopped",
+                        "The prescription for " + saved.getMedicineName() + " has been stopped.",
+                        "PRESCRIPTION",
+                        saved.getId()
+                    );
+                });
+        } catch (Exception e) {
+            logger.error("Failed to trigger stop prescription notification: {}", e.getMessage(), e);
+        }
+
         return saved;
     }
 
@@ -1045,6 +1104,19 @@ public class IpdAdmissionService {
         ipd.setStatus("DISCHARGED");
         ipd.setDischargeDatetime(LocalDateTime.now());
         ipdAdmissionRepository.save(ipd);
+
+        // Nurse module (Phase 1): auto-close any active nurse assignment for this
+        // admission so the patient drops off the nurse's "My Patients" list.
+        try {
+            patientNurseAssignmentRepository.findByIpdAdmissionIdAndIsActiveTrue(ipd.getId())
+                    .ifPresent(assignment -> {
+                        assignment.setIsActive(false);
+                        assignment.setUnassignedAt(LocalDateTime.now());
+                        patientNurseAssignmentRepository.save(assignment);
+                    });
+        } catch (Exception e) {
+            logger.warn("Failed to close nurse assignment during IPD discharge", e);
+        }
 
         // Release the active bed history record
         try {

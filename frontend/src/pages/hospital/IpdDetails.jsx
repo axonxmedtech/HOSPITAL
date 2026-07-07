@@ -1058,31 +1058,42 @@ const IpdDetails = () => {
 
                     <h3 className="font-semibold mb-2">Current Medicines & Items</h3>
 
-                    {/* Prescribed Medicines */}
-                    {data.activePrescriptions && data.activePrescriptions.length > 0 && (
-                        <>
-                            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1">Prescribed Medicines</p>
-                            <ul className="space-y-2 mb-3">
-                                {data.activePrescriptions.map((p, i) => (
-                                    <li key={i} className="p-2 border border-blue-100 rounded bg-blue-50 flex justify-between items-center">
-                                        <div>
-                                            <div className="font-medium">{p.name}</div>
-                                            <div className="text-xs text-gray-600">{p.type} • {p.route} • {p.frequency}</div>
-                                        </div>
-                                        <div>
-                                            {isDoctor ? (
-                                                <div className="flex gap-2">
-                                                    <button className="px-2 py-1 bg-yellow-500 text-white rounded text-xs" onClick={() => onStopMedicine(p.id)}>Stop</button>
+                    {/* Prescribed Medicines — full history; stopped kept & struck-through */}
+                    {(() => {
+                        const rxList = data.allPrescriptions || data.activePrescriptions || [];
+                        if (rxList.length === 0) return null;
+                        return (
+                            <>
+                                <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1">Prescribed Medicines</p>
+                                <ul className="space-y-2 mb-3">
+                                    {rxList.map((p, i) => {
+                                        const st = (p.status || '').toUpperCase();
+                                        const stopped = st === 'STOPPED';
+                                        const completed = st === 'COMPLETED';
+                                        return (
+                                            <li key={i} className={`p-2 border rounded flex justify-between items-center ${stopped ? 'border-red-100 bg-red-50' : completed ? 'border-gray-200 bg-gray-50' : 'border-blue-100 bg-blue-50'}`}>
+                                                <div>
+                                                    <div className={`font-medium ${stopped ? 'line-through text-gray-500' : ''}`}>{p.name}</div>
+                                                    <div className="text-xs text-gray-600">{p.type} • {p.route} • {p.frequency}</div>
                                                 </div>
-                                            ) : (
-                                                <div className="text-xs text-gray-500">{p.status}</div>
-                                            )}
-                                        </div>
-                                    </li>
-                                ))}
-                            </ul>
-                        </>
-                    )}
+                                                <div>
+                                                    {stopped ? (
+                                                        <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-red-100 text-red-700">STOPPED</span>
+                                                    ) : completed ? (
+                                                        <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-gray-200 text-gray-600">COMPLETED</span>
+                                                    ) : isDoctor ? (
+                                                        <button className="px-2 py-1 bg-yellow-500 text-white rounded text-xs" onClick={() => onStopMedicine(p.id)}>Stop</button>
+                                                    ) : (
+                                                        <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-green-100 text-green-700">ACTIVE</span>
+                                                    )}
+                                                </div>
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            </>
+                        );
+                    })()}
 
                     {/* Administered Stock Items */}
                     {data.administeredItems && data.administeredItems.length > 0 && (
@@ -1105,9 +1116,9 @@ const IpdDetails = () => {
                     )}
 
                     {/* Empty state — no prescriptions AND no administered items */}
-                    {(!data.activePrescriptions || data.activePrescriptions.length === 0) &&
+                    {(!(data.allPrescriptions || data.activePrescriptions) || (data.allPrescriptions || data.activePrescriptions).length === 0) &&
                      (!data.administeredItems || data.administeredItems.length === 0) && (
-                        <div className="text-sm text-gray-500">No active medicines or administered items.</div>
+                        <div className="text-sm text-gray-500">No medicines or administered items.</div>
                     )}
 
                     {isDoctor && data.status !== 'DISCHARGE_PLANNED' && data.status !== 'DISCHARGED' && (

@@ -1419,7 +1419,14 @@ const DoctorDashboard = () => {
                                                                     <td className="px-4 py-3">{wardName}</td>
                                                                     <td className="px-4 py-3">{bedNumber}</td>
                                                                     <td className="px-4 py-3">{admittedAt ? new Date(admittedAt).toLocaleString() : '-'}</td>
-                                                                    <td className="px-4 py-3">{status}</td>
+                                                                    <td className="px-4 py-3">
+                                                                        <div className="flex flex-col gap-1 items-start">
+                                                                            {(row.admissionConfirmed ?? row.ipd?.admissionConfirmed)
+                                                                                ? <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-green-100 text-green-700">ADMITTED</span>
+                                                                                : <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-700">ADMISSION PENDING</span>}
+                                                                            {status && status !== 'ADMITTED' && <span className="text-[10px] text-gray-500">{status}</span>}
+                                                                        </div>
+                                                                    </td>
                                                                     <td className="px-4 py-3">
                                                                         {(() => {
                                                                             const theId = row.ipdId || row.id || row.ipd?.id || row.ipd?.ipdId || null;

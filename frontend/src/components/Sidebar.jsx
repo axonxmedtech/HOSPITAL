@@ -1,4 +1,5 @@
 import React from 'react';
+import { titleCase } from '../utils/text';
 
 // Icon mapping for sidebar menu items
 const menuIcons = {
@@ -302,7 +303,7 @@ const Sidebar = ({ title, tabs, activeTab, onTabChange, onToggleGroup, footerTit
                             </div>
                             <div className="flex-1 min-w-0">
                                 <p className="text-xs font-medium text-gray-600 uppercase mb-0.5">{footerTitle}</p>
-                                <p className="text-sm font-medium text-gray-900 truncate" title={footerData}>{footerData}</p>
+                                <p className="text-sm font-medium text-gray-900 truncate" title={titleCase(footerData)}>{titleCase(footerData)}</p>
                             </div>
                         </div>
                     </div>

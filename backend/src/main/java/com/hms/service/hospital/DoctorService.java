@@ -514,12 +514,19 @@ public class DoctorService {
         com.hms.entity.Opd opd = null;
         if (request.getOpdId() != null) {
             opd = opdRepository.findById(request.getOpdId()).orElse(null);
+            if (opd != null && request.getIpdAdmitRecommended() != null) {
+                opd.setIpdAdmitRecommended(request.getIpdAdmitRecommended());
+                opd = opdRepository.save(opd);
+            }
         } else if (appointment != null) {
             opd = new com.hms.entity.Opd();
             opd.setPatient(patient);
             opd.setDoctor(doctorRepository.findById(resolvedDoctorId).orElse(null));
             opd.setProblem(request.getSymptoms() != null && !request.getSymptoms().isEmpty() ? request.getSymptoms() : appointment.getNotes());
             opd.setStatus(com.hms.entity.Opd.Status.CONSULTED);
+            if (request.getIpdAdmitRecommended() != null) {
+                opd.setIpdAdmitRecommended(request.getIpdAdmitRecommended());
+            }
             opd = opdRepository.save(opd);
             opd.setCaseId("OPD-" + opd.getId());
             opd = opdRepository.save(opd);
@@ -529,6 +536,9 @@ public class DoctorService {
             opd.setDoctor(doctorRepository.findById(resolvedDoctorId).orElse(null));
             opd.setProblem(request.getSymptoms() != null && !request.getSymptoms().isEmpty() ? request.getSymptoms() : "Direct Patient Consultation");
             opd.setStatus(com.hms.entity.Opd.Status.CONSULTED);
+            if (request.getIpdAdmitRecommended() != null) {
+                opd.setIpdAdmitRecommended(request.getIpdAdmitRecommended());
+            }
             opd = opdRepository.save(opd);
             opd.setCaseId("OPD-" + opd.getId());
             opd = opdRepository.save(opd);

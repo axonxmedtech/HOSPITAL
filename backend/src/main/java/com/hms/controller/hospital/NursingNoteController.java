@@ -1,0 +1,50 @@
+package com.hms.controller.hospital;
+
+import com.hms.dto.NursingNoteRequest;
+import com.hms.security.RequireModule;
+import com.hms.service.hospital.NursingNoteService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
+
+/**
+ * NursingNoteController - nursing observation notes (Phase 1 Nurse module).
+ * HOSPITAL-tenant only, NURSING-gated. Writes are nurse-only (assignment-gated
+ * in the service); reads also open to doctors and admins.
+ */
+@RestController
+@RequestMapping("/hospital/nurse/notes")
+@RequireModule("NURSING")
+public class NursingNoteController {
+
+    @Autowired
+    private NursingNoteService noteService;
+
+    @PostMapping
+    @PreAuthorize("hasRole('NURSE')")
+    public ResponseEntity<?> create(@RequestBody NursingNoteRequest req) {
+        return ResponseEntity.ok(noteService.create(req));
+    }
+
+    @GetMapping("/admission/{admissionId}")
+    @PreAuthorize("hasAnyRole('NURSE', 'DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> getByAdmission(@PathVariable Long admissionId) {
+        return ResponseEntity.ok(noteService.getByAdmission(admissionId));
+    }
+
+    @PutMapping("/{publicId}")
+    @PreAuthorize("hasRole('NURSE')")
+    public ResponseEntity<?> update(@PathVariable String publicId, @RequestBody NursingNoteRequest req) {
+        return ResponseEntity.ok(noteService.update(publicId, req));
+    }
+
+    @DeleteMapping("/{publicId}")
+    @PreAuthorize("hasRole('NURSE')")
+    public ResponseEntity<?> delete(@PathVariable String publicId) {
+        noteService.softDelete(publicId);
+        return ResponseEntity.ok(Map.of("message", "Note deleted"));
+    }
+}

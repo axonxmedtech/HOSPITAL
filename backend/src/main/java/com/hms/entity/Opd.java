@@ -57,6 +57,9 @@ public class Opd {
     @Column(name = "status", nullable = false)
     private Status status = Status.QUEUED;
 
+    @Column(name = "ipd_admit_recommended", nullable = false)
+    private Boolean ipdAdmitRecommended = false;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
@@ -93,4 +96,6 @@ public class Opd {
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public Status getStatus() { return status; }
     public void setStatus(Status status) { this.status = status; }
+    public Boolean getIpdAdmitRecommended() { return ipdAdmitRecommended; }
+    public void setIpdAdmitRecommended(Boolean ipdAdmitRecommended) { this.ipdAdmitRecommended = ipdAdmitRecommended; }
 }

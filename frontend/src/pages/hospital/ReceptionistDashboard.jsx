@@ -90,6 +90,7 @@ const ReceptionistDashboard = () => {
     const [opdSubmitting, setOpdSubmitting] = useState(false);
     const [isIpdAdmitOpen, setIsIpdAdmitOpen] = useState(false);
     const [ipdOpdForAdmit, setIpdOpdForAdmit] = useState(null);
+    const [ipdSubTab, setIpdSubTab] = useState('current'); // 'current' | 'requested'
     const [opdForm, setOpdForm] = useState({
         patientId: null,
         receptionistId: user?.id || null,
@@ -222,7 +223,7 @@ const ReceptionistDashboard = () => {
 
     useEffect(() => {
         loadData(false);
-    }, [activeTab, page, searchTerm, viewFilter, pageSize, selectedDoctorForQueue, billingStatus, opdDateFilter, opdTabView, patientTabView, patientDateFilter]); // Add pageSize & doctor filter to dependencies
+    }, [activeTab, page, searchTerm, viewFilter, pageSize, selectedDoctorForQueue, billingStatus, opdDateFilter, opdTabView, patientTabView, patientDateFilter, ipdSubTab]); // Add pageSize & doctor filter to dependencies
 
     // WebSocket connection will be initialized below loadData definition to avoid ReferenceError
 
@@ -240,7 +241,18 @@ const ReceptionistDashboard = () => {
             // Stats
             const statsData = await hospitalService.getAppointmentStats();
             if (requestId !== activeRequestRef.current) return;
-            setStats(statsData);
+            
+            let ipdRequestsCount = 0;
+            if (hasIPD) {
+                try {
+                    const opdsDataForCount = await hospitalService.getOpds('', 0, 1000, '', '');
+                    const arrayForCount = opdsDataForCount.content || opdsDataForCount || [];
+                    ipdRequestsCount = arrayForCount.filter(o => o.ipdAdmitRecommended && o.status !== 'IN_IPD').length;
+                } catch (e) {
+                    console.error("Failed to load IPD request count for stats", e);
+                }
+            }
+            setStats({ ...statsData, ipdRequests: ipdRequestsCount });
 
             if (activeTab === 'overview' || activeTab === 'appointments' || activeTab === 'opd' || activeTab === 'queue' || activeTab === 'ipd') {
                 if (activeTab === 'overview' || activeTab === 'appointments') setAppointmentsLoading(true);
@@ -291,26 +303,37 @@ const ReceptionistDashboard = () => {
                     setTotalPages(opdsData.totalPages || 1);
                     setTotalElements(opdsData.totalElements || (opdsArray ? opdsArray.length : 0));
                 } else if (activeTab === 'ipd') {
-                    // IPD tab: fetch role-based admitted IPD admissions
-                    const ipdList = await hospitalService.getAdmittedIpdAdmissions();
-                    if (requestId !== activeRequestRef.current) return;
-                    let arr = ipdList || [];
-                    if (searchTerm && searchTerm.trim()) {
-                        const q = searchTerm.trim().toLowerCase();
-                        arr = arr.filter(item => {
-                            const row = item.ipd || item;
-                            const ipdNumber = (row.ipdNumber || row.ipd?.ipdNumber || '').toString().toLowerCase();
-                            const patient = (item.patient?.name || row.patient?.name || item.patientName || '').toString().toLowerCase();
-                            const doctor = (item.doctor?.name || row.doctor?.name || item.doctorName || '').toString().toLowerCase();
-                            const ward = (item.ward?.wardName || row.wardName || row.ward || '').toString().toLowerCase();
-                            const bed = (item.bed?.bedCode || row.bedNumber || row.bed?.bedCode || '').toString().toLowerCase();
-                            const status = (row.status || '').toString().toLowerCase();
-                            return ipdNumber.includes(q) || patient.includes(q) || doctor.includes(q) || ward.includes(q) || bed.includes(q) || status.includes(q);
-                        });
+                    if (ipdSubTab === 'current') {
+                        // IPD tab: fetch role-based admitted IPD admissions
+                        const ipdList = await hospitalService.getAdmittedIpdAdmissions();
+                        if (requestId !== activeRequestRef.current) return;
+                        let arr = ipdList || [];
+                        if (searchTerm && searchTerm.trim()) {
+                            const q = searchTerm.trim().toLowerCase();
+                            arr = arr.filter(item => {
+                                const row = item.ipd || item;
+                                const ipdNumber = (row.ipdNumber || row.ipd?.ipdNumber || '').toString().toLowerCase();
+                                const patient = (item.patient?.name || row.patient?.name || item.patientName || '').toString().toLowerCase();
+                                const doctor = (item.doctor?.name || row.doctor?.name || item.doctorName || '').toString().toLowerCase();
+                                const ward = (item.ward?.wardName || row.wardName || row.ward || '').toString().toLowerCase();
+                                const bed = (item.bed?.bedCode || row.bedNumber || row.bed?.bedCode || '').toString().toLowerCase();
+                                const status = (row.status || '').toString().toLowerCase();
+                                return ipdNumber.includes(q) || patient.includes(q) || doctor.includes(q) || ward.includes(q) || bed.includes(q) || status.includes(q);
+                            });
+                        }
+                        setOpds(arr);
+                        setTotalPages(1);
+                        setTotalElements((arr && arr.length) || 0);
+                    } else {
+                        // Requested patients: fetch OPD entries recommended for IPD
+                        const opdsData = await hospitalService.getOpds(searchTerm, page, pageSize, '', '');
+                        if (requestId !== activeRequestRef.current) return;
+                        const opdsArray = opdsData.content || opdsData || [];
+                        const arr = opdsArray.filter(o => o.ipdAdmitRecommended && o.status !== 'IN_IPD');
+                        setOpds(arr);
+                        setTotalPages(opdsData.totalPages || 1);
+                        setTotalElements(opdsData.totalElements || arr.length);
                     }
-                    setOpds(arr);
-                    setTotalPages(1);
-                    setTotalElements((arr && arr.length) || 0);
                 }
 
                 if (activeTab === 'queue' || activeTab === 'overview' || activeTab === 'opd') {
@@ -809,7 +832,7 @@ const ReceptionistDashboard = () => {
                                 </button>
                             </div>
                             {modules.includes('HOSPITAL_INVENTORY') && <LowStockBanner />}
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                            <div className={`grid grid-cols-1 ${hasIPD ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-6`}>
                                 <div className="bg-white rounded-lg border border-gray-200 p-6">
                                     <div className="flex justify-between items-center">
                                         <div>
@@ -843,6 +866,27 @@ const ReceptionistDashboard = () => {
                                         </div>
                                     </div>
                                 </div>
+                                {hasIPD && (
+                                    <div className="bg-white rounded-lg border border-gray-200 p-6 flex flex-col justify-between">
+                                        <div>
+                                            <p className="text-gray-600 text-sm font-medium">IPD Requests</p>
+                                            <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.ipdRequests || 0}</h3>
+                                        </div>
+                                        <div className="mt-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setActiveTab('ipd');
+                                                    setIpdSubTab('requested');
+                                                }}
+                                                className="text-xs font-semibold text-sky-600 hover:text-sky-800 hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0"
+                                            >
+                                                <span>View Requests</span>
+                                                <span>→</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Side-by-Side Lists: Appointments and Queue */}
@@ -1176,6 +1220,25 @@ const ReceptionistDashboard = () => {
                                     <span>Download PDF</span>
                                 </button>
                             </div>
+                        ) : activeTab === 'ipd' ? (
+                            <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
+                                {[
+                                    { value: 'current', label: 'Current Patients' },
+                                    { value: 'requested', label: 'Requested Patients' }
+                                ].map(sub => (
+                                    <button
+                                        key={sub.value}
+                                        type="button"
+                                        onClick={() => { setIpdSubTab(sub.value); setPage(0); setSearchInput(''); }}
+                                        className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${ipdSubTab === sub.value
+                                            ? 'bg-white text-primary-600 shadow-sm border border-gray-100 font-semibold'
+                                            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                            }`}
+                                    >
+                                        {sub.label}
+                                    </button>
+                                ))}
+                            </div>
                         ) : null}
                       
                     />
@@ -1185,7 +1248,7 @@ const ReceptionistDashboard = () => {
                         <div className="space-y-8 animate-fade-in-up">
                             {activeTab === 'overview' ? (
                                 <>
-                                    <SkeletonStatsGrid count={4} gridCols="md:grid-cols-4" />
+                                    <SkeletonStatsGrid count={hasIPD ? 5 : 4} gridCols={hasIPD ? 'md:grid-cols-5' : 'md:grid-cols-4'} />
                                     <SkeletonOverviewDual />
                                 </>
                             ) : (
@@ -1246,9 +1309,6 @@ const ReceptionistDashboard = () => {
                                                         <td className="px-4 py-3">
                                                             <div className="flex items-center gap-2">
                                                                 <button onClick={() => handlePrintOpd(o)} className="px-3 py-1 bg-gray-900 text-white rounded">Print</button>
-                                                                {user?.role === 'RECEPTIONIST' && hasIPD && o.status !== 'IN_IPD' && (
-                                                                    <button onClick={() => { setIpdOpdForAdmit(o); setIsIpdAdmitOpen(true); }} className="px-3 py-1 bg-green-600 text-white rounded">Admit to IPD</button>
-                                                                )}
                                                             </div>
                                                         </td>
                                                     </tr>
@@ -1267,65 +1327,118 @@ const ReceptionistDashboard = () => {
                                 )
                             )}
                             {activeTab === 'ipd' && (
-                                opds.length > 0 ? (
-                                    <div className="p-4 overflow-x-auto">
-                                        <table className="w-full text-sm text-left">
-                                            <thead>
-                                                <tr>
-                                                    <th className="px-4 py-2">S.No.</th>
-                                                    <th className="px-4 py-2">IPD No.</th>
-                                                    <th className="px-4 py-2">Patient</th>
-                                                    <th className="px-4 py-2">Doctor</th>
-                                                    <th className="px-4 py-2">Ward</th>
-                                                    <th className="px-4 py-2">Bed</th>
-                                                    <th className="px-4 py-2">Admitted</th>
+                                ipdSubTab === 'current' ? (
+                                    opds.length > 0 ? (
+                                        <div className="p-4 overflow-x-auto">
+                                            <table className="w-full text-sm text-left">
+                                                <thead>
+                                                    <tr>
+                                                        <th className="px-4 py-2">S.No.</th>
+                                                        <th className="px-4 py-2">IPD No.</th>
+                                                        <th className="px-4 py-2">Patient</th>
+                                                        <th className="px-4 py-2">Doctor</th>
+                                                        <th className="px-4 py-2">Ward</th>
+                                                        <th className="px-4 py-2">Bed</th>
+                                                        <th className="px-4 py-2">Admitted</th>
                                                         <th className="px-4 py-2">Status</th>
                                                         <th className="px-4 py-2">Actions</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {opds.map((o, idx) => {
-                                                    const row = o.ipd || o;
-                                                    const ipdNumber = row.ipdNumber || row.ipd?.ipdNumber || row.ipdNumber;
-                                                    const patientName = row.patientName || row.patient?.name || '-';
-                                                    const doctorName = row.doctorName || row.doctor?.name || '-';
-                                                    const wardName = row.wardName || row.ward?.name || '-';
-                                                    const bedNumber = row.bedNumber || row.bed?.bedNumber || row.bed?.bedCode || row.bed?.name || '-';
-                                                    const admittedAt = row.admissionDateTime || row.admissionDatetime || row.ipd?.admissionDatetime;
-                                                    const status = row.status || row.ipd?.status || 'ADMITTED';
-                                                    const ipdId = row.ipdId || row.id || row.ipd?.id || row.ipd?.ipdId || ipdNumber;
-                                                    return (
-                                                        <tr key={idx} className="border-t">
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {opds.map((o, idx) => {
+                                                        const row = o.ipd || o;
+                                                        const ipdNumber = row.ipdNumber || row.ipd?.ipdNumber || row.ipdNumber;
+                                                        const patientName = row.patientName || row.patient?.name || '-';
+                                                        const doctorName = row.doctorName || row.doctor?.name || '-';
+                                                        const wardName = row.wardName || row.ward?.name || '-';
+                                                        const bedNumber = row.bedNumber || row.bed?.bedNumber || row.bed?.bedCode || row.bed?.name || '-';
+                                                        const admittedAt = row.admissionDateTime || row.admissionDatetime || row.ipd?.admissionDatetime;
+                                                        const status = row.status || row.ipd?.status || 'ADMITTED';
+                                                        const ipdId = row.ipdId || row.id || row.ipd?.id || row.ipd?.ipdId || ipdNumber;
+                                                        return (
+                                                            <tr key={idx} className="border-t">
+                                                                <td className="px-4 py-3">{page * pageSize + idx + 1}</td>
+                                                                <td className="px-4 py-3">{ipdNumber || row.id}</td>
+                                                                <td className="px-4 py-3">{patientName}</td>
+                                                                <td className="px-4 py-3">{doctorName}</td>
+                                                                <td className="px-4 py-3">{wardName}</td>
+                                                                <td className="px-4 py-3">{bedNumber}</td>
+                                                                <td className="px-4 py-3">{formatDateTime(admittedAt)}</td>
+                                                                <td className="px-4 py-3">
+                                                                    <div className="flex flex-col gap-1 items-start">
+                                                                        {(o.admissionConfirmed ?? row.admissionConfirmed)
+                                                                            ? <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-green-100 text-green-700">ADMITTED</span>
+                                                                            : <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-700">ADMISSION PENDING</span>}
+                                                                        {status && status !== 'ADMITTED' && <span className="text-[10px] text-gray-500">{status}</span>}
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-4 py-3">
+                                                                    <button
+                                                                        className={`px-3 py-1 rounded ${ipdId ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
+                                                                        onClick={() => { if (ipdId) window.location.href = `/ipd/${ipdId}` }}
+                                                                        disabled={!ipdId}
+                                                                        title={ipdId ? 'View IPD details' : 'IPD id not available'}
+                                                                    >
+                                                                        View
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    ) : (
+                                        <EmptyState
+                                            icon={null}
+                                            title="No IPD Admissions"
+                                            message="No IPD admissions found."
+                                        />
+                                    )
+                                ) : (
+                                    opds.length > 0 ? (
+                                        <div className="p-4 overflow-x-auto">
+                                            <table className="w-full text-sm text-left">
+                                                <thead>
+                                                    <tr>
+                                                        <th className="px-4 py-2">S.No.</th>
+                                                        <th className="px-4 py-2">OPD Case No.</th>
+                                                        <th className="px-4 py-2">Patient</th>
+                                                        <th className="px-4 py-2">Doctor</th>
+                                                        <th className="px-4 py-2">Problem / Diagnosis</th>
+                                                        <th className="px-4 py-2">Date Recommended</th>
+                                                        <th className="px-4 py-2">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {opds.map((o, idx) => (
+                                                        <tr key={o.id} className="border-t">
                                                             <td className="px-4 py-3">{page * pageSize + idx + 1}</td>
-                                                            <td className="px-4 py-3">{ipdNumber || row.id}</td>
-                                                            <td className="px-4 py-3">{patientName}</td>
-                                                            <td className="px-4 py-3">{doctorName}</td>
-                                                            <td className="px-4 py-3">{wardName}</td>
-                                                            <td className="px-4 py-3">{bedNumber}</td>
-                                                            <td className="px-4 py-3">{formatDateTime(admittedAt)}</td>
-                                                            <td className="px-4 py-3">{status}</td>
+                                                            <td className="px-4 py-3">{o.caseId}</td>
+                                                            <td className="px-4 py-3">{o.patient?.name}</td>
+                                                            <td className="px-4 py-3">{o.doctor?.name || '-'}</td>
+                                                            <td className="px-4 py-3">{o.problem || '-'}</td>
+                                                            <td className="px-4 py-3">{formatDateTime(o.createdAt)}</td>
                                                             <td className="px-4 py-3">
                                                                 <button
-                                                                    className={`px-3 py-1 rounded ${ipdId ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
-                                                                    onClick={() => { if (ipdId) window.location.href = `/ipd/${ipdId}` }}
-                                                                    disabled={!ipdId}
-                                                                    title={ipdId ? 'View IPD details' : 'IPD id not available'}
+                                                                    onClick={() => { setIpdOpdForAdmit(o); setIsIpdAdmitOpen(true); }}
+                                                                    className="px-3 py-1 bg-green-600 text-white rounded text-xs font-semibold hover:bg-green-700 transition"
                                                                 >
-                                                                    View
+                                                                    Admit to IPD
                                                                 </button>
                                                             </td>
                                                         </tr>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                ) : (
-                                    <EmptyState
-                                        icon={null}
-                                        title="No IPD Admissions"
-                                        message="No IPD admissions found."
-                                    />
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    ) : (
+                                        <EmptyState
+                                            icon={null}
+                                            title="No Admission Requests"
+                                            message="No pending IPD admission requests from doctors found."
+                                        />
+                                    )
                                 )
                             )}
                             {activeTab === 'queue' && (

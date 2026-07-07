@@ -46,6 +46,564 @@ public class DatabaseMigrationRunner {
         ensurePharmacyBranchSupport(); // NEW — Multi Pharmacy branches
         ensurePharmacyDataBranchColumns(); // NEW — branch_id on pharmacy data tables
         ensureAuditLogsBranchColumn(); // NEW — branch_id on audit_logs for pharmacy audit trails
+        ensureNurseProfilesTable(); // NEW — Nurse module (Phase 1)
+        ensureNurseProfileWardColumn(); // NEW — Nurse ward assignment
+        ensureNurseProfileShiftColumn(); // NEW — Nurse shift availability
+        ensureAdmissionConfirmedColumns(); // NEW — nurse-confirmed admission
+        ensureAdmittedByColumn(); // NEW — admitting receptionist
+        ensureAdmissionFormsTable(); // NEW — nurse admission form
+        ensureInitialAssessmentsTable(); // NEW — nurse initial assessment
+        ensureInitialAssessmentPainColumn(); // NEW — pain score
+        ensureVulnerabilityAssessmentsTable(); // NEW — nurse vulnerability assessment
+        ensureSugarChartEntriesTable(); // NEW — nurse sugar chart
+        ensurePatientNurseAssignmentsTable(); // NEW — Nurse module (Phase 1)
+        ensureVitalsRecordsTable(); // NEW — Nurse module (Phase 1)
+        ensureNursingNotesTable(); // NEW — Nurse module (Phase 1)
+        ensureMedicationAdministrationsTable(); // NEW — Nurse module (Phase 1)
+        ensureManualTasksTable(); // NEW — Nurse module (Phase 1, M7)
+        ensureNotificationsTable(); // NEW — Nurse module (Phase 1, M8)
+        ensureOpdAdmitRecommendedColumn(); // NEW
+    }
+
+    /**
+     * Creates the manual_tasks table if absent (Phase 1 Nurse module, M7).
+     * Idempotent; mirrors setup/schema-full.sql.
+     */
+    private void ensureManualTasksTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'manual_tasks'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE manual_tasks (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  public_id VARCHAR(255) NOT NULL," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  title VARCHAR(150) NOT NULL," +
+                    "  description TEXT," +
+                    "  assigned_to_nurse_user_id BIGINT NOT NULL," +
+                    "  assigned_by_user_id BIGINT NOT NULL," +
+                    "  ipd_admission_id BIGINT," +
+                    "  priority VARCHAR(10) NOT NULL DEFAULT 'MEDIUM'," +
+                    "  status VARCHAR(15) NOT NULL DEFAULT 'PENDING'," +
+                    "  due_date DATETIME(6)," +
+                    "  completed_at DATETIME(6)," +
+                    "  completion_remarks VARCHAR(500)," +
+                    "  is_active TINYINT(1) NOT NULL DEFAULT 1," +
+                    "  created_at DATETIME(6) NOT NULL," +
+                    "  updated_at DATETIME(6)," +
+                    "  PRIMARY KEY (id)," +
+                    "  UNIQUE KEY UK_manual_tasks_public_id (public_id)," +
+                    "  KEY idx_tasks_nurse_status (assigned_to_nurse_user_id, status)," +
+                    "  KEY idx_tasks_hospital_status (hospital_id, status)," +
+                    "  KEY idx_tasks_admission (ipd_admission_id)," +
+                    "  FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                    ")"
+                );
+                log.info("DB migration applied: manual_tasks table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (manual_tasks): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Creates the notifications table if absent (Phase 1 Nurse module, M8).
+     * Idempotent; mirrors setup/schema-full.sql.
+     */
+    private void ensureNotificationsTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE notifications (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  public_id VARCHAR(255) NOT NULL," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  recipient_user_id BIGINT NOT NULL," +
+                    "  type VARCHAR(30) NOT NULL," +
+                    "  title VARCHAR(150) NOT NULL," +
+                    "  message TEXT NOT NULL," +
+                    "  reference_type VARCHAR(50) DEFAULT NULL," +
+                    "  reference_id BIGINT DEFAULT NULL," +
+                    "  is_read TINYINT(1) NOT NULL DEFAULT 0," +
+                    "  read_at DATETIME(6) DEFAULT NULL," +
+                    "  created_at DATETIME(6) NOT NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  UNIQUE KEY UK_notifications_public_id (public_id)," +
+                    "  KEY idx_ntf_recipient (recipient_user_id)," +
+                    "  KEY idx_ntf_hospital (hospital_id)," +
+                    "  FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                    ")"
+                );
+                log.info("DB migration applied: notifications table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (notifications): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Creates the medication_administrations table if absent (Phase 1 Nurse
+     * module). Idempotent; mirrors setup/schema-full.sql.
+     */
+    private void ensureMedicationAdministrationsTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'medication_administrations'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE medication_administrations (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  public_id VARCHAR(255) NOT NULL," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  ipd_admission_id BIGINT NOT NULL," +
+                    "  prescription_id BIGINT NOT NULL," +
+                    "  patient_id BIGINT NOT NULL," +
+                    "  nurse_user_id BIGINT NOT NULL," +
+                    "  scheduled_time DATETIME(6)," +
+                    "  administered_time DATETIME(6)," +
+                    "  status VARCHAR(20) NOT NULL," +
+                    "  remarks VARCHAR(500)," +
+                    "  is_active TINYINT(1) NOT NULL DEFAULT 1," +
+                    "  created_at DATETIME(6) NOT NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  UNIQUE KEY UK_mar_public_id (public_id)," +
+                    "  KEY idx_mar_admission_time (ipd_admission_id, administered_time)," +
+                    "  KEY idx_mar_prescription (prescription_id)," +
+                    "  KEY idx_mar_hospital (hospital_id)," +
+                    "  FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                    ")"
+                );
+                log.info("DB migration applied: medication_administrations table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (medication_administrations): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Creates the nursing_notes table if absent (Phase 1 Nurse module).
+     * Idempotent; mirrors setup/schema-full.sql.
+     */
+    private void ensureNursingNotesTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'nursing_notes'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE nursing_notes (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  public_id VARCHAR(255) NOT NULL," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  ipd_admission_id BIGINT NOT NULL," +
+                    "  patient_id BIGINT NOT NULL," +
+                    "  nurse_user_id BIGINT NOT NULL," +
+                    "  note_text TEXT NOT NULL," +
+                    "  category VARCHAR(40)," +
+                    "  recorded_at DATETIME(6) NOT NULL," +
+                    "  is_active TINYINT(1) NOT NULL DEFAULT 1," +
+                    "  created_at DATETIME(6) NOT NULL," +
+                    "  updated_at DATETIME(6)," +
+                    "  PRIMARY KEY (id)," +
+                    "  UNIQUE KEY UK_nursing_notes_public_id (public_id)," +
+                    "  KEY idx_nursing_notes_admission_time (ipd_admission_id, recorded_at)," +
+                    "  KEY idx_nursing_notes_hospital (hospital_id)," +
+                    "  FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                    ")"
+                );
+                log.info("DB migration applied: nursing_notes table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (nursing_notes): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Creates the vitals_records table if absent (Phase 1 Nurse module).
+     * Idempotent; mirrors setup/schema-full.sql.
+     */
+    private void ensureVitalsRecordsTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vitals_records'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE vitals_records (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  public_id VARCHAR(255) NOT NULL," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  ipd_admission_id BIGINT NOT NULL," +
+                    "  patient_id BIGINT NOT NULL," +
+                    "  recorded_by_user_id BIGINT NOT NULL," +
+                    "  recorded_at DATETIME(6) NOT NULL," +
+                    "  temperature DECIMAL(4,1)," +
+                    "  pulse INT," +
+                    "  bp_systolic INT," +
+                    "  bp_diastolic INT," +
+                    "  respiratory_rate INT," +
+                    "  spo2 INT," +
+                    "  weight DECIMAL(5,2)," +
+                    "  pain_score INT," +
+                    "  remarks VARCHAR(500)," +
+                    "  is_active TINYINT(1) NOT NULL DEFAULT 1," +
+                    "  created_at DATETIME(6) NOT NULL," +
+                    "  updated_at DATETIME(6)," +
+                    "  PRIMARY KEY (id)," +
+                    "  UNIQUE KEY UK_vitals_public_id (public_id)," +
+                    "  KEY idx_vitals_admission_time (ipd_admission_id, recorded_at)," +
+                    "  KEY idx_vitals_hospital (hospital_id)," +
+                    "  FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                    ")"
+                );
+                log.info("DB migration applied: vitals_records table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (vitals_records): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Creates the patient_nurse_assignments table if absent (Phase 1 Nurse
+     * module). Idempotent; mirrors setup/schema-full.sql.
+     */
+    private void ensurePatientNurseAssignmentsTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'patient_nurse_assignments'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE patient_nurse_assignments (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  public_id VARCHAR(255) NOT NULL," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  ipd_admission_id BIGINT NOT NULL," +
+                    "  patient_id BIGINT NOT NULL," +
+                    "  nurse_user_id BIGINT NOT NULL," +
+                    "  assigned_by_user_id BIGINT NOT NULL," +
+                    "  assigned_at DATETIME(6) NOT NULL," +
+                    "  unassigned_at DATETIME(6)," +
+                    "  notes VARCHAR(255)," +
+                    "  is_active TINYINT(1) NOT NULL DEFAULT 1," +
+                    "  created_at DATETIME(6) NOT NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  UNIQUE KEY UK_pna_public_id (public_id)," +
+                    "  KEY idx_pna_admission_active (ipd_admission_id, is_active)," +
+                    "  KEY idx_pna_nurse_active (nurse_user_id, is_active)," +
+                    "  KEY idx_pna_hospital_active (hospital_id, is_active)," +
+                    "  FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                    ")"
+                );
+                log.info("DB migration applied: patient_nurse_assignments table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (patient_nurse_assignments): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Creates the nurse_profiles table if absent (Phase 1 Nurse module).
+     * ddl-auto=update also creates it from the entity; this keeps the schema
+     * reproducible on databases where ddl-auto is disabled and mirrors
+     * setup/schema-full.sql. Idempotent.
+     */
+    private void ensureNurseProfilesTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'nurse_profiles'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE nurse_profiles (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  public_id VARCHAR(255) NOT NULL," +
+                    "  custom_id VARCHAR(255)," +
+                    "  user_id BIGINT," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  name VARCHAR(100) NOT NULL," +
+                    "  phone VARCHAR(20)," +
+                    "  email VARCHAR(100) NOT NULL," +
+                    "  license_number VARCHAR(50)," +
+                    "  is_active TINYINT(1) NOT NULL DEFAULT 1," +
+                    "  created_at DATETIME(6) NOT NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  UNIQUE KEY UK_nurse_profiles_public_id (public_id)," +
+                    "  KEY idx_nurse_profiles_hospital (hospital_id)," +
+                    "  KEY idx_nurse_profiles_user (user_id)," +
+                    "  FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                    ")"
+                );
+                log.info("DB migration applied: nurse_profiles table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (nurse_profiles): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Adds the nullable ward_id column to nurse_profiles (nurse-to-ward
+     * assignment). Idempotent; mirrors setup/schema-full.sql.
+     */
+    private void ensureNurseProfileWardColumn() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'nurse_profiles' AND COLUMN_NAME = 'ward_id'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute("ALTER TABLE nurse_profiles ADD COLUMN ward_id BIGINT NULL");
+                log.info("DB migration applied: added ward_id column to nurse_profiles");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (nurse_profiles.ward_id): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Adds the on_shift column to nurse_profiles (nurse shift availability).
+     * Idempotent; mirrors setup/schema-full.sql.
+     */
+    private void ensureNurseProfileShiftColumn() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'nurse_profiles' AND COLUMN_NAME = 'on_shift'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute("ALTER TABLE nurse_profiles ADD COLUMN on_shift TINYINT(1) NOT NULL DEFAULT 0");
+                log.info("DB migration applied: added on_shift column to nurse_profiles");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (nurse_profiles.on_shift): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Adds admission_confirmed + admission_confirmed_at to ipd_admission
+     * (nurse-confirmed admission after the signed form is collected). Idempotent.
+     */
+    private void ensureAdmissionConfirmedColumns() {
+        try {
+            Integer c = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ipd_admission' AND COLUMN_NAME = 'admission_confirmed'",
+                Integer.class);
+            if (c != null && c == 0) {
+                jdbcTemplate.execute("ALTER TABLE ipd_admission ADD COLUMN admission_confirmed TINYINT(1) NOT NULL DEFAULT 0");
+                jdbcTemplate.execute("ALTER TABLE ipd_admission ADD COLUMN admission_confirmed_at DATETIME(6) NULL");
+                log.info("DB migration applied: added admission_confirmed columns to ipd_admission");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (ipd_admission.admission_confirmed): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Adds admitted_by_user_id to ipd_admission (the receptionist/admin who
+     * admitted the patient). Idempotent.
+     */
+    private void ensureAdmittedByColumn() {
+        try {
+            Integer c = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ipd_admission' AND COLUMN_NAME = 'admitted_by_user_id'",
+                Integer.class);
+            if (c != null && c == 0) {
+                jdbcTemplate.execute("ALTER TABLE ipd_admission ADD COLUMN admitted_by_user_id BIGINT NULL");
+                log.info("DB migration applied: added admitted_by_user_id column to ipd_admission");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (ipd_admission.admitted_by_user_id): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Creates the admission_forms table if absent (Phase 1 Nurse module).
+     * Idempotent; mirrors setup/schema-full.sql.
+     */
+    private void ensureAdmissionFormsTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admission_forms'",
+                Integer.class);
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE admission_forms (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  public_id VARCHAR(255) NOT NULL," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  ipd_admission_id BIGINT NOT NULL," +
+                    "  prn_no VARCHAR(60), bed_no VARCHAR(60), category VARCHAR(40)," +
+                    "  patient_surname VARCHAR(100), patient_first_name VARCHAR(100), husband_father_name VARCHAR(150)," +
+                    "  patient_address TEXT, age VARCHAR(20), sex VARCHAR(20), occupation VARCHAR(100)," +
+                    "  patient_category VARCHAR(40), mediclaim VARCHAR(20), tpa_name VARCHAR(200)," +
+                    "  relative_name VARCHAR(150), email VARCHAR(120), telephone VARCHAR(40)," +
+                    "  receptionist_name VARCHAR(120), ref_dr VARCHAR(150)," +
+                    "  ipd_registration_no VARCHAR(60), department VARCHAR(120), under_care_of_dr VARCHAR(150)," +
+                    "  admitted_date VARCHAR(40), admitted_time VARCHAR(40)," +
+                    "  prov_diagnosis1 TEXT, prov_diagnosis2 TEXT, hypersensitivity_history TEXT," +
+                    "  relative_address TEXT, relative_phone VARCHAR(40)," +
+                    "  created_at DATETIME(6) NOT NULL, updated_at DATETIME(6)," +
+                    "  PRIMARY KEY (id)," +
+                    "  UNIQUE KEY UK_admission_forms_public_id (public_id)," +
+                    "  UNIQUE KEY UK_admission_forms_ipd (ipd_admission_id)," +
+                    "  KEY idx_admission_forms_hospital (hospital_id)," +
+                    "  FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                    ")");
+                log.info("DB migration applied: admission_forms table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (admission_forms): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Creates the initial_assessments table if absent (Phase 1 Nurse module).
+     * Idempotent; mirrors setup/schema-full.sql.
+     */
+    private void ensureInitialAssessmentsTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'initial_assessments'",
+                Integer.class);
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE initial_assessments (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  public_id VARCHAR(255) NOT NULL," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  ipd_admission_id BIGINT NOT NULL," +
+                    "  chief_complaints TEXT, associated_illness TEXT, relevant_investigations TEXT," +
+                    "  allergies TEXT, vaccination_history TEXT, others TEXT," +
+                    "  past_history TEXT, family_history TEXT, personal_history TEXT," +
+                    "  provisional_diagnosis TEXT, care_plan TEXT," +
+                    "  created_at DATETIME(6) NOT NULL, updated_at DATETIME(6)," +
+                    "  PRIMARY KEY (id)," +
+                    "  UNIQUE KEY UK_initial_assessments_public_id (public_id)," +
+                    "  UNIQUE KEY UK_initial_assessments_ipd (ipd_admission_id)," +
+                    "  KEY idx_initial_assessments_hospital (hospital_id)," +
+                    "  FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                    ")");
+                log.info("DB migration applied: initial_assessments table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (initial_assessments): {}", e.getMessage());
+        }
+    }
+
+    /** Adds the pain_score column to initial_assessments. Idempotent. */
+    private void ensureInitialAssessmentPainColumn() {
+        try {
+            Integer c = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'initial_assessments' AND COLUMN_NAME = 'pain_score'",
+                Integer.class);
+            if (c != null && c == 0) {
+                jdbcTemplate.execute("ALTER TABLE initial_assessments ADD COLUMN pain_score INT NULL");
+                log.info("DB migration applied: added pain_score column to initial_assessments");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (initial_assessments.pain_score): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Creates the vulnerability_assessments table if absent (Phase 1 Nurse module).
+     * Idempotent; mirrors setup/schema-full.sql.
+     */
+    private void ensureVulnerabilityAssessmentsTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vulnerability_assessments'",
+                Integer.class);
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE vulnerability_assessments (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  public_id VARCHAR(255) NOT NULL," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  ipd_admission_id BIGINT NOT NULL," +
+                    "  category VARCHAR(120), fall_risk_assessment TEXT, sensory_deficit TEXT," +
+                    "  disorientation VARCHAR(120), self_care_deficit VARCHAR(10), mobility_problem VARCHAR(10)," +
+                    "  history_of_fall VARCHAR(10), impaired_judgement VARCHAR(10)," +
+                    "  psychological_status VARCHAR(200), remarks TEXT, nursing_intervention TEXT," +
+                    "  reason_for_transfer TEXT, investigation_lab TEXT, investigation_radiology TEXT," +
+                    "  transfer_provisional_diagnosis TEXT, transfer_doctor_name VARCHAR(150)," +
+                    "  created_at DATETIME(6) NOT NULL, updated_at DATETIME(6)," +
+                    "  PRIMARY KEY (id)," +
+                    "  UNIQUE KEY UK_vuln_public_id (public_id)," +
+                    "  UNIQUE KEY UK_vuln_ipd (ipd_admission_id)," +
+                    "  KEY idx_vuln_hospital (hospital_id)," +
+                    "  FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                    ")");
+                log.info("DB migration applied: vulnerability_assessments table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (vulnerability_assessments): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Creates the sugar_chart_entries table if absent (Phase 1 Nurse module).
+     * Idempotent; mirrors setup/schema-full.sql.
+     */
+    private void ensureSugarChartEntriesTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sugar_chart_entries'",
+                Integer.class);
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE sugar_chart_entries (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  public_id VARCHAR(255) NOT NULL," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  ipd_admission_id BIGINT NOT NULL," +
+                    "  patient_id BIGINT NOT NULL," +
+                    "  nurse_user_id BIGINT NOT NULL," +
+                    "  blood_sugar VARCHAR(60)," +
+                    "  treatment TEXT," +
+                    "  recorded_at DATETIME(6) NOT NULL," +
+                    "  is_active TINYINT(1) NOT NULL DEFAULT 1," +
+                    "  created_at DATETIME(6) NOT NULL, updated_at DATETIME(6)," +
+                    "  PRIMARY KEY (id)," +
+                    "  UNIQUE KEY UK_sugar_public_id (public_id)," +
+                    "  KEY idx_sugar_admission_time (ipd_admission_id, recorded_at)," +
+                    "  KEY idx_sugar_hospital (hospital_id)," +
+                    "  FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                    ")");
+                log.info("DB migration applied: sugar_chart_entries table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (sugar_chart_entries): {}", e.getMessage());
+        }
     }
 
     /**
@@ -148,6 +706,7 @@ public class DatabaseMigrationRunner {
         String[][] orphanColumns = {
             {"hospital_settings", "shift_mode"},
             {"users", "is_trainer"},
+            {"doctors", "is_anaesthetist"},
         };
         for (String[] tc : orphanColumns) {
             String table = tc[0], column = tc[1];
@@ -698,6 +1257,22 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped (audit_logs.branch_id): {}", e.getMessage());
+        }
+    }
+
+    private void ensureOpdAdmitRecommendedColumn() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'opd' AND COLUMN_NAME = 'ipd_admit_recommended'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute("ALTER TABLE opd ADD COLUMN ipd_admit_recommended TINYINT(1) NOT NULL DEFAULT 0");
+                log.info("DB migration applied: added ipd_admit_recommended column to opd table");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (ipd_admit_recommended): {}", e.getMessage());
         }
     }
 }

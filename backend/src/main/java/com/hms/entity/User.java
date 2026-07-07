@@ -55,9 +55,9 @@ public class User {
         if (this.publicId == null) {
             this.publicId = java.util.UUID.randomUUID().toString();
         }
-        // customId for RECEPTIONIST is set by ReceptionistService after save (sequential)
-        // Other roles retain random generation for now
-        if (this.customId == null && !"RECEPTIONIST".equals(this.role)) {
+        // customId for RECEPTIONIST and NURSE is set by their service after save
+        // (sequential, e.g. REC1 / NRS1). Other roles retain random generation for now.
+        if (this.customId == null && !"RECEPTIONIST".equals(this.role) && !"NURSE".equals(this.role)) {
             String prefix = "USR";
             if ("HOSPITAL_ADMIN".equals(this.role))
                 prefix = "ADM";

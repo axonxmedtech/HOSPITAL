@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { titleCase } from '../utils/text';
 
 const UserMenu = ({ user, onLogout, onProfile, onSupport }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -71,7 +72,7 @@ const UserMenu = ({ user, onLogout, onProfile, onSupport }) => {
                                 <p className="text-xs text-neutral-500 truncate">{getRoleDisplay(user?.role)}</p>
                                 {user?.hospitalName && (
                                     <p className="text-xs text-primary-600 truncate font-medium mt-0.5">
-                                        {user.hospitalName}
+                                        {titleCase(user.hospitalName)}
                                     </p>
                                 )}
                             </div>

@@ -200,6 +200,120 @@ const hospitalService = {
     },
 
 
+    // ========== Nurse APIs (Phase 1 Nurse module — HOSPITAL tenant only) ==========
+
+    /**
+     * Get all nurses for the current hospital
+     */
+    getNurses: async (search, page = 0, size = 10) => {
+        const query = search ? `?search=${search}&page=${page}&size=${size}` : `?page=${page}&size=${size}`;
+        const response = await apiClient.get(`/hospital/nurses${query}`);
+        return response.data;
+    },
+
+    /**
+     * Add a new nurse
+     */
+    addNurse: async (nurseData) => {
+        const response = await apiClient.post('/hospital/nurses', nurseData);
+        return response.data;
+    },
+
+    /**
+     * Delete nurse
+     */
+    deleteNurse: async (id, reason) => {
+        const query = reason ? `?reason=${encodeURIComponent(reason)}` : '';
+        const response = await apiClient.delete(`/hospital/nurses/${id}${query}`);
+        return response.data;
+    },
+
+    /**
+     * Get nurse by ID
+     */
+    getNurseById: async (id) => {
+        const response = await apiClient.get(`/hospital/nurses/${id}`);
+        return response.data;
+    },
+
+    /**
+     * Update nurse
+     */
+    updateNurse: async (id, data) => {
+        const response = await apiClient.put(`/hospital/nurses/${id}`, data);
+        return response.data;
+    },
+
+    /**
+     * Reset nurse password
+     */
+    resetNursePassword: async (id, newPassword) => {
+        const response = await apiClient.post(`/hospital/nurses/${id}/reset-password`, { newPassword });
+        return response.data;
+    },
+
+
+    // ========== Nurse Assignment APIs (Phase 1 Nurse module) ==========
+
+    /**
+     * Overview of active admissions with their currently assigned nurse (or none).
+     */
+    getNurseAssignmentsOverview: async () => {
+        const response = await apiClient.get('/hospital/nurse-assignments/overview');
+        return response.data;
+    },
+
+    /**
+     * Assign a nurse to an IPD admission.
+     */
+    assignNurse: async ({ ipdAdmissionId, nurseUserId, notes }) => {
+        const response = await apiClient.post('/hospital/nurse-assignments', { ipdAdmissionId, nurseUserId, notes });
+        return response.data;
+    },
+
+    /**
+     * Reassign the nurse for an existing assignment.
+     */
+    reassignNurse: async (assignmentPublicId, { nurseUserId, notes }) => {
+        const response = await apiClient.put(`/hospital/nurse-assignments/${assignmentPublicId}/reassign`, { nurseUserId, notes });
+        return response.data;
+    },
+
+    /**
+     * Unassign (close) an assignment.
+     */
+    unassignNurse: async (assignmentPublicId) => {
+        const response = await apiClient.delete(`/hospital/nurse-assignments/${assignmentPublicId}`);
+        return response.data;
+    },
+
+    // ========== Nurse Tasks APIs (Phase 1 Nurse module, M7) ==========
+
+    /**
+     * Get all nurse tasks for the hospital (admin).
+     */
+    getNurseTasks: async () => {
+        const response = await apiClient.get('/hospital/nurse-tasks');
+        return response.data;
+    },
+
+    /**
+     * Create a new task assigned to a nurse.
+     */
+    createNurseTask: async (payload) => {
+        const response = await apiClient.post('/hospital/nurse-tasks', payload);
+        return response.data;
+    },
+
+    /**
+     * Update/Cancel a task status (admin).
+     */
+    updateNurseTaskStatus: async (publicId, payload) => {
+        const response = await apiClient.put(`/hospital/nurse-tasks/${publicId}/status`, payload);
+        return response.data;
+    },
+
+
     // ========== Pharmacist APIs ==========
 
     /**

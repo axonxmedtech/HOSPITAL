@@ -460,7 +460,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         }
 
         // Prepare payload; include selected lab tests if any
-        const payload = { ...formData };
+        const payload = { ...formData, ipdAdmitRecommended: true };
         if (!payload.labRequired) payload.labTests = [];
         payload.administeredItems = administeredList.map(item => ({
             medicineId: item.medicineId,
@@ -485,13 +485,13 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
 
         setSubmitting(true);
         try {
-            const resp = await hospitalService.submitConsultation(payload);
-            success('Consultation submitted successfully. Opening IPD Admission...');
-            setAdmitModalOpd(resp.opd || { id: resp.opdId, problem: formData.diagnosis || formData.symptoms });
-            setShowIpdAdmitModal(true);
+            await hospitalService.submitConsultation(payload);
+            success('Consultation completed. Patient IPD admission request sent to reception.');
+            onSuccess("Patient IPD admission recommended successfully!");
+            onClose();
         } catch (err) {
             console.error("Consultation submit for IPD failed", err);
-            const errorMsg = err.response?.data?.error || err.response?.data?.message || (typeof err.response?.data === 'string' ? err.response.data : null) || 'Failed to submit consultation before IPD admission';
+            const errorMsg = err.response?.data?.error || err.response?.data?.message || (typeof err.response?.data === 'string' ? err.response.data : null) || 'Failed to submit consultation';
             toastError(errorMsg);
         } finally {
             setSubmitting(false);
