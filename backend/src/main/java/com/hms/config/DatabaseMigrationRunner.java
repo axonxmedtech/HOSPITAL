@@ -76,6 +76,8 @@ public class DatabaseMigrationRunner {
         ensureAppointmentSlotsTable(); // NEW — Nursing Mgmt Phase B1
         ensureNurseShiftSchedulesTable(); // NEW — Nursing Mgmt Phase B2
         ensureNurseAttendanceTable(); // NEW — Nursing Mgmt Phase D
+        ensureNurseWardAssignmentsTable(); // NEW — Nursing Mgmt Phase F
+        ensureNurseSubstitutionsTable(); // NEW — Nursing Mgmt Phase F
         ensureBedStatusAuditsTable(); // NEW — Nursing Mgmt Phase C1
     }
 
@@ -117,6 +119,39 @@ public class DatabaseMigrationRunner {
                 log.info("DB migration applied: nurse_shift_schedules table created");
             }
         } catch (Exception e) { log.warn("DB migration skipped (nurse_shift_schedules): {}", e.getMessage()); }
+    }
+
+    private void ensureNurseWardAssignmentsTable() {
+        try {
+            Integer c = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'nurse_ward_assignments'", Integer.class);
+            if (c != null && c == 0) {
+                jdbcTemplate.execute("CREATE TABLE nurse_ward_assignments (" +
+                    "id BIGINT NOT NULL AUTO_INCREMENT, public_id VARCHAR(255) NOT NULL, hospital_id BIGINT NOT NULL," +
+                    "nurse_profile_id BIGINT NOT NULL, temp_ward_id BIGINT NOT NULL, from_date DATE NOT NULL, to_date DATE NOT NULL," +
+                    "reason VARCHAR(255), created_by_user_id BIGINT, created_at DATETIME(6) NOT NULL," +
+                    "PRIMARY KEY (id), UNIQUE KEY UK_nwa_public (public_id)," +
+                    "KEY idx_nwa_nurse (nurse_profile_id, from_date, to_date), KEY idx_nwa_ward (temp_ward_id, from_date, to_date)," +
+                    "KEY idx_nwa_hospital (hospital_id, to_date)," +
+                    "FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE)");
+                log.info("DB migration applied: nurse_ward_assignments table created");
+            }
+        } catch (Exception e) { log.warn("DB migration skipped (nurse_ward_assignments): {}", e.getMessage()); }
+    }
+
+    private void ensureNurseSubstitutionsTable() {
+        try {
+            Integer c = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'nurse_substitutions'", Integer.class);
+            if (c != null && c == 0) {
+                jdbcTemplate.execute("CREATE TABLE nurse_substitutions (" +
+                    "id BIGINT NOT NULL AUTO_INCREMENT, public_id VARCHAR(255) NOT NULL, hospital_id BIGINT NOT NULL," +
+                    "primary_nurse_profile_id BIGINT NOT NULL, replacement_nurse_profile_id BIGINT NOT NULL," +
+                    "from_date DATE NOT NULL, to_date DATE NOT NULL, reason VARCHAR(255), created_by_user_id BIGINT, created_at DATETIME(6) NOT NULL," +
+                    "PRIMARY KEY (id), UNIQUE KEY UK_nsub_public (public_id)," +
+                    "KEY idx_nsub_repl (replacement_nurse_profile_id, from_date, to_date), KEY idx_nsub_hospital (hospital_id, to_date)," +
+                    "FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE)");
+                log.info("DB migration applied: nurse_substitutions table created");
+            }
+        } catch (Exception e) { log.warn("DB migration skipped (nurse_substitutions): {}", e.getMessage()); }
     }
 
     private void ensureNurseAttendanceTable() {

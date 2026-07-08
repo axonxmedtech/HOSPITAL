@@ -1501,6 +1501,44 @@ CREATE TABLE `nurse_attendance` (
   CONSTRAINT `FK_na_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- Nursing Mgmt Phase F — temporary ward assignment + nurse substitution
+CREATE TABLE `nurse_ward_assignments` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `nurse_profile_id` bigint NOT NULL,
+  `temp_ward_id` bigint NOT NULL,
+  `from_date` date NOT NULL,
+  `to_date` date NOT NULL,
+  `reason` varchar(255) DEFAULT NULL,
+  `created_by_user_id` bigint DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_nwa_public` (`public_id`),
+  KEY `idx_nwa_nurse` (`nurse_profile_id`,`from_date`,`to_date`),
+  KEY `idx_nwa_ward` (`temp_ward_id`,`from_date`,`to_date`),
+  KEY `idx_nwa_hospital` (`hospital_id`,`to_date`),
+  CONSTRAINT `FK_nwa_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `nurse_substitutions` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `primary_nurse_profile_id` bigint NOT NULL,
+  `replacement_nurse_profile_id` bigint NOT NULL,
+  `from_date` date NOT NULL,
+  `to_date` date NOT NULL,
+  `reason` varchar(255) DEFAULT NULL,
+  `created_by_user_id` bigint DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_nsub_public` (`public_id`),
+  KEY `idx_nsub_repl` (`replacement_nurse_profile_id`,`from_date`,`to_date`),
+  KEY `idx_nsub_hospital` (`hospital_id`,`to_date`),
+  CONSTRAINT `FK_nsub_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 -- Nursing Mgmt Phase C1 — bed status change audit trail
 CREATE TABLE `bed_status_audits` (
   `id` bigint NOT NULL AUTO_INCREMENT,
