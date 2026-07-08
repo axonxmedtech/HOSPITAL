@@ -142,7 +142,7 @@ const HospitalAdminDashboard = () => {
         billNumber: ''
     });
     const [editBillItemsSubmitting, setEditBillItemsSubmitting] = useState(false);
-    const [operationsSettings, setOperationsSettings] = useState({ receptionMode: 'HAS_RECEPTIONIST', billingHandler: 'RECEPTIONIST', inClinic: true });
+    const [operationsSettings, setOperationsSettings] = useState({ receptionMode: 'HAS_RECEPTIONIST', billingHandler: 'RECEPTIONIST', inClinic: true, separateNurseLogin: false });
     const [origOperationsSettings, setOrigOperationsSettings] = useState(null);
     const [settingsLoading, setSettingsLoading] = useState(false);
     const [settingsEditing, setSettingsEditing] = useState(false);
@@ -458,7 +458,8 @@ const HospitalAdminDashboard = () => {
                     receptionMode: data.receptionMode || 'HAS_RECEPTIONIST',
                     billingHandler: data.billingHandler || 'RECEPTIONIST',
                     inClinic: data.inClinic !== false,
-                    barcodeEnabled: data.barcodeEnabled !== false
+                    barcodeEnabled: data.barcodeEnabled !== false,
+                    separateNurseLogin: data.separateNurseLogin === true
                 };
                 setOperationsSettings(loaded);
                 setOrigOperationsSettings(loaded);
@@ -655,12 +656,13 @@ const HospitalAdminDashboard = () => {
                     receptionMode: data.receptionMode || 'HAS_RECEPTIONIST',
                     billingHandler: data.billingHandler || 'RECEPTIONIST',
                     inClinic: data.inClinic !== false,
-                    barcodeEnabled: data.barcodeEnabled !== false
+                    barcodeEnabled: operationsSettings.barcodeEnabled,
+                    separateNurseLogin: operationsSettings.separateNurseLogin
                 };
                 setOperationsSettings(loaded);
                 setOrigOperationsSettings(loaded);
                 success('Operational settings updated successfully.');
-                
+
                 // Refresh local user profile session
                 const profile = await authService.getProfile();
                 authService.updateCurrentUser(profile);
@@ -696,6 +698,30 @@ const HospitalAdminDashboard = () => {
                 setUser(profile);
             } catch (err) {
                 const msg = err.response?.data || 'Failed to update barcode setting';
+                toastError(msg);
+            } finally {
+                setSettingsLoading(false);
+            }
+        }, false);
+    };
+
+    const toggleSeparateNurseLogin = () => {
+        const isCurrentlyEnabled = operationsSettings.separateNurseLogin === true;
+        const nextValue = !isCurrentlyEnabled;
+        const title = isCurrentlyEnabled ? 'Disable Separate Nurse Login' : 'Enable Separate Nurse Login';
+        const message = isCurrentlyEnabled
+            ? 'Disable the separate Nurse login page? Nurses and Nurse Incharges will log in through the shared hospital login page.'
+            : 'Enable a separate login page for Nurses and Nurse Incharges?';
+
+        openConfirmation(title, message, async () => {
+            try {
+                setSettingsLoading(true);
+                const data = await hospitalService.updateSeparateNurseLoginSetting(nextValue);
+                setOperationsSettings(prev => ({ ...prev, separateNurseLogin: data.separateNurseLogin === true }));
+                setOrigOperationsSettings(prev => ({ ...prev, separateNurseLogin: data.separateNurseLogin === true }));
+                success('Nurse login setting updated successfully.');
+            } catch (err) {
+                const msg = err?.response?.data?.error || err.response?.data || 'Failed to update nurse login setting';
                 toastError(msg);
             } finally {
                 setSettingsLoading(false);
@@ -1123,6 +1149,60 @@ const HospitalAdminDashboard = () => {
             },
             true,
             "Why are you deleting this nurse?"
+        );
+    };
+
+    const handlePromoteNurse = (nurse) => {
+        const id = nurse.publicId || nurse.id;
+        openConfirmation(
+            'Promote to Nurse Incharge',
+            `Promote ${nurse.name} to Nurse Incharge? They will be eligible to be assigned as a ward incharge.`,
+            async () => {
+                try {
+                    await hospitalService.promoteNurse(id);
+                    success('Nurse promoted to incharge');
+                    loadData();
+                } catch (err) {
+                    toastError(err?.response?.data?.error || 'Failed to promote nurse');
+                }
+            }
+        );
+    };
+
+    const handleDemoteNurse = (nurse) => {
+        const id = nurse.publicId || nurse.id;
+        openConfirmation(
+            'Demote to Nurse',
+            `Demote ${nurse.name} back to a plain nurse? Reassign their ward(s) first if they are currently a ward incharge.`,
+            async () => {
+                try {
+                    await hospitalService.demoteNurse(id);
+                    success('Incharge demoted to nurse');
+                    loadData();
+                } catch (err) {
+                    toastError(err?.response?.data?.error || 'Failed to demote nurse');
+                }
+            }
+        );
+    };
+
+    const handleToggleNurseActive = (nurse) => {
+        const id = nurse.publicId || nurse.id;
+        const nextActive = nurse.isActive === false;
+        openConfirmation(
+            nextActive ? 'Activate Nurse' : 'Deactivate Nurse',
+            nextActive
+                ? `Activate ${nurse.name}? They will be able to log in again.`
+                : `Deactivate ${nurse.name}? They will no longer be able to log in.`,
+            async () => {
+                try {
+                    await hospitalService.setNurseActive(id, nextActive);
+                    success(nextActive ? 'Nurse activated' : 'Nurse deactivated');
+                    loadData();
+                } catch (err) {
+                    toastError(err?.response?.data?.error || 'Failed to update nurse status');
+                }
+            }
         );
     };
 
@@ -2425,6 +2505,9 @@ const HospitalAdminDashboard = () => {
                                             onEdit={(n) => handleEdit(n, 'nurses')}
                                             onViewDetails={(n) => handleViewStaffDetails(n, 'nurse')}
                                             onResetPassword={(n) => handleResetStaffPassword(n, 'nurse')}
+                                            onPromote={handlePromoteNurse}
+                                            onDemote={handleDemoteNurse}
+                                            onToggleActive={handleToggleNurseActive}
                                             startIndex={page * pageSize}
                                             pagination={pagination}
                                         />
@@ -2810,6 +2893,44 @@ const HospitalAdminDashboard = () => {
                                                                 className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
                                                                     operationsSettings.inClinic !== false ? 'translate-x-5' : 'translate-x-0'
                                                                 }`} 
+                                                            />
+                                                        </button>
+                                                    </div>
+                                                </div>}
+
+                                                {/* Separate Nurse Login Card — only shown when NURSING module is in plan */}
+                                                {modules.includes('NURSING') && <div className="bg-slate-50/50 rounded-2xl border border-gray-200 p-6 flex flex-col justify-between hover:shadow-md transition-all duration-300">
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-4">
+                                                            <div className="p-3 bg-rose-50 rounded-xl text-rose-600">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                                                </svg>
+                                                            </div>
+                                                            <span className={`px-3 py-1 text-xs font-semibold rounded-full ${operationsSettings.separateNurseLogin === true ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                                                                {operationsSettings.separateNurseLogin === true ? 'Separate Login Enabled' : 'Shared Login'}
+                                                            </span>
+                                                        </div>
+                                                        <h3 className="text-lg font-bold text-gray-900 mb-2">Separate Nurse Login</h3>
+                                                        <p className="text-sm text-gray-600 leading-relaxed mb-6">
+                                                            When enabled, nurses and nurse incharges sign in through a dedicated nurse login page instead of the shared hospital login.
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                                                        <span className="text-sm font-medium text-gray-700">
+                                                            {operationsSettings.separateNurseLogin === true ? 'Separate Login Active' : 'Using Shared Login'}
+                                                        </span>
+                                                        <button
+                                                            onClick={toggleSeparateNurseLogin}
+                                                            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 ${
+                                                                operationsSettings.separateNurseLogin === true ? 'bg-sky-600' : 'bg-gray-200'
+                                                            }`}
+                                                        >
+                                                            <span className="sr-only">Toggle Separate Nurse Login</span>
+                                                            <span
+                                                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                                                    operationsSettings.separateNurseLogin === true ? 'translate-x-5' : 'translate-x-0'
+                                                                }`}
                                                             />
                                                         </button>
                                                     </div>
@@ -5472,7 +5593,7 @@ const ReceptionistsTable = ({ receptionists, isAdmin, onDelete, onEdit, onViewDe
 };
 
 // NursesTable Component (Phase 1 Nurse module) — mirrors ReceptionistsTable.
-const NursesTable = ({ nurses, isAdmin, onDelete, onEdit, onViewDetails, onResetPassword, startIndex = 0, pagination }) => {
+const NursesTable = ({ nurses, isAdmin, onDelete, onEdit, onViewDetails, onResetPassword, onPromote, onDemote, onToggleActive, startIndex = 0, pagination }) => {
     const columnHelper = createColumnHelper();
 
     const columns = [
@@ -5518,6 +5639,20 @@ const NursesTable = ({ nurses, isAdmin, onDelete, onEdit, onViewDetails, onReset
                                 label: 'Reset Password',
                                 onClick: () => onResetPassword(info.row.original),
                                 icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v-2l2-2 1-.743A6 6 0 1118 8zm-6-2a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" /></svg>
+                            },
+                            info.row.original.isIncharge ? {
+                                label: 'Demote to Nurse',
+                                onClick: () => onDemote(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg>
+                            } : {
+                                label: 'Promote to Incharge',
+                                onClick: () => onPromote(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
+                            },
+                            {
+                                label: info.row.original.isActive === false ? 'Activate' : 'Deactivate',
+                                onClick: () => onToggleActive(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                             },
                             {
                                 label: 'Delete',

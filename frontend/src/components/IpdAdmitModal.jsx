@@ -17,7 +17,7 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
         if (!isOpen) return;
         const load = async () => {
             try {
-                const w = await wardService.getWards();
+                const w = await wardService.getWardsForAdmission();
                 setWards(w || []);
             } catch (err) {
                 console.error('Failed to load wards', err);

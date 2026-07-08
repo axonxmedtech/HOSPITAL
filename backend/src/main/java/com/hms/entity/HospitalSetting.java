@@ -94,4 +94,12 @@ public class HospitalSetting {
     public void setBarcodeEnabled(Boolean barcodeEnabled) {
         this.barcodeEnabled = barcodeEnabled;
     }
+
+    public Boolean getSeparateNurseLogin() {
+        return separateNurseLogin;
+    }
+
+    public void setSeparateNurseLogin(Boolean separateNurseLogin) {
+        this.separateNurseLogin = separateNurseLogin;
+    }
 }

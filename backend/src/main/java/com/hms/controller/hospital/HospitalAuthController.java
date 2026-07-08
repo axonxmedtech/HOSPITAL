@@ -101,6 +101,15 @@ public class HospitalAuthController {
         return ResponseEntity.ok(authService.updateBarcodeSetting(principal.getName(), enabled));
     }
 
+    /** Toggle the separate Nurse Login page. Body: { "separateNurseLogin": true|false }. */
+    @PutMapping({"/hospital/settings/nurse-login", "/clinic/settings/nurse-login", "/pharmacy/settings/nurse-login"})
+    public ResponseEntity<?> updateSeparateNurseLoginSetting(java.security.Principal principal, @RequestBody java.util.Map<String, Boolean> body) {
+        if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
+        Boolean enabled = body.get("separateNurseLogin");
+        if (enabled == null) return ResponseEntity.badRequest().body("separateNurseLogin is required");
+        return ResponseEntity.ok(authService.updateSeparateNurseLoginSetting(principal.getName(), enabled));
+    }
+
     @GetMapping({"/hospital/subscription", "/clinic/subscription", "/pharmacy/subscription"})
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<?> getSubscriptionInfo() {

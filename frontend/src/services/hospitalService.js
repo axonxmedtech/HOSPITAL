@@ -252,6 +252,27 @@ const hospitalService = {
         return response.data;
     },
 
+    /**
+     * Promote a nurse to Nurse Incharge.
+     */
+    promoteNurse: async (id) => (await apiClient.post(`/hospital/nurses/${id}/promote`)).data,
+
+    /**
+     * Demote a Nurse Incharge back to a plain nurse.
+     */
+    demoteNurse: async (id) => (await apiClient.post(`/hospital/nurses/${id}/demote`)).data,
+
+    /**
+     * Activate/deactivate a nurse account.
+     */
+    setNurseActive: async (id, active) => (await apiClient.post(`/hospital/nurses/${id}/active/${active}`)).data,
+
+    /**
+     * Set (or clear, when inchargeNurseProfileId is null) the Nurse Incharge for a ward.
+     */
+    setWardIncharge: async (wardId, inchargeNurseProfileId) =>
+        (await apiClient.post('/hospital/nurses/ward-incharge', { wardId, inchargeNurseProfileId })).data,
+
 
     // ========== Nurse Assignment APIs (Phase 1 Nurse module) ==========
 
@@ -888,6 +909,11 @@ const hospitalService = {
 
     updateBarcodeSetting: async (barcodeEnabled) => {
         const response = await apiClient.put('/hospital/settings/barcode', { barcodeEnabled });
+        return response.data;
+    },
+
+    updateSeparateNurseLoginSetting: async (separateNurseLogin) => {
+        const response = await apiClient.put('/hospital/settings/nurse-login', { separateNurseLogin });
         return response.data;
     },
 

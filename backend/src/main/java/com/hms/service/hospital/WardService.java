@@ -210,6 +210,7 @@ public class WardService {
         r.setBedPrice(w.getBedPrice());
         r.setTotalBeds(w.getTotalBeds());
         r.setFloorNumber(w.getFloorNumber());
+        r.setInchargeNurseId(w.getInchargeNurseId());
         return r;
     }
 }

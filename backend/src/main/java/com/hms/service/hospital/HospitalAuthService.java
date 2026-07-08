@@ -598,9 +598,47 @@ public class HospitalAuthService {
                 .map(s -> {
                     HospitalSettingDTO dto = new HospitalSettingDTO(s.getReceptionMode(), s.getBillingHandler(), s.getInClinic());
                     dto.setBarcodeEnabled(s.getBarcodeEnabled() == null ? Boolean.TRUE : s.getBarcodeEnabled());
+                    dto.setSeparateNurseLogin(s.getSeparateNurseLogin() == null ? Boolean.FALSE : s.getSeparateNurseLogin());
                     return dto;
                 })
                 .orElse(new HospitalSettingDTO("HAS_RECEPTIONIST", "RECEPTIONIST", true));
+    }
+
+    /**
+     * Toggle whether nurses/nurse incharges log in via a separate nurse login
+     * page. Kept as its own endpoint (mirrors {@link #updateBarcodeSetting})
+     * so it can be flipped independently of the reception/billing form.
+     */
+    @Transactional
+    public HospitalSettingDTO updateSeparateNurseLoginSetting(String email, boolean separateNurseLogin) {
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (user.getHospitalId() == null) throw new UnauthorizedException("Invalid hospital user account");
+        if (!"HOSPITAL_ADMIN".equals(user.getRole())) {
+            throw new UnauthorizedException("Access denied: requires HOSPITAL_ADMIN role");
+        }
+
+        Hospital hospital = hospitalRepository.findById(user.getHospitalId())
+                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+
+        HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(user.getHospitalId())
+                .orElseGet(() -> {
+                    HospitalSetting newSettings = new HospitalSetting();
+                    newSettings.setHospital(hospital);
+                    return newSettings;
+                });
+        settings.setSeparateNurseLogin(separateNurseLogin);
+        hospitalSettingRepository.save(settings);
+
+        try {
+            webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket settings update", e);
+        }
+
+        HospitalSettingDTO dto = new HospitalSettingDTO(settings.getReceptionMode(), settings.getBillingHandler(), settings.getInClinic());
+        dto.setBarcodeEnabled(settings.getBarcodeEnabled() == null ? Boolean.TRUE : settings.getBarcodeEnabled());
+        dto.setSeparateNurseLogin(separateNurseLogin);
+        return dto;
     }
 
     /**

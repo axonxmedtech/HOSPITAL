@@ -50,6 +50,12 @@ public class HospitalSettingDTO {
      */
     private Boolean barcodeEnabled = true;
 
+    /**
+     * Nursing Mgmt: when true, nurses/nurse incharges log in through a
+     * separate nurse login page instead of the shared hospital login.
+     */
+    private Boolean separateNurseLogin = false;
+
     public HospitalSettingDTO(String receptionMode, String billingHandler) {
         this.receptionMode = receptionMode;
         this.billingHandler = billingHandler;

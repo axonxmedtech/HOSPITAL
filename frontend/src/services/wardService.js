@@ -2,6 +2,9 @@ import apiClient from './apiService';
 
 const WardService = {
   getWards: () => apiClient.get('/hospital/wards').then(r => r.data),
+  // Nursing Mgmt: wards with a Nurse Incharge AND an available bed — used only
+  // by the IPD admission modal so incharge-less wards are hidden there.
+  getWardsForAdmission: () => apiClient.get('/hospital/wards/for-admission').then(r => r.data),
   createWard: (payload) => apiClient.post('/hospital/wards', payload).then(r => r.data),
   bulkCreate: (payload) => apiClient.post('/hospital/wards/bulk', payload).then(r => r.data),
   getBeds: (wardId) => apiClient.get(`/hospital/wards/${wardId}/beds`).then(r => r.data),

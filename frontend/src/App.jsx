@@ -13,6 +13,7 @@ const DoctorDashboard = lazy(() => import('./pages/hospital/DoctorDashboard'));
 const ReceptionistDashboard = lazy(() => import('./pages/hospital/ReceptionistDashboard'));
 const PharmacyDashboard = lazy(() => import('./pages/hospital/PharmacyDashboard'));
 const NurseDashboard = lazy(() => import('./pages/hospital/NurseDashboard'));
+const NurseInchargeDashboard = lazy(() => import('./pages/hospital/NurseInchargeDashboard'));
 const IpdDetails = lazy(() => import('./pages/hospital/IpdDetails'));
 
 // Minimal loading fallback shown while a lazy chunk is fetching
@@ -88,6 +89,8 @@ const LandingRedirect = () => {
             return <Navigate to="/hospital/pharmacy" replace />;
         case 'NURSE':
             return <Navigate to="/hospital/nurse" replace />;
+        case 'NURSE_INCHARGE':
+            return <Navigate to="/hospital/nurse-incharge" replace />;
         default:
             return <Navigate to={authService.getLoginUrl()} replace />;
     }
@@ -201,6 +204,17 @@ function App() {
                             <ProtectedRoute allowedRoles={['NURSE']}>
                                 <PageMeta title="HMS - Nurse">
                                     <NurseDashboard />
+                                </PageMeta>
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    <Route
+                        path="/hospital/nurse-incharge"
+                        element={
+                            <ProtectedRoute allowedRoles={['NURSE_INCHARGE']}>
+                                <PageMeta title="HMS - Nurse Incharge">
+                                    <NurseInchargeDashboard />
                                 </PageMeta>
                             </ProtectedRoute>
                         }

@@ -97,6 +97,29 @@ public interface UserRepository extends JpaRepository<User, Long> {
         org.springframework.data.domain.Page<User> searchNurses(Long hospitalId, String role, String search,
                         org.springframework.data.domain.Pageable pageable);
 
+        /**
+         * Admin nurse list: both nurse roles (NURSE + NURSE_INCHARGE) and BOTH
+         * active states, so promoted incharges and deactivated nurses remain
+         * visible/manageable (promote/demote/activate).
+         */
+        @Query("""
+                            SELECT u FROM User u
+                            WHERE u.hospitalId = :hospitalId
+                              AND u.role IN ('NURSE', 'NURSE_INCHARGE')
+                        """)
+        org.springframework.data.domain.Page<User> findAllNursesForAdmin(Long hospitalId,
+                        org.springframework.data.domain.Pageable pageable);
+
+        @Query("""
+                            SELECT u FROM User u
+                            WHERE u.hospitalId = :hospitalId
+                              AND u.role IN ('NURSE', 'NURSE_INCHARGE')
+                              AND (LOWER(u.name) LIKE LOWER(CONCAT('%', :search, '%'))
+                                   OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')))
+                        """)
+        org.springframework.data.domain.Page<User> searchAllNursesForAdmin(Long hospitalId, String search,
+                        org.springframework.data.domain.Pageable pageable);
+
         @Query(value = "SELECT COALESCE(MAX(CAST(SUBSTRING(custom_id, 4) AS UNSIGNED)), 0) FROM users WHERE role = 'NURSE' AND custom_id LIKE 'NRS%'", nativeQuery = true)
         Integer findMaxNurseSequence();
 

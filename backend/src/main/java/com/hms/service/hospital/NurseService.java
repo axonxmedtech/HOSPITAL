@@ -117,9 +117,9 @@ public class NurseService {
         Long hospitalId = requireHospitalId();
         org.springframework.data.domain.Page<User> page;
         if (org.springframework.util.StringUtils.hasText(search)) {
-            page = userRepository.searchNurses(hospitalId, "NURSE", search, pageable);
+            page = userRepository.searchAllNursesForAdmin(hospitalId, search, pageable);
         } else {
-            page = userRepository.findByHospitalIdAndRoleAndIsActiveTrue(hospitalId, "NURSE", pageable);
+            page = userRepository.findAllNursesForAdmin(hospitalId, pageable);
         }
         return page.map(this::toNurseView);
     }
@@ -136,10 +136,13 @@ public class NurseService {
         m.put("name", u.getName());
         m.put("email", u.getEmail());
         m.put("isActive", u.getIsActive());
+        m.put("isIncharge", false);
         nurseProfileRepository.findByUserId(u.getId()).ifPresent(p -> {
             m.put("phone", p.getPhone());
             m.put("licenseNumber", p.getLicenseNumber());
             m.put("wardId", p.getWardId());
+            m.put("nurseProfileId", p.getId());
+            m.put("isIncharge", Boolean.TRUE.equals(p.getIsIncharge()));
             if (p.getWardId() != null) {
                 wardRepository.findById(p.getWardId())
                         .ifPresent(w -> m.put("wardName", w.getWardName()));

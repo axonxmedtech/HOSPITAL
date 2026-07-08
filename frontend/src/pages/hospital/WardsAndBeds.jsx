@@ -3,12 +3,14 @@ import WardCard from '../../components/WardCard';
 import BedListDrawer from '../../components/BedListDrawer';
 import WardModal from '../../components/WardModal';
 import WardService from '../../services/wardService';
+import hospitalService from '../../services/hospitalService';
 import { useToast } from '../../context/ToastContext';
 import ConfirmationModal from '../../components/ConfirmationModal';
 
 const WardsAndBeds = () => {
-    const { error: toastError } = useToast();
+    const { success, error: toastError } = useToast();
     const [wards, setWards] = useState([]);
+    const [nurseIncharges, setNurseIncharges] = useState([]);
     const [loading, setLoading] = useState(false);
     const [selectedWard, setSelectedWard] = useState(null);
     const [showBeds, setShowBeds] = useState(false);
@@ -17,7 +19,7 @@ const WardsAndBeds = () => {
     const [deleting, setDeleting] = useState(null);
     const [confirmState, setConfirmState] = useState({ open: false, title: '', message: '', onConfirm: null });
 
-    useEffect(() => { fetchWards(); }, []);
+    useEffect(() => { fetchWards(); fetchNurseIncharges(); }, []);
 
     const fetchWards = async () => {
         setLoading(true);
@@ -26,6 +28,24 @@ const WardsAndBeds = () => {
             setWards(data);
         } catch (e) { console.error(e); }
         finally { setLoading(false); }
+    };
+
+    const fetchNurseIncharges = async () => {
+        try {
+            const data = await hospitalService.getNurses('', 0, 500);
+            const list = data?.content || data || [];
+            setNurseIncharges(list.filter(n => n.isIncharge));
+        } catch (e) { console.error(e); }
+    };
+
+    const onSetIncharge = async (ward, nurseProfileId) => {
+        try {
+            await hospitalService.setWardIncharge(ward.wardId, nurseProfileId);
+            success('Ward incharge updated');
+            await fetchWards();
+        } catch (e) {
+            toastError(e?.response?.data?.error || 'Failed to update ward incharge');
+        }
     };
 
     const onViewBeds = (ward) => {
@@ -75,6 +95,8 @@ const WardsAndBeds = () => {
                         onEdit={onEdit}
                         onDelete={onDelete}
                         deleting={deleting === w.wardId}
+                        inchargeOptions={nurseIncharges}
+                        onSetIncharge={onSetIncharge}
                     />
                 ))}
             </div>
