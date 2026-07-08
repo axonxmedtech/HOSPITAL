@@ -22,12 +22,18 @@ public class AdmissionFormView {
     private String hospitalAddress;
     private String hospitalCustomId;
 
+    // Ward of the admission (Nursing Mgmt Phase A3) — lets nurse-side screens
+    // resolve the ward's staff-nurse roster for the "Performed By" dropdown
+    // without a second round-trip.
+    private Long wardId;
+
     public AdmissionFormView(AdmissionForm form, String hospitalName, String hospitalLogoUrl,
-            String hospitalAddress, String hospitalCustomId) {
+            String hospitalAddress, String hospitalCustomId, Long wardId) {
         this.form = form;
         this.hospitalName = hospitalName;
         this.hospitalLogoUrl = hospitalLogoUrl;
         this.hospitalAddress = hospitalAddress;
         this.hospitalCustomId = hospitalCustomId;
+        this.wardId = wardId;
     }
 }

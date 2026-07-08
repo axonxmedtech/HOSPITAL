@@ -24,6 +24,13 @@ const MedicationPanel = ({ admissionId }) => {
     const [administeredTime, setAdministeredTime] = useState('');
     const [remarks, setRemarks] = useState('');
 
+    // Separate Nurse Login OFF ("Shared Login") -> a required "Performed By
+    // Nurse" dropdown is shown and its selection is sent with the payload.
+    const [separateLogin, setSeparateLogin] = useState(true);
+    const [wardId, setWardId] = useState(null);
+    const [nurses, setNurses] = useState([]);
+    const [performedByNurseId, setPerformedByNurseId] = useState('');
+
     const activeMeds = chart.filter((c) => (c.status || '').toUpperCase() === 'ACTIVE');
 
     const loadData = useCallback(async () => {
@@ -48,6 +55,26 @@ const MedicationPanel = ({ admissionId }) => {
     useEffect(() => { loadData(); }, [loadData]);
 
     useEffect(() => {
+        let active = true;
+        nurseService.getAdmissionForm(admissionId).then((d) => { if (active) setWardId(d?.wardId ?? null); }).catch(() => {});
+        return () => { active = false; };
+    }, [admissionId]);
+
+    useEffect(() => {
+        let active = true;
+        nurseService.getSeparateNurseLogin().then((v) => { if (active) setSeparateLogin(v); }).catch(() => {});
+        return () => { active = false; };
+    }, []);
+
+    useEffect(() => {
+        if (separateLogin === false && wardId) {
+            nurseService.getWardStaffNurses(wardId)
+                .then((list) => setNurses(Array.isArray(list) ? list : []))
+                .catch(() => setNurses([]));
+        }
+    }, [separateLogin, wardId]);
+
+    useEffect(() => {
         if (status === 'GIVEN' || status === 'DELAYED') {
             const now = new Date();
             setAdministeredTime(new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
@@ -58,6 +85,10 @@ const MedicationPanel = ({ admissionId }) => {
 
     const handleSubmit = async () => {
         if (!selectedPrescriptionId) { toastError('Please select a medicine'); return; }
+        if (separateLogin === false && !performedByNurseId) {
+            toastError('Select the nurse who performed this');
+            return;
+        }
         const payload = {
             ipdAdmissionId: admissionId,
             prescriptionId: Number(selectedPrescriptionId),
@@ -65,12 +96,14 @@ const MedicationPanel = ({ admissionId }) => {
             remarks: remarks.trim() || null,
         };
         if (administeredTime) payload.administeredTime = new Date(administeredTime).toISOString();
+        if (separateLogin === false) payload.performedByNurseId = Number(performedByNurseId);
 
         setSubmitting(true);
         try {
             await nurseService.recordMedication(payload);
             success('Medication administration recorded');
             setRemarks('');
+            setPerformedByNurseId('');
             loadData();
         } catch (err) {
             const msg = err.response?.data?.error || err.response?.data?.message || err.response?.data || 'Failed to record medication';
@@ -160,6 +193,22 @@ const MedicationPanel = ({ admissionId }) => {
                                 placeholder="e.g., Tolerated well, refused due to nausea, etc."
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
                         </div>
+                        {separateLogin === false && (
+                            <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">Performed By Nurse *</label>
+                                <select
+                                    value={performedByNurseId}
+                                    onChange={(e) => setPerformedByNurseId(e.target.value)}
+                                    required
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                >
+                                    <option value="">Select nurse…</option>
+                                    {nurses.map((n) => (
+                                        <option key={n.id} value={n.id}>{n.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
                         <div className="flex justify-end pt-2">
                             <button onClick={handleSubmit} disabled={submitting}
                                 className={`px-4 py-2 text-sm font-semibold text-white rounded-lg ${submitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-900 hover:bg-gray-800'}`}>

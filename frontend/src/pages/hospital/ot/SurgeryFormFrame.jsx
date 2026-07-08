@@ -31,6 +31,27 @@ const SurgeryFormFrame = ({ admissionId, formType, title, code, defaults = {}, r
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false); // true when current values are persisted
 
+    // Separate Nurse Login OFF ("Shared Login") -> a required "Performed By
+    // Nurse" dropdown is shown and its selection is sent with the save payload.
+    const [separateLogin, setSeparateLogin] = useState(true);
+    const [nurses, setNurses] = useState([]);
+    const [performedByNurseId, setPerformedByNurseId] = useState('');
+
+    useEffect(() => {
+        let active = true;
+        nurseService.getSeparateNurseLogin().then((v) => { if (active) setSeparateLogin(v); }).catch(() => {});
+        return () => { active = false; };
+    }, []);
+
+    useEffect(() => {
+        if (separateLogin === false && prefill.wardId) {
+            nurseService.getWardStaffNurses(prefill.wardId)
+                .then((list) => setNurses(Array.isArray(list) ? list : []))
+                .catch(() => setNurses([]));
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [separateLogin, prefill.wardId]);
+
     useEffect(() => {
         let active = true;
         setLoading(true);
@@ -58,9 +79,13 @@ const SurgeryFormFrame = ({ admissionId, formType, title, code, defaults = {}, r
     }, []);
 
     const handleSave = async () => {
+        if (separateLogin === false && !performedByNurseId) {
+            toastError('Select the nurse who performed this');
+            return;
+        }
         setSaving(true);
         try {
-            await otService.saveSurgeryForm(admissionId, formType, data);
+            await otService.saveSurgeryForm(admissionId, formType, data, separateLogin === false ? Number(performedByNurseId) : undefined);
             setSaved(true);
             success('Form saved');
         } catch (e) {
@@ -105,6 +130,22 @@ const SurgeryFormFrame = ({ admissionId, formType, title, code, defaults = {}, r
                     )}
                 </div>
 
+                {separateLogin === false && (
+                    <div className="px-6 pb-4">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Performed By Nurse *</label>
+                        <select
+                            value={performedByNurseId}
+                            onChange={(e) => setPerformedByNurseId(e.target.value)}
+                            required
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                        >
+                            <option value="">Select nurse…</option>
+                            {nurses.map((n) => (
+                                <option key={n.id} value={n.id}>{n.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
                 <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 sticky bottom-0 bg-white rounded-b-2xl">
                     {!saved && <span className="mr-auto text-xs text-amber-600">Unsaved — save to enable printing</span>}
                     <button onClick={onClose} className="px-4 py-2 rounded-lg font-semibold text-gray-600 hover:bg-gray-100">Close</button>

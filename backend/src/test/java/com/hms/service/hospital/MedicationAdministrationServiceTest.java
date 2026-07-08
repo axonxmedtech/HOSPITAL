@@ -33,6 +33,8 @@ class MedicationAdministrationServiceTest {
     @Mock IpdAdmissionRepository ipdAdmissionRepository;
     @Mock SecurityContextHelper securityHelper;
     @Mock NurseAccessGuard nurseAccessGuard;
+    @Mock com.hms.security.NurseWriteAccess nurseWriteAccess;
+    @Mock com.hms.security.PerformingNurseResolver performingNurseResolver;
     @Mock AuditLogService auditLogService;
 
     @InjectMocks MedicationAdministrationService service;
@@ -71,10 +73,11 @@ class MedicationAdministrationServiceTest {
         when(prescriptionRepository.findByIpdAdmissionIdAndStatus(1L, "ACTIVE"))
                 .thenReturn(List.of(prescription(10L)));
         when(marRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(performingNurseResolver.resolve(any())).thenReturn(20L);
 
         MedicationAdministration saved = service.record(req(10L, "GIVEN"));
 
-        verify(nurseAccessGuard).assertAssigned(1L);
+        verify(nurseWriteAccess).assertCanWriteFor(1L);
         assertThat(saved.getStatus()).isEqualTo("GIVEN");
         assertThat(saved.getAdministeredTime()).isNotNull(); // defaulted
         assertThat(saved.getPrescriptionId()).isEqualTo(10L);
@@ -90,6 +93,7 @@ class MedicationAdministrationServiceTest {
         when(prescriptionRepository.findByIpdAdmissionIdAndStatus(1L, "ACTIVE"))
                 .thenReturn(List.of(prescription(10L)));
         when(marRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(performingNurseResolver.resolve(any())).thenReturn(20L);
 
         MedicationAdministration saved = service.record(req(10L, "REFUSED"));
 
@@ -124,7 +128,7 @@ class MedicationAdministrationServiceTest {
     void record_deniedWhenNotAssigned() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
         when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
-        doThrow(new AccessDeniedException("no")).when(nurseAccessGuard).assertAssigned(1L);
+        doThrow(new AccessDeniedException("no")).when(nurseWriteAccess).assertCanWriteFor(1L);
 
         assertThatThrownBy(() -> service.record(req(10L, "GIVEN")))
                 .isInstanceOf(AccessDeniedException.class);

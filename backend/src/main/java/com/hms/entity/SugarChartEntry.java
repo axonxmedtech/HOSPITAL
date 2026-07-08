@@ -40,6 +40,9 @@ public class SugarChartEntry {
     @Column(name = "nurse_user_id", nullable = false)
     private Long nurseUserId;
 
+    @Column(name = "performed_by_nurse_id")
+    private Long performedByNurseId;
+
     @Column(name = "blood_sugar", length = 60)
     private String bloodSugar;
 

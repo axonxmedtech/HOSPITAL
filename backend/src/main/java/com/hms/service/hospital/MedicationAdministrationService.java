@@ -39,6 +39,8 @@ public class MedicationAdministrationService {
     @Autowired private IpdAdmissionRepository ipdAdmissionRepository;
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private NurseAccessGuard nurseAccessGuard;
+    @Autowired private com.hms.security.NurseWriteAccess nurseWriteAccess;
+    @Autowired private com.hms.security.PerformingNurseResolver performingNurseResolver;
     @Autowired private AuditLogService auditLogService;
 
     /**
@@ -122,7 +124,7 @@ public class MedicationAdministrationService {
             throw new IllegalArgumentException("ipdAdmissionId and prescriptionId are required");
         }
         IpdAdmission admission = requireAdmission(req.getIpdAdmissionId(), hospitalId);
-        nurseAccessGuard.assertAssigned(admission.getId());
+        nurseWriteAccess.assertCanWriteFor(admission.getId());
 
         String status = req.getStatus() == null ? null : req.getStatus().toUpperCase();
         if (!STATUSES.contains(status)) {
@@ -157,6 +159,7 @@ public class MedicationAdministrationService {
         mar.setAdministeredTime(administeredTime);
         mar.setStatus(status);
         mar.setRemarks(req.getRemarks());
+        mar.setPerformedByNurseId(performingNurseResolver.resolve(req.getPerformedByNurseId()));
         mar.setIsActive(true);
         MedicationAdministration saved = marRepository.save(mar);
 

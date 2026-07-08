@@ -35,6 +35,8 @@ public class SugarChartService {
     @Autowired private IpdAdmissionRepository ipdAdmissionRepository;
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private NurseAccessGuard nurseAccessGuard;
+    @Autowired private com.hms.security.NurseWriteAccess nurseWriteAccess;
+    @Autowired private com.hms.security.PerformingNurseResolver performingNurseResolver;
     @Autowired private AuditLogService auditLogService;
 
     @Transactional
@@ -44,7 +46,7 @@ public class SugarChartService {
             throw new IllegalArgumentException("ipdAdmissionId is required");
         }
         IpdAdmission admission = requireAdmission(req.getIpdAdmissionId(), hospitalId);
-        nurseAccessGuard.assertAssigned(admission.getId());
+        nurseWriteAccess.assertCanWriteFor(admission.getId());
         validate(req);
 
         SugarChartEntry e = new SugarChartEntry();
@@ -55,6 +57,7 @@ public class SugarChartService {
         e.setBloodSugar(trim(req.getBloodSugar()));
         e.setTreatment(trim(req.getTreatment()));
         e.setRecordedAt(LocalDateTime.now());
+        e.setPerformedByNurseId(performingNurseResolver.resolve(req.getPerformedByNurseId()));
         e.setIsActive(true);
         SugarChartEntry saved = repository.save(e);
 

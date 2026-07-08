@@ -42,6 +42,9 @@ public class VitalsRecord {
     @Column(name = "recorded_by_user_id", nullable = false)
     private Long recordedByUserId;
 
+    @Column(name = "performed_by_nurse_id")
+    private Long performedByNurseId;
+
     @Column(name = "recorded_at", nullable = false)
     private LocalDateTime recordedAt;
 

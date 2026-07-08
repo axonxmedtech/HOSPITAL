@@ -36,6 +36,8 @@ public class NursingNoteService {
     @Autowired private IpdAdmissionRepository ipdAdmissionRepository;
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private NurseAccessGuard nurseAccessGuard;
+    @Autowired private com.hms.security.NurseWriteAccess nurseWriteAccess;
+    @Autowired private com.hms.security.PerformingNurseResolver performingNurseResolver;
     @Autowired private AuditLogService auditLogService;
 
     @Transactional
@@ -45,7 +47,7 @@ public class NursingNoteService {
             throw new IllegalArgumentException("ipdAdmissionId is required");
         }
         IpdAdmission admission = requireAdmission(req.getIpdAdmissionId(), hospitalId);
-        nurseAccessGuard.assertAssigned(admission.getId());
+        nurseWriteAccess.assertCanWriteFor(admission.getId());
         String text = validateText(req.getNoteText());
 
         NursingNote n = new NursingNote();
@@ -57,6 +59,7 @@ public class NursingNoteService {
         n.setCategory(req.getCategory());
         n.setSurgeryId(req.getSurgeryId());
         n.setRecordedAt(LocalDateTime.now());
+        n.setPerformedByNurseId(performingNurseResolver.resolve(req.getPerformedByNurseId()));
         n.setIsActive(true);
         NursingNote saved = noteRepository.save(n);
 

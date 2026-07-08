@@ -96,6 +96,12 @@ const NotesPanel = ({ admissionId }) => {
     const [editingId, setEditingId] = useState(null);
     const [editText, setEditText] = useState('');
 
+    // Separate Nurse Login OFF ("Shared Login") -> a required "Performed By
+    // Nurse" dropdown is shown and its selection is sent with the payload.
+    const [separateLogin, setSeparateLogin] = useState(true);
+    const [nurses, setNurses] = useState([]);
+    const [performedByNurseId, setPerformedByNurseId] = useState('');
+
     const load = useCallback(() => {
         setLoading(true);
         nurseService.getNotes(admissionId)
@@ -115,6 +121,20 @@ const NotesPanel = ({ admissionId }) => {
         return () => { active = false; };
     }, [admissionId]);
 
+    useEffect(() => {
+        let active = true;
+        nurseService.getSeparateNurseLogin().then((v) => { if (active) setSeparateLogin(v); }).catch(() => {});
+        return () => { active = false; };
+    }, []);
+
+    useEffect(() => {
+        if (separateLogin === false && f.wardId) {
+            nurseService.getWardStaffNurses(f.wardId)
+                .then((list) => setNurses(Array.isArray(list) ? list : []))
+                .catch(() => setNurses([]));
+        }
+    }, [separateLogin, f.wardId]);
+
     const handlePrintReassessment = () => {
         const w = window.open('', '_blank');
         if (!w) { toastError('Popup blocked — allow popups to print'); return; }
@@ -130,11 +150,18 @@ const NotesPanel = ({ admissionId }) => {
 
     const add = async () => {
         if (!text.trim()) { toastError('Enter a note'); return; }
+        if (separateLogin === false && !performedByNurseId) {
+            toastError('Select the nurse who performed this');
+            return;
+        }
         setSubmitting(true);
         try {
-            await nurseService.createNote({ ipdAdmissionId: admissionId, noteText: text.trim() });
+            const payload = { ipdAdmissionId: admissionId, noteText: text.trim() };
+            if (separateLogin === false) payload.performedByNurseId = Number(performedByNurseId);
+            await nurseService.createNote(payload);
             success('Note added');
             setText('');
+            setPerformedByNurseId('');
             load();
         } catch (err) {
             const msg = err.response?.data?.error || err.response?.data?.message || err.response?.data || 'Failed to add note';
@@ -182,6 +209,22 @@ const NotesPanel = ({ admissionId }) => {
                     placeholder="Observation, patient condition, handover note…"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 />
+                {separateLogin === false && (
+                    <div className="mt-3">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Performed By Nurse *</label>
+                        <select
+                            value={performedByNurseId}
+                            onChange={(e) => setPerformedByNurseId(e.target.value)}
+                            required
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                        >
+                            <option value="">Select nurse…</option>
+                            {nurses.map((n) => (
+                                <option key={n.id} value={n.id}>{n.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
                 <div className="mt-2 flex items-center justify-between">
                     <span className="text-xs text-gray-400">{text.length}/{MAX}</span>
                     <button

@@ -31,6 +31,8 @@ class VitalsServiceTest {
     @Mock IpdAdmissionRepository ipdAdmissionRepository;
     @Mock SecurityContextHelper securityHelper;
     @Mock NurseAccessGuard nurseAccessGuard;
+    @Mock com.hms.security.NurseWriteAccess nurseWriteAccess;
+    @Mock com.hms.security.PerformingNurseResolver performingNurseResolver;
     @Mock AuditLogService auditLogService;
 
     @InjectMocks VitalsService service;
@@ -60,10 +62,11 @@ class VitalsServiceTest {
         when(securityHelper.getCurrentUserId()).thenReturn(20L);
         when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
         when(vitalsRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(performingNurseResolver.resolve(any())).thenReturn(20L);
 
         VitalsRecord saved = service.create(validReq());
 
-        verify(nurseAccessGuard).assertAssigned(1L);
+        verify(nurseWriteAccess).assertCanWriteFor(1L);
         assertThat(saved.getPatientId()).isEqualTo(500L);
         assertThat(saved.getRecordedByUserId()).isEqualTo(20L);
         assertThat(saved.getPulse()).isEqualTo(80);
@@ -74,7 +77,7 @@ class VitalsServiceTest {
     void create_deniedWhenNotAssigned() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
         when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
-        doThrow(new AccessDeniedException("not assigned")).when(nurseAccessGuard).assertAssigned(1L);
+        doThrow(new AccessDeniedException("not assigned")).when(nurseWriteAccess).assertCanWriteFor(1L);
 
         assertThatThrownBy(() -> service.create(validReq()))
                 .isInstanceOf(AccessDeniedException.class);

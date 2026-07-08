@@ -97,6 +97,12 @@ const SugarChartPanel = ({ admissionId }) => {
     const [editSugar, setEditSugar] = useState('');
     const [editTreatment, setEditTreatment] = useState('');
 
+    // Separate Nurse Login OFF ("Shared Login") -> a required "Performed By
+    // Nurse" dropdown is shown and its selection is sent with the payload.
+    const [separateLogin, setSeparateLogin] = useState(true);
+    const [nurses, setNurses] = useState([]);
+    const [performedByNurseId, setPerformedByNurseId] = useState('');
+
     const load = useCallback(() => {
         setLoading(true);
         nurseService.getSugarEntries(admissionId)
@@ -112,6 +118,20 @@ const SugarChartPanel = ({ admissionId }) => {
         return () => { active = false; };
     }, [admissionId]);
 
+    useEffect(() => {
+        let active = true;
+        nurseService.getSeparateNurseLogin().then((v) => { if (active) setSeparateLogin(v); }).catch(() => {});
+        return () => { active = false; };
+    }, []);
+
+    useEffect(() => {
+        if (separateLogin === false && f.wardId) {
+            nurseService.getWardStaffNurses(f.wardId)
+                .then((list) => setNurses(Array.isArray(list) ? list : []))
+                .catch(() => setNurses([]));
+        }
+    }, [separateLogin, f.wardId]);
+
     const errMsg = (err, fb) => {
         const data = err.response?.data;
         return data?.error || data?.message || (typeof data === 'string' ? data : null) || fb;
@@ -119,11 +139,18 @@ const SugarChartPanel = ({ admissionId }) => {
 
     const add = async () => {
         if (!bloodSugar.trim() && !treatment.trim()) { toastError('Enter a blood sugar value or treatment'); return; }
+        if (separateLogin === false && !performedByNurseId) {
+            toastError('Select the nurse who performed this');
+            return;
+        }
         setSubmitting(true);
         try {
-            await nurseService.createSugarEntry({ ipdAdmissionId: admissionId, bloodSugar: bloodSugar.trim(), treatment: treatment.trim() });
+            const payload = { ipdAdmissionId: admissionId, bloodSugar: bloodSugar.trim(), treatment: treatment.trim() };
+            if (separateLogin === false) payload.performedByNurseId = Number(performedByNurseId);
+            await nurseService.createSugarEntry(payload);
             success('Entry added');
             setBloodSugar(''); setTreatment('');
+            setPerformedByNurseId('');
             load();
         } catch (err) {
             toastError(errMsg(err, 'Failed to add entry'));
@@ -184,6 +211,22 @@ const SugarChartPanel = ({ admissionId }) => {
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
                     </div>
                 </div>
+                {separateLogin === false && (
+                    <div className="mt-3">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Performed By Nurse *</label>
+                        <select
+                            value={performedByNurseId}
+                            onChange={(e) => setPerformedByNurseId(e.target.value)}
+                            required
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                        >
+                            <option value="">Select nurse…</option>
+                            {nurses.map((n) => (
+                                <option key={n.id} value={n.id}>{n.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
                 <div className="mt-3 flex justify-end">
                     <button onClick={add} disabled={submitting}
                         className={`px-4 py-2 text-sm font-semibold text-white rounded-lg ${submitting ? 'bg-gray-400' : 'bg-gray-900 hover:bg-gray-800'}`}>

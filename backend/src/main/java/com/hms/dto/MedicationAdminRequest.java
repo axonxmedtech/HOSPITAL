@@ -15,4 +15,5 @@ public class MedicationAdminRequest {
     private LocalDateTime scheduledTime;   // optional
     private LocalDateTime administeredTime; // required for GIVEN / DELAYED
     private String remarks;
+    private Long performedByNurseId; // optional; required when Separate Nurse Login is OFF
 }

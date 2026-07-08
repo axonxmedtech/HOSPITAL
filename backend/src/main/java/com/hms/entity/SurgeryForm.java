@@ -50,6 +50,9 @@ public class SurgeryForm {
     @Column(name = "saved_by_user_id")
     private Long savedByUserId;
 
+    @Column(name = "performed_by_nurse_id")
+    private Long performedByNurseId;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

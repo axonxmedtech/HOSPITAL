@@ -71,6 +71,7 @@ public class DatabaseMigrationRunner {
         ensureNurseProfilePhaseAColumns(); // NEW — Nursing Mgmt Phase A
         ensureWardInchargeColumn();
         ensureSeparateNurseLoginColumn();
+        ensurePerformedByNurseIdColumns(); // NEW — Nursing Mgmt Phase A3, "Performed By"
     }
 
     /**
@@ -1435,6 +1436,12 @@ public class DatabaseMigrationRunner {
 
     private void ensureSeparateNurseLoginColumn() {
         addColumnIfMissing("hospital_settings", "separate_nurse_login", "TINYINT(1) NOT NULL DEFAULT 0");
+    }
+
+    private void ensurePerformedByNurseIdColumns() {
+        for (String t : new String[]{"vitals_records","nursing_notes","medication_administrations","sugar_chart_entries","surgery_forms"}) {
+            addColumnIfMissing(t, "performed_by_nurse_id", "BIGINT NULL");
+        }
     }
 
     /** Adds a column only if it does not already exist. Idempotent. */

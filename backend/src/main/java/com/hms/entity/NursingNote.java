@@ -40,6 +40,9 @@ public class NursingNote {
     @Column(name = "nurse_user_id", nullable = false)
     private Long nurseUserId;
 
+    @Column(name = "performed_by_nurse_id")
+    private Long performedByNurseId;
+
     @Column(name = "note_text", columnDefinition = "text", nullable = false)
     private String noteText;
 

@@ -37,6 +37,8 @@ public class VitalsService {
     @Autowired private IpdAdmissionRepository ipdAdmissionRepository;
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private NurseAccessGuard nurseAccessGuard;
+    @Autowired private com.hms.security.NurseWriteAccess nurseWriteAccess;
+    @Autowired private com.hms.security.PerformingNurseResolver performingNurseResolver;
     @Autowired private AuditLogService auditLogService;
 
     @Transactional
@@ -46,7 +48,7 @@ public class VitalsService {
             throw new IllegalArgumentException("ipdAdmissionId is required");
         }
         IpdAdmission admission = requireAdmission(req.getIpdAdmissionId(), hospitalId);
-        nurseAccessGuard.assertAssigned(admission.getId());
+        nurseWriteAccess.assertCanWriteFor(admission.getId());
         validate(req);
 
         VitalsRecord v = new VitalsRecord();
@@ -56,6 +58,7 @@ public class VitalsService {
         v.setRecordedByUserId(securityHelper.getCurrentUserId());
         v.setRecordedAt(req.getRecordedAt() != null ? req.getRecordedAt() : LocalDateTime.now());
         applyMeasurements(v, req);
+        v.setPerformedByNurseId(performingNurseResolver.resolve(req.getPerformedByNurseId()));
         v.setIsActive(true);
         VitalsRecord saved = vitalsRepository.save(v);
 

@@ -30,6 +30,8 @@ class NursingNoteServiceTest {
     @Mock IpdAdmissionRepository ipdAdmissionRepository;
     @Mock SecurityContextHelper securityHelper;
     @Mock NurseAccessGuard nurseAccessGuard;
+    @Mock com.hms.security.NurseWriteAccess nurseWriteAccess;
+    @Mock com.hms.security.PerformingNurseResolver performingNurseResolver;
     @Mock AuditLogService auditLogService;
 
     @InjectMocks NursingNoteService service;
@@ -56,10 +58,11 @@ class NursingNoteServiceTest {
         when(securityHelper.getCurrentUserId()).thenReturn(20L);
         when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
         when(noteRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(performingNurseResolver.resolve(any())).thenReturn(20L);
 
         NursingNote saved = service.create(req("  Patient resting comfortably  "));
 
-        verify(nurseAccessGuard).assertAssigned(1L);
+        verify(nurseWriteAccess).assertCanWriteFor(1L);
         assertThat(saved.getNoteText()).isEqualTo("Patient resting comfortably"); // trimmed
         assertThat(saved.getNurseUserId()).isEqualTo(20L);
         assertThat(saved.getPatientId()).isEqualTo(500L);
@@ -89,7 +92,7 @@ class NursingNoteServiceTest {
     void create_deniedWhenNotAssigned() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
         when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
-        doThrow(new AccessDeniedException("no")).when(nurseAccessGuard).assertAssigned(1L);
+        doThrow(new AccessDeniedException("no")).when(nurseWriteAccess).assertCanWriteFor(1L);
 
         assertThatThrownBy(() -> service.create(req("hello")))
                 .isInstanceOf(AccessDeniedException.class);

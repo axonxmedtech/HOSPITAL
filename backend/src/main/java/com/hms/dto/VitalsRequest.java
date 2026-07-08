@@ -22,4 +22,5 @@ public class VitalsRequest {
     private BigDecimal weight;
     private Integer painScore;
     private String remarks;
+    private Long performedByNurseId; // optional; required when Separate Nurse Login is OFF
 }

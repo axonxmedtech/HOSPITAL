@@ -43,6 +43,9 @@ public class MedicationAdministration {
     @Column(name = "nurse_user_id", nullable = false)
     private Long nurseUserId;
 
+    @Column(name = "performed_by_nurse_id")
+    private Long performedByNurseId;
+
     @Column(name = "scheduled_time")
     private LocalDateTime scheduledTime;
 

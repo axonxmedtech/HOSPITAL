@@ -10,4 +10,5 @@ public class SugarChartRequest {
     private Long ipdAdmissionId; // required on create; ignored on update
     private String bloodSugar;
     private String treatment;
+    private Long performedByNurseId; // optional; required when Separate Nurse Login is OFF
 }

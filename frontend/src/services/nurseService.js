@@ -225,6 +225,17 @@ const nurseService = {
     /** Assign a staff nurse to a patient's IPD admission. */
     assignPatientNurse: async (ipdAdmissionId, nurseProfileId) =>
         (await apiClient.post('/hospital/nurse-incharge/assign', { ipdAdmissionId, nurseProfileId })).data,
+
+    // --- Performed By Nurse (Phase A3) ---
+
+    /**
+     * Whether this hospital has Separate Nurse Login turned ON. When OFF
+     * ("Shared Login"), nursing entry forms must ask which nurse performed
+     * the action (a required "Performed By Nurse" dropdown) instead of
+     * relying on the logged-in user's identity.
+     */
+    getSeparateNurseLogin: async () =>
+        (await apiClient.get('/hospital/settings/operations')).data?.separateNurseLogin === true,
 };
 
 export default nurseService;

@@ -39,6 +39,8 @@ public class SurgeryFormService {
     @Autowired private SurgeryRepository surgeryRepository;
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private NurseAccessGuard nurseAccessGuard;
+    @Autowired private com.hms.security.NurseWriteAccess nurseWriteAccess;
+    @Autowired private com.hms.security.PerformingNurseResolver performingNurseResolver;
     @Autowired private ObjectMapper objectMapper;
 
     @Transactional
@@ -49,7 +51,7 @@ public class SurgeryFormService {
             throw new IllegalArgumentException("formType is required");
         }
         IpdAdmission admission = requireAdmission(req.getIpdAdmissionId(), hospitalId);
-        nurseAccessGuard.assertAssigned(admission.getId());
+        nurseWriteAccess.assertCanWriteFor(admission.getId());
 
         String formType = req.getFormType().trim();
         SurgeryForm form = formRepository.findByIpdAdmissionIdAndFormType(admission.getId(), formType)
@@ -63,6 +65,7 @@ public class SurgeryFormService {
                         List.of(Surgery.REQUESTED, Surgery.SCHEDULED, Surgery.IN_PROGRESS))
                 .stream().findFirst().ifPresent(s -> form.setSurgeryId(s.getId()));
         form.setDataJson(writeJson(req.getData()));
+        form.setPerformedByNurseId(performingNurseResolver.resolve(req.getPerformedByNurseId()));
 
         SurgeryForm saved = formRepository.save(form);
         return toView(saved);

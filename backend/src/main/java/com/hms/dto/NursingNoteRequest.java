@@ -11,4 +11,5 @@ public class NursingNoteRequest {
     private String noteText;
     private String category;     // optional (reserved)
     private Long surgeryId;       // optional — links an OT note to its surgery
+    private Long performedByNurseId; // optional; required when Separate Nurse Login is OFF
 }

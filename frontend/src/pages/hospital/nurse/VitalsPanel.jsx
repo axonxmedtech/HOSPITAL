@@ -124,6 +124,12 @@ const VitalsPanel = ({ admissionId }) => {
     const [submitting, setSubmitting] = useState(false);
     const user = authService.getCurrentUser();
 
+    // Separate Nurse Login OFF ("Shared Login") -> a required "Performed By
+    // Nurse" dropdown is shown and its selection is sent with the payload.
+    const [separateLogin, setSeparateLogin] = useState(true);
+    const [nurses, setNurses] = useState([]);
+    const [performedByNurseId, setPerformedByNurseId] = useState('');
+
     const load = useCallback(() => {
         setLoading(true);
         nurseService.getVitals(admissionId)
@@ -138,6 +144,20 @@ const VitalsPanel = ({ admissionId }) => {
         nurseService.getAdmissionForm(admissionId).then((d) => { if (active) setF(d || {}); }).catch(() => {});
         return () => { active = false; };
     }, [admissionId]);
+
+    useEffect(() => {
+        let active = true;
+        nurseService.getSeparateNurseLogin().then((v) => { if (active) setSeparateLogin(v); }).catch(() => {});
+        return () => { active = false; };
+    }, []);
+
+    useEffect(() => {
+        if (separateLogin === false && f.wardId) {
+            nurseService.getWardStaffNurses(f.wardId)
+                .then((list) => setNurses(Array.isArray(list) ? list : []))
+                .catch(() => setNurses([]));
+        }
+    }, [separateLogin, f.wardId]);
 
     const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -159,12 +179,17 @@ const VitalsPanel = ({ admissionId }) => {
         const hasAny = ['temperature', 'pulse', 'bpSystolic', 'bpDiastolic', 'respiratoryRate', 'spo2', 'weight', 'painScore']
             .some((k) => payload[k] != null);
         if (!hasAny) { toastError('Enter at least one measurement'); return; }
+        if (separateLogin === false) {
+            if (!performedByNurseId) { toastError('Select the nurse who performed this'); return; }
+            payload.performedByNurseId = Number(performedByNurseId);
+        }
 
         setSubmitting(true);
         try {
             await nurseService.createVitals(payload);
             success('Vitals recorded');
             setForm(emptyForm);
+            setPerformedByNurseId('');
             load();
         } catch (err) {
             const data = err.response?.data;
@@ -206,6 +231,22 @@ const VitalsPanel = ({ admissionId }) => {
                         </div>
                     ))}
                 </div>
+                {separateLogin === false && (
+                    <div className="mt-3">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Performed By Nurse *</label>
+                        <select
+                            value={performedByNurseId}
+                            onChange={(e) => setPerformedByNurseId(e.target.value)}
+                            required
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                        >
+                            <option value="">Select nurse…</option>
+                            {nurses.map((n) => (
+                                <option key={n.id} value={n.id}>{n.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
                 <div className="mt-3">
                     <label className="block text-xs font-medium text-gray-600 mb-1">Remarks</label>
                     <input

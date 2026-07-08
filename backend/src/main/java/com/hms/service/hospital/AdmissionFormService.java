@@ -50,13 +50,13 @@ public class AdmissionFormService {
 
         AdmissionForm form = formRepository.findByIpdAdmissionId(ipdAdmissionId)
                 .orElseGet(() -> prefillDraft(ipd, hospitalId));
-        return withBranding(form, hospitalId);
+        return withBranding(form, hospitalId, ipd);
     }
 
     @Transactional
     public com.hms.dto.AdmissionFormView save(Long ipdAdmissionId, AdmissionForm incoming) {
         Long hospitalId = requireHospitalId();
-        requireAdmission(ipdAdmissionId, hospitalId);
+        IpdAdmission ipd = requireAdmission(ipdAdmissionId, hospitalId);
         nurseAccessGuard.assertAssigned(ipdAdmissionId);
 
         AdmissionForm form = formRepository.findByIpdAdmissionId(ipdAdmissionId)
@@ -68,18 +68,19 @@ public class AdmissionFormService {
         AdmissionForm saved = formRepository.save(form);
 
         audit("ADMISSION_FORM_SAVED", "Saved admission form for IPD admission " + ipdAdmissionId, hospitalId, ipdAdmissionId);
-        return withBranding(saved, hospitalId);
+        return withBranding(saved, hospitalId, ipd);
     }
 
     /** Wrap the form with live hospital branding (name/logo/address) for printing. */
-    private com.hms.dto.AdmissionFormView withBranding(AdmissionForm form, Long hospitalId) {
+    private com.hms.dto.AdmissionFormView withBranding(AdmissionForm form, Long hospitalId, IpdAdmission ipd) {
         com.hms.entity.Hospital h = hospitalRepository.findById(hospitalId).orElse(null);
         return new com.hms.dto.AdmissionFormView(
                 form,
                 h != null ? h.getName() : null,
                 h != null ? h.getLogoUrl() : null,
                 h != null ? h.getAddress() : null,
-                h != null ? h.getCustomId() : null);
+                h != null ? h.getCustomId() : null,
+                ipd != null ? ipd.getWardId() : null);
     }
 
     /**

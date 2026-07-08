@@ -24,8 +24,11 @@ const otService = {
     // --- OT/NABH surgery forms (nurse fill/save/print) ---
     getSurgeryForm: async (admissionId, formType) =>
         (await apiClient.get(`/hospital/surgery-forms/admission/${admissionId}/${formType}`)).data,
-    saveSurgeryForm: async (admissionId, formType, data) =>
-        (await apiClient.post('/hospital/surgery-forms', { ipdAdmissionId: admissionId, formType, data })).data,
+    saveSurgeryForm: async (admissionId, formType, data, performedByNurseId) =>
+        (await apiClient.post('/hospital/surgery-forms', {
+            ipdAdmissionId: admissionId, formType, data,
+            ...(performedByNurseId != null ? { performedByNurseId } : {}),
+        })).data,
     getSavedFormTypes: async (admissionId) =>
         (await apiClient.get(`/hospital/surgery-forms/admission/${admissionId}`)).data,
 };
