@@ -75,6 +75,7 @@ public class DatabaseMigrationRunner {
         ensureShiftTemplatesTable(); // NEW — Nursing Mgmt Phase B1
         ensureAppointmentSlotsTable(); // NEW — Nursing Mgmt Phase B1
         ensureNurseShiftSchedulesTable(); // NEW — Nursing Mgmt Phase B2
+        ensureNurseAttendanceTable(); // NEW — Nursing Mgmt Phase D
         ensureBedStatusAuditsTable(); // NEW — Nursing Mgmt Phase C1
     }
 
@@ -116,6 +117,25 @@ public class DatabaseMigrationRunner {
                 log.info("DB migration applied: nurse_shift_schedules table created");
             }
         } catch (Exception e) { log.warn("DB migration skipped (nurse_shift_schedules): {}", e.getMessage()); }
+    }
+
+    private void ensureNurseAttendanceTable() {
+        try {
+            Integer c = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'nurse_attendance'", Integer.class);
+            if (c != null && c == 0) {
+                jdbcTemplate.execute("CREATE TABLE nurse_attendance (" +
+                    "id BIGINT NOT NULL AUTO_INCREMENT, public_id VARCHAR(255) NOT NULL, hospital_id BIGINT NOT NULL," +
+                    "nurse_profile_id BIGINT NOT NULL, ward_id BIGINT, attendance_date DATE NOT NULL, status VARCHAR(20) NOT NULL," +
+                    "shift_template_id BIGINT, shift_start_time TIME, shift_end_time TIME," +
+                    "check_in_time TIME, check_out_time TIME, remarks VARCHAR(255), marked_by_user_id BIGINT," +
+                    "created_at DATETIME(6) NOT NULL, updated_at DATETIME(6)," +
+                    "PRIMARY KEY (id), UNIQUE KEY UK_na_public (public_id)," +
+                    "UNIQUE KEY UK_na_nurse_date (nurse_profile_id, attendance_date)," +
+                    "KEY idx_na_hospital_date (hospital_id, attendance_date), KEY idx_na_ward_date (ward_id, attendance_date)," +
+                    "FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE)");
+                log.info("DB migration applied: nurse_attendance table created");
+            }
+        } catch (Exception e) { log.warn("DB migration skipped (nurse_attendance): {}", e.getMessage()); }
     }
 
     /**

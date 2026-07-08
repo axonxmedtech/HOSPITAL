@@ -1475,6 +1475,32 @@ CREATE TABLE `nurse_shift_schedules` (
   CONSTRAINT `FK_nss_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- Nursing Mgmt Phase D — daily nurse attendance
+CREATE TABLE `nurse_attendance` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `nurse_profile_id` bigint NOT NULL,
+  `ward_id` bigint DEFAULT NULL,
+  `attendance_date` date NOT NULL,
+  `status` varchar(20) NOT NULL,
+  `shift_template_id` bigint DEFAULT NULL,
+  `shift_start_time` time DEFAULT NULL,
+  `shift_end_time` time DEFAULT NULL,
+  `check_in_time` time DEFAULT NULL,
+  `check_out_time` time DEFAULT NULL,
+  `remarks` varchar(255) DEFAULT NULL,
+  `marked_by_user_id` bigint DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  `updated_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_na_public` (`public_id`),
+  UNIQUE KEY `UK_na_nurse_date` (`nurse_profile_id`,`attendance_date`),
+  KEY `idx_na_hospital_date` (`hospital_id`,`attendance_date`),
+  KEY `idx_na_ward_date` (`ward_id`,`attendance_date`),
+  CONSTRAINT `FK_na_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 -- Nursing Mgmt Phase C1 — bed status change audit trail
 CREATE TABLE `bed_status_audits` (
   `id` bigint NOT NULL AUTO_INCREMENT,
