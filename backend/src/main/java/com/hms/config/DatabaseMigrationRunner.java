@@ -75,6 +75,27 @@ public class DatabaseMigrationRunner {
         ensureShiftTemplatesTable(); // NEW — Nursing Mgmt Phase B1
         ensureAppointmentSlotsTable(); // NEW — Nursing Mgmt Phase B1
         ensureNurseShiftSchedulesTable(); // NEW — Nursing Mgmt Phase B2
+        ensureBedStatusAuditsTable(); // NEW — Nursing Mgmt Phase C1
+    }
+
+    /**
+     * Creates the bed_status_audits table if absent (Nursing Mgmt Phase C1).
+     * Idempotent; mirrors setup/schema-full.sql.
+     */
+    private void ensureBedStatusAuditsTable() {
+        try {
+            Integer c = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bed_status_audits'", Integer.class);
+            if (c != null && c == 0) {
+                jdbcTemplate.execute("CREATE TABLE bed_status_audits (" +
+                    "id BIGINT NOT NULL AUTO_INCREMENT, public_id VARCHAR(255) NOT NULL, hospital_id BIGINT NOT NULL," +
+                    "bed_id BIGINT NOT NULL, ward_id BIGINT, previous_status VARCHAR(20), new_status VARCHAR(20) NOT NULL," +
+                    "changed_by_user_id BIGINT, remarks VARCHAR(255), changed_at DATETIME(6) NOT NULL," +
+                    "PRIMARY KEY (id), UNIQUE KEY UK_bsa_public (public_id)," +
+                    "KEY idx_bsa_bed_time (bed_id, changed_at), KEY idx_bsa_hospital (hospital_id)," +
+                    "FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE)");
+                log.info("DB migration applied: bed_status_audits table created");
+            }
+        } catch (Exception e) { log.warn("DB migration skipped (bed_status_audits): {}", e.getMessage()); }
     }
 
     /**

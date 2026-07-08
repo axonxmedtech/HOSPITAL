@@ -1474,3 +1474,22 @@ CREATE TABLE `nurse_shift_schedules` (
   KEY `idx_nss_ward_date` (`ward_id`,`shift_date`),
   CONSTRAINT `FK_nss_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Nursing Mgmt Phase C1 — bed status change audit trail
+CREATE TABLE `bed_status_audits` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `bed_id` bigint NOT NULL,
+  `ward_id` bigint DEFAULT NULL,
+  `previous_status` varchar(20) DEFAULT NULL,
+  `new_status` varchar(20) NOT NULL,
+  `changed_by_user_id` bigint DEFAULT NULL,
+  `remarks` varchar(255) DEFAULT NULL,
+  `changed_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_bsa_public` (`public_id`),
+  KEY `idx_bsa_bed_time` (`bed_id`,`changed_at`),
+  KEY `idx_bsa_hospital` (`hospital_id`),
+  CONSTRAINT `FK_bsa_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
