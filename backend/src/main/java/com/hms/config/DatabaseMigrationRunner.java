@@ -72,6 +72,45 @@ public class DatabaseMigrationRunner {
         ensureWardInchargeColumn();
         ensureSeparateNurseLoginColumn();
         ensurePerformedByNurseIdColumns(); // NEW — Nursing Mgmt Phase A3, "Performed By"
+        ensureShiftTemplatesTable(); // NEW — Nursing Mgmt Phase B1
+        ensureAppointmentSlotsTable(); // NEW — Nursing Mgmt Phase B1
+    }
+
+    /**
+     * Creates the shift_templates table if absent (Nursing Mgmt Phase B1).
+     * Idempotent; mirrors setup/schema-full.sql.
+     */
+    private void ensureShiftTemplatesTable() {
+        try {
+            Integer c = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'shift_templates'", Integer.class);
+            if (c != null && c == 0) {
+                jdbcTemplate.execute("CREATE TABLE shift_templates (" +
+                    "id BIGINT NOT NULL AUTO_INCREMENT, public_id VARCHAR(255) NOT NULL, hospital_id BIGINT NOT NULL," +
+                    "name VARCHAR(60) NOT NULL, start_time TIME NOT NULL, end_time TIME NOT NULL," +
+                    "is_active TINYINT(1) NOT NULL DEFAULT 1, created_at DATETIME(6) NOT NULL," +
+                    "PRIMARY KEY (id), UNIQUE KEY UK_shift_template_public (public_id), KEY idx_shift_template_hospital (hospital_id)," +
+                    "FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE)");
+                log.info("DB migration applied: shift_templates table created");
+            }
+        } catch (Exception e) { log.warn("DB migration skipped (shift_templates): {}", e.getMessage()); }
+    }
+
+    /**
+     * Creates the appointment_slots table if absent (Nursing Mgmt Phase B1).
+     * Idempotent; mirrors setup/schema-full.sql.
+     */
+    private void ensureAppointmentSlotsTable() {
+        try {
+            Integer c = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'appointment_slots'", Integer.class);
+            if (c != null && c == 0) {
+                jdbcTemplate.execute("CREATE TABLE appointment_slots (" +
+                    "id BIGINT NOT NULL AUTO_INCREMENT, public_id VARCHAR(255) NOT NULL, hospital_id BIGINT NOT NULL," +
+                    "start_time TIME NOT NULL, end_time TIME NOT NULL, is_active TINYINT(1) NOT NULL DEFAULT 1, created_at DATETIME(6) NOT NULL," +
+                    "PRIMARY KEY (id), UNIQUE KEY UK_appt_slot_public (public_id), KEY idx_appt_slot_hospital (hospital_id)," +
+                    "FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE)");
+                log.info("DB migration applied: appointment_slots table created");
+            }
+        } catch (Exception e) { log.warn("DB migration skipped (appointment_slots): {}", e.getMessage()); }
     }
 
     /**

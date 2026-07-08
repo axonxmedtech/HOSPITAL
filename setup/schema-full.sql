@@ -1422,3 +1422,34 @@ CREATE TABLE `surgery_forms` (
   KEY `idx_surgery_form_hospital` (`hospital_id`),
   CONSTRAINT `FK_surgery_form_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Nursing Mgmt Phase B1 — reusable nurse shift definitions
+CREATE TABLE `shift_templates` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `name` varchar(60) NOT NULL,
+  `start_time` time NOT NULL,
+  `end_time` time NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_shift_template_public` (`public_id`),
+  KEY `idx_shift_template_hospital` (`hospital_id`),
+  CONSTRAINT `FK_shift_template_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Nursing Mgmt Phase B1 — bookable appointment slot definitions
+CREATE TABLE `appointment_slots` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `start_time` time NOT NULL,
+  `end_time` time NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_appt_slot_public` (`public_id`),
+  KEY `idx_appt_slot_hospital` (`hospital_id`),
+  CONSTRAINT `FK_appt_slot_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
