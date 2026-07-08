@@ -1453,3 +1453,24 @@ CREATE TABLE `appointment_slots` (
   KEY `idx_appt_slot_hospital` (`hospital_id`),
   CONSTRAINT `FK_appt_slot_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Nursing Mgmt Phase B2 — nurse shift schedules (snapshots template times per date)
+CREATE TABLE `nurse_shift_schedules` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `nurse_profile_id` bigint NOT NULL,
+  `ward_id` bigint DEFAULT NULL,
+  `shift_date` date NOT NULL,
+  `shift_template_id` bigint NOT NULL,
+  `start_time` time NOT NULL,
+  `end_time` time NOT NULL,
+  `created_by_user_id` bigint DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_nss_public` (`public_id`),
+  UNIQUE KEY `UK_nss_nurse_date` (`nurse_profile_id`,`shift_date`),
+  KEY `idx_nss_hospital_date` (`hospital_id`,`shift_date`),
+  KEY `idx_nss_ward_date` (`ward_id`,`shift_date`),
+  CONSTRAINT `FK_nss_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

@@ -14,6 +14,7 @@ import MyPatientsView from './nurse/MyPatientsView';
 import NursePatientDetail from './nurse/NursePatientDetail';
 import MyTasksView from './nurse/MyTasksView';
 import NurseFormsView from './nurse/NurseFormsView';
+import MyShiftsView from './nurse/MyShiftsView';
 
 /**
  * NurseDashboard - Phase 1 Nurse portal shell.
@@ -103,6 +104,7 @@ const NurseDashboard = () => {
         { id: 'dashboard', label: 'Dashboard' },
         { id: 'my-patients', label: 'My Patients' },
         { id: 'my-tasks', label: 'My Tasks' },
+        { id: 'my-shifts', label: 'My Shifts' },
         { id: 'forms', label: 'Forms' },
     ];
 
@@ -121,6 +123,8 @@ const NurseDashboard = () => {
                 return <MyPatientsView onOpenPatient={openPatient} refreshKey={refreshKey} />;
             case 'my-tasks':
                 return <MyTasksView refreshKey={refreshKey} />;
+            case 'my-shifts':
+                return <MyShiftsView refreshKey={refreshKey} />;
             case 'forms':
                 return <NurseFormsView />;
             case 'dashboard':
@@ -133,6 +137,7 @@ const NurseDashboard = () => {
         if (activeTab === 'patient-detail') return 'Patient Details';
         if (activeTab === 'my-patients') return 'My Patients';
         if (activeTab === 'my-tasks') return 'My Tasks';
+        if (activeTab === 'my-shifts') return 'My Shifts';
         if (activeTab === 'forms') return 'Forms';
         return 'Nurse Dashboard';
     };

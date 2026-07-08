@@ -74,6 +74,27 @@ public class DatabaseMigrationRunner {
         ensurePerformedByNurseIdColumns(); // NEW — Nursing Mgmt Phase A3, "Performed By"
         ensureShiftTemplatesTable(); // NEW — Nursing Mgmt Phase B1
         ensureAppointmentSlotsTable(); // NEW — Nursing Mgmt Phase B1
+        ensureNurseShiftSchedulesTable(); // NEW — Nursing Mgmt Phase B2
+    }
+
+    /**
+     * Creates the nurse_shift_schedules table if absent (Nursing Mgmt Phase B2).
+     * Idempotent; mirrors setup/schema-full.sql.
+     */
+    private void ensureNurseShiftSchedulesTable() {
+        try {
+            Integer c = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'nurse_shift_schedules'", Integer.class);
+            if (c != null && c == 0) {
+                jdbcTemplate.execute("CREATE TABLE nurse_shift_schedules (" +
+                    "id BIGINT NOT NULL AUTO_INCREMENT, public_id VARCHAR(255) NOT NULL, hospital_id BIGINT NOT NULL," +
+                    "nurse_profile_id BIGINT NOT NULL, ward_id BIGINT, shift_date DATE NOT NULL, shift_template_id BIGINT NOT NULL," +
+                    "start_time TIME NOT NULL, end_time TIME NOT NULL, created_by_user_id BIGINT, created_at DATETIME(6) NOT NULL," +
+                    "PRIMARY KEY (id), UNIQUE KEY UK_nss_public (public_id), UNIQUE KEY UK_nss_nurse_date (nurse_profile_id, shift_date)," +
+                    "KEY idx_nss_hospital_date (hospital_id, shift_date), KEY idx_nss_ward_date (ward_id, shift_date)," +
+                    "FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE)");
+                log.info("DB migration applied: nurse_shift_schedules table created");
+            }
+        } catch (Exception e) { log.warn("DB migration skipped (nurse_shift_schedules): {}", e.getMessage()); }
     }
 
     /**
