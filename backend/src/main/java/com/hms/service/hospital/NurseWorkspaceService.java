@@ -256,6 +256,22 @@ public class NurseWorkspaceService {
         return out;
     }
 
+    /** The wards the caller is incharge of (all hospital wards for admin), with their beds. */
+    public List<java.util.Map<String, Object>> getMyWards() {
+        List<Long> wardIds = nurseInchargeGuard.myWardIds();
+        List<java.util.Map<String, Object>> out = new ArrayList<>();
+        for (Long id : wardIds) {
+            wardRepository.findById(id).ifPresent(w -> {
+                java.util.Map<String, Object> m = new java.util.HashMap<>();
+                m.put("wardId", w.getWardId());
+                m.put("wardName", w.getWardName());
+                m.put("beds", bedRepository.findByWardIdAndHospitalId(w.getWardId(), w.getHospitalId()));
+                out.add(m);
+            });
+        }
+        return out;
+    }
+
     private Long requireHospitalId() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {

@@ -35,4 +35,8 @@ public class NurseInchargeController {
         workspaceService.assignPatientNurse(req.getIpdAdmissionId(), req.getNurseProfileId());
         return ResponseEntity.ok(Map.of("message", "Nurse assigned"));
     }
+
+    @GetMapping("/wards")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','NURSE_INCHARGE')")
+    public ResponseEntity<?> myWards() { return ResponseEntity.ok(workspaceService.getMyWards()); }
 }

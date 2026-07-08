@@ -11,6 +11,7 @@ import nurseService from '../../services/nurseService';
 import useWebSocket from '../../hooks/useWebSocket';
 import { useToast } from '../../context/ToastContext';
 import ShiftScheduleView from './nurse-incharge/ShiftScheduleView';
+import WardBedsView from './nurse-incharge/WardBedsView';
 
 /**
  * NurseInchargeDashboard - Phase A1 shell for the Nurse Incharge role.
@@ -39,11 +40,13 @@ const NurseInchargeDashboard = () => {
         { id: 'my-nurses', label: 'My Nurses' },
         { id: 'my-ward-patients', label: 'My Ward Patients' },
         { id: 'schedule', label: 'Schedule' },
+        { id: 'beds', label: 'Beds' },
     ];
 
     const titleFor = () => {
         if (activeTab === 'my-ward-patients') return 'My Ward Patients';
         if (activeTab === 'schedule') return 'Schedule';
+        if (activeTab === 'beds') return 'Beds';
         return 'My Nurses';
     };
 
@@ -53,6 +56,8 @@ const NurseInchargeDashboard = () => {
                 return <WardPatientsView refreshKey={refreshKey} />;
             case 'schedule':
                 return <ShiftScheduleView />;
+            case 'beds':
+                return <WardBedsView />;
             case 'my-nurses':
             default:
                 return (

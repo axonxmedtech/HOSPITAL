@@ -61,19 +61,15 @@ const ShiftScheduleView = () => {
     const fromStr = toYMD(days[0]);
     const toStr = toYMD(days[6]);
 
-    // Load the incharge's wards from their ward-patients list (no dedicated "my wards" endpoint).
+    // Load the incharge's wards (all wards for admin).
     useEffect(() => {
         let active = true;
         setWardsLoading(true);
-        nurseService.getWardPatients()
+        nurseService.getMyWards()
             .then((data) => {
                 if (!active) return;
                 const list = Array.isArray(data) ? data : [];
-                const seen = new Map();
-                list.forEach((p) => {
-                    if (p.wardId != null && !seen.has(p.wardId)) seen.set(p.wardId, p.wardName || `Ward ${p.wardId}`);
-                });
-                const wardList = Array.from(seen.entries()).map(([wardId, wardName]) => ({ wardId, wardName }));
+                const wardList = list.map((w) => ({ wardId: w.wardId, wardName: w.wardName || `Ward ${w.wardId}` }));
                 setWards(wardList);
                 setSelectedWardId((prev) => prev ?? (wardList[0]?.wardId ?? null));
             })

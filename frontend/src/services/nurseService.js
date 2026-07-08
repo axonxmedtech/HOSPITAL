@@ -236,6 +236,23 @@ const nurseService = {
      */
     getSeparateNurseLogin: async () =>
         (await apiClient.get('/hospital/settings/operations')).data?.separateNurseLogin === true,
+
+    // --- Beds (Nursing Mgmt Phase C3) ---
+
+    /** The incharge's wards (all wards for admin), each with its beds. */
+    getMyWards: async () => (await apiClient.get('/hospital/nurse-incharge/wards')).data,
+
+    /** Mark a bed awaiting cleaning as cleaned -> available. */
+    markBedCleaned: async (bedId, remarks) => (await apiClient.post(`/hospital/beds/${bedId}/cleaned`, { remarks })).data,
+
+    /** Put a non-occupied bed under maintenance. */
+    markBedMaintenance: async (bedId, remarks) => (await apiClient.post(`/hospital/beds/${bedId}/maintenance`, { remarks })).data,
+
+    /** Return a bed under maintenance back to available. */
+    markBedAvailable: async (bedId, remarks) => (await apiClient.post(`/hospital/beds/${bedId}/available`, { remarks })).data,
+
+    /** Status-change history for a bed. */
+    getBedHistory: async (bedId) => (await apiClient.get(`/hospital/beds/${bedId}/history`)).data,
 };
 
 export default nurseService;
