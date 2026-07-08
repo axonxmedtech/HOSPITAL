@@ -20,6 +20,9 @@ public class NurseAccessGuard {
     @Autowired
     private SecurityContextHelper securityHelper;
 
+    @Autowired
+    private com.hms.service.hospital.NurseCoverageService coverageService;
+
     /** users.id of the current nurse. */
     public Long currentNurseId() {
         return securityHelper.getCurrentUserId();
@@ -27,14 +30,15 @@ public class NurseAccessGuard {
 
     /**
      * Throws AccessDeniedException (403) unless the current nurse has an active
-     * assignment to the admission.
+     * assignment to the admission, or is currently substituting for a nurse who
+     * does (Nursing Mgmt Phase F).
      */
     public void assertAssigned(Long ipdAdmissionId) {
         Long nurseId = securityHelper.getCurrentUserId();
         boolean assigned = assignmentRepository
                 .existsByIpdAdmissionIdAndNurseUserIdAndIsActiveTrue(ipdAdmissionId, nurseId);
-        if (!assigned) {
-            throw new AccessDeniedException("You are not assigned to this patient");
-        }
+        if (assigned) return;
+        if (coverageService.coversAdmission(nurseId, ipdAdmissionId, java.time.LocalDate.now())) return;
+        throw new AccessDeniedException("You are not assigned to this patient");
     }
 }

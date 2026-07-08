@@ -43,6 +43,7 @@ public class NurseWorkspaceService {
     @Autowired private NurseAssignmentService nurseAssignmentService;
     @Autowired private NurseShiftScheduleService nurseShiftScheduleService;
     @Autowired private com.hms.repository.NurseAttendanceRepository nurseAttendanceRepository;
+    @Autowired private NurseCoverageService coverageService;
 
     private static final List<String> ACTIVE_SURGERY_STATUSES =
             List.of(Surgery.REQUESTED, Surgery.SCHEDULED, Surgery.IN_PROGRESS);
@@ -82,37 +83,57 @@ public class NurseWorkspaceService {
         Long hospitalId = requireHospitalId();
         Long nurseId = securityHelper.getCurrentUserId();
 
-        List<PatientNurseAssignment> assignments = assignmentRepository.findByNurseUserIdAndIsActiveTrue(nurseId);
-        List<MyPatientDTO> result = new ArrayList<>();
-        for (PatientNurseAssignment a : assignments) {
-            if (!hospitalId.equals(a.getHospitalId())) continue; // defensive scope
-            IpdAdmission ipd = ipdAdmissionRepository.findById(a.getIpdAdmissionId()).orElse(null);
-            if (ipd == null || "DISCHARGED".equalsIgnoreCase(ipd.getStatus())) continue;
+        java.util.Map<Long, MyPatientDTO> byAdmission = new java.util.LinkedHashMap<>();
 
-            MyPatientDTO dto = new MyPatientDTO();
-            dto.setIpdAdmissionId(ipd.getId());
-            dto.setIpdNumber(ipd.getIpdNumber());
-            dto.setPrimaryDiagnosis(ipd.getPrimaryDiagnosis());
-            dto.setAdmissionDateTime(ipd.getAdmissionDatetime());
-            dto.setStatus(ipd.getStatus());
-            dto.setAdmissionConfirmed(Boolean.TRUE.equals(ipd.getAdmissionConfirmed()));
-            patientRepository.findById(ipd.getPatientId()).ifPresent(p -> {
-                dto.setPatientName(p.getName());
-                dto.setAge(p.getAge());
-                dto.setGender(p.getGender());
-            });
-            doctorRepository.findById(ipd.getDoctorId()).ifPresent(d -> dto.setDoctorName(d.getName()));
-            if (ipd.getWardId() != null) {
-                wardRepository.findById(ipd.getWardId()).ifPresent(w -> dto.setWardName(w.getWardName()));
-            }
-            if (ipd.getBedId() != null) {
-                bedRepository.findById(ipd.getBedId()).ifPresent(b -> dto.setBedCode(b.getBedCode()));
-            }
-            surgeryRepository.findByIpdAdmissionIdAndStatusIn(ipd.getId(), ACTIVE_SURGERY_STATUSES).stream()
-                    .findFirst().ifPresent(s -> dto.setSurgeryStatus(s.getStatus()));
-            result.add(dto);
+        // The nurse's own active assignments.
+        for (PatientNurseAssignment a : assignmentRepository.findByNurseUserIdAndIsActiveTrue(nurseId)) {
+            if (!hospitalId.equals(a.getHospitalId())) continue; // defensive scope
+            MyPatientDTO dto = buildMyPatient(a.getIpdAdmissionId(), null);
+            if (dto != null) byAdmission.putIfAbsent(dto.getIpdAdmissionId(), dto);
         }
-        return result;
+
+        // Plus the patients of any primary nurse this nurse is currently covering.
+        for (Long primaryUserId : coverageService.coveredUserIds(nurseId, java.time.LocalDate.now())) {
+            String primaryName = nurseProfileRepository.findByUserId(primaryUserId)
+                    .map(com.hms.entity.NurseProfile::getName).orElse(null);
+            for (PatientNurseAssignment a : assignmentRepository.findByNurseUserIdAndIsActiveTrue(primaryUserId)) {
+                if (!hospitalId.equals(a.getHospitalId())) continue;
+                if (byAdmission.containsKey(a.getIpdAdmissionId())) continue;
+                MyPatientDTO dto = buildMyPatient(a.getIpdAdmissionId(), primaryName);
+                if (dto != null) byAdmission.putIfAbsent(dto.getIpdAdmissionId(), dto);
+            }
+        }
+        return new ArrayList<>(byAdmission.values());
+    }
+
+    /** Build the display DTO for an admission, or null if missing/discharged. */
+    private MyPatientDTO buildMyPatient(Long admissionId, String coveredFor) {
+        IpdAdmission ipd = ipdAdmissionRepository.findById(admissionId).orElse(null);
+        if (ipd == null || "DISCHARGED".equalsIgnoreCase(ipd.getStatus())) return null;
+
+        MyPatientDTO dto = new MyPatientDTO();
+        dto.setIpdAdmissionId(ipd.getId());
+        dto.setIpdNumber(ipd.getIpdNumber());
+        dto.setPrimaryDiagnosis(ipd.getPrimaryDiagnosis());
+        dto.setAdmissionDateTime(ipd.getAdmissionDatetime());
+        dto.setStatus(ipd.getStatus());
+        dto.setAdmissionConfirmed(Boolean.TRUE.equals(ipd.getAdmissionConfirmed()));
+        dto.setCoveredFor(coveredFor);
+        patientRepository.findById(ipd.getPatientId()).ifPresent(p -> {
+            dto.setPatientName(p.getName());
+            dto.setAge(p.getAge());
+            dto.setGender(p.getGender());
+        });
+        doctorRepository.findById(ipd.getDoctorId()).ifPresent(d -> dto.setDoctorName(d.getName()));
+        if (ipd.getWardId() != null) {
+            wardRepository.findById(ipd.getWardId()).ifPresent(w -> dto.setWardName(w.getWardName()));
+        }
+        if (ipd.getBedId() != null) {
+            bedRepository.findById(ipd.getBedId()).ifPresent(b -> dto.setBedCode(b.getBedCode()));
+        }
+        surgeryRepository.findByIpdAdmissionIdAndStatusIn(ipd.getId(), ACTIVE_SURGERY_STATUSES).stream()
+                .findFirst().ifPresent(s -> dto.setSurgeryStatus(s.getStatus()));
+        return dto;
     }
 
     /**
@@ -250,7 +271,7 @@ public class NurseWorkspaceService {
         Long hospitalId = requireHospitalId();
         List<java.util.Map<String, Object>> out = new ArrayList<>();
         for (com.hms.entity.NurseProfile p :
-                nurseProfileRepository.findByWardIdAndIsInchargeFalseAndIsActiveTrue(wardId)) {
+                coverageService.effectiveWardNurses(wardId, java.time.LocalDate.now())) {
             if (!hospitalId.equals(p.getHospitalId()) || p.getUserId() == null) continue;
             out.add(java.util.Map.of("id", p.getId(), "name", p.getName()));
         }
@@ -301,7 +322,7 @@ public class NurseWorkspaceService {
         // Nurses (active, non-incharge, in my wards) + today's attendance
         for (Long wardId : wardIds) {
             dto.getNurses().setTotal(dto.getNurses().getTotal()
-                    + nurseProfileRepository.findByWardIdAndIsInchargeFalseAndIsActiveTrue(wardId).size());
+                    + coverageService.effectiveWardNurses(wardId, today).size());
             for (com.hms.entity.NurseAttendance a : nurseAttendanceRepository.findByWardIdAndAttendanceDate(wardId, today)) {
                 switch (a.getStatus() == null ? "" : a.getStatus()) {
                     case "PRESENT", "LATE", "HALF_DAY" -> dto.getNurses().setPresent(dto.getNurses().getPresent() + 1);

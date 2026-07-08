@@ -25,4 +25,7 @@ public class MyPatientDTO {
     // Status of an active surgery for this patient (REQUESTED / SCHEDULED /
     // IN_PROGRESS), or null when there is no active surgery.
     private String surgeryStatus;
+    // When this patient appears because the nurse is substituting for someone,
+    // the primary nurse's name; null for the nurse's own assignments.
+    private String coveredFor;
 }

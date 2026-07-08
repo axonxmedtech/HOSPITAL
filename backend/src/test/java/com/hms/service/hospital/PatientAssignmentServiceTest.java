@@ -23,6 +23,7 @@ class PatientAssignmentServiceTest {
     @Mock HospitalSettingRepository hospitalSettingRepository;
     @Mock NurseProfileRepository nurseProfileRepository;
     @Mock NurseAssignmentService nurseAssignmentService;
+    @Mock NurseCoverageService coverageService;
 
     @InjectMocks PatientAssignmentService service;
 
@@ -52,7 +53,7 @@ class PatientAssignmentServiceTest {
     @Test
     void loginOn_oneStaffNurse_autoAssigns() {
         loginMode(true);
-        when(nurseProfileRepository.findByWardIdAndIsInchargeFalseAndIsActiveTrue(3L))
+        when(coverageService.effectiveWardNurses(eq(3L), any()))
                 .thenReturn(List.of(nurse(11L, 20L, false)));
         service.onAdmission(admission());
         verify(nurseAssignmentService).assignNurse(eq(1L), eq(20L), any());
@@ -61,7 +62,7 @@ class PatientAssignmentServiceTest {
     @Test
     void loginOn_multipleStaffNurses_noAutoAssign() {
         loginMode(true);
-        when(nurseProfileRepository.findByWardIdAndIsInchargeFalseAndIsActiveTrue(3L))
+        when(coverageService.effectiveWardNurses(eq(3L), any()))
                 .thenReturn(List.of(nurse(11L, 20L, false), nurse(12L, 21L, false)));
         service.onAdmission(admission());
         verify(nurseAssignmentService, never()).assignNurse(anyLong(), anyLong(), any());
@@ -70,7 +71,7 @@ class PatientAssignmentServiceTest {
     @Test
     void loginOn_zeroStaffNurses_noAutoAssign() {
         loginMode(true);
-        when(nurseProfileRepository.findByWardIdAndIsInchargeFalseAndIsActiveTrue(3L)).thenReturn(List.of());
+        when(coverageService.effectiveWardNurses(eq(3L), any())).thenReturn(List.of());
         service.onAdmission(admission());
         verify(nurseAssignmentService, never()).assignNurse(anyLong(), anyLong(), any());
     }

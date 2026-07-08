@@ -28,6 +28,7 @@ public class PatientAssignmentService {
     @Autowired private HospitalSettingRepository hospitalSettingRepository;
     @Autowired private NurseProfileRepository nurseProfileRepository;
     @Autowired private NurseAssignmentService nurseAssignmentService;
+    @Autowired private NurseCoverageService coverageService;
 
     public void onAdmission(IpdAdmission admission) {
         try {
@@ -35,9 +36,10 @@ public class PatientAssignmentService {
                     .map(s -> Boolean.TRUE.equals(s.getSeparateNurseLogin())).orElse(false);
             if (!separateLogin) return; // incharge handles the patient; no staff assignment
 
-            List<NurseProfile> staff = nurseProfileRepository
-                    .findByWardIdAndIsInchargeFalseAndIsActiveTrue(admission.getWardId());
-            if (staff.size() == 1 && staff.get(0).getUserId() != null) {
+            List<NurseProfile> staff = coverageService
+                    .effectiveWardNurses(admission.getWardId(), java.time.LocalDate.now())
+                    .stream().filter(p -> p.getUserId() != null).toList();
+            if (staff.size() == 1) {
                 nurseAssignmentService.assignNurse(admission.getId(), staff.get(0).getUserId(),
                         "Auto-assigned (sole staff nurse in ward)");
             }

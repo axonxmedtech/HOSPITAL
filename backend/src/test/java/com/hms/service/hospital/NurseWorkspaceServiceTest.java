@@ -39,6 +39,7 @@ class NurseWorkspaceServiceTest {
     @Mock com.hms.security.NurseInchargeGuard nurseInchargeGuard;
     @Mock com.hms.repository.NurseProfileRepository nurseProfileRepository;
     @Mock com.hms.repository.NurseAttendanceRepository nurseAttendanceRepository;
+    @Mock NurseCoverageService coverageService;
 
     @InjectMocks NurseWorkspaceService service;
 
@@ -56,7 +57,7 @@ class NurseWorkspaceServiceTest {
         when(ipdAdmissionRepository.findByHospitalIdAndStatusIn(eq(7L), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(java.util.List.of(admitted, dischargedToday));
 
-        when(nurseProfileRepository.findByWardIdAndIsInchargeFalseAndIsActiveTrue(3L))
+        when(coverageService.effectiveWardNurses(eq(3L), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(java.util.List.of(new com.hms.entity.NurseProfile(), new com.hms.entity.NurseProfile()));
         com.hms.entity.NurseAttendance p = new com.hms.entity.NurseAttendance(); p.setStatus("PRESENT");
         com.hms.entity.NurseAttendance lv = new com.hms.entity.NurseAttendance(); lv.setStatus("LEAVE");
