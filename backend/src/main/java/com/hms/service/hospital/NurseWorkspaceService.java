@@ -41,33 +41,23 @@ public class NurseWorkspaceService {
     @Autowired private SurgeryRepository surgeryRepository;
     @Autowired private com.hms.security.NurseInchargeGuard nurseInchargeGuard;
     @Autowired private NurseAssignmentService nurseAssignmentService;
+    @Autowired private NurseShiftScheduleService nurseShiftScheduleService;
 
     private static final List<String> ACTIVE_SURGERY_STATUSES =
             List.of(Surgery.REQUESTED, Surgery.SCHEDULED, Surgery.IN_PROGRESS);
 
-    /** Whether the current nurse is on shift (available). */
+    /** Whether the current nurse is on shift NOW, derived from today's schedule. */
     public boolean getShiftStatus() {
-        return currentProfile().getOnShift();
+        return nurseShiftScheduleService.isOnShiftNow(currentProfile().getId());
     }
 
-    /** Start the current nurse's shift → available for auto-assignment. */
-    @org.springframework.transaction.annotation.Transactional
-    public boolean startShift() {
-        return setShift(true);
-    }
+    /** @deprecated Shifts are scheduled (Phase B); this no longer toggles anything. */
+    @Deprecated
+    public boolean startShift() { return getShiftStatus(); }
 
-    /** End the current nurse's shift → unavailable for auto-assignment. */
-    @org.springframework.transaction.annotation.Transactional
-    public boolean endShift() {
-        return setShift(false);
-    }
-
-    private boolean setShift(boolean on) {
-        com.hms.entity.NurseProfile profile = currentProfile();
-        profile.setOnShift(on);
-        nurseProfileRepository.save(profile);
-        return on;
-    }
+    /** @deprecated Shifts are scheduled (Phase B); this no longer toggles anything. */
+    @Deprecated
+    public boolean endShift() { return getShiftStatus(); }
 
     private com.hms.entity.NurseProfile currentProfile() {
         requireHospitalId();

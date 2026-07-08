@@ -27,16 +27,18 @@ public class NurseWorkspaceController {
         return ResponseEntity.ok(java.util.Map.of("onShift", workspaceService.getShiftStatus()));
     }
 
+    /** @deprecated Shifts are scheduled (Phase B); kept as a no-op for stray callers. */
+    @Deprecated
     @PostMapping("/shift/start")
     public ResponseEntity<?> startShift() {
-        workspaceService.startShift();
-        return ResponseEntity.ok(java.util.Map.of("onShift", true));
+        return ResponseEntity.ok(java.util.Map.of("onShift", workspaceService.startShift()));
     }
 
+    /** @deprecated Shifts are scheduled (Phase B); kept as a no-op for stray callers. */
+    @Deprecated
     @PostMapping("/shift/end")
     public ResponseEntity<?> endShift() {
-        workspaceService.endShift();
-        return ResponseEntity.ok(java.util.Map.of("onShift", false));
+        return ResponseEntity.ok(java.util.Map.of("onShift", workspaceService.endShift()));
     }
 
     @GetMapping("/dashboard")
