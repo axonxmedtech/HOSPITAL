@@ -123,6 +123,14 @@ public class IpdAdmissionService {
             throw new IllegalArgumentException("Bed is not available");
         }
 
+        // Nursing Mgmt: a ward must have a Nurse Incharge assigned before it can
+        // receive admissions.
+        com.hms.entity.Ward ward = wardRepository.findById(wardId)
+                .orElseThrow(() -> new IllegalArgumentException("Ward not found"));
+        if (ward.getInchargeNurseId() == null) {
+            throw new IllegalArgumentException("This ward has no Nurse Incharge assigned. Assign an incharge before admitting.");
+        }
+
         // Create IPD admission with sequential IPD-1, IPD-2, IPD-3...
         IpdAdmission ipd = new IpdAdmission();
         int nextIpd = (ipdAdmissionRepository.findMaxIpdSequence() != null ? ipdAdmissionRepository.findMaxIpdSequence() : 0) + 1;

@@ -33,6 +33,7 @@ class NurseServiceTest {
     @Mock AuditLogRepository auditLogRepository;
     @Mock HospitalWebSocketHandler webSocketHandler;
     @Mock com.hms.repository.WardRepository wardRepository;
+    @Mock com.hms.service.AuditLogService auditLogService;
 
     @InjectMocks NurseService nurseService;
 
@@ -144,5 +145,36 @@ class NurseServiceTest {
         assertThat(profile.getIsActive()).isFalse();
         verify(userRepository).save(nurse);
         verify(nurseProfileRepository).save(profile);
+    }
+
+    @Test
+    void demote_blockedWhileHoldingWards() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        NurseProfile p = new NurseProfile();
+        p.setId(11L); p.setHospitalId(7L); p.setIsIncharge(true);
+        when(nurseProfileRepository.findById(11L)).thenReturn(Optional.of(p));
+        when(wardRepository.findByHospitalIdAndInchargeNurseId(7L, 11L))
+                .thenReturn(java.util.List.of(new com.hms.entity.Ward()));
+
+        assertThatThrownBy(() -> nurseService.demote(11L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("ward");
+    }
+
+    @Test
+    void promote_setsInchargeFlag() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        NurseProfile p = new NurseProfile();
+        p.setId(11L); p.setHospitalId(7L); p.setIsIncharge(false); p.setEmail("n@x.com"); p.setUserId(20L);
+        when(nurseProfileRepository.findById(11L)).thenReturn(Optional.of(p));
+        User u = new User(); u.setId(20L); u.setRole("NURSE");
+        when(userRepository.findById(20L)).thenReturn(Optional.of(u));
+        when(nurseProfileRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(userRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        nurseService.promote(11L);
+
+        assertThat(p.getIsIncharge()).isTrue();
+        assertThat(u.getRole()).isEqualTo("NURSE_INCHARGE");
     }
 }

@@ -44,6 +44,9 @@ public class HospitalSetting {
     @Column(name = "barcode_enabled", nullable = false)
     private Boolean barcodeEnabled = true;
 
+    @Column(name = "separate_nurse_login", nullable = false)
+    private Boolean separateNurseLogin = false;
+
     public Long getId() {
         return id;
     }

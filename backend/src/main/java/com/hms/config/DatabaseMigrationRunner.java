@@ -68,6 +68,9 @@ public class DatabaseMigrationRunner {
         ensureSurgeryAnaesthetistNameColumn(); // NEW — OT optional anaesthetist
         ensureSurgeryFormsTable(); // NEW — OT/NABH surgery forms store
         ensureNursingNoteSurgeryIdColumn(); // NEW — OT notes link
+        ensureNurseProfilePhaseAColumns(); // NEW — Nursing Mgmt Phase A
+        ensureWardInchargeColumn();
+        ensureSeparateNurseLoginColumn();
     }
 
     /**
@@ -1415,6 +1418,38 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped (ipd_admit_recommended): {}", e.getMessage());
+        }
+    }
+
+    private void ensureNurseProfilePhaseAColumns() {
+        addColumnIfMissing("nurse_profiles", "is_incharge", "TINYINT(1) NOT NULL DEFAULT 0");
+        addColumnIfMissing("nurse_profiles", "gender", "VARCHAR(10) NULL");
+        addColumnIfMissing("nurse_profiles", "qualification", "VARCHAR(120) NULL");
+        addColumnIfMissing("nurse_profiles", "registration_number", "VARCHAR(60) NULL");
+        addColumnIfMissing("nurse_profiles", "joining_date", "DATE NULL");
+    }
+
+    private void ensureWardInchargeColumn() {
+        addColumnIfMissing("wards", "incharge_nurse_id", "BIGINT NULL");
+    }
+
+    private void ensureSeparateNurseLoginColumn() {
+        addColumnIfMissing("hospital_settings", "separate_nurse_login", "TINYINT(1) NOT NULL DEFAULT 0");
+    }
+
+    /** Adds a column only if it does not already exist. Idempotent. */
+    private void addColumnIfMissing(String table, String column, String definition) {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
+                Integer.class, table, column);
+            if (count != null && count == 0) {
+                jdbcTemplate.execute("ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition);
+                log.info("DB migration applied: added {}.{}", table, column);
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped ({}.{}): {}", table, column, e.getMessage());
         }
     }
 }

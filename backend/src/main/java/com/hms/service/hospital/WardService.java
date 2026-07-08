@@ -28,16 +28,43 @@ public class WardService {
     private final SecurityContextHelper securityHelper;
     private final HospitalWebSocketHandler webSocketHandler;
     private final com.hms.repository.NurseProfileRepository nurseProfileRepository;
+    private final com.hms.service.AuditLogService auditLogService;
 
     public WardService(WardRepository wardRepository, BedRepository bedRepository,
                        SecurityContextHelper securityHelper,
                        HospitalWebSocketHandler webSocketHandler,
-                       com.hms.repository.NurseProfileRepository nurseProfileRepository) {
+                       com.hms.repository.NurseProfileRepository nurseProfileRepository,
+                       com.hms.service.AuditLogService auditLogService) {
         this.wardRepository = wardRepository;
         this.bedRepository = bedRepository;
         this.securityHelper = securityHelper;
         this.webSocketHandler = webSocketHandler;
         this.nurseProfileRepository = nurseProfileRepository;
+        this.auditLogService = auditLogService;
+    }
+
+    @Transactional
+    public void setIncharge(Long wardId, Long inchargeNurseProfileId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        Ward ward = wardRepository.findById(wardId)
+                .orElseThrow(() -> new IllegalArgumentException("Ward not found"));
+        if (!hospitalId.equals(ward.getHospitalId())) {
+            throw new UnauthorizedException("Ward belongs to another hospital");
+        }
+        Long previous = ward.getInchargeNurseId();
+        if (inchargeNurseProfileId != null) {
+            com.hms.entity.NurseProfile p = nurseProfileRepository.findById(inchargeNurseProfileId)
+                    .orElseThrow(() -> new IllegalArgumentException("Nurse not found"));
+            if (!hospitalId.equals(p.getHospitalId()) || !Boolean.TRUE.equals(p.getIsActive())
+                    || !Boolean.TRUE.equals(p.getIsIncharge())) {
+                throw new IllegalArgumentException("Target must be an active Nurse Incharge in this hospital");
+            }
+        }
+        ward.setInchargeNurseId(inchargeNurseProfileId);
+        wardRepository.save(ward);
+        auditLogService.logAction("WARD_INCHARGE_SET",
+                "Ward " + ward.getWardName() + " incharge " + previous + " -> " + inchargeNurseProfileId,
+                securityHelper.getCurrentUserEmail(), hospitalId, "WARD", String.valueOf(wardId), null);
     }
 
     @Transactional
@@ -97,6 +124,21 @@ public class WardService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         return wardRepository.findByHospitalId(hospitalId)
                 .stream().map(this::toResponse).collect(Collectors.toList());
+    }
+
+    /**
+     * Wards eligible for IPD admission/bed selection. A ward without a Nurse
+     * Incharge cannot safely receive patients, so it is hidden from this list.
+     * Used only by the admission flow — admin ward management still uses
+     * {@link #getAllWards()} so every ward remains visible for incharge assignment.
+     */
+    // Nursing Mgmt: hide incharge-less wards from admission selection
+    public List<WardResponse> getWardsForAdmission() {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        return wardRepository.findByHospitalId(hospitalId)
+                .stream()
+                .filter(w -> w.getInchargeNurseId() != null)
+                .map(this::toResponse).collect(Collectors.toList());
     }
 
     public List<BedResponse> getBedsForWard(Long wardId) {

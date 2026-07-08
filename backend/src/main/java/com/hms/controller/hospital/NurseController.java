@@ -3,6 +3,7 @@ package com.hms.controller.hospital;
 import com.hms.entity.User;
 import com.hms.security.RequireModule;
 import com.hms.service.hospital.NurseService;
+import com.hms.service.hospital.WardService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -26,6 +27,9 @@ public class NurseController {
 
     @Autowired
     private NurseService nurseService;
+
+    @Autowired
+    private WardService wardService;
 
     @PostMapping
     public ResponseEntity<?> createNurse(@RequestBody Map<String, String> payload) {
@@ -93,5 +97,29 @@ public class NurseController {
         }
         nurseService.resetNursePassword(id, newPassword);
         return ResponseEntity.ok(Map.of("message", "Password reset successfully"));
+    }
+
+    @PostMapping("/{id}/promote")
+    public ResponseEntity<?> promote(@PathVariable String id) {
+        nurseService.promote(nurseService.resolveProfileId(id));
+        return ResponseEntity.ok(Map.of("message", "Nurse promoted to incharge"));
+    }
+
+    @PostMapping("/{id}/demote")
+    public ResponseEntity<?> demote(@PathVariable String id) {
+        nurseService.demote(nurseService.resolveProfileId(id));
+        return ResponseEntity.ok(Map.of("message", "Incharge demoted to nurse"));
+    }
+
+    @PostMapping("/{id}/active/{active}")
+    public ResponseEntity<?> setActive(@PathVariable String id, @PathVariable boolean active) {
+        nurseService.setActive(nurseService.resolveProfileId(id), active);
+        return ResponseEntity.ok(Map.of("message", active ? "Activated" : "Deactivated"));
+    }
+
+    @PostMapping("/ward-incharge")
+    public ResponseEntity<?> setWardIncharge(@RequestBody com.hms.dto.SetWardInchargeRequest req) {
+        wardService.setIncharge(req.getWardId(), req.getInchargeNurseProfileId());
+        return ResponseEntity.ok(Map.of("message", "Ward incharge updated"));
     }
 }

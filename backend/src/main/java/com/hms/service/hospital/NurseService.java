@@ -55,6 +55,9 @@ public class NurseService {
     @Autowired
     private com.hms.repository.WardRepository wardRepository;
 
+    @Autowired
+    private com.hms.service.AuditLogService auditLogService;
+
     /**
      * Create a new nurse (User with role NURSE + NurseProfile).
      */
@@ -234,6 +237,81 @@ public class NurseService {
         logger.info("Reset password for nurse: {}", user.getEmail());
         logAction("PASSWORD_RESET", "Reset password for nurse: " + user.getName() + " (" + user.getEmail() + ")",
                 null, hospitalId);
+    }
+
+    /**
+     * Promote a nurse profile to Nurse Incharge (also updates the backing
+     * user's role so login/authorization reflect the new privilege level).
+     */
+    @Transactional
+    public void promote(Long nurseProfileId) {
+        Long hospitalId = requireHospitalId();
+        NurseProfile p = requireProfile(nurseProfileId, hospitalId);
+        p.setIsIncharge(true);
+        if (p.getUserId() != null) {
+            userRepository.findById(p.getUserId()).ifPresent(u -> { u.setRole("NURSE_INCHARGE"); userRepository.save(u); });
+        }
+        nurseProfileRepository.save(p);
+        auditNurse("NURSE_PROMOTED", "Promoted nurse " + p.getName() + " to incharge", hospitalId, nurseProfileId);
+    }
+
+    /**
+     * Demote a Nurse Incharge back to a plain nurse. Blocked while the nurse
+     * still holds any ward's incharge assignment — reassign those wards first.
+     */
+    @Transactional
+    public void demote(Long nurseProfileId) {
+        Long hospitalId = requireHospitalId();
+        NurseProfile p = requireProfile(nurseProfileId, hospitalId);
+        if (!wardRepository.findByHospitalIdAndInchargeNurseId(hospitalId, nurseProfileId).isEmpty()) {
+            throw new IllegalArgumentException("Reassign this incharge's ward(s) before demoting");
+        }
+        p.setIsIncharge(false);
+        if (p.getUserId() != null) {
+            userRepository.findById(p.getUserId()).ifPresent(u -> { u.setRole("NURSE"); userRepository.save(u); });
+        }
+        nurseProfileRepository.save(p);
+        auditNurse("NURSE_DEMOTED", "Demoted incharge " + p.getName() + " to nurse", hospitalId, nurseProfileId);
+    }
+
+    /**
+     * Activate/deactivate a nurse profile. Deactivation is blocked while the
+     * nurse still holds a ward's incharge assignment.
+     */
+    @Transactional
+    public void setActive(Long nurseProfileId, boolean active) {
+        Long hospitalId = requireHospitalId();
+        NurseProfile p = requireProfile(nurseProfileId, hospitalId);
+        if (!active && Boolean.TRUE.equals(p.getIsIncharge())
+                && !wardRepository.findByHospitalIdAndInchargeNurseId(hospitalId, nurseProfileId).isEmpty()) {
+            throw new IllegalArgumentException("Reassign this incharge's ward(s) before deactivating");
+        }
+        p.setIsActive(active);
+        nurseProfileRepository.save(p);
+        auditNurse(active ? "NURSE_ACTIVATED" : "NURSE_DEACTIVATED", p.getName(), hospitalId, nurseProfileId);
+    }
+
+    /** Resolve a NurseProfile.id from a nurse public id (for the controller layer). */
+    public Long resolveProfileId(String publicId) {
+        return nurseProfileRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new IllegalArgumentException("Nurse not found")).getId();
+    }
+
+    private NurseProfile requireProfile(Long id, Long hospitalId) {
+        NurseProfile p = nurseProfileRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Nurse not found"));
+        if (!hospitalId.equals(p.getHospitalId())) {
+            throw new UnauthorizedException("Nurse belongs to another hospital");
+        }
+        return p;
+    }
+
+    private void auditNurse(String action, String details, Long hospitalId, Long id) {
+        try {
+            auditLogService.logAction(action, details, securityHelper.getCurrentUserEmail(), hospitalId, "NURSE", String.valueOf(id), null);
+        } catch (Exception e) {
+            logger.warn("Failed to write audit log for nurse action {}: {}", action, e.getMessage());
+        }
     }
 
     // --- helpers ---

@@ -55,6 +55,21 @@ public class NurseProfile {
     @Column(name = "ward_id")
     private Long wardId;
 
+    @Column(name = "is_incharge", nullable = false)
+    private Boolean isIncharge = false;
+
+    @Column(length = 10)
+    private String gender;
+
+    @Column(length = 120)
+    private String qualification;
+
+    @Column(name = "registration_number", length = 60)
+    private String registrationNumber;
+
+    @Column(name = "joining_date")
+    private java.time.LocalDate joiningDate;
+
     /**
      * Whether the nurse is currently on shift. A nurse must start their shift
      * after login to become available; ending the shift makes them unavailable

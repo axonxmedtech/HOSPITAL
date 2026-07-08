@@ -37,6 +37,13 @@ public class WardController {
         return ResponseEntity.ok(wardService.getAllWards());
     }
 
+    // Nursing Mgmt: admission/bed-selection flows must only see wards that have
+    // a Nurse Incharge assigned. Admin ward management keeps using getAll() above.
+    @GetMapping("/for-admission")
+    public ResponseEntity<List<WardResponse>> getForAdmission() {
+        return ResponseEntity.ok(wardService.getWardsForAdmission());
+    }
+
     @GetMapping("/{wardId}/beds")
     public ResponseEntity<List<BedResponse>> getBeds(@PathVariable("wardId") Long wardId) {
         return ResponseEntity.ok(wardService.getBedsForWard(wardId));
