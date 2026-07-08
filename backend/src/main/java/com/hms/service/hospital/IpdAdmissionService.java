@@ -112,6 +112,10 @@ public class IpdAdmissionService {
     @Autowired
     private com.hms.security.HospitalWebSocketHandler webSocketHandler;
 
+    // Nursing Mgmt Phase C2: all bed status writes go through the audited service.
+    @Autowired
+    private BedStatusService bedStatusService;
+
     @Transactional
     public IpdAdmission admitFromOpd(Long opdId, Long wardId, Long bedId, String admissionType, String primaryDiagnosis) {
         // Load OPD
@@ -164,10 +168,10 @@ public class IpdAdmissionService {
             logger.warn("Failed to save initial bed history", e);
         }
 
-        // Mark bed occupied
-        bed.setStatus("occupied");
-        bed.setCurrentIpdAdmissionId(saved.getId());
-        bedRepository.save(bed);
+        // Mark bed occupied (Nursing Mgmt Phase C2: audited bed status change)
+        Bed occupiedBed = bedStatusService.change(bed.getBedId(), com.hms.entity.BedStatus.OCCUPIED, "IPD admission");
+        occupiedBed.setCurrentIpdAdmissionId(saved.getId());
+        bedRepository.save(occupiedBed);
 
         // Nursing Mgmt Phase A: incharge-mediated assignment. Best-effort.
         try {
@@ -1086,18 +1090,14 @@ public class IpdAdmissionService {
             logger.warn("Failed to complete active prescriptions during IPD discharge", e);
         }
 
-        // Update bed to available
+        // Mark bed for cleaning (Nursing Mgmt Phase C2: vacated beds await cleaning
+        // before they can be reused, rather than becoming immediately available).
         try {
             if (ipd.getBedId() != null) {
-                Bed bed = bedRepository.findById(ipd.getBedId()).orElse(null);
-                if (bed != null) {
-                    bed.setStatus("available");
-                    bed.setCurrentIpdAdmissionId(null);
-                    bedRepository.save(bed);
-                }
+                bedStatusService.change(ipd.getBedId(), com.hms.entity.BedStatus.CLEANING, "IPD discharge");
             }
         } catch (Exception e) {
-            logger.warn("Failed to update bed status to available during IPD discharge", e);
+            logger.warn("Failed to mark bed for cleaning during IPD discharge", e);
         }
 
         // Finalize billing records for this IPD
@@ -1198,16 +1198,15 @@ public class IpdAdmissionService {
                     oldWardName = oldW.getWardName();
                 }
                 if (!oldBedId.equals(newBedId)) {
-                    oldBed.setStatus("available");
-                    oldBed.setCurrentIpdAdmissionId(null);
-                    bedRepository.save(oldBed);
+                    // Nursing Mgmt Phase C2: vacated bed awaits cleaning, not immediately available.
+                    bedStatusService.change(oldBed.getBedId(), com.hms.entity.BedStatus.CLEANING, "Bed transfer (vacated)");
                 }
             }
         }
 
-        newBed.setStatus("occupied");
-        newBed.setCurrentIpdAdmissionId(ipd.getId());
-        bedRepository.save(newBed);
+        Bed occupiedNewBed = bedStatusService.change(newBed.getBedId(), com.hms.entity.BedStatus.OCCUPIED, "Bed transfer");
+        occupiedNewBed.setCurrentIpdAdmissionId(ipd.getId());
+        bedRepository.save(occupiedNewBed);
 
         String newBedCode = newBed.getBedCode();
         String newWardName = "Unknown Ward";

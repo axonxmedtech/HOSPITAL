@@ -41,6 +41,8 @@ public class SurgeryService {
     @Autowired private NotificationService notificationService;
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private AuditLogService auditLogService;
+    // Nursing Mgmt Phase C2: all bed status writes go through the audited service.
+    @Autowired private BedStatusService bedStatusService;
 
     // ---------- Doctor: create request ----------
 
@@ -148,7 +150,7 @@ public class SurgeryService {
                 .filter(b -> "available".equalsIgnoreCase(b.getStatus()))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("OT theatre is busy or has no available bed"));
-        bed.setStatus("occupied");
+        bedStatusService.change(bed.getBedId(), com.hms.entity.BedStatus.OCCUPIED, "Surgery started");
         bed.setCurrentIpdAdmissionId(s.getIpdAdmissionId());
         bedRepository.save(bed);
 
@@ -167,7 +169,7 @@ public class SurgeryService {
         if (!Surgery.IN_PROGRESS.equals(s.getStatus())) {
             throw new IllegalArgumentException("Only a live surgery can be completed");
         }
-        freeOtBed(s);
+        freeOtBed(s, "Surgery completed");
         s.setCompletedAt(LocalDateTime.now());
         s.setStatus(Surgery.COMPLETED);
         Surgery saved = surgeryRepository.save(s);
@@ -182,7 +184,7 @@ public class SurgeryService {
         if (Surgery.COMPLETED.equals(s.getStatus()) || Surgery.CANCELLED.equals(s.getStatus())) {
             throw new IllegalArgumentException("Surgery is already closed");
         }
-        if (Surgery.IN_PROGRESS.equals(s.getStatus())) freeOtBed(s);
+        if (Surgery.IN_PROGRESS.equals(s.getStatus())) freeOtBed(s, "Surgery cancelled");
         s.setStatus(Surgery.CANCELLED);
         Surgery saved = surgeryRepository.save(s);
         audit("SURGERY_CANCELLED", "Surgery cancelled", hospitalId, saved.getIpdAdmissionId());
@@ -242,13 +244,15 @@ public class SurgeryService {
 
     // ---------- helpers ----------
 
-    private void freeOtBed(Surgery s) {
+    // Nursing Mgmt Phase C2: the theatre bed is marked for cleaning (not
+    // immediately available) so the next surgery cannot start until it is cleaned.
+    private void freeOtBed(Surgery s, String remark) {
         if (s.getOtBedId() == null) return;
-        bedRepository.findById(s.getOtBedId()).ifPresent(bed -> {
-            bed.setStatus("available");
-            bed.setCurrentIpdAdmissionId(null);
-            bedRepository.save(bed);
-        });
+        try {
+            bedStatusService.change(s.getOtBedId(), com.hms.entity.BedStatus.CLEANING, remark);
+        } catch (Exception e) {
+            logger.warn("Failed to mark OT bed for cleaning: {}", e.getMessage());
+        }
     }
 
     private void notifyNurse(Surgery s, Long hospitalId, String operatorName) {

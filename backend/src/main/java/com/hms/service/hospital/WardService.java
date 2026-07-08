@@ -132,12 +132,16 @@ public class WardService {
      * Used only by the admission flow — admin ward management still uses
      * {@link #getAllWards()} so every ward remains visible for incharge assignment.
      */
-    // Nursing Mgmt: hide incharge-less wards from admission selection
+    // Nursing Mgmt: hide incharge-less wards, and wards with no Available bed,
+    // from admission selection. A bed awaiting cleaning or under maintenance
+    // does not count as available (Phase C).
     public List<WardResponse> getWardsForAdmission() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         return wardRepository.findByHospitalId(hospitalId)
                 .stream()
                 .filter(w -> w.getInchargeNurseId() != null)
+                .filter(w -> bedRepository.findByWardIdAndHospitalId(w.getWardId(), hospitalId).stream()
+                        .anyMatch(b -> com.hms.entity.BedStatus.AVAILABLE.equalsIgnoreCase(b.getStatus())))
                 .map(this::toResponse).collect(Collectors.toList());
     }
 

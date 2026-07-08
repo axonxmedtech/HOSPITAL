@@ -27,6 +27,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -57,6 +58,7 @@ class IpdAdmissionServiceTest {
     @Mock HospitalInventoryRepository hospitalInventoryRepository;
     @Mock HospitalInventoryService hospitalInventoryService;
     @Mock HospitalWebSocketHandler webSocketHandler;
+    @Mock com.hms.service.hospital.BedStatusService bedStatusService;
 
     @InjectMocks
     IpdAdmissionService service;
@@ -100,6 +102,12 @@ class IpdAdmissionServiceTest {
 
         when(bedRepository.findById(2L)).thenReturn(Optional.of(bed));
         when(ipdAdmissionRepository.findMaxIpdSequence()).thenReturn(0);
+
+        Bed occupiedBed = new Bed();
+        occupiedBed.setBedId(2L);
+        occupiedBed.setStatus("occupied");
+        when(bedStatusService.change(eq(2L), eq(com.hms.entity.BedStatus.OCCUPIED), any()))
+                .thenReturn(occupiedBed);
 
         IpdAdmission savedIpd = new IpdAdmission();
         savedIpd.setId(10L);

@@ -28,6 +28,7 @@ public class BedController {
         return ResponseEntity.ok(bedService.updateStatus(bedId, req.getStatus()));
     }
 
+    // Nursing Mgmt: only Available beds may be selected for admission
     @GetMapping("/available")
     public ResponseEntity<List<BedResponse>> getAvailable(@RequestParam(value = "ward_id", required = false) Long wardId) {
         return ResponseEntity.ok(bedService.getAvailableBeds(wardId));

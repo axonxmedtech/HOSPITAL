@@ -36,6 +36,7 @@ class SurgeryServiceTest {
     @Mock NotificationService notificationService;
     @Mock SecurityContextHelper securityHelper;
     @Mock AuditLogService auditLogService;
+    @Mock BedStatusService bedStatusService;
 
     @InjectMocks SurgeryService service;
 
@@ -171,26 +172,23 @@ class SurgeryServiceTest {
 
         assertThat(out.getStatus()).isEqualTo(Surgery.IN_PROGRESS);
         assertThat(out.getStartedAt()).isNotNull();
-        assertThat(bed.getStatus()).isEqualTo("occupied");
+        verify(bedStatusService).change(eq(50L), eq(com.hms.entity.BedStatus.OCCUPIED), any());
     }
 
     @Test
-    void complete_freesOtBed() {
+    void complete_marksOtBedForCleaning() {
         Surgery s = new Surgery();
         s.setId(9L); s.setHospitalId(7L); s.setIpdAdmissionId(1L); s.setStatus(Surgery.IN_PROGRESS);
         s.setOtWardId(3L); s.setOtBedId(50L);
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
         when(surgeryRepository.findByPublicId("s-pub")).thenReturn(Optional.of(s));
-        Bed bed = new Bed(); bed.setBedId(50L); bed.setHospitalId(7L); bed.setWardId(3L); bed.setStatus("occupied");
-        when(bedRepository.findById(50L)).thenReturn(Optional.of(bed));
-        when(bedRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(surgeryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         Surgery out = service.complete("s-pub");
 
         assertThat(out.getStatus()).isEqualTo(Surgery.COMPLETED);
         assertThat(out.getCompletedAt()).isNotNull();
-        assertThat(bed.getStatus()).isEqualTo("available");
+        verify(bedStatusService).change(eq(50L), eq(com.hms.entity.BedStatus.CLEANING), any());
     }
 
     @Test
