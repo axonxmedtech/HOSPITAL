@@ -6,6 +6,9 @@ import apiClient from './apiService';
  * 401 handling) are shared via apiClient.
  */
 const nurseService = {
+    // --- Nurse Incharge dashboard ---
+    getInchargeDashboard: async () => (await apiClient.get('/hospital/nurse-incharge/dashboard')).data,
+
     // --- Shift (availability) ---
 
     /** Whether the current nurse is on shift. */

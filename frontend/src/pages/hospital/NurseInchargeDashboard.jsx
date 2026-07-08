@@ -13,6 +13,7 @@ import { useToast } from '../../context/ToastContext';
 import ShiftScheduleView from './nurse-incharge/ShiftScheduleView';
 import WardBedsView from './nurse-incharge/WardBedsView';
 import AttendanceView from './nurse-incharge/AttendanceView';
+import InchargeOverview from './nurse-incharge/InchargeOverview';
 
 /**
  * NurseInchargeDashboard - Phase A1 shell for the Nurse Incharge role.
@@ -25,7 +26,7 @@ const NurseInchargeDashboard = () => {
     const navigate = useNavigate();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [profileOpen, setProfileOpen] = useState(false);
-    const [activeTab, setActiveTab] = useState('my-nurses');
+    const [activeTab, setActiveTab] = useState('dashboard');
     const [refreshKey, setRefreshKey] = useState(0);
 
     const handleRefresh = useCallback(() => setRefreshKey((k) => k + 1), []);
@@ -38,6 +39,7 @@ const NurseInchargeDashboard = () => {
     };
 
     const sidebarTabs = [
+        { id: 'dashboard', label: 'Dashboard' },
         { id: 'my-nurses', label: 'My Nurses' },
         { id: 'my-ward-patients', label: 'My Ward Patients' },
         { id: 'schedule', label: 'Schedule' },
@@ -46,6 +48,7 @@ const NurseInchargeDashboard = () => {
     ];
 
     const titleFor = () => {
+        if (activeTab === 'dashboard') return 'Dashboard';
         if (activeTab === 'my-ward-patients') return 'My Ward Patients';
         if (activeTab === 'schedule') return 'Schedule';
         if (activeTab === 'attendance') return 'Attendance';
@@ -55,6 +58,8 @@ const NurseInchargeDashboard = () => {
 
     const renderContent = () => {
         switch (activeTab) {
+            case 'dashboard':
+                return <InchargeOverview onNavigate={setActiveTab} refreshKey={refreshKey} />;
             case 'my-ward-patients':
                 return <WardPatientsView refreshKey={refreshKey} />;
             case 'schedule':

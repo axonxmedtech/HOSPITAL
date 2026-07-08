@@ -42,6 +42,7 @@ public class NurseWorkspaceService {
     @Autowired private com.hms.security.NurseInchargeGuard nurseInchargeGuard;
     @Autowired private NurseAssignmentService nurseAssignmentService;
     @Autowired private NurseShiftScheduleService nurseShiftScheduleService;
+    @Autowired private com.hms.repository.NurseAttendanceRepository nurseAttendanceRepository;
 
     private static final List<String> ACTIVE_SURGERY_STATUSES =
             List.of(Surgery.REQUESTED, Surgery.SCHEDULED, Surgery.IN_PROGRESS);
@@ -270,6 +271,61 @@ public class NurseWorkspaceService {
             });
         }
         return out;
+    }
+
+    /** Aggregated counts for the Nurse Incharge dashboard, across the caller's wards. */
+    public com.hms.dto.NurseInchargeDashboardDTO getInchargeDashboard() {
+        Long hospitalId = requireHospitalId();
+        java.util.Set<Long> wardIds = new java.util.HashSet<>(nurseInchargeGuard.myWardIds());
+        com.hms.dto.NurseInchargeDashboardDTO dto = new com.hms.dto.NurseInchargeDashboardDTO();
+        if (wardIds.isEmpty()) return dto;
+
+        java.time.LocalDate today = java.time.LocalDate.now();
+
+        // Patients
+        for (IpdAdmission ipd : ipdAdmissionRepository.findByHospitalIdAndStatusIn(hospitalId,
+                java.util.List.of("ADMITTED", "DISCHARGED"))) {
+            if (ipd.getWardId() == null || !wardIds.contains(ipd.getWardId())) continue;
+            if ("ADMITTED".equalsIgnoreCase(ipd.getStatus())) {
+                dto.getPatients().setTotal(dto.getPatients().getTotal() + 1);
+            }
+            if (ipd.getAdmissionDatetime() != null && today.equals(ipd.getAdmissionDatetime().toLocalDate())) {
+                dto.getPatients().setNewAdmissionsToday(dto.getPatients().getNewAdmissionsToday() + 1);
+            }
+            if ("DISCHARGED".equalsIgnoreCase(ipd.getStatus()) && ipd.getDischargeDatetime() != null
+                    && today.equals(ipd.getDischargeDatetime().toLocalDate())) {
+                dto.getPatients().setDischargesToday(dto.getPatients().getDischargesToday() + 1);
+            }
+        }
+
+        // Nurses (active, non-incharge, in my wards) + today's attendance
+        for (Long wardId : wardIds) {
+            dto.getNurses().setTotal(dto.getNurses().getTotal()
+                    + nurseProfileRepository.findByWardIdAndIsInchargeFalseAndIsActiveTrue(wardId).size());
+            for (com.hms.entity.NurseAttendance a : nurseAttendanceRepository.findByWardIdAndAttendanceDate(wardId, today)) {
+                switch (a.getStatus() == null ? "" : a.getStatus()) {
+                    case "PRESENT", "LATE", "HALF_DAY" -> dto.getNurses().setPresent(dto.getNurses().getPresent() + 1);
+                    case "ABSENT" -> dto.getNurses().setAbsent(dto.getNurses().getAbsent() + 1);
+                    case "LEAVE" -> dto.getNurses().setOnLeave(dto.getNurses().getOnLeave() + 1);
+                    default -> { }
+                }
+            }
+        }
+
+        // Beds
+        for (Long wardId : wardIds) {
+            for (com.hms.entity.Bed b : bedRepository.findByWardIdAndHospitalId(wardId, hospitalId)) {
+                dto.getBeds().setTotal(dto.getBeds().getTotal() + 1);
+                switch (b.getStatus() == null ? "" : b.getStatus()) {
+                    case com.hms.entity.BedStatus.AVAILABLE -> dto.getBeds().setAvailable(dto.getBeds().getAvailable() + 1);
+                    case com.hms.entity.BedStatus.OCCUPIED -> dto.getBeds().setOccupied(dto.getBeds().getOccupied() + 1);
+                    case com.hms.entity.BedStatus.CLEANING -> dto.getBeds().setCleaningRequired(dto.getBeds().getCleaningRequired() + 1);
+                    case com.hms.entity.BedStatus.MAINTENANCE -> dto.getBeds().setUnderMaintenance(dto.getBeds().getUnderMaintenance() + 1);
+                    default -> { }
+                }
+            }
+        }
+        return dto;
     }
 
     private Long requireHospitalId() {

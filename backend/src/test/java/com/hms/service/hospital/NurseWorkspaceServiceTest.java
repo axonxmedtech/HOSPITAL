@@ -36,8 +36,49 @@ class NurseWorkspaceServiceTest {
     @Mock SecurityContextHelper securityHelper;
     @Mock NurseAccessGuard nurseAccessGuard;
     @Mock SurgeryRepository surgeryRepository;
+    @Mock com.hms.security.NurseInchargeGuard nurseInchargeGuard;
+    @Mock com.hms.repository.NurseProfileRepository nurseProfileRepository;
+    @Mock com.hms.repository.NurseAttendanceRepository nurseAttendanceRepository;
 
     @InjectMocks NurseWorkspaceService service;
+
+    @org.junit.jupiter.api.Test
+    void inchargeDashboard_aggregatesAcrossWards() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(nurseInchargeGuard.myWardIds()).thenReturn(java.util.List.of(3L));
+
+        com.hms.entity.IpdAdmission admitted = new com.hms.entity.IpdAdmission();
+        admitted.setWardId(3L); admitted.setStatus("ADMITTED");
+        admitted.setAdmissionDatetime(java.time.LocalDateTime.now());
+        com.hms.entity.IpdAdmission dischargedToday = new com.hms.entity.IpdAdmission();
+        dischargedToday.setWardId(3L); dischargedToday.setStatus("DISCHARGED");
+        dischargedToday.setDischargeDatetime(java.time.LocalDateTime.now());
+        when(ipdAdmissionRepository.findByHospitalIdAndStatusIn(eq(7L), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(java.util.List.of(admitted, dischargedToday));
+
+        when(nurseProfileRepository.findByWardIdAndIsInchargeFalseAndIsActiveTrue(3L))
+                .thenReturn(java.util.List.of(new com.hms.entity.NurseProfile(), new com.hms.entity.NurseProfile()));
+        com.hms.entity.NurseAttendance p = new com.hms.entity.NurseAttendance(); p.setStatus("PRESENT");
+        com.hms.entity.NurseAttendance lv = new com.hms.entity.NurseAttendance(); lv.setStatus("LEAVE");
+        when(nurseAttendanceRepository.findByWardIdAndAttendanceDate(eq(3L), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(java.util.List.of(p, lv));
+
+        com.hms.entity.Bed avail = new com.hms.entity.Bed(); avail.setStatus("available");
+        com.hms.entity.Bed clean = new com.hms.entity.Bed(); clean.setStatus("cleaning");
+        when(bedRepository.findByWardIdAndHospitalId(3L, 7L)).thenReturn(java.util.List.of(avail, clean));
+
+        com.hms.dto.NurseInchargeDashboardDTO dto = service.getInchargeDashboard();
+
+        org.assertj.core.api.Assertions.assertThat(dto.getPatients().getTotal()).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(dto.getPatients().getNewAdmissionsToday()).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(dto.getPatients().getDischargesToday()).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(dto.getNurses().getTotal()).isEqualTo(2);
+        org.assertj.core.api.Assertions.assertThat(dto.getNurses().getPresent()).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(dto.getNurses().getOnLeave()).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(dto.getBeds().getTotal()).isEqualTo(2);
+        org.assertj.core.api.Assertions.assertThat(dto.getBeds().getAvailable()).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(dto.getBeds().getCleaningRequired()).isEqualTo(1);
+    }
 
     private PatientNurseAssignment assignment(Long admissionId, Long hospitalId) {
         PatientNurseAssignment a = new PatientNurseAssignment();

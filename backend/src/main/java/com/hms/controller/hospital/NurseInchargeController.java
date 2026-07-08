@@ -17,6 +17,12 @@ public class NurseInchargeController {
 
     @Autowired private NurseWorkspaceService workspaceService;
 
+    @GetMapping("/dashboard")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','NURSE_INCHARGE')")
+    public ResponseEntity<?> dashboard() {
+        return ResponseEntity.ok(workspaceService.getInchargeDashboard());
+    }
+
     @GetMapping("/patients")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','NURSE_INCHARGE')")
     public ResponseEntity<?> wardPatients() {
