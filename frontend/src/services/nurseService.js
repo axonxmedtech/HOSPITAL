@@ -153,6 +153,26 @@ const nurseService = {
         return response.data;
     },
 
+    // --- OT Notes (intra-operative notes linked to a surgery) ---
+
+    /** Active surgery for an admission (or null) — to decide whether to show OT notes. */
+    getActiveSurgery: async (admissionId) => {
+        const response = await apiClient.get(`/hospital/surgeries/admission/${admissionId}/active`);
+        return response.data;
+    },
+
+    /** OT notes for a surgery. */
+    getSurgeryNotes: async (surgeryId) => {
+        const response = await apiClient.get(`/hospital/nurse/notes/surgery/${surgeryId}`);
+        return response.data;
+    },
+
+    /** Create an OT note (nursing note linked to a surgery). */
+    addSurgeryNote: async (admissionId, surgeryId, noteText) => {
+        const response = await apiClient.post('/hospital/nurse/notes', { ipdAdmissionId: admissionId, surgeryId, category: 'OT', noteText });
+        return response.data;
+    },
+
     // --- Medication Administration (M6) ---
 
     /** Active prescriptions for an admission. */

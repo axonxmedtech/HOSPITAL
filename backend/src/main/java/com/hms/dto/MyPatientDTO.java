@@ -21,4 +21,7 @@ public class MyPatientDTO {
     private LocalDateTime admissionDateTime;
     private String status;
     private Boolean admissionConfirmed;
+    // Status of an active surgery for this patient (REQUESTED / SCHEDULED /
+    // IN_PROGRESS), or null when there is no active surgery.
+    private String surgeryStatus;
 }

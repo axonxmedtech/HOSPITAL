@@ -35,6 +35,7 @@ class NurseWorkspaceServiceTest {
     @Mock BillingPaymentRepository billingPaymentRepository;
     @Mock SecurityContextHelper securityHelper;
     @Mock NurseAccessGuard nurseAccessGuard;
+    @Mock SurgeryRepository surgeryRepository;
 
     @InjectMocks NurseWorkspaceService service;
 

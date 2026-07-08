@@ -8,6 +8,8 @@ import MedicationPanel from './MedicationPanel';
 import InitialAssessmentPanel from './InitialAssessmentPanel';
 import VulnerabilityAssessmentPanel from './VulnerabilityAssessmentPanel';
 import SugarChartPanel from './SugarChartPanel';
+import ConsentFormsPanel from './ConsentFormsPanel';
+import OtNotesSection from '../ot/OtNotesSection';
 
 /**
  * NursePatientDetail - read-only bedside view for a nurse (Phase 1).
@@ -37,6 +39,7 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
     const [loading, setLoading] = useState(true);
     const [d, setD] = useState(null);
     const [tab, setTab] = useState('overview');
+    const [hasSurgery, setHasSurgery] = useState(false);
 
     useEffect(() => {
         let active = true;
@@ -52,6 +55,19 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
         return () => { active = false; };
     }, [admissionId, refreshKey, toastError]);
 
+    // Surgery patients get an extra "Consent Forms" sub-tab — only once the
+    // surgeon is assigned (surgery scheduled or in progress).
+    useEffect(() => {
+        let active = true;
+        nurseService.getActiveSurgery(admissionId)
+            .then((s) => {
+                const assigned = !!s && (s.status === 'SCHEDULED' || s.status === 'IN_PROGRESS');
+                if (active) setHasSurgery(assigned);
+            })
+            .catch(() => { if (active) setHasSurgery(false); });
+        return () => { active = false; };
+    }, [admissionId, refreshKey]);
+
     if (loading) return <LoadingSpinner />;
     if (!d) return (
         <button onClick={onBack} className="text-sm font-semibold text-gray-600 hover:text-gray-900">← Back</button>
@@ -65,6 +81,7 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
         { id: 'assessment', label: 'Initial Assessment' },
         { id: 'vulnerability', label: 'Vulnerability Assessment' },
         { id: 'sugar', label: 'Sugar Chart' },
+        ...(hasSurgery ? [{ id: 'consent', label: 'Consent Forms' }] : []),
     ];
 
     return (
@@ -83,6 +100,8 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
                     </p>
                 </div>
             </div>
+
+            <OtNotesSection admissionId={admissionId} />
 
             {/* Tabs */}
             <div className="flex gap-1 border-b border-gray-200">
@@ -108,6 +127,8 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
             {tab === 'vulnerability' && <VulnerabilityAssessmentPanel admissionId={admissionId} />}
 
             {tab === 'sugar' && <SugarChartPanel admissionId={admissionId} />}
+
+            {tab === 'consent' && <ConsentFormsPanel admissionId={admissionId} />}
 
             {tab === 'overview' && (
             <>

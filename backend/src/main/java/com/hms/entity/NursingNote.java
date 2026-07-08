@@ -46,6 +46,9 @@ public class NursingNote {
     @Column(name = "category", length = 40)
     private String category;
 
+    @Column(name = "surgery_id")
+    private Long surgeryId;
+
     @Column(name = "recorded_at", nullable = false)
     private LocalDateTime recordedAt;
 

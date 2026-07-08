@@ -139,19 +139,6 @@ const VitalsPanel = ({ admissionId }) => {
         return () => { active = false; };
     }, [admissionId]);
 
-    const handlePrintIoChart = () => {
-        const w = window.open('', '_blank');
-        if (!w) { toastError('Popup blocked — allow popups to print'); return; }
-        w.document.write(buildIoChartHtml(rows, f, {
-            name: f.hospitalName || user?.hospitalName,
-            address: f.hospitalAddress || user?.hospitalAddress,
-            logo: f.hospitalLogoUrl || user?.logoUrl,
-            customId: f.hospitalCustomId,
-            nurse: user?.name,
-        }));
-        w.document.close();
-    };
-
     const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
     const num = (v) => (v === '' || v == null ? null : Number(v));
@@ -240,12 +227,8 @@ const VitalsPanel = ({ admissionId }) => {
             </div>
 
             <div className="bg-white border border-gray-200 rounded-xl">
-                <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+                <div className="px-5 py-3 border-b border-gray-100">
                     <h3 className="font-bold text-gray-800 text-sm">Vitals Timeline</h3>
-                    <button onClick={handlePrintIoChart}
-                        className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700">
-                        Print I/O Chart
-                    </button>
                 </div>
                 {loading ? (
                     <LoadingSpinner />

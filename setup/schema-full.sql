@@ -1192,6 +1192,7 @@ CREATE TABLE `nursing_notes` (
   `nurse_user_id` bigint NOT NULL,
   `note_text` text NOT NULL,
   `category` varchar(40) DEFAULT NULL,
+  `surgery_id` bigint DEFAULT NULL,
   `recorded_at` datetime(6) NOT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT '1',
   `created_at` datetime(6) NOT NULL,
@@ -1359,4 +1360,53 @@ CREATE TABLE `sugar_chart_entries` (
   KEY `idx_sugar_admission_time` (`ipd_admission_id`,`recorded_at`),
   KEY `idx_sugar_hospital` (`hospital_id`),
   CONSTRAINT `FK_sugar_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- OT module (Phase 2): surgeries (OT case lifecycle).
+CREATE TABLE `surgeries` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ipd_admission_id` bigint NOT NULL,
+  `patient_id` bigint NOT NULL,
+  `procedure_name` varchar(255) DEFAULT NULL,
+  `clinical_notes` text,
+  `priority` varchar(20) DEFAULT NULL,
+  `preferred_date` date DEFAULT NULL,
+  `requested_by_doctor_id` bigint DEFAULT NULL,
+  `requested_by_user_id` bigint DEFAULT NULL,
+  `requested_at` datetime(6) NOT NULL,
+  `status` varchar(20) NOT NULL,
+  `surgeon_doctor_id` bigint DEFAULT NULL,
+  `surgeon_name` varchar(255) DEFAULT NULL,
+  `anaesthetist_name` varchar(255) DEFAULT NULL,
+  `scheduled_at` datetime(6) DEFAULT NULL,
+  `ot_ward_id` bigint DEFAULT NULL,
+  `ot_bed_id` bigint DEFAULT NULL,
+  `scheduled_by_user_id` bigint DEFAULT NULL,
+  `started_at` datetime(6) DEFAULT NULL,
+  `completed_at` datetime(6) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL, `updated_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_surgery_public_id` (`public_id`),
+  KEY `idx_surgery_hospital_status` (`hospital_id`,`status`),
+  KEY `idx_surgery_admission` (`ipd_admission_id`),
+  CONSTRAINT `FK_surgery_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `surgery_forms` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ipd_admission_id` bigint NOT NULL,
+  `surgery_id` bigint DEFAULT NULL,
+  `form_type` varchar(60) NOT NULL,
+  `data_json` longtext,
+  `saved_by_user_id` bigint DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL, `updated_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_surgery_form_public_id` (`public_id`),
+  UNIQUE KEY `UK_surgery_form_admission_type` (`ipd_admission_id`,`form_type`),
+  KEY `idx_surgery_form_hospital` (`hospital_id`),
+  CONSTRAINT `FK_surgery_form_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

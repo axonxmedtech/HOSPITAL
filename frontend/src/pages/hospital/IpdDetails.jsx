@@ -12,6 +12,8 @@ import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import ProfileModal from '../../components/ProfileModal';
 import ConfirmationModal from '../../components/ConfirmationModal';
+import SurgeryRequestModal from './ot/SurgeryRequestModal';
+import otService from '../../services/otService';
 
 const IpdDetails = () => {
     const { id } = useParams();
@@ -23,6 +25,18 @@ const IpdDetails = () => {
     const isReceptionist = authService.isReceptionist();
     const isSoloDoctor = isDoctor && user?.receptionMode === 'SOLO';
     const { success, error: toastError } = useToast();
+    const [otSurgery, setOtSurgery] = useState(null);
+    const [otModalOpen, setOtModalOpen] = useState(false);
+    const hasOT = (user?.modules || []).includes('OT');
+
+    useEffect(() => {
+        if (!hasOT || !isDoctor || !id) return;
+        let active = true;
+        otService.getActiveForAdmission(id)
+            .then((s) => { if (active) setOtSurgery(s || null); })
+            .catch(() => { if (active) setOtSurgery(null); });
+        return () => { active = false; };
+    }, [hasOT, isDoctor, id, otModalOpen]);
 
     const parseError = (err, fallback) => {
         if (!err) return fallback;
@@ -522,11 +536,19 @@ const IpdDetails = () => {
                         <div className="text-sm text-gray-500">No follow-ups recorded.</div>
                     )}
 
-                    <div className="mt-3">
+                    <div className="mt-3 flex items-center gap-2">
                         {isDoctor && data.status !== 'DISCHARGE_PLANNED' && data.status !== 'DISCHARGED' && (
                             <button className="px-3 py-1 bg-green-600 text-white rounded" onClick={onAddFollowUp}>+ Add Follow-up</button>
                         )}
                     </div>
+
+                    {otModalOpen && (
+                        <SurgeryRequestModal
+                            admissionId={id}
+                            onClose={() => setOtModalOpen(false)}
+                            onCreated={() => {}}
+                        />
+                    )}
 
                     {followupModal.isOpen && (
                         <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
@@ -1129,31 +1151,52 @@ const IpdDetails = () => {
                 </div>
 
                 <aside className="bg-white border rounded p-4">
-                    <h3 className="font-semibold mb-2">Billing</h3>
-                    {canManageBilling ? (
-                        <div>
-                            {data.billing ? (
-                                <div className="text-sm">
-                                    <div><strong>Total:</strong> ₹{data.billing.totalAmount}</div>
-                                    <div><strong>Paid:</strong> ₹{data.billing.paidAmount}</div>
-                                    <div><strong>Balance:</strong> ₹{data.billing.balance}</div>
+                    {hasOT && isDoctor && !canManageBilling ? (
+                        <>
+                            <h3 className="font-semibold mb-2">Operation Theatre</h3>
+                            {otSurgery ? (
+                                <div className="text-sm space-y-1">
+                                    <div className="font-medium text-gray-800">{otSurgery.procedureName}</div>
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700">
+                                        Surgery: {otSurgery.status?.replace('_', ' ')}
+                                    </span>
                                 </div>
                             ) : (
-                                <div className="text-sm text-gray-500">No billing records found.</div>
-                            )}
-                            <div className="mt-3 flex gap-2">
-                                <button className="px-3 py-1 bg-green-600 text-white rounded" onClick={openBillModal}>Take Payment</button>
-                                <button 
-                                    className="px-3 py-1 bg-gray-600 text-white rounded disabled:opacity-50" 
-                                    onClick={handlePrintIpdBill}
-                                    disabled={printingBill}
-                                >
-                                    {printingBill ? 'Printing...' : 'Print Bill'}
+                                <button onClick={() => setOtModalOpen(true)}
+                                    className="px-3 py-1.5 rounded text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700">
+                                    Create Surgery Request
                                 </button>
-                            </div>
-                        </div>
+                            )}
+                        </>
                     ) : (
-                        <div className="text-sm text-gray-500">Billing is not visible to your role.</div>
+                        <>
+                            <h3 className="font-semibold mb-2">Billing</h3>
+                            {canManageBilling ? (
+                                <div>
+                                    {data.billing ? (
+                                        <div className="text-sm">
+                                            <div><strong>Total:</strong> ₹{data.billing.totalAmount}</div>
+                                            <div><strong>Paid:</strong> ₹{data.billing.paidAmount}</div>
+                                            <div><strong>Balance:</strong> ₹{data.billing.balance}</div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-sm text-gray-500">No billing records found.</div>
+                                    )}
+                                    <div className="mt-3 flex gap-2">
+                                        <button className="px-3 py-1 bg-green-600 text-white rounded" onClick={openBillModal}>Take Payment</button>
+                                        <button
+                                            className="px-3 py-1 bg-gray-600 text-white rounded disabled:opacity-50"
+                                            onClick={handlePrintIpdBill}
+                                            disabled={printingBill}
+                                        >
+                                            {printingBill ? 'Printing...' : 'Print Bill'}
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="text-sm text-gray-500">Billing is not visible to your role.</div>
+                            )}
+                        </>
                     )}
 
                     <hr className="my-4" />

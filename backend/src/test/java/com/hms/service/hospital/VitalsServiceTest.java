@@ -50,7 +50,7 @@ class VitalsServiceTest {
         r.setPulse(80);
         r.setBpSystolic(120);
         r.setBpDiastolic(80);
-        r.setTemperature(new BigDecimal("37.0"));
+        r.setTemperature(new BigDecimal("98.6"));
         return r;
     }
 

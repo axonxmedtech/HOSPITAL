@@ -28,6 +28,8 @@ import IpdAdmitModal from '../../components/IpdAdmitModal';
 import { SkeletonDashboard, SkeletonStatsGrid, SkeletonOverviewDual, SkeletonTable } from '../../components/Skeleton';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
 import LowStockBanner from '../../components/LowStockBanner';
+import OtBoard from './ot/OtBoard';
+import otService from '../../services/otService';
 
 /**
  * DoctorDashboard - Doctor dashboard
@@ -45,6 +47,7 @@ const DoctorDashboard = () => {
     const modules = user?.modules || [];
     const hasIPD = modules.includes('IPD');
     const hasAppointments = modules.includes('APPOINTMENTS');
+    const hasOT = modules.includes('OT');
     const [searchParams, setSearchParams] = useSearchParams();
     const activeTab = searchParams.get('tab') || 'overview';
     const viewFilter = searchParams.get('appointmentFilter') || 'today';
@@ -182,6 +185,17 @@ const DoctorDashboard = () => {
 
     // Resolved Doctor record state
     const [doctorRecord, setDoctorRecord] = useState(null);
+
+    // --- OT (Operation Theatre) board — visible to all doctors ---
+    const [otRows, setOtRows] = useState([]);
+    const [otLoading, setOtLoading] = useState(false);
+
+    useEffect(() => {
+        if (activeTab !== 'ot' || !hasOT) return;
+        setOtLoading(true);
+        otService.getMyBoard().then((d) => setOtRows(Array.isArray(d) ? d : []))
+            .catch(() => setOtRows([])).finally(() => setOtLoading(false));
+    }, [activeTab, hasOT]);
 
     // Fetch doctor record corresponding to user email
     useEffect(() => {
@@ -711,6 +725,7 @@ const DoctorDashboard = () => {
         { id: 'opd', label: 'OPD', icon: null },
         ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
         ...((isSolo || hasBilling) ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
+        ...(hasOT ? [{ id: 'ot', label: 'Operation Theatre', icon: null }] : []),
         ...((isSolo && hasInClinic && hasMedicalInventory) ? [{ id: 'inventory', label: 'Medicine Inventory', icon: null }] : []),
         ...(isSolo && hasHospitalInventory ? [{ id: 'hospital-inventory', label: `${tenantWord} Inventory`, icon: null }] : []),
     ];
@@ -1520,6 +1535,12 @@ const DoctorDashboard = () => {
 
                                 {activeTab === 'hospital-inventory' && (
                                     <HospitalInventoryTab />
+                                )}
+
+                                {activeTab === 'ot' && (
+                                    otLoading
+                                        ? <div className="text-center text-gray-400 py-16">Loading…</div>
+                                        : <OtBoard rows={otRows} mode="doctor" />
                                 )}
                             </div>
                             )}

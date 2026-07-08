@@ -2157,7 +2157,7 @@ const HospitalAdminDashboard = () => {
                             onSearch={(activeTab === 'fees' || activeTab === 'settings') ? null : (e) => setSearchInput(e.target.value)}
                             searchValue={(activeTab === 'fees' || activeTab === 'settings') ? '' : searchInput}
                             searchPlaceholder={(activeTab === 'fees' || activeTab === 'settings') ? '' : `Search ${activeTab}...`}
-                            onAdd={activeTab === 'opd' ? () => setIsAdminOpdModalOpen(true) : activeTab === 'nurse-tasks' ? () => setCreateTaskModal(true) : (activeTab !== 'billing' && activeTab !== 'audit-logs' && activeTab !== 'fees' && activeTab !== 'settings' && user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null)}
+                            onAdd={activeTab === 'opd' ? () => setIsAdminOpdModalOpen(true) : activeTab === 'nurse-tasks' ? () => setCreateTaskModal(true) : (activeTab !== 'billing' && activeTab !== 'audit-logs' && activeTab !== 'fees' && activeTab !== 'settings' && activeTab !== 'ot' && user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null)}
                             addLabel={activeTab === 'opd' ? 'New OPD' : activeTab === 'nurse-tasks' ? 'New Task' : (activeTab === 'fees' || activeTab === 'settings') ? '' : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'nurses' ? 'Nurse' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`}
                             filter={activeTab === 'patients' ? (
                                 <div className="flex items-center gap-2">

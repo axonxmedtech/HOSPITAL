@@ -90,6 +90,13 @@ const MyPatientsView = ({ onOpenPatient, refreshKey }) => {
                                     {p.admissionConfirmed
                                         ? <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-green-100 text-green-700">ADMITTED</span>
                                         : <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-700">ADMISSION PENDING</span>}
+                                    {p.surgeryStatus && (
+                                        <div className="mt-1">
+                                            <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-indigo-100 text-indigo-700">
+                                                {p.surgeryStatus === 'IN_PROGRESS' ? 'IN SURGERY' : 'SURGERY REQUESTED'}
+                                            </span>
+                                        </div>
+                                    )}
                                 </td>
                                 <td className="px-4 py-3 text-right whitespace-nowrap">
                                     {!p.admissionConfirmed && (

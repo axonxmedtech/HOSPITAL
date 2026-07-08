@@ -55,6 +55,7 @@ public class NursingNoteService {
         n.setNurseUserId(securityHelper.getCurrentUserId());
         n.setNoteText(text);
         n.setCategory(req.getCategory());
+        n.setSurgeryId(req.getSurgeryId());
         n.setRecordedAt(LocalDateTime.now());
         n.setIsActive(true);
         NursingNote saved = noteRepository.save(n);
@@ -71,6 +72,13 @@ public class NursingNoteService {
             nurseAccessGuard.assertAssigned(admission.getId());
         }
         return noteRepository.findByIpdAdmissionIdAndIsActiveTrueOrderByRecordedAtDesc(ipdAdmissionId);
+    }
+
+    public java.util.List<com.hms.entity.NursingNote> getBySurgery(Long surgeryId) {
+        Long hospitalId = requireHospitalId();
+        // Scope by hospital: surgeryId is a guessable sequential id, so filtering by
+        // it alone would leak another tenant's OT notes.
+        return noteRepository.findBySurgeryIdAndHospitalIdAndIsActiveTrueOrderByRecordedAtDesc(surgeryId, hospitalId);
     }
 
     @Transactional

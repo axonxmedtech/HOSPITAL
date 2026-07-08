@@ -35,6 +35,12 @@ public class NursingNoteController {
         return ResponseEntity.ok(noteService.getByAdmission(admissionId));
     }
 
+    @GetMapping("/surgery/{surgeryId}")
+    @PreAuthorize("hasAnyRole('NURSE', 'DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> getBySurgery(@PathVariable Long surgeryId) {
+        return ResponseEntity.ok(noteService.getBySurgery(surgeryId));
+    }
+
     @PutMapping("/{publicId}")
     @PreAuthorize("hasRole('NURSE')")
     public ResponseEntity<?> update(@PathVariable String publicId, @RequestBody NursingNoteRequest req) {

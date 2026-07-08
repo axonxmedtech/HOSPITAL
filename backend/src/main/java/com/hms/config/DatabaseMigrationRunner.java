@@ -63,6 +63,11 @@ public class DatabaseMigrationRunner {
         ensureManualTasksTable(); // NEW — Nurse module (Phase 1, M7)
         ensureNotificationsTable(); // NEW — Nurse module (Phase 1, M8)
         ensureOpdAdmitRecommendedColumn(); // NEW
+        ensureSurgeriesTable(); // NEW — OT module (Phase 2)
+        ensureSurgerySurgeonNameColumn(); // NEW — OT "Other" operator name
+        ensureSurgeryAnaesthetistNameColumn(); // NEW — OT optional anaesthetist
+        ensureSurgeryFormsTable(); // NEW — OT/NABH surgery forms store
+        ensureNursingNoteSurgeryIdColumn(); // NEW — OT notes link
     }
 
     /**
@@ -603,6 +608,143 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped (sugar_chart_entries): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Creates the surgeries table if absent (OT module, Phase 2).
+     * Idempotent; mirrors setup/schema-full.sql.
+     */
+    private void ensureSurgeriesTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'surgeries'",
+                Integer.class);
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE surgeries (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  public_id VARCHAR(255) NOT NULL," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  ipd_admission_id BIGINT NOT NULL," +
+                    "  patient_id BIGINT NOT NULL," +
+                    "  procedure_name VARCHAR(255)," +
+                    "  clinical_notes TEXT," +
+                    "  priority VARCHAR(20)," +
+                    "  preferred_date DATE," +
+                    "  requested_by_doctor_id BIGINT," +
+                    "  requested_by_user_id BIGINT," +
+                    "  requested_at DATETIME(6) NOT NULL," +
+                    "  status VARCHAR(20) NOT NULL," +
+                    "  surgeon_doctor_id BIGINT," +
+                    "  surgeon_name VARCHAR(255)," +
+                    "  anaesthetist_name VARCHAR(255)," +
+                    "  scheduled_at DATETIME(6)," +
+                    "  ot_ward_id BIGINT," +
+                    "  ot_bed_id BIGINT," +
+                    "  scheduled_by_user_id BIGINT," +
+                    "  started_at DATETIME(6)," +
+                    "  completed_at DATETIME(6)," +
+                    "  created_at DATETIME(6) NOT NULL, updated_at DATETIME(6)," +
+                    "  PRIMARY KEY (id)," +
+                    "  UNIQUE KEY UK_surgery_public_id (public_id)," +
+                    "  KEY idx_surgery_hospital_status (hospital_id, status)," +
+                    "  KEY idx_surgery_admission (ipd_admission_id)," +
+                    "  FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                    ")");
+                log.info("DB migration applied: surgeries table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (surgeries): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Adds the nullable surgeon_name column to surgeries (free-text "Other"
+     * operator name). Idempotent; mirrors setup/schema-full.sql.
+     */
+    private void ensureSurgerySurgeonNameColumn() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'surgeries' AND COLUMN_NAME = 'surgeon_name'",
+                Integer.class);
+            if (count != null && count == 0) {
+                jdbcTemplate.execute("ALTER TABLE surgeries ADD COLUMN surgeon_name VARCHAR(255) NULL");
+                log.info("DB migration applied: added surgeon_name column to surgeries");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (surgeries.surgeon_name): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Adds the nullable anaesthetist_name column to surgeries (optional
+     * anaesthetist for the surgery). Idempotent; mirrors setup/schema-full.sql.
+     */
+    private void ensureSurgeryAnaesthetistNameColumn() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'surgeries' AND COLUMN_NAME = 'anaesthetist_name'",
+                Integer.class);
+            if (count != null && count == 0) {
+                jdbcTemplate.execute("ALTER TABLE surgeries ADD COLUMN anaesthetist_name VARCHAR(255) NULL");
+                log.info("DB migration applied: added anaesthetist_name column to surgeries");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (surgeries.anaesthetist_name): {}", e.getMessage());
+        }
+    }
+
+    private void ensureSurgeryFormsTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'surgery_forms'",
+                Integer.class);
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE surgery_forms (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  public_id VARCHAR(255) NOT NULL," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  ipd_admission_id BIGINT NOT NULL," +
+                    "  surgery_id BIGINT," +
+                    "  form_type VARCHAR(60) NOT NULL," +
+                    "  data_json LONGTEXT," +
+                    "  saved_by_user_id BIGINT," +
+                    "  created_at DATETIME(6) NOT NULL, updated_at DATETIME(6)," +
+                    "  PRIMARY KEY (id)," +
+                    "  UNIQUE KEY UK_surgery_form_public_id (public_id)," +
+                    "  UNIQUE KEY UK_surgery_form_admission_type (ipd_admission_id, form_type)," +
+                    "  KEY idx_surgery_form_hospital (hospital_id)," +
+                    "  FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                    ")");
+                log.info("DB migration applied: surgery_forms table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (surgery_forms): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Adds the nullable surgery_id column to nursing_notes (links an OT note
+     * to its surgery). Idempotent; mirrors setup/schema-full.sql.
+     */
+    private void ensureNursingNoteSurgeryIdColumn() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'nursing_notes' AND COLUMN_NAME = 'surgery_id'",
+                Integer.class);
+            if (count != null && count == 0) {
+                jdbcTemplate.execute("ALTER TABLE nursing_notes ADD COLUMN surgery_id BIGINT NULL");
+                log.info("DB migration applied: added surgery_id column to nursing_notes");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (nursing_notes.surgery_id): {}", e.getMessage());
         }
     }
 

@@ -38,6 +38,10 @@ public class NurseWorkspaceService {
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private NurseAccessGuard nurseAccessGuard;
     @Autowired private com.hms.repository.NurseProfileRepository nurseProfileRepository;
+    @Autowired private SurgeryRepository surgeryRepository;
+
+    private static final List<String> ACTIVE_SURGERY_STATUSES =
+            List.of(Surgery.REQUESTED, Surgery.SCHEDULED, Surgery.IN_PROGRESS);
 
     /** Whether the current nurse is on shift (available). */
     public boolean getShiftStatus() {
@@ -111,6 +115,8 @@ public class NurseWorkspaceService {
             if (ipd.getBedId() != null) {
                 bedRepository.findById(ipd.getBedId()).ifPresent(b -> dto.setBedCode(b.getBedCode()));
             }
+            surgeryRepository.findByIpdAdmissionIdAndStatusIn(ipd.getId(), ACTIVE_SURGERY_STATUSES).stream()
+                    .findFirst().ifPresent(s -> dto.setSurgeryStatus(s.getStatus()));
             result.add(dto);
         }
         return result;

@@ -28,6 +28,9 @@ import IpdAdmitModal from '../../components/IpdAdmitModal';
 import { SkeletonDashboard, SkeletonStatsGrid, SkeletonOverviewDual, SkeletonTable } from '../../components/Skeleton';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
 import LowStockBanner from '../../components/LowStockBanner';
+import OtBoard from './ot/OtBoard';
+import ScheduleSurgeryModal from './ot/ScheduleSurgeryModal';
+import otService from '../../services/otService';
 
 const ReceptionistDashboard = () => {
     const [user, setUser] = useState(() => authService.getCurrentUser());
@@ -37,6 +40,7 @@ const ReceptionistDashboard = () => {
     const hasBilling = modules.includes('BILLING');
     const hasAppointments = modules.includes('APPOINTMENTS');
     const hasMedicalInventory = modules.includes('MEDICAL_INVENTORY');
+    const hasOT = modules.includes('OT');
     // Tenant-aware label: clinic logins say "Clinic" wherever we'd otherwise say "Hospital".
     const tenantWord = user?.hospitalType === 'CLINIC' ? 'Clinic' : 'Hospital';
     const [searchParams, setSearchParams] = useSearchParams();
@@ -201,6 +205,12 @@ const ReceptionistDashboard = () => {
     // Patient Details Modal
     const [patientDetailsModal, setPatientDetailsModal] = useState({ isOpen: false, patient: null });
 
+    // OT (Operation Theatre) tab
+    const [otFilter, setOtFilter] = useState('board'); // 'board' | 'requests'
+    const [otRows, setOtRows] = useState([]);
+    const [otLoading, setOtLoading] = useState(false);
+    const [otScheduleTarget, setOtScheduleTarget] = useState(null);
+
     const { success, error: toastError, info } = useToast();
     const navigate = useNavigate();
 
@@ -233,6 +243,15 @@ const ReceptionistDashboard = () => {
             setOpdForm(prev => ({ ...prev, doctorId: doctors[0].id }));
         }
     }, [isOpdModalOpen, doctors]);
+
+    const loadOt = React.useCallback(() => {
+        if (!hasOT) return;
+        setOtLoading(true);
+        const p = otFilter === 'requests' ? otService.getRequests() : otService.getBoard();
+        p.then((d) => setOtRows(Array.isArray(d) ? d : [])).catch(() => setOtRows([])).finally(() => setOtLoading(false));
+    }, [hasOT, otFilter]);
+
+    useEffect(() => { if (activeTab === 'ot') loadOt(); }, [activeTab, otFilter, loadOt]);
 
     const loadData = async (showSpinner = true) => {
         const requestId = ++activeRequestRef.current;
@@ -754,6 +773,7 @@ const ReceptionistDashboard = () => {
         ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
         ...(hasBilling ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
         ...(hasMedicalInventory && user?.inClinic !== false ? [{ id: 'inventory', label: 'Medicine Inventory', icon: null }] : []),
+        ...(hasOT ? [{ id: 'ot', label: 'Operation Theatre', icon: null }] : []),
     ].filter(tab => tab.id !== 'billing' || user?.billingHandler !== 'DOCTOR');
 
     // Fallback if the URL parameter tab is not currently valid/visible
@@ -1094,7 +1114,7 @@ const ReceptionistDashboard = () => {
                         onSearch={activeTab === 'queue' ? null : (e) => setSearchInput(e.target.value)}
                         searchValue={searchInput}
                         searchPlaceholder={activeTab === 'queue' ? '' : `Search ${activeTab}...`}
-                        onAdd={activeTab === 'queue' || activeTab === 'billing' || activeTab === 'ipd' || activeTab === 'inventory' ? null : () => {
+                        onAdd={activeTab === 'queue' || activeTab === 'billing' || activeTab === 'ipd' || activeTab === 'inventory' || activeTab === 'ot' ? null : () => {
                             if (activeTab === 'opd') setIsOpdModalOpen(true);
                             else setIsAddModalOpen(true);
                         }}
@@ -1521,6 +1541,37 @@ const ReceptionistDashboard = () => {
                             )}
                             {activeTab === 'inventory' && (
                                 <MedicineInventoryTab />
+                            )}
+                            {activeTab === 'ot' && (
+                                <div>
+                                    <div className="flex items-center justify-end mb-4">
+                                        <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
+                                            <button onClick={() => setOtFilter('board')}
+                                                className={`px-4 py-1.5 text-sm font-semibold ${otFilter === 'board' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600'}`}>Scheduled / Live</button>
+                                            <button onClick={() => setOtFilter('requests')}
+                                                className={`px-4 py-1.5 text-sm font-semibold ${otFilter === 'requests' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600'}`}>Requests</button>
+                                        </div>
+                                    </div>
+                                    {otLoading ? (
+                                        <div className="text-center text-gray-400 py-16">Loading…</div>
+                                    ) : (
+                                        <OtBoard
+                                            rows={otRows}
+                                            mode={otFilter}
+                                            onSchedule={(r) => setOtScheduleTarget(r)}
+                                            onCancel={async (r) => { try { await otService.cancel(r.publicId); loadOt(); } catch (e) { toastError(e?.response?.data?.error || 'Failed to cancel'); } }}
+                                            onStart={async (r) => { try { await otService.start(r.publicId); loadOt(); } catch (e) { toastError(e?.response?.data?.error || 'Failed to start'); } }}
+                                            onComplete={async (r) => { try { await otService.complete(r.publicId); loadOt(); } catch (e) { toastError(e?.response?.data?.error || 'Failed to complete'); } }}
+                                        />
+                                    )}
+                                    {otScheduleTarget && (
+                                        <ScheduleSurgeryModal
+                                            surgery={otScheduleTarget}
+                                            onClose={() => setOtScheduleTarget(null)}
+                                            onScheduled={loadOt}
+                                        />
+                                    )}
+                                </div>
                             )}
                         </div>
                     )}
