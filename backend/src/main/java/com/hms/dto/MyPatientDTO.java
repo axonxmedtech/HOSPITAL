@@ -14,6 +14,7 @@ public class MyPatientDTO {
     private String patientName;
     private Integer age;
     private String gender;
+    private Long wardId;
     private String wardName;
     private String bedCode;
     private String primaryDiagnosis;

@@ -41,6 +41,9 @@ public class IpdAdmissionService {
     private NurseAssignmentService nurseAssignmentService;
 
     @Autowired
+    private PatientAssignmentService patientAssignmentService;
+
+    @Autowired
     private com.hms.repository.HospitalSettingRepository hospitalSettingRepository;
 
     @Autowired
@@ -166,14 +169,11 @@ public class IpdAdmissionService {
         bed.setCurrentIpdAdmissionId(saved.getId());
         bedRepository.save(bed);
 
-        // Nurse module: auto-assign the patient to the least-loaded available
-        // on-shift nurse in this ward. Best-effort — never block the admission.
+        // Nursing Mgmt Phase A: incharge-mediated assignment. Best-effort.
         try {
-            nurseAssignmentService.autoAssignForAdmission(
-                    saved.getId(), saved.getWardId(), saved.getPatientId(),
-                    hospitalId, securityHelper.getCurrentUserId());
+            patientAssignmentService.onAdmission(saved);
         } catch (Exception e) {
-            logger.warn("Failed to auto-assign nurse for admission {}", saved.getId(), e);
+            logger.warn("Failed to run patient assignment for admission {}", saved.getId(), e);
         }
 
         // Mark OPD as completed/closed

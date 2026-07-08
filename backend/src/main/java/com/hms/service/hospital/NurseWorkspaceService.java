@@ -39,6 +39,8 @@ public class NurseWorkspaceService {
     @Autowired private NurseAccessGuard nurseAccessGuard;
     @Autowired private com.hms.repository.NurseProfileRepository nurseProfileRepository;
     @Autowired private SurgeryRepository surgeryRepository;
+    @Autowired private com.hms.security.NurseInchargeGuard nurseInchargeGuard;
+    @Autowired private NurseAssignmentService nurseAssignmentService;
 
     private static final List<String> ACTIVE_SURGERY_STATUSES =
             List.of(Surgery.REQUESTED, Surgery.SCHEDULED, Surgery.IN_PROGRESS);
@@ -211,6 +213,57 @@ public class NurseWorkspaceService {
         summary.setPaid(paid);
         summary.setBalance(total.subtract(paid));
         return summary;
+    }
+
+    /** Patients across the incharge's wards (or all wards for admin). */
+    public List<MyPatientDTO> getWardPatients() {
+        List<Long> wardIds = nurseInchargeGuard.myWardIds();
+        List<MyPatientDTO> out = new ArrayList<>();
+        if (wardIds.isEmpty()) return out;
+        for (IpdAdmission ipd :
+                ipdAdmissionRepository.findByHospitalIdAndStatus(securityHelper.getCurrentHospitalId(), "ADMITTED")) {
+            if (!wardIds.contains(ipd.getWardId())) continue;
+            MyPatientDTO dto = new MyPatientDTO();
+            dto.setIpdAdmissionId(ipd.getId());
+            dto.setIpdNumber(ipd.getIpdNumber());
+            dto.setStatus(ipd.getStatus());
+            dto.setWardId(ipd.getWardId());
+            patientRepository.findById(ipd.getPatientId()).ifPresent(p -> {
+                dto.setPatientName(p.getName()); dto.setAge(p.getAge()); dto.setGender(p.getGender());
+            });
+            if (ipd.getWardId() != null)
+                wardRepository.findById(ipd.getWardId()).ifPresent(w -> dto.setWardName(w.getWardName()));
+            out.add(dto);
+        }
+        return out;
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public void assignPatientNurse(Long ipdAdmissionId, Long nurseProfileId) {
+        nurseInchargeGuard.assertAdmissionInMyWard(ipdAdmissionId);
+        com.hms.entity.NurseProfile p = nurseProfileRepository.findById(nurseProfileId)
+                .orElseThrow(() -> new IllegalArgumentException("Nurse not found"));
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (!hospitalId.equals(p.getHospitalId()) || !Boolean.TRUE.equals(p.getIsActive())
+                || Boolean.TRUE.equals(p.getIsIncharge()) || p.getUserId() == null) {
+            throw new IllegalArgumentException("Select an active staff nurse with a login");
+        }
+        // NurseAssignmentService.assignNurse already closes any prior active
+        // assignment for this admission before opening the new one.
+        nurseAssignmentService.assignNurse(ipdAdmissionId, p.getUserId(), "Assigned by incharge");
+    }
+
+    /** Active, non-incharge staff nurses in a ward the caller may access (for the assign dropdown). */
+    public List<java.util.Map<String, Object>> getWardStaffNurses(Long wardId) {
+        nurseInchargeGuard.assertWardAccess(wardId);
+        Long hospitalId = requireHospitalId();
+        List<java.util.Map<String, Object>> out = new ArrayList<>();
+        for (com.hms.entity.NurseProfile p :
+                nurseProfileRepository.findByWardIdAndIsInchargeFalseAndIsActiveTrue(wardId)) {
+            if (!hospitalId.equals(p.getHospitalId()) || p.getUserId() == null) continue;
+            out.add(java.util.Map.of("id", p.getId(), "name", p.getName()));
+        }
+        return out;
     }
 
     private Long requireHospitalId() {

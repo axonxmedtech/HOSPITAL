@@ -212,6 +212,19 @@ const nurseService = {
         const response = await apiClient.put(`/hospital/nurse-tasks/${publicId}/status`, payload);
         return response.data;
     },
+
+    // --- Nurse Incharge (Phase A2) ---
+
+    /** Active admissions across the incharge's wards (or all wards for admin). */
+    getWardPatients: async () => (await apiClient.get('/hospital/nurse-incharge/patients')).data,
+
+    /** Active, non-incharge staff nurses in a ward (candidates for assignment). */
+    getWardStaffNurses: async (wardId) =>
+        (await apiClient.get(`/hospital/nurse-incharge/wards/${wardId}/nurses`)).data,
+
+    /** Assign a staff nurse to a patient's IPD admission. */
+    assignPatientNurse: async (ipdAdmissionId, nurseProfileId) =>
+        (await apiClient.post('/hospital/nurse-incharge/assign', { ipdAdmissionId, nurseProfileId })).data,
 };
 
 export default nurseService;

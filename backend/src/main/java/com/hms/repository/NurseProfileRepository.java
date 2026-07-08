@@ -18,4 +18,7 @@ public interface NurseProfileRepository extends JpaRepository<NurseProfile, Long
 
     /** Active, on-shift nurses assigned to a ward (candidates for auto-assignment). */
     java.util.List<NurseProfile> findByWardIdAndIsActiveTrueAndOnShiftTrue(Long wardId);
+
+    /** Active, non-incharge staff nurses assigned to a ward (candidates for Phase A auto-assignment). */
+    java.util.List<NurseProfile> findByWardIdAndIsInchargeFalseAndIsActiveTrue(Long wardId);
 }
