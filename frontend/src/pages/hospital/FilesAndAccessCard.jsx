@@ -29,7 +29,11 @@ const FilesAndAccessCard = () => {
         }
     }, [toastError]);
 
-    useEffect(() => { load(); }, [load]);
+    // Load once on mount only. Do NOT depend on `load`: useToast() returns fresh
+    // success/error identities on every ToastProvider render (e.g. when a toast
+    // appears then auto-dismisses), which would otherwise re-run this effect and
+    // refetch the list twice — swapping the card content and scrolling to top.
+    useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Update this one row in place — optimistic, with an in-place revert on
     // error — so the page never reloads or scrolls; only a toast confirms it.
