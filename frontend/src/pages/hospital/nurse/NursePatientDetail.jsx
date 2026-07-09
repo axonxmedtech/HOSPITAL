@@ -10,6 +10,7 @@ import VulnerabilityAssessmentPanel from './VulnerabilityAssessmentPanel';
 import SugarChartPanel from './SugarChartPanel';
 import ConsentFormsPanel from './ConsentFormsPanel';
 import OtNotesSection from '../ot/OtNotesSection';
+import formAccessService from '../../../services/formAccessService';
 
 /**
  * NursePatientDetail - read-only bedside view for a nurse (Phase 1).
@@ -40,6 +41,15 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
     const [d, setD] = useState(null);
     const [tab, setTab] = useState('overview');
     const [hasSurgery, setHasSurgery] = useState(false);
+    const [formVerdicts, setFormVerdicts] = useState({});
+
+    useEffect(() => {
+        let active = true;
+        formAccessService.effective()
+            .then((v) => { if (active) setFormVerdicts(v || {}); })
+            .catch(() => { if (active) setFormVerdicts({}); });
+        return () => { active = false; };
+    }, []);
 
     useEffect(() => {
         let active = true;
@@ -68,21 +78,36 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
         return () => { active = false; };
     }, [admissionId, refreshKey]);
 
+    // Nursing tabs collapse to HIDDEN based on the Files & Access verdicts.
+    // Computed unconditionally (not after the early returns below) because a
+    // guard effect keyed on `tabs` must be a hook, and hooks can't follow
+    // conditional returns.
+    const NURSING_FORM_KEY = {
+        vitals: 'VITALS',
+        assessment: 'INITIAL_ASSESSMENT',
+        vulnerability: 'VULNERABILITY_ASSESSMENT',
+        sugar: 'SUGAR_CHART',
+    };
+    const verdictFor = (tabId) => formVerdicts[NURSING_FORM_KEY[tabId]] || 'EDITABLE';
+
+    const tabs = [
+        { id: 'overview', label: 'Overview' },
+        ...(verdictFor('vitals') !== 'HIDDEN' ? [{ id: 'vitals', label: 'Vitals' }] : []),
+        { id: 'medication', label: 'Medication' },
+        { id: 'notes', label: 'Notes' },
+        ...(verdictFor('assessment') !== 'HIDDEN' ? [{ id: 'assessment', label: 'Initial Assessment' }] : []),
+        ...(verdictFor('vulnerability') !== 'HIDDEN' ? [{ id: 'vulnerability', label: 'Vulnerability Assessment' }] : []),
+        ...(verdictFor('sugar') !== 'HIDDEN' ? [{ id: 'sugar', label: 'Sugar Chart' }] : []),
+        ...(hasSurgery ? [{ id: 'consent', label: 'Consent Forms' }] : []),
+    ];
+
+    // Guard against a stale active tab (e.g. it was just hidden).
+    useEffect(() => { if (!tabs.some((t) => t.id === tab)) setTab('overview'); }, [tabs, tab]);
+
     if (loading) return <LoadingSpinner />;
     if (!d) return (
         <button onClick={onBack} className="text-sm font-semibold text-gray-600 hover:text-gray-900">← Back</button>
     );
-
-    const tabs = [
-        { id: 'overview', label: 'Overview' },
-        { id: 'vitals', label: 'Vitals' },
-        { id: 'medication', label: 'Medication' },
-        { id: 'notes', label: 'Notes' },
-        { id: 'assessment', label: 'Initial Assessment' },
-        { id: 'vulnerability', label: 'Vulnerability Assessment' },
-        { id: 'sugar', label: 'Sugar Chart' },
-        ...(hasSurgery ? [{ id: 'consent', label: 'Consent Forms' }] : []),
-    ];
 
     return (
         <div className="space-y-5">
@@ -116,19 +141,19 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
                 ))}
             </div>
 
-            {tab === 'vitals' && <VitalsPanel admissionId={admissionId} />}
+            {tab === 'vitals' && <VitalsPanel admissionId={admissionId} readOnly={verdictFor('vitals') === 'READ_ONLY'} />}
 
             {tab === 'medication' && <MedicationPanel admissionId={admissionId} />}
 
             {tab === 'notes' && <NotesPanel admissionId={admissionId} />}
 
-            {tab === 'assessment' && <InitialAssessmentPanel admissionId={admissionId} />}
+            {tab === 'assessment' && <InitialAssessmentPanel admissionId={admissionId} readOnly={verdictFor('assessment') === 'READ_ONLY'} />}
 
-            {tab === 'vulnerability' && <VulnerabilityAssessmentPanel admissionId={admissionId} />}
+            {tab === 'vulnerability' && <VulnerabilityAssessmentPanel admissionId={admissionId} readOnly={verdictFor('vulnerability') === 'READ_ONLY'} />}
 
-            {tab === 'sugar' && <SugarChartPanel admissionId={admissionId} />}
+            {tab === 'sugar' && <SugarChartPanel admissionId={admissionId} readOnly={verdictFor('sugar') === 'READ_ONLY'} />}
 
-            {tab === 'consent' && <ConsentFormsPanel admissionId={admissionId} />}
+            {tab === 'consent' && <ConsentFormsPanel admissionId={admissionId} formVerdicts={formVerdicts} />}
 
             {tab === 'overview' && (
             <>
