@@ -31,6 +31,7 @@ import Navbar from '../../components/Navbar';
 import PageHeader from '../../components/PageHeader';
 import WardsAndBeds from './WardsAndBeds';
 import TimeSlotsView from './TimeSlotsView';
+import FilesAndAccessCard from './FilesAndAccessCard';
 import HospitalCalendar from './HospitalCalendar';
 import WardModal from '../../components/WardModal';
 import useWebSocket from '../../hooks/useWebSocket';
@@ -2731,6 +2732,7 @@ const HospitalAdminDashboard = () => {
                             </div>
                         )}
                                 {activeTab === 'settings' && (
+                                    <>
                                     <div className="p-6 bg-white rounded-2xl border border-gray-200/80 shadow-sm max-w-4xl mx-auto my-4">
                                         <h2 className="text-xl font-bold mb-1 text-gray-900">{isPharmacyTenant ? 'Pharmacy Settings' : 'Operations Settings'}</h2>
                                         <p className="text-sm text-gray-500 mb-8">{isPharmacyTenant ? 'Configure your pharmacy workflow options.' : 'Configure operational scenarios, staff access permissions, and billing responsibilities.'}</p>
@@ -2944,6 +2946,12 @@ const HospitalAdminDashboard = () => {
                                             </div>
                                         )}
                                     </div>
+                                        {!isPharmacyTenant && (
+                                            <div className="max-w-4xl mx-auto my-4">
+                                                <FilesAndAccessCard />
+                                            </div>
+                                        )}
+                                    </>
                                 )}
                                 {activeTab === 'pharmacy-billing' && (
                                     <div className="space-y-6">
