@@ -245,6 +245,9 @@ const nurseService = {
     /** The incharge's wards (all wards for admin), each with its beds. */
     getMyWards: async () => (await apiClient.get('/hospital/nurse-incharge/wards')).data,
 
+    /** The incharge's nurse roster (staff nurses across their wards). */
+    getMyNurses: async () => (await apiClient.get('/hospital/nurse-incharge/nurses')).data,
+
     /** Mark a bed awaiting cleaning as cleaned -> available. */
     markBedCleaned: async (bedId, remarks) => (await apiClient.post(`/hospital/beds/${bedId}/cleaned`, { remarks })).data,
 

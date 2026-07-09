@@ -16,6 +16,7 @@ import AttendanceView from './nurse-incharge/AttendanceView';
 import InchargeOverview from './nurse-incharge/InchargeOverview';
 import CoverageView from './nurse-incharge/CoverageView';
 import HospitalCalendar from './HospitalCalendar';
+import MyNursesView from './nurse-incharge/MyNursesView';
 
 /**
  * NurseInchargeDashboard - Phase A1 shell for the Nurse Incharge role.
@@ -79,10 +80,11 @@ const NurseInchargeDashboard = () => {
             case 'calendar':
                 return <HospitalCalendar />;
             case 'my-nurses':
+                return <MyNursesView refreshKey={refreshKey} />;
             default:
                 return (
                     <div className="bg-white rounded-2xl border border-gray-200/80 p-8 text-center text-gray-500">
-                        Nurse roster management is coming soon.
+                        Select a tab.
                     </div>
                 );
         }

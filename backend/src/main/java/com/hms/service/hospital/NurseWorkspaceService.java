@@ -260,6 +260,9 @@ public class NurseWorkspaceService {
                 || Boolean.TRUE.equals(p.getIsIncharge()) || p.getUserId() == null) {
             throw new IllegalArgumentException("Select an active staff nurse with a login");
         }
+        // Isolation: the nurse must belong to one of the caller's wards, so an
+        // incharge can only assign their own nurses (admin bypasses in the guard).
+        nurseInchargeGuard.assertWardAccess(p.getWardId());
         // NurseAssignmentService.assignNurse already closes any prior active
         // assignment for this admission before opening the new one.
         nurseAssignmentService.assignNurse(ipdAdmissionId, p.getUserId(), "Assigned by incharge");
@@ -274,6 +277,41 @@ public class NurseWorkspaceService {
                 coverageService.effectiveWardNurses(wardId, java.time.LocalDate.now())) {
             if (!hospitalId.equals(p.getHospitalId()) || p.getUserId() == null) continue;
             out.add(java.util.Map.of("id", p.getId(), "name", p.getName()));
+        }
+        return out;
+    }
+
+    /**
+     * The incharge's nurse roster: every active staff nurse across the wards the
+     * caller is incharge of (all hospital wards for admin). Because a ward has a
+     * single incharge and a nurse belongs to a single ward, each nurse appears
+     * under exactly one incharge — the isolation the roster relies on.
+     */
+    public List<java.util.Map<String, Object>> getMyNurses() {
+        Long hospitalId = requireHospitalId();
+        List<Long> wardIds = nurseInchargeGuard.myWardIds();
+        List<java.util.Map<String, Object>> out = new ArrayList<>();
+        for (Long wardId : wardIds) {
+            String wardName = wardRepository.findById(wardId)
+                    .map(com.hms.entity.Ward::getWardName).orElse(null);
+            for (com.hms.entity.NurseProfile p :
+                    nurseProfileRepository.findByWardIdAndIsInchargeFalseAndIsActiveTrue(wardId)) {
+                if (!hospitalId.equals(p.getHospitalId())) continue;
+                java.util.Map<String, Object> m = new java.util.HashMap<>();
+                m.put("nurseProfileId", p.getId());
+                m.put("publicId", p.getPublicId());
+                m.put("name", p.getName());
+                m.put("customId", p.getCustomId());
+                m.put("phone", p.getPhone());
+                m.put("email", p.getEmail());
+                m.put("wardId", wardId);
+                m.put("wardName", wardName);
+                m.put("hasLogin", p.getUserId() != null);
+                boolean onShift = false;
+                try { onShift = nurseShiftScheduleService.isOnShiftNow(p.getId()); } catch (Exception ignored) { }
+                m.put("onShiftNow", onShift);
+                out.add(m);
+            }
         }
         return out;
     }

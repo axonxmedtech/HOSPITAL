@@ -45,4 +45,8 @@ public class NurseInchargeController {
     @GetMapping("/wards")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','NURSE_INCHARGE')")
     public ResponseEntity<?> myWards() { return ResponseEntity.ok(workspaceService.getMyWards()); }
+
+    @GetMapping("/nurses")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','NURSE_INCHARGE')")
+    public ResponseEntity<?> myNurses() { return ResponseEntity.ok(workspaceService.getMyNurses()); }
 }
