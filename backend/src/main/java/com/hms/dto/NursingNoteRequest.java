@@ -9,6 +9,7 @@ import lombok.Data;
 public class NursingNoteRequest {
     private Long ipdAdmissionId; // required on create; ignored on update
     private String noteText;
+    private String orders;       // optional — drugs / IV fluids printed beside the note
     private String category;     // optional (reserved)
     private Long surgeryId;       // optional — links an OT note to its surgery
     private Long performedByNurseId; // optional; required when Separate Nurse Login is OFF

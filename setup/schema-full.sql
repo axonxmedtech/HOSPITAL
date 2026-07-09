@@ -1200,6 +1200,7 @@ CREATE TABLE `nursing_notes` (
   `nurse_user_id` bigint NOT NULL,
   `performed_by_nurse_id` bigint DEFAULT NULL,
   `note_text` text NOT NULL,
+  `orders` text,
   `category` varchar(40) DEFAULT NULL,
   `surgery_id` bigint DEFAULT NULL,
   `recorded_at` datetime(6) NOT NULL,

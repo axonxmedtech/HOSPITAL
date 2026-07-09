@@ -56,6 +56,7 @@ public class NursingNoteService {
         n.setPatientId(admission.getPatientId());
         n.setNurseUserId(securityHelper.getCurrentUserId());
         n.setNoteText(text);
+        n.setOrders(req.getOrders());
         n.setCategory(req.getCategory());
         n.setSurgeryId(req.getSurgeryId());
         n.setRecordedAt(LocalDateTime.now());
@@ -88,6 +89,7 @@ public class NursingNoteService {
     public NursingNote update(String publicId, NursingNoteRequest req) {
         NursingNote n = requireEditableOwnNote(publicId);
         n.setNoteText(validateText(req.getNoteText()));
+        if (req.getOrders() != null) n.setOrders(req.getOrders());
         if (req.getCategory() != null) n.setCategory(req.getCategory());
         NursingNote saved = noteRepository.save(n);
         audit("NURSING_NOTE_UPDATED", "Edited nursing note " + n.getPublicId(), n.getHospitalId(), n.getIpdAdmissionId());

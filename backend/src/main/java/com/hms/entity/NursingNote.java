@@ -46,6 +46,10 @@ public class NursingNote {
     @Column(name = "note_text", columnDefinition = "text", nullable = false)
     private String noteText;
 
+    /** Orders — drugs / IV fluids accompanying the note; printed in its own column. */
+    @Column(name = "orders", columnDefinition = "text")
+    private String orders;
+
     @Column(name = "category", length = 40)
     private String category;
 

@@ -80,6 +80,8 @@ public class DatabaseMigrationRunner {
         ensureNurseSubstitutionsTable(); // NEW — Nursing Mgmt Phase F
         ensureCalendarEventsTable();
         ensureHospitalFormAccessTable();
+        // Orders (drugs / IV fluids) captured alongside a nursing note; printed beside it.
+        addColumnIfMissing("nursing_notes", "orders", "TEXT NULL");
         ensureBedStatusAuditsTable(); // NEW — Nursing Mgmt Phase C1
     }
 

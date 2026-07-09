@@ -25,7 +25,7 @@ export const buildReassessmentHtml = (notes, f, hospital) => {
     const fmt = (dt) => dt ? new Date(dt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
 
     const rows = (notes || []).map((n) =>
-        `<tr><td class="dt">${esc(fmt(n.recordedAt))}</td><td class="cn">${esc(n.noteText).replace(/\n/g, '<br/>')}</td><td></td></tr>`).join('');
+        `<tr><td class="dt">${esc(fmt(n.recordedAt))}</td><td class="cn">${esc(n.noteText).replace(/\n/g, '<br/>')}</td><td>${esc(n.orders || '').replace(/\n/g, '<br/>')}</td></tr>`).join('');
     // Pad with blank ruled rows so the sheet fills the page for handwritten entries.
     const blanks = Math.max(4, 22 - (notes || []).length);
     const blankRows = Array.from({ length: blanks }).map(() => '<tr><td class="dt">&nbsp;</td><td></td><td></td></tr>').join('');
@@ -95,6 +95,7 @@ const NotesPanel = ({ admissionId }) => {
     const [notes, setNotes] = useState([]);
     const [f, setF] = useState({}); // patient header data for the print
     const [text, setText] = useState('');
+    const [orders, setOrders] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [editText, setEditText] = useState('');
@@ -159,11 +160,12 @@ const NotesPanel = ({ admissionId }) => {
         }
         setSubmitting(true);
         try {
-            const payload = { ipdAdmissionId: admissionId, noteText: text.trim() };
+            const payload = { ipdAdmissionId: admissionId, noteText: text.trim(), orders: orders.trim() };
             if (isNurse && separateLogin === false) payload.performedByNurseId = Number(performedByNurseId);
             await nurseService.createNote(payload);
             success('Note added');
             setText('');
+            setOrders('');
             setPerformedByNurseId('');
             load();
         } catch (err) {
@@ -204,14 +206,30 @@ const NotesPanel = ({ admissionId }) => {
         <div className="space-y-5">
             <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <h3 className="font-bold text-gray-800 text-sm mb-3">Add Note</h3>
-                <textarea
-                    rows={3}
-                    maxLength={MAX}
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    placeholder="Observation, patient condition, handover note…"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Clinical Notes</label>
+                        <textarea
+                            rows={3}
+                            maxLength={MAX}
+                            value={text}
+                            onChange={(e) => setText(e.target.value)}
+                            placeholder="Observation, patient condition, handover note…"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Orders — Drugs / IV Fluids</label>
+                        <textarea
+                            rows={3}
+                            maxLength={MAX}
+                            value={orders}
+                            onChange={(e) => setOrders(e.target.value)}
+                            placeholder="Drugs, IV fluids, instructions…"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                        />
+                    </div>
+                </div>
                 {isNurse && separateLogin === false && (
                     <div className="mt-3">
                         <label className="block text-xs font-medium text-gray-600 mb-1">Performed By Nurse *</label>
@@ -287,7 +305,15 @@ const NotesPanel = ({ admissionId }) => {
                                             </div>
                                         </div>
                                     ) : (
-                                        <p className="text-sm text-gray-800 whitespace-pre-wrap">{n.noteText}</p>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <p className="text-sm text-gray-800 whitespace-pre-wrap">{n.noteText}</p>
+                                            {n.orders ? (
+                                                <div className="md:border-l md:pl-3 border-gray-100">
+                                                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Orders — Drugs / IV Fluids</p>
+                                                    <p className="text-sm text-gray-800 whitespace-pre-wrap">{n.orders}</p>
+                                                </div>
+                                            ) : null}
+                                        </div>
                                     )}
                                 </li>
                             );
