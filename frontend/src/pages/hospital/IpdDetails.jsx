@@ -14,6 +14,13 @@ import ProfileModal from '../../components/ProfileModal';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import SurgeryRequestModal from './ot/SurgeryRequestModal';
 import otService from '../../services/otService';
+import formAccessService from '../../services/formAccessService';
+import VitalsPanel from './nurse/VitalsPanel';
+import NotesPanel from './nurse/NotesPanel';
+import InitialAssessmentPanel from './nurse/InitialAssessmentPanel';
+import VulnerabilityAssessmentPanel from './nurse/VulnerabilityAssessmentPanel';
+import SugarChartPanel from './nurse/SugarChartPanel';
+import ConsentFormsPanel from './nurse/ConsentFormsPanel';
 
 const IpdDetails = () => {
     const { id } = useParams();
@@ -28,6 +35,42 @@ const IpdDetails = () => {
     const [otSurgery, setOtSurgery] = useState(null);
     const [otModalOpen, setOtModalOpen] = useState(false);
     const hasOT = (user?.modules || []).includes('OT');
+
+    // Files & Access: which clinical forms this role may see / edit here.
+    const [tab, setTab] = useState('overview');
+    const [formVerdicts, setFormVerdicts] = useState({});
+    useEffect(() => {
+        let active = true;
+        formAccessService.effective()
+            .then((v) => { if (active) setFormVerdicts(v || {}); })
+            .catch(() => { if (active) setFormVerdicts({}); });
+        return () => { active = false; };
+    }, []);
+
+    const FORM_KEY_BY_TAB = {
+        vitals: 'VITALS',
+        assessment: 'INITIAL_ASSESSMENT',
+        vulnerability: 'VULNERABILITY_ASSESSMENT',
+        sugar: 'SUGAR_CHART',
+    };
+    const verdictFor = (tabId) => formVerdicts[FORM_KEY_BY_TAB[tabId]] || 'EDITABLE';
+    const admissionId = Number(id);
+
+    const tabs = [
+        { id: 'overview', label: 'Overview' },
+        ...(verdictFor('vitals') !== 'HIDDEN' ? [{ id: 'vitals', label: 'Vitals' }] : []),
+        { id: 'medication', label: 'Medication' },
+        { id: 'notes', label: 'Notes' },
+        ...(verdictFor('assessment') !== 'HIDDEN' ? [{ id: 'assessment', label: 'Initial Assessment' }] : []),
+        ...(verdictFor('vulnerability') !== 'HIDDEN' ? [{ id: 'vulnerability', label: 'Vulnerability Assessment' }] : []),
+        ...(verdictFor('sugar') !== 'HIDDEN' ? [{ id: 'sugar', label: 'Sugar Chart' }] : []),
+        ...(hasOT && otSurgery ? [{ id: 'consent', label: 'Consent Forms' }] : []),
+    ];
+    // If the active tab got hidden by a Files & Access change, fall back to Overview.
+    useEffect(() => {
+        if (!tabs.some((t) => t.id === tab)) setTab('overview');
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [formVerdicts, otSurgery, tab]);
 
     useEffect(() => {
         if (!hasOT || !isDoctor || !id) return;
@@ -533,8 +576,29 @@ const IpdDetails = () => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
+            {/* Sub-tabs — same set the nurse sees; form tabs respect Files & Access. */}
+            <div className="mt-4 border-b border-gray-200 flex gap-1 overflow-x-auto">
+                {tabs.map((t) => (
+                    <button
+                        key={t.id}
+                        onClick={() => setTab(t.id)}
+                        className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap ${tab === t.id ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                    >
+                        {t.label}
+                    </button>
+                ))}
+            </div>
+
+            {tab === 'vitals' && <div className="mt-4"><VitalsPanel admissionId={admissionId} readOnly={verdictFor('vitals') === 'READ_ONLY'} /></div>}
+            {tab === 'notes' && <div className="mt-4"><NotesPanel admissionId={admissionId} /></div>}
+            {tab === 'assessment' && <div className="mt-4"><InitialAssessmentPanel admissionId={admissionId} readOnly={verdictFor('assessment') === 'READ_ONLY'} /></div>}
+            {tab === 'vulnerability' && <div className="mt-4"><VulnerabilityAssessmentPanel admissionId={admissionId} readOnly={verdictFor('vulnerability') === 'READ_ONLY'} /></div>}
+            {tab === 'sugar' && <div className="mt-4"><SugarChartPanel admissionId={admissionId} readOnly={verdictFor('sugar') === 'READ_ONLY'} /></div>}
+            {tab === 'consent' && <div className="mt-4"><ConsentFormsPanel admissionId={admissionId} formVerdicts={formVerdicts} /></div>}
+
+            <div className={(tab === 'overview' || tab === 'medication') ? 'grid grid-cols-1 md:grid-cols-3 gap-6 mt-4' : 'hidden'}>
                 <div className="col-span-2 bg-white border rounded p-4">
+                    {tab === 'overview' && (<>
                     <h3 className="font-semibold mb-2">Admission Info</h3>
                     <div className="grid grid-cols-2 gap-2 text-sm">
                         <div><strong>Admitted:</strong> {data.admission?.admissionDateTime ? new Date(data.admission.admissionDateTime).toLocaleString() : '-'}</div>
@@ -572,14 +636,7 @@ const IpdDetails = () => {
                             <button className="px-3 py-1 bg-green-600 text-white rounded" onClick={onAddFollowUp}>+ Add Follow-up</button>
                         )}
                     </div>
-
-                    {otModalOpen && (
-                        <SurgeryRequestModal
-                            admissionId={id}
-                            onClose={() => setOtModalOpen(false)}
-                            onCreated={() => {}}
-                        />
-                    )}
+                    </>)}
 
                     {followupModal.isOpen && (
                         <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
@@ -1107,8 +1164,7 @@ const IpdDetails = () => {
                             </div>
                         )}
 
-                    <hr className="my-4" />
-
+                    {tab === 'medication' && (<>
                     <h3 className="font-semibold mb-2">Current Medicines & Items</h3>
 
                     {/* Prescribed Medicines — full history; stopped kept & struck-through */}
@@ -1179,6 +1235,7 @@ const IpdDetails = () => {
                             <button className="px-3 py-1 bg-blue-600 text-white rounded" onClick={onAddMedicine}>+ Add Medicine</button>
                         </div>
                     )}
+                    </>)}
                 </div>
 
                 <aside className="bg-white border rounded p-4">
@@ -1224,6 +1281,15 @@ const IpdDetails = () => {
                     )}
                 </aside>
             </div>
+
+            {/* Surgery Request Modal — top level so it opens from any sub-tab (its trigger is the header button). */}
+            {otModalOpen && (
+                <SurgeryRequestModal
+                    admissionId={id}
+                    onClose={() => setOtModalOpen(false)}
+                    onCreated={() => {}}
+                />
+            )}
 
             {/* Discharge Modal */}
             {dischargeModal.isOpen && (
