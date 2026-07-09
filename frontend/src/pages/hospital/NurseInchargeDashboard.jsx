@@ -15,6 +15,7 @@ import WardBedsView from './nurse-incharge/WardBedsView';
 import AttendanceView from './nurse-incharge/AttendanceView';
 import InchargeOverview from './nurse-incharge/InchargeOverview';
 import CoverageView from './nurse-incharge/CoverageView';
+import HospitalCalendar from './HospitalCalendar';
 
 /**
  * NurseInchargeDashboard - Phase A1 shell for the Nurse Incharge role.
@@ -47,6 +48,7 @@ const NurseInchargeDashboard = () => {
         { id: 'attendance', label: 'Attendance' },
         { id: 'beds', label: 'Beds' },
         { id: 'coverage', label: 'Coverage' },
+        { id: 'calendar', label: 'Calendar' },
     ];
 
     const titleFor = () => {
@@ -56,6 +58,7 @@ const NurseInchargeDashboard = () => {
         if (activeTab === 'attendance') return 'Attendance';
         if (activeTab === 'beds') return 'Beds';
         if (activeTab === 'coverage') return 'Coverage';
+        if (activeTab === 'calendar') return 'Calendar';
         return 'My Nurses';
     };
 
@@ -73,6 +76,8 @@ const NurseInchargeDashboard = () => {
                 return <WardBedsView />;
             case 'coverage':
                 return <CoverageView />;
+            case 'calendar':
+                return <HospitalCalendar />;
             case 'my-nurses':
             default:
                 return (

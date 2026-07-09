@@ -30,6 +30,7 @@ import Navbar from '../../components/Navbar';
 import PageHeader from '../../components/PageHeader';
 import WardsAndBeds from './WardsAndBeds';
 import TimeSlotsView from './TimeSlotsView';
+import HospitalCalendar from './HospitalCalendar';
 import WardModal from '../../components/WardModal';
 import useWebSocket from '../../hooks/useWebSocket';
 import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
@@ -1628,6 +1629,7 @@ const HospitalAdminDashboard = () => {
         { id: 'nurse-assignments', label: 'Nurse Assignments', icon: null, requiredModule: 'NURSING' },
         { id: 'nurse-tasks', label: 'Nurse Tasks', icon: null, requiredModule: 'NURSING' },
         { id: 'time-slots', label: 'Time Slots', icon: null, requiredModule: 'NURSING' },
+        { id: 'calendar', label: 'Calendar', icon: null, requiredModule: 'NURSING' },
         // Admin & meta
         { id: 'analytics', label: 'Reports & Analytics', icon: null, requiredModule: 'REPORTS' },
         { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
@@ -1690,7 +1692,7 @@ const HospitalAdminDashboard = () => {
     const SIDEBAR_GROUPS = [
         { id: 'group-patient-management', label: 'Patient Management', tabIds: ['patients', 'appointments', 'opd', 'ipd', 'wards', 'ot', 'pathology'] },
         { id: 'group-staff', label: 'Staff', tabIds: ['doctors', 'pharmacists', 'receptionists'] },
-        { id: 'group-nursing', label: 'Nursing', tabIds: ['nurses', 'nurse-assignments', 'nurse-tasks', 'time-slots'] },
+        { id: 'group-nursing', label: 'Nursing', tabIds: ['nurses', 'nurse-assignments', 'nurse-tasks', 'time-slots', 'calendar'] },
         { id: 'group-pharmacy', label: 'Pharmacy', tabIds: ['pharmacy'] },
         { id: 'group-inventory', label: 'Inventory', tabIds: ['inventory', 'hospital-inventory'] },
         { id: 'group-finance', label: 'Finance', tabIds: ['billing', 'fees'] },
@@ -2239,7 +2241,7 @@ const HospitalAdminDashboard = () => {
                             onSearch={(activeTab === 'fees' || activeTab === 'settings') ? null : (e) => setSearchInput(e.target.value)}
                             searchValue={(activeTab === 'fees' || activeTab === 'settings') ? '' : searchInput}
                             searchPlaceholder={(activeTab === 'fees' || activeTab === 'settings') ? '' : `Search ${activeTab}...`}
-                            onAdd={activeTab === 'opd' ? () => setIsAdminOpdModalOpen(true) : activeTab === 'nurse-tasks' ? () => setCreateTaskModal(true) : (activeTab !== 'billing' && activeTab !== 'audit-logs' && activeTab !== 'fees' && activeTab !== 'settings' && activeTab !== 'ot' && activeTab !== 'time-slots' && user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null)}
+                            onAdd={activeTab === 'opd' ? () => setIsAdminOpdModalOpen(true) : activeTab === 'nurse-tasks' ? () => setCreateTaskModal(true) : (activeTab !== 'billing' && activeTab !== 'audit-logs' && activeTab !== 'fees' && activeTab !== 'settings' && activeTab !== 'ot' && activeTab !== 'time-slots' && activeTab !== 'calendar' && user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null)}
                             addLabel={activeTab === 'opd' ? 'New OPD' : activeTab === 'nurse-tasks' ? 'New Task' : (activeTab === 'fees' || activeTab === 'settings') ? '' : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'nurses' ? 'Nurse' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`}
                             filter={activeTab === 'patients' ? (
                                 <div className="flex items-center gap-2">
@@ -3259,6 +3261,9 @@ const HospitalAdminDashboard = () => {
                                 )}
                                 {activeTab === 'time-slots' && (
                                     <TimeSlotsView />
+                                )}
+                                {activeTab === 'calendar' && (
+                                    <HospitalCalendar />
                                 )}
                                 {activeTab === 'analytics' && (
                                     <div className="p-6 space-y-8 bg-gray-50/50 min-h-screen">

@@ -75,8 +75,8 @@ const InchargeOverview = ({ onNavigate, refreshKey }) => {
                             {a.label}
                         </button>
                     ))}
-                    <button disabled title="Coming in a later phase"
-                        className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-400 bg-gray-100 cursor-not-allowed">
+                    <button onClick={() => onNavigate && onNavigate('calendar')}
+                        className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">
                         View Calendar
                     </button>
                 </div>
