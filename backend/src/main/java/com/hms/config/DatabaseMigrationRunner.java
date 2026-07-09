@@ -79,7 +79,32 @@ public class DatabaseMigrationRunner {
         ensureNurseWardAssignmentsTable(); // NEW — Nursing Mgmt Phase F
         ensureNurseSubstitutionsTable(); // NEW — Nursing Mgmt Phase F
         ensureCalendarEventsTable();
+        ensureHospitalFormAccessTable();
         ensureBedStatusAuditsTable(); // NEW — Nursing Mgmt Phase C1
+    }
+
+    private void ensureHospitalFormAccessTable() {
+        try {
+            Integer exists = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'hospital_form_access'",
+                    Integer.class);
+            if (exists == null || exists == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE hospital_form_access (" +
+                        "  id BIGINT AUTO_INCREMENT PRIMARY KEY," +
+                        "  hospital_id BIGINT NOT NULL," +
+                        "  form_key VARCHAR(60) NOT NULL," +
+                        "  enabled TINYINT(1) NOT NULL DEFAULT 1," +
+                        "  access_role VARCHAR(10) NOT NULL DEFAULT 'BOTH'," +
+                        "  updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP," +
+                        "  UNIQUE KEY uq_form_access_hosp_key (hospital_id, form_key)," +
+                        "  CONSTRAINT fk_form_access_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                        ")");
+                log.info("Created hospital_form_access table");
+            }
+        } catch (Exception e) {
+            log.warn("ensureHospitalFormAccessTable failed: {}", e.getMessage());
+        }
     }
 
     private void ensureCalendarEventsTable() {

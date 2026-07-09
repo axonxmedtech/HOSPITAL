@@ -1555,6 +1555,18 @@ CREATE TABLE IF NOT EXISTS calendar_events (
     CONSTRAINT fk_calevent_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE
 );
 
+-- Per-hospital clinical form availability + edit access (Files & Access, Phase 1)
+CREATE TABLE IF NOT EXISTS hospital_form_access (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    form_key VARCHAR(60) NOT NULL,
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
+    access_role VARCHAR(10) NOT NULL DEFAULT 'BOTH',
+    updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_form_access_hosp_key (hospital_id, form_key),
+    CONSTRAINT fk_form_access_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE
+);
+
 -- Nursing Mgmt Phase C1 — bed status change audit trail
 CREATE TABLE `bed_status_audits` (
   `id` bigint NOT NULL AUTO_INCREMENT,
