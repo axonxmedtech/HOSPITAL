@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 
 const ToastContext = createContext();
 
@@ -7,26 +7,28 @@ export const useToast = () => useContext(ToastContext);
 export const ToastProvider = ({ children }) => {
     const [toasts, setToasts] = useState([]);
 
-    const addToast = (message, type = 'info') => {
+    // success/error/info MUST be referentially stable: components put them in
+    // useEffect/useCallback dependency lists. If their identity changed on every
+    // provider render, an effect that toasts on failure would refetch forever.
+    const removeToast = useCallback((id) => {
+        setToasts(prev => prev.filter(toast => toast.id !== id));
+    }, []);
+
+    const addToast = useCallback((message, type = 'info') => {
         const id = Date.now() + Math.random();
         setToasts(prev => [...prev, { id, message, type }]);
-
         // Auto-remove after 3 seconds
-        setTimeout(() => {
-            removeToast(id);
-        }, 3000);
-    };
+        setTimeout(() => removeToast(id), 3000);
+    }, [removeToast]);
 
-    const removeToast = (id) => {
-        setToasts(prev => prev.filter(toast => toast.id !== id));
-    };
+    const success = useCallback((message) => addToast(message, 'success'), [addToast]);
+    const error = useCallback((message) => addToast(message, 'error'), [addToast]);
+    const info = useCallback((message) => addToast(message, 'info'), [addToast]);
 
-    const success = (message) => addToast(message, 'success');
-    const error = (message) => addToast(message, 'error');
-    const info = (message) => addToast(message, 'info');
+    const value = useMemo(() => ({ success, error, info }), [success, error, info]);
 
     return (
-        <ToastContext.Provider value={{ success, error, info }}>
+        <ToastContext.Provider value={value}>
             {children}
             <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
                 {toasts.map(toast => (
