@@ -220,6 +220,16 @@ const TimeSlotsView = () => {
         }
     };
 
+    const handleActivate = async (row) => {
+        try {
+            await timeSlotService.activateShiftTemplate(row.publicId);
+            success('Shift template activated');
+            await fetchShiftTemplates();
+        } catch (e) {
+            toastError(e?.response?.data?.error || 'Failed to activate');
+        }
+    };
+
     const handleDeactivate = async (row) => {
         try {
             if (subTab === 'shifts') {
@@ -295,12 +305,19 @@ const TimeSlotsView = () => {
                                                 >
                                                     Edit
                                                 </button>
-                                                {row.isActive && (
+                                                {row.isActive ? (
                                                     <button
                                                         onClick={() => handleDeactivate(row)}
                                                         className="text-amber-600 hover:text-amber-700 font-medium"
                                                     >
                                                         Deactivate
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => handleActivate(row)}
+                                                        className="text-green-600 hover:text-green-700 font-medium"
+                                                    >
+                                                        Activate
                                                     </button>
                                                 )}
                                             </div>

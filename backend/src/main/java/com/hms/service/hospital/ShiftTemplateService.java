@@ -49,7 +49,11 @@ public class ShiftTemplateService {
         t.setName(req.getName().trim());
         t.setStartTime(req.getStartTime());
         t.setEndTime(req.getEndTime());
-        ShiftTemplate saved = repository.save(t);
+        // saveAndFlush (not save): applyTemplateChangeToFuture below runs a bulk
+        // @Modifying(clearAutomatically=true) query. That clear() detaches this
+        // still-dirty template before it would be flushed, silently dropping the
+        // update. Flushing here forces the template UPDATE to the DB first.
+        ShiftTemplate saved = repository.saveAndFlush(t);
         // Future schedules using this template pick up the new times; past unchanged.
         nurseShiftScheduleService.applyTemplateChangeToFuture(saved.getId(), saved.getStartTime(), saved.getEndTime());
         audit("SHIFT_TEMPLATE_UPDATED", saved.getName(), hospitalId, saved.getId());
@@ -63,6 +67,15 @@ public class ShiftTemplateService {
         t.setIsActive(false);
         repository.save(t);
         audit("SHIFT_TEMPLATE_DEACTIVATED", t.getName(), hospitalId, t.getId());
+    }
+
+    @Transactional
+    public void activate(String publicId) {
+        Long hospitalId = requireHospitalId();
+        ShiftTemplate t = require(publicId, hospitalId);
+        t.setIsActive(true);
+        repository.save(t);
+        audit("SHIFT_TEMPLATE_ACTIVATED", t.getName(), hospitalId, t.getId());
     }
 
     private void validate(ShiftTemplateRequest req) {

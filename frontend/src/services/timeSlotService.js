@@ -7,6 +7,7 @@ const timeSlotService = {
     createShiftTemplate: async (payload) => (await apiClient.post('/hospital/time-slots/shift-templates', payload)).data,
     updateShiftTemplate: async (publicId, payload) => (await apiClient.put(`/hospital/time-slots/shift-templates/${publicId}`, payload)).data,
     deactivateShiftTemplate: async (publicId) => (await apiClient.delete(`/hospital/time-slots/shift-templates/${publicId}`)).data,
+    activateShiftTemplate: async (publicId) => (await apiClient.post(`/hospital/time-slots/shift-templates/${publicId}/activate`)).data,
 
     listAppointmentSlots: async (activeOnly = false) =>
         (await apiClient.get(`/hospital/time-slots/appointment-slots?activeOnly=${activeOnly}`)).data,

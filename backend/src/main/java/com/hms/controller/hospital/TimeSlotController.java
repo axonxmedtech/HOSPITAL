@@ -41,6 +41,13 @@ public class TimeSlotController {
         return ResponseEntity.ok(Map.of("message", "Shift template deactivated"));
     }
 
+    @PostMapping("/shift-templates/{publicId}/activate")
+    @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
+    public ResponseEntity<?> activateShiftTemplate(@PathVariable String publicId) {
+        shiftTemplateService.activate(publicId);
+        return ResponseEntity.ok(Map.of("message", "Shift template activated"));
+    }
+
     @GetMapping("/appointment-slots")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','RECEPTIONIST','NURSE_INCHARGE')")
     public ResponseEntity<?> listSlots(@RequestParam(defaultValue = "false") boolean activeOnly) {
