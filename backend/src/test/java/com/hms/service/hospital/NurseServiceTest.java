@@ -114,6 +114,27 @@ class NurseServiceTest {
     }
 
     @Test
+    void resolveProfileId_resolvesViaUserPublicId() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        User u = new User(); u.setId(16L); u.setHospitalId(7L);
+        when(userRepository.findByPublicId("user-pub")).thenReturn(java.util.Optional.of(u));
+        NurseProfile p = new NurseProfile(); p.setId(900L); p.setHospitalId(7L);
+        when(nurseProfileRepository.findByUserId(16L)).thenReturn(java.util.Optional.of(p));
+
+        assertThat(nurseService.resolveProfileId("user-pub")).isEqualTo(900L);
+    }
+
+    @Test
+    void resolveProfileId_fallsBackToProfilePublicId() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(userRepository.findByPublicId("prof-pub")).thenReturn(java.util.Optional.empty());
+        NurseProfile p = new NurseProfile(); p.setId(901L); p.setHospitalId(7L);
+        when(nurseProfileRepository.findByPublicId("prof-pub")).thenReturn(java.util.Optional.of(p));
+
+        assertThat(nurseService.resolveProfileId("prof-pub")).isEqualTo(901L);
+    }
+
+    @Test
     void createNurse_firstNurse_startsAtOne() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
         when(userRepository.existsByEmail(any())).thenReturn(false);

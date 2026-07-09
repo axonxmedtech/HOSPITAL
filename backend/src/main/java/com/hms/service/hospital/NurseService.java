@@ -347,10 +347,27 @@ public class NurseService {
         auditNurse(active ? "NURSE_ACTIVATED" : "NURSE_DEACTIVATED", p.getName(), hospitalId, nurseProfileId);
     }
 
-    /** Resolve a NurseProfile.id from a nurse public id (for the controller layer). */
+    /**
+     * Resolve a NurseProfile.id from a nurse public id (for the controller layer).
+     * The nurse list/actions key off the backing User's publicId when the nurse
+     * has a login (as delete/update/reset do), so resolve that first; fall back
+     * to the NurseProfile's own publicId for login-less nurses. Role is not
+     * constrained here so this works for both promote (NURSE) and demote
+     * (NURSE_INCHARGE) targets.
+     */
     public Long resolveProfileId(String publicId) {
-        return nurseProfileRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new IllegalArgumentException("Nurse not found")).getId();
+        Long hospitalId = requireHospitalId();
+        java.util.Optional<NurseProfile> byUser = userRepository.findByPublicId(publicId)
+                .filter(u -> hospitalId.equals(u.getHospitalId()))
+                .flatMap(u -> nurseProfileRepository.findByUserId(u.getId()));
+        if (byUser.isPresent()) return byUser.get().getId();
+
+        NurseProfile p = nurseProfileRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new IllegalArgumentException("Nurse not found"));
+        if (!hospitalId.equals(p.getHospitalId())) {
+            throw new UnauthorizedException("Nurse belongs to another hospital");
+        }
+        return p.getId();
     }
 
     private NurseProfile requireProfile(Long id, Long hospitalId) {
