@@ -34,6 +34,7 @@ class NurseServiceTest {
     @Mock HospitalWebSocketHandler webSocketHandler;
     @Mock com.hms.repository.WardRepository wardRepository;
     @Mock com.hms.service.AuditLogService auditLogService;
+    @Mock NurseShiftScheduleService nurseShiftScheduleService;
 
     @InjectMocks NurseService nurseService;
 
@@ -62,6 +63,54 @@ class NurseServiceTest {
         assertThat(profile.getValue().getHospitalId()).isEqualTo(7L);
         assertThat(profile.getValue().getLicenseNumber()).isEqualTo("LIC-1");
         assertThat(profile.getValue().getCustomId()).isEqualTo("NRS5");
+    }
+
+    @Test
+    void createNurse_withShift_rangeFillsSchedule() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(userRepository.existsByEmail("s@h.com")).thenReturn(false);
+        when(passwordEncoder.encode(any())).thenReturn("ENC");
+        when(userRepository.findMaxNurseSequence()).thenReturn(0);
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> {
+            User u = inv.getArgument(0);
+            if (u.getId() == null) u.setId(55L);
+            return u;
+        });
+        com.hms.entity.Ward ward = new com.hms.entity.Ward();
+        ward.setWardId(3L); ward.setHospitalId(7L); ward.setInchargeNurseId(1L);
+        when(wardRepository.findById(3L)).thenReturn(java.util.Optional.of(ward));
+        NurseProfile prof = new NurseProfile();
+        prof.setId(900L); prof.setWardId(3L);
+        when(nurseProfileRepository.findByUserId(55L)).thenReturn(java.util.Optional.of(prof));
+
+        nurseService.createNurse("Sam", "s@h.com", "secret1", null, "LIC", 3L,
+                "tmpl-1", java.time.LocalDate.of(2026, 7, 10), java.time.LocalDate.of(2026, 7, 20), java.util.List.of(1, 2, 3));
+
+        ArgumentCaptor<com.hms.dto.RangeFillShiftRequest> cap =
+                ArgumentCaptor.forClass(com.hms.dto.RangeFillShiftRequest.class);
+        verify(nurseShiftScheduleService).rangeFill(cap.capture());
+        assertThat(cap.getValue().getNurseProfileId()).isEqualTo(900L);
+        assertThat(cap.getValue().getShiftTemplatePublicId()).isEqualTo("tmpl-1");
+        assertThat(cap.getValue().getFromDate()).isEqualTo(java.time.LocalDate.of(2026, 7, 10));
+        assertThat(cap.getValue().getDaysOfWeek()).containsExactly(1, 2, 3);
+    }
+
+    @Test
+    void createNurse_withoutShift_doesNotRangeFill() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(userRepository.existsByEmail(any())).thenReturn(false);
+        when(passwordEncoder.encode(any())).thenReturn("ENC");
+        when(userRepository.findMaxNurseSequence()).thenReturn(0);
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> {
+            User u = inv.getArgument(0);
+            if (u.getId() == null) u.setId(56L);
+            return u;
+        });
+
+        nurseService.createNurse("NoShift", "ns@h.com", "secret1", null, null, null,
+                null, null, null, null);
+
+        verify(nurseShiftScheduleService, never()).rangeFill(any());
     }
 
     @Test

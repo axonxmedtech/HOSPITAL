@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
 import wardService from '../../services/wardService';
+import timeSlotService from '../../services/timeSlotService';
 import { API_BASE_URL } from '../../services/apiService'; // BUG-028: single source-of-truth for base URL
 import { useToast } from '../../context/ToastContext';
 import ConfirmationModal from '../../components/ConfirmationModal';
@@ -4886,6 +4887,26 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
         return () => { active = false; };
     }, [type]);
 
+    // Load active shift templates for the optional "Assign Shift" section on nurse creation.
+    const [shiftTemplateOptions, setShiftTemplateOptions] = useState([]);
+    useEffect(() => {
+        if (type !== 'nurses') return;
+        let active = true;
+        timeSlotService.listShiftTemplates(true)
+            .then(data => { if (active) setShiftTemplateOptions(Array.isArray(data) ? data : []); })
+            .catch(() => { if (active) setShiftTemplateOptions([]); });
+        return () => { active = false; };
+    }, [type]);
+
+    // Days-of-week are held in formData.shiftDaysOfWeek as a CSV "1,2,..." (1=Mon..7=Sun).
+    const SHIFT_DOW = [['Mon', 1], ['Tue', 2], ['Wed', 3], ['Thu', 4], ['Fri', 5], ['Sat', 6], ['Sun', 7]];
+    const shiftDaysArray = () => (formData.shiftDaysOfWeek ? String(formData.shiftDaysOfWeek).split(',').filter(Boolean).map(Number) : []);
+    const toggleShiftDay = (dow) => {
+        const cur = shiftDaysArray();
+        const next = cur.includes(dow) ? cur.filter(d => d !== dow) : [...cur, dow];
+        handleChange('shiftDaysOfWeek', next.sort((a, b) => a - b).join(','));
+    };
+
     const handleChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
         // Clear error for this field
@@ -5330,6 +5351,74 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
                                             className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.password ? 'border-red-500' : 'border-gray-300'}`}
                                         />
                                         {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
+                                    </div>
+                                )}
+                                {!isEdit && (
+                                    <div className="pt-3 mt-1 border-t border-gray-100 space-y-3">
+                                        <p className="text-sm font-semibold text-gray-700">Assign Shift <span className="font-normal text-gray-400">(optional)</span></p>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-500 mb-1">Shift Template</label>
+                                            <select
+                                                value={formData.shiftTemplatePublicId || ''}
+                                                onChange={(e) => handleChange('shiftTemplatePublicId', e.target.value)}
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                            >
+                                                <option value="">No shift for now</option>
+                                                {shiftTemplateOptions.map((t) => (
+                                                    <option key={t.publicId} value={t.publicId}>
+                                                        {t.name} ({String(t.startTime).slice(0, 5)}–{String(t.endTime).slice(0, 5)})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {shiftTemplateOptions.length === 0 && (
+                                                <p className="text-amber-600 text-xs mt-1">No shift templates — create them in the Time Slots tab first.</p>
+                                            )}
+                                        </div>
+                                        {formData.shiftTemplatePublicId && (
+                                            <>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-gray-500 mb-1">From</label>
+                                                        <input
+                                                            type="date"
+                                                            value={formData.shiftFromDate || ''}
+                                                            onChange={(e) => handleChange('shiftFromDate', e.target.value)}
+                                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-gray-500 mb-1">To</label>
+                                                        <input
+                                                            type="date"
+                                                            value={formData.shiftToDate || ''}
+                                                            onChange={(e) => handleChange('shiftToDate', e.target.value)}
+                                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-medium text-gray-500 mb-1">Days of Week <span className="text-gray-400">(none = all days)</span></label>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {SHIFT_DOW.map(([label, dow]) => {
+                                                            const checked = shiftDaysArray().includes(dow);
+                                                            return (
+                                                                <button
+                                                                    type="button"
+                                                                    key={dow}
+                                                                    onClick={() => toggleShiftDay(dow)}
+                                                                    className={`px-2.5 py-1 text-xs font-semibold rounded-lg border ${checked ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-300'}`}
+                                                                >
+                                                                    {label}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                                {(!formData.shiftFromDate || !formData.shiftToDate) && (
+                                                    <p className="text-amber-600 text-xs">Pick a From and To date to create the shifts.</p>
+                                                )}
+                                            </>
+                                        )}
                                     </div>
                                 )}
                             </>

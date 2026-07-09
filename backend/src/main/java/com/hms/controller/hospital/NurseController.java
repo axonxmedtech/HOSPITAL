@@ -45,7 +45,10 @@ public class NurseController {
         }
 
         User created = nurseService.createNurse(name, email, password,
-                payload.get("phone"), payload.get("licenseNumber"), parseWardId(payload.get("wardId")));
+                payload.get("phone"), payload.get("licenseNumber"), parseWardId(payload.get("wardId")),
+                payload.get("shiftTemplatePublicId"),
+                parseDate(payload.get("shiftFromDate")), parseDate(payload.get("shiftToDate")),
+                parseDaysOfWeek(payload.get("shiftDaysOfWeek")));
         return ResponseEntity.ok(created);
     }
 
@@ -80,6 +83,31 @@ public class NurseController {
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("Invalid ward selected");
         }
+    }
+
+    /** Parse an optional ISO date (yyyy-MM-dd) from the payload; null when blank. */
+    private java.time.LocalDate parseDate(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return null;
+        try {
+            return java.time.LocalDate.parse(raw.trim());
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new IllegalArgumentException("Invalid shift date");
+        }
+    }
+
+    /** Parse an optional comma-separated days-of-week list (1=Mon..7=Sun); null when blank. */
+    private java.util.List<Integer> parseDaysOfWeek(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return null;
+        java.util.List<Integer> days = new java.util.ArrayList<>();
+        for (String part : raw.split(",")) {
+            if (part.trim().isEmpty()) continue;
+            try {
+                days.add(Integer.valueOf(part.trim()));
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Invalid day-of-week value");
+            }
+        }
+        return days;
     }
 
     @DeleteMapping("/{id}")

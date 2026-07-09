@@ -58,6 +58,9 @@ public class NurseService {
     @Autowired
     private com.hms.service.AuditLogService auditLogService;
 
+    @Autowired
+    private NurseShiftScheduleService nurseShiftScheduleService;
+
     /**
      * Create a new nurse (User with role NURSE + NurseProfile).
      */
@@ -106,6 +109,35 @@ public class NurseService {
         logAction("NURSE_CREATED", "Created nurse: " + email, null, hospitalId);
 
         broadcastRefresh(hospitalId, "nurse creation");
+        return saved;
+    }
+
+    /**
+     * Create a nurse and optionally pre-fill their shift schedule for a date range
+     * (Nursing Mgmt Phase G follow-up). When {@code shiftTemplatePublicId} and both
+     * dates are provided, the same range-fill used by the scheduler creates the
+     * schedule rows; otherwise this behaves exactly like the base createNurse.
+     */
+    @Transactional
+    public User createNurse(String name, String email, String password, String phone, String licenseNumber, Long wardId,
+                            String shiftTemplatePublicId, java.time.LocalDate shiftFromDate, java.time.LocalDate shiftToDate,
+                            java.util.List<Integer> shiftDaysOfWeek) {
+        User saved = createNurse(name, email, password, phone, licenseNumber, wardId);
+        boolean hasShift = shiftTemplatePublicId != null && !shiftTemplatePublicId.isBlank()
+                && shiftFromDate != null && shiftToDate != null;
+        if (hasShift) {
+            Long profileId = nurseProfileRepository.findByUserId(saved.getId())
+                    .map(NurseProfile::getId).orElse(null);
+            if (profileId != null) {
+                com.hms.dto.RangeFillShiftRequest req = new com.hms.dto.RangeFillShiftRequest();
+                req.setNurseProfileId(profileId);
+                req.setShiftTemplatePublicId(shiftTemplatePublicId);
+                req.setFromDate(shiftFromDate);
+                req.setToDate(shiftToDate);
+                req.setDaysOfWeek(shiftDaysOfWeek);
+                nurseShiftScheduleService.rangeFill(req);
+            }
+        }
         return saved;
     }
 
