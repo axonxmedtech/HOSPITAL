@@ -88,6 +88,9 @@ const NotesPanel = ({ admissionId }) => {
     const { success, error: toastError } = useToast();
     const user = authService.getCurrentUser();
     const currentUserId = user?.userId;
+    // The "Performed By Nurse" flow only applies to nurses; a non-nurse (e.g. a
+    // doctor adding a note from the IPD case) records as themselves.
+    const isNurse = user?.role === 'NURSE' || user?.role === 'NURSE_INCHARGE';
     const [loading, setLoading] = useState(true);
     const [notes, setNotes] = useState([]);
     const [f, setF] = useState({}); // patient header data for the print
@@ -128,12 +131,12 @@ const NotesPanel = ({ admissionId }) => {
     }, []);
 
     useEffect(() => {
-        if (separateLogin === false && f.wardId) {
+        if (isNurse && separateLogin === false && f.wardId) {
             nurseService.getWardStaffNurses(f.wardId)
                 .then((list) => setNurses(Array.isArray(list) ? list : []))
                 .catch(() => setNurses([]));
         }
-    }, [separateLogin, f.wardId]);
+    }, [isNurse, separateLogin, f.wardId]);
 
     const handlePrintReassessment = () => {
         const w = window.open('', '_blank');
@@ -150,14 +153,14 @@ const NotesPanel = ({ admissionId }) => {
 
     const add = async () => {
         if (!text.trim()) { toastError('Enter a note'); return; }
-        if (separateLogin === false && !performedByNurseId) {
+        if (isNurse && separateLogin === false && !performedByNurseId) {
             toastError('Select the nurse who performed this');
             return;
         }
         setSubmitting(true);
         try {
             const payload = { ipdAdmissionId: admissionId, noteText: text.trim() };
-            if (separateLogin === false) payload.performedByNurseId = Number(performedByNurseId);
+            if (isNurse && separateLogin === false) payload.performedByNurseId = Number(performedByNurseId);
             await nurseService.createNote(payload);
             success('Note added');
             setText('');
@@ -209,7 +212,7 @@ const NotesPanel = ({ admissionId }) => {
                     placeholder="Observation, patient condition, handover note…"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 />
-                {separateLogin === false && (
+                {isNurse && separateLogin === false && (
                     <div className="mt-3">
                         <label className="block text-xs font-medium text-gray-600 mb-1">Performed By Nurse *</label>
                         <select

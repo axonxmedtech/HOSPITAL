@@ -123,9 +123,13 @@ const VitalsPanel = ({ admissionId, readOnly = false }) => {
     const [form, setForm] = useState(emptyForm);
     const [submitting, setSubmitting] = useState(false);
     const user = authService.getCurrentUser();
+    const currentRole = user?.role;
+    const isNurse = currentRole === 'NURSE' || currentRole === 'NURSE_INCHARGE';
 
     // Separate Nurse Login OFF ("Shared Login") -> a required "Performed By
     // Nurse" dropdown is shown and its selection is sent with the payload.
+    // Only relevant when the logged-in user is a nurse; non-nurses (e.g. a
+    // doctor viewing this panel from the IPD case) record as themselves.
     const [separateLogin, setSeparateLogin] = useState(true);
     const [nurses, setNurses] = useState([]);
     const [performedByNurseId, setPerformedByNurseId] = useState('');
@@ -152,12 +156,12 @@ const VitalsPanel = ({ admissionId, readOnly = false }) => {
     }, []);
 
     useEffect(() => {
-        if (separateLogin === false && f.wardId) {
+        if (isNurse && separateLogin === false && f.wardId) {
             nurseService.getWardStaffNurses(f.wardId)
                 .then((list) => setNurses(Array.isArray(list) ? list : []))
                 .catch(() => setNurses([]));
         }
-    }, [separateLogin, f.wardId]);
+    }, [isNurse, separateLogin, f.wardId]);
 
     const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -179,7 +183,7 @@ const VitalsPanel = ({ admissionId, readOnly = false }) => {
         const hasAny = ['temperature', 'pulse', 'bpSystolic', 'bpDiastolic', 'respiratoryRate', 'spo2', 'weight', 'painScore']
             .some((k) => payload[k] != null);
         if (!hasAny) { toastError('Enter at least one measurement'); return; }
-        if (separateLogin === false) {
+        if (isNurse && separateLogin === false) {
             if (!performedByNurseId) { toastError('Select the nurse who performed this'); return; }
             payload.performedByNurseId = Number(performedByNurseId);
         }
@@ -237,7 +241,7 @@ const VitalsPanel = ({ admissionId, readOnly = false }) => {
                         </div>
                     ))}
                 </div>
-                {separateLogin === false && (
+                {isNurse && separateLogin === false && (
                     <div className="mt-3">
                         <label className="block text-xs font-medium text-gray-600 mb-1">Performed By Nurse *</label>
                         <select
