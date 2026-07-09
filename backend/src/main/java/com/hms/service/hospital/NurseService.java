@@ -123,22 +123,29 @@ public class NurseService {
                             String shiftTemplatePublicId, java.time.LocalDate shiftFromDate, java.time.LocalDate shiftToDate,
                             java.util.List<Integer> shiftDaysOfWeek) {
         User saved = createNurse(name, email, password, phone, licenseNumber, wardId);
+        fillShiftIfRequested(saved, shiftTemplatePublicId, shiftFromDate, shiftToDate, shiftDaysOfWeek);
+        return saved;
+    }
+
+    /**
+     * When a shift template + both dates are provided, range-fill the nurse's
+     * schedule (shared by the create/update overloads). No-op otherwise.
+     */
+    private void fillShiftIfRequested(User saved, String shiftTemplatePublicId, java.time.LocalDate shiftFromDate,
+                                      java.time.LocalDate shiftToDate, java.util.List<Integer> shiftDaysOfWeek) {
         boolean hasShift = shiftTemplatePublicId != null && !shiftTemplatePublicId.isBlank()
                 && shiftFromDate != null && shiftToDate != null;
-        if (hasShift) {
-            Long profileId = nurseProfileRepository.findByUserId(saved.getId())
-                    .map(NurseProfile::getId).orElse(null);
-            if (profileId != null) {
-                com.hms.dto.RangeFillShiftRequest req = new com.hms.dto.RangeFillShiftRequest();
-                req.setNurseProfileId(profileId);
-                req.setShiftTemplatePublicId(shiftTemplatePublicId);
-                req.setFromDate(shiftFromDate);
-                req.setToDate(shiftToDate);
-                req.setDaysOfWeek(shiftDaysOfWeek);
-                nurseShiftScheduleService.rangeFill(req);
-            }
-        }
-        return saved;
+        if (!hasShift) return;
+        Long profileId = nurseProfileRepository.findByUserId(saved.getId())
+                .map(NurseProfile::getId).orElse(null);
+        if (profileId == null) return;
+        com.hms.dto.RangeFillShiftRequest req = new com.hms.dto.RangeFillShiftRequest();
+        req.setNurseProfileId(profileId);
+        req.setShiftTemplatePublicId(shiftTemplatePublicId);
+        req.setFromDate(shiftFromDate);
+        req.setToDate(shiftToDate);
+        req.setDaysOfWeek(shiftDaysOfWeek);
+        nurseShiftScheduleService.rangeFill(req);
     }
 
     /**
@@ -242,6 +249,20 @@ public class NurseService {
         logger.info("Updated nurse: {}", user.getEmail());
         logAction("NURSE_UPDATED", "Updated nurse: " + user.getName(), null, hospitalId);
         broadcastRefresh(hospitalId, "nurse update");
+        return saved;
+    }
+
+    /**
+     * Update a nurse and optionally range-fill their shift schedule for a date
+     * range (Nursing Mgmt Phase G follow-up). Behaves like the base updateNurse
+     * when no shift template / dates are provided.
+     */
+    @Transactional
+    public User updateNurse(String publicId, String name, Long wardId,
+                            String shiftTemplatePublicId, java.time.LocalDate shiftFromDate, java.time.LocalDate shiftToDate,
+                            java.util.List<Integer> shiftDaysOfWeek) {
+        User saved = updateNurse(publicId, name, wardId);
+        fillShiftIfRequested(saved, shiftTemplatePublicId, shiftFromDate, shiftToDate, shiftDaysOfWeek);
         return saved;
     }
 

@@ -72,7 +72,10 @@ public class NurseController {
         if (name == null || name.trim().isEmpty()) {
             return ResponseEntity.badRequest().body("Name is required");
         }
-        return ResponseEntity.ok(nurseService.updateNurse(id, name, parseWardId(payload.get("wardId"))));
+        return ResponseEntity.ok(nurseService.updateNurse(id, name, parseWardId(payload.get("wardId")),
+                payload.get("shiftTemplatePublicId"),
+                parseDate(payload.get("shiftFromDate")), parseDate(payload.get("shiftToDate")),
+                parseDaysOfWeek(payload.get("shiftDaysOfWeek"))));
     }
 
     /** Parse an optional wardId string from the request payload. */

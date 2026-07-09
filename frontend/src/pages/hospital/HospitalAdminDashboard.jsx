@@ -5353,7 +5353,7 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
                                         {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
                                     </div>
                                 )}
-                                {!isEdit && (
+                                {(
                                     <div className="pt-3 mt-1 border-t border-gray-100 space-y-3">
                                         <p className="text-sm font-semibold text-gray-700">Assign Shift <span className="font-normal text-gray-400">(optional)</span></p>
                                         <div>
