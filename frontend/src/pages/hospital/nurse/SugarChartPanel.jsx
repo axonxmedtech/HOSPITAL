@@ -206,6 +206,7 @@ const SugarChartPanel = ({ admissionId, readOnly = false }) => {
                 </div>
             )}
             <div className="space-y-5">
+            {!readOnly && (
             <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <h3 className="font-bold text-gray-800 text-sm mb-3">Add Sugar Reading</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -243,6 +244,7 @@ const SugarChartPanel = ({ admissionId, readOnly = false }) => {
                     </button>
                 </div>
             </div>
+            )}
 
             <div className="bg-white border border-gray-200 rounded-xl">
                 <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">

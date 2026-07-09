@@ -225,6 +225,7 @@ const VitalsPanel = ({ admissionId, readOnly = false }) => {
                 </div>
             )}
             <div className="space-y-5">
+            {!readOnly && (
             <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <h3 className="font-bold text-gray-800 text-sm mb-4">Record Vitals</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -276,6 +277,7 @@ const VitalsPanel = ({ admissionId, readOnly = false }) => {
                     </button>
                 </div>
             </div>
+            )}
 
             <div className="bg-white border border-gray-200 rounded-xl">
                 <div className="px-5 py-3 border-b border-gray-100">
