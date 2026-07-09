@@ -8,6 +8,7 @@ public interface NurseShiftScheduleRepository extends JpaRepository<NurseShiftSc
     Optional<NurseShiftSchedule> findByNurseProfileIdAndShiftDate(Long nurseProfileId, LocalDate shiftDate);
     List<NurseShiftSchedule> findByNurseProfileIdAndShiftDateBetweenOrderByShiftDateAsc(Long nurseProfileId, LocalDate from, LocalDate to);
     List<NurseShiftSchedule> findByWardIdAndShiftDateBetweenOrderByShiftDateAsc(Long wardId, LocalDate from, LocalDate to);
+    List<NurseShiftSchedule> findByWardIdInAndShiftDateBetween(java.util.Collection<Long> wardIds, LocalDate from, LocalDate to);
     @Modifying(clearAutomatically = true)
     @Query("UPDATE NurseShiftSchedule s SET s.startTime = :start, s.endTime = :end WHERE s.shiftTemplateId = :templateId AND s.shiftDate >= :today")
     int applyTemplateChangeToFuture(@Param("templateId") Long templateId, @Param("start") LocalTime start, @Param("end") LocalTime end, @Param("today") LocalDate today);

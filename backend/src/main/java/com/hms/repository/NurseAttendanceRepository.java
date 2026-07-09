@@ -12,4 +12,5 @@ public interface NurseAttendanceRepository extends JpaRepository<NurseAttendance
     Optional<NurseAttendance> findByNurseProfileIdAndAttendanceDate(Long nurseProfileId, LocalDate date);
     List<NurseAttendance> findByWardIdAndAttendanceDate(Long wardId, LocalDate date);
     List<NurseAttendance> findByNurseProfileIdAndAttendanceDateBetweenOrderByAttendanceDateDesc(Long nurseProfileId, LocalDate from, LocalDate to);
+    List<NurseAttendance> findByWardIdInAndAttendanceDateBetween(java.util.Collection<Long> wardIds, LocalDate from, LocalDate to);
 }
