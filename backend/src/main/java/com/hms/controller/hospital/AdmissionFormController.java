@@ -10,29 +10,33 @@ import org.springframework.web.bind.annotation.*;
 
 /**
  * AdmissionFormController - nurse fills the IPD admission form to complete an
- * admission (Phase 1 Nurse module). HOSPITAL-tenant only, NURSING-gated,
- * nurse-only (assignment-gated in the service).
+ * admission (Phase 1 Nurse module). HOSPITAL-tenant only, NURSING-gated.
+ * Reading the form is open to doctors/admins too — the clinical form panels use
+ * it for the patient header — while filling/confirming stays a nurse workflow.
+ * Assignment scoping is enforced in the service.
  */
 @RestController
 @RequestMapping("/hospital/nurse/admission-form")
 @RequireModule("NURSING")
-@PreAuthorize("hasRole('NURSE')")
 public class AdmissionFormController {
 
     @Autowired
     private AdmissionFormService admissionFormService;
 
     @GetMapping("/admission/{admissionId}")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN')")
     public ResponseEntity<?> get(@PathVariable Long admissionId) {
         return ResponseEntity.ok(admissionFormService.getOrDraft(admissionId));
     }
 
     @PostMapping("/admission/{admissionId}")
+    @PreAuthorize("hasRole('NURSE')")
     public ResponseEntity<?> save(@PathVariable Long admissionId, @RequestBody AdmissionForm form) {
         return ResponseEntity.ok(admissionFormService.save(admissionId, form));
     }
 
     @PostMapping("/admission/{admissionId}/confirm")
+    @PreAuthorize("hasRole('NURSE')")
     public ResponseEntity<?> markAdmitted(@PathVariable Long admissionId) {
         admissionFormService.markAdmitted(admissionId);
         return ResponseEntity.ok(java.util.Map.of("admissionConfirmed", true));
