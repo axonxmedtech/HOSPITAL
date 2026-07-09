@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/hospital/nurse/initial-assessment")
 @RequireModule("NURSING")
-@PreAuthorize("hasRole('NURSE')")
+@PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN')")
 public class InitialAssessmentController {
 
     @Autowired

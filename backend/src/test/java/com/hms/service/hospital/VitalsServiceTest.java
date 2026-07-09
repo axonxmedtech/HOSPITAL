@@ -34,6 +34,7 @@ class VitalsServiceTest {
     @Mock com.hms.security.NurseWriteAccess nurseWriteAccess;
     @Mock com.hms.security.PerformingNurseResolver performingNurseResolver;
     @Mock AuditLogService auditLogService;
+    @Mock FormAccessService formAccessService;
 
     @InjectMocks VitalsService service;
 

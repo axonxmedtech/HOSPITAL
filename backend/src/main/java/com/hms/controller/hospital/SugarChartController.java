@@ -24,25 +24,25 @@ public class SugarChartController {
     private SugarChartService service;
 
     @PostMapping
-    @PreAuthorize("hasRole('NURSE')")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN')")
     public ResponseEntity<?> create(@RequestBody SugarChartRequest req) {
         return ResponseEntity.ok(service.create(req));
     }
 
     @GetMapping("/admission/{admissionId}")
-    @PreAuthorize("hasAnyRole('NURSE', 'DOCTOR', 'HOSPITAL_ADMIN')")
+    @PreAuthorize("hasAnyRole('NURSE', 'NURSE_INCHARGE', 'DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> getByAdmission(@PathVariable Long admissionId) {
         return ResponseEntity.ok(service.getByAdmission(admissionId));
     }
 
     @PutMapping("/{publicId}")
-    @PreAuthorize("hasRole('NURSE')")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN')")
     public ResponseEntity<?> update(@PathVariable String publicId, @RequestBody SugarChartRequest req) {
         return ResponseEntity.ok(service.update(publicId, req));
     }
 
     @DeleteMapping("/{publicId}")
-    @PreAuthorize("hasRole('NURSE')")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN')")
     public ResponseEntity<?> delete(@PathVariable String publicId) {
         service.softDelete(publicId);
         return ResponseEntity.ok(Map.of("message", "Entry deleted"));

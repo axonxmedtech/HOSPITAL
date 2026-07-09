@@ -34,6 +34,8 @@ public class NurseAccessGuard {
      * does (Nursing Mgmt Phase F).
      */
     public void assertAssigned(Long ipdAdmissionId) {
+        String role = securityHelper.getCurrentUserRole();
+        if ("DOCTOR".equals(role) || "HOSPITAL_ADMIN".equals(role)) return; // doctors/admins have broad IPD access
         Long nurseId = securityHelper.getCurrentUserId();
         boolean assigned = assignmentRepository
                 .existsByIpdAdmissionIdAndNurseUserIdAndIsActiveTrue(ipdAdmissionId, nurseId);

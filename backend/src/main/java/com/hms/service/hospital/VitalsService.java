@@ -40,10 +40,12 @@ public class VitalsService {
     @Autowired private com.hms.security.NurseWriteAccess nurseWriteAccess;
     @Autowired private com.hms.security.PerformingNurseResolver performingNurseResolver;
     @Autowired private AuditLogService auditLogService;
+    @Autowired private FormAccessService formAccessService;
 
     @Transactional
     public VitalsRecord create(VitalsRequest req) {
         Long hospitalId = requireHospitalId();
+        formAccessService.assertCanEdit("VITALS");
         if (req.getIpdAdmissionId() == null) {
             throw new IllegalArgumentException("ipdAdmissionId is required");
         }
@@ -81,6 +83,7 @@ public class VitalsService {
     @Transactional
     public VitalsRecord update(String publicId, VitalsRequest req) {
         Long hospitalId = requireHospitalId();
+        formAccessService.assertCanEdit("VITALS");
         VitalsRecord v = vitalsRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new RuntimeException("Vitals record not found"));
         if (!hospitalId.equals(v.getHospitalId())) {

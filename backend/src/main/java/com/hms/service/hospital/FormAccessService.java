@@ -91,6 +91,15 @@ public class FormAccessService {
         return saved;
     }
 
+    /** Throws 403 unless the current user's role may edit this form (Files & Access). */
+    public void assertCanEdit(String formKey) {
+        String verdict = effectiveForRole(securityHelper.getCurrentUserRole()).get(formKey);
+        if (!"EDITABLE".equals(verdict)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "You do not have edit access to this form");
+        }
+    }
+
     private String normalizeRole(String role) {
         if (role == null) return "";
         if ("NURSE_INCHARGE".equals(role) || "NURSE".equals(role)) return "NURSE";

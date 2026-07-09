@@ -110,4 +110,21 @@ class FormAccessServiceTest {
         assertThat(saved.getAccessRole()).isEqualTo("DOCTOR");
         assertThat(saved.getHospitalId()).isEqualTo(7L);
     }
+
+    @Test void assertCanEdit_passesWhenEditable() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(securityHelper.getCurrentUserRole()).thenReturn("NURSE");
+        when(repository.findByHospitalId(7L)).thenReturn(java.util.List.of()); // default enabled+BOTH
+        service.assertCanEdit("VITALS"); // no throw
+    }
+
+    @Test void assertCanEdit_throwsWhenReadOnly() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(securityHelper.getCurrentUserRole()).thenReturn("NURSE");
+        com.hms.entity.HospitalFormAccess docOnly = new com.hms.entity.HospitalFormAccess();
+        docOnly.setHospitalId(7L); docOnly.setFormKey("VITALS"); docOnly.setEnabled(true); docOnly.setAccessRole("DOCTOR");
+        when(repository.findByHospitalId(7L)).thenReturn(java.util.List.of(docOnly));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.assertCanEdit("VITALS"))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+    }
 }

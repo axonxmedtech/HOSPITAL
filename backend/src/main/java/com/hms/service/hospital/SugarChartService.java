@@ -38,10 +38,12 @@ public class SugarChartService {
     @Autowired private com.hms.security.NurseWriteAccess nurseWriteAccess;
     @Autowired private com.hms.security.PerformingNurseResolver performingNurseResolver;
     @Autowired private AuditLogService auditLogService;
+    @Autowired private FormAccessService formAccessService;
 
     @Transactional
     public SugarChartEntry create(SugarChartRequest req) {
         Long hospitalId = requireHospitalId();
+        formAccessService.assertCanEdit("SUGAR_CHART");
         if (req.getIpdAdmissionId() == null) {
             throw new IllegalArgumentException("ipdAdmissionId is required");
         }
@@ -76,6 +78,7 @@ public class SugarChartService {
 
     @Transactional
     public SugarChartEntry update(String publicId, SugarChartRequest req) {
+        formAccessService.assertCanEdit("SUGAR_CHART");
         SugarChartEntry e = requireEditableOwn(publicId);
         validate(req);
         e.setBloodSugar(trim(req.getBloodSugar()));
@@ -87,6 +90,7 @@ public class SugarChartService {
 
     @Transactional
     public void softDelete(String publicId) {
+        formAccessService.assertCanEdit("SUGAR_CHART");
         SugarChartEntry e = requireEditableOwn(publicId);
         e.setIsActive(false);
         repository.save(e);

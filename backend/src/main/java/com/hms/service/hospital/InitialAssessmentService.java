@@ -28,6 +28,7 @@ public class InitialAssessmentService {
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private NurseAccessGuard nurseAccessGuard;
     @Autowired private AuditLogService auditLogService;
+    @Autowired private FormAccessService formAccessService;
 
     public InitialAssessment getOrDraft(Long ipdAdmissionId) {
         Long hospitalId = requireHospitalId();
@@ -44,6 +45,7 @@ public class InitialAssessmentService {
     @Transactional
     public InitialAssessment save(Long ipdAdmissionId, InitialAssessment incoming) {
         Long hospitalId = requireHospitalId();
+        formAccessService.assertCanEdit("INITIAL_ASSESSMENT");
         requireAdmission(ipdAdmissionId, hospitalId);
         nurseAccessGuard.assertAssigned(ipdAdmissionId);
 

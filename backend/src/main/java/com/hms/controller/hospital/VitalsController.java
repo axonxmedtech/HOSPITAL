@@ -22,19 +22,19 @@ public class VitalsController {
     private VitalsService vitalsService;
 
     @PostMapping
-    @PreAuthorize("hasRole('NURSE')")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN')")
     public ResponseEntity<?> create(@RequestBody VitalsRequest req) {
         return ResponseEntity.ok(vitalsService.create(req));
     }
 
     @GetMapping("/admission/{admissionId}")
-    @PreAuthorize("hasAnyRole('NURSE', 'DOCTOR', 'HOSPITAL_ADMIN')")
+    @PreAuthorize("hasAnyRole('NURSE', 'NURSE_INCHARGE', 'DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> getByAdmission(@PathVariable Long admissionId) {
         return ResponseEntity.ok(vitalsService.getByAdmission(admissionId));
     }
 
     @PutMapping("/{publicId}")
-    @PreAuthorize("hasRole('NURSE')")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN')")
     public ResponseEntity<?> update(@PathVariable String publicId, @RequestBody VitalsRequest req) {
         return ResponseEntity.ok(vitalsService.update(publicId, req));
     }
