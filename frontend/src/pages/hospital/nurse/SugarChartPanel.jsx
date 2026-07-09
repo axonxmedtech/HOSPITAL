@@ -83,7 +83,7 @@ export const buildSugarChartHtml = (entries, f, hospital) => {
     </body></html>`;
 };
 
-const SugarChartPanel = ({ admissionId }) => {
+const SugarChartPanel = ({ admissionId, readOnly = false }) => {
     const { success, error: toastError } = useToast();
     const user = authService.getCurrentUser();
     const currentUserId = user?.userId;
@@ -196,7 +196,13 @@ const SugarChartPanel = ({ admissionId }) => {
     const fmt = (dt) => dt ? new Date(dt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 
     return (
-        <div className="space-y-5">
+        <fieldset disabled={readOnly} style={{ display: 'contents' }}>
+            {readOnly && (
+                <div className="mb-3 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                    Read-only — editing this form is disabled for your role (Files &amp; Access).
+                </div>
+            )}
+            <div className="space-y-5">
             <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <h3 className="font-bold text-gray-800 text-sm mb-3">Add Sugar Reading</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -292,6 +298,7 @@ const SugarChartPanel = ({ admissionId }) => {
                 )}
             </div>
         </div>
+        </fieldset>
     );
 };
 

@@ -114,9 +114,10 @@ const Labelled = ({ label, children }) => (
     </div>
 );
 
-const BloodConsentForm = ({ admissionId, onClose }) => (
+const BloodConsentForm = ({ admissionId, onClose, readOnly = false }) => (
     <SurgeryFormFrame
         admissionId={admissionId}
+        readOnly={readOnly}
         formType="BLOOD_CONSENT"
         title="Blood Consent Form"
         code="VH/NABH/OT/02/2026"

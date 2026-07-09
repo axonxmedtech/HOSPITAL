@@ -120,9 +120,10 @@ const Sel = ({ label, v, on, options }) => (
 );
 const H = ({ children }) => <div className="text-xs font-bold text-gray-800 uppercase tracking-wide mt-2 mb-1">{children}</div>;
 
-const GeneralAnaesthesiaRecordForm = ({ admissionId, onClose }) => (
+const GeneralAnaesthesiaRecordForm = ({ admissionId, onClose, readOnly = false }) => (
     <SurgeryFormFrame
         admissionId={admissionId}
+        readOnly={readOnly}
         formType="GENERAL_ANAESTHESIA"
         title="General Anaesthesia"
         code=""

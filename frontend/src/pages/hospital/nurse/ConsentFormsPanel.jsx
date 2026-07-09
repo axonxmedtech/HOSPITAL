@@ -8,7 +8,7 @@ import SURGERY_FORMS from '../ot/surgeryFormsRegistry';
  * badge marks forms already filled. Only forms whose Component is implemented
  * are openable (the rest are added from their reference images over time).
  */
-const ConsentFormsPanel = ({ admissionId }) => {
+const ConsentFormsPanel = ({ admissionId, formVerdicts = {} }) => {
     const [savedTypes, setSavedTypes] = useState([]);
     const [openForm, setOpenForm] = useState(null); // registry entry currently open
 
@@ -30,7 +30,7 @@ const ConsentFormsPanel = ({ admissionId }) => {
             </div>
 
             <div className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
-                {SURGERY_FORMS.map((form, idx) => {
+                {SURGERY_FORMS.filter((form) => formVerdicts[form.type] !== 'HIDDEN').map((form, idx) => {
                     const isSaved = savedTypes.includes(form.type);
                     const built = !!form.Component;
                     return (
@@ -57,7 +57,7 @@ const ConsentFormsPanel = ({ admissionId }) => {
             </div>
 
             {openForm && openForm.Component && (
-                <openForm.Component admissionId={admissionId} onClose={closeForm} />
+                <openForm.Component admissionId={admissionId} onClose={closeForm} readOnly={formVerdicts[openForm.type] === 'READ_ONLY'} />
             )}
         </div>
     );

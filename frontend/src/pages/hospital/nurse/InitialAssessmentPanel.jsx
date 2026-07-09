@@ -183,7 +183,7 @@ const YN = ({ value, onChange }) => (
     </span>
 );
 
-const InitialAssessmentPanel = ({ admissionId }) => {
+const InitialAssessmentPanel = ({ admissionId, readOnly = false }) => {
     const { success, error: toastError } = useToast();
     const user = authService.getCurrentUser();
     const [loading, setLoading] = useState(true);
@@ -260,7 +260,13 @@ const InitialAssessmentPanel = ({ admissionId }) => {
     const patientName = [f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' ');
 
     return (
-        <div className="space-y-5">
+        <fieldset disabled={readOnly} style={{ display: 'contents' }}>
+            {readOnly && (
+                <div className="mb-3 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                    Read-only — editing this form is disabled for your role (Files &amp; Access).
+                </div>
+            )}
+            <div className="space-y-5">
             <div className="flex items-center justify-between">
                 <h3 className="font-bold text-gray-800 text-sm">Admission History &amp; Initial Assessment</h3>
                 <div className="flex gap-2">
@@ -393,6 +399,7 @@ const InitialAssessmentPanel = ({ admissionId }) => {
                 )}
             </div>
         </div>
+        </fieldset>
     );
 };
 

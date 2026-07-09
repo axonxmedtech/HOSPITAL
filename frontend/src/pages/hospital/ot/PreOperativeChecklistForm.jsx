@@ -168,9 +168,10 @@ const YN = ({ label, v, on }) => (
 );
 const H = ({ children }) => <div className="text-xs font-bold text-gray-800 uppercase tracking-wide mt-2 mb-1">{children}</div>;
 
-const PreOperativeChecklistForm = ({ admissionId, onClose }) => (
+const PreOperativeChecklistForm = ({ admissionId, onClose, readOnly = false }) => (
     <SurgeryFormFrame
         admissionId={admissionId}
+        readOnly={readOnly}
         formType="PRE_OP_CHECKLIST"
         title="Pre-Operative Checklist"
         code="VH/NABH/OT/03/2026"

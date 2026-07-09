@@ -124,9 +124,10 @@ const Txt = ({ label, v, on, area }) => (
 );
 const H = ({ children }) => <div className="text-xs font-bold text-gray-800 uppercase tracking-wide mt-2 mb-1">{children}</div>;
 
-const SurgicalCaseRecordForm = ({ admissionId, onClose }) => (
+const SurgicalCaseRecordForm = ({ admissionId, onClose, readOnly = false }) => (
     <SurgeryFormFrame
         admissionId={admissionId}
+        readOnly={readOnly}
         formType="SURGICAL_CASE_RECORD"
         title="Surgical Case Record"
         code="VH/NABH/OT/04/2026"

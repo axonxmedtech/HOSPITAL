@@ -166,9 +166,10 @@ const Sel = ({ label, v, on, options }) => (
 );
 const H = ({ children }) => <div className="text-xs font-bold text-gray-800 uppercase tracking-wide mt-2 mb-1">{children}</div>;
 
-const PostAnaesthesiaRecoveryForm = ({ admissionId, onClose }) => (
+const PostAnaesthesiaRecoveryForm = ({ admissionId, onClose, readOnly = false }) => (
     <SurgeryFormFrame
         admissionId={admissionId}
+        readOnly={readOnly}
         formType="POST_ANAES_RECOVERY"
         title="Post Anaesthesia Recovery Chart"
         code="VH/NABH/OT/03/2026"

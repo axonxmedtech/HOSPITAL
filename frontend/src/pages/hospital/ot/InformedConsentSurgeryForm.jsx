@@ -110,9 +110,10 @@ const Labelled = ({ label, children }) => (
 );
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm";
 
-const InformedConsentSurgeryForm = ({ admissionId, onClose }) => (
+const InformedConsentSurgeryForm = ({ admissionId, onClose, readOnly = false }) => (
     <SurgeryFormFrame
         admissionId={admissionId}
+        readOnly={readOnly}
         formType="INFORMED_CONSENT_SURGERY"
         title="Informed Consent — Surgery"
         code="VH/NABH/OT/01/2026"

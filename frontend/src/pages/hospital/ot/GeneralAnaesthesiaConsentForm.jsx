@@ -120,9 +120,10 @@ const Labelled = ({ label, children }) => (
     </div>
 );
 
-const GeneralAnaesthesiaConsentForm = ({ admissionId, onClose }) => (
+const GeneralAnaesthesiaConsentForm = ({ admissionId, onClose, readOnly = false }) => (
     <SurgeryFormFrame
         admissionId={admissionId}
+        readOnly={readOnly}
         formType="GA_CONSENT"
         title="Consent Form for General Anaesthesia"
         code="VH/NABH/OT/03/2026"

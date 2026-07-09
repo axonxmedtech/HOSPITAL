@@ -119,9 +119,10 @@ const buildPrintHtml = (data, prefill, hospital) => {
     </body></html>`;
 };
 
-const WhoSafetyChecklistForm = ({ admissionId, onClose }) => (
+const WhoSafetyChecklistForm = ({ admissionId, onClose, readOnly = false }) => (
     <SurgeryFormFrame
         admissionId={admissionId}
+        readOnly={readOnly}
         formType="WHO_CHECKLIST"
         title="WHO Surgical Safety Checklist"
         code="Prints landscape"

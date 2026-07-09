@@ -220,9 +220,10 @@ export const ChecklistRow = ({ it, data, set }) => {
     );
 };
 
-const PostOperativeChecklistForm = ({ admissionId, onClose }) => (
+const PostOperativeChecklistForm = ({ admissionId, onClose, readOnly = false }) => (
     <SurgeryFormFrame
         admissionId={admissionId}
+        readOnly={readOnly}
         formType="POST_OP_CHECKLIST_10"
         title="Post-Operative Checklist"
         code="VH/NABH/OT/10/2026"

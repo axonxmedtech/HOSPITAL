@@ -136,9 +136,10 @@ const Txt = ({ label, v, on, area }) => (
 );
 const H = ({ children }) => <div className="text-xs font-bold text-gray-800 uppercase tracking-wide mt-2 mb-1">{children}</div>;
 
-const PreAnaesthesiaEvaluationForm = ({ admissionId, onClose }) => (
+const PreAnaesthesiaEvaluationForm = ({ admissionId, onClose, readOnly = false }) => (
     <SurgeryFormFrame
         admissionId={admissionId}
+        readOnly={readOnly}
         formType="PRE_ANAES_EVAL"
         title="Pre-Anaesthesia Evaluation"
         code="VH/NABH/OT/03/2026"

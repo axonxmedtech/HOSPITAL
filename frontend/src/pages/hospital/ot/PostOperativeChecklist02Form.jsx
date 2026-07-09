@@ -136,9 +136,10 @@ const Sel = ({ label, v, on, options }) => (
     </div>
 );
 
-const PostOperativeChecklist02Form = ({ admissionId, onClose }) => (
+const PostOperativeChecklist02Form = ({ admissionId, onClose, readOnly = false }) => (
     <SurgeryFormFrame
         admissionId={admissionId}
+        readOnly={readOnly}
         formType="POST_OP_CHECKLIST_02"
         title="Post-Operative Checklist (with I/O page)"
         code="VH/NABH/OT/02/2026"

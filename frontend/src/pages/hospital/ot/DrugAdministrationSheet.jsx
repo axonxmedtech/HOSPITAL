@@ -96,9 +96,10 @@ const buildPrintHtml = (data, prefill, hospital) => {
     </body></html>`;
 };
 
-const DrugAdministrationSheet = ({ admissionId, onClose }) => (
+const DrugAdministrationSheet = ({ admissionId, onClose, readOnly = false }) => (
     <SurgeryFormFrame
         admissionId={admissionId}
+        readOnly={readOnly}
         formType="DRUG_ADMIN_SHEET"
         title="Drug Administration Sheet"
         code="VH/NABH/OT/12/2026"

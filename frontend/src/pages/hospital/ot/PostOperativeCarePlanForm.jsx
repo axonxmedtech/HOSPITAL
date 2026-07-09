@@ -68,9 +68,10 @@ const buildPrintHtml = (data, prefill, hospital) => {
     </body></html>`;
 };
 
-const PostOperativeCarePlanForm = ({ admissionId, onClose }) => (
+const PostOperativeCarePlanForm = ({ admissionId, onClose, readOnly = false }) => (
     <SurgeryFormFrame
         admissionId={admissionId}
+        readOnly={readOnly}
         formType="POST_OP_CARE_PLAN"
         title="Post Operative Care Plan"
         code="VH/NABH/OT/09/2026"

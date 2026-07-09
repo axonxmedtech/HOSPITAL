@@ -137,9 +137,10 @@ const Labelled = ({ label, children }) => (
     </div>
 );
 
-const InformedConsentAnaesthesiaForm = ({ admissionId, onClose }) => (
+const InformedConsentAnaesthesiaForm = ({ admissionId, onClose, readOnly = false }) => (
     <SurgeryFormFrame
         admissionId={admissionId}
+        readOnly={readOnly}
         formType="INFORMED_CONSENT_ANAES"
         title="Informed Consent — Anaesthesia"
         code="VH/NABH/OT/02/2026"

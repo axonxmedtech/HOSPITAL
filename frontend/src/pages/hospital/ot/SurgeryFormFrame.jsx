@@ -22,7 +22,7 @@ import { useToast } from '../../../context/ToastContext';
  *  buildPrintHtml  - (data, prefill, hospital) => htmlString
  *  onClose         - close handler
  */
-const SurgeryFormFrame = ({ admissionId, formType, title, code, defaults = {}, renderFields, buildPrintHtml, onClose }) => {
+const SurgeryFormFrame = ({ admissionId, formType, title, code, defaults = {}, renderFields, buildPrintHtml, onClose, readOnly = false }) => {
     const { success, error: toastError } = useToast();
     const user = authService.getCurrentUser();
     const [data, setData] = useState(defaults);
@@ -122,6 +122,12 @@ const SurgeryFormFrame = ({ admissionId, formType, title, code, defaults = {}, r
                     <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
                 </div>
 
+                <fieldset disabled={readOnly} style={{ display: 'contents' }}>
+                {readOnly && (
+                    <div className="mx-6 mt-4 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                        Read-only — editing this form is disabled for your role (Files &amp; Access).
+                    </div>
+                )}
                 <div className="px-6 py-5">
                     {loading ? (
                         <div className="text-center text-gray-400 py-12">Loading…</div>
@@ -146,13 +152,16 @@ const SurgeryFormFrame = ({ admissionId, formType, title, code, defaults = {}, r
                         </select>
                     </div>
                 )}
+                </fieldset>
                 <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 sticky bottom-0 bg-white rounded-b-2xl">
-                    {!saved && <span className="mr-auto text-xs text-amber-600">Unsaved — save to enable printing</span>}
+                    {!saved && !readOnly && <span className="mr-auto text-xs text-amber-600">Unsaved — save to enable printing</span>}
                     <button onClick={onClose} className="px-4 py-2 rounded-lg font-semibold text-gray-600 hover:bg-gray-100">Close</button>
-                    <button onClick={handleSave} disabled={saving || loading}
-                        className={`px-4 py-2 rounded-lg font-semibold text-white ${saving ? 'bg-gray-400' : 'bg-gray-900 hover:bg-gray-800'}`}>
-                        {saving ? 'Saving…' : 'Save'}
-                    </button>
+                    {!readOnly && (
+                        <button onClick={handleSave} disabled={saving || loading}
+                            className={`px-4 py-2 rounded-lg font-semibold text-white ${saving ? 'bg-gray-400' : 'bg-gray-900 hover:bg-gray-800'}`}>
+                            {saving ? 'Saving…' : 'Save'}
+                        </button>
+                    )}
                     <button onClick={handlePrint} disabled={!saved || loading}
                         className={`px-4 py-2 rounded-lg font-semibold ${saved ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}>
                         Print
