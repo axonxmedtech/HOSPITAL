@@ -17,7 +17,6 @@ const FilesAndAccessCard = () => {
     const { success, error: toastError } = useToast();
     const [forms, setForms] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [savingKey, setSavingKey] = useState(null);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -32,18 +31,18 @@ const FilesAndAccessCard = () => {
 
     useEffect(() => { load(); }, [load]);
 
+    // Update this one row in place — optimistic, with an in-place revert on
+    // error — so the page never reloads or scrolls; only a toast confirms it.
     const save = async (form, patch) => {
-        const next = { enabled: form.enabled, accessRole: form.accessRole, ...patch };
-        setSavingKey(form.key);
-        setForms((prev) => prev.map((f) => (f.key === form.key ? { ...f, ...next } : f)));
+        const prev = form;
+        const next = { ...form, ...patch };
+        setForms((list) => list.map((f) => (f.key === form.key ? next : f)));
         try {
-            await formAccessService.update(form.key, next);
+            await formAccessService.update(form.key, { enabled: next.enabled, accessRole: next.accessRole });
             success('Form access updated');
         } catch (e) {
             toastError(e?.response?.data?.error || 'Failed to update');
-            load();
-        } finally {
-            setSavingKey(null);
+            setForms((list) => list.map((f) => (f.key === form.key ? prev : f)));
         }
     };
 
@@ -80,7 +79,7 @@ const FilesAndAccessCard = () => {
                                             <td className="px-4 py-3">
                                                 <select
                                                     value={f.accessRole}
-                                                    disabled={!f.enabled || savingKey === f.key}
+                                                    disabled={!f.enabled}
                                                     onChange={(e) => save(f, { accessRole: e.target.value })}
                                                     className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg disabled:bg-gray-100 disabled:text-gray-400"
                                                 >
@@ -90,7 +89,6 @@ const FilesAndAccessCard = () => {
                                             <td className="px-4 py-3">
                                                 <button
                                                     type="button"
-                                                    disabled={savingKey === f.key}
                                                     onClick={() => save(f, { enabled: !f.enabled })}
                                                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${f.enabled ? 'bg-gray-900' : 'bg-gray-300'}`}
                                                     aria-label={f.enabled ? 'On' : 'Off'}
