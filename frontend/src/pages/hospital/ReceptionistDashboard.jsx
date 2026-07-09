@@ -1043,18 +1043,27 @@ const ReceptionistDashboard = () => {
                                             <h3 className="text-lg font-bold text-gray-955">Queue</h3>
                                             <p className="text-xs text-gray-500 mt-0.5">Real-time OPD patient workflow</p>
                                         </div>
-                                        {doctors && doctors.length > 1 && (
-                                            <div className="relative">
-                                                <select
-                                                    value={selectedDoctorForQueue}
-                                                    onChange={(e) => { setSelectedDoctorForQueue(e.target.value); setPage(0); }}
-                                                    className="pl-3 pr-8 py-1.5 text-xs bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 appearance-none font-semibold text-gray-700 cursor-pointer"
-                                                >
-                                                    <option value="">All Doctors</option>
-                                                    {doctors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                                                </select>
-                                            </div>
-                                        )}
+                                        <div className="flex items-center gap-2">
+                                            {doctors && doctors.length > 1 && (
+                                                <div className="relative">
+                                                    <select
+                                                        value={selectedDoctorForQueue}
+                                                        onChange={(e) => { setSelectedDoctorForQueue(e.target.value); setPage(0); }}
+                                                        className="pl-3 pr-8 py-1.5 text-xs bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 appearance-none font-semibold text-gray-700 cursor-pointer"
+                                                    >
+                                                        <option value="">All Doctors</option>
+                                                        {doctors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                                    </select>
+                                                </div>
+                                            )}
+                                            <button
+                                                onClick={() => setIsOpdModalOpen(true)}
+                                                className="inline-flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white text-xs font-bold rounded-xl hover:bg-gray-800 transition-colors shadow-sm whitespace-nowrap"
+                                            >
+                                                <span className="text-base leading-none">+</span>
+                                                Add OPD
+                                            </button>
+                                        </div>
                                     </div>
 
                                     {/* Queue List Content */}
@@ -1620,7 +1629,7 @@ const ReceptionistDashboard = () => {
             )}
 
             {/* OPD Modal / Form for Receptionist */}
-            {activeTab === 'opd' && isOpdModalOpen && (
+            {isOpdModalOpen && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-2xl shadow-organic w-full max-w-3xl animate-scale-in overflow-hidden max-h-[90vh]">
                         <div className="bg-white px-8 py-6 border-b border-gray-200">
