@@ -289,6 +289,13 @@ public class HospitalAuthService {
             throw new UnauthorizedException("Solo Doctor Mode is active. Receptionist login is restricted.");
         }
 
+        // Staff-nurse login requires Separate Nurse Login to be ON. A Nurse Incharge
+        // (NURSE_INCHARGE) can always log in; a staff NURSE only when the setting is on.
+        if ("NURSE".equals(user.getRole()) && !Boolean.TRUE.equals(settings.getSeparateNurseLogin())) {
+            logger.warn("Login failed - staff nurse login disabled (Separate Nurse Login off): {}", request.getEmail());
+            throw new UnauthorizedException("Nurse login is disabled for this hospital. Please contact your Nurse Incharge or administrator.");
+        }
+
         // Verify user account is active (handle null as active for backward compatibility)
         if (user.getIsActive() != null && !user.getIsActive()) {
             logger.warn("Login failed - user account is inactive: {}", request.getEmail());
