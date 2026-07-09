@@ -39,6 +39,7 @@ public class HospitalCalendarService {
     @Autowired private NurseProfileRepository nurseProfileRepository;
     @Autowired private CalendarEventRepository calendarEventRepository;
     @Autowired private AuditLogService auditLogService;
+    @Autowired private com.hms.security.HospitalWebSocketHandler webSocketHandler;
 
     private static final List<String> CAL_SURGERY_STATUSES =
             List.of(Surgery.SCHEDULED, Surgery.IN_PROGRESS, Surgery.COMPLETED);
@@ -161,6 +162,7 @@ public class HospitalCalendarService {
         e.setCreatedByUserId(securityHelper.getCurrentUserId());
         CalendarEvent saved = calendarEventRepository.save(e);
         audit("CALENDAR_EVENT_CREATED", saved.getTitle(), hospitalId, saved.getId());
+        broadcastRefresh(hospitalId);
         return saved;
     }
 
@@ -172,6 +174,7 @@ public class HospitalCalendarService {
         apply(e, req);
         CalendarEvent saved = calendarEventRepository.save(e);
         audit("CALENDAR_EVENT_UPDATED", saved.getTitle(), hospitalId, saved.getId());
+        broadcastRefresh(hospitalId);
         return saved;
     }
 
@@ -181,6 +184,7 @@ public class HospitalCalendarService {
         CalendarEvent e = requireEvent(publicId, hospitalId);
         calendarEventRepository.delete(e);
         audit("CALENDAR_EVENT_DELETED", publicId, hospitalId, e.getId());
+        broadcastRefresh(hospitalId);
     }
 
     private List<Surgery> scopedSurgeries(Long hospitalId, Set<Long> wardIds, LocalDate from, LocalDate to) {
@@ -238,6 +242,12 @@ public class HospitalCalendarService {
     private void audit(String a, String d, Long h, Long id) {
         try {
             auditLogService.logAction(a, d, securityHelper.getCurrentUserEmail(), h, "CALENDAR_EVENT", String.valueOf(id), null);
+        } catch (Exception e) { /* best-effort */ }
+    }
+
+    private void broadcastRefresh(Long hospitalId) {
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
         } catch (Exception e) { /* best-effort */ }
     }
 }

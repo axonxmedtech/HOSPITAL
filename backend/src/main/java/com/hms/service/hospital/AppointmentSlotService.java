@@ -18,6 +18,7 @@ public class AppointmentSlotService {
     @Autowired private AppointmentSlotRepository repository;
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private AuditLogService auditLogService;
+    @Autowired private com.hms.security.HospitalWebSocketHandler webSocketHandler;
 
     @Transactional
     public AppointmentSlot create(AppointmentSlotRequest req) {
@@ -30,6 +31,7 @@ public class AppointmentSlotService {
         s.setIsActive(true);
         AppointmentSlot saved = repository.save(s);
         audit("APPOINTMENT_SLOT_CREATED", describe(saved), hospitalId, saved.getId());
+        broadcastRefresh(hospitalId);
         return saved;
     }
 
@@ -48,6 +50,7 @@ public class AppointmentSlotService {
         s.setEndTime(req.getEndTime());
         AppointmentSlot saved = repository.save(s);
         audit("APPOINTMENT_SLOT_UPDATED", describe(saved), hospitalId, saved.getId());
+        broadcastRefresh(hospitalId);
         return saved;
     }
 
@@ -58,6 +61,7 @@ public class AppointmentSlotService {
         s.setIsActive(false);
         repository.save(s);
         audit("APPOINTMENT_SLOT_DEACTIVATED", describe(s), hospitalId, s.getId());
+        broadcastRefresh(hospitalId);
     }
 
     private void validate(AppointmentSlotRequest req) {
@@ -80,5 +84,8 @@ public class AppointmentSlotService {
     }
     private void audit(String a, String d, Long h, Long id) {
         try { auditLogService.logAction(a, d, securityHelper.getCurrentUserEmail(), h, "APPOINTMENT_SLOT", String.valueOf(id), null); } catch (Exception e) {}
+    }
+    private void broadcastRefresh(Long hospitalId) {
+        try { webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}"); } catch (Exception e) {}
     }
 }

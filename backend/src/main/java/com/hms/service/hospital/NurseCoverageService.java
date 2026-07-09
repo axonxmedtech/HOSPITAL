@@ -40,6 +40,7 @@ public class NurseCoverageService {
     @Autowired private NurseInchargeGuard nurseInchargeGuard;
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private AuditLogService auditLogService;
+    @Autowired private com.hms.security.HospitalWebSocketHandler webSocketHandler;
 
     // ---- resolvers ----
 
@@ -113,6 +114,7 @@ public class NurseCoverageService {
         w.setCreatedByUserId(securityHelper.getCurrentUserId());
         NurseWardAssignment saved = wardAssignmentRepository.save(w);
         audit("TEMP_WARD_ASSIGNED", p.getName() + " -> ward " + tempWardId + " " + from + ".." + to, hospitalId, saved.getId());
+        broadcastRefresh(hospitalId);
         return saved;
     }
 
@@ -125,6 +127,7 @@ public class NurseCoverageService {
         nurseInchargeGuard.assertWardAccess(w.getTempWardId());
         wardAssignmentRepository.delete(w);
         audit("TEMP_WARD_REMOVED", publicId, hospitalId, w.getId());
+        broadcastRefresh(hospitalId);
     }
 
     @Transactional
@@ -145,6 +148,7 @@ public class NurseCoverageService {
         s.setCreatedByUserId(securityHelper.getCurrentUserId());
         NurseSubstitution saved = substitutionRepository.save(s);
         audit("NURSE_SUBSTITUTION_CREATED", primaryId + " covered by " + replacementId + " " + from + ".." + to, hospitalId, saved.getId());
+        broadcastRefresh(hospitalId);
         return saved;
     }
 
@@ -158,6 +162,7 @@ public class NurseCoverageService {
                 .ifPresent(p -> nurseInchargeGuard.assertWardAccess(p.getWardId()));
         substitutionRepository.delete(s);
         audit("NURSE_SUBSTITUTION_REMOVED", publicId, hospitalId, s.getId());
+        broadcastRefresh(hospitalId);
     }
 
     /** Active + upcoming temp assignments for the hospital (UI list). */
@@ -192,6 +197,12 @@ public class NurseCoverageService {
     private void audit(String a, String d, Long h, Long id) {
         try {
             auditLogService.logAction(a, d, securityHelper.getCurrentUserEmail(), h, "NURSE_COVERAGE", String.valueOf(id), null);
+        } catch (Exception e) { /* best-effort */ }
+    }
+
+    private void broadcastRefresh(Long hospitalId) {
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
         } catch (Exception e) { /* best-effort */ }
     }
 }

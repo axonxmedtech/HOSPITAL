@@ -36,6 +36,7 @@ public class NurseShiftScheduleService {
     @Autowired private NurseInchargeGuard nurseInchargeGuard;
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private AuditLogService auditLogService;
+    @Autowired private com.hms.security.HospitalWebSocketHandler webSocketHandler;
 
     @Transactional
     public NurseShiftSchedule assign(AssignShiftRequest req) {
@@ -49,6 +50,7 @@ public class NurseShiftScheduleService {
         applyTo(s, hospitalId, p, req.getDate(), t);
         NurseShiftSchedule saved = scheduleRepository.save(s);
         audit("NURSE_SHIFT_ASSIGNED", p.getName() + " " + req.getDate() + " " + t.getName(), hospitalId, saved.getId());
+        broadcastRefresh(hospitalId);
         return saved;
     }
 
@@ -72,6 +74,7 @@ public class NurseShiftScheduleService {
             count++;
         }
         audit("NURSE_SHIFT_RANGE_FILLED", p.getName() + " " + req.getFromDate() + ".." + req.getToDate() + " x" + count, hospitalId, p.getId());
+        broadcastRefresh(hospitalId);
         return count;
     }
 
@@ -84,6 +87,7 @@ public class NurseShiftScheduleService {
         nurseInchargeGuard.assertWardAccess(s.getWardId());
         scheduleRepository.delete(s);
         audit("NURSE_SHIFT_REMOVED", publicId, hospitalId, s.getId());
+        broadcastRefresh(hospitalId);
     }
 
     /** Future-dated schedules using this template adopt the new times; past rows unchanged. */
@@ -152,4 +156,5 @@ public class NurseShiftScheduleService {
     }
     private Long requireHospitalId() { Long h = securityHelper.getCurrentHospitalId(); if (h == null) throw new UnauthorizedException("Hospital ID not found"); return h; }
     private void audit(String a, String d, Long h, Long id) { try { auditLogService.logAction(a, d, securityHelper.getCurrentUserEmail(), h, "NURSE_SHIFT", String.valueOf(id), null); } catch (Exception e) {} }
+    private void broadcastRefresh(Long hospitalId) { try { webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}"); } catch (Exception e) {} }
 }

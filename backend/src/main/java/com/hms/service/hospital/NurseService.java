@@ -309,6 +309,7 @@ public class NurseService {
         }
         nurseProfileRepository.save(p);
         auditNurse("NURSE_PROMOTED", "Promoted nurse " + p.getName() + " to incharge", hospitalId, nurseProfileId);
+        broadcastRefresh(hospitalId, "nurse promote");
     }
 
     /**
@@ -328,6 +329,7 @@ public class NurseService {
         }
         nurseProfileRepository.save(p);
         auditNurse("NURSE_DEMOTED", "Demoted incharge " + p.getName() + " to nurse", hospitalId, nurseProfileId);
+        broadcastRefresh(hospitalId, "nurse demote");
     }
 
     /**

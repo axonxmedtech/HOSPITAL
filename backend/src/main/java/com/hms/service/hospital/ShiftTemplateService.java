@@ -19,6 +19,7 @@ public class ShiftTemplateService {
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private AuditLogService auditLogService;
     @Autowired private NurseShiftScheduleService nurseShiftScheduleService;
+    @Autowired private com.hms.security.HospitalWebSocketHandler webSocketHandler;
 
     @Transactional
     public ShiftTemplate create(ShiftTemplateRequest req) {
@@ -32,6 +33,7 @@ public class ShiftTemplateService {
         t.setIsActive(true);
         ShiftTemplate saved = repository.save(t);
         audit("SHIFT_TEMPLATE_CREATED", saved.getName(), hospitalId, saved.getId());
+        broadcastRefresh(hospitalId);
         return saved;
     }
 
@@ -57,6 +59,7 @@ public class ShiftTemplateService {
         // Future schedules using this template pick up the new times; past unchanged.
         nurseShiftScheduleService.applyTemplateChangeToFuture(saved.getId(), saved.getStartTime(), saved.getEndTime());
         audit("SHIFT_TEMPLATE_UPDATED", saved.getName(), hospitalId, saved.getId());
+        broadcastRefresh(hospitalId);
         return saved;
     }
 
@@ -67,6 +70,7 @@ public class ShiftTemplateService {
         t.setIsActive(false);
         repository.save(t);
         audit("SHIFT_TEMPLATE_DEACTIVATED", t.getName(), hospitalId, t.getId());
+        broadcastRefresh(hospitalId);
     }
 
     @Transactional
@@ -76,6 +80,7 @@ public class ShiftTemplateService {
         t.setIsActive(true);
         repository.save(t);
         audit("SHIFT_TEMPLATE_ACTIVATED", t.getName(), hospitalId, t.getId());
+        broadcastRefresh(hospitalId);
     }
 
     private void validate(ShiftTemplateRequest req) {
@@ -96,5 +101,8 @@ public class ShiftTemplateService {
     }
     private void audit(String a, String d, Long h, Long id) {
         try { auditLogService.logAction(a, d, securityHelper.getCurrentUserEmail(), h, "SHIFT_TEMPLATE", String.valueOf(id), null); } catch (Exception e) {}
+    }
+    private void broadcastRefresh(Long hospitalId) {
+        try { webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}"); } catch (Exception e) {}
     }
 }

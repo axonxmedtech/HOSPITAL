@@ -65,6 +65,11 @@ public class WardService {
         auditLogService.logAction("WARD_INCHARGE_SET",
                 "Ward " + ward.getWardName() + " incharge " + previous + " -> " + inchargeNurseProfileId,
                 securityHelper.getCurrentUserEmail(), hospitalId, "WARD", String.valueOf(wardId), null);
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after ward incharge set", e);
+        }
     }
 
     @Transactional
