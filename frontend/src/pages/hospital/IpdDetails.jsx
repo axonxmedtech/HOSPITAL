@@ -500,7 +500,38 @@ const IpdDetails = () => {
                     Back
                 </button>
             </div>
-            <PageHeader title={`IPD ${data.ipdNumber || ''}`} subtitle={`${data.patient?.name || ''} • ${data.patient?.age || ''} • ${data.patient?.gender || ''}`} />
+            {/* Case header — the only top-right actions are Discharge and Create Surgery Request. */}
+            <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                    <PageHeader title={`IPD ${data.ipdNumber || ''}`} subtitle={`${data.patient?.name || ''} • ${data.patient?.age || ''} • ${data.patient?.gender || ''}`} />
+                </div>
+                <div className="flex items-center gap-2 shrink-0 pt-1">
+                    {hasOT && isDoctor && !otSurgery && (
+                        <button
+                            onClick={() => setOtModalOpen(true)}
+                            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 whitespace-nowrap"
+                        >
+                            Create Surgery Request
+                        </button>
+                    )}
+                    {isDoctor && data.status === 'ADMITTED' && (
+                        <button
+                            onClick={onPlanDischarge}
+                            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-yellow-600 hover:bg-yellow-700 whitespace-nowrap"
+                        >
+                            Plan Discharge
+                        </button>
+                    )}
+                    {(isReceptionist || isSoloDoctor || isAdmin) && data.status === 'DISCHARGE_PLANNED' && (
+                        <button
+                            onClick={onConfirmDischarge}
+                            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-green-600 hover:bg-green-700 whitespace-nowrap"
+                        >
+                            Confirm Discharge
+                        </button>
+                    )}
+                </div>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
                 <div className="col-span-2 bg-white border rounded p-4">
@@ -1151,64 +1182,45 @@ const IpdDetails = () => {
                 </div>
 
                 <aside className="bg-white border rounded p-4">
-                    {hasOT && isDoctor && !canManageBilling ? (
+                    {/* Discharge + Create Surgery Request now live in the case header (top right). */}
+                    {hasOT && otSurgery && (
                         <>
                             <h3 className="font-semibold mb-2">Operation Theatre</h3>
-                            {otSurgery ? (
-                                <div className="text-sm space-y-1">
-                                    <div className="font-medium text-gray-800">{otSurgery.procedureName}</div>
-                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700">
-                                        Surgery: {otSurgery.status?.replace('_', ' ')}
-                                    </span>
-                                </div>
-                            ) : (
-                                <button onClick={() => setOtModalOpen(true)}
-                                    className="px-3 py-1.5 rounded text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700">
-                                    Create Surgery Request
-                                </button>
-                            )}
-                        </>
-                    ) : (
-                        <>
-                            <h3 className="font-semibold mb-2">Billing</h3>
-                            {canManageBilling ? (
-                                <div>
-                                    {data.billing ? (
-                                        <div className="text-sm">
-                                            <div><strong>Total:</strong> ₹{data.billing.totalAmount}</div>
-                                            <div><strong>Paid:</strong> ₹{data.billing.paidAmount}</div>
-                                            <div><strong>Balance:</strong> ₹{data.billing.balance}</div>
-                                        </div>
-                                    ) : (
-                                        <div className="text-sm text-gray-500">No billing records found.</div>
-                                    )}
-                                    <div className="mt-3 flex gap-2">
-                                        <button className="px-3 py-1 bg-green-600 text-white rounded" onClick={openBillModal}>Take Payment</button>
-                                        <button
-                                            className="px-3 py-1 bg-gray-600 text-white rounded disabled:opacity-50"
-                                            onClick={handlePrintIpdBill}
-                                            disabled={printingBill}
-                                        >
-                                            {printingBill ? 'Printing...' : 'Print Bill'}
-                                        </button>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="text-sm text-gray-500">Billing is not visible to your role.</div>
-                            )}
+                            <div className="text-sm space-y-1">
+                                <div className="font-medium text-gray-800">{otSurgery.procedureName}</div>
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700">
+                                    Surgery: {otSurgery.status?.replace('_', ' ')}
+                                </span>
+                            </div>
+                            <hr className="my-4" />
                         </>
                     )}
 
-                    <hr className="my-4" />
-
-                    <h3 className="font-semibold mb-2">Discharge</h3>
-                    {isDoctor && data.status === 'ADMITTED' && (
-                        <button className="px-3 py-1 bg-yellow-600 text-white rounded" onClick={onPlanDischarge}>📝 Plan Discharge</button>
-                    )}
-                    {(isReceptionist || isSoloDoctor || isAdmin) && data.status === 'DISCHARGE_PLANNED' && (
+                    <h3 className="font-semibold mb-2">Billing</h3>
+                    {canManageBilling ? (
                         <div>
-                            <button className="px-3 py-1 bg-green-600 text-white rounded" onClick={onConfirmDischarge}>✅ Confirm Discharge</button>
+                            {data.billing ? (
+                                <div className="text-sm">
+                                    <div><strong>Total:</strong> ₹{data.billing.totalAmount}</div>
+                                    <div><strong>Paid:</strong> ₹{data.billing.paidAmount}</div>
+                                    <div><strong>Balance:</strong> ₹{data.billing.balance}</div>
+                                </div>
+                            ) : (
+                                <div className="text-sm text-gray-500">No billing records found.</div>
+                            )}
+                            <div className="mt-3 flex gap-2">
+                                <button className="px-3 py-1 bg-green-600 text-white rounded" onClick={openBillModal}>Take Payment</button>
+                                <button
+                                    className="px-3 py-1 bg-gray-600 text-white rounded disabled:opacity-50"
+                                    onClick={handlePrintIpdBill}
+                                    disabled={printingBill}
+                                >
+                                    {printingBill ? 'Printing...' : 'Print Bill'}
+                                </button>
+                            </div>
                         </div>
+                    ) : (
+                        <div className="text-sm text-gray-500">Billing is not visible to your role.</div>
                     )}
                 </aside>
             </div>
