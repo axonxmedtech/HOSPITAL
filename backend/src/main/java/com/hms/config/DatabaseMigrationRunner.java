@@ -78,7 +78,36 @@ public class DatabaseMigrationRunner {
         ensureNurseAttendanceTable(); // NEW — Nursing Mgmt Phase D
         ensureNurseWardAssignmentsTable(); // NEW — Nursing Mgmt Phase F
         ensureNurseSubstitutionsTable(); // NEW — Nursing Mgmt Phase F
+        ensureCalendarEventsTable();
         ensureBedStatusAuditsTable(); // NEW — Nursing Mgmt Phase C1
+    }
+
+    private void ensureCalendarEventsTable() {
+        try {
+            Integer exists = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'calendar_events'",
+                    Integer.class);
+            if (exists == null || exists == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE calendar_events (" +
+                        "  id BIGINT AUTO_INCREMENT PRIMARY KEY," +
+                        "  public_id VARCHAR(64) NOT NULL UNIQUE," +
+                        "  hospital_id BIGINT NOT NULL," +
+                        "  title VARCHAR(160) NOT NULL," +
+                        "  event_type VARCHAR(20) NOT NULL," +
+                        "  from_date DATE NOT NULL," +
+                        "  to_date DATE NOT NULL," +
+                        "  description VARCHAR(500)," +
+                        "  created_by_user_id BIGINT," +
+                        "  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP," +
+                        "  INDEX idx_calevent_hosp_dates (hospital_id, from_date, to_date)," +
+                        "  CONSTRAINT fk_calevent_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                        ")");
+                log.info("Created calendar_events table");
+            }
+        } catch (Exception e) {
+            log.warn("ensureCalendarEventsTable failed: {}", e.getMessage());
+        }
     }
 
     /**
