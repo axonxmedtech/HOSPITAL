@@ -10,9 +10,12 @@ import LoadingSpinner from '../../../components/LoadingSpinner';
  * its course progress and a "pending today" reminder while the course runs.
  * Recording is only allowed against ACTIVE orders.
  */
-const MedicationPanel = ({ admissionId }) => {
+/** readOnly: hide the "Record Administration" form (e.g. a doctor viewing the MAR). */
+const MedicationPanel = ({ admissionId, readOnly = false }) => {
     const { success, error: toastError } = useToast();
-    const currentUserId = authService.getCurrentUser()?.userId;
+    const currentUser = authService.getCurrentUser();
+    const currentUserId = currentUser?.userId;
+    const isNurse = currentUser?.role === 'NURSE' || currentUser?.role === 'NURSE_INCHARGE';
 
     const [loading, setLoading] = useState(true);
     const [chart, setChart] = useState([]);
@@ -54,25 +57,28 @@ const MedicationPanel = ({ admissionId }) => {
 
     useEffect(() => { loadData(); }, [loadData]);
 
+    // Both only feed the (hidden) record form, and hit nurse-only endpoints.
     useEffect(() => {
+        if (readOnly) return;
         let active = true;
         nurseService.getAdmissionForm(admissionId).then((d) => { if (active) setWardId(d?.wardId ?? null); }).catch(() => {});
         return () => { active = false; };
-    }, [admissionId]);
+    }, [admissionId, readOnly]);
 
     useEffect(() => {
+        if (readOnly) return;
         let active = true;
         nurseService.getSeparateNurseLogin().then((v) => { if (active) setSeparateLogin(v); }).catch(() => {});
         return () => { active = false; };
-    }, []);
+    }, [readOnly]);
 
     useEffect(() => {
-        if (separateLogin === false && wardId) {
+        if (isNurse && separateLogin === false && wardId) {
             nurseService.getWardStaffNurses(wardId)
                 .then((list) => setNurses(Array.isArray(list) ? list : []))
                 .catch(() => setNurses([]));
         }
-    }, [separateLogin, wardId]);
+    }, [isNurse, separateLogin, wardId]);
 
     useEffect(() => {
         if (status === 'GIVEN' || status === 'DELAYED') {
@@ -150,7 +156,8 @@ const MedicationPanel = ({ admissionId }) => {
 
     return (
         <div className="space-y-5">
-            {/* Record Section (ACTIVE orders only) */}
+            {/* Record Section (ACTIVE orders only) — hidden for read-only viewers (e.g. doctors) */}
+            {!readOnly && (
             <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <h3 className="font-bold text-gray-800 text-sm mb-4">Record Medication Administration</h3>
                 {activeMeds.length === 0 ? (
@@ -218,6 +225,7 @@ const MedicationPanel = ({ admissionId }) => {
                     </div>
                 )}
             </div>
+            )}
 
             {/* Medication Chart — all orders with status + course reminders */}
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">

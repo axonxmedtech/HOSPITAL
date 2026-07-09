@@ -21,6 +21,7 @@ import InitialAssessmentPanel from './nurse/InitialAssessmentPanel';
 import VulnerabilityAssessmentPanel from './nurse/VulnerabilityAssessmentPanel';
 import SugarChartPanel from './nurse/SugarChartPanel';
 import ConsentFormsPanel from './nurse/ConsentFormsPanel';
+import MedicationPanel from './nurse/MedicationPanel';
 
 const IpdDetails = () => {
     const { id } = useParams();
@@ -1235,6 +1236,11 @@ const IpdDetails = () => {
                             <button className="px-3 py-1 bg-blue-600 text-white rounded" onClick={onAddMedicine}>+ Add Medicine</button>
                         </div>
                     )}
+
+                    {/* Medication Administration Record — read-only here; nurses record it. */}
+                    <hr className="my-4" />
+                    <h3 className="font-semibold mb-2">Medication Administration History (MAR)</h3>
+                    <MedicationPanel admissionId={admissionId} readOnly />
                     </>)}
                 </div>
 
