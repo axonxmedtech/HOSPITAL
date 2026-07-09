@@ -4907,6 +4907,25 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
         handleChange('shiftDaysOfWeek', next.sort((a, b) => a - b).join(','));
     };
 
+    // For an incharge being edited, pre-check the wards they currently manage
+    // (Ward.inchargeNurseId === their profile id) once the ward list has loaded.
+    useEffect(() => {
+        if (type !== 'nurses' || !isEdit || !formData.isIncharge) return;
+        if (formData.inchargeWardIds !== undefined) return;
+        if (!wardOptions.length) return;
+        const managed = wardOptions
+            .filter((w) => w.inchargeNurseId === formData.nurseProfileId)
+            .map((w) => w.wardId);
+        setFormData((prev) => ({ ...prev, inchargeWardIds: managed }));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [type, isEdit, formData.isIncharge, formData.nurseProfileId, formData.inchargeWardIds, wardOptions]);
+
+    const toggleInchargeWard = (wardId) => {
+        const cur = Array.isArray(formData.inchargeWardIds) ? formData.inchargeWardIds : [];
+        const next = cur.includes(wardId) ? cur.filter((id) => id !== wardId) : [...cur, wardId];
+        handleChange('inchargeWardIds', next);
+    };
+
     const handleChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
         // Clear error for this field
@@ -4961,9 +4980,13 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
             Object.assign(rules, {
                 name: ['required', 'name'],
                 email: ['required', 'email'],
-                phone: ['required', 'phone'],
-                wardId: ['required']
+                phone: ['required', 'phone']
             });
+            // An incharge manages wards via the multi-select, so a single "home
+            // ward" isn't required when editing one.
+            if (!(isEdit && formData.isIncharge)) {
+                rules.wardId = ['required'];
+            }
             if (!isEdit) {
                 rules.password = ['required', 'password'];
             }
@@ -5011,8 +5034,21 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
                         if (isEdit) await hospitalService.updatePharmacist(initialData.publicId || initialData.id, formData);
                         else await hospitalService.addPharmacist(formData);
                     } else if (type === 'nurses') {
-                        if (isEdit) await hospitalService.updateNurse(initialData.publicId || initialData.id, formData);
-                        else await hospitalService.addNurse(formData);
+                        if (isEdit) {
+                            await hospitalService.updateNurse(initialData.publicId || initialData.id, formData);
+                            // Reconcile the incharge's managed wards (Ward.inchargeNurseId).
+                            if (formData.isIncharge && Array.isArray(formData.inchargeWardIds)) {
+                                const profileId = formData.nurseProfileId;
+                                const currentlyManaged = wardOptions.filter((w) => w.inchargeNurseId === profileId).map((w) => w.wardId);
+                                const selected = formData.inchargeWardIds;
+                                const toClear = currentlyManaged.filter((id) => !selected.includes(id));
+                                const toAssign = selected.filter((id) => !currentlyManaged.includes(id));
+                                for (const wid of toClear) await hospitalService.setWardIncharge(wid, null);
+                                for (const wid of toAssign) await hospitalService.setWardIncharge(wid, profileId);
+                            }
+                        } else {
+                            await hospitalService.addNurse(formData);
+                        }
                     } else if (type === 'appointments') {
                         // Appointments editing not supported in this modal yet
                         await hospitalService.createAppointment(formData);
@@ -5311,25 +5347,53 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
                                     />
                                     {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone}</p>}
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Select Ward</label>
-                                    <select
-                                        value={formData.wardId || ''}
-                                        onChange={(e) => handleChange('wardId', e.target.value)}
-                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.wardId ? 'border-red-500' : 'border-gray-300'}`}
-                                    >
-                                        <option value="">Select a ward…</option>
-                                        {wardOptions.map((w) => (
-                                            <option key={w.wardId} value={w.wardId}>
-                                                {w.wardName}{w.floorNumber != null ? ` (Floor ${w.floorNumber})` : ''}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    {errors.wardId && <p className="text-red-500 text-xs mt-1">{errors.wardId}</p>}
-                                    {wardOptions.length === 0 && (
-                                        <p className="text-amber-600 text-xs mt-1">No wards yet — create wards in the Wards &amp; Beds tab first.</p>
-                                    )}
-                                </div>
+                                {isEdit && formData.isIncharge ? (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Wards Managed (Incharge)</label>
+                                        <div className="border border-gray-300 rounded-lg p-2 max-h-44 overflow-y-auto space-y-1">
+                                            {wardOptions.map((w) => {
+                                                const selected = Array.isArray(formData.inchargeWardIds) && formData.inchargeWardIds.includes(w.wardId);
+                                                const takenByOther = w.inchargeNurseId != null && w.inchargeNurseId !== formData.nurseProfileId;
+                                                return (
+                                                    <label key={w.wardId} className="flex items-center gap-2 text-sm text-gray-700 px-1 py-0.5 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={!!selected}
+                                                            onChange={() => toggleInchargeWard(w.wardId)}
+                                                            className="h-4 w-4"
+                                                        />
+                                                        <span>{w.wardName}{w.floorNumber != null ? ` (Floor ${w.floorNumber})` : ''}</span>
+                                                        {takenByOther && <span className="text-xs text-amber-600">(another incharge)</span>}
+                                                    </label>
+                                                );
+                                            })}
+                                            {wardOptions.length === 0 && (
+                                                <p className="text-amber-600 text-xs">No wards yet — create wards in the Wards &amp; Beds tab first.</p>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-gray-400 mt-1">Select every ward this incharge manages. Unchecking a ward removes them as its incharge.</p>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Select Ward</label>
+                                        <select
+                                            value={formData.wardId || ''}
+                                            onChange={(e) => handleChange('wardId', e.target.value)}
+                                            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.wardId ? 'border-red-500' : 'border-gray-300'}`}
+                                        >
+                                            <option value="">Select a ward…</option>
+                                            {wardOptions.map((w) => (
+                                                <option key={w.wardId} value={w.wardId}>
+                                                    {w.wardName}{w.floorNumber != null ? ` (Floor ${w.floorNumber})` : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {errors.wardId && <p className="text-red-500 text-xs mt-1">{errors.wardId}</p>}
+                                        {wardOptions.length === 0 && (
+                                            <p className="text-amber-600 text-xs mt-1">No wards yet — create wards in the Wards &amp; Beds tab first.</p>
+                                        )}
+                                    </div>
+                                )}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">License Number (optional)</label>
                                     <input
