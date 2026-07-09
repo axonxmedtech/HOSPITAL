@@ -256,6 +256,23 @@ const nurseService = {
 
     /** Status-change history for a bed. */
     getBedHistory: async (bedId) => (await apiClient.get(`/hospital/beds/${bedId}/history`)).data,
+
+    // --- Coverage: temp ward assignments + substitutions (Nursing Mgmt Phase F) ---
+
+    getTempAssignments: async () => (await apiClient.get('/hospital/nurse-coverage/temp-assignments')).data,
+    createTempAssignment: async (payload) =>
+        (await apiClient.post('/hospital/nurse-coverage/temp-assignments', payload)).data,
+    removeTempAssignment: async (publicId) =>
+        (await apiClient.delete(`/hospital/nurse-coverage/temp-assignments/${publicId}`)).data,
+
+    getSubstitutions: async () => (await apiClient.get('/hospital/nurse-coverage/substitutions')).data,
+    createSubstitution: async (payload) =>
+        (await apiClient.post('/hospital/nurse-coverage/substitutions', payload)).data,
+    removeSubstitution: async (publicId) =>
+        (await apiClient.delete(`/hospital/nurse-coverage/substitutions/${publicId}`)).data,
+
+    /** Active substitutions where the logged-in nurse is the replacement. */
+    getMyCoverage: async () => (await apiClient.get('/hospital/nurse-coverage/mine')).data,
 };
 
 export default nurseService;

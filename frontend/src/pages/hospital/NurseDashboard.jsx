@@ -38,6 +38,7 @@ const NurseDashboard = () => {
     // Schedule-derived on-shift status (read-only)
     const [onShift, setOnShift] = useState(false);
     const [shiftWindow, setShiftWindow] = useState(null); // "HH:mm–HH:mm" for today, if scheduled
+    const [coverage, setCoverage] = useState([]); // active substitutions where I'm the replacement
 
     const handleRefresh = useCallback(() => setRefreshKey((k) => k + 1), []);
     useWebSocket(user, null, handleRefresh);
@@ -58,8 +59,12 @@ const NurseDashboard = () => {
                 }
             })
             .catch(() => {});
+
+        nurseService.getMyCoverage()
+            .then((rows) => { if (active) setCoverage(Array.isArray(rows) ? rows : []); })
+            .catch(() => { if (active) setCoverage([]); });
         return () => { active = false; };
-    }, []);
+    }, [refreshKey]);
 
     const doLogout = () => {
         const loginUrl = authService.getLoginUrl();
@@ -162,6 +167,15 @@ const NurseDashboard = () => {
                             {shiftWindow ? ` (${shiftWindow})` : ''}
                         </span>
                     </div>
+                    {coverage.length > 0 && (
+                        <div className="mb-6 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800">
+                            <span className="font-semibold">Covering {coverage.length} nurse{coverage.length > 1 ? 's' : ''}</span>
+                            {' '}until{' '}
+                            {new Date(coverage.reduce((m, s) => (s.toDate > m ? s.toDate : m), coverage[0].toDate))
+                                .toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            . Their patients appear in your My Patients list.
+                        </div>
+                    )}
                     {renderContent()}
                 </main>
             </div>
