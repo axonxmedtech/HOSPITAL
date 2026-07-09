@@ -16,7 +16,7 @@ const PORTAL_CONFIG = {
             { value: 'DOCTOR', label: 'Doctor' },
             { value: 'RECEPTIONIST', label: 'Reception & Registration' },
             { value: 'PHARMACIST', label: 'Pharmacy Services' },
-            { value: 'NURSE', label: 'Nursing' },
+            { value: 'NURSE', label: 'Nurse' },
         ],
     },
     CLINIC: {
@@ -77,7 +77,9 @@ const HospitalLogin = ({ portalType = 'HOSPITAL' }) => {
             const isStandalonePharmacy = response.modules?.includes('PHARMACY') && !response.modules?.includes('OPD');
             const isValidRole = response.role === selectedRole ||
                 (response.role === 'HOSPITAL_ADMIN' && response.isSingleDoctor && selectedRole === 'DOCTOR') ||
-                (response.role === 'HOSPITAL_ADMIN' && isStandalonePharmacy && selectedRole === 'PHARMACIST');
+                (response.role === 'HOSPITAL_ADMIN' && isStandalonePharmacy && selectedRole === 'PHARMACIST') ||
+                // The "Nurse" option covers both staff nurses and nurse incharges.
+                (selectedRole === 'NURSE' && response.role === 'NURSE_INCHARGE');
 
             if (!isValidRole) {
                 authService.logout();
@@ -106,6 +108,8 @@ const HospitalLogin = ({ portalType = 'HOSPITAL' }) => {
                 navigate('/hospital/pharmacy');
             } else if (response.role === 'NURSE') {
                 navigate('/hospital/nurse');
+            } else if (response.role === 'NURSE_INCHARGE') {
+                navigate('/hospital/nurse-incharge');
             } else {
                 setErrors({ submit: 'Invalid user role' });
             }
