@@ -84,7 +84,8 @@ export const buildReassessmentHtml = (notes, f, hospital) => {
     </body></html>`;
 };
 
-const NotesPanel = ({ admissionId }) => {
+/** readOnly: hide the Add Note form; the timeline stays visible and printable. */
+const NotesPanel = ({ admissionId, readOnly = false }) => {
     const { success, error: toastError } = useToast();
     const user = authService.getCurrentUser();
     const currentUserId = user?.userId;
@@ -204,6 +205,7 @@ const NotesPanel = ({ admissionId }) => {
 
     return (
         <div className="space-y-5">
+            {!readOnly && (
             <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <h3 className="font-bold text-gray-800 text-sm mb-3">Add Note</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -257,6 +259,7 @@ const NotesPanel = ({ admissionId }) => {
                     </button>
                 </div>
             </div>
+            )}
 
             <div className="bg-white border border-gray-200 rounded-xl">
                 <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
@@ -281,7 +284,7 @@ const NotesPanel = ({ admissionId }) => {
                                         <span className="text-xs font-semibold text-gray-500">
                                             {fmt(n.recordedAt)}{edited ? ' · edited' : ''}
                                         </span>
-                                        {mine && editingId !== n.publicId && (
+                                        {!readOnly && mine && editingId !== n.publicId && (
                                             <div className="flex gap-2">
                                                 <button onClick={() => { setEditingId(n.publicId); setEditText(n.noteText); }}
                                                     className="text-xs font-semibold text-gray-500 hover:text-gray-900">Edit</button>

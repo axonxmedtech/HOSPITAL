@@ -84,6 +84,7 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
     // conditional returns.
     const NURSING_FORM_KEY = {
         vitals: 'VITALS',
+        notes: 'NOTES',
         assessment: 'INITIAL_ASSESSMENT',
         vulnerability: 'VULNERABILITY_ASSESSMENT',
         sugar: 'SUGAR_CHART',
@@ -94,7 +95,7 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
         { id: 'overview', label: 'Overview' },
         ...(verdictFor('vitals') !== 'HIDDEN' ? [{ id: 'vitals', label: 'Vitals' }] : []),
         { id: 'medication', label: 'Medication' },
-        { id: 'notes', label: 'Notes' },
+        ...(verdictFor('notes') !== 'HIDDEN' ? [{ id: 'notes', label: 'Notes' }] : []),
         ...(verdictFor('assessment') !== 'HIDDEN' ? [{ id: 'assessment', label: 'Initial Assessment' }] : []),
         ...(verdictFor('vulnerability') !== 'HIDDEN' ? [{ id: 'vulnerability', label: 'Vulnerability Assessment' }] : []),
         ...(verdictFor('sugar') !== 'HIDDEN' ? [{ id: 'sugar', label: 'Sugar Chart' }] : []),
@@ -145,7 +146,7 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
 
             {tab === 'medication' && <MedicationPanel admissionId={admissionId} />}
 
-            {tab === 'notes' && <NotesPanel admissionId={admissionId} />}
+            {tab === 'notes' && <NotesPanel admissionId={admissionId} readOnly={verdictFor('notes') === 'READ_ONLY'} />}
 
             {tab === 'assessment' && <InitialAssessmentPanel admissionId={admissionId} readOnly={verdictFor('assessment') === 'READ_ONLY'} />}
 

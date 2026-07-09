@@ -11,6 +11,7 @@ public final class FormRegistry {
 
     public static final List<Form> FORMS = List.of(
         new Form("VITALS", "Vitals", "NURSING"),
+        new Form("NOTES", "Notes", "NURSING"),
         new Form("INITIAL_ASSESSMENT", "Initial Assessment", "NURSING"),
         new Form("VULNERABILITY_ASSESSMENT", "Vulnerability Assessment", "NURSING"),
         new Form("SUGAR_CHART", "Sugar Chart", "NURSING"),

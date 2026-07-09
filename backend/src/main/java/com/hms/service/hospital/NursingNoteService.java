@@ -39,9 +39,11 @@ public class NursingNoteService {
     @Autowired private com.hms.security.NurseWriteAccess nurseWriteAccess;
     @Autowired private com.hms.security.PerformingNurseResolver performingNurseResolver;
     @Autowired private AuditLogService auditLogService;
+    @Autowired private FormAccessService formAccessService;
 
     @Transactional
     public NursingNote create(NursingNoteRequest req) {
+        formAccessService.assertCanEdit("NOTES");
         Long hospitalId = requireHospitalId();
         if (req.getIpdAdmissionId() == null) {
             throw new IllegalArgumentException("ipdAdmissionId is required");
@@ -87,6 +89,7 @@ public class NursingNoteService {
 
     @Transactional
     public NursingNote update(String publicId, NursingNoteRequest req) {
+        formAccessService.assertCanEdit("NOTES");
         NursingNote n = requireEditableOwnNote(publicId);
         n.setNoteText(validateText(req.getNoteText()));
         if (req.getOrders() != null) n.setOrders(req.getOrders());
@@ -98,6 +101,7 @@ public class NursingNoteService {
 
     @Transactional
     public void softDelete(String publicId) {
+        formAccessService.assertCanEdit("NOTES");
         NursingNote n = requireEditableOwnNote(publicId);
         n.setIsActive(false);
         noteRepository.save(n);

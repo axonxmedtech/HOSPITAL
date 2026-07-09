@@ -50,6 +50,7 @@ const IpdDetails = () => {
 
     const FORM_KEY_BY_TAB = {
         vitals: 'VITALS',
+        notes: 'NOTES',
         assessment: 'INITIAL_ASSESSMENT',
         vulnerability: 'VULNERABILITY_ASSESSMENT',
         sugar: 'SUGAR_CHART',
@@ -61,7 +62,7 @@ const IpdDetails = () => {
         { id: 'overview', label: 'Overview' },
         ...(verdictFor('vitals') !== 'HIDDEN' ? [{ id: 'vitals', label: 'Vitals' }] : []),
         { id: 'medication', label: 'Medication' },
-        { id: 'notes', label: 'Notes' },
+        ...(verdictFor('notes') !== 'HIDDEN' ? [{ id: 'notes', label: 'Notes' }] : []),
         ...(verdictFor('assessment') !== 'HIDDEN' ? [{ id: 'assessment', label: 'Initial Assessment' }] : []),
         ...(verdictFor('vulnerability') !== 'HIDDEN' ? [{ id: 'vulnerability', label: 'Vulnerability Assessment' }] : []),
         ...(verdictFor('sugar') !== 'HIDDEN' ? [{ id: 'sugar', label: 'Sugar Chart' }] : []),
@@ -591,7 +592,7 @@ const IpdDetails = () => {
             </div>
 
             {tab === 'vitals' && <div className="mt-4"><VitalsPanel admissionId={admissionId} readOnly={verdictFor('vitals') === 'READ_ONLY'} /></div>}
-            {tab === 'notes' && <div className="mt-4"><NotesPanel admissionId={admissionId} /></div>}
+            {tab === 'notes' && <div className="mt-4"><NotesPanel admissionId={admissionId} readOnly={verdictFor('notes') === 'READ_ONLY'} /></div>}
             {tab === 'assessment' && <div className="mt-4"><InitialAssessmentPanel admissionId={admissionId} readOnly={verdictFor('assessment') === 'READ_ONLY'} /></div>}
             {tab === 'vulnerability' && <div className="mt-4"><VulnerabilityAssessmentPanel admissionId={admissionId} readOnly={verdictFor('vulnerability') === 'READ_ONLY'} /></div>}
             {tab === 'sugar' && <div className="mt-4"><SugarChartPanel admissionId={admissionId} readOnly={verdictFor('sugar') === 'READ_ONLY'} /></div>}
