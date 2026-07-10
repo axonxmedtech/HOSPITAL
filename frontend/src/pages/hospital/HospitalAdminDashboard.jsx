@@ -1670,9 +1670,13 @@ const HospitalAdminDashboard = () => {
             pick('support'),
         ].filter(Boolean);
     } else {
+        // Messages (Communication) needs WhatsApp on the plan — platform
+        // (WHATSAPP_PLATFORM) or independent (WHATSAPP_CUSTOM). Hidden when "none".
+        const hasWhatsApp = modules.includes('WHATSAPP_PLATFORM') || modules.includes('WHATSAPP_CUSTOM');
         tabs = allTabs.filter(tab => {
             if (tab.requiredModule && !modules.includes(tab.requiredModule)) return false;
             if (tab.id === 'inventory' && !hasInClinic) return false;
+            if (tab.id === 'messages' && !hasWhatsApp) return false;
             return true;
         });
     }
