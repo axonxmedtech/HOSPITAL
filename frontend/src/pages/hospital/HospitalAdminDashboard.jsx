@@ -1703,7 +1703,8 @@ const HospitalAdminDashboard = () => {
         { id: 'group-finance', label: 'Finance', tabIds: ['billing', 'fees'] },
         { id: 'group-reports', label: 'Reports', tabIds: ['analytics', 'audit-logs'] },
         { id: 'group-communication', label: 'Communication', tabIds: ['messages'] },
-        { id: 'group-administration', label: 'Administration', tabIds: ['settings', 'support', 'quick-notes', 'prescription-presets'] },
+        { id: 'group-presets', label: 'Presets', tabIds: ['quick-notes', 'prescription-presets'] },
+        { id: 'group-administration', label: 'Administration', tabIds: ['settings', 'support'] },
     ];
 
     const isHospitalAdminTenant = user?.hospitalType === 'HOSPITAL';
