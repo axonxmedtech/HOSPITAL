@@ -56,6 +56,8 @@ public class HospitalSettingDTO {
      */
     private Boolean separateNurseLogin = false;
 
+    private Boolean otInchargeEnabled = false;
+
     public HospitalSettingDTO(String receptionMode, String billingHandler) {
         this.receptionMode = receptionMode;
         this.billingHandler = billingHandler;

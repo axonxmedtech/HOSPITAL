@@ -47,6 +47,17 @@ public class HospitalSetting {
     @Column(name = "separate_nurse_login", nullable = false)
     private Boolean separateNurseLogin = false;
 
+    @Column(name = "ot_incharge_enabled", nullable = false)
+    private Boolean otInchargeEnabled = false;
+
+    public Boolean getOtInchargeEnabled() {
+        return otInchargeEnabled;
+    }
+
+    public void setOtInchargeEnabled(Boolean otInchargeEnabled) {
+        this.otInchargeEnabled = otInchargeEnabled;
+    }
+
     public Long getId() {
         return id;
     }

@@ -81,6 +81,7 @@ public class LoginResponse {
     private Boolean isSingleDoctor;
     private Boolean inClinic;
     private Boolean barcodeEnabled;
+    private Boolean otInchargeEnabled;
     private String logoUrl;
     private String parentOrganization;
     private String hospitalAddress;

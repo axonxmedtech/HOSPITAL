@@ -78,7 +78,7 @@ public class SecurityConfig {
                         .requestMatchers("/platform/**").hasRole("SUPER_ADMIN")
 
                         // WebSocket endpoints - authenticated standard HMS roles & Super Admin
-                        .requestMatchers("/ws/**").hasAnyRole("HOSPITAL_ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST", "NURSE", "NURSE_INCHARGE", "SUPER_ADMIN")
+                        .requestMatchers("/ws/**").hasAnyRole("HOSPITAL_ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST", "NURSE", "NURSE_INCHARGE", "SUPER_ADMIN", "OT_INCHARGE")
 
                         // Module namespaces - only standard HMS roles allowed.
                         // /hospital/** = hospital tenants, /clinic/** = clinic tenants,
@@ -86,7 +86,7 @@ public class SecurityConfig {
                         // NURSE is hospital-only: it is authorized on /hospital/** but never on
                         // /clinic/** or /pharmacy/**, keeping the Nurse role out of those tenants.
                         .requestMatchers("/hospital/**")
-                        .hasAnyRole("HOSPITAL_ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST", "NURSE", "NURSE_INCHARGE")
+                        .hasAnyRole("HOSPITAL_ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST", "NURSE", "NURSE_INCHARGE", "OT_INCHARGE")
                         .requestMatchers("/clinic/**", "/pharmacy/**")
                         .hasAnyRole("HOSPITAL_ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST")
                         // All other requests require authentication

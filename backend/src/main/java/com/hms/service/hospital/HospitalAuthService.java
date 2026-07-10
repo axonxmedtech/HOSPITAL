@@ -405,6 +405,7 @@ public class HospitalAuthService {
         boolean inClinicAllowed = hospital.getModules() != null && hospital.getModules().contains("IN_CLINIC");
         response.setInClinic(inClinicAllowed && Boolean.TRUE.equals(settings.getInClinic()));
         response.setBarcodeEnabled(settings.getBarcodeEnabled() == null ? Boolean.TRUE : settings.getBarcodeEnabled());
+        response.setOtInchargeEnabled(settings.getOtInchargeEnabled() == null ? Boolean.FALSE : settings.getOtInchargeEnabled());
         response.setLogoUrl(hospital.getLogoUrl());
         response.setParentOrganization(hospital.getParentOrganization());
         response.setHospitalAddress(hospital.getAddress());
@@ -608,6 +609,7 @@ public class HospitalAuthService {
                     HospitalSettingDTO dto = new HospitalSettingDTO(s.getReceptionMode(), s.getBillingHandler(), s.getInClinic());
                     dto.setBarcodeEnabled(s.getBarcodeEnabled() == null ? Boolean.TRUE : s.getBarcodeEnabled());
                     dto.setSeparateNurseLogin(s.getSeparateNurseLogin() == null ? Boolean.FALSE : s.getSeparateNurseLogin());
+                    dto.setOtInchargeEnabled(s.getOtInchargeEnabled() == null ? Boolean.FALSE : s.getOtInchargeEnabled());
                     return dto;
                 })
                 .orElse(new HospitalSettingDTO("HAS_RECEPTIONIST", "RECEPTIONIST", true));
@@ -647,6 +649,43 @@ public class HospitalAuthService {
         HospitalSettingDTO dto = new HospitalSettingDTO(settings.getReceptionMode(), settings.getBillingHandler(), settings.getInClinic());
         dto.setBarcodeEnabled(settings.getBarcodeEnabled() == null ? Boolean.TRUE : settings.getBarcodeEnabled());
         dto.setSeparateNurseLogin(separateNurseLogin);
+        dto.setOtInchargeEnabled(settings.getOtInchargeEnabled() == null ? Boolean.FALSE : settings.getOtInchargeEnabled());
+        return dto;
+    }
+
+    /**
+     * Toggle the OT Incharge setting.
+     */
+    @Transactional
+    public HospitalSettingDTO updateOtInchargeSetting(String email, boolean otInchargeEnabled) {
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (user.getHospitalId() == null) throw new UnauthorizedException("Invalid hospital user account");
+        if (!"HOSPITAL_ADMIN".equals(user.getRole())) {
+            throw new UnauthorizedException("Access denied: requires HOSPITAL_ADMIN role");
+        }
+
+        Hospital hospital = hospitalRepository.findById(user.getHospitalId())
+                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+
+        HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(user.getHospitalId())
+                .orElseGet(() -> {
+                    HospitalSetting newSettings = new HospitalSetting();
+                    newSettings.setHospital(hospital);
+                    return newSettings;
+                });
+        settings.setOtInchargeEnabled(otInchargeEnabled);
+        hospitalSettingRepository.save(settings);
+
+        try {
+            webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket settings update", e);
+        }
+
+        HospitalSettingDTO dto = new HospitalSettingDTO(settings.getReceptionMode(), settings.getBillingHandler(), settings.getInClinic());
+        dto.setBarcodeEnabled(settings.getBarcodeEnabled() == null ? Boolean.TRUE : settings.getBarcodeEnabled());
+        dto.setSeparateNurseLogin(settings.getSeparateNurseLogin() == null ? Boolean.FALSE : settings.getSeparateNurseLogin());
+        dto.setOtInchargeEnabled(otInchargeEnabled);
         return dto;
     }
 
@@ -683,6 +722,8 @@ public class HospitalAuthService {
 
         HospitalSettingDTO dto = new HospitalSettingDTO(settings.getReceptionMode(), settings.getBillingHandler(), settings.getInClinic());
         dto.setBarcodeEnabled(barcodeEnabled);
+        dto.setSeparateNurseLogin(settings.getSeparateNurseLogin() == null ? Boolean.FALSE : settings.getSeparateNurseLogin());
+        dto.setOtInchargeEnabled(settings.getOtInchargeEnabled() == null ? Boolean.FALSE : settings.getOtInchargeEnabled());
         return dto;
     }
 
@@ -758,7 +799,11 @@ public class HospitalAuthService {
             logger.warn("Failed to broadcast WebSocket settings update", e);
         }
 
-        return new HospitalSettingDTO(receptionMode, billingHandler,
+        HospitalSettingDTO responseDto = new HospitalSettingDTO(receptionMode, billingHandler,
                 inClinic != null ? inClinic : settings.getInClinic());
+        responseDto.setBarcodeEnabled(settings.getBarcodeEnabled() == null ? Boolean.TRUE : settings.getBarcodeEnabled());
+        responseDto.setSeparateNurseLogin(settings.getSeparateNurseLogin() == null ? Boolean.FALSE : settings.getSeparateNurseLogin());
+        responseDto.setOtInchargeEnabled(settings.getOtInchargeEnabled() == null ? Boolean.FALSE : settings.getOtInchargeEnabled());
+        return responseDto;
     }
 }

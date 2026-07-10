@@ -71,6 +71,7 @@ public class DatabaseMigrationRunner {
         ensureNurseProfilePhaseAColumns(); // NEW — Nursing Mgmt Phase A
         ensureWardInchargeColumn();
         ensureSeparateNurseLoginColumn();
+        ensureOtInchargeEnabledColumn();
         ensurePerformedByNurseIdColumns(); // NEW — Nursing Mgmt Phase A3, "Performed By"
         ensureShiftTemplatesTable(); // NEW — Nursing Mgmt Phase B1
         ensureAppointmentSlotsTable(); // NEW — Nursing Mgmt Phase B1
@@ -1661,6 +1662,10 @@ public class DatabaseMigrationRunner {
 
     private void ensureSeparateNurseLoginColumn() {
         addColumnIfMissing("hospital_settings", "separate_nurse_login", "TINYINT(1) NOT NULL DEFAULT 0");
+    }
+
+    private void ensureOtInchargeEnabledColumn() {
+        addColumnIfMissing("hospital_settings", "ot_incharge_enabled", "TINYINT(1) NOT NULL DEFAULT 0");
     }
 
     private void ensurePerformedByNurseIdColumns() {

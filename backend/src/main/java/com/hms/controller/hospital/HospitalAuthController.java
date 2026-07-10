@@ -110,6 +110,15 @@ public class HospitalAuthController {
         return ResponseEntity.ok(authService.updateSeparateNurseLoginSetting(principal.getName(), enabled));
     }
 
+    /** Toggle the OT Incharge setting. Body: { "otInchargeEnabled": true|false }. */
+    @PutMapping({"/hospital/settings/ot-incharge", "/clinic/settings/ot-incharge", "/pharmacy/settings/ot-incharge"})
+    public ResponseEntity<?> updateOtInchargeSetting(java.security.Principal principal, @RequestBody java.util.Map<String, Boolean> body) {
+        if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
+        Boolean enabled = body.get("otInchargeEnabled");
+        if (enabled == null) return ResponseEntity.badRequest().body("otInchargeEnabled is required");
+        return ResponseEntity.ok(authService.updateOtInchargeSetting(principal.getName(), enabled));
+    }
+
     @GetMapping({"/hospital/subscription", "/clinic/subscription", "/pharmacy/subscription"})
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<?> getSubscriptionInfo() {
