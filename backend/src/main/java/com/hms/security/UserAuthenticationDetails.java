@@ -54,11 +54,26 @@ public class UserAuthenticationDetails {
      */
     private Long branchId;
 
+    /**
+     * Tenant type of this session: HOSPITAL, CLINIC or PHARMACY.
+     * Null for Super Admin, and null for tokens minted before the claim existed.
+     * Treat null as "unknown" — never assume a type.
+     */
+    private String hospitalType;
+
     public UserAuthenticationDetails(Long userId, String role, Long hospitalId, java.util.List<String> modules) {
         this.userId = userId;
         this.role = role;
         this.hospitalId = hospitalId;
         this.modules = modules;
+    }
+
+    public String getHospitalType() {
+        return hospitalType;
+    }
+
+    public void setHospitalType(String hospitalType) {
+        this.hospitalType = hospitalType;
     }
 
     public Long getBranchId() {

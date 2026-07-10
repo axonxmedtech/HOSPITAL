@@ -1,7 +1,9 @@
 package com.hms.controller.hospital;
 
 import com.hms.dto.SaveSurgeryFormRequest;
+import com.hms.entity.HospitalType;
 import com.hms.security.RequireModule;
+import com.hms.security.TenantType;
 import com.hms.service.hospital.SurgeryFormService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @RequestMapping("/hospital/surgery-forms")
+@TenantType(HospitalType.HOSPITAL)
 @RequireModule("OT")
 public class SurgeryFormController {
 

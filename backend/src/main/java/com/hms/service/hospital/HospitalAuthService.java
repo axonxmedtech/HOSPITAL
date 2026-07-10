@@ -304,14 +304,16 @@ public class HospitalAuthService {
 
         logger.info("Login successful for user: {} at hospital: {}", request.getEmail(), hospital.getName());
 
-        // Generate JWT token with hospital_id and modules
+        // Generate JWT token with hospital_id, modules and tenant type
         String token = jwtUtil.generateToken(
                 user.getId(),
                 user.getEmail(),
                 user.getRole(),
                 user.getHospitalId(), // Include hospital_id for multi-tenant filtering
                 hospital.getModules(),
-                user.getBranchId()); // Multi Pharmacy branch login scoping
+                user.getBranchId(), // Multi Pharmacy branch login scoping
+                // Tenant type gates hospital-only modules and controllers server-side.
+                (hospital.getType() != null ? hospital.getType() : HospitalType.HOSPITAL).name());
 
         // Create response
         LoginResponse response = new LoginResponse();

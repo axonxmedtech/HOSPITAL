@@ -18,6 +18,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -140,19 +141,22 @@ class HospitalAuthServiceTest {
         assertThatThrownBy(() -> service.login(req))
                 .isInstanceOf(com.hms.exception.UnauthorizedException.class)
                 .hasMessageContaining("Nurse login is disabled");
-        verify(jwtUtil, never()).generateToken(any(), any(), any(), any(), any(), any());
+        verify(jwtUtil, never()).generateToken(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
     void login_staffNurse_allowedWhenSeparateNurseLoginOn() {
         primeNurseLogin(true);
-        when(jwtUtil.generateToken(any(), any(), any(), any(), any(), any())).thenReturn("tok");
+        when(jwtUtil.generateToken(any(), any(), any(), any(), any(), any(), any())).thenReturn("tok");
         com.hms.dto.LoginRequest req = new com.hms.dto.LoginRequest();
         req.setEmail("nurse@test.com");
         req.setPassword("pw");
 
         com.hms.dto.LoginResponse resp = service.login(req);
         assertThat(resp.getToken()).isEqualTo("tok");
+        // The tenant type is minted into the token; a null Hospital.type defaults to HOSPITAL.
+        verify(jwtUtil).generateToken(eq(50L), eq("nurse@test.com"), eq("NURSE"), eq(1L), any(), any(),
+                eq("HOSPITAL"));
     }
 
     @Test

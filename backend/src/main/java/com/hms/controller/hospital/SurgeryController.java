@@ -2,7 +2,9 @@ package com.hms.controller.hospital;
 
 import com.hms.dto.CreateSurgeryRequest;
 import com.hms.dto.ScheduleSurgeryRequest;
+import com.hms.entity.HospitalType;
 import com.hms.security.RequireModule;
+import com.hms.security.TenantType;
 import com.hms.service.hospital.SurgeryService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +20,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/hospital/surgeries")
+@TenantType(HospitalType.HOSPITAL)
 @RequireModule("OT")
 public class SurgeryController {
 

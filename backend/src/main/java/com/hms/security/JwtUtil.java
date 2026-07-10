@@ -57,17 +57,23 @@ public class JwtUtil {
      */
     public String generateToken(Long userId, String email, String role, Long hospitalId,
             java.util.List<String> modules) {
-        return generateToken(userId, email, role, hospitalId, modules, null);
+        return generateToken(userId, email, role, hospitalId, modules, null, null);
     }
 
     public String generateToken(Long userId, String email, String role, Long hospitalId,
             java.util.List<String> modules, Long branchId) {
+        return generateToken(userId, email, role, hospitalId, modules, branchId, null);
+    }
+
+    public String generateToken(Long userId, String email, String role, Long hospitalId,
+            java.util.List<String> modules, Long branchId, String hospitalType) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", userId);
         claims.put("role", role);
         claims.put("hospitalId", hospitalId); // null for Super Admin
         claims.put("modules", modules);
         claims.put("branchId", branchId); // Multi Pharmacy branch login; null otherwise
+        claims.put("hospitalType", hospitalType); // HOSPITAL | CLINIC | PHARMACY; null for Super Admin
 
         return Jwts.builder()
                 .claims(claims)
@@ -132,6 +138,16 @@ public class JwtUtil {
     public Long extractHospitalId(String token) {
         Object hospitalId = extractClaims(token).get("hospitalId");
         return hospitalId != null ? ((Number) hospitalId).longValue() : null;
+    }
+
+    /**
+     * Tenant type of the logged-in session: HOSPITAL, CLINIC or PHARMACY.
+     * Null for Super Admin, and null for tokens issued before this claim existed —
+     * callers must treat null as "unknown", never as a particular type.
+     */
+    public String extractHospitalType(String token) {
+        Object type = extractClaims(token).get("hospitalType");
+        return type != null ? type.toString() : null;
     }
 
     /**

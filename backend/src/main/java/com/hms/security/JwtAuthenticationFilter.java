@@ -94,6 +94,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     UserAuthenticationDetails details = new UserAuthenticationDetails(userId, role, hospitalId,
                             modules);
                     details.setBranchId(branchId);
+                    details.setHospitalType(jwtUtil.extractHospitalType(token));
                     authentication.setDetails(details);
 
                     // Set authentication in security context
