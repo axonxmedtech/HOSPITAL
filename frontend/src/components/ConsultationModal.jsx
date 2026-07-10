@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import authService from '../services/authService';
 import hospitalService from '../services/hospitalService';
+import vitalsService from '../services/vitalsService';
 import { useToast } from '../context/ToastContext';
 import MedicineAutocomplete from './MedicineAutocomplete';
 import CharCountInput from './CharCountInput';
@@ -8,7 +9,34 @@ import IpdAdmitModal from './IpdAdmitModal';
 import ManageNotePresetsModal from './ManageNotePresetsModal';
 import ManagePrescriptionPresetsModal from './ManagePrescriptionPresetsModal';
 
+/** Built-in vital key -> the Opd field that stores it. */
+const BUILT_IN_OPD_FIELD = {
+    BP: 'bp',
+    TEMPERATURE: 'temperature',
+    PULSE: 'pulse',
+    HEIGHT: 'height',
+    WEIGHT: 'weight',
+    SPO2: 'spo2',
+};
+
 const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, opd }) => {
+    // Only the vitals this hospital has switched on are shown at diagnosis.
+    const [enabledVitals, setEnabledVitals] = useState([]);
+    useEffect(() => {
+        if (!isOpen) return;
+        let active = true;
+        vitalsService.enabled()
+            .then((list) => { if (active) setEnabledVitals(Array.isArray(list) ? list : []); })
+            .catch(() => { if (active) setEnabledVitals([]); });
+        return () => { active = false; };
+    }, [isOpen]);
+
+    // opd.customVitals is a JSON string of hospital-defined vitals.
+    const opdCustomVitals = React.useMemo(() => {
+        if (!opd?.customVitals) return {};
+        try { return JSON.parse(opd.customVitals) || {}; } catch { return {}; }
+    }, [opd?.customVitals]);
+
     console.log("ConsultationModal render:", { isOpen, appointment, patient, opd });
     const [activeTab, setActiveTab] = useState('clinical'); // 'clinical' or 'prescription'
     const [patientDetails, setPatientDetails] = useState(null);
@@ -519,26 +547,23 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                     </button>
                 </div>
 
-                {/* Vitals captured at OPD entry — read-only reference while diagnosing. */}
-                {opd && (
+                {/* Vitals captured at OPD entry — only the ones this hospital has switched on. */}
+                {opd && enabledVitals.length > 0 && (
                     <div className="px-6 py-3 border-b border-gray-200 bg-gray-50/70">
                         <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Vitals at OPD entry</p>
                         <div className="flex flex-wrap gap-x-6 gap-y-2">
-                            {[
-                                ['Blood Pressure', opd.bp, 'mmHg'],
-                                ['Temperature', opd.temperature, '°F'],
-                                ['Pulse', opd.pulse, 'bpm'],
-                                ['Height', opd.height, 'cm'],
-                                ['Weight', opd.weight, 'kg'],
-                                ['SpO2', opd.spo2, '%'],
-                            ].map(([label, value, unit]) => (
-                                <div key={label} className="min-w-[86px]">
-                                    <p className="text-[11px] text-gray-500">{label}</p>
-                                    <p className="text-sm font-semibold text-gray-900">
-                                        {value !== null && value !== undefined && value !== '' ? `${value} ${unit}` : '—'}
-                                    </p>
-                                </div>
-                            ))}
+                            {enabledVitals.map((v) => {
+                                const value = v.isCustom ? opdCustomVitals[v.key] : BUILT_IN_OPD_FIELD[v.key] && opd[BUILT_IN_OPD_FIELD[v.key]];
+                                const has = value !== null && value !== undefined && value !== '';
+                                return (
+                                    <div key={v.key} className="min-w-[86px]">
+                                        <p className="text-[11px] text-gray-500">{v.label}</p>
+                                        <p className="text-sm font-semibold text-gray-900">
+                                            {has ? `${value}${v.unit ? ` ${v.unit}` : ''}` : '—'}
+                                        </p>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 )}

@@ -20,6 +20,7 @@ import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import PageHeader from '../../components/PageHeader';
 import useWebSocket from '../../hooks/useWebSocket';
+import useEnabledVitals from '../../hooks/useEnabledVitals';
 import BillingTable from './BillingTable';
 import { createColumnHelper } from '@tanstack/react-table';
 import PrescriptionModal from '../../components/PrescriptionModal';
@@ -102,11 +103,12 @@ const ReceptionistDashboard = () => {
         bp: '',
         temperature: '',
         pulse: '',
-        weight: '', height: '',
+        weight: '', height: '', customVitals: {},
         spo2: '',
         problem: '',
         visitType: 'NEW'
     });
+    const { isOn, customs } = useEnabledVitals();
     const [createdOpd, setCreatedOpd] = useState(null);
     const [selectedPatient, setSelectedPatient] = useState(null);
     const [patientSearchText, setPatientSearchText] = useState('');
@@ -123,7 +125,7 @@ const ReceptionistDashboard = () => {
                 bp: '',
                 temperature: '',
                 pulse: '',
-                weight: '', height: '',
+                weight: '', height: '', customVitals: {},
                 spo2: '',
                 problem: '',
                 visitType: 'NEW'
@@ -1706,6 +1708,7 @@ const ReceptionistDashboard = () => {
                                     pulse: opdForm.pulse ? parseInt(opdForm.pulse) : null,
                                     weight: opdForm.weight ? parseFloat(opdForm.weight) : null,
                                         height: opdForm.height ? parseFloat(opdForm.height) : null,
+                                        customVitals: opdForm.customVitals || {},
                                     spo2: opdForm.spo2 ? parseInt(opdForm.spo2) : null,
                                     problem: opdForm.problem,
                                     visitType: opdForm.visitType
@@ -1806,32 +1809,54 @@ const ReceptionistDashboard = () => {
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
+                                {isOn('BP') && (
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">BP</label>
                                     <input className="input-field" value={opdForm.bp} onChange={(e) => setOpdForm(prev => ({ ...prev, bp: e.target.value.replace(/[^0-9/]/g, '') }))} placeholder="120/80" />
                                 </div>
+                                )}
+                                {isOn('TEMPERATURE') && (
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Temperature (°F)</label>
                                     <input type="number" step="0.1" min="0" className="input-field" value={opdForm.temperature} onChange={(e) => setOpdForm(prev => ({ ...prev, temperature: e.target.value }))} />
                                 </div>
+                                )}
                             </div>
                             <div className="grid grid-cols-3 gap-4">
+                                {isOn('PULSE') && (
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Pulse</label>
                                     <input type="number" min="0" className="input-field" value={opdForm.pulse} onChange={(e) => setOpdForm(prev => ({ ...prev, pulse: e.target.value }))} />
                                 </div>
+                                )}
+                                {isOn('HEIGHT') && (
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Height (cm)</label>
                                     <input type="number" step="0.1" min="0" className="input-field" value={opdForm.height} onChange={(e) => setOpdForm(prev => ({ ...prev, height: e.target.value }))} />
                                 </div>
+                                )}
+                                {isOn('WEIGHT') && (
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Weight (kg)</label>
                                     <input type="number" step="0.1" min="0" className="input-field" value={opdForm.weight} onChange={(e) => setOpdForm(prev => ({ ...prev, weight: e.target.value }))} />
                                 </div>
+                                )}
+                                {isOn('SPO2') && (
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">SpO2 (%)</label>
                                     <input type="number" min="0" className="input-field" value={opdForm.spo2} onChange={(e) => setOpdForm(prev => ({ ...prev, spo2: e.target.value }))} />
                                 </div>
+                                )}
+                                {customs.map((v) => (
+                                    <div key={v.key}>
+                                        <label className="block text-sm font-semibold text-neutral-700 mb-2">{v.label}{v.unit ? ` (${v.unit})` : ''}</label>
+                                        <input
+                                            className="input-field"
+                                            value={opdForm.customVitals?.[v.key] || ''}
+                                            onChange={(e) => setOpdForm(prev => ({ ...prev, customVitals: { ...(prev.customVitals || {}), [v.key]: e.target.value } }))}
+                                        />
+                                    </div>
+                                ))}
                             </div>
 
                             <div>

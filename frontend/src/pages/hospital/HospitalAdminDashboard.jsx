@@ -36,6 +36,7 @@ import VitalsSettingsCard from './VitalsSettingsCard';
 import HospitalCalendar from './HospitalCalendar';
 import WardModal from '../../components/WardModal';
 import useWebSocket from '../../hooks/useWebSocket';
+import useEnabledVitals from '../../hooks/useEnabledVitals';
 import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
 import { SkeletonDashboard, SkeletonFormCard, SkeletonSettingsCard, SkeletonTable, SkeletonStatsGrid, SkeletonOverviewDual } from '../../components/Skeleton';
 import reportsApi from '../../services/pharmacy/reportsApi';
@@ -205,7 +206,8 @@ const HospitalAdminDashboard = () => {
 
     // OPD Modal State (Admin)
     const [isAdminOpdModalOpen, setIsAdminOpdModalOpen] = useState(false);
-    const [adminOpdForm, setAdminOpdForm] = useState({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', height: '', spo2: '', problem: '', visitType: 'NEW' });
+    const [adminOpdForm, setAdminOpdForm] = useState({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', height: '', customVitals: {}, spo2: '', problem: '', visitType: 'NEW' });
+    const { isOn, customs } = useEnabledVitals();
     const [adminOpdPatientSearch, setAdminOpdPatientSearch] = useState('');
     const [adminOpdShowDropdown, setAdminOpdShowDropdown] = useState(false);
 
@@ -3942,7 +3944,7 @@ const HospitalAdminDashboard = () => {
                                     <h3 className="text-2xl font-bold text-neutral-800">New OPD Case</h3>
                                     <p className="text-sm text-neutral-600 mt-1">Register a patient into the OPD queue</p>
                                 </div>
-                                <button onClick={() => { setIsAdminOpdModalOpen(false); setAdminOpdPatientSearch(''); setAdminOpdShowDropdown(false); setAdminOpdForm({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', height: '', spo2: '', problem: '', visitType: 'NEW' }); }} className="w-10 h-10 rounded-xl bg-white/80 hover:bg-white flex items-center justify-center text-neutral-400 hover:text-neutral-600 cursor-pointer border-0">
+                                <button onClick={() => { setIsAdminOpdModalOpen(false); setAdminOpdPatientSearch(''); setAdminOpdShowDropdown(false); setAdminOpdForm({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', height: '', customVitals: {}, spo2: '', problem: '', visitType: 'NEW' }); }} className="w-10 h-10 rounded-xl bg-white/80 hover:bg-white flex items-center justify-center text-neutral-400 hover:text-neutral-600 cursor-pointer border-0">
                                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                                 </button>
                             </div>
@@ -4002,6 +4004,7 @@ const HospitalAdminDashboard = () => {
                                     pulse: adminOpdForm.pulse ? parseInt(adminOpdForm.pulse) : null,
                                     weight: adminOpdForm.weight ? parseFloat(adminOpdForm.weight) : null,
                                         height: adminOpdForm.height ? parseFloat(adminOpdForm.height) : null,
+                                        customVitals: adminOpdForm.customVitals || {},
                                     spo2: adminOpdForm.spo2 ? parseInt(adminOpdForm.spo2) : null,
                                     problem: adminOpdForm.problem,
                                     visitType: adminOpdForm.visitType
@@ -4009,7 +4012,7 @@ const HospitalAdminDashboard = () => {
                                 const res = await hospitalService.createOpd(payload);
                                 setIsAdminOpdModalOpen(false);
                                 setAdminOpdPatientSearch('');
-                                setAdminOpdForm({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', height: '', spo2: '', problem: '', visitType: 'NEW' });
+                                setAdminOpdForm({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', height: '', customVitals: {}, spo2: '', problem: '', visitType: 'NEW' });
                                 success('OPD Case created — ID: ' + res.caseId);
                                 loadData();
                             } catch (err) {
@@ -4065,32 +4068,54 @@ const HospitalAdminDashboard = () => {
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
+                                {isOn('BP') && (
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">BP</label>
                                     <input className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.bp} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, bp: e.target.value.replace(/[^0-9/]/g, '') }))} placeholder="120/80" />
                                 </div>
+                                )}
+                                {isOn('TEMPERATURE') && (
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Temperature (°F)</label>
                                     <input type="number" step="0.1" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.temperature} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, temperature: e.target.value }))} />
                                 </div>
+                                )}
                             </div>
                             <div className="grid grid-cols-3 gap-4">
+                                {isOn('PULSE') && (
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Pulse</label>
                                     <input type="number" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.pulse} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, pulse: e.target.value }))} />
                                 </div>
+                                )}
+                                {isOn('HEIGHT') && (
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Height (cm)</label>
                                     <input type="number" step="0.1" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.height} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, height: e.target.value }))} />
                                 </div>
+                                )}
+                                {isOn('WEIGHT') && (
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Weight (kg)</label>
                                     <input type="number" step="0.1" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.weight} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, weight: e.target.value }))} />
                                 </div>
+                                )}
+                                {isOn('SPO2') && (
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">SpO2 (%)</label>
                                     <input type="number" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.spo2} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, spo2: e.target.value }))} />
                                 </div>
+                                )}
+                                {customs.map((v) => (
+                                    <div key={v.key}>
+                                        <label className="block text-sm font-semibold text-neutral-700 mb-2">{v.label}{v.unit ? ` (${v.unit})` : ''}</label>
+                                        <input
+                                            className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800"
+                                            value={adminOpdForm.customVitals?.[v.key] || ''}
+                                            onChange={(e) => setAdminOpdForm(prev => ({ ...prev, customVitals: { ...(prev.customVitals || {}), [v.key]: e.target.value } }))}
+                                        />
+                                    </div>
+                                ))}
                             </div>
                             <div>
                                 <label className="block text-sm font-semibold text-neutral-700 mb-2">Problem / Reason</label>
@@ -4102,7 +4127,7 @@ const HospitalAdminDashboard = () => {
                                 <label className="inline-flex items-center gap-2 cursor-pointer"><input type="radio" name="adminVisitType" value="FOLLOWUP" checked={adminOpdForm.visitType === 'FOLLOWUP'} onChange={() => setAdminOpdForm(prev => ({ ...prev, visitType: 'FOLLOWUP' }))} /> Follow-up</label>
                             </div>
                             <div className="flex gap-4 pt-4">
-                                <button type="button" onClick={() => { setIsAdminOpdModalOpen(false); setAdminOpdPatientSearch(''); setAdminOpdForm({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', height: '', spo2: '', problem: '', visitType: 'NEW' }); }} className="flex-1 py-2.5 rounded-xl border border-gray-300 font-semibold text-gray-700 hover:bg-gray-50 transition">Cancel</button>
+                                <button type="button" onClick={() => { setIsAdminOpdModalOpen(false); setAdminOpdPatientSearch(''); setAdminOpdForm({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', height: '', customVitals: {}, spo2: '', problem: '', visitType: 'NEW' }); }} className="flex-1 py-2.5 rounded-xl border border-gray-300 font-semibold text-gray-700 hover:bg-gray-50 transition">Cancel</button>
                                 <button type="submit" className="flex-1 py-2.5 rounded-xl bg-slate-900 text-white font-semibold hover:bg-slate-800 transition">Create OPD Case</button>
                             </div>
                         </form>
