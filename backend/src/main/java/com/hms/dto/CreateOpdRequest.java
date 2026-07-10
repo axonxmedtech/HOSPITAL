@@ -23,6 +23,9 @@ public class CreateOpdRequest {
     @DecimalMin(value = "0.0", message = "Weight cannot be negative")
     private Double weight;
 
+    @DecimalMin(value = "0.0", message = "Height cannot be negative")
+    private Double height;
+
     @Min(value = 0, message = "SpO2 cannot be negative")
     private Integer spo2;
 

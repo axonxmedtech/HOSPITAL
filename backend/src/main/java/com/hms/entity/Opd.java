@@ -41,6 +41,10 @@ public class Opd {
     @Column(name = "weight")
     private Double weight;
 
+    /** Height in cm, captured with the OPD vitals. */
+    @Column(name = "height")
+    private Double height;
+
     @Column(name = "spo2")
     private Integer spo2;
 

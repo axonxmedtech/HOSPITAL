@@ -407,6 +407,11 @@
                             <span class="vital-unit">bpm</span>
                         </td>
                         <td class="vital-card">
+                            <span class="vital-label">Height</span>
+                            <span class="vital-value" th:text="${opd.height != null and opd.height != '' ? opd.height : '--'}">170</span>
+                            <span class="vital-unit">cm</span>
+                        </td>
+                        <td class="vital-card">
                             <span class="vital-label">Weight</span>
                             <span class="vital-value" th:text="${opd.weight != null and opd.weight != '' ? opd.weight : '--'}">75</span>
                             <span class="vital-unit">kg</span>

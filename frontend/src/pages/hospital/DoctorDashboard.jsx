@@ -225,7 +225,7 @@ const DoctorDashboard = () => {
         bp: '',
         temperature: '',
         pulse: '',
-        weight: '',
+        weight: '', height: '',
         spo2: '',
         problem: '',
         visitType: 'NEW'
@@ -245,7 +245,7 @@ const DoctorDashboard = () => {
                 bp: '',
                 temperature: '',
                 pulse: '',
-                weight: '',
+                weight: '', height: '',
                 spo2: '',
                 problem: '',
                 visitType: 'NEW'
@@ -1765,6 +1765,7 @@ const DoctorDashboard = () => {
                                         temperature: opdForm.temperature ? parseFloat(opdForm.temperature) : null,
                                         pulse: opdForm.pulse ? parseInt(opdForm.pulse) : null,
                                         weight: opdForm.weight ? parseFloat(opdForm.weight) : null,
+                                        height: opdForm.height ? parseFloat(opdForm.height) : null,
                                         spo2: opdForm.spo2 ? parseInt(opdForm.spo2) : null,
                                         problem: opdForm.problem,
                                         visitType: opdForm.visitType
@@ -1857,6 +1858,10 @@ const DoctorDashboard = () => {
                                     <div>
                                         <label className="block text-sm font-semibold text-neutral-700 mb-2">Pulse</label>
                                         <input type="number" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.pulse} onChange={(e) => setOpdForm(prev => ({ ...prev, pulse: e.target.value }))} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-neutral-700 mb-2">Height (cm)</label>
+                                        <input type="number" step="0.1" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.height} onChange={(e) => setOpdForm(prev => ({ ...prev, height: e.target.value }))} />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-semibold text-neutral-700 mb-2">Weight (kg)</label>

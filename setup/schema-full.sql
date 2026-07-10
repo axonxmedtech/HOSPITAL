@@ -508,6 +508,7 @@ CREATE TABLE `opd` (
   `token_number` int DEFAULT NULL,
   `visit_type` enum('NEW','FOLLOWUP') DEFAULT NULL,
   `weight` double DEFAULT NULL,
+  `height` double DEFAULT NULL,
   `doctor_id` bigint DEFAULT NULL,
   `patient_id` bigint DEFAULT NULL,
   `receptionist_id` bigint DEFAULT NULL,

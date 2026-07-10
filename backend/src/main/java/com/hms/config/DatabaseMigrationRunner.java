@@ -82,6 +82,8 @@ public class DatabaseMigrationRunner {
         ensureHospitalFormAccessTable();
         // Orders (drugs / IV fluids) captured alongside a nursing note; printed beside it.
         addColumnIfMissing("nursing_notes", "orders", "TEXT NULL");
+        // Height (cm) captured with the OPD vitals, alongside weight.
+        addColumnIfMissing("opd", "height", "DOUBLE NULL");
         ensureBedStatusAuditsTable(); // NEW — Nursing Mgmt Phase C1
     }
 

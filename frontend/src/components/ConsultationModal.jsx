@@ -519,6 +519,30 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                     </button>
                 </div>
 
+                {/* Vitals captured at OPD entry — read-only reference while diagnosing. */}
+                {opd && (
+                    <div className="px-6 py-3 border-b border-gray-200 bg-gray-50/70">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Vitals at OPD entry</p>
+                        <div className="flex flex-wrap gap-x-6 gap-y-2">
+                            {[
+                                ['Blood Pressure', opd.bp, 'mmHg'],
+                                ['Temperature', opd.temperature, '°F'],
+                                ['Pulse', opd.pulse, 'bpm'],
+                                ['Height', opd.height, 'cm'],
+                                ['Weight', opd.weight, 'kg'],
+                                ['SpO2', opd.spo2, '%'],
+                            ].map(([label, value, unit]) => (
+                                <div key={label} className="min-w-[86px]">
+                                    <p className="text-[11px] text-gray-500">{label}</p>
+                                    <p className="text-sm font-semibold text-gray-900">
+                                        {value !== null && value !== undefined && value !== '' ? `${value} ${unit}` : '—'}
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {/* 2-Column Layout */}
                 <div className="flex flex-1 overflow-hidden">
 

@@ -122,6 +122,7 @@ public class OpdService {
         opd.setTemperature(req.getTemperature());
         opd.setPulse(req.getPulse());
         opd.setWeight(req.getWeight());
+        opd.setHeight(req.getHeight());
         opd.setSpo2(req.getSpo2());
         opd.setProblem(req.getProblem());
         if (req.getVisitType() != null) {
