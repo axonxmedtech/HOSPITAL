@@ -12,9 +12,6 @@ import com.hms.repository.MedicalRecordRepository;
 import com.hms.entity.Doctor;
 import java.util.Collections;
 import java.util.Optional;
-import org.thymeleaf.context.Context;
-import org.thymeleaf.spring6.SpringTemplateEngine;
-import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import java.io.ByteArrayOutputStream;
@@ -36,17 +33,15 @@ public class OpdController {
     private static final Logger logger = LoggerFactory.getLogger(OpdController.class);
 
     private final OpdService opdService;
-    private final SpringTemplateEngine templateEngine;
     private final SecurityContextHelper securityHelper;
     private final DoctorRepository doctorRepository;
     private final MedicalRecordRepository medicalRecordRepository;
     private final HospitalRepository hospitalRepository;
 
-    public OpdController(OpdService opdService, SpringTemplateEngine templateEngine,
+    public OpdController(OpdService opdService,
                          SecurityContextHelper securityHelper, DoctorRepository doctorRepository,
                          MedicalRecordRepository medicalRecordRepository, HospitalRepository hospitalRepository) {
         this.opdService = opdService;
-        this.templateEngine = templateEngine;
         this.securityHelper = securityHelper;
         this.doctorRepository = doctorRepository;
         this.medicalRecordRepository = medicalRecordRepository;

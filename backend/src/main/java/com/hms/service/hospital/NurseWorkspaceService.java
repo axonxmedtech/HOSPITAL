@@ -53,14 +53,6 @@ public class NurseWorkspaceService {
         return nurseShiftScheduleService.isOnShiftNow(currentProfile().getId());
     }
 
-    /** @deprecated Shifts are scheduled (Phase B); this no longer toggles anything. */
-    @Deprecated
-    public boolean startShift() { return getShiftStatus(); }
-
-    /** @deprecated Shifts are scheduled (Phase B); this no longer toggles anything. */
-    @Deprecated
-    public boolean endShift() { return getShiftStatus(); }
-
     private com.hms.entity.NurseProfile currentProfile() {
         requireHospitalId();
         Long userId = securityHelper.getCurrentUserId();

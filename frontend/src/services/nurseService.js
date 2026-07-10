@@ -17,18 +17,6 @@ const nurseService = {
         return response.data; // { onShift: boolean }
     },
 
-    /** Start shift → nurse becomes available. */
-    startShift: async () => {
-        const response = await apiClient.post('/hospital/nurse/shift/start');
-        return response.data;
-    },
-
-    /** End shift → nurse becomes unavailable. */
-    endShift: async () => {
-        const response = await apiClient.post('/hospital/nurse/shift/end');
-        return response.data;
-    },
-
     /** Dashboard aggregates: assigned patient count + recent patients. */
     getDashboard: async () => {
         const response = await apiClient.get('/hospital/nurse/dashboard');

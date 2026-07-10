@@ -71,9 +71,9 @@ public class NurseProfile {
     private java.time.LocalDate joiningDate;
 
     /**
-     * Whether the nurse is currently on shift. A nurse must start their shift
-     * after login to become available; ending the shift makes them unavailable
-     * for auto-assignment of new admissions.
+     * Legacy shift flag. Shifts are now scheduled (nurse_shift_schedules), but this
+     * still backs NurseProfileRepository.findByWardIdAndIsActiveTrueAndOnShiftTrue,
+     * used by NurseAssignmentService — so it is not dead.
      */
     @Column(name = "on_shift", nullable = false)
     private Boolean onShift = false;
