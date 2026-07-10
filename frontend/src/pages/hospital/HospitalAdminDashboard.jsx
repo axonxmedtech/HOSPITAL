@@ -32,6 +32,7 @@ import PageHeader from '../../components/PageHeader';
 import WardsAndBeds from './WardsAndBeds';
 import TimeSlotsView from './TimeSlotsView';
 import FilesAndAccessCard from './FilesAndAccessCard';
+import VitalsSettingsCard from './VitalsSettingsCard';
 import HospitalCalendar from './HospitalCalendar';
 import WardModal from '../../components/WardModal';
 import useWebSocket from '../../hooks/useWebSocket';
@@ -2948,6 +2949,7 @@ const HospitalAdminDashboard = () => {
                                     </div>
                                         {!isPharmacyTenant && (
                                             <div className="max-w-4xl mx-auto my-4">
+                                                <VitalsSettingsCard />
                                                 <FilesAndAccessCard />
                                             </div>
                                         )}
