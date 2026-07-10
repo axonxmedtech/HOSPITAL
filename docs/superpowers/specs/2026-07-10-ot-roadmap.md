@@ -134,11 +134,11 @@ OT feature work and is not blocked by security work.** Phases 0B and 6+ can run 
 - **Objective:** record who was in the room.
 - **Business problem:** F10 — free-text `surgeon_name`/`anaesthetist_name` make cardiac/transplant impossible and the audit unattributable.
 - **Dependencies:** Phase 2.
-- **Backend:** `case_roles` master; `SurgeryTeamService`. Retire the `OT_INCHARGE` literal from `SecurityConfig` (Q3) in favour of an *OT Coordinator* role + permissions.
+- **Backend:** `case_roles` master; `SurgeryTeamService`. Rename the `OT_INCHARGE` role to `OT_COORDINATOR` and drop the literal from `SecurityConfig` (Q3). This is a **migration, not a deletion** — the role backs the live `ot_incharge_enabled` toggle and OT Incharge staff record, so it survives until permissions (Phase 2) and case roles (here) can replace it.
 - **Database:** `case_roles`, `surgery_team_members`; keep the two name columns **nullable** as an external-operator fallback (legitimate denormalisation).
 - **API/Security:** team assign/remove; `OT_ASSIGN_TEAM`.
 - **Testing:** a transplant scenario adds `HARVEST_SURGEON` **as a master row** and passes with **no code change** — the Principle-3 proof.
-- **Risks:** *(Medium)* retiring `OT_INCHARGE` orphans users. Mitigation: migrate them to `OT_COORDINATOR` + permissions in the same release.
+- **Risks:** *(Medium)* renaming `OT_INCHARGE` orphans users and breaks the `ot_incharge_enabled` toggle. Mitigation: migrate users, the setting and the staff record to `OT_COORDINATOR` + permissions in the same release; never delete before the replacement is live.
 - **Exit criteria:** no OT code references a role string; a new case role is data.
 
 ## Phase 7 — Pre-op, WHO 3-Phase, Intra-op & Operative Note
