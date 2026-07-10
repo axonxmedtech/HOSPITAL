@@ -1642,6 +1642,7 @@ const HospitalAdminDashboard = () => {
         { id: 'settings', label: 'Settings', icon: null, requiredModule: null },
         { id: 'support', label: 'Support', icon: null, requiredModule: null },
         { id: 'quick-notes', label: 'Quick Notes', icon: null, requiredModule: null },
+        { id: 'symptom-presets', label: 'Symptom Presets', icon: null, requiredModule: null },
         { id: 'prescription-presets', label: 'Prescription Presets', icon: null, requiredModule: null },
     ];
 
@@ -1707,7 +1708,7 @@ const HospitalAdminDashboard = () => {
         { id: 'group-finance', label: 'Finance', tabIds: ['billing', 'fees'] },
         { id: 'group-reports', label: 'Reports', tabIds: ['analytics', 'audit-logs'] },
         { id: 'group-communication', label: 'Communication', tabIds: ['messages'] },
-        { id: 'group-presets', label: 'Presets', tabIds: ['quick-notes', 'prescription-presets'] },
+        { id: 'group-presets', label: 'Presets', tabIds: ['quick-notes', 'symptom-presets', 'prescription-presets'] },
         { id: 'group-administration', label: 'Administration', tabIds: ['settings', 'support'] },
     ];
 
@@ -2731,6 +2732,19 @@ const HospitalAdminDashboard = () => {
                         {activeTab === 'quick-notes' && (
                             <div className="max-w-2xl mx-auto my-4">
                                 <NotePresetsManager fieldType="TREATMENT_NOTES" isAdmin />
+                            </div>
+                        )}
+
+                        {activeTab === 'symptom-presets' && (
+                            <div className="max-w-2xl mx-auto my-4">
+                                <NotePresetsManager
+                                    fieldType="SYMPTOMS"
+                                    isAdmin
+                                    title="Symptom Presets"
+                                    noun="symptom preset"
+                                    placeholder="e.g. Fever x 3 days"
+                                    description="Common complaints that appear as one-click buttons under Symptoms during a consultation."
+                                />
                             </div>
                         )}
 

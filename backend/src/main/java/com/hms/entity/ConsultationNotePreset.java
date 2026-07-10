@@ -7,10 +7,11 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 /**
- * A per-hospital, reusable phrase a doctor can insert with one click instead
- * of typing (e.g. "Avoid oily food" into Treatment Notes). fieldType is
- * reserved for future reuse (e.g. "DIAGNOSIS") — only "TREATMENT_NOTES" is
- * used today.
+ * A per-hospital, reusable phrase a doctor can insert with one click instead of
+ * typing. fieldType selects which consultation field it belongs to:
+ * "TREATMENT_NOTES" (e.g. "Avoid oily food") or "SYMPTOMS" (e.g. "Fever x 3 days").
+ * The service/controller/repository are fieldType-agnostic, so new field types
+ * work without schema or query changes.
  */
 @Entity
 @Table(name = "consultation_note_presets")
@@ -20,6 +21,7 @@ import java.time.LocalDateTime;
 public class ConsultationNotePreset {
 
     public static final String FIELD_TYPE_TREATMENT_NOTES = "TREATMENT_NOTES";
+    public static final String FIELD_TYPE_SYMPTOMS = "SYMPTOMS";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

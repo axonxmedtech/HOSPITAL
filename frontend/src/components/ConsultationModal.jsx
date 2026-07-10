@@ -46,6 +46,8 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     const [admitModalOpd, setAdmitModalOpd] = useState(null);
     const [notePresets, setNotePresets] = useState([]);
     const [showManagePresets, setShowManagePresets] = useState(false);
+    const [symptomPresets, setSymptomPresets] = useState([]);
+    const [showManageSymptomPresets, setShowManageSymptomPresets] = useState(false);
     const [prescriptionPresets, setPrescriptionPresets] = useState([]);
     const [showManagePrescriptionPresets, setShowManagePrescriptionPresets] = useState(false);
     const [editingMedicineIndex, setEditingMedicineIndex] = useState(null);
@@ -105,6 +107,9 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
             hospitalService.getConsultationNotePresets('TREATMENT_NOTES')
                 .then(data => setNotePresets(data || []))
                 .catch(() => setNotePresets([]));
+            hospitalService.getConsultationNotePresets('SYMPTOMS')
+                .then(data => setSymptomPresets(data || []))
+                .catch(() => setSymptomPresets([]));
         }
     }, [isOpen]);
 
@@ -123,6 +128,8 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         const handler = () => {
             hospitalService.getConsultationNotePresets('TREATMENT_NOTES')
                 .then(data => setNotePresets(data || [])).catch(() => { /* non-critical refresh */ });
+            hospitalService.getConsultationNotePresets('SYMPTOMS')
+                .then(data => setSymptomPresets(data || [])).catch(() => { /* non-critical refresh */ });
             hospitalService.getPrescriptionPresets()
                 .then(data => setPrescriptionPresets(data || [])).catch(() => { /* non-critical refresh */ });
         };
@@ -346,6 +353,13 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         setFormData(prev => ({
             ...prev,
             treatmentNotes: prev.treatmentNotes ? `${prev.treatmentNotes}\n${text}` : text,
+        }));
+    };
+
+    const handleInsertSymptomPreset = (text) => {
+        setFormData(prev => ({
+            ...prev,
+            symptoms: prev.symptoms ? `${prev.symptoms}\n${text}` : text,
         }));
     };
 
@@ -702,6 +716,37 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                         maxLength={500}
                                         placeholder="Enter patient's symptoms..."
                                     />
+
+                                    <div className="flex flex-wrap items-center gap-2 -mt-2">
+                                        {symptomPresets.map(preset => (
+                                            <button
+                                                key={preset.id}
+                                                type="button"
+                                                onClick={() => handleInsertSymptomPreset(preset.text)}
+                                                className="inline-flex items-center px-3 py-1 text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200 rounded-full hover:bg-teal-100 transition"
+                                            >
+                                                {preset.text}
+                                            </button>
+                                        ))}
+                                        {symptomPresets.length === 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowManageSymptomPresets(true)}
+                                                className="text-xs text-gray-500 hover:text-gray-700 underline"
+                                            >
+                                                Add your first symptom preset
+                                            </button>
+                                        )}
+                                        {symptomPresets.length > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowManageSymptomPresets(true)}
+                                                className="text-xs text-gray-500 hover:text-gray-700 underline ml-1"
+                                            >
+                                                Manage
+                                            </button>
+                                        )}
+                                    </div>
 
                                     <CharCountInput
                                         label="Diagnosis"
@@ -1291,6 +1336,23 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                         .catch(() => {});
                 }}
                 fieldType="TREATMENT_NOTES"
+            />
+            <ManageNotePresetsModal
+                isOpen={showManageSymptomPresets}
+                onClose={() => {
+                    setShowManageSymptomPresets(false);
+                    hospitalService.getConsultationNotePresets('SYMPTOMS')
+                        .then(data => setSymptomPresets(data || []))
+                        .catch(() => {});
+                }}
+                fieldType="SYMPTOMS"
+                title="Manage Symptom Presets"
+                managerProps={{
+                    title: 'Symptom Presets',
+                    noun: 'symptom preset',
+                    placeholder: 'e.g. Fever x 3 days',
+                    description: 'Common complaints that appear as one-click buttons under Symptoms during a consultation.',
+                }}
             />
             <ManagePrescriptionPresetsModal
                 isOpen={showManagePrescriptionPresets}
