@@ -29,6 +29,9 @@ public class CreateOpdRequest {
     @Min(value = 0, message = "SpO2 cannot be negative")
     private Integer spo2;
 
+    /** Hospital-defined custom vitals, keyed by vital_key. No validation by design. */
+    private java.util.Map<String, String> customVitals;
+
     private String problem;
 
     @NotBlank(message = "Visit type is required")
@@ -54,4 +57,8 @@ public class CreateOpdRequest {
     public void setProblem(String problem) { this.problem = problem; }
     public String getVisitType() { return visitType; }
     public void setVisitType(String visitType) { this.visitType = visitType; }
+    public Double getHeight() { return height; }
+    public void setHeight(Double height) { this.height = height; }
+    public java.util.Map<String, String> getCustomVitals() { return customVitals; }
+    public void setCustomVitals(java.util.Map<String, String> customVitals) { this.customVitals = customVitals; }
 }

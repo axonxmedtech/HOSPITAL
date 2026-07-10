@@ -509,6 +509,7 @@ CREATE TABLE `opd` (
   `visit_type` enum('NEW','FOLLOWUP') DEFAULT NULL,
   `weight` double DEFAULT NULL,
   `height` double DEFAULT NULL,
+  `custom_vitals` text,
   `doctor_id` bigint DEFAULT NULL,
   `patient_id` bigint DEFAULT NULL,
   `receptionist_id` bigint DEFAULT NULL,
@@ -1555,6 +1556,22 @@ CREATE TABLE IF NOT EXISTS calendar_events (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_calevent_hosp_dates (hospital_id, from_date, to_date),
     CONSTRAINT fk_calevent_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE
+);
+
+-- Per-hospital OPD vitals config: built-in overrides + custom vitals
+CREATE TABLE IF NOT EXISTS hospital_vitals (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    public_id VARCHAR(64) NOT NULL UNIQUE,
+    hospital_id BIGINT NOT NULL,
+    vital_key VARCHAR(60) NOT NULL,
+    label VARCHAR(60) NOT NULL,
+    unit VARCHAR(20),
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
+    is_custom TINYINT(1) NOT NULL DEFAULT 0,
+    sort_order INT DEFAULT 0,
+    created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_hosp_vital (hospital_id, vital_key),
+    CONSTRAINT fk_hosp_vital_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE
 );
 
 -- Per-hospital clinical form availability + edit access (Files & Access, Phase 1)

@@ -48,6 +48,10 @@ public class Opd {
     @Column(name = "spo2")
     private Integer spo2;
 
+    /** JSON map of hospital-defined custom vitals, keyed by vital_key. e.g. {"GRBS":"110"} */
+    @Column(name = "custom_vitals", columnDefinition = "text")
+    private String customVitals;
+
     @Column(name = "problem", columnDefinition = "text")
     private String problem;
 
@@ -102,4 +106,8 @@ public class Opd {
     public void setStatus(Status status) { this.status = status; }
     public Boolean getIpdAdmitRecommended() { return ipdAdmitRecommended; }
     public void setIpdAdmitRecommended(Boolean ipdAdmitRecommended) { this.ipdAdmitRecommended = ipdAdmitRecommended; }
+    public Double getHeight() { return height; }
+    public void setHeight(Double height) { this.height = height; }
+    public String getCustomVitals() { return customVitals; }
+    public void setCustomVitals(String customVitals) { this.customVitals = customVitals; }
 }

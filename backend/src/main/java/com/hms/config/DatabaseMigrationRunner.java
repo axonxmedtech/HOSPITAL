@@ -84,7 +84,38 @@ public class DatabaseMigrationRunner {
         addColumnIfMissing("nursing_notes", "orders", "TEXT NULL");
         // Height (cm) captured with the OPD vitals, alongside weight.
         addColumnIfMissing("opd", "height", "DOUBLE NULL");
+        // Per-hospital OPD vitals config + values of hospital-defined custom vitals.
+        ensureHospitalVitalsTable();
+        addColumnIfMissing("opd", "custom_vitals", "TEXT NULL");
         ensureBedStatusAuditsTable(); // NEW — Nursing Mgmt Phase C1
+    }
+
+    private void ensureHospitalVitalsTable() {
+        try {
+            Integer exists = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'hospital_vitals'",
+                    Integer.class);
+            if (exists == null || exists == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE hospital_vitals (" +
+                        "  id BIGINT AUTO_INCREMENT PRIMARY KEY," +
+                        "  public_id VARCHAR(64) NOT NULL UNIQUE," +
+                        "  hospital_id BIGINT NOT NULL," +
+                        "  vital_key VARCHAR(60) NOT NULL," +
+                        "  label VARCHAR(60) NOT NULL," +
+                        "  unit VARCHAR(20)," +
+                        "  enabled TINYINT(1) NOT NULL DEFAULT 1," +
+                        "  is_custom TINYINT(1) NOT NULL DEFAULT 0," +
+                        "  sort_order INT DEFAULT 0," +
+                        "  created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP," +
+                        "  UNIQUE KEY uq_hosp_vital (hospital_id, vital_key)," +
+                        "  CONSTRAINT fk_hosp_vital_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                        ")");
+                log.info("Created hospital_vitals table");
+            }
+        } catch (Exception e) {
+            log.warn("ensureHospitalVitalsTable failed: {}", e.getMessage());
+        }
     }
 
     private void ensureHospitalFormAccessTable() {

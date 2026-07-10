@@ -28,6 +28,10 @@ public class OpdService {
     private final SecurityContextHelper securityHelper;
     private final AuditLogService auditLogService;
     private final HospitalWebSocketHandler webSocketHandler;
+    private final VitalSettingsService vitalSettingsService;
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper VITALS_JSON =
+            new com.fasterxml.jackson.databind.ObjectMapper();
 
     public OpdService(OpdRepository opdRepository,
                       QueueEntryRepository queueEntryRepository,
@@ -37,7 +41,8 @@ public class OpdService {
                       MedicalRecordRepository medicalRecordRepository,
                       SecurityContextHelper securityHelper,
                       AuditLogService auditLogService,
-                      HospitalWebSocketHandler webSocketHandler) {
+                      HospitalWebSocketHandler webSocketHandler,
+                      VitalSettingsService vitalSettingsService) {
         this.opdRepository = opdRepository;
         this.queueEntryRepository = queueEntryRepository;
         this.patientRepository = patientRepository;
@@ -47,6 +52,24 @@ public class OpdService {
         this.securityHelper = securityHelper;
         this.auditLogService = auditLogService;
         this.webSocketHandler = webSocketHandler;
+        this.vitalSettingsService = vitalSettingsService;
+    }
+
+    /** Keep only the hospital's enabled custom vitals, stored as a JSON object. */
+    private String serializeCustomVitals(java.util.Map<String, String> submitted) {
+        if (submitted == null || submitted.isEmpty()) return null;
+        java.util.Set<String> allowed = vitalSettingsService.enabledCustomKeys();
+        java.util.Map<String, String> kept = new java.util.LinkedHashMap<>();
+        submitted.forEach((k, v) -> {
+            if (allowed.contains(k) && v != null && !v.trim().isEmpty()) kept.put(k, v.trim());
+        });
+        if (kept.isEmpty()) return null;
+        try {
+            return VITALS_JSON.writeValueAsString(kept);
+        } catch (Exception e) {
+            logger.warn("Could not serialize custom vitals; storing none", e);
+            return null;
+        }
     }
 
     @Transactional
@@ -118,12 +141,16 @@ public class OpdService {
             docOpt.ifPresent(opd::setDoctor);
         }
 
-        opd.setBp(req.getBp());
-        opd.setTemperature(req.getTemperature());
-        opd.setPulse(req.getPulse());
-        opd.setWeight(req.getWeight());
-        opd.setHeight(req.getHeight());
-        opd.setSpo2(req.getSpo2());
+        // Only vitals the hospital has switched ON are captured. Disabled built-ins are
+        // dropped server-side, and submitted custom vitals are filtered to enabled keys.
+        java.util.Set<String> onBuiltIns = vitalSettingsService.enabledBuiltInKeys();
+        opd.setBp(onBuiltIns.contains("BP") ? req.getBp() : null);
+        opd.setTemperature(onBuiltIns.contains("TEMPERATURE") ? req.getTemperature() : null);
+        opd.setPulse(onBuiltIns.contains("PULSE") ? req.getPulse() : null);
+        opd.setWeight(onBuiltIns.contains("WEIGHT") ? req.getWeight() : null);
+        opd.setHeight(onBuiltIns.contains("HEIGHT") ? req.getHeight() : null);
+        opd.setSpo2(onBuiltIns.contains("SPO2") ? req.getSpo2() : null);
+        opd.setCustomVitals(serializeCustomVitals(req.getCustomVitals()));
         opd.setProblem(req.getProblem());
         if (req.getVisitType() != null) {
             try {
