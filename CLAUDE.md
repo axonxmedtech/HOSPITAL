@@ -106,7 +106,7 @@ Specs and phase plans live under `docs/superpowers/specs/` and `docs/superpowers
 `setup/schema-full.sql` is the canonical schema. Entity classes in `entity/` mirror it. When adding columns, update both the SQL (provide the ALTER query) and the JPA entity.
 
 ### PDF generation
-`PdfService` uses OpenPDF + Thymeleaf templates under `src/main/resources/templates/` (e.g. `case-paper.html`).
+`PdfService` is a thin facade that delegates to `service/pdf/`: `ClinicalPdfService` (prescription / case paper), `BillingPdfService` (receipts), and `ReportPdfService` (OPD reports), with shared drawing in `PdfLayoutHelper`. PDFs are built programmatically with **OpenPDF** (`PdfPTable`, `document.add(...)`) — there are no HTML/Thymeleaf templates. The case paper's VITAL SIGNS table is built from the hospital's enabled vitals (see OPD vitals settings).
 
 ### WebSocket
 Real-time dashboard updates. Config in `com.hms.config.WebSocketConfig`. Secured with JWT. Frontend hook: `useWebSocket`.
