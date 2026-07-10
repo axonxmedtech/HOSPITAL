@@ -31,7 +31,19 @@ public class VitalSettingsService {
 
     /** Every vital (built-ins first, then customs) with its effective enabled flag. */
     public List<Map<String, Object>> list() {
-        Long hospitalId = requireHospitalId();
+        return listFor(requireHospitalId());
+    }
+
+    /** Enabled vitals for an explicit hospital — used by case-paper PDF generation. */
+    public List<Map<String, Object>> enabledVitalsFor(Long hospitalId) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> v : listFor(hospitalId)) {
+            if (Boolean.TRUE.equals(v.get("enabled"))) out.add(v);
+        }
+        return out;
+    }
+
+    private List<Map<String, Object>> listFor(Long hospitalId) {
         Map<String, HospitalVital> byKey = rowsByKey(hospitalId);
 
         List<Map<String, Object>> out = new ArrayList<>();
