@@ -27,10 +27,18 @@ on:
     branches:
       - main
       - staging
+    tags:
+      # Release tags build + package only. The deploy jobs key off a BRANCH ref
+      # (refs/heads/staging|main), so a tag ref (refs/tags/v*) never deploys.
+      - 'v*'
   pull_request:
     branches:
       - main
       - staging
+  # Manual runs. NOTE: a manual run on `staging`/`main` still triggers the existing
+  # deploy jobs (they key off the branch ref) — run manual CI from a feature branch
+  # to build/test without deploying.
+  workflow_dispatch:
 
 # Cancel in-progress run for the same branch/PR when a new commit is pushed.
 concurrency:
@@ -43,8 +51,18 @@ permissions:
 
 jobs:
 
+  # ── Validate — fast fail-fast gate (commits, lint, format) ───────────────
+  # Runs first and cheaply; the heavy build/test/security jobs depend on it,
+  # so a bad commit message or lint failure short-circuits before burning
+  # compute. This also transitively gates deploy (deploy needs the build jobs).
+  validate:
+    uses: ./.github/workflows/_validate.yml
+    with:
+      node-version: ${{ vars.NODE_VERSION || '22' }}
+
   # ── Frontend build, type-check, coverage ────────────────────────────────
   build-frontend:
+    needs: [validate]
     uses: ./.github/workflows/_build-frontend.yml
     with:
       node-version: ${{ vars.NODE_VERSION || '22' }}
@@ -52,6 +70,7 @@ jobs:
 
   # ── Backend compile, test (JaCoCo), package ──────────────────────────────
   build-backend:
+    needs: [validate]
     uses: ./.github/workflows/_build-backend.yml
     permissions:
       contents: read
@@ -62,6 +81,7 @@ jobs:
 
   # ── Security: CodeQL, dependency-review, Gitleaks, npm audit, OWASP ─────
   security:
+    needs: [validate]
     uses: ./.github/workflows/_security.yml
     permissions:
       contents: read
@@ -78,6 +98,7 @@ jobs:
   sonar:
     name: Quality — SonarCloud Analysis & Gate
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [build-frontend, build-backend]
 
     # Skip on fork PRs — secrets unavailable in untrusted fork contexts.
@@ -139,6 +160,44 @@ jobs:
             -Dsonar.sourceEncoding=UTF-8
             -Dsonar.qualitygate.wait=false
             -Dsonar.jasmin.internal.disabled=true
+
+  # ── CI Summary — one consolidated status for developers ──────────────────
+  # Aggregates every CI stage into the run summary and fails if any REQUIRED
+  # stage failed, giving a single clear signal without digging through logs.
+  # Purely informational for CD: the deploy jobs below do NOT depend on this,
+  # so it never affects deployment.
+  ci-summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [validate, build-frontend, build-backend, security, sonar]
+    if: always()
+    steps:
+      - name: Aggregate stage results
+        run: |
+          {
+            echo "## CI Summary"
+            echo ""
+            echo "| Stage | Result |"
+            echo "| --- | --- |"
+            echo "| Validate (commits/lint/format) | ${{ needs.validate.result }} |"
+            echo "| Frontend build + tests | ${{ needs.build-frontend.result }} |"
+            echo "| Backend build + tests | ${{ needs.build-backend.result }} |"
+            echo "| Security scans | ${{ needs.security.result }} |"
+            echo "| SonarCloud quality | ${{ needs.sonar.result }} |"
+            echo ""
+            echo "Commit \`${{ github.sha }}\` on \`${{ github.ref_name }}\` — [run #${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if any required stage failed
+        if: >
+          needs.validate.result == 'failure' ||
+          needs.build-frontend.result == 'failure' ||
+          needs.build-backend.result == 'failure' ||
+          needs.security.result == 'failure'
+        run: |
+          echo "::error::One or more required CI stages failed — see the CI Summary above."
+          exit 1
 
   # ── Deploy — Staging ───────────────────────────────────────────────────────
   deploy-staging:
