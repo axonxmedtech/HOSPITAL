@@ -93,6 +93,15 @@ jobs:
       java-version: ${{ vars.JAVA_VERSION || '17' }}
     secrets: inherit
 
+  # ── Java static analysis (Checkstyle · SpotBugs+FindSecBugs · PMD · Spotless) ─
+  # Report-only: uploads reports + summarizes counts, never blocks. SonarCloud is the
+  # enforced gate; this adds defense-in-depth and local/offline analysis parity.
+  quality:
+    needs: [validate]
+    uses: ./.github/workflows/_quality.yml
+    with:
+      java-version: ${{ vars.JAVA_VERSION || '17' }}
+
   # ── SonarCloud quality gate ───────────────────────────────────────────────
   # Direct job (not reusable) — needs artifacts produced by build jobs.
   sonar:
@@ -158,7 +167,7 @@ jobs:
             -Dsonar.javascript.lcov.reportPaths=frontend/coverage/lcov.info
             -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/target/surefire-reports/**,**/*.min.js,**/*.backup,**/frontend/src/pages/**
             -Dsonar.sourceEncoding=UTF-8
-            -Dsonar.qualitygate.wait=false
+            -Dsonar.qualitygate.wait=${{ vars.SONAR_QUALITY_GATE_WAIT || 'true' }}
             -Dsonar.jasmin.internal.disabled=true
 
   # ── CI Summary — one consolidated status for developers ──────────────────
@@ -170,7 +179,7 @@ jobs:
     name: CI Summary
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [validate, build-frontend, build-backend, security, sonar]
+    needs: [validate, build-frontend, build-backend, security, quality, sonar]
     if: always()
     steps:
       - name: Aggregate stage results
@@ -182,9 +191,10 @@ jobs:
             echo "| --- | --- |"
             echo "| Validate (commits/lint/format) | ${{ needs.validate.result }} |"
             echo "| Frontend build + tests | ${{ needs.build-frontend.result }} |"
-            echo "| Backend build + tests | ${{ needs.build-backend.result }} |"
+            echo "| Backend build + tests (+coverage floor) | ${{ needs.build-backend.result }} |"
             echo "| Security scans | ${{ needs.security.result }} |"
-            echo "| SonarCloud quality | ${{ needs.sonar.result }} |"
+            echo "| Java static analysis (report-only) | ${{ needs.quality.result }} |"
+            echo "| SonarCloud quality gate | ${{ needs.sonar.result }} |"
             echo ""
             echo "Commit \`${{ github.sha }}\` on \`${{ github.ref_name }}\` — [run #${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -31,18 +31,16 @@ jobs:
       - name: Compile
         run: mvn compile -q
 
-      - name: Run tests with JaCoCo
+      # JaCoCo (agent + report + coverage-floor check) is bound to the Maven lifecycle in
+      # pom.xml, so a plain `verify` produces the report at target/site/jacoco/jacoco.xml
+      # and enforces the coverage floor. See docs/quality/CODE_QUALITY.md.
+      - name: Run tests with JaCoCo (coverage floor enforced)
         env:
           SPRING_DATASOURCE_URL: jdbc:h2:mem:testdb
           SPRING_DATASOURCE_USERNAME: sa
           SPRING_DATASOURCE_PASSWORD: ""
           JWT_SECRET: ci-test-secret-not-used-in-real-environment
-        run: >
-          mvn -B
-          org.jacoco:jacoco-maven-plugin:0.8.12:prepare-agent
-          verify
-          org.jacoco:jacoco-maven-plugin:0.8.12:report
-          --no-transfer-progress
+        run: mvn -B verify --no-transfer-progress
 
       - name: Publish JUnit report
         if: always()
