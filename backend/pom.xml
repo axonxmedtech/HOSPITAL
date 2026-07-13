@@ -210,6 +210,31 @@
             </executions>
         </plugin>
 
+        <!--
+          Spotless — Java code formatting (Palantir style; JDK 17 friendly).
+          Deliberately NOT bound to a build phase, so `mvn compile/test/verify` never
+          fail on formatting. Invoke explicitly:
+              mvn spotless:apply    (format)   /   mvn spotless:check   (verify)
+          ratchetFrom=origin/main limits it to files changed since main, so it never
+          reformats the whole legacy codebase. Wiring it into hooks/CI is a later phase.
+        -->
+        <plugin>
+            <groupId>com.diffplug.spotless</groupId>
+            <artifactId>spotless-maven-plugin</artifactId>
+            <version>2.43.0</version>
+            <configuration>
+                <ratchetFrom>origin/main</ratchetFrom>
+                <java>
+                    <palantirJavaFormat>
+                        <version>2.50.0</version>
+                    </palantirJavaFormat>
+                    <removeUnusedImports/>
+                    <trimTrailingWhitespace/>
+                    <endWithNewline/>
+                </java>
+            </configuration>
+        </plugin>
+
     </plugins>
 </build>
 
