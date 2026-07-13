@@ -61,3 +61,19 @@ use synthetic data. Reports containing real PHI will be deleted and re-requested
 
 We credit reporters who follow this policy in the release notes of the fix, unless
 you ask to remain anonymous.
+
+## Security engineering (DevSecOps)
+
+How we verify security on every change — SAST, dependency scanning, secret detection, SBOM,
+supply-chain integrity, and license compliance — is documented under `docs/security/`:
+
+- [Security Architecture](docs/security/SECURITY_ARCHITECTURE.md) — the pipeline, control map, diagrams, review & incident process.
+- [Dependency & Third-Party Package Policy](docs/security/DEPENDENCY_POLICY.md) — vuln gates, Dependabot, licenses.
+- [Secret Handling](docs/security/SECRET_HANDLING.md) — secret management, scanning, and leak response.
+- [Supply Chain Security](docs/security/SUPPLY_CHAIN.md) — SBOM, Trivy, provenance, and artifact signing.
+
+### Manual GitHub settings
+
+Enable under **Settings → Code security and analysis**: Dependabot alerts, Dependabot security
+updates, Dependency graph, Secret scanning, and Secret scanning push protection. These back the
+in-repo controls; the pipeline functions without organization-level GitHub Advanced Security.

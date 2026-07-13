@@ -46,7 +46,7 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
-          queries: security-and-quality
+          config-file: ./.github/codeql/codeql-config.yml
 
       # Pin to SHA in production: https://github.com/github/codeql-action/releases
       - name: Autobuild
@@ -105,11 +105,32 @@ jobs:
         run: |
           gitleaks detect \
             --source . \
+            --config .gitleaks.toml \
             --exit-code 1 \
             --redact \
             --report-format sarif \
             --report-path gitleaks-report.sarif \
             --log-level warn
+
+      - name: Secret scan summary
+        if: always()
+        run: |
+          {
+            echo "## Secret Scan (Gitleaks)"
+            echo ""
+            if [ -f gitleaks-report.sarif ]; then
+              COUNT=$(grep -o '"ruleId"' gitleaks-report.sarif 2>/dev/null | wc -l | tr -d ' ')
+              if [ "${COUNT:-0}" -gt 0 ]; then
+                echo "🚨 **$COUNT potential secret(s) detected** — this build fails. Rotate any real"
+                echo "credential immediately (rotation, not just removal — git history keeps the old value)."
+                echo "See docs/security/SECRET_HANDLING.md."
+              else
+                echo "No secrets detected. ✅"
+              fi
+            else
+              echo "No report produced."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload SARIF to Security tab
         if: always()
@@ -152,6 +173,26 @@ jobs:
 
       - name: Generate audit JSON report
         run: npm audit --json > npm-audit-report.json 2>&1 || true
+
+      - name: npm audit summary
+        if: always()
+        run: |
+          {
+            echo "## Dependency Audit (npm — frontend)"
+            echo ""
+            if command -v jq >/dev/null 2>&1 && [ -f npm-audit-report.json ]; then
+              echo "| Severity | Count |"
+              echo "| --- | --- |"
+              for sev in critical high moderate low; do
+                n=$(jq -r ".metadata.vulnerabilities.$sev // 0" npm-audit-report.json 2>/dev/null || echo 0)
+                echo "| ${sev^} | $n |"
+              done
+              echo ""
+              echo "Gate: build fails on **high** or above. Policy: docs/security/DEPENDENCY_POLICY.md."
+            else
+              echo "Audit report unavailable."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Enforce high-severity gate
         run: npm audit --audit-level=high
@@ -209,6 +250,24 @@ jobs:
           -DsuppressionFile=../.github/owasp-suppressions.xml
           -DfailOnError=false
           --no-transfer-progress
+
+      - name: OWASP summary
+        if: always()
+        run: |
+          {
+            echo "## Dependency Audit (OWASP — backend)"
+            echo ""
+            REPORT=target/owasp-report/dependency-check-report.json
+            if command -v jq >/dev/null 2>&1 && [ -f "$REPORT" ]; then
+              TOTAL=$(jq '[.dependencies[].vulnerabilities // [] | length] | add // 0' "$REPORT" 2>/dev/null || echo '?')
+              echo "Vulnerabilities reported: \`$TOTAL\`. Gate: build fails at **CVSS ≥ 7**."
+            else
+              echo "See the uploaded OWASP report artifact for details. Gate: **CVSS ≥ 7**."
+            fi
+            echo ""
+            echo "Documented exceptions live in \`.github/owasp-suppressions.xml\`."
+            echo "Policy: docs/security/DEPENDENCY_POLICY.md."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload OWASP report
         if: always()

@@ -1,0 +1,8 @@
+# Trivy ignore file — documented, time-boxed vulnerability exceptions.
+# Used by the filesystem/config scans in .github/workflows/_supply-chain.yml.
+# Policy: every entry MUST have a justification, an owner, and a review date.
+# See docs/security/SUPPLY_CHAIN.md §"Handling findings".
+#
+# Format:  CVE-ID   # <justification> — owner: <who>, review-by: <YYYY-MM-DD>
+#
+# (No active exceptions. Add entries below only after triage; prefer fixing over ignoring.)

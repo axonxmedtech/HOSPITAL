@@ -1,0 +1,29 @@
+# CodeQL configuration — referenced by .github/workflows/_security.yml (init step).
+# Strengthens the default analysis: security-focused query suites + noise reduction so the
+# Security tab shows real, actionable findings for this healthcare codebase.
+name: HMS CodeQL config
+
+# security-extended = the security-and-quality set's security half, broadened with lower-severity
+# security queries. Kept explicit here so both languages share one policy.
+queries:
+  - uses: security-extended
+  - uses: security-and-quality
+
+# Don't waste analysis on generated / vendored / non-source paths — this also cuts false
+# positives from build output and test fixtures.
+paths-ignore:
+  - frontend/dist
+  - frontend/build
+  - '**/node_modules'
+  - backend/target
+  - '**/*.min.js'
+  - '**/*.backup'
+  - docs
+  - setup            # SQL seed/schema files, not application code
+  - e2e
+  - perf
+
+# Analyse application source only (both languages resolve their own files within these roots).
+paths:
+  - backend/src/main
+  - frontend/src

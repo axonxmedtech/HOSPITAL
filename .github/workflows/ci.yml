@@ -102,6 +102,21 @@ jobs:
     with:
       java-version: ${{ vars.JAVA_VERSION || '17' }}
 
+  # ── Supply chain: SBOM, Trivy (fs + Dockerfile), license compliance ────────
+  # Observe-mode / non-blocking: uploads SBOMs, SARIF (→ Security tab) and reports, and
+  # summarizes. Deliberately NOT in deploy's `needs` and NOT in the required-fail list, so
+  # it adds visibility without ever gating deployment. See docs/security/SUPPLY_CHAIN.md.
+  supply-chain:
+    needs: [validate]
+    uses: ./.github/workflows/_supply-chain.yml
+    permissions:
+      contents: read
+      security-events: write
+      id-token: write
+    with:
+      node-version: ${{ vars.NODE_VERSION || '22' }}
+      java-version: ${{ vars.JAVA_VERSION || '17' }}
+
   # ── SonarCloud quality gate ───────────────────────────────────────────────
   # Direct job (not reusable) — needs artifacts produced by build jobs.
   sonar:
@@ -179,7 +194,7 @@ jobs:
     name: CI Summary
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [validate, build-frontend, build-backend, security, quality, sonar]
+    needs: [validate, build-frontend, build-backend, security, quality, supply-chain, sonar]
     if: always()
     steps:
       - name: Aggregate stage results
@@ -194,6 +209,7 @@ jobs:
             echo "| Backend build + tests (+coverage floor) | ${{ needs.build-backend.result }} |"
             echo "| Security scans | ${{ needs.security.result }} |"
             echo "| Java static analysis (report-only) | ${{ needs.quality.result }} |"
+            echo "| Supply chain (SBOM/Trivy/licenses, observe) | ${{ needs.supply-chain.result }} |"
             echo "| SonarCloud quality gate | ${{ needs.sonar.result }} |"
             echo ""
             echo "Commit \`${{ github.sha }}\` on \`${{ github.ref_name }}\` — [run #${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
