@@ -204,10 +204,54 @@
             </configuration>
         </plugin>
 
-        <!-- Spring Boot plugin (NO compiler config here) -->
+        <!-- Spring Boot plugin (NO compiler config here).
+             build-info goal writes META-INF/build-info.properties into the JAR; Spring Boot
+             auto-exposes it at the (already public) /actuator/info endpoint as `build.*`.
+             See docs/release/RELEASE_ENGINEERING.md §Build metadata. -->
         <plugin>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-maven-plugin</artifactId>
+            <executions>
+                <execution>
+                    <id>build-info</id>
+                    <goals>
+                        <goal>build-info</goal>
+                    </goals>
+                </execution>
+            </executions>
+        </plugin>
+
+        <!-- Git metadata → git.properties in the JAR; Spring Boot exposes it at /actuator/info
+             as `git.*` (commit id, branch, build time). Never fails the build if .git is
+             absent (e.g. building from an exported tarball). -->
+        <plugin>
+            <groupId>io.github.git-commit-id</groupId>
+            <artifactId>git-commit-id-maven-plugin</artifactId>
+            <version>9.0.1</version>
+            <executions>
+                <execution>
+                    <id>get-the-git-infos</id>
+                    <goals>
+                        <goal>revision</goal>
+                    </goals>
+                    <phase>initialize</phase>
+                </execution>
+            </executions>
+            <configuration>
+                <failOnNoGitDirectory>false</failOnNoGitDirectory>
+                <failOnUnableToExtractRepoInfo>false</failOnUnableToExtractRepoInfo>
+                <generateGitPropertiesFile>true</generateGitPropertiesFile>
+                <includeOnlyProperties>
+                    <property>^git.branch$</property>
+                    <property>^git.build.time$</property>
+                    <property>^git.commit.id.full$</property>
+                    <property>^git.commit.id.abbrev$</property>
+                    <property>^git.commit.time$</property>
+                    <property>^git.tags$</property>
+                    <property>^git.closest.tag.name$</property>
+                    <property>^git.dirty$</property>
+                </includeOnlyProperties>
+            </configuration>
         </plugin>
 
         <!-- CycloneDX SBOM — emits target/bom.json + target/bom.xml on every `package`.

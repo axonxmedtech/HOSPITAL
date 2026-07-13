@@ -38,6 +38,13 @@ jobs:
           VITE_API_BASE_URL: ${{ inputs.vite-api-base-url }}
         run: npx vite build
 
+      # Stamp build metadata into the bundle so the running site can report its exact build
+      # (fetch /version.json). Mirrors the backend's /actuator/info. See docs/release/.
+      - name: Write frontend build metadata (dist/version.json)
+        env:
+          BUILD_ENV: ci
+        run: bash ../scripts/generate-build-metadata.sh > dist/version.json
+
       - name: Install Vitest coverage if needed
         run: |
           if ! node -e "require('@vitest/coverage-v8')" 2>/dev/null; then
