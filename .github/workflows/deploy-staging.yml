@@ -1,58 +1,30 @@
 # ────────────────────────────────────────────
-# CI — Hospital Management System
-# Orchestrator: delegates to reusable workflows
-#
-# build-frontend ──┐
-# build-backend  ──┤──► sonar (quality gate)
-# security       ──┘
+# Staging Deployment — Hospital Management System
 # ────────────────────────────────────────────
 #
-# GitHub Variables  (Settings → Variables → Actions):
-#   NODE_VERSION         Node.js version              (default: 22)
-#   JAVA_VERSION         JDK version                  (default: 17)
-#   STAGE_API_BASE_URL   Backend API URL baked into the staging frontend bundle
-#   PROD_API_BASE_URL    Backend API URL baked into the production frontend bundle
-#   SONAR_ORGANIZATION   SonarCloud organisation key  (e.g. axonxmedtech)
-#   SONAR_PROJECT_KEY    SonarCloud project key       (e.g. axonxmedtech_HOSPITAL)
+# Triggers only on push to the staging branch.
+# Runs the full CI/CD verification pipeline and deploys to Staging.
 #
-# GitHub Secrets  (Settings → Secrets → Actions):
-#   SONAR_TOKEN   SonarCloud user token
-#   NVD_API_KEY   (optional) NIST NVD key — speeds up OWASP scans
 # ────────────────────────────────────────────
 
-name: CI
+name: Deploy — Staging
 
 on:
   push:
-    branches-ignore:
-      - main
-      - staging
-    tags:
-      # Release tags build + package only. The deploy jobs key off a BRANCH ref
-      # (refs/heads/staging|main), so a tag ref (refs/tags/v*) never deploys.
-      - 'v*'
-  pull_request:
     branches:
-      - main
       - staging
-  # Manual runs. Note: manual CI runs on a feature branch build/test without deploying.
   workflow_dispatch:
 
-# Cancel in-progress run for the same branch/PR when a new commit is pushed.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: deploy-staging
+  cancel-in-progress: false
 
-# Minimum permissions at the workflow level.
 permissions:
   contents: read
 
 jobs:
 
   # ── Validate — fast fail-fast gate (commits, lint, format) ───────────────
-  # Runs first and cheaply; the heavy build/test/security jobs depend on it,
-  # so a bad commit message or lint failure short-circuits before burning
-  # compute. This also transitively gates deploy (deploy needs the build jobs).
   validate:
     uses: ./.github/workflows/_validate.yml
     with:
@@ -83,7 +55,7 @@ jobs:
     uses: ./.github/workflows/_build-frontend.yml
     with:
       node-version: ${{ vars.NODE_VERSION || '22' }}
-      vite-api-base-url: ${{ github.ref == 'refs/heads/main' && vars.PROD_API_BASE_URL || vars.STAGE_API_BASE_URL }}
+      vite-api-base-url: ${{ vars.STAGE_API_BASE_URL }}
 
   # ── Backend compile, test (JaCoCo), package ──────────────────────────────
   build-backend:
@@ -111,8 +83,6 @@ jobs:
     secrets: inherit
 
   # ── Java static analysis (Checkstyle · SpotBugs+FindSecBugs · PMD · Spotless) ─
-  # Report-only: uploads reports + summarizes counts, never blocks. SonarCloud is the
-  # enforced gate; this adds defense-in-depth and local/offline analysis parity.
   quality:
     needs: [validate]
     uses: ./.github/workflows/_quality.yml
@@ -120,16 +90,12 @@ jobs:
       java-version: ${{ vars.JAVA_VERSION || '17' }}
 
   # ── DB migration validation & safety gate (no database needed) ─────────────
-  # Static checks on Flyway migrations: naming, duplicate versions, and destructive-SQL detection
-  # (DROP/TRUNCATE/type-change above the baseline require an explicit ack). Gates deployment —
-  # a risky or malformed migration stops the pipeline before it reaches a database.
   db-migrations:
     name: DB Migration Validation
     needs: [validate]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      # Pin to SHA in production: https://github.com/actions/checkout/releases
       - uses: actions/checkout@v4
       - name: Validate Flyway migrations
         run: bash scripts/db/validate-migrations.sh
@@ -144,9 +110,6 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ── Supply chain: SBOM, Trivy (fs + Dockerfile), license compliance ────────
-  # Observe-mode / non-blocking: uploads SBOMs, SARIF (→ Security tab) and reports, and
-  # summarizes. Deliberately NOT in deploy's `needs` and NOT in the required-fail list, so
-  # it adds visibility without ever gating deployment. See docs/security/SUPPLY_CHAIN.md.
   supply-chain:
     needs: [validate]
     uses: ./.github/workflows/_supply-chain.yml
@@ -159,55 +122,40 @@ jobs:
       java-version: ${{ vars.JAVA_VERSION || '17' }}
 
   # ── SonarCloud quality gate ───────────────────────────────────────────────
-  # Direct job (not reusable) — needs artifacts produced by build jobs.
   sonar:
     name: Quality — SonarCloud Analysis & Gate
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [build-frontend, build-backend, check-secrets]
-
-    # Skip on fork PRs — secrets unavailable in untrusted fork contexts.
-    # Also skip if SonarCloud token is not configured (to avoid blocking builds/deploys).
     if: >
       (github.event_name == 'push' ||
        (github.event_name == 'pull_request' &&
         github.event.pull_request.head.repo.full_name == github.repository)) &&
       needs.check-secrets.outputs.has_sonar_token == 'true'
-
     permissions:
       contents: read
       pull-requests: write
-
     steps:
-      # Pin to SHA in production: https://github.com/actions/checkout/releases
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Setup Java
         uses: ./.github/actions/setup-java
         with:
           java-version: ${{ vars.JAVA_VERSION || '17' }}
-
       - name: Compile backend (bytecode for Sonar)
         run: mvn test-compile -q -f backend/pom.xml
-
-      # Pin to SHA in production: https://github.com/actions/download-artifact/releases
       - name: Download JaCoCo coverage report
         uses: actions/download-artifact@v4
         with:
           name: jacoco-xml-${{ github.sha }}
           path: backend/target/site/jacoco/
-
-      # Pin to SHA in production: https://github.com/actions/download-artifact/releases
       - name: Download frontend LCOV coverage report
         uses: actions/download-artifact@v4
         with:
           name: frontend-coverage-${{ github.sha }}
           path: frontend/coverage/
         continue-on-error: true
-
-      # Pin to SHA in production: https://github.com/SonarSource/sonarqube-scan-action/releases
       - name: Run SonarCloud analysis
         uses: sonarsource/sonarqube-scan-action@v6
         env:
@@ -229,10 +177,6 @@ jobs:
             -Dsonar.jasmin.internal.disabled=true
 
   # ── CI Summary — one consolidated status for developers ──────────────────
-  # Aggregates every CI stage into the run summary and fails if any REQUIRED
-  # stage failed, giving a single clear signal without digging through logs.
-  # Purely informational for CD: the deploy jobs below do NOT depend on this,
-  # so it never affects deployment.
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
@@ -258,7 +202,6 @@ jobs:
             echo ""
             echo "Commit \`${{ github.sha }}\` on \`${{ github.ref_name }}\` — [run #${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
           } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Fail if any required stage failed
         if: >
           needs.validate.result == 'failure' ||
@@ -269,3 +212,66 @@ jobs:
         run: |
           echo "::error::One or more required CI stages failed — see the CI Summary above."
           exit 1
+
+  # ── Deploy — Staging ───────────────────────────────────────────────────────
+  deploy-staging:
+    name: Deploy — Staging
+    needs: [build-frontend, build-backend, security, db-migrations, sonar]
+    if: >
+      always() &&
+      needs.build-frontend.result == 'success' &&
+      needs.build-backend.result == 'success' &&
+      needs.security.result == 'success' &&
+      needs.db-migrations.result == 'success' &&
+      (needs.sonar.result == 'success' || needs.sonar.result == 'skipped')
+    uses: ./.github/workflows/_deploy.yml
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      environment: Staging
+      repo_path: /var/www/hms/staging/repo_stage
+      service_name: hms-staging
+      git_branch: staging
+      ssh_host: ${{ vars.STAGING_SSH_HOST }}
+      ssh_port: ${{ vars.STAGING_SSH_PORT || '22' }}
+      health_port: ${{ vars.STAGING_HEALTH_PORT || '8080' }}
+      app_url: ${{ vars.STAGING_APP_URL }}
+      enable_rollback: true
+      notify_slack: false
+    secrets:
+      ssh_key: ${{ secrets.SSH_PRIVATE_KEY }}
+      ssh_user: ${{ secrets.SSH_USERNAME }}
+
+  # ── Staging smoke tests — post-deploy verification against the live site ───
+  staging-smoke:
+    name: Staging — Smoke Tests
+    needs: [deploy-staging]
+    if: needs.deploy-staging.result == 'success' && vars.STAGING_APP_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: ./.github/actions/setup-node
+        with:
+          node-version: ${{ vars.NODE_VERSION || '22' }}
+          working-directory: frontend
+      - name: Install Playwright
+        run: npm ci
+        env:
+          HUSKY: 0
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Smoke test the deployed staging site
+        env:
+          E2E_BASE_URL: ${{ vars.STAGING_APP_URL }}
+        run: npx playwright test --config e2e/playwright.config.js smoke.spec.js
+      - name: Upload smoke report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-smoke-report-${{ github.sha }}
+          path: e2e/playwright-report/
+          retention-days: 14
+          if-no-files-found: warn
