@@ -140,6 +140,20 @@
             <version>1.3.0</version>
             <scope>test</scope>
         </dependency>
+        <!-- Testcontainers — real-MySQL integration tests (*IT.java, run by Failsafe).
+             Needs Docker (available on GitHub runners; skipped locally if Docker absent). -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>1.20.4</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>mysql</artifactId>
+            <version>1.20.4</version>
+            <scope>test</scope>
+        </dependency>
         <!-- Rate Limiting -->
         <dependency>
             <groupId>com.bucket4j</groupId>

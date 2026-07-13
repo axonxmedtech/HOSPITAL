@@ -19,12 +19,15 @@
     "typecheck": "npm --prefix frontend run typecheck",
     "test:frontend": "npm --prefix frontend test",
     "test:backend": "mvn -f backend/pom.xml -q test",
+    "test:backend:it": "mvn -f backend/pom.xml -q verify",
+    "test:e2e": "playwright test --config e2e/playwright.config.js",
     "secret-scan": "node scripts/secret-scan.mjs --all",
     "verify": "npm run lint && npm run typecheck && npm run test:frontend && npm run test:backend"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.6.0",
     "@commitlint/config-conventional": "^19.6.0",
+    "@playwright/test": "^1.49.1",
     "@eslint/js": "^9.16.0",
     "eslint": "^9.16.0",
     "eslint-config-prettier": "^9.1.0",
