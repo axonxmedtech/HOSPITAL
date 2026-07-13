@@ -349,9 +349,15 @@ public class BillingController {
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> getIpdBill(@PathVariable Long ipdId) {
         validateBillingAccess();
+        // findByIpdAdmissionId is not tenant-scoped, so without this check any hospital could
+        // read another hospital's IPD bill — items, payments and patient — by admission id.
+        Long ipdBillHospitalId = securityHelper.getCurrentHospitalId();
         List<Billing> bills = billingRepository.findByIpdAdmissionId(ipdId);
         if (bills == null || bills.isEmpty()) return ResponseEntity.notFound().build();
         Billing bill = bills.get(0);
+        if (bill.getHospitalId() == null || !bill.getHospitalId().equals(ipdBillHospitalId)) {
+            return ResponseEntity.notFound().build();
+        }
 
         List<BillingItem> items = billingItemRepository.findByBillingId(bill.getId());
         List<com.hms.entity.BillingMedicine> medicines = billingMedicineRepository.findByBillingId(bill.getId());
@@ -433,7 +439,13 @@ public class BillingController {
             return ResponseEntity.status(403).body("Not allowed");
         }
 
-        Billing bill = billingRepository.findById(billingId).orElse(null);
+        // Scope the lookup to the caller's hospital. Without this filter any hospital could
+        // settle another hospital's bill by guessing its (sequential) numeric id — a
+        // cross-tenant financial write. The sibling endpoints above already filter this way.
+        Long payHospitalId = securityHelper.getCurrentHospitalId();
+        Billing bill = billingRepository.findById(billingId)
+                .filter(b -> b.getHospitalId() != null && b.getHospitalId().equals(payHospitalId))
+                .orElse(null);
         if (bill == null) return ResponseEntity.notFound().build();
 
         if (req.amount == null || req.amount.compareTo(BigDecimal.ZERO) <= 0) {

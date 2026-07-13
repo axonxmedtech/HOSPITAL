@@ -159,7 +159,11 @@ public class PharmacyController {
     @PostMapping("/dispense/{prescriptionId}")
     @PreAuthorize("hasRole('PHARMACIST')")
     public ResponseEntity<?> dispenseMedicine(@PathVariable Long prescriptionId) {
+        // Scope to the caller's hospital: an unscoped findById let a pharmacist dispense
+        // another hospital's prescription (and deduct stock against it) by guessing the id.
+        Long dispenseHospitalId = securityHelper.getCurrentHospitalId();
         Prescription p = prescriptionRepository.findById(prescriptionId)
+                .filter(x -> x.getHospitalId() != null && x.getHospitalId().equals(dispenseHospitalId))
                 .orElseThrow(() -> new ResourceNotFoundException("Prescription not found"));
 
         if (!p.getStatus().equals("PENDING")) {

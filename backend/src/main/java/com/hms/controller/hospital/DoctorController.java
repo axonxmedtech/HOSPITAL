@@ -240,6 +240,14 @@ public class DoctorController {
             com.hms.entity.MedicalRecord record = medicalRecordRepository.findByOpdId(opd.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Consultation not found for this OPD"));
 
+            // hospitalId was read but never compared: the consultation, prescriptions and
+            // doctor were all fetched by raw id, and a foreign tenant only failed because
+            // PatientService happens to scope its own lookup — protected by accident.
+            // Check the tenant explicitly, before any patient data is loaded.
+            if (hospitalId == null || !hospitalId.equals(record.getHospitalId())) {
+                throw new ResourceNotFoundException("OPD not found");
+            }
+
             java.util.List<com.hms.entity.Prescription> prescriptions = prescriptionRepository
                 .findByMedicalRecordId(record.getId());
 
@@ -261,6 +269,10 @@ public class DoctorController {
                 .headers(headers)
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(new InputStreamResource(pdf));
+        } catch (ResourceNotFoundException e) {
+            // A missing (or foreign-tenant) OPD is a 404, not a server fault. Letting this
+            // fall into the catch-all below reported it as "Failed to generate PDF" / 500.
+            throw e;
         } catch (Exception e) {
             logger.error("Error downloading prescription for opd {}", opdId, e);
             return ResponseEntity.status(500).body("Failed to generate PDF");
