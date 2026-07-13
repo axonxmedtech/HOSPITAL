@@ -60,6 +60,18 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Flyway — versioned, auditable schema migrations (staging/prod only; disabled in
+             dev/test via spring.flyway.enabled=false). Version managed by the Spring Boot BOM.
+             See docs/database/DATABASE_MIGRATIONS.md. -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
+        </dependency>
+
         <!-- .env file loader -->
         <dependency>
             <groupId>me.paulschwarz</groupId>

@@ -102,6 +102,30 @@ jobs:
     with:
       java-version: ${{ vars.JAVA_VERSION || '17' }}
 
+  # ── DB migration validation & safety gate (no database needed) ─────────────
+  # Static checks on Flyway migrations: naming, duplicate versions, and destructive-SQL detection
+  # (DROP/TRUNCATE/type-change above the baseline require an explicit ack). Gates deployment —
+  # a risky or malformed migration stops the pipeline before it reaches a database.
+  db-migrations:
+    name: DB Migration Validation
+    needs: [validate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Pin to SHA in production: https://github.com/actions/checkout/releases
+      - uses: actions/checkout@v4
+      - name: Validate Flyway migrations
+        run: bash scripts/db/validate-migrations.sh
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Database Migration Validation"
+            echo ""
+            echo "Flyway migrations checked for naming, duplicate versions, and unacked destructive SQL."
+            echo "Policy: docs/database/DATABASE_MIGRATIONS.md."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # ── Supply chain: SBOM, Trivy (fs + Dockerfile), license compliance ────────
   # Observe-mode / non-blocking: uploads SBOMs, SARIF (→ Security tab) and reports, and
   # summarizes. Deliberately NOT in deploy's `needs` and NOT in the required-fail list, so
@@ -194,7 +218,7 @@ jobs:
     name: CI Summary
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [validate, build-frontend, build-backend, security, quality, supply-chain, sonar]
+    needs: [validate, build-frontend, build-backend, security, quality, supply-chain, db-migrations, sonar]
     if: always()
     steps:
       - name: Aggregate stage results
@@ -210,6 +234,7 @@ jobs:
             echo "| Security scans | ${{ needs.security.result }} |"
             echo "| Java static analysis (report-only) | ${{ needs.quality.result }} |"
             echo "| Supply chain (SBOM/Trivy/licenses, observe) | ${{ needs.supply-chain.result }} |"
+            echo "| DB migration validation | ${{ needs.db-migrations.result }} |"
             echo "| SonarCloud quality gate | ${{ needs.sonar.result }} |"
             echo ""
             echo "Commit \`${{ github.sha }}\` on \`${{ github.ref_name }}\` — [run #${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
@@ -220,7 +245,8 @@ jobs:
           needs.validate.result == 'failure' ||
           needs.build-frontend.result == 'failure' ||
           needs.build-backend.result == 'failure' ||
-          needs.security.result == 'failure'
+          needs.security.result == 'failure' ||
+          needs.db-migrations.result == 'failure'
         run: |
           echo "::error::One or more required CI stages failed — see the CI Summary above."
           exit 1
@@ -228,13 +254,14 @@ jobs:
   # ── Deploy — Staging ───────────────────────────────────────────────────────
   deploy-staging:
     name: Deploy — Staging
-    needs: [build-frontend, build-backend, security, sonar]
+    needs: [build-frontend, build-backend, security, db-migrations, sonar]
     if: >
       github.ref == 'refs/heads/staging' &&
       always() &&
       needs.build-frontend.result == 'success' &&
       needs.build-backend.result == 'success' &&
       needs.security.result == 'success' &&
+      needs.db-migrations.result == 'success' &&
       (needs.sonar.result == 'success' || needs.sonar.result == 'skipped')
     uses: ./.github/workflows/_deploy.yml
     permissions:
@@ -351,13 +378,14 @@ jobs:
   # ── Deploy — Production ────────────────────────────────────────────────────
   deploy-production:
     name: Deploy — Production
-    needs: [build-frontend, build-backend, security, sonar, production-preflight]
+    needs: [build-frontend, build-backend, security, db-migrations, sonar, production-preflight]
     if: >
       github.ref == 'refs/heads/main' &&
       always() &&
       needs.build-frontend.result == 'success' &&
       needs.build-backend.result == 'success' &&
       needs.security.result == 'success' &&
+      needs.db-migrations.result == 'success' &&
       needs.production-preflight.result == 'success' &&
       (needs.sonar.result == 'success' || needs.sonar.result == 'skipped')
     uses: ./.github/workflows/_deploy.yml

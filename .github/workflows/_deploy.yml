@@ -245,6 +245,32 @@ jobs:
           fi
           echo "Deployment package uploaded."
 
+      # ── Pre-deploy database backup (production — BEFORE any schema change) ─
+      # Schema migrations (Flyway) run at service restart below. Take a verified backup first so a
+      # bad migration is always recoverable. Gating: a failed backup STOPS the production deploy.
+      # (Staging is backed up on schedule by db-backup.yml.) The dump stays on the VPS — never
+      # downloaded. See docs/database/BACKUP_AND_RESTORE.md.
+      - name: Pre-deploy database backup
+        if: inputs.environment == 'Production'
+        env:
+          SSH_KEY: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
+          SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
+          SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
+          SSH_USER: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
+          REPO: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
+        run: |
+          echo "$SSH_KEY" > /tmp/deploy_key && chmod 600 /tmp/deploy_key
+          echo "Taking pre-deploy backup (dump stays on the VPS)..."
+          ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "cd '$REPO' && set -a; [ -f .env ] && . ./.env; set +a; \
+             ENV_LABEL=production RETENTION_DAYS='${{ vars.DB_BACKUP_RETENTION_DAYS || 30 }}' \
+             bash scripts/db/backup.sh" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+          rc=$?
+          rm -f /tmp/deploy_key
+          exit $rc
+
       # ── Restart Service and Health Check ─────────────────────────────────
       - name: Restart Service and Health Check
         uses: appleboy/ssh-action@v1
