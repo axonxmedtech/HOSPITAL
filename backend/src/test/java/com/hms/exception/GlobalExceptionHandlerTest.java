@@ -46,4 +46,32 @@ class GlobalExceptionHandlerTest {
 
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
+
+    @Test
+    void aMissingRequiredParamIsA400NotA500() {
+        var ex = new org.springframework.web.bind.MissingServletRequestParameterException("status", "String");
+
+        ResponseEntity<?> res = handler.handleMissingParam(ex);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void aWrongHttpMethodIsA405NotA500() {
+        var ex = new org.springframework.web.HttpRequestMethodNotSupportedException("POST");
+
+        ResponseEntity<?> res = handler.handleMethodNotSupported(ex);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.METHOD_NOT_ALLOWED);
+    }
+
+    @Test
+    void anUnreadableBodyIsA400NotA500() {
+        var ex = new org.springframework.http.converter.HttpMessageNotReadableException(
+                "bad json", (org.springframework.http.HttpInputMessage) null);
+
+        ResponseEntity<?> res = handler.handleUnreadableBody(ex);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
 }

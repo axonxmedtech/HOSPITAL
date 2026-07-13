@@ -47,13 +47,14 @@ class CrossTenantIsolationTest {
     @Autowired BillingRepository billingRepository;
     @Autowired MedicalRecordRepository medicalRecordRepository;
     @Autowired OpdRepository opdRepository;
+    @Autowired com.hms.repository.pharmacy.PharmacySaleRepository pharmacySaleRepository;
 
     private static final List<String> MODULES = List.of(
             "OPD", "IPD", "PHARMACY", "BILLING", "NURSING", "OT",
             "APPOINTMENTS", "REPORTS", "HOSPITAL_INVENTORY", "MEDICAL_INVENTORY");
 
     private String tokenA, tokenB;
-    private Long aIpdId, aBillId, aOpdId, aBedId, aDoctorId;
+    private Long aIpdId, aBillId, aOpdId, aBedId, aDoctorId, aPharmacySaleId;
     private String aPatientPublicId;
 
     private String uniq() { return Long.toString(System.nanoTime()); }
@@ -115,6 +116,11 @@ class CrossTenantIsolationTest {
         b.setBillingType("IPD"); b.setAmount(new BigDecimal("1000")); b.setPaymentStatus("PENDING");
         aBillId = billingRepository.save(b).getId();
 
+        com.hms.entity.pharmacy.PharmacySale sale = new com.hms.entity.pharmacy.PharmacySale();
+        sale.setHospitalId(hid); sale.setBillNumber("PHB-" + uniq());
+        sale.setNetAmount(new BigDecimal("100")); sale.setPatientName("Walk-in");
+        aPharmacySaleId = pharmacySaleRepository.save(sale).getId();
+
         return hid;
     }
 
@@ -150,6 +156,9 @@ class CrossTenantIsolationTest {
         assertRefused(HttpMethod.GET, "/hospital/billing/" + aBillId + "/pdf", null);
         assertRefused(HttpMethod.GET, "/hospital/billing/ipd/" + aIpdId + "/bill", null);
         assertRefused(HttpMethod.GET, "/hospital/opd/queue/doctor/" + aDoctorId, null);
+        // Pharmacy ERP surface: a sale invoice must be scoped to its owning pharmacy tenant.
+        assertRefused(HttpMethod.GET, "/pharmacy/sales/" + aPharmacySaleId, null);
+        assertRefused(HttpMethod.GET, "/pharmacy/sales/" + aPharmacySaleId + "/pdf", null);
     }
 
     @Test

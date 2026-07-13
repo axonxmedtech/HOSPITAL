@@ -9,6 +9,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -122,6 +124,40 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error("Invalid value for '" + ex.getName() + "'"));
+    }
+
+    /**
+     * Handle an unreadable/malformed request body (e.g. invalid JSON, or a JSON object
+     * where an array is expected) — 400 Bad Request. The caller sent a body the endpoint
+     * cannot parse, which is a client fault; without this it surfaced as a 500.
+     */
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnreadableBody(
+            org.springframework.http.converter.HttpMessageNotReadableException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error("Malformed or unreadable request body"));
+    }
+
+    /**
+     * Handle a missing required query/form parameter — 400 Bad Request.
+     * The caller omitted something required, so this is a client fault; without this it
+     * fell through to the catch-all and was reported as a 500 logged at ERROR.
+     */
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingParam(MissingServletRequestParameterException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error("Missing required parameter '" + ex.getParameterName() + "'"));
+    }
+
+    /**
+     * Handle a request whose HTTP method the endpoint does not support — 405 Method Not
+     * Allowed. e.g. POSTing to a PUT-only route. A client using the wrong verb is not a
+     * server fault; without this it was reported as a 500.
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .body(ApiResponse.error("Method " + ex.getMethod() + " not supported for this endpoint"));
     }
 
     /**
