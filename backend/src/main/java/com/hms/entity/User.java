@@ -1,5 +1,6 @@
 package com.hms.entity;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -77,9 +78,14 @@ public class User {
     private String email;
 
     /**
-     * Encrypted password
+     * Encrypted password.
+     *
+     * WRITE_ONLY: still bound from an inbound request body, but never serialised back out.
+     * Several endpoints (e.g. POST /hospital/nurses) return the saved User entity directly,
+     * which put the BCrypt hash in the response body.
      */
     @Column(nullable = false)
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
 
     /**
