@@ -60,6 +60,25 @@ jobs:
     with:
       node-version: ${{ vars.NODE_VERSION || '22' }}
 
+  # ── Check secrets presence — gates jobs needing keys (like Sonar) ─────────
+  check-secrets:
+    name: Check secrets presence
+    runs-on: ubuntu-latest
+    outputs:
+      has_sonar_token: ${{ steps.check.outputs.has_sonar_token }}
+    steps:
+      - name: Check Sonar Token
+        id: check
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_VAR: ${{ vars.SONAR_TOKEN }}
+        run: |
+          if [ -n "$SONAR_TOKEN" ] || [ -n "$SONAR_VAR" ]; then
+            echo "has_sonar_token=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_sonar_token=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # ── Frontend build, type-check, coverage ────────────────────────────────
   build-frontend:
     needs: [validate]
@@ -147,7 +166,7 @@ jobs:
     name: Quality — SonarCloud Analysis & Gate
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [build-frontend, build-backend]
+    needs: [build-frontend, build-backend, check-secrets]
 
     # Skip on fork PRs — secrets unavailable in untrusted fork contexts.
     # Also skip if SonarCloud token is not configured (to avoid blocking builds/deploys).
@@ -155,7 +174,7 @@ jobs:
       (github.event_name == 'push' ||
        (github.event_name == 'pull_request' &&
         github.event.pull_request.head.repo.full_name == github.repository)) &&
-      (secrets.SONAR_TOKEN != '' || vars.SONAR_TOKEN != '')
+      needs.check-secrets.outputs.has_sonar_token == 'true'
 
     permissions:
       contents: read
