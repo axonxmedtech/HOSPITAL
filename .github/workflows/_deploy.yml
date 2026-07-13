@@ -525,21 +525,25 @@ jobs:
           else
             ICON=":warning:"
           fi
-
-          curl -sSf -X POST "${{ secrets.slack_webhook }}" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"text\": \"${ICON} *${{ inputs.environment }}* deployment *${STATUS}*\",
-              \"attachments\": [{
-                \"color\": \"$([ \"$STATUS\" = \"success\" ] && echo good || echo danger)\",
-                \"fields\": [
-                  {\"title\": \"Environment\", \"value\": \"${{ inputs.environment }}\", \"short\": true},
-                  {\"title\": \"Status\", \"value\": \"${STATUS}\", \"short\": true},
-                  {\"title\": \"Commit\", \"value\": \"\`${{ github.sha }}\`\", \"short\": true},
-                  {\"title\": \"Run\", \"value\": \"<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>\", \"short\": true}
-                ]
-              }]
-            }"
+          WEBHOOK="${{ secrets.slack_webhook }}"
+          if [ -n "$WEBHOOK" ]; then
+            curl -sSf -X POST "$WEBHOOK" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"text\": \"${ICON} *${{ inputs.environment }}* deployment *${STATUS}*\",
+                \"attachments\": [{
+                  \"color\": \"$([ \"$STATUS\" = \"success\" ] && echo good || echo danger)\",
+                  \"fields\": [
+                    {\"title\": \"Environment\", \"value\": \"${{ inputs.environment }}\", \"short\": true},
+                    {\"title\": \"Status\", \"value\": \"${STATUS}\", \"short\": true},
+                    {\"title\": \"Commit\", \"value\": \"\`${{ github.sha }}\`\", \"short\": true},
+                    {\"title\": \"Run\", \"value\": \"<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>\", \"short\": true}
+                  ]
+                }]
+              }"
+          else
+            echo "Slack Webhook not set, skipping notification."
+          fi
 
       # ── Deployment result ────────────────────────────────────────────────
       - name: Write deployment result

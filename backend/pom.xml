@@ -179,6 +179,15 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- Observability — Micrometer → Prometheus. Exposes /actuator/prometheus with JVM, HTTP
+             (latency/error rate), HikariCP, Tomcat and Flyway metrics. Version managed by the
+             Spring Boot BOM. See docs/monitoring/OBSERVABILITY.md. -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
         <!-- Redis & Caching Dependencies -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

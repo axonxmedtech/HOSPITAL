@@ -36,7 +36,7 @@ fi
 
 echo "restoring previous artifacts..."
 mkdir -p backend/target frontend/dist
-cp -f "$BACKUP/prev_backend.jar" backend/target/ 2>/dev/null && echo "  restored backend jar" || echo "  WARN: no backend jar in backup"
+cp -f "$BACKUP/prev_backend.jar" backend/target/hospital-management-system-1.0.0.jar 2>/dev/null && echo "  restored backend jar" || echo "  WARN: no backend jar in backup"
 rm -rf frontend/dist && cp -r "$BACKUP/prev_frontend_dist" frontend/dist 2>/dev/null && echo "  restored frontend dist" || echo "  WARN: no frontend dist in backup"
 
 echo "restarting $SERVICE..."

@@ -150,10 +150,12 @@ jobs:
     needs: [build-frontend, build-backend]
 
     # Skip on fork PRs — secrets unavailable in untrusted fork contexts.
+    # Also skip if SonarCloud token is not configured (to avoid blocking builds/deploys).
     if: >
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+      (github.event_name == 'push' ||
+       (github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository)) &&
+      (secrets.SONAR_TOKEN != '' || vars.SONAR_TOKEN != '')
 
     permissions:
       contents: read
