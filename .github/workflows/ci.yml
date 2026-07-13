@@ -25,8 +25,7 @@ name: CI
 on:
   push:
     branches:
-      - main
-      - staging
+      - '**'
     tags:
       # Release tags build + package only. The deploy jobs key off a BRANCH ref
       # (refs/heads/staging|main), so a tag ref (refs/tags/v*) never deploys.
