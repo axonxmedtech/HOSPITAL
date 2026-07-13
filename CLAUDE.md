@@ -56,11 +56,12 @@ All hospital-scoped entities carry a `hospital_id` foreign key. The backend extr
 
 **API URL namespaces:**
 - `/platform/**` — Super Admin only
-- `/hospital/**` — All hospital roles (ADMIN, DOCTOR, RECEPTIONIST, PHARMACIST, NURSE, NURSE_INCHARGE)
-- `/api/pharmacy/**` — Pharmacy module
+- `/hospital/**` — All hospital roles (ADMIN, DOCTOR, RECEPTIONIST, PHARMACIST, NURSE, NURSE_INCHARGE, OT_INCHARGE)
+- `/clinic/**`, `/pharmacy/**` — clinic and pharmacy tenants (ADMIN, DOCTOR, RECEPTIONIST, PHARMACIST). Shared endpoints are aliased across tenants by listing every path on one handler, e.g. `@GetMapping({"/hospital/settings/fees", "/clinic/settings/fees", "/pharmacy/settings/fees"})`.
+- `/api/public/health` — unauthenticated health check
 - `/ws/**` — WebSocket
 
-**Roles:** `SUPER_ADMIN`, `HOSPITAL_ADMIN`, `DOCTOR`, `RECEPTIONIST`, `PHARMACIST`, `NURSE` (staff nurse), `NURSE_INCHARGE`. Roles are plain strings on `User.role`; `JwtAuthenticationFilter` maps them to `ROLE_<role>` authorities (so a new role works in `@PreAuthorize` once added to the relevant `hasAnyRole(...)` lists in `SecurityConfig` for `/hospital/**` and `/ws/**`). There is no central role enum/whitelist.
+**Roles:** `SUPER_ADMIN`, `HOSPITAL_ADMIN`, `DOCTOR`, `RECEPTIONIST`, `PHARMACIST`, `NURSE` (staff nurse), `NURSE_INCHARGE`, `OT_INCHARGE`. Roles are plain strings on `User.role`; `JwtAuthenticationFilter` maps them to `ROLE_<role>` authorities (so a new role works in `@PreAuthorize` once added to the relevant `hasAnyRole(...)` lists in `SecurityConfig` for `/hospital/**` and `/ws/**`). There is no central role enum/whitelist.
 
 Special flag: `isSingleDoctor` on a `HOSPITAL_ADMIN` user lets that admin also act as the sole doctor (single-doctor clinic mode).
 
