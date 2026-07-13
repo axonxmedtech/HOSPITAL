@@ -1,24 +1,12 @@
-# Stage 1: Build stage using Maven
+# Build stage
 FROM maven:3.9.6-eclipse-temurin-17 AS build
 WORKDIR /app
-
-# Copy the pom file and download dependencies (caching optimizations)
-COPY pom.xml .
-RUN mvn dependency:go-offline -B
-
-# Copy the source code and build the application
-COPY src ./src
+COPY . .
 RUN mvn clean package -DskipTests
 
-# Stage 2: Runtime stage
-FROM eclipse-temurin:17-jre
+# Run stage
+FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
-
-# Expose default backend port (mapped dynamically by container orchestrators like Render)
+COPY --from=build /app/target/hospital-management-system-1.0.0.jar app.jar
 EXPOSE 8080
-
-# Copy final standalone JAR from the build stage
-COPY --from=build /app/target/*.jar app.jar
-
-# Start the spring boot application
 ENTRYPOINT ["java", "-jar", "app.jar"]

@@ -34,6 +34,7 @@ class HospitalAuthServiceTest {
     @Mock PharmacistProfileRepository pharmacistProfileRepository;
     @Mock DoctorRepository doctorRepository;
     @Mock com.hms.service.hospital.ot.OtPermissionService otPermissionService;
+    @Mock com.hms.security.HospitalWebSocketHandler webSocketHandler;
 
     @InjectMocks HospitalAuthService service;
 

@@ -58,6 +58,7 @@ class IpdAdmissionServiceTest {
     @Mock HospitalInventoryRepository hospitalInventoryRepository;
     @Mock HospitalInventoryService hospitalInventoryService;
     @Mock HospitalWebSocketHandler webSocketHandler;
+    @Mock com.hms.service.hospital.PatientAssignmentService patientAssignmentService;
     @Mock com.hms.service.hospital.BedStatusService bedStatusService;
 
     @InjectMocks
