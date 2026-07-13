@@ -249,15 +249,56 @@ jobs:
       ssh_port: ${{ vars.STAGING_SSH_PORT || '22' }}
       health_port: ${{ vars.STAGING_HEALTH_PORT || '8080' }}
       app_url: ${{ vars.STAGING_APP_URL }}
-      enable_rollback: false
+      enable_rollback: true
       notify_slack: false
     secrets:
       ssh_key: ${{ secrets.SSH_PRIVATE_KEY }}
       ssh_user: ${{ secrets.SSH_USERNAME }}
 
-  # ── Deploy — Production ────────────────────────────────────────────────────
-  deploy-production:
-    name: Deploy — Production
+  # ── Staging smoke tests — post-deploy verification against the live site ───
+  # Runs the Phase-5 Playwright smoke specs against the deployed staging URL. Confirms the
+  # deployment actually serves before anyone promotes to production. Informational (nothing
+  # depends on it); skipped if STAGING_APP_URL is unset.
+  staging-smoke:
+    name: Staging — Smoke Tests
+    needs: [deploy-staging]
+    if: needs.deploy-staging.result == 'success' && vars.STAGING_APP_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Pin to SHA in production: https://github.com/actions/checkout/releases
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: ./.github/actions/setup-node
+        with:
+          node-version: ${{ vars.NODE_VERSION || '22' }}
+          working-directory: frontend
+      - name: Install Playwright
+        run: npm ci
+        env:
+          HUSKY: 0
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Smoke test the deployed staging site
+        env:
+          E2E_BASE_URL: ${{ vars.STAGING_APP_URL }}
+        run: npx playwright test --config e2e/playwright.config.js smoke.spec.js
+      - name: Upload smoke report
+        if: always()
+        # Pin to SHA in production: https://github.com/actions/upload-artifact/releases
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-smoke-report-${{ github.sha }}
+          path: e2e/playwright-report/
+          retention-days: 14
+          if-no-files-found: warn
+
+  # ── Production pre-deploy review — summary + risk shown BEFORE approval ─────
+  # Runs before the (approval-gated) production deploy so reviewers see version, changes, risk,
+  # and config-readiness in the run summary before clicking approve. Also fails fast if required
+  # production configuration is missing (never prints secret values).
+  production-preflight:
+    name: Production — Pre-Deploy Review
     needs: [build-frontend, build-backend, security, sonar]
     if: >
       github.ref == 'refs/heads/main' &&
@@ -265,6 +306,59 @@ jobs:
       needs.build-frontend.result == 'success' &&
       needs.build-backend.result == 'success' &&
       needs.security.result == 'success' &&
+      (needs.sonar.result == 'success' || needs.sonar.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Pin to SHA in production: https://github.com/actions/checkout/releases
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate production configuration present
+        env:
+          HMS_SSH_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
+          HMS_SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          HMS_APP_URL: ${{ vars.PRODUCTION_APP_URL }}
+        run: bash scripts/deploy/validate-config.sh HMS_SSH_HOST HMS_SSH_KEY HMS_APP_URL
+      - name: Deployment & risk summary
+        run: |
+          VERSION=$(git describe --tags --always 2>/dev/null || echo "${GITHUB_SHA::7}")
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo '')
+          {
+            echo "## 🚀 Production Deployment — Review Before Approval"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Version | \`$VERSION\` |"
+            echo "| Commit | \`${{ github.sha }}\` |"
+            echo "| Branch | \`${{ github.ref_name }}\` |"
+            echo "| Triggered by | ${{ github.actor }} |"
+            echo "| Target | Production (approval required) |"
+            echo ""
+            echo "### Changes since ${LAST_TAG:-'(no previous tag)'}"
+            echo '```'
+            if [ -n "$LAST_TAG" ]; then git log --oneline "$LAST_TAG"..HEAD | head -50; else git log --oneline -20; fi
+            echo '```'
+            echo ""
+            echo "### Risk checklist"
+            echo "- CI, security, and quality gates: **passed** (this job only runs if they did)."
+            echo "- Auto-rollback on failed health check: **enabled** for production."
+            echo "- Database migrations are **not** rolled back automatically — see DEPLOYMENT.md."
+            echo ""
+            echo "**Approve the \`Deploy — Production\` job to proceed.** Reject to abort safely."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Deploy — Production ────────────────────────────────────────────────────
+  deploy-production:
+    name: Deploy — Production
+    needs: [build-frontend, build-backend, security, sonar, production-preflight]
+    if: >
+      github.ref == 'refs/heads/main' &&
+      always() &&
+      needs.build-frontend.result == 'success' &&
+      needs.build-backend.result == 'success' &&
+      needs.security.result == 'success' &&
+      needs.production-preflight.result == 'success' &&
       (needs.sonar.result == 'success' || needs.sonar.result == 'skipped')
     uses: ./.github/workflows/_deploy.yml
     permissions:

@@ -60,6 +60,12 @@ jobs:
       cancel-in-progress: false
 
     steps:
+      # ── Checkout (deploy scripts live in scripts/deploy/) ─────────────────
+      # Pin to SHA in production: https://github.com/actions/checkout/releases
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tags/history for version derivation
+
       # ── Deployment header ────────────────────────────────────────────────
       - name: Write deployment header
         run: |
@@ -74,6 +80,16 @@ jobs:
           | Author | ${{ github.actor }} |
           | Started | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |
           EOF
+
+      # ── Fail fast if required configuration is missing (never prints values) ──
+      - name: Validate deployment configuration
+        env:
+          HMS_SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
+          HMS_SSH_KEY: ${{ secrets.ssh_key || secrets.SSH_PRIVATE_KEY || secrets.SSH_KEY }}
+          HMS_REPO_PATH: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
+          HMS_SERVICE: ${{ inputs.service_name || vars.SERVICE_NAME }}
+          HMS_BRANCH: ${{ inputs.git_branch || vars.BRANCH_NAME }}
+        run: bash scripts/deploy/validate-config.sh HMS_SSH_HOST HMS_SSH_KEY HMS_REPO_PATH HMS_SERVICE HMS_BRANCH
 
       # ── SSH Connection Diagnostics ───────────────────────────────────────
       # Retries TCP check 5 times before failing — surfaces Hostinger hPanel
@@ -110,6 +126,25 @@ jobs:
           SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
 
+      # ── Capture pre-deploy state (previous version → rollback target) ─────
+      - name: Capture pre-deploy state
+        id: prev
+        continue-on-error: true
+        env:
+          SSH_KEY: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
+          SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
+          SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
+          SSH_USER: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
+          REPO: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
+        run: |
+          echo "$SSH_KEY" > /tmp/deploy_key && chmod 600 /tmp/deploy_key
+          PREV=$(ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=15 \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "cd '$REPO' 2>/dev/null && git rev-parse HEAD 2>/dev/null || echo unknown")
+          rm -f /tmp/deploy_key
+          echo "PREV_SHA=${PREV:-unknown}" >> "$GITHUB_ENV"
+          echo "Previous deployed commit: ${PREV:-unknown}"
+
       # ── Download Frontend Build ──────────────────────────────────────────
       - name: Download Frontend Build
         uses: actions/download-artifact@v4
@@ -127,6 +162,16 @@ jobs:
       # ── Compress artifacts for deployment ────────────────────────────────
       - name: Compress artifacts for deployment
         run: tar -czf deploy.tar.gz frontend/dist backend/target/*.jar
+
+      # ── Artifact integrity: record checksums for the deployment manifest ──
+      - name: Compute artifact checksums
+        run: |
+          JAR=$(ls backend/target/*.jar | grep -v -- '-plain' | head -1)
+          {
+            echo "BACKEND_SHA256=$(sha256sum "$JAR" | awk '{print $1}')"
+            echo "FRONTEND_SHA256=$(tar -cf - frontend/dist | sha256sum | awk '{print $1}')"
+            echo "APP_VERSION=$(git describe --tags --always 2>/dev/null || echo "${GITHUB_SHA::7}")"
+          } >> "$GITHUB_ENV"
 
       # ── Pull latest code on VPS ──────────────────────────────────────────
       - name: Pull Code on VPS
@@ -313,6 +358,87 @@ jobs:
               echo "[$(TS)] Hint: check 'journalctl -u ${{ inputs.service_name || vars.SERVICE_NAME }} -n 100' on the server."
               exit 1
             fi
+
+      # ── Extended health verification (readiness, dependencies, resources) ──
+      # The proven step above is the rollback gate (liveness 200). This adds readiness (Actuator
+      # overall status reflects DB/Redis/disk) + host resource checks and records structured
+      # results for the manifest. Report-only for now (continue-on-error) so it augments the
+      # signal without destabilising the proven flow — promote to a hard gate after validating
+      # on staging (see docs/deployment/DEPLOYMENT.md §Health verification).
+      - name: Extended health verification
+        id: verify
+        if: success()
+        continue-on-error: true
+        env:
+          SSH_KEY: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
+          SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
+          SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
+          SSH_USER: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
+          REPO: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
+          HPORT: ${{ inputs.health_port || vars.PORT || vars.STAGING_HEALTH_PORT || vars.PRODUCTION_HEALTH_PORT || '8080' }}
+          APP_URL: ${{ inputs.app_url }}
+        run: |
+          mkdir -p deployment-logs
+          echo "$SSH_KEY" > /tmp/deploy_key && chmod 600 /tmp/deploy_key
+          LIVE="http://localhost:${HPORT}/api/public/health"
+          ACT="http://localhost:${HPORT}/actuator/health"
+          ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=15 \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "HEALTH_JSON=/tmp/hms-health.json bash '$REPO'/scripts/deploy/verify-deployment.sh '$LIVE' '$ACT' '${APP_URL}'; echo '---HEALTHJSON---'; cat /tmp/hms-health.json 2>/dev/null" \
+            | tee deployment-logs/verify.txt
+          rm -f /tmp/deploy_key
+          sed -n '/---HEALTHJSON---/,$p' deployment-logs/verify.txt | tail -1 > deployment-logs/health.json || true
+          [ -s deployment-logs/health.json ] || echo '{}' > deployment-logs/health.json
+
+      # ── Deployment manifest (machine-readable audit record) ───────────────
+      - name: Generate deployment manifest
+        if: always()
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          APP_VERSION: ${{ env.APP_VERSION }}
+          GIT_SHA: ${{ github.sha }}
+          GIT_BRANCH: ${{ inputs.git_branch }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DEPLOYER: ${{ github.actor }}
+          PREV_SHA: ${{ env.PREV_SHA }}
+          ROLLBACK_TARGET: ${{ env.PREV_SHA }}
+          RESULT: ${{ job.status }}
+          BACKEND_SHA256: ${{ env.BACKEND_SHA256 }}
+          FRONTEND_SHA256: ${{ env.FRONTEND_SHA256 }}
+          APPROVAL_REQUIRED: ${{ inputs.environment == 'Production' }}
+          APPROVAL_ENVIRONMENT: ${{ inputs.environment }}
+          HEALTH_JSON: deployment-logs/health.json
+        run: |
+          mkdir -p deployment-logs
+          bash scripts/deploy/generate-deployment-manifest.sh > deployment-logs/deployment-manifest.json
+          echo "### Deployment manifest" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat deployment-logs/deployment-manifest.json >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      # ── Archive manifest into VPS deployment history (best-effort) ────────
+      - name: Archive manifest to deployment history
+        if: always()
+        continue-on-error: true
+        env:
+          SSH_KEY: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
+          SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
+          SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
+          SSH_USER: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
+          REPO: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
+        run: |
+          [ -f deployment-logs/deployment-manifest.json ] || exit 0
+          echo "$SSH_KEY" > /tmp/deploy_key && chmod 600 /tmp/deploy_key
+          SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=15"
+          HIST="$(dirname "$REPO")/deployments"
+          FNAME="deploy-$(date -u '+%Y%m%dT%H%M%SZ')-${GITHUB_SHA::7}.json"
+          ssh -i /tmp/deploy_key $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$HIST'"
+          scp -i /tmp/deploy_key $SSH_OPTS -P "$SSH_PORT" \
+            deployment-logs/deployment-manifest.json "$SSH_USER@$SSH_HOST:$HIST/$FNAME"
+          rm -f /tmp/deploy_key
+          echo "Archived manifest → $HIST/$FNAME"
 
       # ── Collect service logs ─────────────────────────────────────────────
       - name: Collect service logs
