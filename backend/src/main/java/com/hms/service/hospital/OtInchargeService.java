@@ -103,7 +103,7 @@ public class OtInchargeService {
         }
 
         User user = userRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new RuntimeException("OT Incharge not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("OT Incharge not found"));
 
         if (!user.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Access denied: User belongs to another hospital");
@@ -132,7 +132,7 @@ public class OtInchargeService {
         }
 
         User user = userRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new RuntimeException("OT Incharge not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("OT Incharge not found"));
 
         if (!user.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Access denied: User belongs to another hospital");
@@ -151,7 +151,7 @@ public class OtInchargeService {
         }
 
         User user = userRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new RuntimeException("OT Incharge not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("OT Incharge not found"));
 
         if (!user.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Access denied: User belongs to another hospital");
@@ -175,7 +175,7 @@ public class OtInchargeService {
         }
 
         User user = userRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new RuntimeException("OT Incharge not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("OT Incharge not found"));
 
         if (!user.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Access denied: User belongs to another hospital");

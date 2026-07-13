@@ -1,5 +1,7 @@
 package com.hms.service.platform;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.entity.InventoryItem;
 import com.hms.repository.InventoryItemRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -60,7 +62,7 @@ public class PlatformInventoryItemByTypeService {
             optional = inventoryItemRepository.findById(id);
         }
 
-        return optional.orElseThrow(() -> new RuntimeException("Inventory item not found with ID: " + id));
+        return optional.orElseThrow(() -> new ResourceNotFoundException("Inventory item not found with ID: " + id));
     }
 
     /**

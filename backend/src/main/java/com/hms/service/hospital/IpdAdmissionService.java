@@ -132,13 +132,13 @@ public class IpdAdmissionService {
 
     public IpdAdmission admitFromOpd(Long opdId, Long wardId, Long bedId, String admissionType, String primaryDiagnosis) {
         // Load OPD
-        Opd opd = opdRepository.findById(opdId).orElseThrow(() -> new RuntimeException("OPD not found"));
+        Opd opd = opdRepository.findById(opdId).orElseThrow(() -> new ResourceNotFoundException("OPD not found"));
 
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found in context");
 
         // Validate bed availability
-        Bed bed = bedRepository.findById(bedId).orElseThrow(() -> new RuntimeException("Bed not found"));
+        Bed bed = bedRepository.findById(bedId).orElseThrow(() -> new ResourceNotFoundException("Bed not found"));
         if (!bed.getStatus().equalsIgnoreCase("available")) {
             throw new IllegalArgumentException("Bed is not available");
         }
@@ -318,7 +318,7 @@ public class IpdAdmissionService {
         // Resolve current doctor's entity using authenticated user's email
         String email = securityHelper.getCurrentUserEmail();
         com.hms.entity.Doctor doctor = doctorRepository.findByEmailAndHospitalId(email, hospitalId)
-            .orElseThrow(() -> new RuntimeException("Doctor profile not found for current user"));
+            .orElseThrow(() -> new ResourceNotFoundException("Doctor profile not found for current user"));
         Long doctorId = doctor.getId();
 
         org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 100, org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "admissionDatetime"));
@@ -354,7 +354,7 @@ public class IpdAdmissionService {
         if ("DOCTOR".equalsIgnoreCase(role)) {
             String email = securityHelper.getCurrentUserEmail();
             com.hms.entity.Doctor doctor = doctorRepository.findByEmailAndHospitalId(email, hospitalId)
-                    .orElseThrow(() -> new RuntimeException("Doctor profile not found for current user"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Doctor profile not found for current user"));
             Long doctorId = doctor.getId();
             admissions = ipdAdmissionRepository.findByHospitalIdAndDoctorIdAndStatus(hospitalId, doctorId, "ADMITTED");
         } else if ("RECEPTIONIST".equalsIgnoreCase(role) || "HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
@@ -392,7 +392,7 @@ public class IpdAdmissionService {
 
     @Transactional(readOnly = true)
     public com.hms.dto.IpdAdmissionDetailsDTO getIpdAdmissionDetails(Long ipdId) {
-        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new RuntimeException("IPD admission not found"));
+        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new ResourceNotFoundException("IPD admission not found"));
 
         com.hms.dto.IpdAdmissionDetailsDTO dto = new com.hms.dto.IpdAdmissionDetailsDTO();
         dto.setIpdNumber(ipd.getIpdNumber());
@@ -562,7 +562,7 @@ public class IpdAdmissionService {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can add follow-ups");
         }
 
-        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new RuntimeException("IPD admission not found"));
+        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new ResourceNotFoundException("IPD admission not found"));
         if (ipd.getStatus() == null || !ipd.getStatus().equalsIgnoreCase("ADMITTED")) {
             throw new IllegalArgumentException("Cannot add follow-up to non-admitted IPD");
         }
@@ -572,7 +572,7 @@ public class IpdAdmissionService {
 
         String email = securityHelper.getCurrentUserEmail();
         com.hms.entity.Doctor doctor = doctorRepository.findByEmailAndHospitalId(email, hospitalId)
-                .orElseThrow(() -> new RuntimeException("Doctor profile not found for current user"));
+                .orElseThrow(() -> new ResourceNotFoundException("Doctor profile not found for current user"));
 
         com.hms.entity.MedicalRecord mr = new com.hms.entity.MedicalRecord();
         mr.setHospitalId(hospitalId);
@@ -614,7 +614,7 @@ public class IpdAdmissionService {
                 }
                 if (item.getMedicineId() != null) {
                     com.hms.entity.Medicine med = medicineRepository.findById(item.getMedicineId())
-                            .orElseThrow(() -> new RuntimeException("Medicine not found in active inventory: ID " + item.getMedicineId()));
+                            .orElseThrow(() -> new ResourceNotFoundException("Medicine not found in active inventory: ID " + item.getMedicineId()));
 
                     if (med.getStockQuantity() < item.getQuantity()) {
                         throw new IllegalArgumentException("Insufficient stock for: " + med.getName() + " (Requested: " + item.getQuantity() + ", Available: " + med.getStockQuantity() + ")");
@@ -681,7 +681,7 @@ public class IpdAdmissionService {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can administer items");
         }
 
-        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new RuntimeException("IPD admission not found"));
+        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new ResourceNotFoundException("IPD admission not found"));
         if (ipd.getStatus() == null || !ipd.getStatus().equalsIgnoreCase("ADMITTED")) {
             throw new IllegalArgumentException("Cannot administer items to non-admitted IPD");
         }
@@ -706,7 +706,7 @@ public class IpdAdmissionService {
                 }
                 if (item.getMedicineId() != null) {
                     com.hms.entity.Medicine med = medicineRepository.findById(item.getMedicineId())
-                            .orElseThrow(() -> new RuntimeException("Medicine not found in active inventory: ID " + item.getMedicineId()));
+                            .orElseThrow(() -> new ResourceNotFoundException("Medicine not found in active inventory: ID " + item.getMedicineId()));
 
                     if (med.getStockQuantity() < item.getQuantity()) {
                         throw new IllegalArgumentException("Insufficient stock for: " + med.getName() + " (Requested: " + item.getQuantity() + ", Available: " + med.getStockQuantity() + ")");
@@ -771,7 +771,7 @@ public class IpdAdmissionService {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can administer items");
         }
 
-        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new RuntimeException("IPD admission not found"));
+        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new ResourceNotFoundException("IPD admission not found"));
         if (ipd.getStatus() == null || (!ipd.getStatus().equalsIgnoreCase("ADMITTED") && !ipd.getStatus().equalsIgnoreCase("DISCHARGE_PLANNED"))) {
             throw new IllegalArgumentException("Cannot administer items to non-admitted IPD");
         }
@@ -830,7 +830,7 @@ public class IpdAdmissionService {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can add prescriptions");
         }
 
-        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new RuntimeException("IPD admission not found"));
+        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new ResourceNotFoundException("IPD admission not found"));
         if (ipd.getStatus() == null || !ipd.getStatus().equalsIgnoreCase("ADMITTED")) {
             throw new IllegalArgumentException("Cannot add prescription to non-admitted IPD");
         }
@@ -947,10 +947,10 @@ public class IpdAdmissionService {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can stop prescriptions");
         }
 
-        com.hms.entity.Prescription pres = prescriptionRepository.findById(prescriptionId).orElseThrow(() -> new RuntimeException("Prescription not found"));
+        com.hms.entity.Prescription pres = prescriptionRepository.findById(prescriptionId).orElseThrow(() -> new ResourceNotFoundException("Prescription not found"));
 
         // Verify it belongs to an IPD by looking up medical record
-        com.hms.entity.MedicalRecord mr = medicalRecordRepository.findById(pres.getMedicalRecordId()).orElseThrow(() -> new RuntimeException("Related medical record not found"));
+        com.hms.entity.MedicalRecord mr = medicalRecordRepository.findById(pres.getMedicalRecordId()).orElseThrow(() -> new ResourceNotFoundException("Related medical record not found"));
         if (mr.getIpdAdmissionId() == null) throw new IllegalArgumentException("Prescription is not linked to an IPD admission");
 
         pres.setStatus("STOPPED");
@@ -984,7 +984,7 @@ public class IpdAdmissionService {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can plan discharge");
         }
 
-        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new RuntimeException("IPD admission not found"));
+        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new ResourceNotFoundException("IPD admission not found"));
         if (ipd.getStatus() == null || !ipd.getStatus().equalsIgnoreCase("ADMITTED")) {
             throw new IllegalArgumentException("Can only plan discharge for ADMITTED patients");
         }
@@ -1025,7 +1025,7 @@ public class IpdAdmissionService {
 
     @Transactional
     public IpdAdmission confirmDischarge(Long ipdId) {
-        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new RuntimeException("IPD admission not found"));
+        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new ResourceNotFoundException("IPD admission not found"));
 
         String role = securityHelper.getCurrentUserRole();
         Long hospitalId = ipd.getHospitalId();
@@ -1180,7 +1180,7 @@ public class IpdAdmissionService {
 
     @org.springframework.transaction.annotation.Transactional
     public IpdAdmission changeBed(Long ipdId, Long newBedId) {
-        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new RuntimeException("IPD not found"));
+        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new ResourceNotFoundException("IPD not found"));
 
         String role = securityHelper.getCurrentUserRole();
         Long hospitalId = ipd.getHospitalId();
@@ -1197,7 +1197,7 @@ public class IpdAdmissionService {
             throw new IllegalArgumentException("Bed change allowed only for active admissions");
         }
 
-        Bed newBed = bedRepository.findById(newBedId).orElseThrow(() -> new RuntimeException("New bed not found"));
+        Bed newBed = bedRepository.findById(newBedId).orElseThrow(() -> new ResourceNotFoundException("New bed not found"));
         if ("occupied".equalsIgnoreCase(newBed.getStatus()) && !newBedId.equals(ipd.getBedId())) {
              throw new IllegalArgumentException("Requested bed is already occupied");
         }

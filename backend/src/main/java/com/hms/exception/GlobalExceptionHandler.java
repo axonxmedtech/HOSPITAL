@@ -9,6 +9,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -97,6 +99,29 @@ public class GlobalExceptionHandler {
         Map<String, Object> body = new HashMap<>();
         body.put("errors", errors);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    /**
+     * Handle a request to a URL that maps to no handler — 404 Not Found.
+     * Without this, an unknown path falls through to the catch-all below and is reported
+     * as a 500 and logged at ERROR, so every typo'd URL and every drive-by scanner request
+     * looks like a server crash.
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoResourceFound(NoResourceFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error("Not found"));
+    }
+
+    /**
+     * Handle a path variable or request param of the wrong type — 400 Bad Request.
+     * e.g. a UUID supplied where a numeric id is declared. The caller sent a malformed
+     * value, so this is a client fault, not a server fault.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error("Invalid value for '" + ex.getName() + "'"));
     }
 
     /**

@@ -1,5 +1,7 @@
 package com.hms.service.hospital;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.entity.ConsultationNotePreset;
 import com.hms.repository.ConsultationNotePresetRepository;
 import com.hms.security.SecurityContextHelper;
@@ -87,9 +89,9 @@ public class ConsultationNotePresetService {
     private ConsultationNotePreset findEditablePreset(Long id, Long hospitalId) {
         if (ownership.isAdmin()) {
             return presetRepository.findByIdAndHospitalId(id, hospitalId)
-                    .orElseThrow(() -> new RuntimeException("Preset not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Preset not found"));
         }
         return presetRepository.findByIdAndHospitalIdAndDoctorId(id, hospitalId, ownership.currentDoctorIdOrNull())
-                .orElseThrow(() -> new RuntimeException("Preset not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Preset not found"));
     }
 }

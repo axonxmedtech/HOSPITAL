@@ -70,13 +70,24 @@ public class PharmacySaleService {
         sale.setSaleType(resolvedSaleType);
         sale.setPharmacistId(userId);
 
+        // The stock transactions are built here but persisted after the sale is saved: until
+        // then the sale has no id and no bill number, so a transaction written now records
+        // referenceId=null and "Sale Bill #null" and the stock movement cannot be traced
+        // back to the sale that caused it.
+        List<InventoryTransaction> stockMovements = new ArrayList<>();
         List<PharmacySaleItem> items = new ArrayList<>();
         for (PharmacySaleRequest.SaleItemRequest itemReq : request.getItems()) {
-            items.add(processSaleItem(itemReq, sale, hospitalId, userId));
+            items.add(processSaleItem(itemReq, sale, hospitalId, userId, stockMovements));
         }
 
         sale.setItems(items);
         PharmacySale savedSale = saleRepository.save(sale);
+
+        for (InventoryTransaction tx : stockMovements) {
+            tx.setReferenceId(savedSale.getId());
+            tx.setRemarks("Sale Bill #" + savedSale.getBillNumber());
+        }
+        transactionRepository.saveAll(stockMovements);
 
         // Auto-complete the prescription status to DISPENSED for all consultation records
         if (request.getPrescriptionId() != null) {
@@ -94,7 +105,8 @@ public class PharmacySaleService {
      * records the inventory transaction, and returns the sale item. Extracted
      * from createSale to keep that method's complexity manageable.
      */
-    private PharmacySaleItem processSaleItem(PharmacySaleRequest.SaleItemRequest itemReq, PharmacySale sale, Long hospitalId, Long userId) {
+    private PharmacySaleItem processSaleItem(PharmacySaleRequest.SaleItemRequest itemReq, PharmacySale sale, Long hospitalId, Long userId,
+                                             List<InventoryTransaction> stockMovements) {
         // Validation: Prevent negative or zero quantity theft
         if (itemReq.getQuantity().compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Sale quantity must be positive");
@@ -106,7 +118,7 @@ public class PharmacySaleService {
         // 1. Fetch and update batch with Pessimistic Lock (Prevents Race Conditions)
         // Also prevents IDOR by including hospitalId in query
         MedicineBatch batch = batchRepository.findByIdAndHospitalIdForUpdate(itemReq.getMedicineBatchId(), hospitalId, securityHelper.getCurrentBranchId())
-                .orElseThrow(() -> new RuntimeException("Batch not found or unauthorized: " + itemReq.getMedicineBatchId()));
+                .orElseThrow(() -> new ResourceNotFoundException("Batch not found or unauthorized: " + itemReq.getMedicineBatchId()));
 
         if (batch.getCurrentQuantity().compareTo(itemReq.getQuantity()) < 0) {
             throw new IllegalArgumentException("Insufficient stock for batch: " + batch.getBatchNumber());
@@ -126,9 +138,9 @@ public class PharmacySaleService {
         tx.setQuantityBefore(qtyBefore);
         tx.setQuantityAfter(batch.getCurrentQuantity());
         tx.setReferenceType("PHARMACY_SALE");
-        tx.setRemarks("Sale Bill #" + sale.getBillNumber());
         tx.setCreatedBy(userId);
-        transactionRepository.save(tx);
+        // referenceId and remarks are backfilled by createSale once the sale has an id.
+        stockMovements.add(tx);
 
         // 3. Create Sale Item
         PharmacySaleItem item = new PharmacySaleItem();
@@ -167,7 +179,7 @@ public class PharmacySaleService {
 
     public PharmacySale getSaleDetails(Long id) {
         return saleRepository.findByIdScoped(id, securityHelper.getCurrentHospitalId(), securityHelper.getCurrentBranchId())
-                .orElseThrow(() -> new RuntimeException("Sale record not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Sale record not found"));
     }
 
     public BigDecimal getTodaySalesTotal() {
@@ -197,7 +209,7 @@ public class PharmacySaleService {
 
     public PharmacySale findByBillNumber(String billNumber, Long hospitalId) {
         return saleRepository.findByBillNumberScoped(billNumber, hospitalId, securityHelper.getCurrentBranchId())
-                .orElseThrow(() -> new RuntimeException("Invoice not found: " + billNumber));
+                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found: " + billNumber));
     }
 
     @Transactional
@@ -206,7 +218,7 @@ public class PharmacySaleService {
         Long userId = securityHelper.getCurrentUserId();
 
         PharmacySale sale = saleRepository.findByIdScoped(saleId, hospitalId, securityHelper.getCurrentBranchId())
-                .orElseThrow(() -> new RuntimeException("Pharmacy sale invoice not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Pharmacy sale invoice not found"));
 
         BigDecimal refundTotal = BigDecimal.ZERO;
 
@@ -231,7 +243,7 @@ public class PharmacySaleService {
 
             // Expiry safety check: Reject returns if the medicine batch has expired
             MedicineBatch batchToCheck = batchRepository.findById(batchId)
-                    .orElseThrow(() -> new RuntimeException("Batch not found or unauthorized"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Batch not found or unauthorized"));
             if (batchToCheck.getExpiryDate() != null && batchToCheck.getExpiryDate().isBefore(java.time.LocalDate.now())) {
                 throw new IllegalArgumentException("Cannot return medicine '" + 
                     (batchToCheck.getMedicine() != null ? batchToCheck.getMedicine().getMedicineName() : batchToCheck.getBatchNumber()) + 
@@ -245,7 +257,7 @@ public class PharmacySaleService {
             if (restock) {
                 // Return stock back to inventory batch with Pessimistic Lock
                 MedicineBatch batch = batchRepository.findByIdAndHospitalIdForUpdate(batchId, hospitalId, securityHelper.getCurrentBranchId())
-                        .orElseThrow(() -> new RuntimeException("Batch not found or unauthorized"));
+                        .orElseThrow(() -> new ResourceNotFoundException("Batch not found or unauthorized"));
 
                 BigDecimal qtyBefore = batch.getCurrentQuantity();
                 batch.setCurrentQuantity(qtyBefore.add(qtyToReturn));

@@ -1,5 +1,7 @@
 package com.hms.controller.platform;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.entity.SupportTicket;
 import com.hms.repository.SupportTicketRepository;
 import com.hms.service.platform.PlatformTicketService;
@@ -57,7 +59,7 @@ public class PlatformTicketController {
                 return ResponseEntity.ok(ticket);
             }
             SupportTicket ticket = supportTicketRepository.findById(id)
-                    .orElseThrow(() -> new RuntimeException("Ticket not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Ticket not found"));
             return ResponseEntity.ok(ticket);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
@@ -83,7 +85,7 @@ public class PlatformTicketController {
 
             // Otherwise, update directly (backward compatibility)
             SupportTicket ticket = supportTicketRepository.findById(id)
-                    .orElseThrow(() -> new RuntimeException("Ticket not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Ticket not found"));
 
             ticket.setStatus(newStatus.toUpperCase());
             if ("RESOLVED".equalsIgnoreCase(newStatus)) {

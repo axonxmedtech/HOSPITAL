@@ -190,7 +190,7 @@ public class PurchaseService {
     public PurchaseInvoice postInvoice(Long id) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         PurchaseInvoice invoice = invoiceRepository.findByIdScoped(id, hospitalId, securityHelper.getCurrentBranchId())
-                .orElseThrow(() -> new RuntimeException("Invoice not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found"));
 
         if ("POSTED".equalsIgnoreCase(invoice.getPostingStatus())) {
             throw new IllegalArgumentException("Invoice already posted");
@@ -262,7 +262,7 @@ public class PurchaseService {
 
     public PurchaseInvoice getInvoice(Long id) {
         return invoiceRepository.findByIdScoped(id, securityHelper.getCurrentHospitalId(), securityHelper.getCurrentBranchId())
-                .orElseThrow(() -> new RuntimeException("Invoice not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found"));
     }
 }
 

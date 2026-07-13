@@ -147,7 +147,7 @@ public class MedicineBatchService {
     public MedicineBatch blockBatch(Long id) {
         Long hid = securityHelper.getCurrentHospitalId();
         MedicineBatch batch = repository.findByIdAndHospitalIdForUpdate(id, hid, securityHelper.getCurrentBranchId())
-                .orElseThrow(() -> new RuntimeException("Batch not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Batch not found"));
         batch.setStatus("BLOCKED");
         MedicineBatch saved = repository.save(batch);
         notifier.refresh(hid);
@@ -158,7 +158,7 @@ public class MedicineBatchService {
     public MedicineBatch disposeBatch(Long id, String remarks) {
         Long hid = securityHelper.getCurrentHospitalId();
         MedicineBatch batch = repository.findByIdAndHospitalIdForUpdate(id, hid, securityHelper.getCurrentBranchId())
-                .orElseThrow(() -> new RuntimeException("Batch not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Batch not found"));
         
         java.math.BigDecimal qtyBefore = batch.getCurrentQuantity();
         if (qtyBefore == null) qtyBefore = java.math.BigDecimal.ZERO;
@@ -203,7 +203,7 @@ public class MedicineBatchService {
             }
             
             MedicineBatch batch = repository.findByIdAndHospitalIdForUpdate(batchId, hid, securityHelper.getCurrentBranchId())
-                    .orElseThrow(() -> new RuntimeException("Batch not found or unauthorized"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Batch not found or unauthorized"));
             
             if (batch.getCurrentQuantity().compareTo(qtyToReturn) < 0) {
                 throw new IllegalArgumentException("Insufficient stock in batch " + batch.getBatchNumber() + " to return. Available: " + batch.getCurrentQuantity());

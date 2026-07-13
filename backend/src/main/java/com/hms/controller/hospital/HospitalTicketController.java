@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.entity.Hospital;
 import com.hms.entity.SupportTicket;
 import com.hms.entity.User;
@@ -47,9 +49,9 @@ public class HospitalTicketController {
         Long userId = securityHelper.getCurrentUserId();
 
         Hospital hospital = hospitalRepository.findById(hospitalId)
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         if (req.getSubject() == null || req.getSubject().trim().isEmpty() ||
             req.getMessage() == null || req.getMessage().trim().isEmpty()) {

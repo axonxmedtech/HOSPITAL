@@ -1,5 +1,7 @@
 package com.hms.service.hospital;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.dto.VitalsRequest;
 import com.hms.entity.IpdAdmission;
 import com.hms.entity.VitalsRecord;
@@ -89,7 +91,7 @@ public class VitalsService {
         Long hospitalId = requireHospitalId();
         formAccessService.assertCanEdit("VITALS");
         VitalsRecord v = vitalsRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new RuntimeException("Vitals record not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Vitals record not found"));
         if (!hospitalId.equals(v.getHospitalId())) {
             throw new UnauthorizedException("Access denied: record belongs to another hospital");
         }

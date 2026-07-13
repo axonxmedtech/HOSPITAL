@@ -1,5 +1,7 @@
 package com.hms.service.hospital;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.dto.NursingNoteRequest;
 import com.hms.entity.IpdAdmission;
 import com.hms.entity.NursingNote;
@@ -114,7 +116,7 @@ public class NursingNoteService {
     private NursingNote requireEditableOwnNote(String publicId) {
         Long hospitalId = requireHospitalId();
         NursingNote n = noteRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new RuntimeException("Nursing note not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Nursing note not found"));
         if (!hospitalId.equals(n.getHospitalId())) {
             throw new UnauthorizedException("Access denied: note belongs to another hospital");
         }

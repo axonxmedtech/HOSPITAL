@@ -1,5 +1,7 @@
 package com.hms.service.hospital;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.entity.HospitalServiceEntity;
 import com.hms.entity.HospitalServiceItem;
 import com.hms.repository.HospitalServiceItemRepository;
@@ -77,7 +79,7 @@ public class HospitalServiceService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         validate(name, charge, masterItemIds);
         HospitalServiceEntity svc = serviceRepository.findByIdAndHospitalId(id, hospitalId)
-                .orElseThrow(() -> new RuntimeException("Service not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Service not found"));
         svc.setName(name.trim());
         svc.setCharge(charge);
         serviceRepository.save(svc);
@@ -91,7 +93,7 @@ public class HospitalServiceService {
     public void deleteService(Long id) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         HospitalServiceEntity svc = serviceRepository.findByIdAndHospitalId(id, hospitalId)
-                .orElseThrow(() -> new RuntimeException("Service not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Service not found"));
         svc.setIsActive(false);
         serviceRepository.save(svc);
     }

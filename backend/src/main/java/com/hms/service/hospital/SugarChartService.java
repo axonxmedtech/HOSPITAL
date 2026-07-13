@@ -1,5 +1,7 @@
 package com.hms.service.hospital;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.dto.SugarChartRequest;
 import com.hms.entity.IpdAdmission;
 import com.hms.entity.SugarChartEntry;
@@ -103,7 +105,7 @@ public class SugarChartService {
     private SugarChartEntry requireEditableOwn(String publicId) {
         Long hospitalId = requireHospitalId();
         SugarChartEntry e = repository.findByPublicId(publicId)
-                .orElseThrow(() -> new RuntimeException("Sugar chart entry not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Sugar chart entry not found"));
         if (!hospitalId.equals(e.getHospitalId())) {
             throw new UnauthorizedException("Access denied: entry belongs to another hospital");
         }

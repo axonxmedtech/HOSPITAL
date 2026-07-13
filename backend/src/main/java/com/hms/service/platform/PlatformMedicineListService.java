@@ -1,5 +1,7 @@
 package com.hms.service.platform;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.entity.MedicineList;
 import com.hms.repository.MedicineListRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -90,7 +92,7 @@ public class PlatformMedicineListService {
             .stream()
             .filter(m -> m.getId().equals(id))
             .findFirst()
-            .orElseThrow(() -> new RuntimeException("Medicine not found for " + hospitalType));
+            .orElseThrow(() -> new ResourceNotFoundException("Medicine not found for " + hospitalType));
     }
 
     /**

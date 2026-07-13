@@ -1,5 +1,7 @@
 package com.hms.service.platform;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.entity.SupportTicket;
 import com.hms.repository.SupportTicketRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -95,7 +97,7 @@ public class PlatformTicketService {
     @Transactional
     public SupportTicket updateTicketStatus(Long ticketId, String hospitalType, String newStatus) {
         SupportTicket ticket = repository.findById(ticketId)
-            .orElseThrow(() -> new RuntimeException("Ticket not found"));
+            .orElseThrow(() -> new ResourceNotFoundException("Ticket not found"));
 
         // Isolation check
         if (!ticket.getHospitalType().equals(hospitalType)) {
@@ -121,7 +123,7 @@ public class PlatformTicketService {
      */
     public SupportTicket getTicketById(Long ticketId, String hospitalType) {
         SupportTicket ticket = repository.findById(ticketId)
-            .orElseThrow(() -> new RuntimeException("Ticket not found"));
+            .orElseThrow(() -> new ResourceNotFoundException("Ticket not found"));
 
         // Isolation check
         if (!ticket.getHospitalType().equals(hospitalType)) {

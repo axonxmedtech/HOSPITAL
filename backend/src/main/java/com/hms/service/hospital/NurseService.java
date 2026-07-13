@@ -1,5 +1,7 @@
 package com.hms.service.hospital;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.entity.NurseProfile;
 import com.hms.entity.User;
 import com.hms.repository.NurseProfileRepository;
@@ -420,7 +422,7 @@ public class NurseService {
 
     private User requireNurse(String publicId, Long hospitalId) {
         User user = userRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new RuntimeException("Nurse not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Nurse not found"));
         if (!user.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Access denied: User belongs to another hospital");
         }

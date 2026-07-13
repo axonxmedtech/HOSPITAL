@@ -76,7 +76,7 @@ public class BillingService {
         }
 
         Hospital hospital = hospitalRepository.findById(appointment.getHospitalId())
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
         // Check module access
         if (hospital.getModules() == null || !hospital.getModules().contains("BILLING")) {
@@ -191,7 +191,7 @@ public class BillingService {
 
         Billing bill = billingRepository.findById(id)
                 .filter(b -> b.getHospitalId().equals(hospitalId))
-                .orElseThrow(() -> new RuntimeException("Bill not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Bill not found"));
 
         bill.setPaymentStatus(status);
         if ("PAID".equalsIgnoreCase(status)) {
@@ -311,7 +311,7 @@ public class BillingService {
 
     private void validateBillingAccess(Long hospitalId) {
         Hospital hospital = hospitalRepository.findById(hospitalId)
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
         if (hospital.getModules() == null || !hospital.getModules().contains("BILLING")) {
             throw new IllegalArgumentException("BILLING module is disabled for your hospital.");
         }
@@ -372,7 +372,7 @@ public class BillingService {
     public com.hms.entity.Billing createOpdBill(Long opdId, Long patientId, Long doctorId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Hospital hospital = hospitalRepository.findById(hospitalId)
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
         // Check module access
         if (hospital.getModules() == null || !hospital.getModules().contains("BILLING")) {

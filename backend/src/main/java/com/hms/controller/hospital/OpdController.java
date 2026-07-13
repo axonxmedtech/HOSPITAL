@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.dto.CreateOpdRequest;
 import com.hms.entity.Opd;
 import com.hms.entity.Hospital;
@@ -345,7 +347,7 @@ public class OpdController {
         java.util.List<Opd> opds = opdService.getOpds(null, dateStr, status, pageable).getContent();
 
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
         java.io.ByteArrayInputStream pdfStream = pdfService.generateOpdReportPdf(hospital, date, opds, reportType);
         org.springframework.core.io.InputStreamResource resource = new org.springframework.core.io.InputStreamResource(pdfStream);

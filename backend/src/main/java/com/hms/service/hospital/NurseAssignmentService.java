@@ -1,5 +1,7 @@
 package com.hms.service.hospital;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.dto.NurseAssignmentDTO;
 import com.hms.entity.IpdAdmission;
 import com.hms.entity.PatientNurseAssignment;
@@ -163,7 +165,7 @@ public class NurseAssignmentService {
     public PatientNurseAssignment reassignNurse(String assignmentPublicId, Long nurseUserId, String notes) {
         Long hospitalId = requireHospitalId();
         PatientNurseAssignment existing = assignmentRepository.findByPublicId(assignmentPublicId)
-                .orElseThrow(() -> new RuntimeException("Assignment not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Assignment not found"));
         requireSameHospital(existing.getHospitalId(), hospitalId);
         return assignNurse(existing.getIpdAdmissionId(), nurseUserId, notes);
     }
@@ -175,7 +177,7 @@ public class NurseAssignmentService {
     public void unassign(String assignmentPublicId) {
         Long hospitalId = requireHospitalId();
         PatientNurseAssignment existing = assignmentRepository.findByPublicId(assignmentPublicId)
-                .orElseThrow(() -> new RuntimeException("Assignment not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Assignment not found"));
         requireSameHospital(existing.getHospitalId(), hospitalId);
 
         existing.setIsActive(false);

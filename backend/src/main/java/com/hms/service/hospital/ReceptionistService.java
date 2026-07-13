@@ -186,7 +186,7 @@ public class ReceptionistService {
         }
 
         User user = userRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new RuntimeException("Receptionist not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Receptionist not found"));
 
         if (!user.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Access denied: User belongs to another hospital");
@@ -223,7 +223,7 @@ public class ReceptionistService {
         }
 
         User user = userRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new RuntimeException("Receptionist not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Receptionist not found"));
 
         if (!user.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Access denied: User belongs to another hospital");
@@ -251,7 +251,7 @@ public class ReceptionistService {
         }
 
         User user = userRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new RuntimeException("Receptionist not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Receptionist not found"));
 
         if (!user.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Access denied: User belongs to another hospital");
@@ -287,7 +287,7 @@ public class ReceptionistService {
         }
 
         User user = userRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new RuntimeException("Receptionist not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Receptionist not found"));
 
         if (!user.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Access denied: User belongs to another hospital");

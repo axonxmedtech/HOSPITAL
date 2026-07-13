@@ -158,13 +158,13 @@ public class AppointmentService {
             // Verify patient belongs to this hospital and is active
             com.hms.entity.Patient patient = patientRepository
                     .findByIdAndHospitalIdAndIsActiveTrue(patientId, hospitalId)
-                    .orElseThrow(() -> new RuntimeException("Patient not found in your hospital or is inactive"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Patient not found in your hospital or is inactive"));
         }
 
         // Verify doctor belongs to this hospital and is active
         com.hms.entity.Doctor doctor = doctorRepository
                 .findByIdAndHospitalIdAndIsActiveTrue(appointment.getDoctorId(), hospitalId)
-                .orElseThrow(() -> new RuntimeException("Doctor not found in your hospital or is inactive"));
+                .orElseThrow(() -> new ResourceNotFoundException("Doctor not found in your hospital or is inactive"));
 
         // -----------------------------------------------------------
         // Time Slot Validation (New Feature)
@@ -382,7 +382,7 @@ public class AppointmentService {
 
         // Verify doctor belongs to this hospital and is active
         doctorRepository.findByIdAndHospitalIdAndIsActiveTrue(doctorId, hospitalId)
-                .orElseThrow(() -> new RuntimeException("Doctor not found in your hospital or is inactive"));
+                .orElseThrow(() -> new ResourceNotFoundException("Doctor not found in your hospital or is inactive"));
 
         List<Appointment> appointments;
         java.time.LocalDate today = java.time.LocalDate.now();
@@ -439,7 +439,7 @@ public class AppointmentService {
             }
         }
 
-        com.hms.entity.Patient patient = patientOpt.orElseThrow(() -> new RuntimeException("Patient not found"));
+        com.hms.entity.Patient patient = patientOpt.orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
 
         List<Appointment> appointments = appointmentRepository
                 .findByPatientIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(patient.getId(), hospitalId);
@@ -479,7 +479,7 @@ public class AppointmentService {
             }
         }
 
-        Appointment appointment = apptOpt.orElseThrow(() -> new RuntimeException("Appointment not found"));
+        Appointment appointment = apptOpt.orElseThrow(() -> new ResourceNotFoundException("Appointment not found"));
 
         // Populate names for single appointment
         populateNames(java.util.Collections.singletonList(appointment));
@@ -542,7 +542,7 @@ public class AppointmentService {
             }
         }
 
-        Appointment appointment = apptOpt.orElseThrow(() -> new RuntimeException("Appointment not found"));
+        Appointment appointment = apptOpt.orElseThrow(() -> new ResourceNotFoundException("Appointment not found"));
 
         logger.info("Hospital {} soft deleting appointment ID: {}. Reason: {}", hospitalId, publicId, reason);
 
@@ -592,7 +592,7 @@ public class AppointmentService {
             }
         }
 
-        Appointment appointment = apptOpt.orElseThrow(() -> new RuntimeException("Appointment not found"));
+        Appointment appointment = apptOpt.orElseThrow(() -> new ResourceNotFoundException("Appointment not found"));
 
         // Basic validation
         if (!status.equals(STATUS_SCHEDULED) && !status.equals(STATUS_COMPLETED) && !status.equals(STATUS_CANCELLED)) {
@@ -664,7 +664,7 @@ public class AppointmentService {
             }
         }
 
-        Appointment appointment = apptOpt.orElseThrow(() -> new RuntimeException("Appointment not found"));
+        Appointment appointment = apptOpt.orElseThrow(() -> new ResourceNotFoundException("Appointment not found"));
 
         String oldStatus = appointment.getStatus();
         if (status != null && !status.isEmpty()) {
@@ -753,7 +753,7 @@ public class AppointmentService {
         String email = securityHelper.getCurrentUserEmail();
 
         com.hms.entity.Doctor doctor = doctorRepository.findByEmailAndHospitalId(email, hospitalId)
-                .orElseThrow(() -> new RuntimeException("Doctor profile not found for current user"));
+                .orElseThrow(() -> new ResourceNotFoundException("Doctor profile not found for current user"));
 
         return getAppointmentsByDoctorPaginated(doctor.getId(), view, search, pageable);
     }
@@ -772,7 +772,7 @@ public class AppointmentService {
 
         // Verify doctor belongs to this hospital and is active
         doctorRepository.findByIdAndHospitalIdAndIsActiveTrue(doctorId, hospitalId)
-                .orElseThrow(() -> new RuntimeException("Doctor not found in your hospital or is inactive"));
+                .orElseThrow(() -> new ResourceNotFoundException("Doctor not found in your hospital or is inactive"));
 
         org.springframework.data.domain.Page<Appointment> page;
         java.time.LocalDate today = java.time.LocalDate.now();
@@ -840,7 +840,7 @@ public class AppointmentService {
         if (hospitalId == null)
             return;
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
         if (hospital.getModules() == null || !hospital.getModules().contains("OPD")) {
             throw new IllegalArgumentException("OPD module is disabled for your hospital.");
         }

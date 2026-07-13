@@ -1,5 +1,7 @@
 package com.hms.service.pharmacy;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.dto.pharmacy.MedicineMasterRequest;
 import com.hms.entity.MedicineList;
 import com.hms.entity.pharmacy.MedicineMaster;
@@ -55,7 +57,7 @@ public class MedicineMasterService {
     public MedicineMaster update(Long id, MedicineMasterRequest req) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         MedicineMaster m = repository.findByIdAndHospitalId(id, hospitalId)
-                .orElseThrow(() -> new RuntimeException("Medicine not found in catalog"));
+                .orElseThrow(() -> new ResourceNotFoundException("Medicine not found in catalog"));
         mapDtoToEntity(req, m);
         m = repository.save(m);
         try { webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}"); } catch (Exception e) {
@@ -66,7 +68,7 @@ public class MedicineMasterService {
 
     public MedicineMaster getById(Long id) {
         return repository.findByIdAndHospitalId(id, securityHelper.getCurrentHospitalId())
-                .orElseThrow(() -> new RuntimeException("Medicine not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Medicine not found"));
     }
 
     public Page<MedicineMaster> searchAndList(String query, Pageable pageable) {
@@ -113,7 +115,7 @@ public class MedicineMasterService {
     @Transactional
     public MedicineMaster toggleStatus(Long id, Boolean isActive) {
         MedicineMaster m = repository.findByIdAndHospitalId(id, securityHelper.getCurrentHospitalId())
-                .orElseThrow(() -> new RuntimeException("Medicine not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Medicine not found"));
         m.setIsActive(isActive);
         return repository.save(m);
     }

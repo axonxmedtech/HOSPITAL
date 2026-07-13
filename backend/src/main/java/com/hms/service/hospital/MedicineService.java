@@ -72,7 +72,7 @@ public class MedicineService {
 
     public MedicineList updateCatalogMedicine(Long id, MedicineList request) {
         MedicineList catalog = medicineListRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Catalog medicine not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Catalog medicine not found"));
 
         if (medicineListRepository.existsByNameIgnoreCaseAndIdNot(request.getName(), id)) {
             throw new IllegalArgumentException("Medicine with this name already exists");
@@ -86,7 +86,7 @@ public class MedicineService {
 
     public void deleteCatalogMedicine(Long id) {
         MedicineList catalog = medicineListRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Catalog medicine not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Catalog medicine not found"));
         medicineListRepository.delete(catalog);
     }
 
@@ -339,7 +339,7 @@ public class MedicineService {
     public Medicine updateInventoryMedicine(Long id, Medicine request) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Medicine medicine = medicineRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Stock inventory record not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Stock inventory record not found"));
 
         if (!medicine.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Unauthorized access to stock inventory");
@@ -410,7 +410,7 @@ public class MedicineService {
     public void deleteInventoryMedicine(Long id) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Medicine medicine = medicineRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Stock inventory record not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Stock inventory record not found"));
 
         if (!medicine.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Unauthorized access to stock inventory");

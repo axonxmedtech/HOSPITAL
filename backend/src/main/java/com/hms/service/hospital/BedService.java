@@ -39,7 +39,7 @@ public class BedService {
     @Transactional
     public BedResponse updateStatus(Long bedId, String status, boolean systemInitiated) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
-        Bed b = bedRepository.findById(bedId).orElseThrow(() -> new RuntimeException("Bed not found"));
+        Bed b = bedRepository.findById(bedId).orElseThrow(() -> new ResourceNotFoundException("Bed not found"));
         if (b.getHospitalId() == null || !b.getHospitalId().equals(hospitalId)) throw new UnauthorizedException("Access denied");
         if (!isValidStatus(status)) throw new IllegalArgumentException("Invalid status");
 

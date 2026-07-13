@@ -177,7 +177,7 @@ public class WardService {
     @Transactional
     public WardResponse updateWard(Long wardId, UpdateWardRequest req) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
-        Ward w = wardRepository.findById(wardId).orElseThrow(() -> new RuntimeException("Ward not found"));
+        Ward w = wardRepository.findById(wardId).orElseThrow(() -> new ResourceNotFoundException("Ward not found"));
         if (!w.getHospitalId().equals(hospitalId)) throw new UnauthorizedException("Access denied");
 
         if (req.getWardName() != null) w.setWardName(req.getWardName());
@@ -205,7 +205,7 @@ public class WardService {
     @Transactional
     public void deleteWard(Long wardId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
-        Ward w = wardRepository.findById(wardId).orElseThrow(() -> new RuntimeException("Ward not found"));
+        Ward w = wardRepository.findById(wardId).orElseThrow(() -> new ResourceNotFoundException("Ward not found"));
         if (!w.getHospitalId().equals(hospitalId)) throw new UnauthorizedException("Access denied");
 
         List<Bed> beds = bedRepository.findByWardIdAndHospitalId(wardId, hospitalId);

@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.entity.Billing;
 import com.hms.entity.BillingItem;
 import com.hms.entity.BillingPayment;
@@ -51,7 +53,7 @@ public class BillingController {
         com.hms.entity.HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(hospitalId)
                 .orElseGet(() -> {
                     Hospital hospital = hospitalRepository.findById(hospitalId)
-                            .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                            .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
                     com.hms.entity.HospitalSetting newSettings = new com.hms.entity.HospitalSetting();
                     newSettings.setHospital(hospital);
                     return hospitalSettingRepository.save(newSettings);
@@ -228,7 +230,7 @@ public class BillingController {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Billing billing = billingRepository.findById(id)
                 .filter(b -> b.getHospitalId().equals(hospitalId))
-                .orElseThrow(() -> new RuntimeException("Bill not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Bill not found"));
 
         if ("PAID".equalsIgnoreCase(billing.getPaymentStatus()) || "CLOSED".equalsIgnoreCase(billing.getPaymentStatus())) {
             throw new IllegalArgumentException("Cannot edit items of a paid or closed bill");
@@ -319,7 +321,7 @@ public class BillingController {
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> downloadReceipt(@PathVariable Long id) {
         Billing billing = billingRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Bill not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Bill not found"));
 
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null || !hospitalId.equals(billing.getHospitalId())) {
@@ -327,7 +329,7 @@ public class BillingController {
         }
 
         Hospital hospital = hospitalRepository.findById(billing.getHospitalId())
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
         Patient patient = patientService.getPatientById(billing.getPatientId());
 

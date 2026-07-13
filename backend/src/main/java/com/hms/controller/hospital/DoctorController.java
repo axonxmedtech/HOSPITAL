@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.dto.AddDoctorRequest;
 import com.hms.entity.Doctor;
 import com.hms.repository.OpdRepository;
@@ -148,10 +150,10 @@ public class DoctorController {
             }
         }
         com.hms.entity.Appointment appointment = apptOpt
-                .orElseThrow(() -> new RuntimeException("Appointment not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Appointment not found"));
 
         com.hms.entity.MedicalRecord record = medicalRecordRepository.findByAppointmentId(appointment.getId())
-                .orElseThrow(() -> new RuntimeException("Consultation record not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Consultation record not found"));
 
         java.util.List<com.hms.entity.Prescription> prescriptions = prescriptionRepository
                 .findByMedicalRecordId(record.getId());
@@ -196,19 +198,19 @@ public class DoctorController {
                 }
             }
             com.hms.entity.Appointment appointment = apptOpt
-                    .orElseThrow(() -> new RuntimeException("Appointment not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Appointment not found"));
 
             com.hms.entity.MedicalRecord record = medicalRecordRepository.findByAppointmentId(appointment.getId())
-                    .orElseThrow(() -> new RuntimeException("Consultation not found for this appointment"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Consultation not found for this appointment"));
             java.util.List<com.hms.entity.Prescription> prescriptions = prescriptionRepository
                     .findByMedicalRecordId(record.getId());
 
             Doctor doctor = doctorRepository.findByIdOrUserId(record.getDoctorId(), userRepository)
-                    .orElseThrow(() -> new RuntimeException("Doctor not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Doctor not found"));
 
             com.hms.entity.Patient patient = patientService.getPatientById(record.getPatientId());
             com.hms.entity.Hospital hospital = hospitalRepository.findById(record.getHospitalId())
-                    .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
             java.io.ByteArrayInputStream pdf = pdfService.generatePrescriptionPdf(hospital, doctor, patient, record,
                     prescriptions);
@@ -233,20 +235,20 @@ public class DoctorController {
             Long hospitalId = securityHelper.getCurrentHospitalId();
 
             com.hms.entity.Opd opd = opdRepository.findById(opdId)
-                .orElseThrow(() -> new RuntimeException("OPD not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("OPD not found"));
 
             com.hms.entity.MedicalRecord record = medicalRecordRepository.findByOpdId(opd.getId())
-                .orElseThrow(() -> new RuntimeException("Consultation not found for this OPD"));
+                .orElseThrow(() -> new ResourceNotFoundException("Consultation not found for this OPD"));
 
             java.util.List<com.hms.entity.Prescription> prescriptions = prescriptionRepository
                 .findByMedicalRecordId(record.getId());
 
             Doctor doctor = doctorRepository.findByIdOrUserId(record.getDoctorId(), userRepository)
-                .orElseThrow(() -> new RuntimeException("Doctor not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Doctor not found"));
 
             com.hms.entity.Patient patient = patientService.getPatientById(record.getPatientId());
             com.hms.entity.Hospital hospital = hospitalRepository.findById(record.getHospitalId())
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
             java.io.ByteArrayInputStream pdf = pdfService.generatePrescriptionPdf(hospital, doctor, patient, record,
                 prescriptions);

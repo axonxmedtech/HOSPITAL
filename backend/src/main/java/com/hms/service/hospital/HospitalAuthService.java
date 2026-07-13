@@ -658,7 +658,7 @@ public class HospitalAuthService {
             throw new UnauthorizedException("Access denied: requires HOSPITAL_ADMIN role");
         }
         Hospital hospital = hospitalRepository.findById(user.getHospitalId())
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
         HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(user.getHospitalId())
                 .orElseGet(() -> {
@@ -702,7 +702,7 @@ public class HospitalAuthService {
         }
 
         Hospital hospital = hospitalRepository.findById(user.getHospitalId())
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
         HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(user.getHospitalId())
                 .orElseGet(() -> {
@@ -738,7 +738,7 @@ public class HospitalAuthService {
         }
 
         Hospital hospital = hospitalRepository.findById(user.getHospitalId())
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
         HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(user.getHospitalId())
                 .orElseGet(() -> {
@@ -776,7 +776,7 @@ public class HospitalAuthService {
         }
 
         Hospital hospital = hospitalRepository.findById(user.getHospitalId())
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
         HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(user.getHospitalId())
                 .orElseGet(() -> {
@@ -835,7 +835,7 @@ public class HospitalAuthService {
         // Enforce plan gate: only allow inClinic=true if IN_CLINIC module is in hospital modules.
         // null means "don't change" — preserve the existing value in that case.
         Hospital hospital = hospitalRepository.findById(user.getHospitalId())
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
         boolean inClinicModuleEnabled = hospital.getModules() != null && hospital.getModules().contains("IN_CLINIC");
         Boolean inClinic;
         if (inClinicRequested == null) {

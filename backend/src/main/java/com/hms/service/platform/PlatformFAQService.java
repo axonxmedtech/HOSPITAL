@@ -1,5 +1,7 @@
 package com.hms.service.platform;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.entity.Faq;
 import com.hms.repository.FaqRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,7 +43,7 @@ public class PlatformFAQService {
      */
     public Faq getFAQById(Long faqId, String hospitalType) {
         Faq faq = repository.findById(faqId)
-            .orElseThrow(() -> new RuntimeException("FAQ not found"));
+            .orElseThrow(() -> new ResourceNotFoundException("FAQ not found"));
 
         // Isolation check
         if (faq.getHospitalType() != null && !faq.getHospitalType().equals(hospitalType)) {

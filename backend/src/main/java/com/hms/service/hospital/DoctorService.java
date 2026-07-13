@@ -281,7 +281,7 @@ public class DoctorService {
 
         // Find doctor only if it belongs to this hospital and is active
         return doctorRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(publicId, hospitalId)
-                .orElseThrow(() -> new RuntimeException("Doctor not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Doctor not found"));
     }
 
     /**
@@ -470,11 +470,11 @@ public class DoctorService {
                 // numeric id
                 Long numericId = Long.parseLong(pid);
                 patient = patientRepository.findByIdAndHospitalIdAndIsActiveTrue(numericId, hospitalId)
-                        .orElseThrow(() -> new RuntimeException("Patient not found"));
+                        .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
             } else {
                 // treat as publicId
                 patient = patientRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(pid, hospitalId)
-                        .orElseThrow(() -> new RuntimeException("Patient not found"));
+                        .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
             }
         } else {
             throw new IllegalArgumentException("Patient ID is required");
@@ -484,7 +484,7 @@ public class DoctorService {
         com.hms.entity.Appointment appointment = null;
         if (request.getAppointmentId() != null) {
             appointment = appointmentRepository.findById(request.getAppointmentId())
-                    .orElseThrow(() -> new RuntimeException("Appointment not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Appointment not found"));
 
             if (!appointment.getHospitalId().equals(hospitalId)) {
                 throw new UnauthorizedException("Appointment does not belong to this hospital");

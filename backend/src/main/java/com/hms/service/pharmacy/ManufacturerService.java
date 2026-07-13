@@ -1,5 +1,7 @@
 package com.hms.service.pharmacy;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.dto.pharmacy.ManufacturerRequest;
 import com.hms.entity.pharmacy.Manufacturer;
 import com.hms.repository.pharmacy.ManufacturerRepository;
@@ -47,7 +49,7 @@ public class ManufacturerService {
 
     public Manufacturer getById(Long id) {
         return manufacturerRepository.findByIdAndHospitalId(id, securityHelper.getCurrentHospitalId())
-                .orElseThrow(() -> new RuntimeException("Manufacturer not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Manufacturer not found"));
     }
 
     @Transactional

@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.entity.Medicine;
 import com.hms.entity.Prescription;
 import com.hms.repository.PrescriptionRepository;
@@ -158,7 +160,7 @@ public class PharmacyController {
     @PreAuthorize("hasRole('PHARMACIST')")
     public ResponseEntity<?> dispenseMedicine(@PathVariable Long prescriptionId) {
         Prescription p = prescriptionRepository.findById(prescriptionId)
-                .orElseThrow(() -> new RuntimeException("Prescription not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Prescription not found"));
 
         if (!p.getStatus().equals("PENDING")) {
             return ResponseEntity.badRequest().body("Prescription already dispensed");

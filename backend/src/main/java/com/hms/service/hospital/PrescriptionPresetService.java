@@ -1,5 +1,7 @@
 package com.hms.service.hospital;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.entity.PrescriptionPreset;
 import com.hms.entity.PrescriptionPresetItem;
 import com.hms.repository.PrescriptionPresetItemRepository;
@@ -136,10 +138,10 @@ public class PrescriptionPresetService {
     private PrescriptionPreset findEditablePreset(Long id, Long hospitalId) {
         if (ownership.isAdmin()) {
             return presetRepository.findByIdAndHospitalId(id, hospitalId)
-                    .orElseThrow(() -> new RuntimeException("Preset not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Preset not found"));
         }
         return presetRepository.findByIdAndHospitalIdAndDoctorId(id, hospitalId, ownership.currentDoctorIdOrNull())
-                .orElseThrow(() -> new RuntimeException("Preset not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Preset not found"));
     }
 
     private void saveItems(Long presetId, List<PrescriptionPresetItem> items) {
