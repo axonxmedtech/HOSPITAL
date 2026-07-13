@@ -23,7 +23,6 @@ permissions:
   contents: read
 
 jobs:
-
   # ── Validate — fast fail-fast gate (commits, lint, format) ───────────────
   validate:
     uses: ./.github/workflows/_validate.yml
@@ -42,8 +41,10 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_VAR: ${{ vars.SONAR_TOKEN }}
+          SONAR_ORG: ${{ vars.SONAR_ORGANIZATION }}
+          SONAR_KEY: ${{ vars.SONAR_PROJECT_KEY }}
         run: |
-          if [ -n "$SONAR_TOKEN" ] || [ -n "$SONAR_VAR" ]; then
+          if { [ -n "$SONAR_TOKEN" ] || [ -n "$SONAR_VAR" ]; } && [ -n "$SONAR_ORG" ] && [ -n "$SONAR_KEY" ]; then
             echo "has_sonar_token=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_sonar_token=false" >> "$GITHUB_OUTPUT"
@@ -181,7 +182,17 @@ jobs:
     name: CI Summary
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [validate, build-frontend, build-backend, security, quality, supply-chain, db-migrations, sonar]
+    needs:
+      [
+        validate,
+        build-frontend,
+        build-backend,
+        security,
+        quality,
+        supply-chain,
+        db-migrations,
+        sonar,
+      ]
     if: always()
     steps:
       - name: Aggregate stage results
