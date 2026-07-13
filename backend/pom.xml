@@ -125,6 +125,13 @@
             <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- In-memory DB (MySQL compatibility mode) so the full Spring context can be
+             booted in CI without a live MySQL — see ApplicationContextLoadTest. -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
         <!-- Rate Limiting -->
         <dependency>
             <groupId>com.bucket4j</groupId>

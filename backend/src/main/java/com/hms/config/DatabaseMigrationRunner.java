@@ -3,6 +3,7 @@ package com.hms.config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -14,8 +15,12 @@ import org.springframework.stereotype.Component;
  * ddl-auto=update can add columns but never removes them or changes nullability.
  * This runner bridges that gap for the few historical mismatches that need fixing.
  * Each patch is wrapped individually so one failure does not block the others.
+ *
+ * The statements are MySQL-specific. Set hms.migrations.enabled=false to skip them
+ * (the test profile does this, since it boots against H2 with a Hibernate-built schema).
  */
 @Component
+@ConditionalOnProperty(name = "hms.migrations.enabled", havingValue = "true", matchIfMissing = true)
 public class DatabaseMigrationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(DatabaseMigrationRunner.class);
@@ -1317,12 +1322,17 @@ public class DatabaseMigrationRunner {
      */
     private void fixHospitalsPlanColumn() {
         try {
-            Integer isNullable = jdbcTemplate.queryForObject(
-                "SELECT IS_NULLABLE = 'YES' FROM information_schema.COLUMNS " +
-                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'hospitals' AND COLUMN_NAME = 'plan'",
+            // COUNT(*) always yields exactly one row. Selecting the column's IS_NULLABLE
+            // directly returns *zero* rows on a database where `plan` was never created
+            // (any fresh install), which made queryForObject throw and this migration log
+            // a spurious "skipped" warning on every clean boot.
+            Integer notNullable = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'hospitals' " +
+                "AND COLUMN_NAME = 'plan' AND IS_NULLABLE = 'NO'",
                 Integer.class
             );
-            if (isNullable != null && isNullable == 0) {
+            if (notNullable != null && notNullable > 0) {
                 jdbcTemplate.execute("ALTER TABLE hospitals MODIFY COLUMN plan VARCHAR(20) DEFAULT NULL");
                 log.info("DB migration applied: hospitals.plan is now nullable");
             }
