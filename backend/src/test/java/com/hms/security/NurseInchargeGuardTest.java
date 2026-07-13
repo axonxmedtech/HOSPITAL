@@ -16,6 +16,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -34,15 +35,29 @@ class NurseInchargeGuardTest {
     }
 
     @Test
-    void admin_hasAccessToAnyWard() {
+    void admin_allowedForWardInOwnHospital() {
         when(securityHelper.getCurrentUserRole()).thenReturn("HOSPITAL_ADMIN");
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(wardRepository.findById(3L)).thenReturn(Optional.of(ward(3L, 7L, 99L)));
         assertThatCode(() -> guard.assertWardAccess(3L)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void admin_deniedForWardInAnotherHospital() {
+        // The admin bypass is of the "your wards" incharge rule only — never of tenant
+        // isolation. A ward owned by hospital 8 must be unreachable by a hospital-7 admin.
+        // Role is irrelevant here: the tenant check throws before the admin bypass is reached.
+        lenient().when(securityHelper.getCurrentUserRole()).thenReturn("HOSPITAL_ADMIN");
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(wardRepository.findById(3L)).thenReturn(Optional.of(ward(3L, 8L, 99L)));
+        assertThatThrownBy(() -> guard.assertWardAccess(3L)).isInstanceOf(AccessDeniedException.class);
     }
 
     @Test
     void incharge_allowedForOwnWard() {
         when(securityHelper.getCurrentUserRole()).thenReturn("NURSE_INCHARGE");
         when(securityHelper.getCurrentUserId()).thenReturn(20L);
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
         NurseProfile me = new NurseProfile(); me.setId(11L); me.setHospitalId(7L); me.setIsIncharge(true);
         when(nurseProfileRepository.findByUserId(20L)).thenReturn(Optional.of(me));
         when(wardRepository.findById(3L)).thenReturn(Optional.of(ward(3L, 7L, 11L)));
@@ -53,8 +68,9 @@ class NurseInchargeGuardTest {
     void incharge_deniedForOtherWard() {
         when(securityHelper.getCurrentUserRole()).thenReturn("NURSE_INCHARGE");
         when(securityHelper.getCurrentUserId()).thenReturn(20L);
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
         NurseProfile me = new NurseProfile(); me.setId(11L); me.setHospitalId(7L); me.setIsIncharge(true);
-        when(nurseProfileRepository.findByUserId(20L)).thenReturn(Optional.of(me));
+        lenient().when(nurseProfileRepository.findByUserId(20L)).thenReturn(Optional.of(me));
         when(wardRepository.findById(3L)).thenReturn(Optional.of(ward(3L, 7L, 99L)));
         assertThatThrownBy(() -> guard.assertWardAccess(3L)).isInstanceOf(AccessDeniedException.class);
     }

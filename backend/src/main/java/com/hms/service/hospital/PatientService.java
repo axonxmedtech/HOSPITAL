@@ -876,12 +876,19 @@ public class PatientService {
         
         com.hms.entity.MedicalRecord record = medicalRecordRepository.findByOpdId(opdId)
                 .orElseThrow(() -> new ResourceNotFoundException("Medical record not found for OPD"));
-        
+
+        // hospitalId above was only used to brand the PDF header. Enforce that the record
+        // actually belongs to the caller's hospital, or another tenant's prescription is
+        // rendered onto this hospital's letterhead.
+        if (record.getHospitalId() == null || !record.getHospitalId().equals(hospitalId)) {
+            throw new ResourceNotFoundException("Medical record not found for OPD");
+        }
+
         com.hms.entity.Patient patient = patientRepository.findById(record.getPatientId())
                 .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
 
-        com.hms.entity.Doctor doctor = (record.getDoctorId() != null) 
-                ? doctorRepository.findById(record.getDoctorId()).orElse(null) 
+        com.hms.entity.Doctor doctor = (record.getDoctorId() != null)
+                ? doctorRepository.findById(record.getDoctorId()).orElse(null)
                 : null;
         com.hms.entity.Opd opd = opdRepository.findById(opdId).orElse(null);
         String customNo = (opd != null) ? opd.getCaseId() : "-";
@@ -943,7 +950,11 @@ public class PatientService {
         
         com.hms.entity.IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId)
                 .orElseThrow(() -> new ResourceNotFoundException("IPD Admission not found"));
-        
+
+        if (ipd.getHospitalId() == null || !ipd.getHospitalId().equals(hospitalId)) {
+            throw new ResourceNotFoundException("IPD Admission not found");
+        }
+
         com.hms.entity.Patient patient = patientRepository.findById(ipd.getPatientId())
                 .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
 
@@ -1031,7 +1042,11 @@ public class PatientService {
         
         com.hms.entity.IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId)
                 .orElseThrow(() -> new ResourceNotFoundException("IPD Admission not found"));
-        
+
+        if (ipd.getHospitalId() == null || !ipd.getHospitalId().equals(hospitalId)) {
+            throw new ResourceNotFoundException("IPD Admission not found");
+        }
+
         com.hms.entity.Patient patient = patientRepository.findById(ipd.getPatientId())
                 .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
 

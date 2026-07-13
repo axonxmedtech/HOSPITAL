@@ -149,9 +149,11 @@ class IpdAdmissionServiceTest {
     @Test
     void planDischarge_whenPatientNotAdmitted_throwsRuntimeException() {
         when(securityHelper.getCurrentUserRole()).thenReturn("DOCTOR");
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
 
         IpdAdmission ipd = new IpdAdmission();
         ipd.setId(1L);
+        ipd.setHospitalId(1L); // must belong to the caller's hospital to reach the status check
         ipd.setStatus("DISCHARGED");
 
         when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(ipd));
@@ -167,6 +169,7 @@ class IpdAdmissionServiceTest {
         
         IpdAdmission ipd = new IpdAdmission();
         ipd.setId(1L);
+        ipd.setHospitalId(1L); // must belong to the caller's hospital to reach validation
         ipd.setStatus("ADMITTED");
         when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(ipd));
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);

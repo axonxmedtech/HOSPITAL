@@ -391,8 +391,26 @@ public class IpdAdmissionService {
     }
 
     @Transactional(readOnly = true)
+    /**
+     * Load an admission by id and prove it belongs to the caller's hospital. Every
+     * user-facing method here takes a raw numeric ipdId from the URL; using this instead
+     * of a bare findById is what stops one hospital reading or mutating another's admission
+     * (and, in the discharge/bed paths, silently adopting the victim's tenant context via
+     * hospitalId = ipd.getHospitalId()). A cross-tenant id is reported as not-found.
+     */
+    private IpdAdmission requireOwnedAdmission(Long ipdId) {
+        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId)
+                .orElseThrow(() -> new ResourceNotFoundException("IPD admission not found"));
+        Long callerHospitalId = securityHelper.getCurrentHospitalId();
+        if (callerHospitalId == null || ipd.getHospitalId() == null
+                || !ipd.getHospitalId().equals(callerHospitalId)) {
+            throw new ResourceNotFoundException("IPD admission not found");
+        }
+        return ipd;
+    }
+
     public com.hms.dto.IpdAdmissionDetailsDTO getIpdAdmissionDetails(Long ipdId) {
-        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new ResourceNotFoundException("IPD admission not found"));
+        IpdAdmission ipd = requireOwnedAdmission(ipdId);
 
         com.hms.dto.IpdAdmissionDetailsDTO dto = new com.hms.dto.IpdAdmissionDetailsDTO();
         dto.setIpdNumber(ipd.getIpdNumber());
@@ -562,7 +580,7 @@ public class IpdAdmissionService {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can add follow-ups");
         }
 
-        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new ResourceNotFoundException("IPD admission not found"));
+        IpdAdmission ipd = requireOwnedAdmission(ipdId);
         if (ipd.getStatus() == null || !ipd.getStatus().equalsIgnoreCase("ADMITTED")) {
             throw new IllegalArgumentException("Cannot add follow-up to non-admitted IPD");
         }
@@ -681,7 +699,7 @@ public class IpdAdmissionService {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can administer items");
         }
 
-        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new ResourceNotFoundException("IPD admission not found"));
+        IpdAdmission ipd = requireOwnedAdmission(ipdId);
         if (ipd.getStatus() == null || !ipd.getStatus().equalsIgnoreCase("ADMITTED")) {
             throw new IllegalArgumentException("Cannot administer items to non-admitted IPD");
         }
@@ -771,7 +789,7 @@ public class IpdAdmissionService {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can administer items");
         }
 
-        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new ResourceNotFoundException("IPD admission not found"));
+        IpdAdmission ipd = requireOwnedAdmission(ipdId);
         if (ipd.getStatus() == null || (!ipd.getStatus().equalsIgnoreCase("ADMITTED") && !ipd.getStatus().equalsIgnoreCase("DISCHARGE_PLANNED"))) {
             throw new IllegalArgumentException("Cannot administer items to non-admitted IPD");
         }
@@ -830,7 +848,7 @@ public class IpdAdmissionService {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can add prescriptions");
         }
 
-        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new ResourceNotFoundException("IPD admission not found"));
+        IpdAdmission ipd = requireOwnedAdmission(ipdId);
         if (ipd.getStatus() == null || !ipd.getStatus().equalsIgnoreCase("ADMITTED")) {
             throw new IllegalArgumentException("Cannot add prescription to non-admitted IPD");
         }
@@ -984,7 +1002,7 @@ public class IpdAdmissionService {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can plan discharge");
         }
 
-        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new ResourceNotFoundException("IPD admission not found"));
+        IpdAdmission ipd = requireOwnedAdmission(ipdId);
         if (ipd.getStatus() == null || !ipd.getStatus().equalsIgnoreCase("ADMITTED")) {
             throw new IllegalArgumentException("Can only plan discharge for ADMITTED patients");
         }
@@ -1025,7 +1043,7 @@ public class IpdAdmissionService {
 
     @Transactional
     public IpdAdmission confirmDischarge(Long ipdId) {
-        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new ResourceNotFoundException("IPD admission not found"));
+        IpdAdmission ipd = requireOwnedAdmission(ipdId);
 
         String role = securityHelper.getCurrentUserRole();
         Long hospitalId = ipd.getHospitalId();
@@ -1180,7 +1198,7 @@ public class IpdAdmissionService {
 
     @org.springframework.transaction.annotation.Transactional
     public IpdAdmission changeBed(Long ipdId, Long newBedId) {
-        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElseThrow(() -> new ResourceNotFoundException("IPD not found"));
+        IpdAdmission ipd = requireOwnedAdmission(ipdId);
 
         String role = securityHelper.getCurrentUserRole();
         Long hospitalId = ipd.getHospitalId();

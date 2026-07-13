@@ -1,5 +1,7 @@
 package com.hms.service.hospital;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.dto.CreateOpdRequest;
 import com.hms.entity.*;
 import com.hms.repository.*;
@@ -238,11 +240,16 @@ public class OpdService {
     }
 
     public java.util.List<QueueEntry> getQueueForDoctor(Long doctorId) {
+        // findQueueForDoctorToday is keyed only on doctorId. Doctor ids are sequential and
+        // global, so without this ownership check one hospital could read another hospital's
+        // live OPD queue (its waiting patients) by enumerating doctor ids.
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null
+                || doctorRepository.findByIdAndHospitalIdAndIsActiveTrue(doctorId, hospitalId).isEmpty()) {
+            throw new ResourceNotFoundException("Doctor not found");
+        }
         try {
-            Long hospitalId = securityHelper.getCurrentHospitalId();
-            if (hospitalId != null) {
-                autoQueueTodaysFollowupsForDoctor(hospitalId, doctorId);
-            }
+            autoQueueTodaysFollowupsForDoctor(hospitalId, doctorId);
         } catch (Exception e) {
             logger.warn("Failed to auto-queue today's follow-ups for doctor {}", doctorId, e);
         }
