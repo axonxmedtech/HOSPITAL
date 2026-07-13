@@ -1,3 +1,4 @@
+import { printHtml } from '../../../utils/printHtml';
 import React, { useState, useEffect, useCallback } from 'react';
 import nurseService from '../../../services/nurseService';
 import authService from '../../../services/authService';
@@ -184,16 +185,13 @@ const SugarChartPanel = ({ admissionId, readOnly = false }) => {
     };
 
     const handlePrint = () => {
-        const w = window.open('', '_blank');
-        if (!w) { toastError('Popup blocked — allow popups to print'); return; }
-        w.document.write(buildSugarChartHtml(entries, f, {
+        printHtml(buildSugarChartHtml(entries, f, {
             name: f.hospitalName || user?.hospitalName,
             address: f.hospitalAddress || user?.hospitalAddress,
             logo: f.hospitalLogoUrl || user?.logoUrl,
             customId: f.hospitalCustomId,
             nurse: user?.name,
         }));
-        w.document.close();
     };
 
     const fmt = (dt) => dt ? new Date(dt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';

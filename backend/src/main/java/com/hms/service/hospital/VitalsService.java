@@ -41,6 +41,7 @@ public class VitalsService {
     @Autowired private com.hms.security.PerformingNurseResolver performingNurseResolver;
     @Autowired private AuditLogService auditLogService;
     @Autowired private FormAccessService formAccessService;
+    @Autowired private com.hms.service.RealtimeNotifier notifier;
 
     @Transactional
     public VitalsRecord create(VitalsRequest req) {
@@ -66,6 +67,9 @@ public class VitalsService {
 
         audit("VITALS_RECORDED", "Recorded vitals for IPD admission " + admission.getIpdNumber(),
                 hospitalId, admission.getId());
+        // The doctor may have this same IPD case open while the nurse records these — push it so
+        // the vitals appear on their screen instead of waiting for a manual refresh.
+        notifier.refresh(hospitalId);
         return saved;
     }
 
@@ -100,6 +104,7 @@ public class VitalsService {
         if (req.getRecordedAt() != null) v.setRecordedAt(req.getRecordedAt());
         VitalsRecord saved = vitalsRepository.save(v);
         audit("VITALS_UPDATED", "Updated vitals record " + v.getPublicId(), hospitalId, v.getIpdAdmissionId());
+        notifier.refresh(hospitalId);
         return saved;
     }
 
@@ -127,26 +132,26 @@ public class VitalsService {
         if (req.getRecordedAt() != null && req.getRecordedAt().isAfter(LocalDateTime.now().plusMinutes(1))) {
             throw new IllegalArgumentException("Recorded time cannot be in the future");
         }
-        // Temperature is recorded in Fahrenheit (86–113 °F ≈ 30–45 °C plausibility range).
-        range("Temperature (°F)", req.getTemperature(), new BigDecimal("86"), new BigDecimal("113"));
-        range("Pulse", req.getPulse(), 20, 250);
-        range("Systolic BP", req.getBpSystolic(), 40, 300);
-        range("Diastolic BP", req.getBpDiastolic(), 20, 200);
-        range("Respiratory rate", req.getRespiratoryRate(), 5, 60);
-        range("SpO2", req.getSpo2(), 50, 100);
-        range("Pain score", req.getPainScore(), 0, 10);
-        range("Weight", req.getWeight(), new BigDecimal("0.5"), new BigDecimal("500"));
+        // No upper bounds on vitals — only reject negatives. A value can be anything from 0 up.
+        nonNegative("Temperature (°F)", req.getTemperature());
+        nonNegative("Pulse", req.getPulse());
+        nonNegative("Systolic BP", req.getBpSystolic());
+        nonNegative("Diastolic BP", req.getBpDiastolic());
+        nonNegative("Respiratory rate", req.getRespiratoryRate());
+        nonNegative("SpO2", req.getSpo2());
+        nonNegative("Pain score", req.getPainScore());
+        nonNegative("Weight", req.getWeight());
     }
 
-    private void range(String name, Integer value, int min, int max) {
-        if (value != null && (value < min || value > max)) {
-            throw new IllegalArgumentException(name + " must be between " + min + " and " + max);
+    private void nonNegative(String name, Integer value) {
+        if (value != null && value < 0) {
+            throw new IllegalArgumentException(name + " cannot be negative");
         }
     }
 
-    private void range(String name, BigDecimal value, BigDecimal min, BigDecimal max) {
-        if (value != null && (value.compareTo(min) < 0 || value.compareTo(max) > 0)) {
-            throw new IllegalArgumentException(name + " must be between " + min + " and " + max);
+    private void nonNegative(String name, BigDecimal value) {
+        if (value != null && value.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException(name + " cannot be negative");
         }
     }
 

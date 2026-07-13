@@ -29,8 +29,10 @@ public class ReceptionistController {
             return ResponseEntity.badRequest().body("Name, Email, and Password are required");
         }
 
-        User created = receptionistService.createReceptionist(name, email, password);
-        return ResponseEntity.ok(created);
+        // phone was previously dropped here — the admin form sends it, the API ignored it,
+        // and the receptionist row was saved with an empty phone while reporting success.
+        User created = receptionistService.createReceptionist(name, email, password, payload.get("phone"));
+        return ResponseEntity.ok(receptionistService.toView(created));
     }
 
     @GetMapping
@@ -51,8 +53,7 @@ public class ReceptionistController {
 
     @GetMapping("/{id}")
     public ResponseEntity<?> getReceptionistById(@PathVariable String id) {
-        User receptionist = receptionistService.getReceptionistByPublicId(id);
-        return ResponseEntity.ok(receptionist);
+        return ResponseEntity.ok(receptionistService.getReceptionistViewByPublicId(id));
     }
 
     @PutMapping("/{id}")
@@ -61,8 +62,8 @@ public class ReceptionistController {
         if (name == null || name.trim().isEmpty()) {
             return ResponseEntity.badRequest().body("Name is required");
         }
-        User updated = receptionistService.updateReceptionist(id, name);
-        return ResponseEntity.ok(updated);
+        User updated = receptionistService.updateReceptionist(id, name, payload.get("phone"));
+        return ResponseEntity.ok(receptionistService.toView(updated));
     }
 
     @PostMapping("/{id}/reset-password")

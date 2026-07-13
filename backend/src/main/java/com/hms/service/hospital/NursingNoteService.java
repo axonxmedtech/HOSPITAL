@@ -39,6 +39,7 @@ public class NursingNoteService {
     @Autowired private com.hms.security.NurseWriteAccess nurseWriteAccess;
     @Autowired private com.hms.security.PerformingNurseResolver performingNurseResolver;
     @Autowired private AuditLogService auditLogService;
+    @Autowired private com.hms.service.RealtimeNotifier notifier;
     @Autowired private FormAccessService formAccessService;
 
     @Transactional
@@ -66,7 +67,7 @@ public class NursingNoteService {
         n.setIsActive(true);
         NursingNote saved = noteRepository.save(n);
 
-        audit("NURSING_NOTE_ADDED", "Added nursing note for IPD " + admission.getIpdNumber(),
+        auditAndNotify("NURSING_NOTE_ADDED", "Added nursing note for IPD " + admission.getIpdNumber(),
                 hospitalId, admission.getId());
         return saved;
     }
@@ -95,7 +96,7 @@ public class NursingNoteService {
         if (req.getOrders() != null) n.setOrders(req.getOrders());
         if (req.getCategory() != null) n.setCategory(req.getCategory());
         NursingNote saved = noteRepository.save(n);
-        audit("NURSING_NOTE_UPDATED", "Edited nursing note " + n.getPublicId(), n.getHospitalId(), n.getIpdAdmissionId());
+        auditAndNotify("NURSING_NOTE_UPDATED", "Edited nursing note " + n.getPublicId(), n.getHospitalId(), n.getIpdAdmissionId());
         return saved;
     }
 
@@ -105,7 +106,7 @@ public class NursingNoteService {
         NursingNote n = requireEditableOwnNote(publicId);
         n.setIsActive(false);
         noteRepository.save(n);
-        audit("NURSING_NOTE_DELETED", "Deleted nursing note " + n.getPublicId(), n.getHospitalId(), n.getIpdAdmissionId());
+        auditAndNotify("NURSING_NOTE_DELETED", "Deleted nursing note " + n.getPublicId(), n.getHospitalId(), n.getIpdAdmissionId());
     }
 
     // --- helpers ---
@@ -154,12 +155,21 @@ public class NursingNoteService {
         return hospitalId;
     }
 
-    private void audit(String action, String details, Long hospitalId, Long admissionId) {
+    /**
+     * Records the write in the audit trail AND pushes it to the tenant's open tabs.
+     *
+     * These two always go together: every write path here ends by calling this, and each one is a
+     * change a doctor may be staring at right now on the same IPD case. Keeping the broadcast here
+     * rather than at each call site means a future write path cannot silently ship without one --
+     * which is exactly how these records ended up non-realtime in the first place.
+     */
+    private void auditAndNotify(String action, String details, Long hospitalId, Long admissionId) {
         try {
             auditLogService.logAction(action, details, securityHelper.getCurrentUserEmail(), hospitalId,
                     "IPD", admissionId != null ? admissionId.toString() : null, null);
         } catch (Exception e) {
             logger.warn("Failed to write audit log for {}", action, e);
         }
+        notifier.refresh(hospitalId);
     }
 }

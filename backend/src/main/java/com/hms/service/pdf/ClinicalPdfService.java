@@ -263,6 +263,16 @@ public class ClinicalPdfService {
             Patient patient,
             Opd opd,
             MedicalRecord medicalRecord) {
+        return generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord, java.util.List.of());
+    }
+
+    public ByteArrayInputStream generateCasePaperPdf(
+            Hospital hospital,
+            Doctor doctor,
+            Patient patient,
+            Opd opd,
+            MedicalRecord medicalRecord,
+            java.util.List<com.hms.entity.LabOrder> labOrders) {
 
         Document document = new Document(PageSize.A4, 36, 36, 36, 180);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -385,7 +395,29 @@ public class ClinicalPdfService {
                 document.add(clinicalTable);
             }
 
-            // 4. Fixed Bottom Signature Footer
+            // 4. Lab Tests Advised (printed when the doctor ordered any at this consultation)
+            if (labOrders != null && !labOrders.isEmpty()) {
+                Paragraph labHead = new Paragraph("LAB TESTS ADVISED:", PdfLayoutHelper.SMALL_BOLD_FONT);
+                labHead.setSpacingBefore(10f);
+                document.add(labHead);
+                String tests = labOrders.stream()
+                        .map(com.hms.entity.LabOrder::getTestName)
+                        .filter(java.util.Objects::nonNull)
+                        .collect(java.util.stream.Collectors.joining(", "));
+                document.add(new Paragraph(tests, PdfLayoutHelper.NORMAL_FONT));
+            }
+
+            // 5. Follow-up date (printed when the doctor scheduled one)
+            if (medicalRecord != null && medicalRecord.getFollowUpDate() != null) {
+                Paragraph flwHead = new Paragraph("FOLLOW UP DATE:", PdfLayoutHelper.SMALL_BOLD_FONT);
+                flwHead.setSpacingBefore(10f);
+                document.add(flwHead);
+                document.add(new Paragraph(
+                        medicalRecord.getFollowUpDate().format(DateTimeFormatter.ofPattern("MMM dd, yyyy")),
+                        PdfLayoutHelper.NORMAL_FONT));
+            }
+
+            // 6. Fixed Bottom Signature Footer
             helper.addPremiumFooter(writer, hospital, patient, (opd != null) ? opd.getCaseId() : "-", "Doctor Authorized Signature");
 
             document.close();

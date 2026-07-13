@@ -234,10 +234,15 @@ public class DoctorService {
             logger.warn("Failed to create audit log for doctor update", e);
         }
 
-        // Broadcast real-time refresh
+        // Broadcast real-time refresh. REFRESH_DATA reloads the lists the doctor appears in;
+        // SETTINGS_UPDATED makes each client re-fetch its own profile, so the edited doctor's
+        // own dashboard picks up the new name/specialization without a page reload.
         try {
             Long hid = securityHelper.getCurrentHospitalId();
-            if (hid != null) webSocketHandler.broadcast(hid, "{\"type\":\"REFRESH_DATA\"}");
+            if (hid != null) {
+                webSocketHandler.broadcast(hid, "{\"type\":\"REFRESH_DATA\"}");
+                webSocketHandler.broadcast(hid, "{\"type\":\"SETTINGS_UPDATED\"}");
+            }
         } catch (Exception e) {
             logger.warn("Failed to broadcast WebSocket refresh after doctor update", e);
         }
@@ -523,7 +528,7 @@ public class DoctorService {
             opd.setPatient(patient);
             opd.setDoctor(doctorRepository.findById(resolvedDoctorId).orElse(null));
             opd.setProblem(request.getSymptoms() != null && !request.getSymptoms().isEmpty() ? request.getSymptoms() : appointment.getNotes());
-            opd.setStatus(com.hms.entity.Opd.Status.CONSULTED);
+            opd.setStatus(com.hms.entity.Opd.Status.COMPLETED);
             if (request.getIpdAdmitRecommended() != null) {
                 opd.setIpdAdmitRecommended(request.getIpdAdmitRecommended());
             }
@@ -535,7 +540,7 @@ public class DoctorService {
             opd.setPatient(patient);
             opd.setDoctor(doctorRepository.findById(resolvedDoctorId).orElse(null));
             opd.setProblem(request.getSymptoms() != null && !request.getSymptoms().isEmpty() ? request.getSymptoms() : "Direct Patient Consultation");
-            opd.setStatus(com.hms.entity.Opd.Status.CONSULTED);
+            opd.setStatus(com.hms.entity.Opd.Status.COMPLETED);
             if (request.getIpdAdmitRecommended() != null) {
                 opd.setIpdAdmitRecommended(request.getIpdAdmitRecommended());
             }
@@ -607,8 +612,13 @@ public class DoctorService {
                     com.hms.entity.LabOrder order = new com.hms.entity.LabOrder();
                     order.setHospitalId(hospitalId);
                     order.setMedicalRecordId(savedRecord.getId());
+                    // patient_id and priority are NOT NULL in lab_orders; omitting patient_id
+                    // was failing the insert and poisoning the transaction (500 on complete).
+                    order.setPatientId(patient.getId());
+                    order.setOpdId(opd != null ? opd.getId() : null);
                     order.setTestName(testName);
                     order.setStatus("ORDERED");
+                    order.setPriority("ROUTINE");
                     labOrderRepository.save(order);
                 }
             }
@@ -623,14 +633,15 @@ public class DoctorService {
             appointmentRepository.save(appointment);
         }
 
-        // If consultation was for an OPD case, update OPD status to CONSULTED and remove queue entry
+        // The consultation completes the OPD encounter. This is a CLINICAL transition owned by the
+        // doctor — payment must never drive it (see BillingService.updateStatus).
         Long opdIdToUse = request.getOpdId() != null ? request.getOpdId() : (opd != null ? opd.getId() : null);
         if (opdIdToUse != null) {
             try {
                 java.util.Optional<com.hms.entity.Opd> opdOpt = opdRepository.findById(opdIdToUse);
                 if (opdOpt.isPresent()) {
                     com.hms.entity.Opd o = opdOpt.get();
-                    o.setStatus(com.hms.entity.Opd.Status.CONSULTED);
+                    o.setStatus(com.hms.entity.Opd.Status.COMPLETED);
                     if (o.getDoctor() == null && resolvedDoctorId != null) {
                         doctorRepository.findById(resolvedDoctorId).ifPresent(o::setDoctor);
                     }
@@ -640,7 +651,7 @@ public class DoctorService {
                     try {
                         auditLogService.logAction(
                                 "OPD_STATUS_CHANGED",
-                                "OPD " + (o.getCaseId() != null ? o.getCaseId() : o.getId()) + " set to CONSULTED",
+                                "OPD " + (o.getCaseId() != null ? o.getCaseId() : o.getId()) + " set to COMPLETED",
                                 securityHelper.getCurrentUserEmail(),
                                 hospitalId,
                                 "OPD",
@@ -689,7 +700,14 @@ public class DoctorService {
                 billingRepository.save(bill);
             }
 
-            if (bill != null && request.getCharges() != null && "PENDING".equalsIgnoreCase(bill.getPaymentStatus())) {
+            // The consultation is the source of truth for what this visit is charged, so rebuild
+            // the fee items from it. This used to be gated on the bill still being PENDING, which
+            // silently skipped a bill pre-paid at OPD entry ("bill before OPD") — the doctor's
+            // added procedure fees were then never billed at all. Rebuilding is safe: the charges
+            // list already carries the consultation + case-paper fees, so they are re-created once
+            // (not doubled), and recalculateTotal() below re-derives the status from the ledger —
+            // a pre-paid bill that gains extras correctly becomes PARTIAL with a balance due.
+            if (bill != null && request.getCharges() != null) {
                 java.util.List<com.hms.entity.BillingItem> existingItems = billingItemRepository.findByBillingId(bill.getId());
                 billingItemRepository.deleteAll(existingItems);
 

@@ -27,11 +27,23 @@ public class PrescriptionPresetService {
     private PresetOwnershipSupport ownership;
 
     public List<PrescriptionPreset> listPresets() {
+        return listPresets(PrescriptionPreset.PRESCRIPTION);
+    }
+
+    /** @param presetType PRESCRIPTION or IN_CLINIC — the two lists share this table. */
+    public List<PrescriptionPreset> listPresets(String presetType) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
+        String type = normalizeType(presetType);
         if (ownership.isAdmin()) {
-            return presetRepository.findByHospitalIdAndIsActiveTrueOrderByDisplayOrderAsc(hospitalId);
+            return presetRepository.findByHospitalIdAndPresetTypeAndIsActiveTrueOrderByDisplayOrderAsc(hospitalId, type);
         }
-        return presetRepository.findVisibleToDoctor(hospitalId, ownership.currentDoctorIdOrNull());
+        return presetRepository.findVisibleToDoctorByType(hospitalId, ownership.currentDoctorIdOrNull(), type);
+    }
+
+    private String normalizeType(String presetType) {
+        return PrescriptionPreset.IN_CLINIC.equalsIgnoreCase(presetType)
+                ? PrescriptionPreset.IN_CLINIC
+                : PrescriptionPreset.PRESCRIPTION;
     }
 
     public List<PrescriptionPresetItem> getItems(Long presetId) {
@@ -40,7 +52,14 @@ public class PrescriptionPresetService {
 
     @Transactional
     public PrescriptionPreset createPreset(String name, List<PrescriptionPresetItem> items, Long requestedDoctorId) {
+        return createPreset(name, items, requestedDoctorId, PrescriptionPreset.PRESCRIPTION);
+    }
+
+    @Transactional
+    public PrescriptionPreset createPreset(String name, List<PrescriptionPresetItem> items, Long requestedDoctorId,
+                                           String presetType) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
+        String type = normalizeType(presetType);
         if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("Preset name is required");
         }
@@ -50,12 +69,14 @@ public class PrescriptionPresetService {
 
         Long ownerDoctorId = ownership.resolveOwnerDoctorId(requestedDoctorId, hospitalId);
 
-        int nextOrder = presetRepository.findByHospitalIdAndIsActiveTrueOrderByDisplayOrderAsc(hospitalId).size();
+        int nextOrder = presetRepository
+                .findByHospitalIdAndPresetTypeAndIsActiveTrueOrderByDisplayOrderAsc(hospitalId, type).size();
 
         PrescriptionPreset preset = new PrescriptionPreset();
         preset.setHospitalId(hospitalId);
         preset.setDoctorId(ownerDoctorId);
         preset.setName(name.trim());
+        preset.setPresetType(type);
         preset.setDisplayOrder(nextOrder);
         preset.setIsActive(true);
         PrescriptionPreset saved = presetRepository.save(preset);
@@ -108,7 +129,9 @@ public class PrescriptionPresetService {
 
     /**
      * Admins can edit any preset in the hospital; doctors only their own private
-     * ones (shared presets are admin-managed and not editable by a doctor).
+     * ones (shared presets are admin-managed and not editable by a doctor). This
+     * holds for both preset types — in-clinic presets are managed by the admin and
+     * by the doctor who dispenses them, from inside the consultation.
      */
     private PrescriptionPreset findEditablePreset(Long id, Long hospitalId) {
         if (ownership.isAdmin()) {
@@ -129,6 +152,9 @@ public class PrescriptionPresetService {
             toSave.setFrequency(item.getFrequency());
             toSave.setDuration(item.getDuration());
             toSave.setInstructions(item.getInstructions());
+            // IN_CLINIC items carry the stock link + how many units to administer.
+            toSave.setMedicineId(item.getMedicineId());
+            toSave.setQuantity(item.getQuantity());
             toSave.setSortOrder(order++);
             itemRepository.save(toSave);
         }

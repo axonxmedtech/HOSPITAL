@@ -24,7 +24,9 @@ public class PerformingNurseResolver {
 
     public Long resolve(Long requestedNurseProfileId) {
         String role = securityHelper.getCurrentUserRole();
-        if ("DOCTOR".equals(role)) return null; // a doctor records as themselves, no performing nurse
+        // A doctor — and, in a non-nursing hospital, reception — records as themselves, with no
+        // "performing nurse" (there are no nurses to attribute the care to).
+        if ("DOCTOR".equals(role) || "RECEPTIONIST".equals(role)) return null;
         Long hospitalId = securityHelper.getCurrentHospitalId();
         boolean separateLogin = hospitalSettingRepository.findByHospital_Id(hospitalId)
                 .map(s -> Boolean.TRUE.equals(s.getSeparateNurseLogin())).orElse(false);

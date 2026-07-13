@@ -35,6 +35,8 @@ public class PharmacySaleService {
     @Autowired
     private com.hms.repository.PrescriptionRepository prescriptionRepository;
 
+    @Autowired private com.hms.service.RealtimeNotifier notifier;
+
     @Transactional
     public PharmacySale createSale(PharmacySaleRequest request) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
@@ -81,6 +83,9 @@ public class PharmacySaleService {
             markPrescriptionsDispensed(request.getPrescriptionId());
         }
 
+        // A sale deducts stock. A second pharmacist at the same counter must see the new quantity
+        // immediately, or they will sell against a batch that is already empty.
+        notifier.refresh(hospitalId);
         return savedSale;
     }
 

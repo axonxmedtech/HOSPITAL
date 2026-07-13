@@ -10,16 +10,22 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.time.LocalDateTime;
 
 /**
- * SurgeryForm - a saved OT/NABH form for a surgery patient (OT module).
- * Generic JSON store: each form type (e.g. BLOOD_CONSENT, WHO_CHECKLIST) keeps
- * its field values as JSON in {@code dataJson}, keyed by IPD admission + form
- * type (one saved instance per form per patient). The nurse fills it, saves it,
- * then prints it. Field layouts live on the frontend.
+ * SurgeryForm - a saved OT/NABH form (generic JSON store; layouts live on the frontend).
+ *
+ * Scoped to the SURGERY, not the admission. It used to be unique on
+ * (ipd_admission_id, form_type), so a second procedure in the same admission
+ * silently overwrote the first procedure's signed consent and WHO checklist.
+ *
+ * Once {@code signedAt} is set the row is immutable: an edit supersedes it
+ * ({@code isCurrent = null}) and inserts a new row at {@code version + 1}. The
+ * unique key covers {@code isCurrent} so exactly one current row exists per
+ * (surgery, formType) while any number of superseded versions may coexist --
+ * MySQL treats NULLs in a unique key as distinct.
  */
 @Entity
 @Table(name = "surgery_forms",
-        uniqueConstraints = @UniqueConstraint(name = "UK_surgery_form_admission_type",
-                columnNames = {"ipd_admission_id", "form_type"}))
+        uniqueConstraints = @UniqueConstraint(name = "UK_surgery_form_surgery_type",
+                columnNames = {"surgery_id", "form_type", "is_current"}))
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -35,7 +41,8 @@ public class SurgeryForm {
     @Column(name = "hospital_id", nullable = false)
     private Long hospitalId;
 
-    @Column(name = "ipd_admission_id", nullable = false)
+    /** Null for a day-care procedure with no IPD admission. */
+    @Column(name = "ipd_admission_id")
     private Long ipdAdmissionId;
 
     @Column(name = "surgery_id")
@@ -52,6 +59,28 @@ public class SurgeryForm {
 
     @Column(name = "performed_by_nurse_id")
     private Long performedByNurseId;
+
+    /** 1-based. A superseded row keeps its own version number. */
+    @Column(name = "version", nullable = false)
+    private Integer version = 1;
+
+    /**
+     * TRUE for the live row; NULL once superseded. Never FALSE -- the unique key
+     * relies on NULL being distinct so superseded rows do not collide.
+     */
+    @Column(name = "is_current")
+    private Boolean isCurrent = Boolean.TRUE;
+
+    /** Set once the form is signed. A signed row is never updated in place. */
+    @Column(name = "signed_at")
+    private LocalDateTime signedAt;
+
+    @Column(name = "signed_by_user_id")
+    private Long signedByUserId;
+
+    /** Who typed it in -- distinct from performedByNurseId, who did the care. */
+    @Column(name = "recorded_by_user_id")
+    private Long recordedByUserId;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

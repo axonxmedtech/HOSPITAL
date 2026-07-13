@@ -25,20 +25,47 @@ public class SurgeryFormController {
     private SurgeryFormService service;
 
     @PostMapping
-    @PreAuthorize("hasRole('NURSE')")
+    @PreAuthorize("hasAuthority('OT_FORM_EDIT')")
     public ResponseEntity<?> save(@RequestBody SaveSurgeryFormRequest req) {
         return ResponseEntity.ok(service.save(req));
     }
 
     @GetMapping("/admission/{admissionId}/{formType}")
-    @PreAuthorize("hasAnyRole('NURSE', 'DOCTOR', 'HOSPITAL_ADMIN')")
+    @PreAuthorize("hasAuthority('OT_FORM_VIEW')")
     public ResponseEntity<?> get(@PathVariable Long admissionId, @PathVariable String formType) {
         return ResponseEntity.ok(service.get(admissionId, formType));
     }
 
     @GetMapping("/admission/{admissionId}")
-    @PreAuthorize("hasAnyRole('NURSE', 'DOCTOR', 'HOSPITAL_ADMIN')")
+    @PreAuthorize("hasAuthority('OT_FORM_VIEW')")
     public ResponseEntity<?> listSaved(@PathVariable Long admissionId) {
         return ResponseEntity.ok(service.listSavedTypes(admissionId));
+    }
+
+    // --- procedure-scoped: the only unambiguous addressing when an admission
+    // --- carries more than one surgery. Prefer these over /admission/**.
+
+    @GetMapping("/surgery/{surgeryId}/{formType}")
+    @PreAuthorize("hasAuthority('OT_FORM_VIEW')")
+    public ResponseEntity<?> getBySurgery(@PathVariable Long surgeryId, @PathVariable String formType) {
+        return ResponseEntity.ok(service.getBySurgery(surgeryId, formType));
+    }
+
+    @GetMapping("/surgery/{surgeryId}")
+    @PreAuthorize("hasAuthority('OT_FORM_VIEW')")
+    public ResponseEntity<?> listSavedBySurgery(@PathVariable Long surgeryId) {
+        return ResponseEntity.ok(service.listSavedTypesBySurgery(surgeryId));
+    }
+
+    @GetMapping("/surgery/{surgeryId}/{formType}/versions")
+    @PreAuthorize("hasAuthority('OT_FORM_VIEW')")
+    public ResponseEntity<?> versions(@PathVariable Long surgeryId, @PathVariable String formType) {
+        return ResponseEntity.ok(service.versions(surgeryId, formType));
+    }
+
+    @PostMapping("/surgery/{surgeryId}/{formType}/sign")
+    @PreAuthorize("hasAuthority('OT_FORM_EDIT')")
+    public ResponseEntity<?> sign(@PathVariable Long surgeryId, @PathVariable String formType) {
+        return ResponseEntity.ok(service.sign(surgeryId, formType));
     }
 }

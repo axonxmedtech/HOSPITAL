@@ -29,6 +29,9 @@ public class OpdController {
     @Autowired
     private com.hms.service.PdfService pdfService;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.hms.repository.HospitalSettingRepository hospitalSettingRepository;
+
 
     private static final Logger logger = LoggerFactory.getLogger(OpdController.class);
 
@@ -37,15 +40,30 @@ public class OpdController {
     private final DoctorRepository doctorRepository;
     private final MedicalRecordRepository medicalRecordRepository;
     private final HospitalRepository hospitalRepository;
+    private final com.hms.repository.LabOrderRepository labOrderRepository;
+    private final com.hms.repository.BillingRepository billingRepository;
+    private final com.hms.repository.PrescriptionRepository prescriptionRepository;
+    private final com.hms.repository.UserRepository userRepository;
+    private final com.hms.service.hospital.PatientService patientService;
 
     public OpdController(OpdService opdService,
                          SecurityContextHelper securityHelper, DoctorRepository doctorRepository,
-                         MedicalRecordRepository medicalRecordRepository, HospitalRepository hospitalRepository) {
+                         MedicalRecordRepository medicalRecordRepository, HospitalRepository hospitalRepository,
+                         com.hms.repository.LabOrderRepository labOrderRepository,
+                         com.hms.repository.BillingRepository billingRepository,
+                         com.hms.repository.PrescriptionRepository prescriptionRepository,
+                         com.hms.repository.UserRepository userRepository,
+                         com.hms.service.hospital.PatientService patientService) {
         this.opdService = opdService;
         this.securityHelper = securityHelper;
         this.doctorRepository = doctorRepository;
         this.medicalRecordRepository = medicalRecordRepository;
         this.hospitalRepository = hospitalRepository;
+        this.billingRepository = billingRepository;
+        this.prescriptionRepository = prescriptionRepository;
+        this.userRepository = userRepository;
+        this.patientService = patientService;
+        this.labOrderRepository = labOrderRepository;
     }
 
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
@@ -78,8 +96,12 @@ public class OpdController {
             hospital = hospitalRepository.findById(patient.getHospitalId()).orElse(null);
         }
         MedicalRecord medicalRecord = medicalRecordRepository.findByOpdId(opdId).orElse(null);
+        // Lab tests the doctor advised at this consultation, so they print on the case paper.
+        java.util.List<com.hms.entity.LabOrder> labOrders = medicalRecord != null
+                ? labOrderRepository.findByMedicalRecordId(medicalRecord.getId())
+                : java.util.List.of();
 
-        try (java.io.ByteArrayInputStream pdfStream = pdfService.generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord)) {
+        try (java.io.ByteArrayInputStream pdfStream = pdfService.generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord, labOrders)) {
             byte[] pdfBytes = pdfStream.readAllBytes();
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_PDF);
@@ -87,6 +109,98 @@ public class OpdController {
             return ResponseEntity.ok().headers(headers).body(pdfBytes);
         } catch (Exception e) {
             e.printStackTrace();
+            return ResponseEntity.status(500).build();
+        }
+    }
+
+    /**
+     * All consultation documents as ONE multi-page PDF: case paper, then the bill, then the
+     * prescription (only when medicines were prescribed). Printed as a single job so the
+     * browser shows one print dialog and every page comes out — firing a dialog per document
+     * was unreliable and dropped pages.
+     */
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    @GetMapping("/{id}/documents/pdf")
+    public ResponseEntity<byte[]> getOpdDocumentsPdf(@PathVariable String id) {
+        Long opdId;
+        try {
+            opdId = Long.parseLong(id.startsWith("OPD-") ? id.substring(4) : id);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+        Opd opd = opdService.getOpdById(opdId);
+        if (opd == null) return ResponseEntity.notFound().build();
+
+        com.hms.entity.Patient patient = opd.getPatient();
+        Doctor doctor = opd.getDoctor();
+        Hospital hospital = (patient != null && patient.getHospitalId() != null)
+                ? hospitalRepository.findById(patient.getHospitalId()).orElse(null) : null;
+        MedicalRecord medicalRecord = medicalRecordRepository.findByOpdId(opdId).orElse(null);
+
+        // Print Settings — which pages this hospital includes in the consultation print.
+        // Missing row / null ⇒ include (today's behaviour).
+        com.hms.entity.HospitalSetting printSettings = (hospital != null)
+                ? hospitalSettingRepository.findByHospital_Id(hospital.getId()).orElse(null) : null;
+        boolean incCasePaper    = printSettings == null || !Boolean.FALSE.equals(printSettings.getPrintCasePaper());
+        boolean incBill         = printSettings == null || !Boolean.FALSE.equals(printSettings.getPrintBill());
+        boolean incPrescription = printSettings == null || !Boolean.FALSE.equals(printSettings.getPrintPrescription());
+        boolean incInClinic     = printSettings == null || !Boolean.FALSE.equals(printSettings.getPrintInClinic());
+
+        java.util.List<byte[]> parts = new java.util.ArrayList<>();
+        try {
+            // 1. Case paper — with lab tests + follow-up.
+            if (incCasePaper) {
+                java.util.List<com.hms.entity.LabOrder> labOrders = medicalRecord != null
+                        ? labOrderRepository.findByMedicalRecordId(medicalRecord.getId()) : java.util.List.of();
+                parts.add(pdfService.generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord, labOrders)
+                        .readAllBytes());
+            }
+
+            // 2. Bill (when one exists for this OPD).
+            if (incBill) {
+                com.hms.entity.Billing bill = billingRepository.findByOpdId(opdId).orElse(null);
+                if (bill != null) {
+                    parts.add(pdfService.generateBillingReceiptPdf(hospital, patient, bill).readAllBytes());
+                }
+            }
+
+            // 3. Prescription (only when medicines were prescribed at this consultation).
+            if (incPrescription && medicalRecord != null) {
+                java.util.List<com.hms.entity.Prescription> prescriptions =
+                        prescriptionRepository.findByMedicalRecordId(medicalRecord.getId());
+                if (prescriptions != null && !prescriptions.isEmpty()) {
+                    Doctor rxDoctor = doctor;
+                    if (rxDoctor == null && medicalRecord.getDoctorId() != null) {
+                        rxDoctor = doctorRepository.findByIdOrUserId(medicalRecord.getDoctorId(), userRepository)
+                                .orElse(null);
+                    }
+                    parts.add(pdfService.generatePrescriptionPdf(hospital, rxDoctor, patient, medicalRecord,
+                            prescriptions).readAllBytes());
+                }
+            }
+
+            // 4. In-clinic medicines slip (only when items were administered at this consultation).
+            if (incInClinic && medicalRecord != null) {
+                String adminJson = medicalRecord.getAdministeredItemsJson();
+                boolean hasAdministered = adminJson != null && !adminJson.trim().isEmpty()
+                        && !adminJson.trim().equals("[]");
+                if (hasAdministered) {
+                    parts.add(patientService.getOpdMedicinesPdf(opdId).readAllBytes());
+                }
+            }
+
+            if (parts.isEmpty()) {
+                // Every page is toggled off (or nothing to print) — nothing to merge.
+                return ResponseEntity.noContent().build();
+            }
+
+            byte[] merged = pdfService.mergePdfs(parts).readAllBytes();
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_PDF);
+            headers.add("Content-Disposition", "inline; filename=consultation_" + opd.getCaseId() + ".pdf");
+            return ResponseEntity.ok().headers(headers).body(merged);
+        } catch (Exception e) {
+            logger.error("Failed to build combined consultation PDF for OPD {}", opdId, e);
             return ResponseEntity.status(500).build();
         }
     }

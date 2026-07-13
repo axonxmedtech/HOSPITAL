@@ -132,22 +132,34 @@ public class WardService {
     }
 
     /**
-     * Wards eligible for IPD admission/bed selection. A ward without a Nurse
-     * Incharge cannot safely receive patients, so it is hidden from this list.
-     * Used only by the admission flow — admin ward management still uses
-     * {@link #getAllWards()} so every ward remains visible for incharge assignment.
+     * Wards eligible for IPD admission/bed selection. A ward with no Available bed is always
+     * hidden (a bed awaiting cleaning or under maintenance does not count).
+     *
+     * The "ward must have a Nurse Incharge" rule is a NURSING rule, so it is only enforced when
+     * that module is on. A hospital with IPD but without NURSING has no nurses at all, so it can
+     * never assign an incharge — applying the rule unconditionally filtered out every ward and
+     * made admission impossible: the ward dropdown simply came back empty.
+     *
+     * Admin ward management still uses {@link #getAllWards()}, so every ward stays visible there
+     * for incharge assignment.
      */
-    // Nursing Mgmt: hide incharge-less wards, and wards with no Available bed,
-    // from admission selection. A bed awaiting cleaning or under maintenance
-    // does not count as available (Phase C).
     public List<WardResponse> getWardsForAdmission() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
+        boolean nursingEnabled = hasNursingModule();
+
         return wardRepository.findByHospitalId(hospitalId)
                 .stream()
-                .filter(w -> w.getInchargeNurseId() != null)
+                .filter(w -> !nursingEnabled || w.getInchargeNurseId() != null)
                 .filter(w -> bedRepository.findByWardIdAndHospitalId(w.getWardId(), hospitalId).stream()
                         .anyMatch(b -> com.hms.entity.BedStatus.AVAILABLE.equalsIgnoreCase(b.getStatus())))
                 .map(this::toResponse).collect(Collectors.toList());
+    }
+
+    /** Whether this hospital's plan includes NURSING (from the caller's JWT module claim). */
+    private boolean hasNursingModule() {
+        com.hms.security.UserAuthenticationDetails details = securityHelper.getCurrentUserDetails();
+        java.util.List<String> modules = details != null ? details.getModules() : null;
+        return modules != null && modules.contains("NURSING");
     }
 
     public List<BedResponse> getBedsForWard(Long wardId) {
@@ -171,6 +183,12 @@ public class WardService {
         if (req.getWardName() != null) w.setWardName(req.getWardName());
         if (req.getBedPrice() != null) w.setBedPrice(req.getBedPrice());
         if (req.getFloorNumber() != null) w.setFloorNumber(req.getFloorNumber());
+
+        // Bed count is editable: resize the ward's bed list to match. Done after the rename
+        // above so any newly created bed codes carry the ward's new name.
+        if (req.getTotalBeds() != null) {
+            resizeBeds(w, req.getTotalBeds(), hospitalId);
+        }
 
         Ward saved = wardRepository.save(w);
 
@@ -210,6 +228,63 @@ public class WardService {
         } catch (Exception e) {
             logger.warn("Failed to broadcast WebSocket refresh after ward deletion", e);
         }
+    }
+
+    /** Trailing digits of a bed code, e.g. "ICU-B12" -> 12. */
+    private static final java.util.regex.Pattern BED_INDEX = java.util.regex.Pattern.compile("(\\d+)$");
+
+    private int bedIndex(Bed b) {
+        if (b.getBedCode() == null) return 0;
+        java.util.regex.Matcher m = BED_INDEX.matcher(b.getBedCode());
+        try {
+            return m.find() ? Integer.parseInt(m.group(1)) : 0;
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Resizes a ward's bed list to {@code target}.
+     *
+     * Growing appends new available beds, numbered from the current highest index so codes
+     * stay unique even after earlier beds were removed. Shrinking deletes only AVAILABLE
+     * beds, highest-numbered first — a bed that is occupied, awaiting cleaning, or under
+     * maintenance is never destroyed, so the request is rejected rather than silently
+     * dropping a patient's bed.
+     */
+    private void resizeBeds(Ward ward, int target, Long hospitalId) {
+        if (target < 0) throw new IllegalArgumentException("Total beds cannot be negative");
+
+        List<Bed> beds = bedRepository.findByWardIdAndHospitalId(ward.getWardId(), hospitalId);
+        int current = beds.size();
+
+        if (target > current) {
+            int next = beds.stream().mapToInt(this::bedIndex).max().orElse(0) + 1;
+            for (int i = 0; i < target - current; i++) {
+                Bed b = new Bed();
+                b.setHospitalId(hospitalId);
+                b.setWardId(ward.getWardId());
+                b.setBedCode(String.format("%s-B%d", ward.getWardName(), next + i));
+                b.setStatus(com.hms.entity.BedStatus.AVAILABLE);
+                bedRepository.save(b);
+            }
+        } else if (target < current) {
+            List<Bed> free = beds.stream()
+                    .filter(b -> com.hms.entity.BedStatus.AVAILABLE.equalsIgnoreCase(b.getStatus()))
+                    .sorted(java.util.Comparator.comparingInt(this::bedIndex).reversed())
+                    .collect(Collectors.toList());
+
+            int toRemove = current - target;
+            int inUse = current - free.size();
+            if (toRemove > free.size()) {
+                throw new IllegalArgumentException(
+                        "Cannot reduce to " + target + " bed(s): " + inUse
+                                + " bed(s) are occupied or unavailable. The minimum for this ward is " + inUse + ".");
+            }
+            bedRepository.deleteAll(free.subList(0, toRemove));
+        }
+
+        ward.setTotalBeds(target);
     }
 
     private WardResponse toResponse(Ward w) {

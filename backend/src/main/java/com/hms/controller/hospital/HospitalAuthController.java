@@ -18,6 +18,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class HospitalAuthController {
 
+    private static final org.slf4j.Logger logger =
+            org.slf4j.LoggerFactory.getLogger(HospitalAuthController.class);
+
     @Autowired
     private HospitalAuthService authService;
 
@@ -54,6 +57,20 @@ public class HospitalAuthController {
             return ResponseEntity.status(401).body("Unauthorized");
         }
         LoginResponse response = authService.updateProfile(principal.getName(), request);
+
+        // Editing a profile changed the name/phone/specialization the dashboards render, so
+        // tell the hospital's clients to re-read it. SETTINGS_UPDATED makes each client
+        // re-fetch its OWN profile (so the editor's own header updates without a reload);
+        // REFRESH_DATA refreshes the lists this person appears in (e.g. the admin's Doctors
+        // table). Best-effort — a socket failure must not fail the save.
+        try {
+            userRepository.findByEmail(principal.getName()).ifPresent(user -> {
+                webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
+                webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"REFRESH_DATA\"}");
+            });
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after profile update", e);
+        }
         return ResponseEntity.ok(response);
     }
 
@@ -90,6 +107,16 @@ public class HospitalAuthController {
             webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
         });
         return ResponseEntity.ok(updated);
+    }
+
+    /**
+     * Update Print Settings (pages in the consultation print) and/or bill payment timing.
+     * Body is a partial HospitalSettingDTO; null fields are left unchanged.
+     */
+    @PutMapping({"/hospital/settings/print-payment", "/clinic/settings/print-payment"})
+    public ResponseEntity<?> updatePrintAndPaymentSettings(java.security.Principal principal, @RequestBody com.hms.dto.HospitalSettingDTO dto) {
+        if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
+        return ResponseEntity.ok(authService.updatePrintAndPaymentSettings(principal.getName(), dto));
     }
 
     /** Toggle the pharmacy barcode workflow. Body: { "barcodeEnabled": true|false }. */

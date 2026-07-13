@@ -11,6 +11,8 @@ import java.util.List;
 @Service
 public class PlatformFAQService {
 
+    @Autowired private com.hms.service.RealtimeNotifier notifier;
+
     @Autowired
     private FaqRepository repository;
 
@@ -69,7 +71,11 @@ public class PlatformFAQService {
         faq.setQuestion(question.trim());
         faq.setAnswer(answer.trim());
 
-        return repository.save(faq);
+        Faq saved = repository.save(faq);
+        // FAQs are platform content that every tenant reads, so fan out to all connected tenants
+        // rather than targeting one -- there is no single owner to notify.
+        notifier.refreshAllTenants();
+        return saved;
     }
 
     /**
@@ -86,7 +92,9 @@ public class PlatformFAQService {
             faq.setAnswer(answer.trim());
         }
 
-        return repository.save(faq);
+        Faq saved = repository.save(faq);
+        notifier.refreshAllTenants();
+        return saved;
     }
 
     /**
@@ -96,6 +104,7 @@ public class PlatformFAQService {
     public void deleteFAQ(Long faqId, String hospitalType) {
         Faq faq = getFAQById(faqId, hospitalType);
         repository.delete(faq);
+        notifier.refreshAllTenants();
     }
 
     /**

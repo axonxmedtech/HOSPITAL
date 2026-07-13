@@ -73,6 +73,7 @@ public class NurseController {
             return ResponseEntity.badRequest().body("Name is required");
         }
         return ResponseEntity.ok(nurseService.updateNurse(id, name, parseWardId(payload.get("wardId")),
+                payload.get("phone"),
                 payload.get("shiftTemplatePublicId"),
                 parseDate(payload.get("shiftFromDate")), parseDate(payload.get("shiftToDate")),
                 parseDaysOfWeek(payload.get("shiftDaysOfWeek"))));

@@ -29,6 +29,7 @@ public class InitialAssessmentService {
     @Autowired private NurseAccessGuard nurseAccessGuard;
     @Autowired private AuditLogService auditLogService;
     @Autowired private FormAccessService formAccessService;
+    @Autowired private com.hms.service.RealtimeNotifier notifier;
 
     public InitialAssessment getOrDraft(Long ipdAdmissionId) {
         Long hospitalId = requireHospitalId();
@@ -74,6 +75,8 @@ public class InitialAssessmentService {
         } catch (Exception e) {
             logger.warn("Failed to write audit log for INITIAL_ASSESSMENT_SAVED", e);
         }
+        // The doctor's IPD case mirrors this sheet -- push it so their copy is not stale.
+        notifier.refresh(hospitalId);
         return saved;
     }
 

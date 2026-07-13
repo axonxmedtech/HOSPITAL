@@ -82,6 +82,8 @@ public class LoginResponse {
     private Boolean inClinic;
     private Boolean barcodeEnabled;
     private Boolean otInchargeEnabled;
+    /** FIRST or LAST — lets the OPD entry form know whether to collect payment up front. */
+    private String billPaymentTiming;
     private String logoUrl;
     private String parentOrganization;
     private String hospitalAddress;

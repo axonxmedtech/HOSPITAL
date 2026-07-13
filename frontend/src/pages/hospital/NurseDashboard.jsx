@@ -26,7 +26,7 @@ import MyAttendanceView from './nurse/MyAttendanceView';
  * today's scheduled shift window.
  */
 const NurseDashboard = () => {
-    const [user] = useState(authService.getCurrentUser());
+    const [user, setUser] = useState(authService.getCurrentUser());
     const navigate = useNavigate();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [profileOpen, setProfileOpen] = useState(false);
@@ -41,7 +41,7 @@ const NurseDashboard = () => {
     const [coverage, setCoverage] = useState([]); // active substitutions where I'm the replacement
 
     const handleRefresh = useCallback(() => setRefreshKey((k) => k + 1), []);
-    useWebSocket(user, null, handleRefresh);
+    useWebSocket(user, setUser, handleRefresh);
 
     useEffect(() => {
         let active = true;

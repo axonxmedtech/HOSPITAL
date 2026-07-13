@@ -38,6 +38,7 @@ public class NurseAttendanceService {
     @Autowired private NurseInchargeGuard nurseInchargeGuard;
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private AuditLogService auditLogService;
+    @Autowired private com.hms.service.RealtimeNotifier notifier;
 
     @Transactional
     public NurseAttendance mark(MarkAttendanceRequest req) {
@@ -148,7 +149,9 @@ public class NurseAttendanceService {
         return h;
     }
 
+    /** Audits the attendance write and pushes it: the incharge's sheet must move as nurses mark in. */
     private void audit(String action, String details, Long hospitalId, Long id, String reason) {
+        notifier.refresh(hospitalId);
         try {
             auditLogService.logAction(action, details, securityHelper.getCurrentUserEmail(), hospitalId,
                     "NURSE_ATTENDANCE", String.valueOf(id), reason);

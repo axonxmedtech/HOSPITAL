@@ -32,6 +32,7 @@ public class BedStatusService {
     @Autowired private BedStatusAuditRepository auditRepository;
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private AuditLogService auditLogService;
+    @Autowired private com.hms.service.RealtimeNotifier notifier;
 
     @Transactional
     public Bed change(Long bedId, String newStatus, String remarks) {
@@ -62,6 +63,9 @@ public class BedStatusService {
             auditLogService.logAction("BED_STATUS_CHANGED", previous + " -> " + newStatus,
                     securityHelper.getCurrentUserEmail(), bed.getHospitalId(), "BED", String.valueOf(bedId), remarks);
         } catch (Exception e) { logger.warn("Bed status audit log failed: {}", e.getMessage()); }
+        // Bed occupancy is shared state: reception admits against it, nursing cleans it, OT frees
+        // it. Every bed board in the tenant must move at once or two people book the same bed.
+        notifier.refresh(bed.getHospitalId());
         return saved;
     }
 

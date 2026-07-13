@@ -1,7 +1,6 @@
 package com.hms.controller.hospital;
 
 import com.hms.dto.VitalsRequest;
-import com.hms.security.RequireModule;
 import com.hms.service.hospital.VitalsService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -15,26 +14,25 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @RequestMapping("/hospital/nurse/vitals")
-@RequireModule("NURSING")
 public class VitalsController {
 
     @Autowired
     private VitalsService vitalsService;
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN')")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
     public ResponseEntity<?> create(@RequestBody VitalsRequest req) {
         return ResponseEntity.ok(vitalsService.create(req));
     }
 
     @GetMapping("/admission/{admissionId}")
-    @PreAuthorize("hasAnyRole('NURSE', 'NURSE_INCHARGE', 'DOCTOR', 'HOSPITAL_ADMIN')")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
     public ResponseEntity<?> getByAdmission(@PathVariable Long admissionId) {
         return ResponseEntity.ok(vitalsService.getByAdmission(admissionId));
     }
 
     @PutMapping("/{publicId}")
-    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN')")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
     public ResponseEntity<?> update(@PathVariable String publicId, @RequestBody VitalsRequest req) {
         return ResponseEntity.ok(vitalsService.update(publicId, req));
     }

@@ -1,3 +1,4 @@
+import { printHtml } from '../../../utils/printHtml';
 import React, { useEffect, useState } from 'react';
 import nurseService from '../../../services/nurseService';
 import authService from '../../../services/authService';
@@ -30,16 +31,13 @@ const IoChartForm = ({ admissionId, onClose }) => {
     }, [admissionId]);
 
     const print = () => {
-        const w = window.open('', '_blank');
-        if (!w) { toastError('Popup blocked — allow popups to print'); return; }
-        w.document.write(buildIoChartHtml(rows, f, {
+        printHtml(buildIoChartHtml(rows, f, {
             name: f.hospitalName || user?.hospitalName,
             address: f.hospitalAddress || user?.hospitalAddress,
             logo: f.hospitalLogoUrl || user?.logoUrl,
             customId: f.hospitalCustomId,
             nurse: user?.name,
         }));
-        w.document.close();
     };
 
     return (

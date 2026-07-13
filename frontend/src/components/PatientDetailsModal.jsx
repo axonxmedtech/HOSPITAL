@@ -1,3 +1,4 @@
+import { printPdf } from '../utils/printPdf';
 import React, { useState, useEffect } from 'react';
 import hospitalService from '../services/hospitalService';
 import authService from '../services/authService';
@@ -32,12 +33,8 @@ const PatientDetailsModal = ({ patient, onClose }) => {
     const user = authService.getCurrentUser();
     const inClinicEnabled = user?.inClinic !== false;
 
-    const openPdfInNewTab = (endpointPath) => {
-        const token = sessionStorage.getItem('token');
-        const separator = endpointPath.includes('?') ? '&' : '?';
-        const url = `${API_BASE_URL}${endpointPath}${separator}token=${encodeURIComponent(token)}`;
-        window.open(url, '_blank');
-    };
+    // Print server PDFs on the current page (hidden iframe), like the bill/case-paper prints.
+    const openPdfInNewTab = (endpointPath) => { printPdf(endpointPath); };
 
     const handlePrintPrescription = (opdId) => {
         openPdfInNewTab(`/hospital/doctors/prescription/opd/${opdId}/pdf`);
@@ -636,6 +633,7 @@ const PatientDetailsModal = ({ patient, onClose }) => {
                                                 <th className="px-4 py-3">Bill No</th>
                                                 <th className="px-4 py-3">Date</th>
                                                 <th className="px-4 py-3">Status</th>
+                                                <th className="px-4 py-3">Payment</th>
                                                 <th className="px-4 py-3 text-right">Total</th>
                                                 <th className="px-4 py-3 text-right">Paid</th>
                                                 <th className="px-4 py-3 text-right">Balance</th>
@@ -660,6 +658,27 @@ const PatientDetailsModal = ({ patient, onClose }) => {
                                                             }`}>
                                                                 {bill.paymentStatus || 'PENDING'}
                                                             </span>
+                                                        </td>
+                                                        {/* How it was paid. The bill's own method wins; fall back to the
+                                                            recorded payment's mode. Unpaid bills show a dash. */}
+                                                        <td className="px-4 py-3">
+                                                            {(() => {
+                                                                const mode = bill.paymentMethod || bill.payments?.[0]?.mode;
+                                                                if (!mode) return <span className="text-gray-400">—</span>;
+                                                                const label = mode.toUpperCase() === 'UPI' ? 'Online / UPI' : 'Cash';
+                                                                return (
+                                                                    <span className="inline-flex flex-col">
+                                                                        <span className={`px-2 py-0.5 text-xs font-semibold rounded-full w-fit ${
+                                                                            mode.toUpperCase() === 'UPI' ? 'bg-sky-50 text-sky-700' : 'bg-gray-100 text-gray-700'
+                                                                        }`}>
+                                                                            {label}
+                                                                        </span>
+                                                                        {bill.paymentReference && (
+                                                                            <span className="text-[10px] text-gray-400 mt-0.5">{bill.paymentReference}</span>
+                                                                        )}
+                                                                    </span>
+                                                                );
+                                                            })()}
                                                         </td>
                                                         <td className="px-4 py-3 text-right text-gray-800 font-medium">₹{total}</td>
                                                         <td className="px-4 py-3 text-right text-emerald-600">₹{paid}</td>

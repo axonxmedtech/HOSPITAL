@@ -8,9 +8,13 @@ import React from 'react';
 const statusPill = (status) => {
     const map = {
         REQUESTED: 'bg-amber-50 text-amber-700',
+        APPROVED: 'bg-teal-50 text-teal-700',
         SCHEDULED: 'bg-blue-50 text-blue-700',
+        PRE_OP: 'bg-indigo-50 text-indigo-700',
         IN_PROGRESS: 'bg-green-50 text-green-700',
         COMPLETED: 'bg-gray-100 text-gray-600',
+        CLOSED: 'bg-gray-100 text-gray-500',
+        POSTPONED: 'bg-orange-50 text-orange-700',
         CANCELLED: 'bg-red-50 text-red-600',
     };
     return <span className={`px-2 py-0.5 rounded text-xs font-semibold ${map[status] || 'bg-gray-100 text-gray-600'}`}>{(status || '').replace('_', ' ')}</span>;
@@ -18,7 +22,7 @@ const statusPill = (status) => {
 
 const fmt = (dt) => dt ? new Date(dt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
 
-const OtBoard = ({ rows, mode, onSchedule, onCancel, onStart, onComplete }) => {
+const OtBoard = ({ rows, mode, onSchedule, onCancel, onStart, onComplete, onTeam, onExecute, onRecovery, onClose }) => {
     if (!rows || rows.length === 0) {
         return <div className="text-center text-gray-400 py-16">No surgeries to show.</div>;
     }
@@ -53,7 +57,7 @@ const OtBoard = ({ rows, mode, onSchedule, onCancel, onStart, onComplete }) => {
                                     {r.anaesthetistName && <div className="text-xs text-gray-500">Anaes: {r.anaesthetistName}</div>}
                                 </td>
                             )}
-                            {mode !== 'requests' && <td className="px-4 py-3">{r.otWardName || '—'}</td>}
+                            {mode !== 'requests' && <td className="px-4 py-3">{r.otRoomName || r.otWardName || '—'}</td>}
                             <td className="px-4 py-3">{statusPill(r.status)}</td>
                             {mode !== 'doctor' && (
                                 <td className="px-4 py-3 text-right whitespace-nowrap">
@@ -63,11 +67,23 @@ const OtBoard = ({ rows, mode, onSchedule, onCancel, onStart, onComplete }) => {
                                             <button onClick={() => onCancel(r)} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50">Cancel</button>
                                         </>
                                     )}
+                                    {mode === 'board' && onTeam && (
+                                        <button onClick={() => onTeam(r)} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-300 hover:bg-gray-50 mr-2">Team</button>
+                                    )}
+                                    {mode === 'board' && onExecute && (r.status === 'SCHEDULED' || r.status === 'IN_PROGRESS') && (
+                                        <button onClick={() => onExecute(r)} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 border border-indigo-200 hover:bg-indigo-50 mr-2">Checklist</button>
+                                    )}
                                     {mode === 'board' && r.status === 'SCHEDULED' && (
                                         <button onClick={() => onStart(r)} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-green-600 hover:bg-green-700">Start</button>
                                     )}
                                     {mode === 'board' && r.status === 'IN_PROGRESS' && (
                                         <button onClick={() => onComplete(r)} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-gray-900 hover:bg-gray-800">Complete</button>
+                                    )}
+                                    {mode === 'board' && r.status === 'COMPLETED' && onRecovery && (
+                                        <button onClick={() => onRecovery(r)} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-teal-600 border border-teal-200 hover:bg-teal-50 mr-2">Recovery</button>
+                                    )}
+                                    {mode === 'board' && r.status === 'COMPLETED' && onClose && (
+                                        <button onClick={() => onClose(r)} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-300 hover:bg-gray-50">Close</button>
                                     )}
                                 </td>
                             )}

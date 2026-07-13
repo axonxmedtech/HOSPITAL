@@ -35,6 +35,8 @@ class NursingNoteServiceTest {
     @Mock AuditLogService auditLogService;
     @Mock FormAccessService formAccessService;
 
+    @Mock com.hms.service.RealtimeNotifier notifier;
+
     @InjectMocks NursingNoteService service;
 
     private IpdAdmission admission() {

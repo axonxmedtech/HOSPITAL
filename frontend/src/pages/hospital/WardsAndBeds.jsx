@@ -4,6 +4,7 @@ import BedListDrawer from '../../components/BedListDrawer';
 import WardModal from '../../components/WardModal';
 import WardService from '../../services/wardService';
 import hospitalService from '../../services/hospitalService';
+import authService from '../../services/authService';
 import { useToast } from '../../context/ToastContext';
 import ConfirmationModal from '../../components/ConfirmationModal';
 
@@ -19,7 +20,14 @@ const WardsAndBeds = () => {
     const [deleting, setDeleting] = useState(null);
     const [confirmState, setConfirmState] = useState({ open: false, title: '', message: '', onConfirm: null });
 
-    useEffect(() => { fetchWards(); fetchNurseIncharges(); }, []);
+    // The nurse-incharge picker is a nursing feature: /hospital/nurses is @RequireModule("NURSING").
+    // Without the module the call is rejected, so don't make it — and hide the picker.
+    const nursingEnabled = (authService.getCurrentUser()?.modules || []).includes('NURSING');
+
+    useEffect(() => {
+        fetchWards();
+        if (nursingEnabled) fetchNurseIncharges();
+    }, [nursingEnabled]);
 
     const fetchWards = async () => {
         setLoading(true);
@@ -96,7 +104,7 @@ const WardsAndBeds = () => {
                         onDelete={onDelete}
                         deleting={deleting === w.wardId}
                         inchargeOptions={nurseIncharges}
-                        onSetIncharge={onSetIncharge}
+                        onSetIncharge={nursingEnabled ? onSetIncharge : undefined}
                     />
                 ))}
             </div>

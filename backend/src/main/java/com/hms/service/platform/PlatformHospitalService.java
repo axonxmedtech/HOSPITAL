@@ -56,6 +56,12 @@ public class PlatformHospitalService {
     private HospitalRepository hospitalRepository;
 
     @Autowired
+    private com.hms.service.RealtimeNotifier notifier;
+
+    @Autowired
+    private com.hms.security.HospitalWebSocketHandler webSocketHandler;
+
+    @Autowired
     private UserRepository userRepository;
 
     @Autowired
@@ -320,9 +326,47 @@ public class PlatformHospitalService {
             logAction(action,
                     "Updated status for hospital: " + hospital.getName() + " to " + (isActive ? "Active" : "Inactive"),
                     reason);
+            // Blocking a tenant has to reach the people using it right now, not at their next
+            // login. SETTINGS_UPDATED makes each client re-read /auth/me, which refuses an
+            // inactive hospital (401) and drops them at the login screen — so a blocked tenant
+            // stops working immediately instead of staying usable for the rest of the session.
+            notifyTenant(hospital.getId());
         }
 
         return savedHospital;
+    }
+
+    /**
+     * Tell everyone signed in at a tenant that something the platform owns changed underneath
+     * them (name, admin identity, single-doctor mode, active status), so the UI reflects it live
+     * instead of at the next login. SETTINGS_UPDATED re-reads the profile; REFRESH_DATA reloads
+     * the lists. Best-effort: a socket failure must not fail the platform's write.
+     *
+     * Fires after the transaction commits where one is active, so a client that immediately
+     * re-fetches cannot read the pre-change row and cache it again.
+     */
+    private void notifyTenant(Long hospitalId) {
+        if (hospitalId == null) return;
+        Runnable push = () -> {
+            try {
+                webSocketHandler.broadcast(hospitalId, "{\"type\":\"SETTINGS_UPDATED\"}");
+                webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+            } catch (Exception e) {
+                logger.warn("Failed to broadcast platform change to hospital {}", hospitalId, e);
+            }
+        };
+
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            push.run();
+                        }
+                    });
+        } else {
+            push.run();
+        }
     }
 
     /**
@@ -450,6 +494,9 @@ public class PlatformHospitalService {
             if (isSingleDoctorChanged)
                 details.append("Single Doctor Mode: '").append(!isSingleDoctor).append("' -> '").append(isSingleDoctor).append("'.");
             logAction("HOSPITAL_UPDATED", details.toString(), reason);
+            // The tenant's own header shows the hospital name, and single-doctor mode changes what
+            // the admin can do — push it rather than making them log out to see it.
+            notifyTenant(savedHospital.getId());
         }
 
         return savedHospital;
@@ -585,5 +632,11 @@ public class PlatformHospitalService {
             // Improve: Log error using SLF4J, but don't fail the operation
             logger.error("Failed to save audit log: {}", e.getMessage(), e);
         }
+
+        // Every tenant mutation the platform performs (create, block, password reset, update,
+        // delete) passes through here, so this is the one place that can keep a second Super Admin
+        // tab honest. Without it the platform's own tenant list was the most stale screen in the
+        // product: it broadcast nothing and listened for nothing but NEW_TICKET.
+        notifier.platform("{\"type\":\"REFRESH_DATA\"}");
     }
 }

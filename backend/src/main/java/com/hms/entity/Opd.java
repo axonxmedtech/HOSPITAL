@@ -59,6 +59,17 @@ public class Opd {
     @Column(name = "visit_type")
     private VisitType visitType;
 
+    /**
+     * The clinical state of the OPD case — never its payment state (a bill can be paid before the
+     * doctor is even seen; see hospital_settings.bill_payment_timing).
+     *
+     *  QUEUED    — case created, patient waiting for the doctor. Shown as "In Queue".
+     *  COMPLETED — the doctor finished the consultation. Set by DoctorService, not by payment.
+     *  IN_IPD    — the case was admitted and continues as an IPD admission.
+     *  CONSULTED — LEGACY. Nothing writes it. It used to mean "doctor done, bill not yet collected",
+     *              back when payment was what marked a case COMPLETED. Kept only so old rows still
+     *              deserialise; DatabaseMigrationRunner promotes them to COMPLETED on boot.
+     */
     public enum Status { QUEUED, CONSULTED, COMPLETED, IN_IPD }
 
     @Enumerated(EnumType.STRING)

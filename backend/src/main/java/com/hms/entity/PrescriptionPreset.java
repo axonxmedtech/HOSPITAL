@@ -38,6 +38,17 @@ public class PrescriptionPreset {
     @Column(name = "display_order", nullable = false)
     private Integer displayOrder = 0;
 
+    /**
+     * Which preset engine this row belongs to: "PRESCRIPTION" (medicines the doctor prescribes)
+     * or "IN_CLINIC" (bundles of stock medicines administered in the clinic). One table, two
+     * lists — the same trick SYMPTOMS/DIAGNOSIS use on the note-preset engine.
+     */
+    @Column(name = "preset_type", nullable = false, length = 20)
+    private String presetType = PRESCRIPTION;
+
+    public static final String PRESCRIPTION = "PRESCRIPTION";
+    public static final String IN_CLINIC = "IN_CLINIC";
+
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
 

@@ -38,6 +38,7 @@ public class SugarChartService {
     @Autowired private com.hms.security.NurseWriteAccess nurseWriteAccess;
     @Autowired private com.hms.security.PerformingNurseResolver performingNurseResolver;
     @Autowired private AuditLogService auditLogService;
+    @Autowired private com.hms.service.RealtimeNotifier notifier;
     @Autowired private FormAccessService formAccessService;
 
     @Transactional
@@ -63,7 +64,7 @@ public class SugarChartService {
         e.setIsActive(true);
         SugarChartEntry saved = repository.save(e);
 
-        audit("SUGAR_CHART_ADDED", "Added sugar chart entry for IPD " + admission.getIpdNumber(), hospitalId, admission.getId());
+        auditAndNotify("SUGAR_CHART_ADDED", "Added sugar chart entry for IPD " + admission.getIpdNumber(), hospitalId, admission.getId());
         return saved;
     }
 
@@ -84,7 +85,7 @@ public class SugarChartService {
         e.setBloodSugar(trim(req.getBloodSugar()));
         e.setTreatment(trim(req.getTreatment()));
         SugarChartEntry saved = repository.save(e);
-        audit("SUGAR_CHART_UPDATED", "Edited sugar chart entry " + e.getPublicId(), e.getHospitalId(), e.getIpdAdmissionId());
+        auditAndNotify("SUGAR_CHART_UPDATED", "Edited sugar chart entry " + e.getPublicId(), e.getHospitalId(), e.getIpdAdmissionId());
         return saved;
     }
 
@@ -94,7 +95,7 @@ public class SugarChartService {
         SugarChartEntry e = requireEditableOwn(publicId);
         e.setIsActive(false);
         repository.save(e);
-        audit("SUGAR_CHART_DELETED", "Deleted sugar chart entry " + e.getPublicId(), e.getHospitalId(), e.getIpdAdmissionId());
+        auditAndNotify("SUGAR_CHART_DELETED", "Deleted sugar chart entry " + e.getPublicId(), e.getHospitalId(), e.getIpdAdmissionId());
     }
 
     // --- helpers ---
@@ -140,12 +141,21 @@ public class SugarChartService {
         return hospitalId;
     }
 
-    private void audit(String action, String details, Long hospitalId, Long admissionId) {
+    /**
+     * Records the write in the audit trail AND pushes it to the tenant's open tabs.
+     *
+     * These two always go together: every write path here ends by calling this, and each one is a
+     * change a doctor may be staring at right now on the same IPD case. Keeping the broadcast here
+     * rather than at each call site means a future write path cannot silently ship without one --
+     * which is exactly how these records ended up non-realtime in the first place.
+     */
+    private void auditAndNotify(String action, String details, Long hospitalId, Long admissionId) {
         try {
             auditLogService.logAction(action, details, securityHelper.getCurrentUserEmail(), hospitalId,
                     "IPD", admissionId != null ? admissionId.toString() : null, null);
         } catch (Exception e) {
             logger.warn("Failed to write audit log for {}", action, e);
         }
+        notifier.refresh(hospitalId);
     }
 }

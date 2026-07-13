@@ -22,6 +22,7 @@ public class ConsultationNotePreset {
 
     public static final String FIELD_TYPE_TREATMENT_NOTES = "TREATMENT_NOTES";
     public static final String FIELD_TYPE_SYMPTOMS = "SYMPTOMS";
+    public static final String FIELD_TYPE_DIAGNOSIS = "DIAGNOSIS";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

@@ -135,14 +135,6 @@ const platformService = {
     },
 
     /**
-     * Get all FAQs (uses public API since FAQs are global)
-     */
-    getFaqs: async () => {
-        const response = await apiClient.get('/api/public/faqs');
-        return response.data;
-    },
-
-    /**
      * Get platform FAQs filtered by tenant type (HOSPITAL, CLINIC, PHARMACY)
      */
     getPlatformFaqs: async (hospitalType = null) => {

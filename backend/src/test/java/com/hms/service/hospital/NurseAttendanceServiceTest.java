@@ -34,6 +34,7 @@ class NurseAttendanceServiceTest {
     @Mock NurseInchargeGuard nurseInchargeGuard;
     @Mock SecurityContextHelper securityHelper;
     @Mock AuditLogService auditLogService;
+    @Mock com.hms.service.RealtimeNotifier notifier;
     @InjectMocks NurseAttendanceService service;
 
     private static final LocalDate D = LocalDate.of(2026, 7, 10);

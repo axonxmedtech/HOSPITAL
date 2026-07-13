@@ -34,6 +34,7 @@ public class HospitalCalendarService {
     @Autowired private NurseShiftScheduleRepository shiftScheduleRepository;
     @Autowired private NurseAttendanceRepository attendanceRepository;
     @Autowired private SurgeryRepository surgeryRepository;
+    @Autowired private com.hms.repository.OtRoomRepository otRoomRepository;
     @Autowired private IpdAdmissionRepository ipdAdmissionRepository;
     @Autowired private PatientRepository patientRepository;
     @Autowired private NurseProfileRepository nurseProfileRepository;
@@ -121,6 +122,12 @@ public class HospitalCalendarService {
                     .map(com.hms.entity.Patient::getName).orElse("Patient #" + sg.getPatientId()));
             m.put("scheduledTime", String.valueOf(sg.getScheduledAt().toLocalTime()));
             m.put("surgeonName", sg.getSurgeonName() != null ? sg.getSurgeonName() : "");
+            m.put("procedureName", sg.getProcedureName() != null ? sg.getProcedureName() : "");
+            // Room axis: prefer the theatre name, falling back to the legacy OT ward.
+            String theatre = sg.getOtRoomId() != null
+                    ? otRoomRepository.findById(sg.getOtRoomId()).map(com.hms.entity.OtRoom::getName).orElse("")
+                    : (sg.getOtWardId() != null ? wardNames.getOrDefault(sg.getOtWardId(), "") : "");
+            m.put("otRoomName", theatre);
             m.put("otWardName", sg.getOtWardId() != null ? wardNames.getOrDefault(sg.getOtWardId(), "") : "");
             m.put("status", sg.getStatus());
             surgeries.add(m);
@@ -195,6 +202,9 @@ public class HospitalCalendarService {
             LocalDate d = sg.getScheduledAt().toLocalDate();
             if (d.isBefore(from) || d.isAfter(to)) continue;
             if (!isAdmin) {
+                // A day-care procedure has no admission, so it sits in no ward and cannot be
+                // scoped to an incharge. findById(null) would throw, not return empty.
+                if (sg.getIpdAdmissionId() == null) continue;
                 Long admWard = ipdAdmissionRepository.findById(sg.getIpdAdmissionId())
                         .map(com.hms.entity.IpdAdmission::getWardId).orElse(null);
                 if (admWard == null || !wardIds.contains(admWard)) continue;

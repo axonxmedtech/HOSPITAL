@@ -39,6 +39,7 @@ public class AdmissionFormService {
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private NurseAccessGuard nurseAccessGuard;
     @Autowired private AuditLogService auditLogService;
+    @Autowired private com.hms.service.RealtimeNotifier notifier;
 
     /**
      * Return the saved form, or a pre-filled (unsaved) draft if none exists yet.
@@ -192,7 +193,9 @@ public class AdmissionFormService {
         return hospitalId;
     }
 
+    /** Audits the write and pushes it: reception and nursing both watch the admission list. */
     private void audit(String action, String details, Long hospitalId, Long admissionId) {
+        notifier.refresh(hospitalId);
         try {
             auditLogService.logAction(action, details, securityHelper.getCurrentUserEmail(), hospitalId,
                     "IPD", admissionId != null ? admissionId.toString() : null, null);

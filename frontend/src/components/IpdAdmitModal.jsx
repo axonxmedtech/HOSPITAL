@@ -76,7 +76,11 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
             onClose();
         } catch (err) {
             console.error('IPD admit failed', err);
-            toastError(err.response?.data || 'Failed to admit patient');
+            // The API returns { success:false, error:"..." }; toast/render the message string,
+            // never the object (React can't render an object child — it was crashing the page).
+            const data = err.response?.data;
+            const msg = typeof data === 'string' ? data : (data?.error || data?.message || 'Failed to admit patient');
+            toastError(msg);
         } finally {
             setLoading(false);
         }

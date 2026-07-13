@@ -25,7 +25,7 @@ import MyNursesView from './nurse-incharge/MyNursesView';
  * — these tabs are placeholders for now.
  */
 const NurseInchargeDashboard = () => {
-    const [user] = useState(authService.getCurrentUser());
+    const [user, setUser] = useState(authService.getCurrentUser());
     const navigate = useNavigate();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [profileOpen, setProfileOpen] = useState(false);
@@ -33,7 +33,7 @@ const NurseInchargeDashboard = () => {
     const [refreshKey, setRefreshKey] = useState(0);
 
     const handleRefresh = useCallback(() => setRefreshKey((k) => k + 1), []);
-    useWebSocket(user, null, handleRefresh);
+    useWebSocket(user, setUser, handleRefresh);
 
     const doLogout = () => {
         const loginUrl = authService.getLoginUrl();

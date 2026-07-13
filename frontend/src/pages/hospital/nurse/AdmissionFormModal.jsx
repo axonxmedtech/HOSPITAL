@@ -1,3 +1,4 @@
+import { printHtml } from '../../../utils/printHtml';
 import React, { useState, useEffect } from 'react';
 import nurseService from '../../../services/nurseService';
 import authService from '../../../services/authService';
@@ -283,30 +284,24 @@ const AdmissionFormModal = ({ admissionId, onClose, onConfirmed }) => {
     };
 
     const handlePrint = () => {
-        const w = window.open('', '_blank');
-        if (!w) { toastError('Popup blocked — allow popups to print'); return; }
         // Prefer live branding from the backend (like the prescription/bill PDFs);
         // fall back to the session user object.
-        w.document.write(buildPrintHtml(f, {
+        printHtml(buildPrintHtml(f, {
             name: f.hospitalName || user?.hospitalName,
             address: f.hospitalAddress || user?.hospitalAddress,
             logo: f.hospitalLogoUrl || user?.logoUrl,
             nurse: user?.name,
         }));
-        w.document.close();
     };
 
     const handlePrintConsent = () => {
-        const w = window.open('', '_blank');
-        if (!w) { toastError('Popup blocked — allow popups to print'); return; }
-        w.document.write(buildConsentHtml(f, {
+        printHtml(buildConsentHtml(f, {
             name: f.hospitalName || user?.hospitalName,
             address: f.hospitalAddress || user?.hospitalAddress,
             logo: f.hospitalLogoUrl || user?.logoUrl,
             customId: f.hospitalCustomId,
             nurse: user?.name,
         }));
-        w.document.close();
     };
 
     const handleConfirm = async () => {

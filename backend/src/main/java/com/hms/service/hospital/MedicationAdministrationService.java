@@ -42,6 +42,7 @@ public class MedicationAdministrationService {
     @Autowired private com.hms.security.NurseWriteAccess nurseWriteAccess;
     @Autowired private com.hms.security.PerformingNurseResolver performingNurseResolver;
     @Autowired private AuditLogService auditLogService;
+    @Autowired private com.hms.service.RealtimeNotifier notifier;
 
     /**
      * ACTIVE prescriptions for an admission — the medicine list the nurse
@@ -163,7 +164,7 @@ public class MedicationAdministrationService {
         mar.setIsActive(true);
         MedicationAdministration saved = marRepository.save(mar);
 
-        audit("MEDICATION_ADMINISTERED",
+        auditAndNotify("MEDICATION_ADMINISTERED",
                 status + " - " + prescription.getMedicineName() + " (IPD " + admission.getIpdNumber() + ")",
                 hospitalId, admission.getId());
         return saved;
@@ -197,12 +198,21 @@ public class MedicationAdministrationService {
         return hospitalId;
     }
 
-    private void audit(String action, String details, Long hospitalId, Long admissionId) {
+    /**
+     * Records the write in the audit trail AND pushes it to the tenant's open tabs.
+     *
+     * These two always go together: every write path here ends by calling this, and each one is a
+     * change a doctor may be staring at right now on the same IPD case. Keeping the broadcast here
+     * rather than at each call site means a future write path cannot silently ship without one --
+     * which is exactly how these records ended up non-realtime in the first place.
+     */
+    private void auditAndNotify(String action, String details, Long hospitalId, Long admissionId) {
         try {
             auditLogService.logAction(action, details, securityHelper.getCurrentUserEmail(), hospitalId,
                     "IPD", admissionId != null ? admissionId.toString() : null, null);
         } catch (Exception e) {
             logger.warn("Failed to write audit log for {}", action, e);
         }
+        notifier.refresh(hospitalId);
     }
 }

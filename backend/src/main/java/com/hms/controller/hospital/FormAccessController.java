@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
  * verdict map for the forms UI. Hospital-tenant only.
  */
 @RestController
-@RequestMapping("/hospital/form-access")
+@RequestMapping({"/hospital/form-access", "/clinic/form-access"})
 public class FormAccessController {
 
     @Autowired private FormAccessService formAccessService;
@@ -33,7 +33,7 @@ public class FormAccessController {
     }
 
     @GetMapping("/effective")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','DOCTOR','NURSE','NURSE_INCHARGE')")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','DOCTOR','NURSE','NURSE_INCHARGE','RECEPTIONIST')")
     public ResponseEntity<?> effective() {
         return ResponseEntity.ok(formAccessService.effectiveForRole(securityHelper.getCurrentUserRole()));
     }

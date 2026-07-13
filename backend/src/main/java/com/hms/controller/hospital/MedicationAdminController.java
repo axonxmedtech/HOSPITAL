@@ -1,7 +1,6 @@
 package com.hms.controller.hospital;
 
 import com.hms.dto.MedicationAdminRequest;
-import com.hms.security.RequireModule;
 import com.hms.service.hospital.MedicationAdministrationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -15,21 +14,20 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @RequestMapping("/hospital/nurse/medication")
-@RequireModule("NURSING")
 public class MedicationAdminController {
 
     @Autowired
     private MedicationAdministrationService medicationService;
 
     @GetMapping("/admission/{admissionId}/prescriptions")
-    @PreAuthorize("hasAnyRole('NURSE', 'DOCTOR', 'HOSPITAL_ADMIN')")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
     public ResponseEntity<?> getActivePrescriptions(@PathVariable Long admissionId) {
         return ResponseEntity.ok(medicationService.getActivePrescriptions(admissionId));
     }
 
     /** Full medication chart: all orders (active/stopped/completed) + reminders. */
     @GetMapping("/admission/{admissionId}/chart")
-    @PreAuthorize("hasAnyRole('NURSE', 'DOCTOR', 'HOSPITAL_ADMIN')")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
     public ResponseEntity<?> getMedicationChart(@PathVariable Long admissionId) {
         return ResponseEntity.ok(medicationService.getMedicationChart(admissionId));
     }
@@ -41,7 +39,7 @@ public class MedicationAdminController {
     }
 
     @GetMapping("/admission/{admissionId}")
-    @PreAuthorize("hasAnyRole('NURSE', 'DOCTOR', 'HOSPITAL_ADMIN')")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
     public ResponseEntity<?> getByAdmission(@PathVariable Long admissionId) {
         return ResponseEntity.ok(medicationService.getByAdmission(admissionId));
     }

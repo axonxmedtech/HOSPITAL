@@ -11,6 +11,9 @@ import { useToast } from '../../context/ToastContext';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import NotePresetsManager from '../../components/NotePresetsManager';
 import PrescriptionPresetsManager from '../../components/PrescriptionPresetsManager';
+import InClinicPresetsManager from '../../components/InClinicPresetsManager';
+import { printPdf, printBlob } from '../../utils/printPdf';
+import { printHtml } from '../../utils/printHtml';
 import { validateForm } from '../../utils/validation';
 import EmptyState from '../../components/EmptyState';
 import OverviewDashboard from '../../components/OverviewDashboard';
@@ -32,7 +35,13 @@ import PageHeader from '../../components/PageHeader';
 import WardsAndBeds from './WardsAndBeds';
 import TimeSlotsView from './TimeSlotsView';
 import FilesAndAccessCard from './FilesAndAccessCard';
+import PrintPaymentSettingsCard from './PrintPaymentSettingsCard';
+import OpdPaymentFields, { isPayFirst, validateOpdPayment } from '../../components/OpdPaymentFields';
 import VitalsSettingsCard from './VitalsSettingsCard';
+import OtPermissionsCard from './OtPermissionsCard';
+import OtRoomsCard from './OtRoomsCard';
+import OtPoliciesCard from './OtPoliciesCard';
+import OtAnalyticsCard from './OtAnalyticsCard';
 import HospitalCalendar from './HospitalCalendar';
 import WardModal from '../../components/WardModal';
 import useWebSocket from '../../hooks/useWebSocket';
@@ -97,6 +106,7 @@ const HospitalAdminDashboard = () => {
     const [nurseTasks, setNurseTasks] = useState([]);
     const [createTaskModal, setCreateTaskModal] = useState(false);
     const [pharmacists, setPharmacists] = useState([]);
+    const [otIncharges, setOtIncharges] = useState([]);
     const [appointments, setAppointments] = useState([]);
     const [billing, setBilling] = useState([]);
     const [ipds, setIpds] = useState([]);
@@ -148,10 +158,15 @@ const HospitalAdminDashboard = () => {
         billNumber: ''
     });
     const [editBillItemsSubmitting, setEditBillItemsSubmitting] = useState(false);
-    const [operationsSettings, setOperationsSettings] = useState({ receptionMode: 'HAS_RECEPTIONIST', billingHandler: 'RECEPTIONIST', inClinic: true, separateNurseLogin: false });
+    const [operationsSettings, setOperationsSettings] = useState({ receptionMode: 'HAS_RECEPTIONIST', billingHandler: 'RECEPTIONIST', inClinic: true, separateNurseLogin: false, otInchargeEnabled: false });
     const [origOperationsSettings, setOrigOperationsSettings] = useState(null);
     const [settingsLoading, setSettingsLoading] = useState(false);
     const [settingsEditing, setSettingsEditing] = useState(false);
+    // Which Settings box is open: null (show the grid) | 'operations' | 'vitals'
+    // | 'ot-forms' | 'nursing' | 'permissions' | 'policies'.
+    const [settingsView, setSettingsView] = useState(null);
+    // Leaving Settings resets to the box grid, so returning never lands mid-section.
+    useEffect(() => { if (activeTab !== 'settings') setSettingsView(null); }, [activeTab]);
     const [auditLogRoleFilter, setAuditLogRoleFilter] = useState('ALL');
     const [page, setPage] = useState(0);
     const [pageSize, setPageSize] = useState(10);
@@ -206,7 +221,7 @@ const HospitalAdminDashboard = () => {
 
     // OPD Modal State (Admin)
     const [isAdminOpdModalOpen, setIsAdminOpdModalOpen] = useState(false);
-    const [adminOpdForm, setAdminOpdForm] = useState({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', height: '', customVitals: {}, spo2: '', problem: '', visitType: 'NEW' });
+    const [adminOpdForm, setAdminOpdForm] = useState({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', height: '', customVitals: {}, spo2: '', problem: '', visitType: 'NEW', paymentMethod: 'CASH', paymentReference: '' });
     const { isOn, customs } = useEnabledVitals();
     const [adminOpdPatientSearch, setAdminOpdPatientSearch] = useState('');
     const [adminOpdShowDropdown, setAdminOpdShowDropdown] = useState(false);
@@ -466,7 +481,8 @@ const HospitalAdminDashboard = () => {
                     billingHandler: data.billingHandler || 'RECEPTIONIST',
                     inClinic: data.inClinic !== false,
                     barcodeEnabled: data.barcodeEnabled !== false,
-                    separateNurseLogin: data.separateNurseLogin === true
+                    separateNurseLogin: data.separateNurseLogin === true,
+                    otInchargeEnabled: data.otInchargeEnabled === true
                 };
                 setOperationsSettings(loaded);
                 setOrigOperationsSettings(loaded);
@@ -664,7 +680,8 @@ const HospitalAdminDashboard = () => {
                     billingHandler: data.billingHandler || 'RECEPTIONIST',
                     inClinic: data.inClinic !== false,
                     barcodeEnabled: operationsSettings.barcodeEnabled,
-                    separateNurseLogin: operationsSettings.separateNurseLogin
+                    separateNurseLogin: operationsSettings.separateNurseLogin,
+                    otInchargeEnabled: operationsSettings.otInchargeEnabled
                 };
                 setOperationsSettings(loaded);
                 setOrigOperationsSettings(loaded);
@@ -729,6 +746,30 @@ const HospitalAdminDashboard = () => {
                 success('Nurse login setting updated successfully.');
             } catch (err) {
                 const msg = err?.response?.data?.error || err.response?.data || 'Failed to update nurse login setting';
+                toastError(msg);
+            } finally {
+                setSettingsLoading(false);
+            }
+        }, false);
+    };
+
+    const toggleOtIncharge = () => {
+        const isCurrentlyEnabled = operationsSettings.otInchargeEnabled === true;
+        const nextValue = !isCurrentlyEnabled;
+        const title = isCurrentlyEnabled ? 'Disable OT Incharge' : 'Enable OT Incharge';
+        const message = isCurrentlyEnabled
+            ? 'Disable the OT Incharge role? This will hide the OT Incharge management tab.'
+            : 'Enable the OT Incharge role? This will show the OT Incharge management tab under Staff.';
+
+        openConfirmation(title, message, async () => {
+            try {
+                setSettingsLoading(true);
+                const data = await hospitalService.updateOtInchargeSetting(nextValue);
+                setOperationsSettings(prev => ({ ...prev, otInchargeEnabled: data.otInchargeEnabled === true }));
+                setOrigOperationsSettings(prev => ({ ...prev, otInchargeEnabled: data.otInchargeEnabled === true }));
+                success('OT Incharge setting updated successfully.');
+            } catch (err) {
+                const msg = err?.response?.data?.error || err.response?.data || 'Failed to update OT Incharge setting';
                 toastError(msg);
             } finally {
                 setSettingsLoading(false);
@@ -922,6 +963,17 @@ const HospitalAdminDashboard = () => {
                         setPharmacists(data); // Fallback if API returns list directly
                         setTotalPages(1);
                         setTotalElements(data.length);
+                    }
+                } else if (activeTab === 'ot-incharges') {
+                    const data = await hospitalService.getOtIncharges(searchTerm, page, pageSize);
+                    if (data.content) {
+                        setOtIncharges(data.content);
+                        setTotalPages(data.totalPages);
+                        setTotalElements(data.totalElements);
+                    } else {
+                        setOtIncharges(data || []);
+                        setTotalPages(1);
+                        setTotalElements((data || []).length);
                     }
                 } else if (activeTab === 'appointments') {
                     // Fetch both appointments and doctors (for name lookup)
@@ -1141,6 +1193,24 @@ const HospitalAdminDashboard = () => {
         );
     };
 
+    const handleDeleteOtIncharge = (id) => {
+        openConfirmation(
+            'Delete OT Incharge',
+            'Are you sure you want to delete this OT Incharge?',
+            async (reason) => {
+                try {
+                    await hospitalService.deleteOtIncharge(id, reason);
+                    success('OT Incharge deleted successfully');
+                    loadData();
+                } catch (err) {
+                    toastError('Failed to delete OT Incharge');
+                }
+            },
+            true,
+            "Reason for deletion?"
+        );
+    };
+
     const handleDeleteNurse = (id) => {
         openConfirmation(
             'Delete Nurse',
@@ -1280,8 +1350,7 @@ const HospitalAdminDashboard = () => {
     const handlePrintOpd = async (opd) => {
         try {
             const blob = await hospitalService.downloadCasePaper(opd.id);
-            const url = window.URL.createObjectURL(blob);
-            window.open(url, '_blank');
+            printBlob(blob); // print on this page (hidden iframe), not a new tab
         } catch (err) {
             console.error('Failed to download case paper', err);
             toastError('Failed to download case paper');
@@ -1291,20 +1360,15 @@ const HospitalAdminDashboard = () => {
     const handleDownloadActivityReport = async () => {
         try {
             const blob = await hospitalService.downloadPatientActivityPdf(patientDateFilter);
-            const url = window.URL.createObjectURL(blob);
-            window.open(url, '_blank');
+            printBlob(blob);
         } catch (err) {
             console.error('Failed to generate report', err);
             toastError('Failed to generate PDF report');
         }
     };
 
-    const openPdfInNewTab = (endpointPath) => {
-        const token = sessionStorage.getItem('token');
-        const separator = endpointPath.includes('?') ? '&' : '?';
-        const url = `${API_BASE_URL}${endpointPath}${separator}token=${encodeURIComponent(token)}`;
-        window.open(url, '_blank');
-    };
+    // Print server PDFs on the current page (hidden iframe), like the bill/case-paper prints.
+    const openPdfInNewTab = (endpointPath) => { printPdf(endpointPath); };
 
     const handleDownloadPatientsReport = () => {
         let endpoint = `/hospital/patients/report/pdf`;
@@ -1436,6 +1500,8 @@ const HospitalAdminDashboard = () => {
                 await hospitalService.resetPharmacistPassword(id, newPassword);
             } else if (role === 'nurse') {
                 await hospitalService.resetNursePassword(id, newPassword);
+            } else if (role === 'ot-incharge') {
+                await hospitalService.resetOtInchargePassword(id, newPassword);
             }
             success('Password reset successfully');
             setResetPasswordModal({ isOpen: false, staff: null, role: '' });
@@ -1480,8 +1546,7 @@ const HospitalAdminDashboard = () => {
 
     const handleExportPDF = () => {
         if (!analyticsData) return;
-        const printWindow = window.open("", "_blank");
-        printWindow.document.write(`
+        printHtml(`
             <html>
             <head>
                 <title>Hospital Analytics Report</title>
@@ -1606,7 +1671,6 @@ const HospitalAdminDashboard = () => {
             </body>
             </html>
         `);
-        printWindow.document.close();
     };
 
     const allTabs = [
@@ -1630,6 +1694,9 @@ const HospitalAdminDashboard = () => {
         // Staff
         { id: 'doctors', label: 'Doctors', icon: null, requiredModule: 'OPD' },
         { id: 'receptionists', label: 'Receptionists', icon: null, requiredModule: 'OPD' },
+        { id: 'ot-incharges', label: 'OT Incharge', icon: null, requiredModule: 'OT' },
+        { id: 'ot-theatres', label: 'OT Theatres', icon: null, requiredModule: 'OT' },
+        { id: 'ot-analytics', label: 'OT Analytics', icon: null, requiredModule: 'OT' },
         { id: 'nurses', label: 'Nurses', icon: null, requiredModule: 'NURSING' },
         { id: 'nurse-assignments', label: 'Nurse Assignments', icon: null, requiredModule: 'NURSING' },
         { id: 'nurse-tasks', label: 'Nurse Tasks', icon: null, requiredModule: 'NURSING' },
@@ -1643,7 +1710,11 @@ const HospitalAdminDashboard = () => {
         { id: 'support', label: 'Support', icon: null, requiredModule: null },
         { id: 'quick-notes', label: 'Quick Notes', icon: null, requiredModule: null },
         { id: 'symptom-presets', label: 'Symptom Presets', icon: null, requiredModule: null },
+        { id: 'diagnosis-presets', label: 'Diagnosis Presets', icon: null, requiredModule: null },
         { id: 'prescription-presets', label: 'Prescription Presets', icon: null, requiredModule: null },
+        // In-Clinic presets are bundles of stock medicines administered in the clinic, so they
+        // only make sense while the In-Clinic flow is on (gated below, like Medicine Inventory).
+        { id: 'in-clinic-presets', label: 'In-Clinic Presets', icon: null, requiredModule: null },
     ];
 
     // In-Clinic medicine flow gates the Medicine Inventory tab. When an admin
@@ -1677,7 +1748,9 @@ const HospitalAdminDashboard = () => {
         tabs = allTabs.filter(tab => {
             if (tab.requiredModule && !modules.includes(tab.requiredModule)) return false;
             if (tab.id === 'inventory' && !hasInClinic) return false;
+            if (tab.id === 'in-clinic-presets' && !hasInClinic) return false;
             if (tab.id === 'messages' && !hasWhatsApp) return false;
+            if (tab.id === 'ot-incharges' && !operationsSettings.otInchargeEnabled) return false;
             return true;
         });
     }
@@ -1691,30 +1764,34 @@ const HospitalAdminDashboard = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [hasInClinic, activeTab]);
 
-    // Grouped sidebar — Hospital Admin only (user?.hospitalType === 'HOSPITAL').
-    // Clinic/Pharmacy admins and every other role keep the existing flat
-    // `tabs` list untouched; this is purely a presentational regrouping of
-    // the same tab ids/labels/routes computed above, so navigation, module
-    // gating, and permissions are unaffected.
+    // Grouped sidebar — Hospital AND Clinic admins (both tenant types run this dashboard).
+    // Pharmacy tenants keep the flat, plan-driven list built above, because their tabs come
+    // from the pharmacy tier rather than from these groups.
+    // This is purely a presentational regrouping of the same tab ids/labels/routes computed
+    // above, so navigation, module gating, and permissions are unaffected.
+    // The same groups serve both tenants: a group whose tabs are all absent (a clinic with no
+    // IPD/OT/Nursing on its plan) has no subItems and is dropped, so a clinic naturally shows
+    // only the groups it actually has — no separate clinic group list to keep in sync.
     // Dashboard/Overview is deliberately NOT one of these groups — it's a
     // single item, so it stays a plain top-level link instead of a
     // one-item dropdown (see groupedSidebarTabs below).
     const SIDEBAR_GROUPS = [
-        { id: 'group-patient-management', label: 'Patient Management', tabIds: ['patients', 'appointments', 'opd', 'ipd', 'wards', 'ot', 'pathology'] },
-        { id: 'group-staff', label: 'Staff', tabIds: ['doctors', 'pharmacists', 'receptionists'] },
+        { id: 'group-patient-management', label: 'Patient Management', tabIds: ['patients', 'appointments', 'opd', 'ipd', 'ot', 'pathology'] },
+        { id: 'group-rooms', label: 'Rooms', tabIds: ['wards'] },
+        { id: 'group-staff', label: 'Staff', tabIds: ['doctors', 'pharmacists', 'receptionists', 'ot-incharges', 'ot-theatres'] },
         { id: 'group-nursing', label: 'Nursing', tabIds: ['nurses', 'nurse-assignments', 'nurse-tasks', 'time-slots', 'calendar'] },
         { id: 'group-pharmacy', label: 'Pharmacy', tabIds: ['pharmacy'] },
         { id: 'group-inventory', label: 'Inventory', tabIds: ['inventory', 'hospital-inventory'] },
         { id: 'group-finance', label: 'Finance', tabIds: ['billing', 'fees'] },
-        { id: 'group-reports', label: 'Reports', tabIds: ['analytics', 'audit-logs'] },
+        { id: 'group-reports', label: 'Reports', tabIds: ['analytics', 'ot-analytics', 'audit-logs'] },
         { id: 'group-communication', label: 'Communication', tabIds: ['messages'] },
-        { id: 'group-presets', label: 'Presets', tabIds: ['quick-notes', 'symptom-presets', 'prescription-presets'] },
+        { id: 'group-presets', label: 'Presets', tabIds: ['quick-notes', 'symptom-presets', 'diagnosis-presets', 'prescription-presets', 'in-clinic-presets'] },
         { id: 'group-administration', label: 'Administration', tabIds: ['settings', 'support'] },
     ];
 
-    const isHospitalAdminTenant = user?.hospitalType === 'HOSPITAL';
+    const usesGroupedSidebar = user?.hospitalType === 'HOSPITAL' || user?.hospitalType === 'CLINIC';
 
-    const groupedSidebarTabs = isHospitalAdminTenant
+    const groupedSidebarTabs = usesGroupedSidebar
         ? [
             ...tabs.filter(t => t.id === 'overview'),
             ...SIDEBAR_GROUPS
@@ -1724,11 +1801,25 @@ const HospitalAdminDashboard = () => {
                     subItems: group.tabIds
                         .map(id => tabs.find(t => t.id === id))
                         .filter(Boolean),
-                    isExpanded: expandedSidebarGroups.has(group.id) || group.tabIds.includes(activeTab),
+                    // Expansion is driven ONLY by state. It used to also OR in
+                    // `group.tabIds.includes(activeTab)`, which force-expanded the group owning
+                    // the open tab — so clicking that group's header could never close it.
+                    // The active tab's group is instead auto-expanded once, when the tab changes
+                    // (see the effect below), exactly like the platform sidebar.
+                    isExpanded: expandedSidebarGroups.has(group.id),
                 }))
                 .filter(group => group.subItems.length > 0),
         ]
         : tabs;
+
+    // Keep the group that owns the active tab visible — on first render and whenever the tab
+    // changes. Because this only runs on a tab change, a manual collapse of that group sticks.
+    useEffect(() => {
+        const owning = SIDEBAR_GROUPS.find(g => g.tabIds.includes(activeTab));
+        if (!owning) return;
+        setExpandedSidebarGroups(prev => (prev.has(owning.id) ? prev : new Set(prev).add(owning.id)));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab]);
 
     const handleToggleSidebarGroup = (groupId) => {
         setExpandedSidebarGroups(prev => {
@@ -1812,35 +1903,19 @@ const HospitalAdminDashboard = () => {
     };
 
     const [printingReceiptId, setPrintingReceiptId] = useState(null);
+    /**
+     * Print the receipt on this page (hidden iframe), like the consultation documents and the
+     * clinical forms — not in a stray new tab that the user then has to close. The Payment
+     * Successful dialog has done its job once print is invoked, so it dismisses itself instead
+     * of leaving "Print Receipt" / "Close" sitting behind the print preview.
+     */
     const handlePrintReceipt = async (id) => {
         if (printingReceiptId) return;
         setPrintingReceiptId(id);
-        
-        // Pre-open the window synchronously to bypass popup blocker
-        const printWindow = window.open('', '_blank');
-        if (printWindow) {
-            printWindow.document.write('<p style="font-family: sans-serif; text-align: center; margin-top: 20px;">Generating receipt PDF, please wait...</p>');
-        }
-        
+        setPaymentSuccessModal(prev => ({ ...prev, isOpen: false }));
         try {
-            const blob = await hospitalService.downloadReceipt(id);
-            const url = window.URL.createObjectURL(blob);
-            if (printWindow) {
-                printWindow.document.open();
-                printWindow.document.write(
-                    '<!DOCTYPE html><html><head><title>Receipt</title></head>' +
-                    '<body style="margin:0;padding:0;">' +
-                    '<embed type="application/pdf" src="' + url + '" style="position:fixed;top:0;left:0;width:100%;height:100%;border:none;">' +
-                    '</body></html>'
-                );
-                printWindow.document.close();
-            }
-        } catch (err) {
-            console.error(err);
-            if (printWindow) {
-                printWindow.close();
-            }
-            toastError('Failed to load receipt for printing');
+            const printed = await printPdf(`/hospital/billing/${id}/pdf`);
+            if (!printed) toastError('Failed to load receipt for printing');
         } finally {
             setPrintingReceiptId(null);
         }
@@ -1882,7 +1957,7 @@ const HospitalAdminDashboard = () => {
                 tabs={groupedSidebarTabs}
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
-                onToggleGroup={isHospitalAdminTenant ? handleToggleSidebarGroup : undefined}
+                onToggleGroup={usesGroupedSidebar ? handleToggleSidebarGroup : undefined}
                 footerTitle={tenantWord}
                 footerData={user?.hospitalName}
                 variant="plain"
@@ -2253,7 +2328,7 @@ const HospitalAdminDashboard = () => {
                             searchValue={(activeTab === 'fees' || activeTab === 'settings') ? '' : searchInput}
                             searchPlaceholder={(activeTab === 'fees' || activeTab === 'settings') ? '' : `Search ${activeTab}...`}
                             onAdd={activeTab === 'opd' ? () => setIsAdminOpdModalOpen(true) : activeTab === 'nurse-tasks' ? () => setCreateTaskModal(true) : (activeTab !== 'billing' && activeTab !== 'audit-logs' && activeTab !== 'fees' && activeTab !== 'settings' && activeTab !== 'ot' && activeTab !== 'time-slots' && activeTab !== 'calendar' && user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null)}
-                            addLabel={activeTab === 'opd' ? 'New OPD' : activeTab === 'nurse-tasks' ? 'New Task' : (activeTab === 'fees' || activeTab === 'settings') ? '' : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'nurses' ? 'Nurse' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`}
+                            addLabel={activeTab === 'opd' ? 'New OPD' : activeTab === 'nurse-tasks' ? 'New Task' : (activeTab === 'fees' || activeTab === 'settings') ? '' : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'nurses' ? 'Nurse' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'ot-incharges' ? 'OT Incharge' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`}
                             filter={activeTab === 'patients' ? (
                                 <div className="flex items-center gap-2">
                                     <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 h-[38px] items-center">
@@ -2413,7 +2488,7 @@ const HospitalAdminDashboard = () => {
                         <>
                             {/* Overview tab content already rendered above */}
 
-                            {(activeTab === 'patients' || activeTab === 'doctors' || activeTab === 'pharmacists' || activeTab === 'receptionists' || activeTab === 'nurses' || activeTab === 'nurse-assignments' || activeTab === 'nurse-tasks' || activeTab === 'wards' || activeTab === 'billing' || activeTab === 'fees' || activeTab === 'opd' || activeTab === 'appointments') && (
+                            {(activeTab === 'patients' || activeTab === 'doctors' || activeTab === 'pharmacists' || activeTab === 'receptionists' || activeTab === 'nurses' || activeTab === 'nurse-assignments' || activeTab === 'nurse-tasks' || activeTab === 'wards' || activeTab === 'billing' || activeTab === 'fees' || activeTab === 'opd' || activeTab === 'appointments' || activeTab === 'ot-incharges') && (
                                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
                                     {activeTab === 'patients' && (
                                         patients.length > 0 ? (
@@ -2511,7 +2586,30 @@ const HospitalAdminDashboard = () => {
                                     )
                                 )}
 
-                                {activeTab === 'nurses' && (
+                                {activeTab === 'ot-incharges' && (
+                                    otIncharges.length > 0 ? (
+                                        <OtInchargesTable 
+                                            otIncharges={otIncharges} 
+                                            isAdmin={user?.role === 'HOSPITAL_ADMIN'} 
+                                            onDelete={handleDeleteOtIncharge} 
+                                            onEdit={(ot) => handleEdit(ot, 'ot-incharges')}
+                                            onViewDetails={(ot) => handleViewStaffDetails(ot, 'ot-incharge')}
+                                            onResetPassword={(ot) => handleResetStaffPassword(ot, 'ot-incharge')}
+                                            startIndex={page * pageSize} 
+                                            pagination={pagination} 
+                                        />
+                                    ) : (
+                                        <EmptyState
+                                            icon={null}
+                                            title="No OT Incharges Found"
+                                            message="Add OT Incharges to help manage your operation theatre operations."
+                                            actionLabel="Add OT Incharge"
+                                            onAction={user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
+                                        />
+                                    )
+                                )}
+
+                                 {activeTab === 'nurses' && (
                                     nurses.length > 0 ? (
                                         <NursesTable
                                             nurses={nurses}
@@ -2735,6 +2833,18 @@ const HospitalAdminDashboard = () => {
                             </div>
                         )}
 
+                        {activeTab === 'ot-theatres' && (
+                            <div className="max-w-3xl mx-auto my-4">
+                                <OtRoomsCard />
+                            </div>
+                        )}
+
+                        {activeTab === 'ot-analytics' && (
+                            <div className="max-w-4xl mx-auto my-4">
+                                <OtAnalyticsCard />
+                            </div>
+                        )}
+
                         {activeTab === 'symptom-presets' && (
                             <div className="max-w-2xl mx-auto my-4">
                                 <NotePresetsManager
@@ -2748,13 +2858,77 @@ const HospitalAdminDashboard = () => {
                             </div>
                         )}
 
+                        {activeTab === 'diagnosis-presets' && (
+                            <div className="max-w-2xl mx-auto my-4">
+                                <NotePresetsManager
+                                    fieldType="DIAGNOSIS"
+                                    isAdmin
+                                    title="Diagnosis Presets"
+                                    noun="diagnosis preset"
+                                    placeholder="e.g. Essential Hypertension"
+                                    description="Common diagnoses that appear as one-click buttons under Diagnosis during a consultation."
+                                />
+                            </div>
+                        )}
+
                         {activeTab === 'prescription-presets' && (
                             <div className="max-w-3xl mx-auto my-4">
                                 <PrescriptionPresetsManager isAdmin />
                             </div>
                         )}
+
+                        {activeTab === 'in-clinic-presets' && (
+                            <div className="max-w-3xl mx-auto my-4">
+                                <InClinicPresetsManager />
+                            </div>
+                        )}
                                 {activeTab === 'settings' && (
                                     <>
+                                    {/* Non-pharmacy: Settings is a grid of boxes; each opens its section on click. */}
+                                    {!isPharmacyTenant && !settingsView && (
+                                        <div className="max-w-4xl mx-auto my-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {[
+                                                { view: 'operations', title: 'Operations Settings', desc: 'Reception mode, billing responsibility, nurse login and OT incharge.', iconClass: 'bg-sky-50 text-sky-600' },
+                                                { view: 'vitals', title: 'Vitals', desc: 'Which vitals are captured at OPD entry; add your own.', iconClass: 'bg-rose-50 text-rose-600' },
+                                                { view: 'print-payment', title: 'Print & Payment', desc: 'Which pages print at consultation, and whether the bill is taken before or after the OPD.', iconClass: 'bg-violet-50 text-violet-600' },
+                                                ...(modules.includes('NURSING') ? [
+                                                    { view: 'nursing', title: 'Nursing Records', desc: 'Turn nursing forms on or off and choose who edits each.', iconClass: 'bg-emerald-50 text-emerald-600' }
+                                                ] : []),
+                                                // Without nursing there is no "Nursing Records" card, but the IPD still needs
+                                                // its clinical sub-divs (Vitals, Medication, Notes, …). This gives the same
+                                                // on/off + who-edits control, with Reception as the editor instead of Nurse.
+                                                ...(modules.includes('IPD') && !modules.includes('NURSING') ? [
+                                                    { view: 'ipd-forms', title: 'IPD Forms', desc: 'Turn IPD sub-divisions on or off and choose who edits each (Doctor / Reception).', iconClass: 'bg-emerald-50 text-emerald-600' }
+                                                ] : []),
+                                                ...(modules.includes('OT') ? [
+                                                    { view: 'ot-forms', title: 'OT / Surgery Forms', desc: 'Turn OT and NABH forms on or off and choose who edits each.', iconClass: 'bg-amber-50 text-amber-600' },
+                                                    { view: 'permissions', title: 'OT Permissions', desc: 'Choose which role may do what in the Operation Theatre.', iconClass: 'bg-indigo-50 text-indigo-600' },
+                                                    { view: 'policies', title: 'OT Policies', desc: 'Which workflow steps your theatre requires; one-click presets.', iconClass: 'bg-teal-50 text-teal-600' },
+                                                ] : []),
+                                            ].map((b) => (
+                                                <button key={b.view} onClick={() => setSettingsView(b.view)}
+                                                    className="text-left bg-slate-50/50 rounded-2xl border border-gray-200 p-6 hover:shadow-md transition-all duration-300">
+                                                    <div className={`p-3 rounded-xl w-fit mb-4 ${b.iconClass}`}>
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                        </svg>
+                                                    </div>
+                                                    <h3 className="text-lg font-bold text-gray-900 mb-1">{b.title}</h3>
+                                                    <p className="text-sm text-gray-600 leading-relaxed">{b.desc}</p>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {!isPharmacyTenant && settingsView && (
+                                        <div className="max-w-4xl mx-auto mt-4">
+                                            <button onClick={() => setSettingsView(null)}
+                                                className="inline-flex items-center gap-1 text-sm font-semibold text-gray-600 hover:text-gray-900">
+                                                ← Back to Settings
+                                            </button>
+                                        </div>
+                                    )}
+                                    {(isPharmacyTenant || settingsView === 'operations') && (
                                     <div className="p-6 bg-white rounded-2xl border border-gray-200/80 shadow-sm max-w-4xl mx-auto my-4">
                                         <h2 className="text-xl font-bold mb-1 text-gray-900">{isPharmacyTenant ? 'Pharmacy Settings' : 'Operations Settings'}</h2>
                                         <p className="text-sm text-gray-500 mb-8">{isPharmacyTenant ? 'Configure your pharmacy workflow options.' : 'Configure operational scenarios, staff access permissions, and billing responsibilities.'}</p>
@@ -2964,14 +3138,87 @@ const HospitalAdminDashboard = () => {
                                                         </button>
                                                     </div>
                                                 </div>}
+
+                                                {/* OT Incharge Setting Card — only shown when OT module is in plan */}
+                                                {modules.includes('OT') && <div className="bg-slate-50/50 rounded-2xl border border-gray-200 p-6 flex flex-col justify-between hover:shadow-md transition-all duration-300">
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-4">
+                                                            <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                                                                </svg>
+                                                            </div>
+                                                            <span className={`px-3 py-1 text-xs font-semibold rounded-full ${operationsSettings.otInchargeEnabled === true ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                                                                {operationsSettings.otInchargeEnabled === true ? 'OT Incharge Enabled' : 'Disabled'}
+                                                            </span>
+                                                        </div>
+                                                        <h3 className="text-lg font-bold text-gray-900 mb-2">OT Incharge Staff Option</h3>
+                                                        <p className="text-sm text-gray-600 leading-relaxed mb-6">
+                                                            When enabled, an OT Incharge profile can be managed under the Staff tab.
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                                                        <span className="text-sm font-medium text-gray-700">
+                                                            {operationsSettings.otInchargeEnabled === true ? 'OT Incharge Tab Active' : 'OT Incharge Tab Hidden'}
+                                                        </span>
+                                                        <button
+                                                            onClick={toggleOtIncharge}
+                                                            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 ${
+                                                                operationsSettings.otInchargeEnabled === true ? 'bg-sky-600' : 'bg-gray-200'
+                                                            }`}
+                                                        >
+                                                            <span className="sr-only">Toggle OT Incharge Option</span>
+                                                            <span
+                                                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                                                    operationsSettings.otInchargeEnabled === true ? 'translate-x-5' : 'translate-x-0'
+                                                                }`}
+                                                            />
+                                                        </button>
+                                                    </div>
+                                                </div>}
                                                 </>)}
                                             </div>
                                         )}
                                     </div>
-                                        {!isPharmacyTenant && (
+                                    )}
+                                        {!isPharmacyTenant && settingsView === 'vitals' && (
                                             <div className="max-w-4xl mx-auto my-4">
                                                 <VitalsSettingsCard />
-                                                <FilesAndAccessCard />
+                                            </div>
+                                        )}
+                                        {!isPharmacyTenant && settingsView === 'print-payment' && (
+                                            <div className="max-w-4xl mx-auto my-4">
+                                                <PrintPaymentSettingsCard />
+                                            </div>
+                                        )}
+                                        {!isPharmacyTenant && modules.includes('NURSING') && settingsView === 'nursing' && (
+                                            <div className="max-w-4xl mx-auto my-4">
+                                                <FilesAndAccessCard category="NURSING" title="Nursing Records"
+                                                    description="Turn nursing forms on or off for this hospital and choose who can edit each. Off forms are hidden everywhere." />
+                                            </div>
+                                        )}
+                                        {/* IPD Forms — same engine as Nursing Records, shown only when nursing is off.
+                                            Reception is the editor instead of a nurse. */}
+                                        {!isPharmacyTenant && modules.includes('IPD') && !modules.includes('NURSING') && settingsView === 'ipd-forms' && (
+                                            <div className="max-w-4xl mx-auto my-4">
+                                                <FilesAndAccessCard category="NURSING" title="IPD Forms" accessContext="RECEPTION"
+                                                    description="Turn IPD sub-divisions on or off and choose who can edit each. Forms stay visible to everyone in the IPD; only the chosen role (and admin) can edit. Off forms are hidden." />
+                                            </div>
+                                        )}
+                                        {!isPharmacyTenant && modules.includes('OT') && settingsView === 'ot-forms' && (
+                                            <div className="max-w-4xl mx-auto my-4">
+                                                <FilesAndAccessCard category="OT" title="OT / Surgery Forms"
+                                                    description="Turn OT and NABH forms on or off for this hospital and choose who can edit each. Off forms are hidden everywhere." />
+                                            </div>
+                                        )}
+                                        {modules.includes('OT') && settingsView === 'permissions' && (
+                                            <div className="max-w-4xl mx-auto my-4">
+                                                <OtPermissionsCard />
+                                            </div>
+                                        )}
+                                        {modules.includes('OT') && settingsView === 'policies' && (
+                                            <div className="max-w-4xl mx-auto my-4">
+                                                <OtPoliciesCard />
                                             </div>
                                         )}
                                     </>
@@ -3963,7 +4210,7 @@ const HospitalAdminDashboard = () => {
                                     <h3 className="text-2xl font-bold text-neutral-800">New OPD Case</h3>
                                     <p className="text-sm text-neutral-600 mt-1">Register a patient into the OPD queue</p>
                                 </div>
-                                <button onClick={() => { setIsAdminOpdModalOpen(false); setAdminOpdPatientSearch(''); setAdminOpdShowDropdown(false); setAdminOpdForm({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', height: '', customVitals: {}, spo2: '', problem: '', visitType: 'NEW' }); }} className="w-10 h-10 rounded-xl bg-white/80 hover:bg-white flex items-center justify-center text-neutral-400 hover:text-neutral-600 cursor-pointer border-0">
+                                <button onClick={() => { setIsAdminOpdModalOpen(false); setAdminOpdPatientSearch(''); setAdminOpdShowDropdown(false); setAdminOpdForm({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', height: '', customVitals: {}, spo2: '', problem: '', visitType: 'NEW', paymentMethod: 'CASH', paymentReference: '' }); }} className="w-10 h-10 rounded-xl bg-white/80 hover:bg-white flex items-center justify-center text-neutral-400 hover:text-neutral-600 cursor-pointer border-0">
                                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                                 </button>
                             </div>
@@ -4014,6 +4261,10 @@ const HospitalAdminDashboard = () => {
                                     return;
                                 }
                             }
+                            // Bill Payment = First: the fee is collected here, so the method is required.
+                            const payErr = validateOpdPayment(adminOpdForm.paymentMethod, adminOpdForm.paymentReference);
+                            if (payErr) { toastError(payErr); return; }
+
                             try {
                                 const payload = {
                                     patientId: adminOpdForm.patientId,
@@ -4026,12 +4277,16 @@ const HospitalAdminDashboard = () => {
                                         customVitals: adminOpdForm.customVitals || {},
                                     spo2: adminOpdForm.spo2 ? parseInt(adminOpdForm.spo2) : null,
                                     problem: adminOpdForm.problem,
-                                    visitType: adminOpdForm.visitType
+                                    visitType: adminOpdForm.visitType,
+                                    ...(isPayFirst() ? {
+                                        paymentMethod: adminOpdForm.paymentMethod,
+                                        paymentReference: adminOpdForm.paymentReference || null,
+                                    } : {}),
                                 };
                                 const res = await hospitalService.createOpd(payload);
                                 setIsAdminOpdModalOpen(false);
                                 setAdminOpdPatientSearch('');
-                                setAdminOpdForm({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', height: '', customVitals: {}, spo2: '', problem: '', visitType: 'NEW' });
+                                setAdminOpdForm({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', height: '', customVitals: {}, spo2: '', problem: '', visitType: 'NEW', paymentMethod: 'CASH', paymentReference: '' });
                                 success('OPD Case created — ID: ' + res.caseId);
                                 loadData();
                             } catch (err) {
@@ -4145,8 +4400,15 @@ const HospitalAdminDashboard = () => {
                                 <label className="inline-flex items-center gap-2 cursor-pointer"><input type="radio" name="adminVisitType" value="NEW" checked={adminOpdForm.visitType === 'NEW'} onChange={() => setAdminOpdForm(prev => ({ ...prev, visitType: 'NEW' }))} /> New</label>
                                 <label className="inline-flex items-center gap-2 cursor-pointer"><input type="radio" name="adminVisitType" value="FOLLOWUP" checked={adminOpdForm.visitType === 'FOLLOWUP'} onChange={() => setAdminOpdForm(prev => ({ ...prev, visitType: 'FOLLOWUP' }))} /> Follow-up</label>
                             </div>
+
+                            <OpdPaymentFields
+                                method={adminOpdForm.paymentMethod}
+                                reference={adminOpdForm.paymentReference}
+                                onChange={(patch) => setAdminOpdForm(prev => ({ ...prev, ...patch }))}
+                            />
+
                             <div className="flex gap-4 pt-4">
-                                <button type="button" onClick={() => { setIsAdminOpdModalOpen(false); setAdminOpdPatientSearch(''); setAdminOpdForm({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', height: '', customVitals: {}, spo2: '', problem: '', visitType: 'NEW' }); }} className="flex-1 py-2.5 rounded-xl border border-gray-300 font-semibold text-gray-700 hover:bg-gray-50 transition">Cancel</button>
+                                <button type="button" onClick={() => { setIsAdminOpdModalOpen(false); setAdminOpdPatientSearch(''); setAdminOpdForm({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', height: '', customVitals: {}, spo2: '', problem: '', visitType: 'NEW', paymentMethod: 'CASH', paymentReference: '' }); }} className="flex-1 py-2.5 rounded-xl border border-gray-300 font-semibold text-gray-700 hover:bg-gray-50 transition">Cancel</button>
                                 <button type="submit" className="flex-1 py-2.5 rounded-xl bg-slate-900 text-white font-semibold hover:bg-slate-800 transition">Create OPD Case</button>
                             </div>
                         </form>
@@ -5035,6 +5297,15 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
             if (!isEdit) {
                 rules.password = ['required', 'password'];
             }
+        } else if (type === 'ot-incharges') {
+            Object.assign(rules, {
+                name: ['required', 'name'],
+                email: ['required', 'email'],
+                phone: ['required', 'phone']
+            });
+            if (!isEdit) {
+                rules.password = ['required', 'password'];
+            }
         } else if (type === 'nurses') {
             Object.assign(rules, {
                 name: ['required', 'name'],
@@ -5073,7 +5344,7 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
         }
 
         const action = isEdit ? 'Update' : 'Add';
-        const entity = type === 'patients' ? 'Patient' : type === 'doctors' ? 'Doctor' : type === 'receptionists' ? 'Receptionist' : type === 'nurses' ? 'Nurse' : type === 'pharmacists' ? 'Pharmacist' : type === 'appointments' ? 'Appointment' : 'Billing Record';
+        const entity = type === 'patients' ? 'Patient' : type === 'doctors' ? 'Doctor' : type === 'receptionists' ? 'Receptionist' : type === 'nurses' ? 'Nurse' : type === 'pharmacists' ? 'Pharmacist' : type === 'ot-incharges' ? 'OT Incharge' : type === 'appointments' ? 'Appointment' : 'Billing Record';
 
         openConfirmation(
             `${action} ${entity}`,
@@ -5092,6 +5363,9 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
                     } else if (type === 'pharmacists') {
                         if (isEdit) await hospitalService.updatePharmacist(initialData.publicId || initialData.id, formData);
                         else await hospitalService.addPharmacist(formData);
+                    } else if (type === 'ot-incharges') {
+                        if (isEdit) await hospitalService.updateOtIncharge(initialData.publicId || initialData.id, formData);
+                        else await hospitalService.addOtIncharge(formData);
                     } else if (type === 'nurses') {
                         if (isEdit) {
                             await hospitalService.updateNurse(initialData.publicId || initialData.id, formData);
@@ -5126,7 +5400,7 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
     const isFieldDisabled = (field) => {
         if (!isEdit) return false;
         // Disable email/password editing for doctors, receptionists, pharmacists as per security rules
-        if ((type === 'doctors' || type === 'receptionists' || type === 'pharmacists' || type === 'nurses') && (field === 'email' || field === 'password')) return true;
+        if ((type === 'doctors' || type === 'receptionists' || type === 'pharmacists' || type === 'nurses' || type === 'ot-incharges') && (field === 'email' || field === 'password')) return true;
         return false;
     };
 
@@ -5336,6 +5610,58 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
                                     <input
                                         type="email"
                                         placeholder="receptionist@hospital.com"
+                                        value={formData.email || ''}
+                                        onChange={(e) => handleChange('email', e.target.value)}
+                                        disabled={isFieldDisabled('email')}
+                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.email ? 'border-red-500' : 'border-gray-300'} ${isFieldDisabled('email') ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                                    />
+                                    {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                                    <input
+                                        type="tel"
+                                        placeholder="10-digit number"
+                                        value={formData.phone || ''}
+                                        onChange={(e) => handleChange('phone', e.target.value)}
+                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.phone ? 'border-red-500' : 'border-gray-300'}`}
+                                    />
+                                    {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone}</p>}
+                                </div>
+                                {!isEdit && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                                        <input
+                                            type="password"
+                                            placeholder="******"
+                                            value={formData.password || ''}
+                                            onChange={(e) => handleChange('password', e.target.value)}
+                                            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.password ? 'border-red-500' : 'border-gray-300'}`}
+                                        />
+                                        {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
+                                    </div>
+                                )}
+                            </>
+                        )}
+
+                        {type === 'ot-incharges' && (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Name</label>
+                                    <input
+                                        type="text"
+                                        placeholder="OT Incharge Name"
+                                        value={formData.name || ''}
+                                        onChange={(e) => handleChange('name', e.target.value)}
+                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.name ? 'border-red-500' : 'border-gray-300'}`}
+                                    />
+                                    {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                                    <input
+                                        type="email"
+                                        placeholder="otincharge@hospital.com"
                                         value={formData.email || ''}
                                         onChange={(e) => handleChange('email', e.target.value)}
                                         disabled={isFieldDisabled('email')}
@@ -5812,6 +6138,66 @@ const ReceptionistsTable = ({ receptionists, isAdmin, onDelete, onEdit, onViewDe
     ];
 
     return <DataTable data={receptionists} columns={columns} pagination={pagination} />;
+};
+
+// OT Incharges Table Component
+const OtInchargesTable = ({ otIncharges, isAdmin, onDelete, onEdit, onViewDetails, onResetPassword, startIndex = 0, pagination }) => {
+    const columnHelper = createColumnHelper();
+
+    const columns = [
+        columnHelper.display({
+            id: 'sno',
+            header: 'S.NO.',
+            cell: info => startIndex + info.row.index + 1,
+        }),
+        columnHelper.accessor(row => row.customId || row.id, {
+            id: 'id',
+            header: 'ID',
+            cell: info => <span title="Serial Number">{info.getValue()}</span>,
+        }),
+        columnHelper.accessor('name', {
+            header: 'NAME',
+            cell: info => <span className="font-medium text-gray-900">{info.getValue()}</span>,
+        }),
+        columnHelper.accessor('email', {
+            header: 'EMAIL',
+        }),
+        ...(isAdmin ? [
+            columnHelper.display({
+                id: 'actions',
+                header: () => <div className="text-right">ACTIONS</div>,
+                cell: info => (
+                    <div className="text-right">
+                        <ActionMenu actions={[
+                            {
+                                label: 'View Details',
+                                onClick: () => onViewDetails(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                            },
+                            {
+                                label: 'Edit',
+                                onClick: () => onEdit(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /></svg>
+                            },
+                            {
+                                label: 'Reset Password',
+                                onClick: () => onResetPassword(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v-2l2-2 1-.743A6 6 0 1118 8zm-6-2a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" /></svg>
+                            },
+                            {
+                                label: 'Delete',
+                                onClick: () => onDelete(info.row.original.publicId || info.row.original.id),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>,
+                                danger: true
+                            }
+                        ]} />
+                    </div>
+                ),
+            })
+        ] : []),
+    ];
+
+    return <DataTable data={otIncharges} columns={columns} pagination={pagination} />;
 };
 
 // NursesTable Component (Phase 1 Nurse module) — mirrors ReceptionistsTable.

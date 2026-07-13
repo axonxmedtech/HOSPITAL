@@ -21,7 +21,7 @@ import BranchAuditLogsView from './pharmacy/BranchAuditLogsView';
 import BranchSettingsView from './pharmacy/BranchSettingsView';
 
 const PharmacyDashboard = () => {
-    const [user] = useState(authService.getCurrentUser());
+    const [user, setUser] = useState(authService.getCurrentUser());
     const navigate = useNavigate();
     const { success, error: toastError } = useToast();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -33,7 +33,7 @@ const PharmacyDashboard = () => {
     const [refreshKey, setRefreshKey] = useState(0);
 
     const handleRefresh = useCallback(() => setRefreshKey(k => k + 1), []);
-    useWebSocket(user, null, handleRefresh);
+    useWebSocket(user, setUser, handleRefresh);
 
     const handleLogout = () => {
         const loginUrl = authService.getLoginUrl();

@@ -37,8 +37,45 @@ class SurgeryServiceTest {
     @Mock SecurityContextHelper securityHelper;
     @Mock AuditLogService auditLogService;
     @Mock BedStatusService bedStatusService;
+    @Mock com.hms.service.hospital.ot.SurgeryStateMachine stateMachine;
+    @Mock com.hms.service.hospital.ot.OtRoomService otRoomService;
+    @Mock com.hms.service.hospital.ot.OtSchedulingService otSchedulingService;
+    @Mock com.hms.repository.OtRoomRepository otRoomRepository;
+    @Mock com.hms.service.hospital.ot.OtPolicyService otPolicyService;
+    @Mock com.hms.service.hospital.ot.SurgeryExecutionService surgeryExecutionService;
+    @Mock com.hms.repository.OtRoomOccupancyRepository occupancyRepository;
+
+    @Mock com.hms.service.RealtimeNotifier notifier;
 
     @InjectMocks SurgeryService service;
+
+    @org.junit.jupiter.api.BeforeEach
+    void stubPolicies() {
+        org.mockito.Mockito.lenient().when(otPolicyService.resolve(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("APPROVAL_MODE"),
+                org.mockito.ArgumentMatchers.any())).thenReturn("NONE");
+        org.mockito.Mockito.lenient().when(otPolicyService.resolve(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("CANCELLATION_REASON"),
+                org.mockito.ArgumentMatchers.any())).thenReturn("OPTIONAL");
+    }
+
+    @org.junit.jupiter.api.BeforeEach
+    void stubStateMachine() {
+        org.mockito.Mockito.lenient()
+                .when(stateMachine.transition(org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(i -> applyStatus(i.getArgument(0), i.getArgument(1)));
+        org.mockito.Mockito.lenient()
+                .when(stateMachine.autoTransition(org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(i -> applyStatus(i.getArgument(0), i.getArgument(1)));
+    }
+
+    private static Surgery applyStatus(Surgery s, com.hms.entity.SurgeryStatus to) {
+        s.setStatus(to.name());
+        return s;
+    }
 
     private IpdAdmission admission() {
         IpdAdmission a = new IpdAdmission();
@@ -62,8 +99,8 @@ class SurgeryServiceTest {
         when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
         Doctor d = new Doctor(); d.setId(11L); d.setHospitalId(7L);
         when(doctorRepository.findByEmailAndHospitalId("doc@x.com", 7L)).thenReturn(Optional.of(d));
-        when(surgeryRepository.findByIpdAdmissionIdAndStatusIn(eq(1L), any())).thenReturn(List.of());
-        when(surgeryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(surgeryRepository.findByPatientIdAndStatusIn(eq(500L), any())).thenReturn(List.of());
+        org.mockito.Mockito.lenient().when(surgeryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         Surgery saved = service.createRequest(createReq());
 
@@ -78,7 +115,7 @@ class SurgeryServiceTest {
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
         when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
         Surgery existing = new Surgery(); existing.setStatus(Surgery.REQUESTED);
-        when(surgeryRepository.findByIpdAdmissionIdAndStatusIn(eq(1L), any())).thenReturn(List.of(existing));
+        when(surgeryRepository.findByPatientIdAndStatusIn(eq(500L), any())).thenReturn(List.of(existing));
 
         assertThatThrownBy(() -> service.createRequest(createReq()))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -103,7 +140,7 @@ class SurgeryServiceTest {
         when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
         when(patientRepository.findById(500L)).thenReturn(Optional.empty());
         when(userRepository.findByEmail("surg@x.com")).thenReturn(Optional.empty());
-        when(surgeryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        org.mockito.Mockito.lenient().when(surgeryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ScheduleSurgeryRequest req = new ScheduleSurgeryRequest();
         req.setSurgeonDoctorId(11L);
@@ -127,7 +164,7 @@ class SurgeryServiceTest {
         Ward ward = new Ward(); ward.setWardId(3L); ward.setHospitalId(7L); ward.setWardName("OT");
         when(wardRepository.findById(3L)).thenReturn(Optional.of(ward));
         when(assignmentRepository.findByIpdAdmissionIdAndIsActiveTrue(1L)).thenReturn(Optional.empty());
-        when(surgeryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        org.mockito.Mockito.lenient().when(surgeryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ScheduleSurgeryRequest req = new ScheduleSurgeryRequest();
         req.setSurgeonName("Dr. Visiting Anaesthetist");   // no surgeonDoctorId → "Other"
@@ -166,13 +203,47 @@ class SurgeryServiceTest {
         Bed bed = new Bed(); bed.setBedId(50L); bed.setHospitalId(7L); bed.setWardId(3L); bed.setStatus("available");
         when(bedRepository.findByWardIdAndHospitalId(3L, 7L)).thenReturn(List.of(bed));
         when(bedRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-        when(surgeryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        org.mockito.Mockito.lenient().when(surgeryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         Surgery out = service.start("s-pub");
 
         assertThat(out.getStatus()).isEqualTo(Surgery.IN_PROGRESS);
         assertThat(out.getStartedAt()).isNotNull();
         verify(bedStatusService).change(eq(50L), eq(com.hms.entity.BedStatus.OCCUPIED), any());
+    }
+
+    /**
+     * Phase 7 exit criterion: with WHO_CHECKLIST_MODE=BLOCKING, a case cannot start until
+     * the Time-Out is signed. Rejected by the SERVICE, not merely hidden in the UI.
+     */
+    @Test
+    void start_isBlocked_whenWhoTimeOutUnsigned_underBlockingPolicy() {
+        Surgery s = new Surgery();
+        s.setId(9L); s.setHospitalId(7L); s.setStatus(Surgery.SCHEDULED); s.setOtWardId(3L);
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(surgeryRepository.findByPublicId("s-pub")).thenReturn(Optional.of(s));
+        when(otPolicyService.resolve(any(), eq("WHO_CHECKLIST_MODE"), any())).thenReturn("BLOCKING");
+        when(surgeryExecutionService.timeOutSigned(9L)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.start("s-pub"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("WHO Time-Out must be signed");
+    }
+
+    @Test
+    void start_isAllowed_whenWhoTimeOutSigned_underBlockingPolicy() {
+        Surgery s = new Surgery();
+        s.setId(9L); s.setHospitalId(7L); s.setStatus(Surgery.SCHEDULED); s.setOtWardId(3L);
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(surgeryRepository.findByPublicId("s-pub")).thenReturn(Optional.of(s));
+        when(otPolicyService.resolve(any(), eq("WHO_CHECKLIST_MODE"), any())).thenReturn("BLOCKING");
+        when(surgeryExecutionService.timeOutSigned(9L)).thenReturn(true);
+        Bed bed = new Bed(); bed.setBedId(50L); bed.setHospitalId(7L); bed.setWardId(3L); bed.setStatus("available");
+        when(bedRepository.findByWardIdAndHospitalId(3L, 7L)).thenReturn(List.of(bed));
+        when(bedRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        org.mockito.Mockito.lenient().when(surgeryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        assertThat(service.start("s-pub").getStatus()).isEqualTo(Surgery.IN_PROGRESS);
     }
 
     @Test
@@ -182,7 +253,7 @@ class SurgeryServiceTest {
         s.setOtWardId(3L); s.setOtBedId(50L);
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
         when(surgeryRepository.findByPublicId("s-pub")).thenReturn(Optional.of(s));
-        when(surgeryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        org.mockito.Mockito.lenient().when(surgeryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         Surgery out = service.complete("s-pub");
 

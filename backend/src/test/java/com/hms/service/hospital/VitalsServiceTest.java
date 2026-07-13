@@ -36,6 +36,8 @@ class VitalsServiceTest {
     @Mock AuditLogService auditLogService;
     @Mock FormAccessService formAccessService;
 
+    @Mock com.hms.service.RealtimeNotifier notifier;
+
     @InjectMocks VitalsService service;
 
     private IpdAdmission admission() {
@@ -98,16 +100,29 @@ class VitalsServiceTest {
     }
 
     @Test
-    void create_rejectsOutOfRangePulse() {
+    void create_rejectsNegativePulse() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
         when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
         VitalsRequest r = new VitalsRequest();
         r.setIpdAdmissionId(1L);
-        r.setPulse(500); // > 250
+        r.setPulse(-5); // below the only remaining bound (0)
 
         assertThatThrownBy(() -> service.create(r))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Pulse");
+    }
+
+    @Test
+    void create_acceptsHighPulse_noUpperLimit() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
+        when(vitalsRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        VitalsRequest r = new VitalsRequest();
+        r.setIpdAdmissionId(1L);
+        r.setPulse(999); // was rejected as > 250; now allowed — no upper limit
+
+        VitalsRecord saved = service.create(r);
+        assertThat(saved.getPulse()).isEqualTo(999);
     }
 
     @Test

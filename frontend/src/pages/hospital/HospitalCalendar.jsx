@@ -189,7 +189,12 @@ const DayPanel = ({ date, detail, loading, onClose, onChanged }) => {
                             <h3 className="font-semibold text-gray-700 mb-1">Surgeries</h3>
                             {detail.surgeries.length === 0 ? <p className="text-gray-400">None</p> :
                                 detail.surgeries.map((s, i) => (
-                                    <div key={i} className="text-gray-700">{hhmm(s.scheduledTime)} — {s.patientName} ({s.surgeonName || '—'}) · {s.otWardName} · {s.status}</div>
+                                    <div key={i} className="text-gray-700">
+                                        {hhmm(s.scheduledTime)} — {s.patientName} ({s.surgeonName || '—'})
+                                        {s.procedureName ? ` · ${s.procedureName}` : ''}
+                                        {' · '}<span className="font-medium">{s.otRoomName || s.otWardName || '—'}</span>
+                                        {' · '}{s.status}
+                                    </div>
                                 ))}
                         </section>
                         <section>

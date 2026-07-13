@@ -4,30 +4,45 @@ import wardService from '../../../services/wardService';
 import { useToast } from '../../../context/ToastContext';
 
 /**
- * ScheduleSurgeryModal - reception assigns a surgeon + date/time + OT ward to a
- * requested surgery. OT wards are those whose name contains "OT".
+ * ScheduleSurgeryModal - assign a surgeon + date/time + theatre to a surgery.
+ *
+ * Theatres come from the server (ot_rooms), not a client-side filter over ward names.
+ * A hospital that has not migrated its OT wards yet still sees them as a fallback, so
+ * scheduling keeps working through the transition.
  */
 const ScheduleSurgeryModal = ({ surgery, onClose, onScheduled }) => {
     const { success, error: toastError } = useToast();
     const [surgeons, setSurgeons] = useState([]);
-    const [wards, setWards] = useState([]);
-    const [form, setForm] = useState({ surgeonDoctorId: '', surgeonName: '', anaesthetistName: '', scheduledAt: '', otWardId: '' });
+    const [rooms, setRooms] = useState([]);
+    const [legacyWards, setLegacyWards] = useState([]);
+    const [form, setForm] = useState({
+        surgeonDoctorId: '', surgeonName: '', anaesthetistName: '',
+        scheduledAt: '', theatre: '', estimatedDurationMinutes: '',
+    });
     const [saving, setSaving] = useState(false);
     const isOther = form.surgeonDoctorId === '__OTHER__';
 
     useEffect(() => {
         otService.getSurgeons().then((s) => setSurgeons(Array.isArray(s) ? s : [])).catch(() => setSurgeons([]));
-        wardService.getWards().then((w) => {
-            const arr = Array.isArray(w) ? w : (w?.content || w?.data || []);
-            setWards(arr.filter((x) => (x.wardName || '').toUpperCase().includes('OT')));
-        }).catch(() => setWards([]));
+        otService.getRooms().then((r) => {
+            const list = Array.isArray(r) ? r : [];
+            setRooms(list);
+            // Only fall back to the old ward-name heuristic while no real theatres exist.
+            if (list.length === 0) {
+                wardService.getWards().then((w) => {
+                    const arr = Array.isArray(w) ? w : (w?.content || w?.data || []);
+                    setLegacyWards(arr.filter((x) => (x.wardName || '').toUpperCase().includes('OT')));
+                }).catch(() => setLegacyWards([]));
+            }
+        }).catch(() => setRooms([]));
     }, []);
 
     const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+    const usingRooms = rooms.length > 0;
 
     const submit = async () => {
-        if (!form.surgeonDoctorId || !form.scheduledAt || !form.otWardId) {
-            toastError('Surgeon, date/time and OT ward are required'); return;
+        if (!form.surgeonDoctorId || !form.scheduledAt || !form.theatre) {
+            toastError('Surgeon, date/time and theatre are required'); return;
         }
         if (isOther && !form.surgeonName.trim()) {
             toastError("Enter the operator's name for 'Other'"); return;
@@ -39,7 +54,10 @@ const ScheduleSurgeryModal = ({ surgery, onClose, onScheduled }) => {
                 surgeonName: isOther ? form.surgeonName.trim() : null,
                 anaesthetistName: form.anaesthetistName.trim() || null,
                 scheduledAt: form.scheduledAt,
-                otWardId: Number(form.otWardId),
+                // A real theatre sends otRoomId; the legacy fallback sends otWardId.
+                ...(usingRooms ? { otRoomId: Number(form.theatre) } : { otWardId: Number(form.theatre) }),
+                estimatedDurationMinutes: form.estimatedDurationMinutes
+                    ? Number(form.estimatedDurationMinutes) : null,
             });
             success('Surgery scheduled');
             onScheduled && onScheduled();
@@ -78,19 +96,32 @@ const ScheduleSurgeryModal = ({ surgery, onClose, onScheduled }) => {
                             placeholder="Anaesthetist's name, if present"
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
                     </div>
-                    <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-1">Date &amp; Time *</label>
-                        <input type="datetime-local" value={form.scheduledAt} onChange={(e) => set('scheduledAt', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-1">Date &amp; Time *</label>
+                            <input type="datetime-local" value={form.scheduledAt} onChange={(e) => set('scheduledAt', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-1">Est. duration (min)</label>
+                            <input type="number" min="1" value={form.estimatedDurationMinutes}
+                                onChange={(e) => set('estimatedDurationMinutes', e.target.value)}
+                                placeholder="60"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                        </div>
                     </div>
                     <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-1">OT Ward *</label>
-                        <select value={form.otWardId} onChange={(e) => set('otWardId', e.target.value)}
+                        <label className="block text-sm font-semibold text-gray-700 mb-1">Theatre *</label>
+                        <select value={form.theatre} onChange={(e) => set('theatre', e.target.value)}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                            <option value="">Select OT ward…</option>
-                            {wards.map((w) => <option key={w.wardId} value={w.wardId}>{w.wardName}</option>)}
+                            <option value="">Select theatre…</option>
+                            {usingRooms
+                                ? rooms.map((r) => <option key={r.publicId} value={r.id}>{r.name}</option>)
+                                : legacyWards.map((w) => <option key={w.wardId} value={w.wardId}>{w.wardName} (ward)</option>)}
                         </select>
-                        {wards.length === 0 && <p className="text-xs text-amber-600 mt-1">No OT ward found — create a ward named "OT" first.</p>}
+                        {usingRooms
+                            ? <p className="text-xs text-gray-400 mt-1">Double-booking a theatre or surgeon is blocked, allowing for turnover time.</p>
+                            : <p className="text-xs text-amber-600 mt-1">No theatres set up — add them under Settings › OT Theatres. Showing OT-named wards meanwhile.</p>}
                     </div>
                 </div>
                 <div className="flex justify-end gap-3 mt-6">

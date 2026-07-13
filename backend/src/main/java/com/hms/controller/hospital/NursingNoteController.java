@@ -1,7 +1,6 @@
 package com.hms.controller.hospital;
 
 import com.hms.dto.NursingNoteRequest;
-import com.hms.security.RequireModule;
 import com.hms.service.hospital.NursingNoteService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -17,38 +16,37 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/hospital/nurse/notes")
-@RequireModule("NURSING")
 public class NursingNoteController {
 
     @Autowired
     private NursingNoteService noteService;
 
     @PostMapping
-    @PreAuthorize("hasRole('NURSE')")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
     public ResponseEntity<?> create(@RequestBody NursingNoteRequest req) {
         return ResponseEntity.ok(noteService.create(req));
     }
 
     @GetMapping("/admission/{admissionId}")
-    @PreAuthorize("hasAnyRole('NURSE', 'DOCTOR', 'HOSPITAL_ADMIN')")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
     public ResponseEntity<?> getByAdmission(@PathVariable Long admissionId) {
         return ResponseEntity.ok(noteService.getByAdmission(admissionId));
     }
 
     @GetMapping("/surgery/{surgeryId}")
-    @PreAuthorize("hasAnyRole('NURSE', 'DOCTOR', 'HOSPITAL_ADMIN')")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
     public ResponseEntity<?> getBySurgery(@PathVariable Long surgeryId) {
         return ResponseEntity.ok(noteService.getBySurgery(surgeryId));
     }
 
     @PutMapping("/{publicId}")
-    @PreAuthorize("hasRole('NURSE')")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
     public ResponseEntity<?> update(@PathVariable String publicId, @RequestBody NursingNoteRequest req) {
         return ResponseEntity.ok(noteService.update(publicId, req));
     }
 
     @DeleteMapping("/{publicId}")
-    @PreAuthorize("hasRole('NURSE')")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
     public ResponseEntity<?> delete(@PathVariable String publicId) {
         noteService.softDelete(publicId);
         return ResponseEntity.ok(Map.of("message", "Note deleted"));

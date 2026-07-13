@@ -30,7 +30,7 @@ public class InventoryItem {
     @Column(length = 100)
     private String manufacturer;
 
-    @Column(name = "hospital_id", nullable = false)
+    @Column(name = "hospital_id")
     private Long hospitalId;
 
     @Column(name = "is_active", nullable = false)

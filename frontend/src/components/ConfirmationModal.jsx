@@ -16,10 +16,12 @@ const ConfirmationModal = ({ isOpen, title, message, onConfirm, onCancel, showRe
     const [isLoading, setIsLoading] = React.useState(false);
     const [reason, setReason] = React.useState('');
     const cancelBtnRef = useRef(null);
+    const isProcessingRef = useRef(false);
 
-    // Reset reason when modal opens/closes; auto-focus Cancel button
+    // Reset reason and lock when modal opens/closes; auto-focus Cancel button
     React.useEffect(() => {
         if (isOpen) {
+            isProcessingRef.current = false;
             setReason('');
             // Move focus into the modal on open for keyboard accessibility (BUG-039)
             setTimeout(() => cancelBtnRef.current?.focus(), 50);
@@ -39,8 +41,10 @@ const ConfirmationModal = ({ isOpen, title, message, onConfirm, onCancel, showRe
     if (!isOpen) return null;
 
     const handleConfirm = async () => {
+        if (isProcessingRef.current) return;
         if (showReasonInput && !reason.trim()) return;
 
+        isProcessingRef.current = true;
         setIsLoading(true);
         try {
             await onConfirm(reason); // Pass reason to callback
@@ -49,6 +53,7 @@ const ConfirmationModal = ({ isOpen, title, message, onConfirm, onCancel, showRe
             console.error("Confirmation action failed", error);
             onCancel();
         } finally {
+            isProcessingRef.current = false;
             setIsLoading(false);
         }
     };

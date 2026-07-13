@@ -48,7 +48,10 @@ public class VitalsRecord {
     @Column(name = "recorded_at", nullable = false)
     private LocalDateTime recordedAt;
 
-    @Column(name = "temperature", precision = 4, scale = 1)
+    // Vitals have no upper limit (only >= 0), so these decimals must be wide enough to hold
+    // whatever is entered. The old precisions (4,1 / 5,2) were sized for the removed caps
+    // (temp <= 113, weight <= 500) and overflowed with "Data truncation: Out of range value".
+    @Column(name = "temperature", precision = 12, scale = 1)
     private BigDecimal temperature;
 
     @Column(name = "pulse")
@@ -66,7 +69,7 @@ public class VitalsRecord {
     @Column(name = "spo2")
     private Integer spo2;
 
-    @Column(name = "weight", precision = 5, scale = 2)
+    @Column(name = "weight", precision = 12, scale = 2)
     private BigDecimal weight;
 
     @Column(name = "pain_score")

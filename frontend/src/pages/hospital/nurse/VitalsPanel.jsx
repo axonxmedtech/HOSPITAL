@@ -77,35 +77,19 @@ export const buildIoChartHtml = (rows, f, hospital) => {
 };
 
 /**
- * VitalsPanel - record + review IPD vitals for one admission (Phase 1 Nurse
- * module, M4). Abnormal values are flagged client-side against display-only
- * normal ranges; no alerting.
+ * VitalsPanel - record + review IPD vitals for one admission (Phase 1 Nurse module, M4).
+ *
+ * Vitals have NO upper limit: any value from 0 upwards is accepted. The old "normal range"
+ * bands (e.g. pulse 60–100) that turned the input red and flagged readings with a "!" were an
+ * implicit upper limit, so they are gone — the only bound left is min=0 on the inputs, matching
+ * the server (which now rejects negatives only).
  */
 
-// Display-only normal ranges (not stored). [min, max]. Temperature is in °F.
-const NORMAL = {
-    temperature: [97, 99],
-    pulse: [60, 100],
-    bpSystolic: [90, 120],
-    bpDiastolic: [60, 80],
-    respiratoryRate: [12, 20],
-    spo2: [95, 100],
-    painScore: [0, 0],
-};
-
-const isAbnormal = (key, value) => {
-    if (value == null || value === '' || !NORMAL[key]) return false;
-    const n = Number(value);
-    if (Number.isNaN(n)) return false;
-    return n < NORMAL[key][0] || n > NORMAL[key][1];
-};
-
-const Metric = ({ label, value, unit, abnormal }) => {
+const Metric = ({ label, value, unit }) => {
     if (value == null || value === '') return null;
     return (
-        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${abnormal ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700">
             {label}: {value}{unit}
-            {abnormal && <span className="font-bold">!</span>}
         </span>
     );
 };
@@ -214,7 +198,7 @@ const VitalsPanel = ({ admissionId, readOnly = false }) => {
         ['respiratoryRate', 'Resp (rpm)', 1],
         ['spo2', 'SpO₂ (%)', 1],
         ['weight', 'Weight (kg)', 0.1],
-        ['painScore', 'Pain (0-10)', 1],
+        ['painScore', 'Pain', 1],
     ];
 
     return (
@@ -235,9 +219,10 @@ const VitalsPanel = ({ admissionId, readOnly = false }) => {
                             <input
                                 type="number"
                                 step={step}
+                                min="0"
                                 value={form[key]}
                                 onChange={(e) => setField(key, e.target.value)}
-                                className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent ${isAbnormal(key, form[key]) ? 'border-red-400 bg-red-50' : 'border-gray-300'}`}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                             />
                         </div>
                     ))}
@@ -295,17 +280,17 @@ const VitalsPanel = ({ admissionId, readOnly = false }) => {
                                     <span className="text-xs font-semibold text-gray-500">{fmt(v.recordedAt)}</span>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
-                                    <Metric label="Temp" value={v.temperature} unit="°F" abnormal={isAbnormal('temperature', v.temperature)} />
-                                    <Metric label="Pulse" value={v.pulse} unit="" abnormal={isAbnormal('pulse', v.pulse)} />
+                                    <Metric label="Temp" value={v.temperature} unit="°F" />
+                                    <Metric label="Pulse" value={v.pulse} unit="" />
                                     {(v.bpSystolic != null || v.bpDiastolic != null) && (
-                                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${(isAbnormal('bpSystolic', v.bpSystolic) || isAbnormal('bpDiastolic', v.bpDiastolic)) ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
+                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700">
                                             BP: {v.bpSystolic ?? '—'}/{v.bpDiastolic ?? '—'}
                                         </span>
                                     )}
-                                    <Metric label="Resp" value={v.respiratoryRate} unit="" abnormal={isAbnormal('respiratoryRate', v.respiratoryRate)} />
-                                    <Metric label="SpO₂" value={v.spo2} unit="%" abnormal={isAbnormal('spo2', v.spo2)} />
-                                    <Metric label="Weight" value={v.weight} unit="kg" abnormal={false} />
-                                    <Metric label="Pain" value={v.painScore} unit="/10" abnormal={isAbnormal('painScore', v.painScore)} />
+                                    <Metric label="Resp" value={v.respiratoryRate} unit="" />
+                                    <Metric label="SpO₂" value={v.spo2} unit="%" />
+                                    <Metric label="Weight" value={v.weight} unit="kg" />
+                                    <Metric label="Pain" value={v.painScore} unit="" />
                                 </div>
                                 {v.remarks && <p className="text-xs text-gray-500 mt-2">{v.remarks}</p>}
                             </li>

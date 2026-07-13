@@ -387,6 +387,56 @@ const hospitalService = {
         return response.data;
     },
 
+    /**
+     * Get all OT incharges
+     */
+    getOtIncharges: async (search, page = 0, size = 10) => {
+        const query = search ? `?search=${search}&page=${page}&size=${size}` : `?page=${page}&size=${size}`;
+        const response = await apiClient.get(`/hospital/ot-incharges${query}`);
+        return response.data;
+    },
+
+    /**
+     * Add a new OT incharge
+     */
+    addOtIncharge: async (data) => {
+        const response = await apiClient.post('/hospital/ot-incharges', data);
+        return response.data;
+    },
+
+    /**
+     * Delete OT incharge
+     */
+    deleteOtIncharge: async (id, reason) => {
+        const query = reason ? `?reason=${encodeURIComponent(reason)}` : '';
+        const response = await apiClient.delete(`/hospital/ot-incharges/${id}${query}`);
+        return response.data;
+    },
+
+    /**
+     * Get OT incharge by ID
+     */
+    getOtInchargeById: async (id) => {
+        const response = await apiClient.get(`/hospital/ot-incharges/${id}`);
+        return response.data;
+    },
+
+    /**
+     * Update OT incharge
+     */
+    updateOtIncharge: async (id, data) => {
+        const response = await apiClient.put(`/hospital/ot-incharges/${id}`, data);
+        return response.data;
+    },
+
+    /**
+     * Reset OT incharge password
+     */
+    resetOtInchargePassword: async (id, newPassword) => {
+        const response = await apiClient.post(`/hospital/ot-incharges/${id}/reset-password`, { newPassword });
+        return response.data;
+    },
+
 
     /**
      * Get pending prescriptions for pharmacy
@@ -882,6 +932,28 @@ const hospitalService = {
         return response.data;
     },
 
+    // ─── In-Clinic presets (bundles of stock medicines administered in the clinic) ──────
+    // Same endpoints as prescription presets, split by presetType on the server.
+    getInClinicPresets: async () => {
+        const response = await apiClient.get('/hospital/prescription-presets', { params: { type: 'IN_CLINIC' } });
+        return response.data;
+    },
+
+    createInClinicPreset: async (data) => {
+        const response = await apiClient.post('/hospital/prescription-presets', { ...data, presetType: 'IN_CLINIC' });
+        return response.data;
+    },
+
+    updateInClinicPreset: async (id, data) => {
+        const response = await apiClient.put(`/hospital/prescription-presets/${id}`, { ...data, presetType: 'IN_CLINIC' });
+        return response.data;
+    },
+
+    deleteInClinicPreset: async (id) => {
+        const response = await apiClient.delete(`/hospital/prescription-presets/${id}`);
+        return response.data;
+    },
+
     updatePrescriptionPreset: async (id, data) => {
         const response = await apiClient.put(`/hospital/prescription-presets/${id}`, data);
         return response.data;
@@ -912,8 +984,19 @@ const hospitalService = {
         return response.data;
     },
 
+    // Print Settings (pages in the consultation print) + bill payment timing. Partial update.
+    updatePrintPaymentSettings: async (settings) => {
+        const response = await apiClient.put('/hospital/settings/print-payment', settings);
+        return response.data;
+    },
+
     updateSeparateNurseLoginSetting: async (separateNurseLogin) => {
         const response = await apiClient.put('/hospital/settings/nurse-login', { separateNurseLogin });
+        return response.data;
+    },
+
+    updateOtInchargeSetting: async (otInchargeEnabled) => {
+        const response = await apiClient.put('/hospital/settings/ot-incharge', { otInchargeEnabled });
         return response.data;
     },
 
@@ -926,8 +1009,11 @@ const hospitalService = {
     },
 
     // ========== Support & FAQ APIs ==========
+    // Tenant-scoped: the interceptor rewrites /hospital/ -> /clinic/ or /pharmacy/ for the
+    // logged-in tenant, and the backend returns only that tenant type's FAQs. This replaces
+    // the old /api/public/faqs call, which leaked every tenant's FAQs to every admin.
     getPublicFaqs: async () => {
-        const response = await apiClient.get('/api/public/faqs');
+        const response = await apiClient.get('/hospital/faqs');
         return response.data;
     },
 

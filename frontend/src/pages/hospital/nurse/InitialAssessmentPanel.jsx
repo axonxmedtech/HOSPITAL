@@ -1,3 +1,4 @@
+import { printHtml } from '../../../utils/printHtml';
 import React, { useState, useEffect } from 'react';
 import nurseService from '../../../services/nurseService';
 import authService from '../../../services/authService';
@@ -244,16 +245,13 @@ const InitialAssessmentPanel = ({ admissionId, readOnly = false }) => {
     };
 
     const handlePrint = () => {
-        const w = window.open('', '_blank');
-        if (!w) { toastError('Popup blocked — allow popups to print'); return; }
         const merged = { ...a, pastHistory: JSON.stringify(past), familyHistory: JSON.stringify(family), personalHistory: JSON.stringify(personal), painScore };
-        w.document.write(buildAssessmentHtml(f, meds, {
+        printHtml(buildAssessmentHtml(f, meds, {
             name: f.hospitalName || user?.hospitalName,
             address: f.hospitalAddress || user?.hospitalAddress,
             logo: f.hospitalLogoUrl || user?.logoUrl,
             nurse: user?.name,
         }, merged));
-        w.document.close();
     };
 
     if (loading) return <LoadingSpinner />;

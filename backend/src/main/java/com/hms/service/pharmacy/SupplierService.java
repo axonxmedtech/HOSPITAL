@@ -16,6 +16,8 @@ import com.hms.exception.UnauthorizedException;
 @Service
 public class SupplierService {
 
+    @Autowired private com.hms.service.RealtimeNotifier notifier;
+
     @Autowired
     private SupplierRepository supplierRepository;
 
@@ -42,6 +44,7 @@ public class SupplierService {
         s.setCreditDays(req.getCreditDays() != null ? req.getCreditDays() : 0);
         s.setIsActive(req.getIsActive() != null ? req.getIsActive() : true);
         s = supplierRepository.save(s);
+        notifier.refresh(securityHelper.getCurrentHospitalId());
 
         auditLogService.logAction(
             "SUPPLIER_CREATED",
@@ -81,6 +84,7 @@ public class SupplierService {
         if (req.getIsActive() != null)
             s.setIsActive(req.getIsActive());
         s = supplierRepository.save(s);
+        notifier.refresh(securityHelper.getCurrentHospitalId());
 
         auditLogService.logAction(
             "SUPPLIER_UPDATED",

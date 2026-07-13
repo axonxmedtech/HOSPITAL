@@ -28,63 +28,122 @@ public class SurgeryController {
     private SurgeryService service;
 
     @PostMapping
-    @PreAuthorize("hasRole('DOCTOR')")
+    @PreAuthorize("hasAuthority('OT_CREATE')")
     public ResponseEntity<?> create(@RequestBody CreateSurgeryRequest req) {
         return ResponseEntity.ok(service.createRequest(req));
     }
 
     @GetMapping("/admission/{admissionId}/active")
-    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'NURSE', 'HOSPITAL_ADMIN')")
+    @PreAuthorize("hasAuthority('OT_VIEW')")
     public ResponseEntity<?> activeForAdmission(@PathVariable Long admissionId) {
         return ResponseEntity.ok(service.getActiveForAdmission(admissionId));
     }
 
     @GetMapping("/requests")
-    @PreAuthorize("hasRole('RECEPTIONIST')")
+    @PreAuthorize("hasAuthority('OT_SCHEDULE')")
     public ResponseEntity<?> requests() {
         return ResponseEntity.ok(service.listRequests());
     }
 
     @GetMapping("/board")
-    @PreAuthorize("hasRole('RECEPTIONIST')")
+    @PreAuthorize("hasAuthority('OT_SCHEDULE')")
     public ResponseEntity<?> board() {
         return ResponseEntity.ok(service.listBoard());
     }
 
     @GetMapping("/my-board")
-    @PreAuthorize("hasRole('DOCTOR')")
+    @PreAuthorize("hasAuthority('OT_CREATE')")
     public ResponseEntity<?> myBoard() {
         return ResponseEntity.ok(service.listMyBoard());
     }
 
     @GetMapping("/surgeons")
-    @PreAuthorize("hasRole('RECEPTIONIST')")
+    @PreAuthorize("hasAuthority('OT_SCHEDULE')")
     public ResponseEntity<?> surgeons() {
         return ResponseEntity.ok(service.listSurgeons());
     }
 
+    /** Only needed when APPROVAL_MODE is SINGLE or DUAL; NONE auto-approves at scheduling. */
+    @PostMapping("/{publicId}/approve")
+    @PreAuthorize("hasAuthority('OT_APPROVE')")
+    public ResponseEntity<?> approve(@PathVariable String publicId) {
+        return ResponseEntity.ok(service.approve(publicId));
+    }
+
     @PostMapping("/{publicId}/schedule")
-    @PreAuthorize("hasRole('RECEPTIONIST')")
+    @PreAuthorize("hasAuthority('OT_SCHEDULE')")
     public ResponseEntity<?> schedule(@PathVariable String publicId, @RequestBody ScheduleSurgeryRequest req) {
         return ResponseEntity.ok(service.schedule(publicId, req));
     }
 
     @PostMapping("/{publicId}/start")
-    @PreAuthorize("hasRole('RECEPTIONIST')")
+    @PreAuthorize("hasAuthority('OT_START')")
     public ResponseEntity<?> start(@PathVariable String publicId) {
         return ResponseEntity.ok(service.start(publicId));
     }
 
     @PostMapping("/{publicId}/complete")
-    @PreAuthorize("hasRole('RECEPTIONIST')")
+    @PreAuthorize("hasAuthority('OT_COMPLETE')")
     public ResponseEntity<?> complete(@PathVariable String publicId) {
         return ResponseEntity.ok(service.complete(publicId));
     }
 
+    /** Body is optional; an absent reason is recorded as OTHER rather than rejected. */
     @PostMapping("/{publicId}/cancel")
-    @PreAuthorize("hasRole('RECEPTIONIST')")
-    public ResponseEntity<?> cancel(@PathVariable String publicId) {
-        service.cancel(publicId);
+    @PreAuthorize("hasAuthority('OT_CANCEL')")
+    public ResponseEntity<?> cancel(@PathVariable String publicId,
+            @RequestBody(required = false) Map<String, String> body) {
+        Map<String, String> b = body == null ? Map.of() : body;
+        service.cancel(publicId, b.get("reasonCode"), b.get("reasonText"));
         return ResponseEntity.ok(Map.of("message", "Surgery cancelled"));
+    }
+
+    /** Close a completed case: documentation done and patient dispositioned. Never billing. */
+    @PostMapping("/{publicId}/close")
+    @PreAuthorize("hasAuthority('OT_CLOSE')")
+    public ResponseEntity<?> close(@PathVariable String publicId) {
+        return ResponseEntity.ok(service.close(publicId));
+    }
+
+    /** Postpone returns the case to the waiting list; cancel is terminal. */
+    @PostMapping("/{publicId}/postpone")
+    @PreAuthorize("hasAuthority('OT_RESCHEDULE')")
+    public ResponseEntity<?> postpone(@PathVariable String publicId,
+            @RequestBody(required = false) Map<String, String> body) {
+        Map<String, String> b = body == null ? Map.of() : body;
+        service.postpone(publicId, b.get("reasonCode"), b.get("reasonText"));
+        return ResponseEntity.ok(Map.of("message", "Surgery postponed"));
+    }
+
+    /**
+     * Today's OT List: patient, age, procedure, theatre, time, surgeon. The one artefact
+     * every hospital produces each morning.
+     */
+    @GetMapping("/list")
+    @PreAuthorize("hasAuthority('OT_VIEW')")
+    public ResponseEntity<?> otList(
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(
+                    iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date) {
+        return ResponseEntity.ok(service.listForDate(date));
+    }
+
+    /** The waiting list is derived: APPROVED cases with no slot. It is not a status. */
+    @GetMapping("/waiting-list")
+    @PreAuthorize("hasAuthority('OT_VIEW')")
+    public ResponseEntity<?> waitingList() {
+        return ResponseEntity.ok(service.listWaitingList());
+    }
+
+    /** Who moved this case, when, and why. */
+    @GetMapping("/{publicId}/timeline")
+    @PreAuthorize("hasAuthority('OT_VIEW')")
+    public ResponseEntity<?> timeline(@PathVariable String publicId) {
+        return ResponseEntity.ok(service.timeline(publicId));
+    }
+
+    @GetMapping("/cancellation-reasons")
+    @PreAuthorize("hasAuthority('OT_VIEW')")
+    public ResponseEntity<?> cancellationReasons() {
+        return ResponseEntity.ok(com.hms.service.hospital.ot.CancellationReasons.all());
     }
 }

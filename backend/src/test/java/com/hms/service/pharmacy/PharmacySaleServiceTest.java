@@ -43,6 +43,8 @@ class PharmacySaleServiceTest {
     @Mock
     PrescriptionRepository prescriptionRepository;
 
+    @Mock com.hms.service.RealtimeNotifier notifier;
+
     @InjectMocks
     PharmacySaleService saleService;
 

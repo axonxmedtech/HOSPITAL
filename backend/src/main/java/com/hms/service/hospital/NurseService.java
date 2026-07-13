@@ -228,11 +228,19 @@ public class NurseService {
         return requireNurse(publicId, hospitalId);
     }
 
-    /**
-     * Update a nurse's name.
-     */
     @Transactional
     public User updateNurse(String publicId, String name, Long wardId) {
+        return updateNurse(publicId, name, wardId, (String) null);
+    }
+
+    /**
+     * Update a nurse's name, ward and phone. The phone lives on the nurse_profiles row (the
+     * same row the nurse's own profile screen writes to). A null phone means "not supplied":
+     * leave the stored value alone — it used to be dropped entirely, so an admin editing a
+     * nurse silently wiped nothing but also saved nothing.
+     */
+    @Transactional
+    public User updateNurse(String publicId, String name, Long wardId, String phone) {
         Long hospitalId = requireHospitalId();
         User user = requireNurse(publicId, hospitalId);
         validateWard(wardId, hospitalId);
@@ -243,12 +251,16 @@ public class NurseService {
         nurseProfileRepository.findByUserId(user.getId()).ifPresent(p -> {
             p.setName(name);
             if (wardId != null) p.setWardId(wardId);
+            if (phone != null) p.setPhone(phone.trim());
             nurseProfileRepository.save(p);
         });
 
         logger.info("Updated nurse: {}", user.getEmail());
         logAction("NURSE_UPDATED", "Updated nurse: " + user.getName(), null, hospitalId);
         broadcastRefresh(hospitalId, "nurse update");
+        // The nurse's own name changed, so tell every client to re-fetch its own profile —
+        // otherwise the edited nurse's dashboard header stays stale until a page reload.
+        broadcastProfileRefresh(hospitalId, "nurse update");
         return saved;
     }
 
@@ -261,7 +273,14 @@ public class NurseService {
     public User updateNurse(String publicId, String name, Long wardId,
                             String shiftTemplatePublicId, java.time.LocalDate shiftFromDate, java.time.LocalDate shiftToDate,
                             java.util.List<Integer> shiftDaysOfWeek) {
-        User saved = updateNurse(publicId, name, wardId);
+        return updateNurse(publicId, name, wardId, null, shiftTemplatePublicId, shiftFromDate, shiftToDate, shiftDaysOfWeek);
+    }
+
+    @Transactional
+    public User updateNurse(String publicId, String name, Long wardId, String phone,
+                            String shiftTemplatePublicId, java.time.LocalDate shiftFromDate, java.time.LocalDate shiftToDate,
+                            java.util.List<Integer> shiftDaysOfWeek) {
+        User saved = updateNurse(publicId, name, wardId, phone);
         fillShiftIfRequested(saved, shiftTemplatePublicId, shiftFromDate, shiftToDate, shiftDaysOfWeek);
         return saved;
     }
@@ -416,6 +435,20 @@ public class NurseService {
             webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
         } catch (Exception e) {
             logger.warn("Failed to broadcast WebSocket refresh after {}", context, e);
+        }
+    }
+
+    /**
+     * Tells every connected client of this hospital to re-fetch its OWN profile. Use after a
+     * change to a person's identity (name/role) so the affected user's dashboard header
+     * updates live instead of only after a page reload. REFRESH_DATA reloads lists, not the
+     * logged-in user, so it is not a substitute.
+     */
+    private void broadcastProfileRefresh(Long hospitalId, String context) {
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"SETTINGS_UPDATED\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket profile refresh after {}", context, e);
         }
     }
 

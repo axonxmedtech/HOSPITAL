@@ -15,7 +15,7 @@ import java.util.Map;
  * Not module-gated: OPD exists for hospital and clinic tenants.
  */
 @RestController
-@RequestMapping("/hospital/vitals")
+@RequestMapping({"/hospital/vitals", "/clinic/vitals"})
 public class VitalSettingsController {
 
     @Autowired private VitalSettingsService vitalSettingsService;

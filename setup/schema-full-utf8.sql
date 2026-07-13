@@ -1,4 +1,4 @@
-﻿CREATE DATABASE  IF NOT EXISTS `railway` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
+CREATE DATABASE  IF NOT EXISTS `railway` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
 USE `railway`;
 -- MySQL dump 10.13  Distrib 8.0.36, for Win64 (x86_64)
 --
@@ -932,6 +932,9 @@ CREATE TABLE `hospital_settings` (
   `reception_mode` varchar(20) NOT NULL DEFAULT 'HAS_RECEPTIONIST',
   `billing_handler` varchar(20) NOT NULL DEFAULT 'RECEPTIONIST',
   `in_clinic` tinyint(1) NOT NULL DEFAULT 1,
+  `barcode_enabled` tinyint(1) NOT NULL DEFAULT 1,
+  `separate_nurse_login` tinyint(1) NOT NULL DEFAULT 0,
+  `ot_incharge_enabled` tinyint(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_hospital_settings_hospital_id` (`hospital_id`),
   CONSTRAINT `FK_hospital_settings_hospital_id` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`)

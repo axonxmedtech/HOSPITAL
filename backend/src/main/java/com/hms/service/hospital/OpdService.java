@@ -30,6 +30,13 @@ public class OpdService {
     private final HospitalWebSocketHandler webSocketHandler;
     private final VitalSettingsService vitalSettingsService;
 
+    // Field-injected (not in the constructor) to avoid changing every OpdService construction
+    // site. Used only by the "payment first" flow. @Lazy guards against any init-order cycle.
+    @org.springframework.beans.factory.annotation.Autowired @org.springframework.context.annotation.Lazy
+    private BillingService billingService;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.hms.repository.HospitalSettingRepository hospitalSettingRepository;
+
     private static final com.fasterxml.jackson.databind.ObjectMapper VITALS_JSON =
             new com.fasterxml.jackson.databind.ObjectMapper();
 
@@ -172,6 +179,22 @@ public class OpdService {
             entry.setOpd(saved);
             entry.setDoctor(saved.getDoctor());
             queueEntryRepository.save(entry);
+        }
+
+        // "Payment first": bill the consultation + case-paper fee and mark it paid right now,
+        // at OPD entry. Best-effort — a billing hiccup must not block creating the OPD case.
+        try {
+            Long billHospitalId = saved.getPatient() != null ? saved.getPatient().getHospitalId() : null;
+            boolean payFirst = billHospitalId != null && hospitalSettingRepository.findByHospital_Id(billHospitalId)
+                    .map(s -> "FIRST".equalsIgnoreCase(s.getBillPaymentTiming()))
+                    .orElse(false);
+            if (payFirst) {
+                Long docId = saved.getDoctor() != null ? saved.getDoctor().getId() : null;
+                billingService.createPaidOpdBillAtEntry(saved.getId(), saved.getPatient().getId(), docId,
+                        req.getPaymentMethod(), req.getPaymentReference());
+            }
+        } catch (Exception e) {
+            logger.warn("Payment-first OPD billing failed for OPD {}", saved.getId(), e);
         }
 
         // Audit log for OPD creation

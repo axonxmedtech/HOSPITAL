@@ -117,6 +117,19 @@ public class IpdAdmissionService {
     private BedStatusService bedStatusService;
 
     @Transactional
+    /**
+     * Whether this hospital's plan includes NURSING — read from the hospital row, not from the
+     * caller's JWT. The token's module claim is frozen at login, so a plan change would not reach
+     * an already-signed-in user until they logged back in (see ModuleAccessAspect).
+     */
+    private boolean hasNursingModule() {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) return false;
+        com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId).orElse(null);
+        java.util.List<String> modules = hospital != null ? hospital.getModules() : null;
+        return modules != null && modules.contains("NURSING");
+    }
+
     public IpdAdmission admitFromOpd(Long opdId, Long wardId, Long bedId, String admissionType, String primaryDiagnosis) {
         // Load OPD
         Opd opd = opdRepository.findById(opdId).orElseThrow(() -> new RuntimeException("OPD not found"));
@@ -130,11 +143,14 @@ public class IpdAdmissionService {
             throw new IllegalArgumentException("Bed is not available");
         }
 
-        // Nursing Mgmt: a ward must have a Nurse Incharge assigned before it can
-        // receive admissions.
+        // Nursing Mgmt: a ward must have a Nurse Incharge before it can receive admissions.
+        // This is a NURSING rule, so only enforce it when that module is on — a hospital with
+        // IPD but no NURSING has no nurses at all and can never assign an incharge, so applying
+        // it unconditionally made every admission fail with a 400 (matches WardService's
+        // getWardsForAdmission gate).
         com.hms.entity.Ward ward = wardRepository.findById(wardId)
                 .orElseThrow(() -> new IllegalArgumentException("Ward not found"));
-        if (ward.getInchargeNurseId() == null) {
+        if (hasNursingModule() && ward.getInchargeNurseId() == null) {
             throw new IllegalArgumentException("This ward has no Nurse Incharge assigned. Assign an incharge before admitting.");
         }
 

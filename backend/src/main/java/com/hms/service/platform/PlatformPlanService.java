@@ -28,6 +28,10 @@ public class PlatformPlanService {
     @Autowired private HospitalSettingRepository hospitalSettingRepository;
     @Autowired private AuditLogRepository auditLogRepository;
     @Autowired private UserRepository userRepository;
+    @Autowired private com.hms.security.HospitalWebSocketHandler webSocketHandler;
+
+    @Autowired
+    private com.hms.service.RealtimeNotifier notifier;
 
     // ─── Plan CRUD ─────────────────────────────────────────────────────────
 
@@ -211,6 +215,48 @@ public class PlatformPlanService {
             setting.setInClinic(inClinicEnabled);
             hospitalSettingRepository.save(setting);
         });
+
+        // Every plan change funnels through here (assignPlan and a plan edit propagating to its
+        // subscribers), so this is the one place that has to tell the tenant its plan moved.
+        notifyPlanChanged(hospital.getId());
+    }
+
+    /**
+     * Push a plan change to everyone currently signed in at that tenant, so modules appear and
+     * disappear live instead of on the next login.
+     *
+     * SETTINGS_UPDATED makes each client re-read /auth/me (which returns the hospital's modules
+     * from the DB), and REFRESH_DATA reloads the lists the new modules unlock. The server side
+     * needs no message at all: ModuleAccessAspect reads modules from the hospital row, so the
+     * new plan is enforced on the very next request regardless of what any old JWT claims.
+     *
+     * Fired AFTER the transaction commits, never inside it: a client that re-fetched /auth/me
+     * while this transaction was still open would read the OLD modules and cache them, which is
+     * exactly the staleness this is meant to remove. Best-effort — a socket problem must never
+     * roll back a paid plan change.
+     */
+    private void notifyPlanChanged(Long hospitalId) {
+        if (hospitalId == null) return;
+        Runnable push = () -> {
+            try {
+                webSocketHandler.broadcast(hospitalId, "{\"type\":\"SETTINGS_UPDATED\"}");
+                webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+            } catch (Exception e) {
+                logger.warn("Failed to broadcast plan change to hospital {}", hospitalId, e);
+            }
+        };
+
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            push.run();
+                        }
+                    });
+        } else {
+            push.run();
+        }
     }
 
     private Long resolveCurrentUserId() {

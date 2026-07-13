@@ -26,6 +26,7 @@ class BedStatusServiceTest {
     @Mock BedStatusAuditRepository auditRepository;
     @Mock SecurityContextHelper securityHelper;
     @Mock AuditLogService auditLogService;
+    @Mock com.hms.service.RealtimeNotifier notifier;
     @InjectMocks BedStatusService service;
 
     private Bed bed(String status) {

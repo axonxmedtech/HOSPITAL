@@ -37,6 +37,8 @@ class MedicationAdministrationServiceTest {
     @Mock com.hms.security.PerformingNurseResolver performingNurseResolver;
     @Mock AuditLogService auditLogService;
 
+    @Mock com.hms.service.RealtimeNotifier notifier;
+
     @InjectMocks MedicationAdministrationService service;
 
     private IpdAdmission admission() {

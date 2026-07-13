@@ -33,6 +33,7 @@ class HospitalAuthServiceTest {
     @Mock ReceptionistProfileRepository receptionistProfileRepository;
     @Mock PharmacistProfileRepository pharmacistProfileRepository;
     @Mock DoctorRepository doctorRepository;
+    @Mock com.hms.service.hospital.ot.OtPermissionService otPermissionService;
 
     @InjectMocks HospitalAuthService service;
 
@@ -141,13 +142,13 @@ class HospitalAuthServiceTest {
         assertThatThrownBy(() -> service.login(req))
                 .isInstanceOf(com.hms.exception.UnauthorizedException.class)
                 .hasMessageContaining("Nurse login is disabled");
-        verify(jwtUtil, never()).generateToken(any(), any(), any(), any(), any(), any(), any());
+        verify(jwtUtil, never()).generateToken(any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
     void login_staffNurse_allowedWhenSeparateNurseLoginOn() {
         primeNurseLogin(true);
-        when(jwtUtil.generateToken(any(), any(), any(), any(), any(), any(), any())).thenReturn("tok");
+        when(jwtUtil.generateToken(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn("tok");
         com.hms.dto.LoginRequest req = new com.hms.dto.LoginRequest();
         req.setEmail("nurse@test.com");
         req.setPassword("pw");
@@ -156,7 +157,7 @@ class HospitalAuthServiceTest {
         assertThat(resp.getToken()).isEqualTo("tok");
         // The tenant type is minted into the token; a null Hospital.type defaults to HOSPITAL.
         verify(jwtUtil).generateToken(eq(50L), eq("nurse@test.com"), eq("NURSE"), eq(1L), any(), any(),
-                eq("HOSPITAL"));
+                eq("HOSPITAL"), any());
     }
 
     @Test

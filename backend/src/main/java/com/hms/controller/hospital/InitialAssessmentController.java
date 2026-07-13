@@ -1,7 +1,6 @@
 package com.hms.controller.hospital;
 
 import com.hms.entity.InitialAssessment;
-import com.hms.security.RequireModule;
 import com.hms.service.hospital.InitialAssessmentService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -15,8 +14,7 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @RequestMapping("/hospital/nurse/initial-assessment")
-@RequireModule("NURSING")
-@PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN')")
+@PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
 public class InitialAssessmentController {
 
     @Autowired

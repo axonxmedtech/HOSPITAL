@@ -1,7 +1,7 @@
 package com.hms.security;
 
 import com.hms.entity.HospitalType;
-import com.hms.exception.UnauthorizedException;
+import org.springframework.security.access.AccessDeniedException;
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.junit.jupiter.api.AfterEach;
@@ -69,7 +69,7 @@ class TenantTypeAspectTest {
         authenticate(7L, HospitalType.CLINIC.name());
         JoinPoint jp = joinPointFor(new HospitalOnlyController(), "handler");
 
-        assertThatThrownBy(() -> aspect.checkTenantType(jp)).isInstanceOf(UnauthorizedException.class);
+        assertThatThrownBy(() -> aspect.checkTenantType(jp)).isInstanceOf(AccessDeniedException.class);
     }
 
     @Test
@@ -77,7 +77,7 @@ class TenantTypeAspectTest {
         authenticate(7L, HospitalType.PHARMACY.name());
         JoinPoint jp = joinPointFor(new HospitalOnlyController(), "handler");
 
-        assertThatThrownBy(() -> aspect.checkTenantType(jp)).isInstanceOf(UnauthorizedException.class);
+        assertThatThrownBy(() -> aspect.checkTenantType(jp)).isInstanceOf(AccessDeniedException.class);
     }
 
     @Test

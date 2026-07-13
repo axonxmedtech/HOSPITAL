@@ -1,3 +1,4 @@
+import { printBlob } from '../../utils/printPdf';
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import hospitalService from '../../services/hospitalService';
@@ -50,6 +51,7 @@ const IpdDetails = () => {
 
     const FORM_KEY_BY_TAB = {
         vitals: 'VITALS',
+        medication: 'MEDICATION',
         notes: 'NOTES',
         assessment: 'INITIAL_ASSESSMENT',
         vulnerability: 'VULNERABILITY_ASSESSMENT',
@@ -61,7 +63,7 @@ const IpdDetails = () => {
     const tabs = [
         { id: 'overview', label: 'Overview' },
         ...(verdictFor('vitals') !== 'HIDDEN' ? [{ id: 'vitals', label: 'Vitals' }] : []),
-        { id: 'medication', label: 'Medication' },
+        ...(verdictFor('medication') !== 'HIDDEN' ? [{ id: 'medication', label: 'Medication' }] : []),
         ...(verdictFor('notes') !== 'HIDDEN' ? [{ id: 'notes', label: 'Notes' }] : []),
         ...(verdictFor('assessment') !== 'HIDDEN' ? [{ id: 'assessment', label: 'Initial Assessment' }] : []),
         ...(verdictFor('vulnerability') !== 'HIDDEN' ? [{ id: 'vulnerability', label: 'Vulnerability Assessment' }] : []),
@@ -197,7 +199,10 @@ const IpdDetails = () => {
 
     const [followupModal, setFollowupModal] = useState({ isOpen: false, diagnosis: '', notes: '', saving: false });
     const [dischargeModal, setDischargeModal] = useState({ isOpen: false, finalDiagnosis: '', treatmentGiven: '', dischargeNotes: '', followUpDate: '', saving: false });
-    const [medicineModal, setMedicineModal] = useState({ isOpen: false, medicineId: null, medicineName: '', type: 'TABLET', route: 'ORAL', dose: '', frequency: '', durationDays: 0, startDate: '', saving: false });
+    // Local calendar date as YYYY-MM-DD (en-CA), matching the <input type="date"> value and the
+    // start-date validation. Prescriptions usually start the same day, so default to today.
+    const todayStr = () => new Date().toLocaleDateString('en-CA');
+    const [medicineModal, setMedicineModal] = useState({ isOpen: false, medicineId: null, medicineName: '', type: 'TABLET', route: 'ORAL', dose: '', frequency: '', durationDays: 0, startDate: todayStr(), saving: false });
     const [medSearchResults, setMedSearchResults] = useState([]);
 
     const [inventory, setInventory] = useState([]);
@@ -375,7 +380,7 @@ const IpdDetails = () => {
     };
 
     const onAddMedicine = () => {
-        setMedicineModal({ isOpen: true, medicineName: '', type: 'TABLET', route: 'ORAL', dose: '', frequency: '', durationDays: 0, startDate: '', saving: false });
+        setMedicineModal({ isOpen: true, medicineName: '', type: 'TABLET', route: 'ORAL', dose: '', frequency: '', durationDays: 0, startDate: todayStr(), saving: false });
     };
 
     const onStopMedicine = (prescriptionId) => {
@@ -465,36 +470,15 @@ const IpdDetails = () => {
     const handlePrintIpdBill = async () => {
         if (printingBill) return;
         setPrintingBill(true);
-        
-        // Pre-open the window synchronously to bypass popup blocker
-        const printWindow = window.open('', '_blank');
-        if (printWindow) {
-            printWindow.document.write('<p style="font-family: sans-serif; text-align: center; margin-top: 20px;">Generating bill PDF, please wait...</p>');
-        }
-        
         try {
             const billData = await hospitalService.getIpdBill(id);
             if (!billData || !billData.billingId) {
                 throw new Error("No billing ID found for this IPD admission");
             }
-            
             const blob = await hospitalService.downloadReceipt(billData.billingId);
-            const url = window.URL.createObjectURL(blob);
-            if (printWindow) {
-                printWindow.document.open();
-                printWindow.document.write(
-                    '<!DOCTYPE html><html><head><title>Bill</title></head>' +
-                    '<body style="margin:0;padding:0;">' +
-                    '<embed type="application/pdf" src="' + url + '" style="position:fixed;top:0;left:0;width:100%;height:100%;border:none;">' +
-                    '</body></html>'
-                );
-                printWindow.document.close();
-            }
+            printBlob(blob); // print on this page (hidden iframe), not a new tab
         } catch (err) {
             console.error(err);
-            if (printWindow) {
-                printWindow.close();
-            }
             toastError(err.message || 'Failed to load bill for printing');
         } finally {
             setPrintingBill(false);
@@ -789,9 +773,10 @@ const IpdDetails = () => {
                                                     if (!medicineModal.type) return toastError('Type is required');
                                                     if (!medicineModal.route) return toastError('Route is required');
                                                     if (!medicineModal.startDate) return toastError('Start date is required');
-                                                    
-                                                    const today = new Date().toISOString().split('T')[0];
-                                                    if (medicineModal.startDate < today) {
+
+                                                    // Compare against local today (same basis as the default + the date input),
+                                                    // so a same-day prescription is never wrongly flagged as "in the past".
+                                                    if (medicineModal.startDate < todayStr()) {
                                                         return toastError('Prescription start date cannot be in the past');
                                                     }
                                                     if (!medicineModal.durationDays || medicineModal.durationDays <= 0) {

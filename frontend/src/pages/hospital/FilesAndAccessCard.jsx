@@ -2,19 +2,33 @@ import React, { useState, useEffect, useCallback } from 'react';
 import formAccessService from '../../services/formAccessService';
 import { useToast } from '../../context/ToastContext';
 
-const ACCESS_OPTIONS = [
-    { value: 'DOCTOR', label: 'Doctor' },
-    { value: 'NURSE', label: 'Nurse' },
-    { value: 'BOTH', label: 'Both' },
-];
+// The "other" editor depends on the hospital: a nursing hospital edits with nurses; a
+// non-nursing hospital (the IPD Forms setting) edits with reception. BOTH means "doctor + that
+// other role", so the stored value works either way.
+const ACCESS_OPTIONS_BY_CONTEXT = {
+    NURSE: [
+        { value: 'DOCTOR', label: 'Doctor' },
+        { value: 'NURSE', label: 'Nurse' },
+        { value: 'BOTH', label: 'Both' },
+    ],
+    RECEPTION: [
+        { value: 'DOCTOR', label: 'Doctor' },
+        { value: 'RECEPTION', label: 'Reception' },
+        { value: 'BOTH', label: 'Both' },
+    ],
+};
 
 /**
  * FilesAndAccessCard - admin table controlling which forms are active and who
  * may edit each (Files & Access, Phase 1). Rows come from the backend registry;
  * each change PUTs an override.
+ *
+ * `category` optionally narrows the card to one group ('NURSING' or 'OT'), so the
+ * two groups can be shown as separate Settings boxes. Omit it for the full card.
  */
-const FilesAndAccessCard = () => {
+const FilesAndAccessCard = ({ category = null, title, description, accessContext = 'NURSE' }) => {
     const { success, error: toastError } = useToast();
+    const accessOptions = ACCESS_OPTIONS_BY_CONTEXT[accessContext] || ACCESS_OPTIONS_BY_CONTEXT.NURSE;
     const [forms, setForms] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -52,21 +66,25 @@ const FilesAndAccessCard = () => {
 
     if (loading) return <div className="p-6 text-gray-500 text-sm">Loading forms…</div>;
 
-    const groups = [
+    const allGroups = [
         { category: 'NURSING', title: 'Nursing Records' },
         { category: 'OT', title: 'OT / Surgery Forms' },
     ];
+    const groups = category ? allGroups.filter((g) => g.category === category) : allGroups;
+    const heading = title || 'Files & Access';
+    const subheading = description
+        || 'Turn forms on or off for this hospital and choose who can edit each one. Off forms are hidden everywhere.';
 
     return (
         <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-6 mt-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-1">Files &amp; Access</h3>
-            <p className="text-sm text-gray-500 mb-5">Turn forms on or off for this hospital and choose who can edit each one. Off forms are hidden everywhere.</p>
+            <h3 className="text-lg font-bold text-gray-900 mb-1">{heading}</h3>
+            <p className="text-sm text-gray-500 mb-5">{subheading}</p>
             {groups.map((g) => {
                 const rows = forms.filter((f) => f.category === g.category);
                 if (rows.length === 0) return null;
                 return (
                     <div key={g.category} className="mb-6 last:mb-0">
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">{g.title}</h4>
+                        {!category && <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">{g.title}</h4>}
                         <div className="border border-gray-200 rounded-xl overflow-hidden">
                             <table className="w-full text-sm">
                                 <thead className="bg-gray-50 border-b border-gray-200">
@@ -87,7 +105,7 @@ const FilesAndAccessCard = () => {
                                                     onChange={(e) => save(f, { accessRole: e.target.value })}
                                                     className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg disabled:bg-gray-100 disabled:text-gray-400"
                                                 >
-                                                    {ACCESS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                    {accessOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                                                 </select>
                                             </td>
                                             <td className="px-4 py-3">

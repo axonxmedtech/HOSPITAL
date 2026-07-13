@@ -35,7 +35,10 @@ public class NurseAccessGuard {
      */
     public void assertAssigned(Long ipdAdmissionId) {
         String role = securityHelper.getCurrentUserRole();
-        if ("DOCTOR".equals(role) || "HOSPITAL_ADMIN".equals(role)) return; // doctors/admins have broad IPD access
+        // Doctors/admins have broad IPD access. Reception too when it edits IPD forms in a
+        // non-nursing hospital — the per-form Files & Access check (assertCanEdit) already ran
+        // before this, so reaching here means reception is an allowed editor of this form.
+        if ("DOCTOR".equals(role) || "HOSPITAL_ADMIN".equals(role) || "RECEPTIONIST".equals(role)) return;
         Long nurseId = securityHelper.getCurrentUserId();
         boolean assigned = assignmentRepository
                 .existsByIpdAdmissionIdAndNurseUserIdAndIsActiveTrue(ipdAdmissionId, nurseId);

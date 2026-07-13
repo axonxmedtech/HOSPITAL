@@ -86,6 +86,9 @@ public class HospitalAuthService {
     @Autowired
     private DoctorRepository doctorRepository;
 
+    @Autowired
+    private com.hms.service.hospital.ot.OtPermissionService otPermissionService;
+
     /**
      * Helper to populate detailed profile fields on LoginResponse.
      * Routes HOSPITAL_ADMIN to the correct admin table based on hospital type.
@@ -304,7 +307,13 @@ public class HospitalAuthService {
 
         logger.info("Login successful for user: {} at hospital: {}", request.getEmail(), hospital.getName());
 
-        // Generate JWT token with hospital_id, modules and tenant type
+        // Generate JWT token with hospital_id, modules, tenant type and OT permissions
+        HospitalType tenantType = hospital.getType() != null ? hospital.getType() : HospitalType.HOSPITAL;
+        // OT is hospital-only: a clinic or pharmacy token never carries a permission.
+        java.util.Collection<String> permissions = tenantType == HospitalType.HOSPITAL
+                ? otPermissionService.effectiveFor(user.getHospitalId(), user.getRole())
+                : java.util.List.of();
+
         String token = jwtUtil.generateToken(
                 user.getId(),
                 user.getEmail(),
@@ -313,7 +322,8 @@ public class HospitalAuthService {
                 hospital.getModules(),
                 user.getBranchId(), // Multi Pharmacy branch login scoping
                 // Tenant type gates hospital-only modules and controllers server-side.
-                (hospital.getType() != null ? hospital.getType() : HospitalType.HOSPITAL).name());
+                tenantType.name(),
+                permissions);
 
         // Create response
         LoginResponse response = new LoginResponse();
@@ -331,6 +341,7 @@ public class HospitalAuthService {
         boolean inClinicAllowed = hospital.getModules() != null && hospital.getModules().contains("IN_CLINIC");
         response.setInClinic(inClinicAllowed && Boolean.TRUE.equals(settings.getInClinic()));
         response.setBarcodeEnabled(settings.getBarcodeEnabled() == null ? Boolean.TRUE : settings.getBarcodeEnabled());
+        response.setBillPaymentTiming(settings.getBillPaymentTiming() == null ? "LAST" : settings.getBillPaymentTiming());
         response.setHospitalType(hospital.getType() != null ? hospital.getType().name() : "HOSPITAL");
 
         // Populate profile details
@@ -405,6 +416,7 @@ public class HospitalAuthService {
         boolean inClinicAllowed = hospital.getModules() != null && hospital.getModules().contains("IN_CLINIC");
         response.setInClinic(inClinicAllowed && Boolean.TRUE.equals(settings.getInClinic()));
         response.setBarcodeEnabled(settings.getBarcodeEnabled() == null ? Boolean.TRUE : settings.getBarcodeEnabled());
+        response.setBillPaymentTiming(settings.getBillPaymentTiming() == null ? "LAST" : settings.getBillPaymentTiming());
         response.setOtInchargeEnabled(settings.getOtInchargeEnabled() == null ? Boolean.FALSE : settings.getOtInchargeEnabled());
         response.setLogoUrl(hospital.getLogoUrl());
         response.setParentOrganization(hospital.getParentOrganization());
@@ -594,6 +606,17 @@ public class HospitalAuthService {
         hospital.setConsultationFee(fees.getConsultationFee());
         hospital.setCasePaperFee(fees.getCasePaperFee());
         hospitalRepository.save(hospital);
+
+        // Fees are money: the next OPD bill any receptionist or doctor raises must charge the new
+        // amount, not the one their tab loaded hours ago. This was the only settings update in this
+        // service that told nobody. Best-effort — a socket failure must not fail the save.
+        try {
+            webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
+            webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket fees update", e);
+        }
+
         com.hms.dto.HospitalFeesDTO dto = new com.hms.dto.HospitalFeesDTO(hospital.getConsultationFee(), hospital.getCasePaperFee());
         return dto;
     }
@@ -605,14 +628,64 @@ public class HospitalAuthService {
         User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
         if (user.getHospitalId() == null) throw new UnauthorizedException("Invalid hospital user account");
         return hospitalSettingRepository.findByHospital_Id(user.getHospitalId())
-                .map(s -> {
-                    HospitalSettingDTO dto = new HospitalSettingDTO(s.getReceptionMode(), s.getBillingHandler(), s.getInClinic());
-                    dto.setBarcodeEnabled(s.getBarcodeEnabled() == null ? Boolean.TRUE : s.getBarcodeEnabled());
-                    dto.setSeparateNurseLogin(s.getSeparateNurseLogin() == null ? Boolean.FALSE : s.getSeparateNurseLogin());
-                    dto.setOtInchargeEnabled(s.getOtInchargeEnabled() == null ? Boolean.FALSE : s.getOtInchargeEnabled());
-                    return dto;
-                })
+                .map(this::toSettingDto)
                 .orElse(new HospitalSettingDTO("HAS_RECEPTIONIST", "RECEPTIONIST", true));
+    }
+
+    /** Map a settings row to its DTO, including the print + payment-timing settings. */
+    private HospitalSettingDTO toSettingDto(HospitalSetting s) {
+        HospitalSettingDTO dto = new HospitalSettingDTO(s.getReceptionMode(), s.getBillingHandler(), s.getInClinic());
+        dto.setBarcodeEnabled(s.getBarcodeEnabled() == null ? Boolean.TRUE : s.getBarcodeEnabled());
+        dto.setSeparateNurseLogin(s.getSeparateNurseLogin() == null ? Boolean.FALSE : s.getSeparateNurseLogin());
+        dto.setOtInchargeEnabled(s.getOtInchargeEnabled() == null ? Boolean.FALSE : s.getOtInchargeEnabled());
+        dto.setPrintCasePaper(s.getPrintCasePaper() == null ? Boolean.TRUE : s.getPrintCasePaper());
+        dto.setPrintBill(s.getPrintBill() == null ? Boolean.TRUE : s.getPrintBill());
+        dto.setPrintPrescription(s.getPrintPrescription() == null ? Boolean.TRUE : s.getPrintPrescription());
+        dto.setPrintInClinic(s.getPrintInClinic() == null ? Boolean.TRUE : s.getPrintInClinic());
+        dto.setBillPaymentTiming(s.getBillPaymentTiming() == null ? "LAST" : s.getBillPaymentTiming());
+        return dto;
+    }
+
+    /**
+     * Update the Print Settings (which pages the consultation-complete print includes) and/or
+     * the bill payment timing. Only HOSPITAL_ADMIN. Null fields are left unchanged.
+     */
+    @Transactional
+    public HospitalSettingDTO updatePrintAndPaymentSettings(String email, HospitalSettingDTO dto) {
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (user.getHospitalId() == null) throw new UnauthorizedException("Invalid hospital user account");
+        if (!"HOSPITAL_ADMIN".equals(user.getRole())) {
+            throw new UnauthorizedException("Access denied: requires HOSPITAL_ADMIN role");
+        }
+        Hospital hospital = hospitalRepository.findById(user.getHospitalId())
+                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+
+        HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(user.getHospitalId())
+                .orElseGet(() -> {
+                    HospitalSetting n = new HospitalSetting();
+                    n.setHospital(hospital);
+                    return n;
+                });
+
+        if (dto.getPrintCasePaper() != null)   settings.setPrintCasePaper(dto.getPrintCasePaper());
+        if (dto.getPrintBill() != null)        settings.setPrintBill(dto.getPrintBill());
+        if (dto.getPrintPrescription() != null) settings.setPrintPrescription(dto.getPrintPrescription());
+        if (dto.getPrintInClinic() != null)    settings.setPrintInClinic(dto.getPrintInClinic());
+        if (dto.getBillPaymentTiming() != null) {
+            String t = dto.getBillPaymentTiming().trim().toUpperCase();
+            if (!"FIRST".equals(t) && !"LAST".equals(t)) {
+                throw new IllegalArgumentException("billPaymentTiming must be FIRST or LAST");
+            }
+            settings.setBillPaymentTiming(t);
+        }
+        hospitalSettingRepository.save(settings);
+
+        try {
+            webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket settings update", e);
+        }
+        return toSettingDto(settings);
     }
 
     /**

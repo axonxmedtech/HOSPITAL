@@ -29,7 +29,10 @@ public class FormAccessService {
     @Autowired private AuditLogService auditLogService;
     @Autowired private com.hms.security.HospitalWebSocketHandler webSocketHandler;
 
-    private static final Set<String> ROLES = Set.of("DOCTOR", "NURSE", "BOTH");
+    // DOCTOR / NURSE / RECEPTION / BOTH. NURSE is the editor in a nursing hospital; RECEPTION
+    // is the editor in a non-nursing hospital (the IPD Forms setting). BOTH means "doctor plus
+    // whichever of nurse/reception applies", so the same stored value works in either context.
+    private static final Set<String> ROLES = Set.of("DOCTOR", "NURSE", "RECEPTION", "BOTH");
 
     public List<Map<String, Object>> list() {
         Long hospitalId = requireHospitalId();
@@ -103,6 +106,7 @@ public class FormAccessService {
     private String normalizeRole(String role) {
         if (role == null) return "";
         if ("NURSE_INCHARGE".equals(role) || "NURSE".equals(role)) return "NURSE";
+        if ("RECEPTIONIST".equals(role)) return "RECEPTION";
         if ("HOSPITAL_ADMIN".equals(role)) return "BOTH";
         return role;
     }

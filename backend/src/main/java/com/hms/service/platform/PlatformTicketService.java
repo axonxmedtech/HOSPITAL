@@ -12,6 +12,8 @@ import java.util.List;
 @Service
 public class PlatformTicketService {
 
+    @Autowired private com.hms.service.RealtimeNotifier notifier;
+
     @Autowired
     private SupportTicketRepository repository;
 
@@ -106,7 +108,12 @@ public class PlatformTicketService {
             ticket.setResolvedAt(LocalDateTime.now());
         }
 
-        return repository.save(ticket);
+        SupportTicket saved = repository.save(ticket);
+
+        // The tenant that raised this ticket is watching its support tab: show the resolution now,
+        // not on their next reload. Only that one tenant cares, so this is a targeted push.
+        notifier.refresh(saved.getHospitalId());
+        return saved;
     }
 
     /**

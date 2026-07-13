@@ -28,8 +28,19 @@ import PrescriptionViewModal from '../../components/PrescriptionViewModal';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
 import { SkeletonDashboard, SkeletonStatsGrid, SkeletonOverviewDual, SkeletonTable } from '../../components/Skeleton';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
+import HospitalInventoryTab from '../../components/HospitalInventoryTab';
+import OpdPaymentFields, { isPayFirst, validateOpdPayment } from '../../components/OpdPaymentFields';
+import { printPdf } from '../../utils/printPdf';
 import LowStockBanner from '../../components/LowStockBanner';
 import OtBoard from './ot/OtBoard';
+import DayCareSurgeryModal from './ot/DayCareSurgeryModal';
+import OtListPrint from './ot/OtListPrint';
+import SurgeryTeamModal from './ot/SurgeryTeamModal';
+import SurgeryExecutionModal from './ot/SurgeryExecutionModal';
+import RecoveryModal from './ot/RecoveryModal';
+import OtAnalyticsStrip from './ot/OtAnalyticsStrip';
+import OtDayBoard from './ot/OtDayBoard';
+import useOtPermissions from '../../hooks/useOtPermissions';
 import ScheduleSurgeryModal from './ot/ScheduleSurgeryModal';
 import otService from '../../services/otService';
 
@@ -41,6 +52,7 @@ const ReceptionistDashboard = () => {
     const hasBilling = modules.includes('BILLING');
     const hasAppointments = modules.includes('APPOINTMENTS');
     const hasMedicalInventory = modules.includes('MEDICAL_INVENTORY');
+    const hasHospitalInventory = modules.includes('HOSPITAL_INVENTORY');
     const hasOT = modules.includes('OT');
     // Tenant-aware label: clinic logins say "Clinic" wherever we'd otherwise say "Hospital".
     const tenantWord = user?.hospitalType === 'CLINIC' ? 'Clinic' : 'Hospital';
@@ -106,7 +118,10 @@ const ReceptionistDashboard = () => {
         weight: '', height: '', customVitals: {},
         spo2: '',
         problem: '',
-        visitType: 'NEW'
+        visitType: 'NEW',
+        // Only used when Bill Payment = First (fee collected at OPD entry).
+        paymentMethod: 'CASH',
+        paymentReference: ''
     });
     const { isOn, customs } = useEnabledVitals();
     const [createdOpd, setCreatedOpd] = useState(null);
@@ -208,7 +223,13 @@ const ReceptionistDashboard = () => {
     const [patientDetailsModal, setPatientDetailsModal] = useState({ isOpen: false, patient: null });
 
     // OT (Operation Theatre) tab
-    const [otFilter, setOtFilter] = useState('board'); // 'board' | 'requests'
+    const [otFilter, setOtFilter] = useState('board'); // 'board' | 'day' | 'requests'
+    const [isDayCareModalOpen, setIsDayCareModalOpen] = useState(false);
+    const [isOtListOpen, setIsOtListOpen] = useState(false);
+    const [otTeamTarget, setOtTeamTarget] = useState(null);
+    const [otExecTarget, setOtExecTarget] = useState(null);
+    const [otRecoveryTarget, setOtRecoveryTarget] = useState(null);
+    const { can: canOt } = useOtPermissions();
     const [otRows, setOtRows] = useState([]);
     const [otLoading, setOtLoading] = useState(false);
     const [otScheduleTarget, setOtScheduleTarget] = useState(null);
@@ -545,15 +566,19 @@ const ReceptionistDashboard = () => {
         }
     };
 
-    const openPdfInNewTab = (endpointPath) => {
-        const token = sessionStorage.getItem('token');
-        const separator = endpointPath.includes('?') ? '&' : '?';
-        const url = `${API_BASE_URL}${endpointPath}${separator}token=${encodeURIComponent(token)}`;
-        window.open(url, '_blank');
-    };
+    // Print server PDFs on the current page (hidden iframe), like the bill/case-paper prints.
+    const openPdfInNewTab = (endpointPath) => { printPdf(endpointPath); };
 
-    const handlePrintReceipt = (id) => {
-        openPdfInNewTab(`/hospital/billing/${id}/pdf`);
+    /**
+     * Print the receipt on this page (hidden iframe), like the consultation documents and the
+     * clinical forms — not in a stray new tab. The Payment Successful dialog has done its job
+     * once print is invoked, so it closes itself rather than leaving "Print Receipt" / "Close"
+     * sitting behind the print preview.
+     */
+    const handlePrintReceipt = async (id) => {
+        setPaymentSuccessModal(prev => ({ ...prev, isOpen: false }));
+        const printed = await printPdf(`/hospital/billing/${id}/pdf`);
+        if (!printed) toastError('Failed to open the receipt for printing');
     };
 
     const handleDownloadPatientsReport = () => {
@@ -775,6 +800,10 @@ const ReceptionistDashboard = () => {
         ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
         ...(hasBilling ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
         ...(hasMedicalInventory && user?.inClinic !== false ? [{ id: 'inventory', label: 'Medicine Inventory', icon: null }] : []),
+        // Reception manages the hospital/clinic inventory (stock, purchases, service lookup)
+        // with the same rights as the admin — the backend already allows RECEPTIONIST on every
+        // hospital-inventory and service endpoint.
+        ...(hasHospitalInventory ? [{ id: 'hospital-inventory', label: `${tenantWord} Inventory`, icon: null }] : []),
         ...(hasOT ? [{ id: 'ot', label: 'Operation Theatre', icon: null }] : []),
     ].filter(tab => tab.id !== 'billing' || user?.billingHandler !== 'DOCTOR');
 
@@ -1122,10 +1151,10 @@ const ReceptionistDashboard = () => {
                     <PageHeader
                         title={tabs.find(t => t.id === activeTab)?.label || (activeTab.charAt(0).toUpperCase() + activeTab.slice(1))}
                         subtitle={`Manage ${activeTab} records`}
-                        onSearch={activeTab === 'queue' ? null : (e) => setSearchInput(e.target.value)}
+                        onSearch={activeTab === 'queue' || activeTab === 'hospital-inventory' ? null : (e) => setSearchInput(e.target.value)}
                         searchValue={searchInput}
-                        searchPlaceholder={activeTab === 'queue' ? '' : `Search ${activeTab}...`}
-                        onAdd={activeTab === 'queue' || activeTab === 'billing' || activeTab === 'ipd' || activeTab === 'inventory' || activeTab === 'ot' ? null : () => {
+                        searchPlaceholder={activeTab === 'queue' || activeTab === 'hospital-inventory' ? '' : `Search ${activeTab}...`}
+                        onAdd={activeTab === 'queue' || activeTab === 'billing' || activeTab === 'ipd' || activeTab === 'inventory' || activeTab === 'hospital-inventory' || activeTab === 'ot' ? null : () => {
                             if (activeTab === 'opd') setIsOpdModalOpen(true);
                             else setIsAddModalOpen(true);
                         }}
@@ -1551,19 +1580,41 @@ const ReceptionistDashboard = () => {
                                 />
                             )}
                             {activeTab === 'inventory' && (
-                                <MedicineInventoryTab />
+                                <MedicineInventoryTab hidePrescribingColumns />
+                            )}
+                            {activeTab === 'hospital-inventory' && (
+                                <HospitalInventoryTab />
                             )}
                             {activeTab === 'ot' && (
                                 <div>
-                                    <div className="flex items-center justify-end mb-4">
+                                    <div className="flex items-center justify-between mb-4">
+                                        {/* Rendered by capability, not by role: a hospital grants OT_CREATE
+                                            to whoever books its day-care lists. */}
+                                        <div className="flex items-center gap-2">
+                                            {canOt('OT_CREATE') && (
+                                                <button onClick={() => setIsDayCareModalOpen(true)}
+                                                    className="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-900 text-white hover:bg-gray-800">
+                                                    + Day-Care Surgery
+                                                </button>
+                                            )}
+                                            <button onClick={() => setIsOtListOpen(true)}
+                                                className="px-4 py-2 rounded-lg text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-50">
+                                                OT List
+                                            </button>
+                                        </div>
                                         <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
                                             <button onClick={() => setOtFilter('board')}
                                                 className={`px-4 py-1.5 text-sm font-semibold ${otFilter === 'board' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600'}`}>Scheduled / Live</button>
+                                            <button onClick={() => setOtFilter('day')}
+                                                className={`px-4 py-1.5 text-sm font-semibold ${otFilter === 'day' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600'}`}>Day Board</button>
                                             <button onClick={() => setOtFilter('requests')}
                                                 className={`px-4 py-1.5 text-sm font-semibold ${otFilter === 'requests' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600'}`}>Requests</button>
                                         </div>
                                     </div>
-                                    {otLoading ? (
+                                    <OtAnalyticsStrip />
+                                    {otFilter === 'day' ? (
+                                        <OtDayBoard date={new Date().toISOString().slice(0, 10)} onSelect={(c) => setOtExecTarget(c)} />
+                                    ) : otLoading ? (
                                         <div className="text-center text-gray-400 py-16">Loading…</div>
                                     ) : (
                                         <OtBoard
@@ -1573,7 +1624,20 @@ const ReceptionistDashboard = () => {
                                             onCancel={async (r) => { try { await otService.cancel(r.publicId); loadOt(); } catch (e) { toastError(e?.response?.data?.error || 'Failed to cancel'); } }}
                                             onStart={async (r) => { try { await otService.start(r.publicId); loadOt(); } catch (e) { toastError(e?.response?.data?.error || 'Failed to start'); } }}
                                             onComplete={async (r) => { try { await otService.complete(r.publicId); loadOt(); } catch (e) { toastError(e?.response?.data?.error || 'Failed to complete'); } }}
+                                            onTeam={(r) => setOtTeamTarget(r)}
+                                            onExecute={(r) => setOtExecTarget(r)}
+                                            onRecovery={(r) => setOtRecoveryTarget(r)}
+                                            onClose={async (r) => { try { await otService.close(r.publicId); loadOt(); } catch (e) { toastError(e?.response?.data?.error || 'Failed to close'); } }}
                                         />
+                                    )}
+                                    {otTeamTarget && (
+                                        <SurgeryTeamModal surgery={otTeamTarget} onClose={() => setOtTeamTarget(null)} />
+                                    )}
+                                    {otExecTarget && (
+                                        <SurgeryExecutionModal surgery={otExecTarget} onClose={() => { setOtExecTarget(null); loadOt(); }} />
+                                    )}
+                                    {otRecoveryTarget && (
+                                        <RecoveryModal surgery={otRecoveryTarget} onClose={() => { setOtRecoveryTarget(null); loadOt(); }} />
                                     )}
                                     {otScheduleTarget && (
                                         <ScheduleSurgeryModal
@@ -1698,6 +1762,10 @@ const ReceptionistDashboard = () => {
                                 }
                             }
 
+                            // Bill Payment = First: the fee is collected here, so the method is required.
+                            const payErr = validateOpdPayment(opdForm.paymentMethod, opdForm.paymentReference);
+                            if (payErr) { toastError(payErr); return; }
+
                             setOpdSubmitting(true);
                             try {
                                 const payload = {
@@ -1711,7 +1779,11 @@ const ReceptionistDashboard = () => {
                                         customVitals: opdForm.customVitals || {},
                                     spo2: opdForm.spo2 ? parseInt(opdForm.spo2) : null,
                                     problem: opdForm.problem,
-                                    visitType: opdForm.visitType
+                                    visitType: opdForm.visitType,
+                                    ...(isPayFirst() ? {
+                                        paymentMethod: opdForm.paymentMethod,
+                                        paymentReference: opdForm.paymentReference || null,
+                                    } : {}),
                                 };
                                 const res = await hospitalService.createOpd(payload);
                                 setCreatedOpd(res);
@@ -1869,6 +1941,12 @@ const ReceptionistDashboard = () => {
                                 <label className="inline-flex items-center gap-2"><input type="radio" name="visitType" value="NEW" checked={opdForm.visitType === 'NEW'} onChange={() => setOpdForm(prev => ({ ...prev, visitType: 'NEW' }))} /> New</label>
                                 <label className="inline-flex items-center gap-2"><input type="radio" name="visitType" value="FOLLOWUP" checked={opdForm.visitType === 'FOLLOWUP'} onChange={() => setOpdForm(prev => ({ ...prev, visitType: 'FOLLOWUP' }))} /> Follow-up</label>
                             </div>
+
+                            <OpdPaymentFields
+                                method={opdForm.paymentMethod}
+                                reference={opdForm.paymentReference}
+                                onChange={(patch) => setOpdForm(prev => ({ ...prev, ...patch }))}
+                            />
 
                             <div className="flex gap-4 pt-4">
                                 <button type="button" onClick={() => setIsOpdModalOpen(false)} disabled={opdSubmitting} className={`flex-1 py-2 rounded-lg border ${opdSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}>Cancel</button>
@@ -2183,6 +2261,13 @@ const ReceptionistDashboard = () => {
                     </div>
                 </div>
             )}
+
+            <DayCareSurgeryModal
+                isOpen={isDayCareModalOpen}
+                onClose={() => setIsDayCareModalOpen(false)}
+                onSuccess={loadOt}
+            />
+            {isOtListOpen && <OtListPrint onClose={() => setIsOtListOpen(false)} />}
         </div>
     );
 };

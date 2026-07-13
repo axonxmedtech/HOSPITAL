@@ -1,3 +1,4 @@
+import { printHtml } from '../../../utils/printHtml';
 import React, { useState, useEffect, useCallback } from 'react';
 import nurseService from '../../../services/nurseService';
 import authService from '../../../services/authService';
@@ -141,16 +142,13 @@ const NotesPanel = ({ admissionId, readOnly = false }) => {
     }, [isNurse, separateLogin, f.wardId]);
 
     const handlePrintReassessment = () => {
-        const w = window.open('', '_blank');
-        if (!w) { toastError('Popup blocked — allow popups to print'); return; }
-        w.document.write(buildReassessmentHtml(notes, f, {
+        printHtml(buildReassessmentHtml(notes, f, {
             name: f.hospitalName || user?.hospitalName,
             address: f.hospitalAddress || user?.hospitalAddress,
             logo: f.hospitalLogoUrl || user?.logoUrl,
             customId: f.hospitalCustomId,
             nurse: user?.name,
         }));
-        w.document.close();
     };
 
     const add = async () => {

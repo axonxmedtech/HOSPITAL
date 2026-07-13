@@ -55,6 +55,11 @@ public class PharmacistService {
 
     @Transactional
     public User createPharmacist(String name, String email, String password) {
+        return createPharmacist(name, email, password, null);
+    }
+
+    @Transactional
+    public User createPharmacist(String name, String email, String password, String phone) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
             throw new UnauthorizedException("Hospital ID not found in context");
@@ -74,14 +79,16 @@ public class PharmacistService {
 
         User saved = userRepository.save(pharmacist);
 
-        // Create pharmacist profile record
+        // Create pharmacist profile record. The phone lives here (same row the pharmacist's own
+        // profile screen writes to); it used to be hardcoded to "" and the admin's input lost.
         Pharmacist pharmacistProfile = new Pharmacist();
         pharmacistProfile.setHospitalId(hospitalId);
         pharmacistProfile.setName(name);
         pharmacistProfile.setEmail(email);
-        pharmacistProfile.setPhone("");
+        pharmacistProfile.setPhone(phone != null ? phone.trim() : "");
         pharmacistProfile.setIsActive(true);
         pharmacistProfileRepository.save(pharmacistProfile);
+
 
         logger.info("Created pharmacist: {} for hospital: {}", email, hospitalId);
 
@@ -97,16 +104,44 @@ public class PharmacistService {
         return saved;
     }
 
-    public org.springframework.data.domain.Page<User> getAllPharmacists(String search,
+    public org.springframework.data.domain.Page<java.util.Map<String, Object>> getAllPharmacists(String search,
             org.springframework.data.domain.Pageable pageable) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
             throw new UnauthorizedException("Hospital ID not found in context");
         }
-        if (org.springframework.util.StringUtils.hasText(search)) {
-            return userRepository.searchPharmacists(hospitalId, "PHARMACIST", search, pageable);
-        }
-        return userRepository.findByHospitalIdAndRoleAndIsActiveTrue(hospitalId, "PHARMACIST", pageable);
+        org.springframework.data.domain.Page<User> page =
+                org.springframework.util.StringUtils.hasText(search)
+                        ? userRepository.searchPharmacists(hospitalId, "PHARMACIST", search, pageable)
+                        : userRepository.findByHospitalIdAndRoleAndIsActiveTrue(hospitalId, "PHARMACIST", pageable);
+        return page.map(this::toView);
+    }
+
+    /**
+     * Flatten a pharmacist User + its `pharmacists` row into the shape the admin UI consumes
+     * (mirrors NurseService.toNurseView). The phone lives on the `pharmacists` row, not on
+     * `users`, so the raw User could never carry it — and a @Transient field can't help
+     * either, because the Hibernate6Module in JacksonConfig strips @Transient properties from
+     * the JSON. Also stops the endpoint leaking the bcrypt password hash.
+     */
+    public java.util.Map<String, Object> toView(User u) {
+        java.util.Map<String, Object> m = new java.util.HashMap<>();
+        m.put("id", u.getId());
+        m.put("publicId", u.getPublicId());
+        m.put("customId", u.getCustomId());
+        m.put("name", u.getName());
+        m.put("email", u.getEmail());
+        m.put("role", u.getRole());
+        m.put("isActive", u.getIsActive());
+        m.put("createdAt", u.getCreatedAt());
+        m.put("phone", pharmacistProfileRepository.findByEmail(u.getEmail())
+                .map(Pharmacist::getPhone).orElse(""));
+        return m;
+    }
+
+    /** Same lookup, in the shape the admin UI consumes (includes phone, omits the password). */
+    public java.util.Map<String, Object> getPharmacistViewByPublicId(String publicId) {
+        return toView(getPharmacistByPublicId(publicId));
     }
 
     public void deletePharmacist(String publicId, String reason) {
@@ -193,6 +228,16 @@ public class PharmacistService {
      */
     @Transactional
     public User updatePharmacist(String publicId, String name) {
+        return updatePharmacist(publicId, name, null);
+    }
+
+    /**
+     * Update a pharmacist's name and phone. The phone lives on the `pharmacists` row — the same
+     * row the pharmacist's own profile screen writes to — so both edit paths agree. A null
+     * phone means "not supplied": leave the stored value alone.
+     */
+    @Transactional
+    public User updatePharmacist(String publicId, String name, String phone) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
             throw new UnauthorizedException("Hospital ID not found in context");
@@ -211,11 +256,30 @@ public class PharmacistService {
         user.setName(name);
         User saved = userRepository.save(user);
 
+        // Mirror name/phone onto the actor row (upsert — an older pharmacist may lack one).
+        final String finalName = name;
+        Pharmacist profile = pharmacistProfileRepository.findByEmail(user.getEmail())
+                .orElseGet(() -> {
+                    Pharmacist p = new Pharmacist();
+                    p.setHospitalId(user.getHospitalId());
+                    p.setEmail(user.getEmail());
+                    p.setPhone("");
+                    p.setIsActive(true);
+                    return p;
+                });
+        profile.setName(finalName);
+        if (phone != null) profile.setPhone(phone.trim());
+        pharmacistProfileRepository.save(profile);
+
         logger.info("Updated pharmacist: {}", user.getEmail());
         logAction("PHARMACIST_UPDATED", "Updated pharmacist: " + user.getName(), null, hospitalId);
 
+        // REFRESH_DATA reloads the lists the pharmacist appears in; SETTINGS_UPDATED makes
+        // each client re-fetch its own profile, so the edited pharmacist's own dashboard
+        // picks up the new name without a page reload.
         try {
             webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"SETTINGS_UPDATED\"}");
         } catch (Exception e) {
             logger.warn("Failed to broadcast WebSocket refresh after pharmacist update", e);
         }

@@ -67,6 +67,19 @@ public class DatabaseMigrationRunner {
         ensureSurgerySurgeonNameColumn(); // NEW — OT "Other" operator name
         ensureSurgeryAnaesthetistNameColumn(); // NEW — OT optional anaesthetist
         ensureSurgeryFormsTable(); // NEW — OT/NABH surgery forms store
+        ensureSurgeryDayCareColumns(); // OT Phase 1 — surgery is its own aggregate
+        ensureSurgeryFormProcedureScope(); // OT Phase 1 — one signed form per PROCEDURE
+        ensureRolePermissionsTable(); // OT Phase 2 — authorization decoupled from role checks
+        ensureSurgeryStateTransitionsTable(); // OT Phase 3 — append-only status audit
+        ensureSurgeryWaitlistColumns(); // OT Phase 3 — the waiting list is a query, not a status
+        ensureOtRoomsTable(); // OT Phase 4 — a theatre is a resource, not a ward named "OT"
+        ensureSurgeryRoomColumns(); // OT Phase 4 — interval booking
+        ensureOtWorkflowPoliciesTable(); // OT Phase 5 — hospital variation is configuration
+        ensureSurgeryTeamTables(); // OT Phase 6 — who was in the room
+        ensureSurgeryExecutionTables(); // OT Phase 7 — WHO checklist, milestones, operative note
+        ensureRecoveryTables(); // OT Phase 8 — PACU recovery (never a case state)
+        ensureOtRoomOccupancyTable(); // OT Phase 9 — utilisation & turnover from real spans
+        backfillSupportTicketHospitalType(); // tickets created before hospital_type was set
         ensureNursingNoteSurgeryIdColumn(); // NEW — OT notes link
         ensureNurseProfilePhaseAColumns(); // NEW — Nursing Mgmt Phase A
         ensureWardInchargeColumn();
@@ -89,6 +102,136 @@ public class DatabaseMigrationRunner {
         ensureHospitalVitalsTable();
         addColumnIfMissing("opd", "custom_vitals", "TEXT NULL");
         ensureBedStatusAuditsTable(); // NEW — Nursing Mgmt Phase C1
+        makeInventoryItemHospitalIdNullable();
+
+        // In-Clinic presets: bundles of stock medicines administered in the clinic. They reuse
+        // the prescription-preset tables, split by preset_type (existing rows are PRESCRIPTION).
+        // The items carry a stock link + quantity so applying a preset still deducts stock.
+        addColumnIfMissing("prescription_presets", "preset_type",
+                "VARCHAR(20) NOT NULL DEFAULT 'PRESCRIPTION'");
+        addColumnIfMissing("prescription_preset_items", "medicine_id", "BIGINT NULL");
+        addColumnIfMissing("prescription_preset_items", "quantity", "INT NULL");
+        backfillPrescriptionPresetType();
+
+        // Print Settings (pages in the consultation-complete print) + bill payment timing.
+        addColumnIfMissing("hospital_settings", "print_case_paper", "TINYINT(1) NOT NULL DEFAULT 1");
+        addColumnIfMissing("hospital_settings", "print_bill", "TINYINT(1) NOT NULL DEFAULT 1");
+        addColumnIfMissing("hospital_settings", "print_prescription", "TINYINT(1) NOT NULL DEFAULT 1");
+        addColumnIfMissing("hospital_settings", "print_in_clinic", "TINYINT(1) NOT NULL DEFAULT 1");
+        addColumnIfMissing("hospital_settings", "bill_payment_timing", "VARCHAR(10) NOT NULL DEFAULT 'LAST'");
+        backfillPrintPaymentDefaults();
+        widenVitalsDecimalColumns();
+        backfillStrandedOpdStatuses();
+    }
+
+    /**
+     * Repairs OPD cases stranded by the old rule that only *payment* moved an OPD to COMPLETED.
+     *
+     * Two ways a consulted case got stuck:
+     *  - CONSULTED: the doctor finished, but the bill was never collected through the pay-at-the-end
+     *    path (e.g. the hospital switched to Before-OPD, where the bill is already PAID at entry, so
+     *    nothing ever ran the payment step). CONSULTED is now a legacy value — nothing writes it.
+     *  - QUEUED with a medical record: the consultation was recorded but the status never moved, so
+     *    the case still shows "In Queue" and keeps its place in the doctor's queue.
+     *
+     * A consultation is now what completes an OPD (DoctorService), so both shapes are simply history.
+     * IN_IPD is left alone — that case moved on to an admission, it did not end at the OPD desk.
+     * A QUEUED case with no medical record is genuinely still waiting and is left untouched.
+     * Idempotent: matches nothing once repaired.
+     */
+    private void backfillStrandedOpdStatuses() {
+        try {
+            int consulted = jdbcTemplate.update(
+                    "UPDATE opd SET status = 'COMPLETED' WHERE status = 'CONSULTED'");
+
+            int queuedButConsulted = jdbcTemplate.update(
+                    "UPDATE opd o SET o.status = 'COMPLETED' WHERE o.status = 'QUEUED' " +
+                    "AND EXISTS (SELECT 1 FROM medical_records m WHERE m.opd_id = o.id)");
+
+            // A completed case must not keep holding a slot in the doctor's live queue.
+            int queueRows = jdbcTemplate.update(
+                    "DELETE q FROM queue_entry q JOIN opd o ON o.id = q.opd_id " +
+                    "WHERE o.status IN ('COMPLETED', 'IN_IPD')");
+
+            if (consulted + queuedButConsulted + queueRows > 0) {
+                log.info("DB migration applied: completed {} CONSULTED + {} stranded QUEUED OPD case(s), " +
+                        "cleared {} stale queue entr(ies)", consulted, queuedButConsulted, queueRows);
+            }
+        } catch (Exception e) {
+            log.warn("Could not backfill stranded OPD statuses: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Vitals no longer have an upper limit (only >= 0), but weight/temperature were still
+     * DECIMAL(5,2)/(4,1) — sized for the removed caps (weight <= 500, temp <= 113). Anything
+     * bigger failed the insert with "Data truncation: Out of range value". Hibernate's
+     * ddl-auto=update never widens an existing column, so widen them here. Idempotent: only
+     * alters when the current precision is still too small.
+     */
+    private void widenVitalsDecimalColumns() {
+        widenDecimal("vitals_records", "weight", "DECIMAL(12,2) NULL", 12);
+        widenDecimal("vitals_records", "temperature", "DECIMAL(12,1) NULL", 12);
+    }
+
+    private void widenDecimal(String table, String column, String newType, int wantPrecision) {
+        try {
+            Integer precision = jdbcTemplate.queryForObject(
+                    "SELECT NUMERIC_PRECISION FROM information_schema.COLUMNS " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
+                    Integer.class, table, column);
+            if (precision != null && precision < wantPrecision) {
+                jdbcTemplate.execute("ALTER TABLE " + table + " MODIFY COLUMN " + column + " " + newType);
+                log.info("DB migration applied: widened {}.{} to {}", table, column, newType);
+            }
+        } catch (Exception e) {
+            log.warn("Could not widen {}.{}: {}", table, column, e.getMessage());
+        }
+    }
+
+    /**
+     * Hibernate's ddl-auto=update can add the print/payment columns as NOT NULL *without* the
+     * DEFAULT, so MySQL backfills existing rows with 0 / '' — which would turn every existing
+     * hospital's consultation print off and leave an invalid payment timing. Repair such rows
+     * to the intended defaults (all pages on, LAST). Idempotent: only touches rows that were
+     * never set intentionally — a brand-new install writes 1s directly and skips this.
+     */
+    private void backfillPrintPaymentDefaults() {
+        try {
+            // An invalid bill_payment_timing ('' / NULL) is the definitive signature of a row the
+            // Hibernate race backfilled — a JPA-managed row always has 'LAST'/'FIRST'. Fix print
+            // pages AND timing together, keyed on that signature, so this never re-runs once the
+            // deploy boot repairs the row (and never overrides an intentional all-pages-off later).
+            int fixed = jdbcTemplate.update(
+                    "UPDATE hospital_settings SET print_case_paper = 1, print_bill = 1, " +
+                    "print_prescription = 1, print_in_clinic = 1, bill_payment_timing = 'LAST' " +
+                    "WHERE bill_payment_timing IS NULL OR bill_payment_timing NOT IN ('FIRST','LAST')");
+            if (fixed > 0) {
+                log.info("DB migration applied: backfilled print/payment defaults on {} settings row(s)", fixed);
+            }
+        } catch (Exception e) {
+            log.warn("Could not backfill hospital_settings print/payment defaults: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Existing presets predate preset_type and must stay in the PRESCRIPTION list. Hibernate's
+     * ddl-auto=update can win the race and add the NOT NULL column itself *without* the default,
+     * in which case MySQL backfills old rows with '' — which matches neither preset type, so
+     * every existing prescription preset would silently vanish from the doctor's list. Repair
+     * any such row. Idempotent.
+     */
+    private void backfillPrescriptionPresetType() {
+        try {
+            int fixed = jdbcTemplate.update(
+                    "UPDATE prescription_presets SET preset_type = 'PRESCRIPTION' " +
+                    "WHERE preset_type IS NULL OR preset_type = ''");
+            if (fixed > 0) {
+                log.info("DB migration applied: backfilled preset_type=PRESCRIPTION on {} preset(s)", fixed);
+            }
+        } catch (Exception e) {
+            log.warn("Could not backfill prescription_presets.preset_type: {}", e.getMessage());
+        }
     }
 
     private void ensureHospitalVitalsTable() {
@@ -190,6 +333,25 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) { log.warn("DB migration skipped (bed_status_audits): {}", e.getMessage()); }
     }
+
+    private void makeInventoryItemHospitalIdNullable() {
+        try {
+            // Check if column is currently NOT NULL
+            Integer isNotNull = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'inventory_items' " +
+                "AND COLUMN_NAME = 'hospital_id' AND IS_NULLABLE = 'NO'",
+                Integer.class
+            );
+            if (isNotNull != null && isNotNull > 0) {
+                jdbcTemplate.execute("ALTER TABLE inventory_items MODIFY COLUMN hospital_id BIGINT NULL");
+                log.info("DB migration applied: hospital_id column in inventory_items made NULLABLE");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration failed (make inventory_items.hospital_id nullable): {}", e.getMessage());
+        }
+    }
+
 
     /**
      * Creates the nurse_shift_schedules table if absent (Nursing Mgmt Phase B2).
@@ -1675,6 +1837,489 @@ public class DatabaseMigrationRunner {
     }
 
     /** Adds a column only if it does not already exist. Idempotent. */
+    /**
+     * OT Phase 9 — the theatre occupancy timeline. A span opens when a case starts and
+     * closes when it completes or is cancelled; utilisation and turnover are queries over it.
+     */
+    private void ensureOtRoomOccupancyTable() {
+        try {
+            Integer c = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ot_room_occupancy'", Integer.class);
+            if (c != null && c == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE ot_room_occupancy (" +
+                        "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                        "  hospital_id BIGINT NOT NULL," +
+                        "  ot_room_id BIGINT NOT NULL," +
+                        "  surgery_id BIGINT NOT NULL," +
+                        "  occupied_from DATETIME(6) NOT NULL," +
+                        "  occupied_to DATETIME(6) NULL," +
+                        "  PRIMARY KEY (id)," +
+                        "  KEY idx_occupancy_room (ot_room_id, occupied_from)," +
+                        "  KEY idx_occupancy_hospital (hospital_id, occupied_from)," +
+                        "  CONSTRAINT FK_occupancy_hospital FOREIGN KEY (hospital_id) " +
+                        "    REFERENCES hospitals (id) ON DELETE CASCADE" +
+                        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created ot_room_occupancy table");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (ot_room_occupancy): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * OT Phase 8 — PACU recovery. An episode is created only when the hospital's
+     * RECOVERY_TRACKING policy asks for it, and it is never a case state: the theatre is
+     * free while the patient recovers.
+     */
+    private void ensureRecoveryTables() {
+        try {
+            Integer ep = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ot_recovery_episodes'", Integer.class);
+            if (ep != null && ep == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE ot_recovery_episodes (" +
+                        "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                        "  hospital_id BIGINT NOT NULL," +
+                        "  surgery_id BIGINT NOT NULL," +
+                        "  patient_id BIGINT NOT NULL," +
+                        "  arrived_at DATETIME(6) NOT NULL," +
+                        "  discharged_at DATETIME(6) NULL," +
+                        "  transfer_destination VARCHAR(20) NULL," +
+                        "  arrived_by_user_id BIGINT NULL," +
+                        "  discharged_by_user_id BIGINT NULL," +
+                        "  PRIMARY KEY (id)," +
+                        "  UNIQUE KEY uk_recovery_surgery (surgery_id)," +
+                        "  CONSTRAINT FK_recovery_hospital FOREIGN KEY (hospital_id) " +
+                        "    REFERENCES hospitals (id) ON DELETE CASCADE" +
+                        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created ot_recovery_episodes table");
+            }
+            Integer obs = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ot_recovery_observations'", Integer.class);
+            if (obs != null && obs == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE ot_recovery_observations (" +
+                        "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                        "  hospital_id BIGINT NOT NULL," +
+                        "  episode_id BIGINT NOT NULL," +
+                        "  observed_at DATETIME(6) NOT NULL," +
+                        "  aldrete_score INT NULL," +
+                        "  recorded_by_user_id BIGINT NULL," +
+                        "  performed_by_nurse_id BIGINT NULL," +
+                        "  note VARCHAR(255) NULL," +
+                        "  created_at DATETIME(6) NOT NULL," +
+                        "  PRIMARY KEY (id)," +
+                        "  KEY idx_recovery_obs_episode (episode_id, observed_at)," +
+                        "  CONSTRAINT FK_recovery_obs_hospital FOREIGN KEY (hospital_id) " +
+                        "    REFERENCES hospitals (id) ON DELETE CASCADE" +
+                        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created ot_recovery_observations table");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (recovery tables): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * OT Phase 7 — WHO checklist (phases as signed columns, so compliance is a query),
+     * clinical milestones (append-only facts, never states), and the operative note.
+     */
+    private void ensureSurgeryExecutionTables() {
+        try {
+            Integer who = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'who_checklists'", Integer.class);
+            if (who != null && who == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE who_checklists (" +
+                        "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                        "  hospital_id BIGINT NOT NULL," +
+                        "  surgery_id BIGINT NOT NULL," +
+                        "  sign_in_at DATETIME(6) NULL, sign_in_by_user_id BIGINT NULL," +
+                        "  time_out_at DATETIME(6) NULL, time_out_by_user_id BIGINT NULL," +
+                        "  sign_out_at DATETIME(6) NULL, sign_out_by_user_id BIGINT NULL," +
+                        "  site_marked TINYINT(1) NULL, counts_correct TINYINT(1) NULL," +
+                        "  PRIMARY KEY (id)," +
+                        "  UNIQUE KEY uk_who_surgery (surgery_id)," +
+                        "  CONSTRAINT FK_who_hospital FOREIGN KEY (hospital_id) " +
+                        "    REFERENCES hospitals (id) ON DELETE CASCADE" +
+                        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created who_checklists table");
+            }
+            Integer milestones = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'surgery_milestones'", Integer.class);
+            if (milestones != null && milestones == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE surgery_milestones (" +
+                        "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                        "  hospital_id BIGINT NOT NULL," +
+                        "  surgery_id BIGINT NOT NULL," +
+                        "  milestone VARCHAR(30) NOT NULL," +
+                        "  occurred_at DATETIME(6) NOT NULL," +
+                        "  recorded_by_user_id BIGINT NULL," +
+                        "  performed_by_nurse_id BIGINT NULL," +
+                        "  note VARCHAR(255) NULL," +
+                        "  created_at DATETIME(6) NOT NULL," +
+                        "  PRIMARY KEY (id)," +
+                        "  KEY idx_milestone_surgery (surgery_id, occurred_at)," +
+                        "  CONSTRAINT FK_milestone_hospital FOREIGN KEY (hospital_id) " +
+                        "    REFERENCES hospitals (id) ON DELETE CASCADE" +
+                        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created surgery_milestones table");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (surgery execution tables): {}", e.getMessage());
+        }
+        addColumnIfMissing("surgeries", "operative_note", "TEXT NULL");
+        addColumnIfMissing("surgeries", "operative_note_by_user_id", "BIGINT NULL");
+        addColumnIfMissing("surgeries", "operative_note_at", "DATETIME(6) NULL");
+    }
+
+    /**
+     * OT Phase 6 — the surgical team, and a hospital's custom case roles.
+     * A new specialty role (HARVEST_SURGEON, PERFUSIONIST) is a row in case_roles, never
+     * a code change. The free-text surgeon_name/anaesthetist_name columns on surgeries stay
+     * as a fallback for an external operator with no user row.
+     */
+    private void ensureSurgeryTeamTables() {
+        try {
+            Integer roles = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'case_roles'", Integer.class);
+            if (roles != null && roles == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE case_roles (" +
+                        "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                        "  hospital_id BIGINT NOT NULL," +
+                        "  code VARCHAR(40) NOT NULL," +
+                        "  label VARCHAR(100) NOT NULL," +
+                        "  is_active TINYINT(1) NOT NULL DEFAULT 1," +
+                        "  PRIMARY KEY (id)," +
+                        "  UNIQUE KEY uk_case_role (hospital_id, code)," +
+                        "  CONSTRAINT FK_case_role_hospital FOREIGN KEY (hospital_id) " +
+                        "    REFERENCES hospitals (id) ON DELETE CASCADE" +
+                        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created case_roles table");
+            }
+            Integer team = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'surgery_team_members'", Integer.class);
+            if (team != null && team == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE surgery_team_members (" +
+                        "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                        "  hospital_id BIGINT NOT NULL," +
+                        "  surgery_id BIGINT NOT NULL," +
+                        "  case_role_code VARCHAR(40) NOT NULL," +
+                        "  user_id BIGINT NULL," +
+                        "  external_name VARCHAR(255) NULL," +
+                        "  created_at DATETIME(6) NOT NULL," +
+                        "  PRIMARY KEY (id)," +
+                        "  KEY idx_team_surgery (surgery_id)," +
+                        "  CONSTRAINT FK_team_hospital FOREIGN KEY (hospital_id) " +
+                        "    REFERENCES hospitals (id) ON DELETE CASCADE" +
+                        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created surgery_team_members table");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (surgery team tables): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * OT Phase 5 — a hospital's workflow policy overrides, optionally scoped to a case
+     * priority. Overrides only: an absent row means OtPolicies.defaultValue(key), so a
+     * hospital that never opens Settings behaves exactly as the small-hospital default.
+     */
+    private void ensureOtWorkflowPoliciesTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ot_workflow_policies'", Integer.class);
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE ot_workflow_policies (" +
+                        "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                        "  hospital_id BIGINT NOT NULL," +
+                        "  policy_key VARCHAR(40) NOT NULL," +
+                        "  priority_scope VARCHAR(10) NOT NULL DEFAULT 'ANY'," +
+                        "  value VARCHAR(120) NOT NULL," +
+                        "  PRIMARY KEY (id)," +
+                        "  UNIQUE KEY uk_ot_policy (hospital_id, policy_key, priority_scope)," +
+                        "  KEY idx_ot_policy_hospital (hospital_id)," +
+                        "  CONSTRAINT FK_ot_policy_hospital FOREIGN KEY (hospital_id) " +
+                        "    REFERENCES hospitals (id) ON DELETE CASCADE" +
+                        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created ot_workflow_policies table");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (ot_workflow_policies): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * OT Phase 4 — an operation theatre is a first-class resource.
+     * An OT used to be "any ward whose name contains OT", filtered in the browser.
+     * Existing OT wards are NOT auto-converted: the same heuristic matches "FOOT WARD",
+     * so OtRoomService.suggestFromWards() proposes them and an admin confirms.
+     */
+    private void ensureOtRoomsTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ot_rooms'", Integer.class);
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE ot_rooms (" +
+                        "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                        "  public_id VARCHAR(255) NOT NULL," +
+                        "  hospital_id BIGINT NOT NULL," +
+                        "  name VARCHAR(100) NOT NULL," +
+                        "  status VARCHAR(20) NOT NULL DEFAULT 'AVAILABLE'," +
+                        "  current_surgery_id BIGINT NULL," +
+                        "  turnover_minutes INT NOT NULL DEFAULT 15," +
+                        "  source_ward_id BIGINT NULL," +
+                        "  is_active TINYINT(1) NOT NULL DEFAULT 1," +
+                        "  created_at DATETIME(6) NOT NULL," +
+                        "  PRIMARY KEY (id)," +
+                        "  UNIQUE KEY UK_ot_room_public_id (public_id)," +
+                        "  UNIQUE KEY uk_ot_room_name (hospital_id, name)," +
+                        "  CONSTRAINT FK_ot_room_hospital FOREIGN KEY (hospital_id) " +
+                        "    REFERENCES hospitals (id) ON DELETE CASCADE" +
+                        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created ot_rooms table");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (ot_rooms): {}", e.getMessage());
+        }
+    }
+
+    /** OT Phase 4 — the theatre link and the duration that makes interval booking possible. */
+    private void ensureSurgeryRoomColumns() {
+        addColumnIfMissing("surgeries", "ot_room_id", "BIGINT NULL");
+        addColumnIfMissing("surgeries", "estimated_duration_minutes", "INT NULL");
+        try {
+            jdbcTemplate.execute("CREATE INDEX idx_surgery_room_scheduled ON surgeries(ot_room_id, scheduled_at)");
+            log.info("DB migration applied: index surgeries(ot_room_id, scheduled_at)");
+        } catch (Exception e) {
+            // already present
+        }
+    }
+
+    /**
+     * OT Phase 3 — append-only audit of every case status change.
+     * Every board metric (turnover, on-time start, cancellation rate by reason) is a query
+     * over this table, and NABH asks who moved the case, when, and why.
+     */
+    private void ensureSurgeryStateTransitionsTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'surgery_state_transitions'", Integer.class);
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE surgery_state_transitions (" +
+                        "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                        "  hospital_id BIGINT NOT NULL," +
+                        "  surgery_id BIGINT NOT NULL," +
+                        "  from_status VARCHAR(20) NULL," +
+                        "  to_status VARCHAR(20) NOT NULL," +
+                        "  actor_user_id BIGINT NULL," +
+                        "  actor_kind VARCHAR(10) NOT NULL," +
+                        "  reason_code VARCHAR(60) NULL," +
+                        "  reason_text VARCHAR(255) NULL," +
+                        "  payload_json TEXT NULL," +
+                        "  created_at DATETIME(6) NOT NULL," +
+                        "  PRIMARY KEY (id)," +
+                        "  KEY idx_sst_surgery (surgery_id, created_at)," +
+                        "  KEY idx_sst_hospital_to (hospital_id, to_status, created_at)," +
+                        "  CONSTRAINT FK_sst_hospital FOREIGN KEY (hospital_id) " +
+                        "    REFERENCES hospitals (id) ON DELETE CASCADE" +
+                        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created surgery_state_transitions table");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (surgery_state_transitions): {}", e.getMessage());
+        }
+    }
+
+    /** OT Phase 3 — waiting-list ordering lives on the surgery, not in a WAITLISTED status. */
+    private void ensureSurgeryWaitlistColumns() {
+        addColumnIfMissing("surgeries", "waitlist_priority", "INT NOT NULL DEFAULT 0");
+        addColumnIfMissing("surgeries", "target_date", "DATE NULL");
+        addColumnIfMissing("surgeries", "approved_at", "DATETIME(6) NULL");
+        try {
+            jdbcTemplate.execute("CREATE INDEX idx_surgery_hospital_scheduled ON surgeries(hospital_id, scheduled_at)");
+            log.info("DB migration applied: index surgeries(hospital_id, scheduled_at)");
+        } catch (Exception e) {
+            // already present
+        }
+    }
+
+    /**
+     * OT Phase 2 — a hospital's OT permission grants, keyed on the role STRING.
+     * Overrides only: zero rows for a hospital means "use OtPermissions.defaultsFor(role)",
+     * so nothing needs seeding and existing hospitals behave exactly as before.
+     */
+    /**
+     * Support tickets used to be saved without hospital_type, so they never matched the
+     * platform admin's type-filtered ticket tab. Backfill the tenant type from each ticket's
+     * hospital. Idempotent: only touches rows still NULL.
+     */
+    private void backfillSupportTicketHospitalType() {
+        try {
+            int updated = jdbcTemplate.update(
+                    "UPDATE support_tickets t JOIN hospitals h ON h.id = t.hospital_id " +
+                    "SET t.hospital_type = h.type WHERE t.hospital_type IS NULL");
+            if (updated > 0) log.info("DB migration applied: backfilled hospital_type on {} support tickets", updated);
+        } catch (Exception e) {
+            log.warn("DB migration skipped (support_tickets hospital_type backfill): {}", e.getMessage());
+        }
+    }
+
+    private void ensureRolePermissionsTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'role_permissions'", Integer.class);
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE role_permissions (" +
+                        "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                        "  hospital_id BIGINT NOT NULL," +
+                        "  role VARCHAR(30) NOT NULL," +
+                        "  permission_code VARCHAR(40) NOT NULL," +
+                        "  PRIMARY KEY (id)," +
+                        "  UNIQUE KEY UK_role_permission (hospital_id, role, permission_code)," +
+                        "  KEY idx_role_permission_hospital (hospital_id)," +
+                        "  CONSTRAINT FK_role_permission_hospital FOREIGN KEY (hospital_id) " +
+                        "    REFERENCES hospitals (id) ON DELETE CASCADE" +
+                        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created role_permissions table");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (role_permissions): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * OT Phase 1 — a surgery is its own aggregate, anchored on the patient.
+     * An IPD admission becomes optional so day-care procedures (cataract,
+     * endoscopy, minor orthopaedics) can exist without one.
+     */
+    private void ensureSurgeryDayCareColumns() {
+        addColumnIfMissing("surgeries", "encounter_type", "VARCHAR(20) NOT NULL DEFAULT 'IPD'");
+        try {
+            jdbcTemplate.execute("ALTER TABLE surgeries MODIFY ipd_admission_id BIGINT NULL");
+            log.info("DB migration applied: surgeries.ipd_admission_id is now nullable (day-care)");
+        } catch (Exception e) {
+            log.warn("DB migration skipped (surgeries.ipd_admission_id nullable): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * OT Phase 1 — re-key surgery_forms from the ADMISSION to the SURGERY.
+     *
+     * The old unique key (ipd_admission_id, form_type) meant a second procedure in
+     * the same admission overwrote the first procedure's signed consent. Order is
+     * load-bearing: backfill surgery_id BEFORE swapping the key, because MySQL
+     * treats NULLs in a unique key as distinct and would silently admit duplicates.
+     */
+    private void ensureSurgeryFormProcedureScope() {
+        addColumnIfMissing("surgery_forms", "version", "INT NOT NULL DEFAULT 1");
+        addColumnIfMissing("surgery_forms", "is_current", "TINYINT(1) DEFAULT 1");
+        addColumnIfMissing("surgery_forms", "signed_at", "DATETIME(6) NULL");
+        addColumnIfMissing("surgery_forms", "signed_by_user_id", "BIGINT NULL");
+        addColumnIfMissing("surgery_forms", "recorded_by_user_id", "BIGINT NULL");
+
+        // A day-care form has no admission.
+        try {
+            jdbcTemplate.execute("ALTER TABLE surgery_forms MODIFY ipd_admission_id BIGINT NULL");
+        } catch (Exception e) {
+            log.warn("DB migration skipped (surgery_forms.ipd_admission_id nullable): {}", e.getMessage());
+        }
+
+        // 1. Backfill: attach each orphan form to its admission's earliest non-cancelled surgery.
+        try {
+            int updated = jdbcTemplate.update(
+                    "UPDATE surgery_forms f JOIN (" +
+                    "  SELECT ipd_admission_id, MIN(id) AS sid FROM surgeries " +
+                    "  WHERE status <> 'CANCELLED' AND ipd_admission_id IS NOT NULL " +
+                    "  GROUP BY ipd_admission_id" +
+                    ") s ON s.ipd_admission_id = f.ipd_admission_id " +
+                    "SET f.surgery_id = s.sid WHERE f.surgery_id IS NULL");
+            if (updated > 0) log.info("DB migration applied: backfilled surgery_id on {} surgery_forms rows", updated);
+
+            // Reconciliation report: admissions with >1 surgery could not be disambiguated
+            // automatically. Never guess silently.
+            Integer ambiguous = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM (SELECT ipd_admission_id FROM surgeries " +
+                    "WHERE status <> 'CANCELLED' AND ipd_admission_id IS NOT NULL " +
+                    "GROUP BY ipd_admission_id HAVING COUNT(*) > 1) x", Integer.class);
+            if (ambiguous != null && ambiguous > 0) {
+                log.warn("OT Phase 1 reconciliation: {} admission(s) have multiple surgeries. Their forms were " +
+                        "attached to the EARLIEST non-cancelled surgery and need manual review.", ambiguous);
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (surgery_forms surgery_id backfill): {}", e.getMessage());
+        }
+
+        // 2. Swap the unique key. Old key first, so the new one is never fighting it.
+        dropIndexIfExists("surgery_forms", "UK_surgery_form_admission_type");
+        if (!indexExists("surgery_forms", "UK_surgery_form_surgery_type")) {
+            try {
+                jdbcTemplate.execute("ALTER TABLE surgery_forms ADD CONSTRAINT UK_surgery_form_surgery_type " +
+                        "UNIQUE (surgery_id, form_type, is_current)");
+                log.info("DB migration applied: surgery_forms unique key is now (surgery_id, form_type, is_current)");
+            } catch (Exception e) {
+                log.warn("DB migration skipped (surgery_forms new unique key): {}", e.getMessage());
+            }
+        }
+
+        // 3. Tighten only when the backfill left nothing behind. A form saved before any
+        // surgery existed has no surgery to attach to; keep it readable rather than fail boot.
+        try {
+            Integer orphans = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM surgery_forms WHERE surgery_id IS NULL", Integer.class);
+            if (orphans != null && orphans == 0) {
+                jdbcTemplate.execute("ALTER TABLE surgery_forms MODIFY surgery_id BIGINT NOT NULL");
+                log.info("DB migration applied: surgery_forms.surgery_id is now NOT NULL");
+            } else if (orphans != null) {
+                log.warn("OT Phase 1: {} surgery_forms row(s) have no surgery and stay nullable. " +
+                        "They predate any surgery request; review and attach or delete them.", orphans);
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (surgery_forms.surgery_id NOT NULL): {}", e.getMessage());
+        }
+    }
+
+    private boolean indexExists(String table, String indexName) {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.STATISTICS " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?",
+                    Integer.class, table, indexName);
+            return count != null && count > 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private void dropIndexIfExists(String table, String indexName) {
+        if (!indexExists(table, indexName)) return;
+        try {
+            jdbcTemplate.execute("ALTER TABLE " + table + " DROP INDEX " + indexName);
+            log.info("DB migration applied: dropped index {}.{}", table, indexName);
+        } catch (Exception e) {
+            log.warn("DB migration skipped (drop index {}.{}): {}", table, indexName, e.getMessage());
+        }
+    }
+
     private void addColumnIfMissing(String table, String column, String definition) {
         try {
             Integer count = jdbcTemplate.queryForObject(

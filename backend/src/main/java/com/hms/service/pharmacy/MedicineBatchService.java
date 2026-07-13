@@ -17,6 +17,8 @@ import java.time.LocalDate;
 @Service
 public class MedicineBatchService {
 
+    @Autowired private com.hms.service.RealtimeNotifier notifier;
+
     @Autowired
     private MedicineBatchRepository repository;
 
@@ -131,6 +133,8 @@ public class MedicineBatchService {
         tx.setCreatedBy(securityHelper.getCurrentUserId());
         transactionRepository.save(tx);
 
+        // New stock: every inventory screen in the pharmacy should show it without a reload.
+        notifier.refresh(hid);
         return saved;
     }
 
@@ -145,7 +149,9 @@ public class MedicineBatchService {
         MedicineBatch batch = repository.findByIdAndHospitalIdForUpdate(id, hid, securityHelper.getCurrentBranchId())
                 .orElseThrow(() -> new RuntimeException("Batch not found"));
         batch.setStatus("BLOCKED");
-        return repository.save(batch);
+        MedicineBatch saved = repository.save(batch);
+        notifier.refresh(hid);
+        return saved;
     }
 
     @org.springframework.transaction.annotation.Transactional
@@ -176,7 +182,9 @@ public class MedicineBatchService {
         }
 
         batch.setStatus("DISPOSED");
-        return repository.save(batch);
+        MedicineBatch saved = repository.save(batch);
+        notifier.refresh(securityHelper.getCurrentHospitalId());
+        return saved;
     }
 
     @org.springframework.transaction.annotation.Transactional

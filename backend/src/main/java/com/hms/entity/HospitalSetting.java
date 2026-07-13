@@ -50,6 +50,25 @@ public class HospitalSetting {
     @Column(name = "ot_incharge_enabled", nullable = false)
     private Boolean otInchargeEnabled = false;
 
+    // Print Settings: which pages the consultation-complete combined print includes. All default
+    // on (today's behaviour). An "off" page is left out of the merged PDF at consultation.
+    @Column(name = "print_case_paper", nullable = false)
+    private Boolean printCasePaper = true;
+
+    @Column(name = "print_bill", nullable = false)
+    private Boolean printBill = true;
+
+    @Column(name = "print_prescription", nullable = false)
+    private Boolean printPrescription = true;
+
+    @Column(name = "print_in_clinic", nullable = false)
+    private Boolean printInClinic = true;
+
+    // Bill payment timing: FIRST = charge consultation + case-paper fee at OPD entry (billed &
+    // paid there); LAST = current flow (payment at/after consultation). Defaults LAST.
+    @Column(name = "bill_payment_timing", nullable = false, length = 10)
+    private String billPaymentTiming = "LAST";
+
     public Boolean getOtInchargeEnabled() {
         return otInchargeEnabled;
     }

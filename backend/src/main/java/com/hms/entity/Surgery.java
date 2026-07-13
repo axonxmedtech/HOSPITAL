@@ -11,9 +11,14 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * Surgery - an Operation Theatre case for an IPD patient (OT module, Phase 2).
- * Own status lifecycle; IpdAdmission.status is untouched. Requested by a doctor,
- * scheduled/run by reception. One active (non-terminal) surgery per admission.
+ * Surgery - an Operation Theatre case (OT module).
+ *
+ * The surgery is its own aggregate, anchored on the PATIENT. An IPD admission is
+ * optional: a day-care procedure (cataract, endoscopy, minor orthopaedics) has
+ * {@code ipdAdmissionId == null} and {@code encounterType == DAY_CARE}. Any query
+ * that joins through the admission must tolerate a null.
+ *
+ * Own status lifecycle; IpdAdmission.status is untouched.
  */
 @Entity
 @Table(name = "surgeries")
@@ -28,6 +33,11 @@ public class Surgery {
     public static final String COMPLETED = "COMPLETED";
     public static final String CANCELLED = "CANCELLED";
 
+    /** Inpatient procedure hanging off an IPD admission. */
+    public static final String ENCOUNTER_IPD = "IPD";
+    /** Same-day procedure with no admission. */
+    public static final String ENCOUNTER_DAY_CARE = "DAY_CARE";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -38,8 +48,23 @@ public class Surgery {
     @Column(name = "hospital_id", nullable = false)
     private Long hospitalId;
 
-    @Column(name = "ipd_admission_id", nullable = false)
+    /** Null for a DAY_CARE procedure. */
+    @Column(name = "ipd_admission_id")
     private Long ipdAdmissionId;
+
+    @Column(name = "encounter_type", nullable = false, length = 20)
+    private String encounterType = ENCOUNTER_IPD;
+
+    // Waiting-list ordering. The waiting list itself is a query (APPROVED with no slot),
+    // so these are attributes of the case, not a status.
+    @Column(name = "waitlist_priority", nullable = false)
+    private Integer waitlistPriority = 0;
+
+    @Column(name = "target_date")
+    private LocalDate targetDate;
+
+    @Column(name = "approved_at")
+    private LocalDateTime approvedAt;
 
     @Column(name = "patient_id", nullable = false)
     private Long patientId;
@@ -84,8 +109,19 @@ public class Surgery {
     @Column(name = "scheduled_at")
     private LocalDateTime scheduledAt;
 
+    /**
+     * Legacy. An OT used to be a ward whose name contained "OT". Retained and dual-read
+     * for one release so existing rows resolve; ot_room_id is the real link.
+     */
     @Column(name = "ot_ward_id")
     private Long otWardId;
+
+    @Column(name = "ot_room_id")
+    private Long otRoomId;
+
+    /** Drives interval booking. Absent means the 60-minute default used by the clash query. */
+    @Column(name = "estimated_duration_minutes")
+    private Integer estimatedDurationMinutes;
 
     @Column(name = "ot_bed_id")
     private Long otBedId;
@@ -98,6 +134,16 @@ public class Surgery {
 
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
+
+    // The operative note, authored by the surgeon immediately post-op (NABH COP).
+    @Column(name = "operative_note", columnDefinition = "text")
+    private String operativeNote;
+
+    @Column(name = "operative_note_by_user_id")
+    private Long operativeNoteByUserId;
+
+    @Column(name = "operative_note_at")
+    private LocalDateTime operativeNoteAt;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -112,5 +158,8 @@ public class Surgery {
         if (this.publicId == null) this.publicId = java.util.UUID.randomUUID().toString();
         if (this.requestedAt == null) this.requestedAt = LocalDateTime.now();
         if (this.status == null) this.status = REQUESTED;
+        if (this.encounterType == null) {
+            this.encounterType = this.ipdAdmissionId != null ? ENCOUNTER_IPD : ENCOUNTER_DAY_CARE;
+        }
     }
 }

@@ -1,3 +1,4 @@
+import { printHtml } from '../../../utils/printHtml';
 import React from 'react';
 import authService from '../../../services/authService';
 import { useToast } from '../../../context/ToastContext';
@@ -72,10 +73,7 @@ const NurseFormsView = () => {
     const user = authService.getCurrentUser();
 
     const printBlank = (form) => {
-        const w = window.open('', '_blank');
-        if (!w) { toastError('Popup blocked — allow popups to print'); return; }
-        w.document.write(form.build(brandingOnly(user)));
-        w.document.close();
+        printHtml(form.build(brandingOnly(user)));
     };
 
     return (

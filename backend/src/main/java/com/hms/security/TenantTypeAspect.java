@@ -10,7 +10,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 import com.hms.entity.HospitalType;
-import com.hms.exception.UnauthorizedException;
+import org.springframework.security.access.AccessDeniedException;
 import java.lang.reflect.Method;
 
 /**
@@ -57,7 +57,9 @@ public class TenantTypeAspect {
                 return;
             }
         }
-        throw new UnauthorizedException("Access Denied: this feature is not available for your account type.");
+        // 403, not 401: the session is valid, the tenant type simply isn't allowed here.
+        // A 401 makes the frontend interceptor clear the token and bounce the user to /login.
+        throw new AccessDeniedException("Access Denied: this feature is not available for your account type.");
     }
 
     /** Method-level annotation wins over the class-level one. */

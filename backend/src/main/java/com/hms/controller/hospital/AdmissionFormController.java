@@ -1,7 +1,6 @@
 package com.hms.controller.hospital;
 
 import com.hms.entity.AdmissionForm;
-import com.hms.security.RequireModule;
 import com.hms.service.hospital.AdmissionFormService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -17,14 +16,13 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @RequestMapping("/hospital/nurse/admission-form")
-@RequireModule("NURSING")
 public class AdmissionFormController {
 
     @Autowired
     private AdmissionFormService admissionFormService;
 
     @GetMapping("/admission/{admissionId}")
-    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN')")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
     public ResponseEntity<?> get(@PathVariable Long admissionId) {
         return ResponseEntity.ok(admissionFormService.getOrDraft(admissionId));
     }

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import authService from '../../services/authService';
 import platformService from '../../services/platformService';
+import { API_BASE_URL } from '../../services/apiService';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import { validateForm } from '../../utils/validation';
 import ActionMenu from '../../components/ActionMenu';
@@ -258,6 +259,7 @@ const PlatformDashboard = () => {
     // Tickets State
     const [tickets, setTickets] = useState([]);
     const [ticketsLoading, setTicketsLoading] = useState(false);
+    const [viewTicket, setViewTicket] = useState(null); // ticket whose full details are open
 
     // FAQs State
     const [faqs, setFaqs] = useState([]);
@@ -372,6 +374,47 @@ const PlatformDashboard = () => {
             setTicketsLoading(false);
         }
     };
+
+    // Keep live pointers to the loaders so the mount-once WebSocket effect below always calls the
+    // current closure (fresh activeTab / hospital type / page), avoiding a stale capture.
+    const reloadTicketsRef = useRef(() => {});
+    const reloadTenantsRef = useRef(() => {});
+    useEffect(() => {
+        reloadTicketsRef.current = () => { loadTickets(); };
+        // Reload the tenant list the Super Admin is actually looking at — same page, same type —
+        // so a live refresh never yanks them back to page 1 of a different group.
+        reloadTenantsRef.current = () => {
+            loadHospitals(hospitalPage.number, hospitalPage.size, getEntityType(activeTab));
+        };
+    });
+
+    // Real-time: the platform (Super Admin) connects to the reserved channel (/ws/hospital/0).
+    //   NEW_TICKET   — a tenant filed a ticket.
+    //   REFRESH_DATA — a tenant was created/blocked/updated/deleted, or a plan was assigned or
+    //                  edited. Previously the platform listened for NEW_TICKET and nothing else,
+    //                  so its own tenant list (including the Plan column) went stale the moment a
+    //                  second Super Admin tab — or this one's own plan edit — changed anything.
+    // Best-effort: a socket failure just falls back to manual reload.
+    useEffect(() => {
+        const token = sessionStorage.getItem('token');
+        if (!token) return;
+        let ws;
+        try {
+            const base = API_BASE_URL || '';
+            const wsBase = base.startsWith('http')
+                ? base.replace(/^http/, 'ws')
+                : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}${base.startsWith('/') ? '' : '/'}${base}`;
+            ws = new WebSocket(`${wsBase}/ws/hospital/0?token=${encodeURIComponent(token)}`);
+            ws.onmessage = (evt) => {
+                try {
+                    const data = JSON.parse(evt.data);
+                    if (data?.type === 'NEW_TICKET') reloadTicketsRef.current();
+                    else if (data?.type === 'REFRESH_DATA') reloadTenantsRef.current();
+                } catch { /* ignore malformed frames */ }
+            };
+        } catch { /* WebSocket unsupported/unavailable — silently skip */ }
+        return () => { try { ws && ws.close(); } catch { /* noop */ } };
+    }, []);
 
     const [resolvingTicketId, setResolvingTicketId] = useState(null);
     const handleResolveTicket = async (ticketId) => {
@@ -851,14 +894,14 @@ const PlatformDashboard = () => {
                                                                 {hospital.isActive ? 'Active' : 'Inactive'}
                                                             </span>
                                                         </td>
+                                                        {/* The tenant's actual subscribed plan. Plan names are free text the Super
+                                                            Admin types when creating a plan, so there are no fixed tiers to colour-code
+                                                            against — a neutral badge that shows the real name beats a coloured one that
+                                                            has to guess. "—" means no current subscription, which is a data problem worth
+                                                            seeing rather than papering over with a default. */}
                                                         <td className="px-6 py-4">
-                                                            <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${
-                                                                (hospital.planName || 'FREE') === 'PREMIUM' ? 'bg-purple-100 text-purple-700 border-purple-200'
-                                                                : (hospital.planName || 'FREE') === 'BASIC'   ? 'bg-blue-100 text-blue-700 border-blue-200'
-                                                                : (hospital.planName || 'FREE') === 'ENTERPRISE' ? 'bg-amber-100 text-amber-700 border-amber-200'
-                                                                : 'bg-gray-100 text-gray-600 border-gray-200'
-                                                            }`}>
-                                                                {hospital.planName || 'FREE'}
+                                                            <span className="px-2.5 py-1 text-xs font-semibold rounded-full border bg-gray-100 text-gray-700 border-gray-200">
+                                                                {hospital.planName || '—'}
                                                             </span>
                                                         </td>
                                                         <td className="px-6 py-4 text-sm text-gray-600">
@@ -947,7 +990,18 @@ const PlatformDashboard = () => {
                         const parsed = parseTab(activeTab);
                         const subtab = parsed.isTopLevel ? parsed.tab : activeTab.split(':')[1];
 
-                        if (loading && subtab !== 'plans') {
+                        // The global `loading` flag is set ONLY by loadHospitals() and
+                        // loadAuditLogs(), and it starts as `true`. So it must gate only the
+                        // subtabs those two fetch for. Every other subtab (plans, tickets,
+                        // faqs, medicines, inventory_items, …) owns its own loading state and
+                        // renders its own skeleton — gating them on the global flag pinned a
+                        // skeleton on screen forever, since nothing ever cleared it.
+                        // Allowlist, not blocklist: a new subtab must opt IN, so it can't
+                        // silently inherit a stuck skeleton.
+                        const usesGlobalLoading = subtab === 'dashboard' || subtab === 'hospitals'
+                            || subtab === 'clinics' || subtab === 'pharmacies' || subtab === 'audit_logs';
+
+                        if (loading && usesGlobalLoading) {
                             return <SkeletonDashboard statCount={3} tableRows={6} tableCols={7} />;
                         }
 
@@ -990,6 +1044,7 @@ const PlatformDashboard = () => {
                                     loading={ticketsLoading}
                                     onResolve={handleResolveTicket}
                                     resolvingId={resolvingTicketId}
+                                    onView={setViewTicket}
                                 />
                             );
                         }
@@ -1019,6 +1074,66 @@ const PlatformDashboard = () => {
                 showReasonInput={confirmModal.showReasonInput}
                 inputPlaceholder={confirmModal.inputPlaceholder}
             />
+
+            {/* Ticket Detail Modal — shows the full description the truncated row can't */}
+            {viewTicket && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setViewTicket(null)}>
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-start justify-between p-6 border-b border-gray-100">
+                            <div>
+                                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Support Ticket</p>
+                                <h3 className="text-lg font-semibold text-gray-900 mt-1">{viewTicket.subject}</h3>
+                            </div>
+                            <button onClick={() => setViewTicket(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Hospital</p>
+                                    <p className="text-sm text-gray-900 mt-1">{viewTicket.hospitalName || '—'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Submitted By</p>
+                                    <p className="text-sm text-gray-900 mt-1">{viewTicket.adminName || '—'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Priority</p>
+                                    <p className="text-sm text-gray-900 mt-1">{viewTicket.priority || '—'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Status</p>
+                                    <p className="text-sm text-gray-900 mt-1">{viewTicket.status?.replace('_', ' ') || '—'}</p>
+                                </div>
+                                <div className="col-span-2">
+                                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Submitted</p>
+                                    <p className="text-sm text-gray-900 mt-1">
+                                        {viewTicket.createdAt
+                                            ? new Date(viewTicket.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
+                                            : '—'}
+                                    </p>
+                                </div>
+                            </div>
+                            <div>
+                                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Description</p>
+                                <p className="text-sm text-gray-800 mt-1 whitespace-pre-wrap break-words">{viewTicket.message || '—'}</p>
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-2 p-6 border-t border-gray-100">
+                            {viewTicket.status !== 'RESOLVED' && (
+                                <button
+                                    onClick={() => { handleResolveTicket(viewTicket.id); setViewTicket(null); }}
+                                    className="px-4 h-10 text-sm font-semibold bg-green-50 text-green-700 border border-green-200 rounded-xl hover:bg-green-100 transition-colors"
+                                >
+                                    Mark Resolved
+                                </button>
+                            )}
+                            <button onClick={() => setViewTicket(null)} className="px-4 h-10 text-sm font-semibold bg-gray-900 text-white rounded-xl hover:bg-gray-700 transition-colors">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Password Reset Display Modal */}
             {passwordModal.isOpen && (
@@ -1725,6 +1840,7 @@ const SuperAdminProfileModal = ({ user, onClose }) => {
     const initials = (name || 'SA').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
     const handleSave = async () => {
+        if (!name || !name.trim()) return setMsg({ type: 'error', text: 'Name is required.' });
         if (showPwSection) {
             if (!currentPw) return setMsg({ type: 'error', text: 'Current password is required.' });
             if (newPw.length < 6) return setMsg({ type: 'error', text: 'New password must be at least 6 characters.' });
@@ -1732,11 +1848,21 @@ const SuperAdminProfileModal = ({ user, onClose }) => {
         }
         setSaving(true);
         try {
-            await new Promise(r => setTimeout(r, 800));
+            // This used to be a fake `await setTimeout(800)` that reported success without
+            // calling the backend — the Super Admin's name and password changes were silently
+            // discarded. Persist for real; authService.updateProfile also refreshes the
+            // cached user, so the dashboard header shows the new name once the modal closes.
+            await authService.updateProfile({
+                name: name.trim(),
+                currentPassword: showPwSection ? currentPw : null,
+                newPassword: showPwSection ? newPw : null,
+            });
             setMsg({ type: 'success', text: 'Profile updated successfully.' });
             setTimeout(onClose, 1200);
-        } catch {
-            setMsg({ type: 'error', text: 'Failed to save changes.' });
+        } catch (err) {
+            const text = err?.response?.data?.error || err?.response?.data
+                || 'Failed to save changes.';
+            setMsg({ type: 'error', text: typeof text === 'string' ? text : 'Failed to save changes.' });
         } finally {
             setSaving(false);
         }
@@ -1790,11 +1916,15 @@ const SuperAdminProfileModal = ({ user, onClose }) => {
                                 {user?.email || 'sa@hms.com'}
                             </div>
                         </div>
+                        {/* Platform accounts have no actor row (hospital_admins/doctors/…), which
+                            is where a phone number is stored — so there is nowhere to persist it.
+                            Shown disabled rather than as an editable field that silently discards
+                            input, matching how ProfileModal treats SUPER_ADMIN phone. */}
                         <div>
                             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Phone</label>
-                            <input value={phone} onChange={e => setPhone(e.target.value)}
-                                placeholder="+91 98765 43210"
-                                className="w-full h-10 px-3 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                            <input value={phone} disabled
+                                placeholder="Not stored for platform accounts"
+                                className="w-full h-10 px-3 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-400 cursor-not-allowed" />
                         </div>
                     </div>
 
@@ -1852,7 +1982,7 @@ const SuperAdminProfileModal = ({ user, onClose }) => {
 }; // end SuperAdminProfileModal
 
 // TicketsTable Component
-const TicketsTable = ({ tickets, loading, onResolve, resolvingId }) => {
+const TicketsTable = ({ tickets, loading, onResolve, resolvingId, onView }) => {
     const priorityBadge = (p) => {
         if (p === 'HIGH')   return 'bg-red-100 text-red-700 border-red-200';
         if (p === 'MEDIUM') return 'bg-yellow-100 text-yellow-700 border-yellow-200';
@@ -1900,10 +2030,13 @@ const TicketsTable = ({ tickets, loading, onResolve, resolvingId }) => {
                                 <p className="text-sm font-medium text-gray-900">{ticket.hospitalName}</p>
                             </td>
                             <td className="px-6 py-4">
-                                <p className="text-sm text-gray-900">{ticket.subject}</p>
-                                {ticket.message && (
-                                    <p className="text-xs text-gray-400 mt-0.5 truncate max-w-xs">{ticket.message}</p>
-                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => onView && onView(ticket)}
+                                    className="text-sm text-gray-900 text-left hover:text-blue-600 hover:underline"
+                                >
+                                    {ticket.subject}
+                                </button>
                             </td>
                             <td className="px-6 py-4">
                                 <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${priorityBadge(ticket.priority)}`}>
@@ -1928,17 +2061,25 @@ const TicketsTable = ({ tickets, loading, onResolve, resolvingId }) => {
                                 ) : <span className="text-gray-300 text-xs">—</span>}
                             </td>
                             <td className="px-6 py-4">
-                                {ticket.status !== 'RESOLVED' ? (
+                                <div className="flex items-center gap-2">
                                     <button
-                                        onClick={() => onResolve(ticket.id)}
-                                        disabled={!!resolvingId}
-                                        className={`px-3 py-1.5 text-xs font-semibold border rounded-lg transition-colors ${resolvingId === ticket.id ? 'bg-gray-200 text-gray-400 border-gray-200 cursor-not-allowed' : resolvingId ? 'opacity-50 cursor-not-allowed bg-green-50 text-green-700 border-green-200' : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'}`}
+                                        onClick={() => onView && onView(ticket)}
+                                        className="px-3 py-1.5 text-xs font-semibold border rounded-lg bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100 transition-colors"
                                     >
-                                        {resolvingId === ticket.id ? 'Resolving...' : 'Resolve'}
+                                        View
                                     </button>
-                                ) : (
-                                    <span className="text-xs text-gray-400 italic">Closed</span>
-                                )}
+                                    {ticket.status !== 'RESOLVED' ? (
+                                        <button
+                                            onClick={() => onResolve(ticket.id)}
+                                            disabled={!!resolvingId}
+                                            className={`px-3 py-1.5 text-xs font-semibold border rounded-lg transition-colors ${resolvingId === ticket.id ? 'bg-gray-200 text-gray-400 border-gray-200 cursor-not-allowed' : resolvingId ? 'opacity-50 cursor-not-allowed bg-green-50 text-green-700 border-green-200' : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'}`}
+                                        >
+                                            {resolvingId === ticket.id ? 'Resolving...' : 'Resolve'}
+                                        </button>
+                                    ) : (
+                                        <span className="text-xs text-gray-400 italic">Closed</span>
+                                    )}
+                                </div>
                             </td>
                         </tr>
                     ))}
@@ -2041,14 +2182,13 @@ const HospitalsTable = ({ hospitals, hospitalPage, handleToggleStatus, openEditH
         columnHelper.accessor('planName', {
             header: 'Plan',
             cell: info => {
-                const plan = info.getValue() || 'FREE';
-                const planClass = plan === 'PREMIUM' ? 'bg-purple-100 text-purple-700 border-purple-200'
-                    : plan === 'BASIC'     ? 'bg-blue-100 text-blue-700 border-blue-200'
-                    : plan === 'ENTERPRISE' ? 'bg-amber-100 text-amber-700 border-amber-200'
-                    : 'bg-gray-100 text-gray-600 border-gray-200';
+                // Plan names are free text (the Super Admin names them in the Plans tab), so a
+                // neutral badge showing the real name beats guessing at fixed tiers. "—" means the
+                // tenant has no current subscription — surface that instead of defaulting it.
+                const plan = info.getValue() || '—';
                 return (
                     <div className="flex items-center gap-2">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${planClass}`}>{plan}</span>
+                        <span className="px-2.5 py-1 rounded-full text-xs font-semibold border bg-gray-100 text-gray-700 border-gray-200">{plan}</span>
                         <button
                             onClick={() => openEditHospitalModal(info.row.original)}
                             className="text-gray-400 hover:text-blue-600 transition-colors"

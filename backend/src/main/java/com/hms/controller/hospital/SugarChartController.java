@@ -1,7 +1,6 @@
 package com.hms.controller.hospital;
 
 import com.hms.dto.SugarChartRequest;
-import com.hms.security.RequireModule;
 import com.hms.service.hospital.SugarChartService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -17,32 +16,31 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/hospital/nurse/sugar-chart")
-@RequireModule("NURSING")
 public class SugarChartController {
 
     @Autowired
     private SugarChartService service;
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN')")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
     public ResponseEntity<?> create(@RequestBody SugarChartRequest req) {
         return ResponseEntity.ok(service.create(req));
     }
 
     @GetMapping("/admission/{admissionId}")
-    @PreAuthorize("hasAnyRole('NURSE', 'NURSE_INCHARGE', 'DOCTOR', 'HOSPITAL_ADMIN')")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
     public ResponseEntity<?> getByAdmission(@PathVariable Long admissionId) {
         return ResponseEntity.ok(service.getByAdmission(admissionId));
     }
 
     @PutMapping("/{publicId}")
-    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN')")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
     public ResponseEntity<?> update(@PathVariable String publicId, @RequestBody SugarChartRequest req) {
         return ResponseEntity.ok(service.update(publicId, req));
     }
 
     @DeleteMapping("/{publicId}")
-    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN')")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
     public ResponseEntity<?> delete(@PathVariable String publicId) {
         service.softDelete(publicId);
         return ResponseEntity.ok(Map.of("message", "Entry deleted"));

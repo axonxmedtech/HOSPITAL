@@ -41,37 +41,46 @@ class BillingServiceTest {
     @InjectMocks BillingService billingService;
 
     // -----------------------------------------------------------------------
-    // Test 1: createConsultationBill saves a billing record with correct amount
-    // (Exercises the "calculate bill" path via createConsultationBill)
+    // Test 1: the OPD bill charges case paper + consultation and starts unpaid.
+    // (Replaces the old createConsultationBill test — that method had no callers and
+    //  was deleted; this asserts the same thing against the creator actually in use.)
     // -----------------------------------------------------------------------
     @Test
-    void createConsultationBill_withHospitalFee_savesCorrectAmount() {
+    void createOpdBill_chargesCasePaperPlusConsultation_andStartsPending() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
 
         Hospital hospital = new Hospital();
         hospital.setId(1L);
         hospital.setModules(List.of("BILLING"));
         hospital.setConsultationFee(new BigDecimal("500.00"));
+        hospital.setCasePaperFee(new BigDecimal("100.00"));
         when(hospitalRepository.findById(1L)).thenReturn(Optional.of(hospital));
 
         Billing savedBilling = new Billing();
         savedBilling.setId(10L);
         savedBilling.setHospitalId(1L);
-        savedBilling.setAmount(new BigDecimal("500.00"));
+        savedBilling.setAmount(new BigDecimal("600.00"));
         when(billingRepository.save(any(Billing.class))).thenReturn(savedBilling);
 
-        BillingItem savedItem = new BillingItem();
-        when(billingItemRepository.save(any(BillingItem.class))).thenReturn(savedItem);
-
-        Billing result = billingService.createConsultationBill(100L, 200L, 300L);
+        Billing result = billingService.createOpdBill(300L, 100L, 200L);
 
         assertThat(result).isNotNull();
-        assertThat(result.getAmount()).isEqualByComparingTo(new BigDecimal("500.00"));
 
         ArgumentCaptor<Billing> captor = ArgumentCaptor.forClass(Billing.class);
         verify(billingRepository).save(captor.capture());
-        assertThat(captor.getValue().getAmount()).isEqualByComparingTo(new BigDecimal("500.00"));
+        // 100 case paper + 500 consultation
+        assertThat(captor.getValue().getAmount()).isEqualByComparingTo(new BigDecimal("600.00"));
+        // A bill is never born paid — it must be collected.
         assertThat(captor.getValue().getPaymentStatus()).isEqualTo("PENDING");
+
+        // Itemised breakdown: one line per fee.
+        verify(billingItemRepository, times(2)).save(any(BillingItem.class));
+    }
+
+    /** A new bill must default to PENDING — never silently "already paid". */
+    @Test
+    void newBilling_defaultsToPending_notPaid() {
+        assertThat(new Billing().getPaymentStatus()).isEqualTo("PENDING");
     }
 
     // -----------------------------------------------------------------------

@@ -4,7 +4,6 @@ import com.hms.entity.HospitalServiceEntity;
 import com.hms.entity.HospitalServiceItem;
 import com.hms.repository.HospitalServiceItemRepository;
 import com.hms.repository.HospitalServiceRepository;
-import com.hms.repository.InventoryMasterItemRepository;
 import com.hms.security.SecurityContextHelper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -24,7 +23,7 @@ public class HospitalServiceService {
     private HospitalServiceItemRepository serviceItemRepository;
 
     @Autowired
-    private InventoryMasterItemRepository masterItemRepository;
+    private com.hms.repository.InventoryItemRepository inventoryItemRepository;
 
     @Autowired
     private SecurityContextHelper securityHelper;
@@ -34,10 +33,16 @@ public class HospitalServiceService {
         return serviceRepository.findByHospitalIdAndIsActiveTrueOrderByNameAsc(hospitalId);
     }
 
+    /**
+     * Resolve the linked item names. The ids stored in hospital_service_items come from the
+     * catalog the Service Lookup shows, which is `inventory_items` (what the platform writes)
+     * — not the legacy `inventory_master_items` table this used to read, which would leave
+     * every saved service showing no items.
+     */
     public List<String> getItemNamesForService(Long serviceId) {
         List<String> names = new ArrayList<>();
         for (HospitalServiceItem link : serviceItemRepository.findByServiceId(serviceId)) {
-            masterItemRepository.findById(link.getMasterItemId())
+            inventoryItemRepository.findById(link.getMasterItemId())
                     .ifPresent(m -> names.add(m.getName()));
         }
         return names;

@@ -1,3 +1,4 @@
+import { printHtml } from '../../../utils/printHtml';
 import React, { useState, useEffect, useMemo } from 'react';
 import { format } from 'date-fns';
 import hospitalService from '../../../services/hospitalService';
@@ -55,12 +56,7 @@ const PrescriptionsView = () => {
         <script>window.onload = function() { window.print(); };<\/script>
         </body></html>`;
 
-        const w = window.open('', '_blank');
-        if (w) {
-            w.document.open();
-            w.document.write(html);
-            w.document.close();
-        }
+        printHtml(html);
     };
 
     const fetchData = async (showSpinner = true) => {
