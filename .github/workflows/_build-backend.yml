@@ -36,9 +36,6 @@ jobs:
       # and enforces the coverage floor. See docs/quality/CODE_QUALITY.md.
       - name: Run tests with JaCoCo (coverage floor enforced)
         env:
-          SPRING_DATASOURCE_URL: jdbc:h2:mem:testdb
-          SPRING_DATASOURCE_USERNAME: sa
-          SPRING_DATASOURCE_PASSWORD: ""
           JWT_SECRET: ci-test-secret-not-used-in-real-environment
         run: mvn -B verify --no-transfer-progress
 
