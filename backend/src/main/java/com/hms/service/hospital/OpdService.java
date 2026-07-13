@@ -140,14 +140,18 @@ public class OpdService {
         if (req.getDoctorId() != null && !req.getDoctorId().trim().isEmpty()) {
             String docIdStr = req.getDoctorId().trim();
             java.util.Optional<Doctor> docOpt = java.util.Optional.empty();
+            Long hospitalId = securityHelper.getCurrentHospitalId();
             if (docIdStr.matches("^\\d+$")) {
                 Long numericId = Long.parseLong(docIdStr);
                 docOpt = doctorRepository.findByIdOrUserId(numericId, userRepository);
             } else {
-                Long hospitalId = securityHelper.getCurrentHospitalId();
                 docOpt = doctorRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(docIdStr, hospitalId);
             }
-            docOpt.ifPresent(opd::setDoctor);
+            // findByIdOrUserId is not tenant-scoped: without this filter a numeric doctorId
+            // would attach another hospital's doctor to this hospital's OPD (and print that
+            // doctor on the case paper). Drop any doctor that is not in the caller's hospital.
+            docOpt.filter(d -> hospitalId != null && hospitalId.equals(d.getHospitalId()))
+                    .ifPresent(opd::setDoctor);
         }
 
         // Only vitals the hospital has switched ON are captured. Disabled built-ins are
