@@ -13,8 +13,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import javax.crypto.Cipher;
+import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -24,6 +26,13 @@ public class WhatsAppService {
     private static final Logger log = LoggerFactory.getLogger(WhatsAppService.class);
     private static final String BASE_URL = "https://graph.facebook.com/%s/%s/messages";
     private static final int MAX_RETRIES = 2;
+
+    // Token-at-rest encryption. New values use authenticated AES/GCM (marked with GCM_PREFIX);
+    // values without the prefix are legacy AES/ECB and are decrypted for backward compatibility.
+    private static final String GCM_PREFIX = "g1:";
+    private static final int GCM_IV_BYTES = 12;
+    private static final int GCM_TAG_BITS = 128;
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     @Value("${whatsapp.access-token:}")
     private String platformAccessToken;
@@ -304,18 +313,26 @@ public class WhatsAppService {
     }
 
     /**
-     * Encrypts plaintext using AES/ECB/PKCS5Padding with a 16-byte key derived from
-     * encryptionKey via Arrays.copyOf (truncates or zero-pads to exactly 16 bytes).
+     * Encrypts plaintext with authenticated AES/GCM/NoPadding. A fresh random 12-byte IV is
+     * generated per call and prepended to the ciphertext; the whole thing is Base64-encoded and
+     * marked with {@link #GCM_PREFIX}. The 16-byte key is derived from encryptionKey via
+     * Arrays.copyOf (truncates or zero-pads to exactly 16 bytes).
      */
     public String encrypt(String plaintext) {
         if (encryptionKey == null || encryptionKey.isBlank()) return plaintext;
         try {
             byte[] keyBytes = Arrays.copyOf(
                     encryptionKey.getBytes(StandardCharsets.UTF_8), 16);
-            Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
-            cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(keyBytes, "AES"));
-            return Base64.getEncoder().encodeToString(
-                    cipher.doFinal(plaintext.getBytes(StandardCharsets.UTF_8)));
+            byte[] iv = new byte[GCM_IV_BYTES];
+            SECURE_RANDOM.nextBytes(iv);
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(keyBytes, "AES"),
+                    new GCMParameterSpec(GCM_TAG_BITS, iv));
+            byte[] ct = cipher.doFinal(plaintext.getBytes(StandardCharsets.UTF_8));
+            byte[] combined = new byte[iv.length + ct.length];
+            System.arraycopy(iv, 0, combined, 0, iv.length);
+            System.arraycopy(ct, 0, combined, iv.length, ct.length);
+            return GCM_PREFIX + Base64.getEncoder().encodeToString(combined);
         } catch (Exception e) {
             log.warn("WhatsApp token encryption failed, storing plain: {}", e.getMessage());
             return plaintext;
@@ -323,21 +340,41 @@ public class WhatsAppService {
     }
 
     /**
-     * Decrypts ciphertext using AES/ECB/PKCS5Padding with a 16-byte key derived from
-     * encryptionKey via Arrays.copyOf (truncates or zero-pads to exactly 16 bytes).
+     * Decrypts a value produced by {@link #encrypt(String)}. Values marked with {@link #GCM_PREFIX}
+     * are decrypted with AES/GCM; values without the prefix are treated as legacy AES/ECB data and
+     * decrypted for backward compatibility (see {@link #legacyEcbDecrypt}).
      */
     public String decrypt(String ciphertext) {
         if (encryptionKey == null || encryptionKey.isBlank()) return ciphertext;
         try {
             byte[] keyBytes = Arrays.copyOf(
                     encryptionKey.getBytes(StandardCharsets.UTF_8), 16);
-            Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
-            cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(keyBytes, "AES"));
-            return new String(cipher.doFinal(
-                    Base64.getDecoder().decode(ciphertext)), StandardCharsets.UTF_8);
+            if (ciphertext != null && ciphertext.startsWith(GCM_PREFIX)) {
+                byte[] combined = Base64.getDecoder().decode(ciphertext.substring(GCM_PREFIX.length()));
+                byte[] iv = Arrays.copyOfRange(combined, 0, GCM_IV_BYTES);
+                byte[] ct = Arrays.copyOfRange(combined, GCM_IV_BYTES, combined.length);
+                Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+                cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(keyBytes, "AES"),
+                        new GCMParameterSpec(GCM_TAG_BITS, iv));
+                return new String(cipher.doFinal(ct), StandardCharsets.UTF_8);
+            }
+            return legacyEcbDecrypt(ciphertext, keyBytes);
         } catch (Exception e) {
             log.warn("WhatsApp token decryption failed, returning as-is: {}", e.getMessage());
             return ciphertext;
         }
+    }
+
+    /**
+     * Read-only backward-compatibility path for tokens saved before the GCM migration, which used
+     * AES/ECB. New values are never written this way (encrypt() always uses GCM), so this exists
+     * solely so existing WhatsApp integrations keep working after the upgrade.
+     */
+    @SuppressWarnings("java:S5542") // legacy ECB read-only compat for pre-GCM stored tokens
+    private String legacyEcbDecrypt(String ciphertext, byte[] keyBytes) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding"); // NOSONAR - legacy compat only
+        cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(keyBytes, "AES"));
+        return new String(cipher.doFinal(
+                Base64.getDecoder().decode(ciphertext)), StandardCharsets.UTF_8);
     }
 }
