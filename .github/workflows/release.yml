@@ -91,7 +91,7 @@ jobs:
           mkdir -p release
 
           # Backend executable JAR (there is exactly one non-plain jar).
-          JAR=$(ls backend/target/hospital-management-system-*.jar | grep -v -- '-plain' | head -n1)
+          JAR=$(find backend/target -maxdepth 1 -name 'hospital-management-system-*.jar' ! -name '*-plain.jar' | head -n1)
           cp "$JAR" "release/hms-backend-$VER.jar"
 
           # Frontend: stamp version.json into dist, then zip the production assets.
@@ -99,7 +99,9 @@ jobs:
           (cd frontend && zip -qr "../release/hms-frontend-$VER.zip" dist)
 
           # SBOM (produced by the Phase-6 CycloneDX plugin during `package`).
-          [ -f backend/target/bom.json ] && cp backend/target/bom.json "release/hms-backend-sbom-$VER.cdx.json" || true
+          if [ -f backend/target/bom.json ]; then
+            cp backend/target/bom.json "release/hms-backend-sbom-$VER.cdx.json" || true
+          fi
 
           # Machine-readable build metadata.
           bash scripts/generate-build-metadata.sh > release/build-metadata.json

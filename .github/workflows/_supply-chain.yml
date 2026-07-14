@@ -91,7 +91,9 @@ jobs:
           COSIGN_YES: 'true'
         run: |
           for f in sbom-frontend.json sbom-backend.json; do
-            [ -f "$f" ] && cosign sign-blob --output-signature "$f.sig" --output-certificate "$f.pem" "$f" || true
+            if [ -f "$f" ]; then
+              cosign sign-blob --output-signature "$f.sig" --output-certificate "$f.pem" "$f" || true
+            fi
           done
 
       - name: Upload SBOM artifacts
@@ -125,7 +127,7 @@ jobs:
 
       - name: Trivy filesystem scan (vuln + secret + misconfig) → SARIF
         # Pin to SHA in production: https://github.com/aquasecurity/trivy-action/releases
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@v0.33.1
         with:
           scan-type: fs
           scan-ref: .
@@ -141,7 +143,7 @@ jobs:
 
       - name: Trivy human-readable table → step summary
         # Pin to SHA in production: https://github.com/aquasecurity/trivy-action/releases
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@v0.33.1
         with:
           scan-type: fs
           scan-ref: .

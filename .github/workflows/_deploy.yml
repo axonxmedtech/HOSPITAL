@@ -85,7 +85,7 @@ jobs:
       - name: Validate deployment configuration
         env:
           HMS_SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
-          HMS_SSH_KEY: ${{ secrets.ssh_key || secrets.SSH_PRIVATE_KEY || secrets.SSH_KEY }}
+          HMS_SSH_KEY: ${{ secrets.ssh_key }}
           HMS_REPO_PATH: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
           HMS_SERVICE: ${{ inputs.service_name || vars.SERVICE_NAME }}
           HMS_BRANCH: ${{ inputs.git_branch || vars.BRANCH_NAME }}
@@ -131,10 +131,10 @@ jobs:
         id: prev
         continue-on-error: true
         env:
-          SSH_KEY: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
+          SSH_KEY: ${{ secrets.ssh_key }}
           SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
-          SSH_USER: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
+          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
           REPO: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
         run: |
           echo "$SSH_KEY" > /tmp/deploy_key && chmod 600 /tmp/deploy_key
@@ -166,7 +166,7 @@ jobs:
       # ── Artifact integrity: record checksums for the deployment manifest ──
       - name: Compute artifact checksums
         run: |
-          JAR=$(ls backend/target/*.jar | grep -v -- '-plain' | head -1)
+          JAR=$(find backend/target -maxdepth 1 -name '*.jar' ! -name '*-plain.jar' | head -1)
           {
             echo "BACKEND_SHA256=$(sha256sum "$JAR" | awk '{print $1}')"
             echo "FRONTEND_SHA256=$(tar -cf - frontend/dist | sha256sum | awk '{print $1}')"
@@ -178,28 +178,28 @@ jobs:
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
-          username: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
-          key: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
+          username: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
+          key: ${{ secrets.ssh_key }}
           port: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
           timeout: 60s
           command_timeout: 5m
           script: |
             set -euo pipefail
             TS() { date -u '+%Y-%m-%dT%H:%M:%SZ'; }
-            
+
             REPO="${{ inputs.repo_path || vars.DEPLOY_PATH }}"
             BRANCH="${{ inputs.git_branch || vars.BRANCH_NAME }}"
-            
+
             echo "[$(TS)] Pulling latest code..."
             cd "$REPO"
             git fetch origin
             git reset --hard "origin/$BRANCH"
             git log -1 --oneline
-            
+
             # Ensure build directories exist
             mkdir -p frontend/dist
             mkdir -p backend/target
-            
+
             # Backup current build artifacts for rollback
             if [ "${{ inputs.enable_rollback }}" = "true" ]; then
               echo "[$(TS)] Backing up artifacts for rollback..."
@@ -218,20 +218,20 @@ jobs:
       # ("operation was canceled"). Now a stall aborts in <=5 min and retries.
       - name: Copy Deployment Package via SCP
         env:
-          SSH_KEY: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
+          SSH_KEY: ${{ secrets.ssh_key }}
           SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
-          SSH_USER: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
+          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
           TARGET: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
         run: |
           echo "$SSH_KEY" > /tmp/deploy_key
           chmod 600 /tmp/deploy_key
-          SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=4"
+          SSH_OPTS=(-o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=4)
           ls -lh deploy.tar.gz
           ok=false
           for attempt in 1 2 3; do
             echo "SCP attempt $attempt/3 ..."
-            if timeout 300 scp -i /tmp/deploy_key $SSH_OPTS -P "$SSH_PORT" deploy.tar.gz "$SSH_USER@$SSH_HOST:$TARGET/"; then
+            if timeout 300 scp -i /tmp/deploy_key "${SSH_OPTS[@]}" -P "$SSH_PORT" deploy.tar.gz "$SSH_USER@$SSH_HOST:$TARGET/"; then
               ok=true
               break
             fi
@@ -253,10 +253,10 @@ jobs:
       - name: Pre-deploy database backup
         if: inputs.environment == 'Production'
         env:
-          SSH_KEY: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
+          SSH_KEY: ${{ secrets.ssh_key }}
           SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
-          SSH_USER: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
+          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
           REPO: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
         run: |
           echo "$SSH_KEY" > /tmp/deploy_key && chmod 600 /tmp/deploy_key
@@ -276,17 +276,17 @@ jobs:
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
-          username: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
-          key: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
+          username: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
+          key: ${{ secrets.ssh_key }}
           port: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
           timeout: 60s
           command_timeout: 10m
           script: |
             set -euo pipefail
             TS() { date -u '+%Y-%m-%dT%H:%M:%SZ'; }
-            
+
             REPO="${{ inputs.repo_path || vars.DEPLOY_PATH }}"
-            
+
             # Extract deployment package
             echo "[$(TS)] Extracting deployment package on VPS..."
             cd "$REPO"
@@ -294,7 +294,7 @@ jobs:
             rm -f backend/target/*.jar
             tar -xzf deploy.tar.gz
             rm -f deploy.tar.gz
-            
+
             # Inject FRONTEND_URL and SPRING_PROFILES_ACTIVE into systemd
             SERVICE="${{ inputs.service_name || vars.SERVICE_NAME }}"
             APP_URL="${{ inputs.app_url }}"
@@ -318,7 +318,7 @@ jobs:
             # Restart service
             echo "[$(TS)] Restarting $SERVICE ..."
             sudo systemctl restart "$SERVICE"
-            
+
             # Health check
             MAX=15
             DELAY=10
@@ -334,12 +334,12 @@ jobs:
               fi
               sleep "$DELAY"
             done
-            
+
             if $HEALTHY; then
               echo "[$(TS)] Service is healthy."
               exit 0
             fi
-            
+
             # ── Health check failed ───────────────────────────────────────
             if [ "${{ inputs.enable_rollback }}" = "true" ]; then
               PREV_SHA=$(cat ../rollback_backup/prev_sha.txt || echo "")
@@ -396,10 +396,10 @@ jobs:
         if: success()
         continue-on-error: true
         env:
-          SSH_KEY: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
+          SSH_KEY: ${{ secrets.ssh_key }}
           SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
-          SSH_USER: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
+          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
           REPO: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
           HPORT: ${{ inputs.health_port || vars.PORT || vars.STAGING_HEALTH_PORT || vars.PRODUCTION_HEALTH_PORT || '8080' }}
           APP_URL: ${{ inputs.app_url }}
@@ -439,29 +439,31 @@ jobs:
         run: |
           mkdir -p deployment-logs
           bash scripts/deploy/generate-deployment-manifest.sh > deployment-logs/deployment-manifest.json
-          echo "### Deployment manifest" >> "$GITHUB_STEP_SUMMARY"
-          echo '```json' >> "$GITHUB_STEP_SUMMARY"
-          cat deployment-logs/deployment-manifest.json >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Deployment manifest"
+            echo '```json'
+            cat deployment-logs/deployment-manifest.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # ── Archive manifest into VPS deployment history (best-effort) ────────
       - name: Archive manifest to deployment history
         if: always()
         continue-on-error: true
         env:
-          SSH_KEY: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
+          SSH_KEY: ${{ secrets.ssh_key }}
           SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
-          SSH_USER: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
+          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
           REPO: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
         run: |
           [ -f deployment-logs/deployment-manifest.json ] || exit 0
           echo "$SSH_KEY" > /tmp/deploy_key && chmod 600 /tmp/deploy_key
-          SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=15"
+          SSH_OPTS=(-o StrictHostKeyChecking=no -o ConnectTimeout=15)
           HIST="$(dirname "$REPO")/deployments"
           FNAME="deploy-$(date -u '+%Y%m%dT%H%M%SZ')-${GITHUB_SHA::7}.json"
-          ssh -i /tmp/deploy_key $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$HIST'"
-          scp -i /tmp/deploy_key $SSH_OPTS -P "$SSH_PORT" \
+          ssh -i /tmp/deploy_key "${SSH_OPTS[@]}" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$HIST'"
+          scp -i /tmp/deploy_key "${SSH_OPTS[@]}" -P "$SSH_PORT" \
             deployment-logs/deployment-manifest.json "$SSH_USER@$SSH_HOST:$HIST/$FNAME"
           rm -f /tmp/deploy_key
           echo "Archived manifest → $HIST/$FNAME"
@@ -470,10 +472,10 @@ jobs:
       - name: Collect service logs
         if: always()
         env:
-          SSH_KEY: ${{ secrets.ssh_key || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.PRIVATE_KEY || secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY || secrets.KEY }}
+          SSH_KEY: ${{ secrets.ssh_key }}
           SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
-          SSH_USER: ${{ inputs.ssh_user || vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || secrets.SSH_USER || secrets.SSH_USERNAME || 'deploy' }}
+          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
         run: |
           mkdir -p deployment-logs
 
@@ -525,6 +527,7 @@ jobs:
           else
             ICON=":warning:"
           fi
+          if [ "$STATUS" = "success" ]; then COLOR="good"; else COLOR="danger"; fi
           WEBHOOK="${{ secrets.slack_webhook }}"
           if [ -n "$WEBHOOK" ]; then
             curl -sSf -X POST "$WEBHOOK" \
@@ -532,7 +535,7 @@ jobs:
               -d "{
                 \"text\": \"${ICON} *${{ inputs.environment }}* deployment *${STATUS}*\",
                 \"attachments\": [{
-                  \"color\": \"$([ \"$STATUS\" = \"success\" ] && echo good || echo danger)\",
+                  \"color\": \"${COLOR}\",
                   \"fields\": [
                     {\"title\": \"Environment\", \"value\": \"${{ inputs.environment }}\", \"short\": true},
                     {\"title\": \"Status\", \"value\": \"${STATUS}\", \"short\": true},
