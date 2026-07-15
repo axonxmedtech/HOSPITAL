@@ -329,7 +329,7 @@ public class WhatsAppService {
             cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(keyBytes, "AES"),
                     new GCMParameterSpec(GCM_TAG_BITS, iv));
             byte[] ct = cipher.doFinal(plaintext.getBytes(StandardCharsets.UTF_8));
-            byte[] combined = new byte[iv.length + ct.length];
+            byte[] combined = new byte[Math.addExact(iv.length, ct.length)];
             System.arraycopy(iv, 0, combined, 0, iv.length);
             System.arraycopy(ct, 0, combined, iv.length, ct.length);
             return GCM_PREFIX + Base64.getEncoder().encodeToString(combined);
