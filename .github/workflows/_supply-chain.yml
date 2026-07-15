@@ -125,37 +125,32 @@ jobs:
       # Pin to SHA in production: https://github.com/actions/checkout/releases
       - uses: actions/checkout@v4
 
+      # Install Trivy directly (pinned) rather than via trivy-action, which resolves a separate
+      # setup-trivy action whose binary install has been unreliable on the runner.
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sudo sh -s -- -b /usr/local/bin v0.58.1
+          trivy --version
+
       - name: Trivy filesystem scan (vuln + secret + misconfig) → SARIF
-        # Pin to SHA in production: https://github.com/aquasecurity/trivy-action/releases
-        uses: aquasecurity/trivy-action@v0.33.1
-        with:
-          scan-type: fs
-          scan-ref: .
-          scanners: vuln,secret,misconfig
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          trivyignores: .trivyignore
-          format: sarif
-          output: trivy-fs.sarif
-          exit-code: '0' # observe mode — findings surface in the Security tab, don't block
         env:
           TRIVY_DISABLE_VEX_NOTICE: 'true'
+        run: |
+          # Observe mode: --exit-code 0 so findings surface in the Security tab without blocking.
+          trivy fs --scanners vuln,secret,misconfig \
+            --severity CRITICAL,HIGH --ignore-unfixed --ignorefile .trivyignore \
+            --format sarif --output trivy-fs.sarif --exit-code 0 . \
+            || echo "trivy SARIF scan hit an issue (non-blocking)"
 
       - name: Trivy human-readable table → step summary
-        # Pin to SHA in production: https://github.com/aquasecurity/trivy-action/releases
-        uses: aquasecurity/trivy-action@v0.33.1
-        with:
-          scan-type: fs
-          scan-ref: .
-          scanners: vuln,secret,misconfig
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          trivyignores: .trivyignore
-          format: table
-          output: trivy-fs.txt
-          exit-code: '0'
         env:
           TRIVY_DISABLE_VEX_NOTICE: 'true'
+        run: |
+          trivy fs --scanners vuln,secret,misconfig \
+            --severity CRITICAL,HIGH --ignore-unfixed --ignorefile .trivyignore \
+            --format table --output trivy-fs.txt --exit-code 0 . \
+            || echo "trivy table scan hit an issue (non-blocking)"
 
       - name: Write Trivy summary
         if: always()

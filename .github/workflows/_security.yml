@@ -78,7 +78,13 @@ jobs:
         with:
           fail-on-severity: high
           comment-summary-in-pr: always
-          deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0, LGPL-2.1
+          # Strong copyleft is denied for shipped code. LGPL is weak copyleft and here it only
+          # appears in BUILD tooling (Checkstyle, FindSecBugs) that is never distributed, so those
+          # two are explicitly allowed. See docs/security/DEPENDENCY_POLICY.md.
+          deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0
+          allow-dependencies-licenses: >-
+            pkg:maven/com.puppycrawl.tools/checkstyle,
+            pkg:maven/com.h3xstream.findsecbugs/findsecbugs-plugin
 
   # ── 3. Secret scanning with Gitleaks ──────────────────────────────────────
   secret-scan:

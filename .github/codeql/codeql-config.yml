@@ -3,11 +3,12 @@
 # Security tab shows real, actionable findings for this healthcare codebase.
 name: HMS CodeQL config
 
-# security-extended = the security-and-quality set's security half, broadened with lower-severity
-# security queries. Kept explicit here so both languages share one policy.
+# security-extended = a comprehensive SECURITY query set (broadened with lower-severity security
+# queries). We deliberately do NOT add `security-and-quality`: its maintainability/quality queries
+# produced ~160 mostly-non-security alerts that overlap SonarCloud (which owns code quality here).
+# CodeQL stays focused on security; Sonar stays focused on quality — no duplicated noise.
 queries:
   - uses: security-extended
-  - uses: security-and-quality
 
 # Don't waste analysis on generated / vendored / non-source paths — this also cuts false
 # positives from build output and test fixtures.
@@ -19,7 +20,7 @@ paths-ignore:
   - '**/*.min.js'
   - '**/*.backup'
   - docs
-  - setup            # SQL seed/schema files, not application code
+  - setup # SQL seed/schema files, not application code
   - e2e
   - perf
 
