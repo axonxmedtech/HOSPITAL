@@ -27,5 +27,10 @@ Do **not** edit or "fix" V6–V11 — they are inert below the baseline.
 
 ## Environments
 - **dev/test:** Flyway disabled (`spring.flyway.enabled=false`); Hibernate `ddl-auto=update`.
-- **staging/prod:** Flyway enabled, `ddl-auto=validate`, baseline V11, `clean-disabled` (a
-  full-schema drop can never run).
+- **staging:** Flyway enabled, `ddl-auto=update`, baseline V11, `clean-disabled`. `update` is
+  required because `DatabaseMigrationRunner` (which owns ~40 tables + ~50 columns) runs on
+  `ApplicationReadyEvent` — under `validate` a single missing object aborts startup before the
+  runner can create it. `update` only adds tables/columns (never drops), so it stays non-destructive.
+- **prod:** Flyway enabled, `ddl-auto=validate`, baseline V11, `clean-disabled` (a full-schema drop
+  can never run). Prod must stay on `validate` — see the guardrail in `application-prod.properties`.
+  Any schema the runner adds must reach prod via a `V12+` Flyway migration before that code deploys.
