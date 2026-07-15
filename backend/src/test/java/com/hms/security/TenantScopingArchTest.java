@@ -184,10 +184,7 @@ class TenantScopingArchTest {
             "VulnerabilityAssessmentService#requireAdmission",
             "WardService#deleteWard",
             "WardService#setIncharge",
-            "WardService#updateWard",
-            "WhatsAppEventListener#onAppointmentCreated",
-            "WhatsAppEventListener#onConsultationCompleted",
-            "WhatsAppEventListener#onMedicineDispensed"    ));
+            "WardService#updateWard"));
 
     @Test
     void noUnreviewedRepositoryLookupById() {

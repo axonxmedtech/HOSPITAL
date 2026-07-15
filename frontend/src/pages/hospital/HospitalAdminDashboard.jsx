@@ -1,5 +1,4 @@
 import BillingTable from './BillingTable';
-import MessagesTab from './MessagesTab';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import authService from '../../services/authService';
@@ -1705,7 +1704,6 @@ const HospitalAdminDashboard = () => {
         // Admin & meta
         { id: 'analytics', label: 'Reports & Analytics', icon: null, requiredModule: 'REPORTS' },
         { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
-        { id: 'messages', label: 'Messages', icon: null, requiredModule: null },
         { id: 'settings', label: 'Settings', icon: null, requiredModule: null },
         { id: 'support', label: 'Support', icon: null, requiredModule: null },
         { id: 'quick-notes', label: 'Quick Notes', icon: null, requiredModule: null },
@@ -1742,14 +1740,10 @@ const HospitalAdminDashboard = () => {
             pick('support'),
         ].filter(Boolean);
     } else {
-        // Messages (Communication) needs WhatsApp on the plan — platform
-        // (WHATSAPP_PLATFORM) or independent (WHATSAPP_CUSTOM). Hidden when "none".
-        const hasWhatsApp = modules.includes('WHATSAPP_PLATFORM') || modules.includes('WHATSAPP_CUSTOM');
         tabs = allTabs.filter(tab => {
             if (tab.requiredModule && !modules.includes(tab.requiredModule)) return false;
             if (tab.id === 'inventory' && !hasInClinic) return false;
             if (tab.id === 'in-clinic-presets' && !hasInClinic) return false;
-            if (tab.id === 'messages' && !hasWhatsApp) return false;
             if (tab.id === 'ot-incharges' && !operationsSettings.otInchargeEnabled) return false;
             return true;
         });
@@ -1784,7 +1778,6 @@ const HospitalAdminDashboard = () => {
         { id: 'group-inventory', label: 'Inventory', tabIds: ['inventory', 'hospital-inventory'] },
         { id: 'group-finance', label: 'Finance', tabIds: ['billing', 'fees'] },
         { id: 'group-reports', label: 'Reports', tabIds: ['analytics', 'ot-analytics', 'audit-logs'] },
-        { id: 'group-communication', label: 'Communication', tabIds: ['messages'] },
         { id: 'group-presets', label: 'Presets', tabIds: ['quick-notes', 'symptom-presets', 'diagnosis-presets', 'prescription-presets', 'in-clinic-presets'] },
         { id: 'group-administration', label: 'Administration', tabIds: ['settings', 'support'] },
     ];
@@ -2320,7 +2313,7 @@ const HospitalAdminDashboard = () => {
                     )}
 
                     {/* Standardized Header */}
-                    {activeTab !== 'overview' && activeTab !== 'pharmacy' &&  activeTab !== 'ipd' &&  activeTab !== 'pathology' && activeTab !== 'support' && activeTab !== 'inventory' && activeTab !== 'hospital-inventory' && activeTab !== 'messages' && (
+                    {activeTab !== 'overview' && activeTab !== 'pharmacy' &&  activeTab !== 'ipd' &&  activeTab !== 'pathology' && activeTab !== 'support' && activeTab !== 'inventory' && activeTab !== 'hospital-inventory' && (
                         <PageHeader
                             title={tabs.find(t => t.id === activeTab)?.label}
                             subtitle={activeTab === 'settings' ? 'Configure operational settings and permissions' : activeTab === 'opd' ? 'Active patients currently in queue or being consulted' : `Manage hospital ${activeTab} records`}
@@ -3831,9 +3824,6 @@ const HospitalAdminDashboard = () => {
                                             );
                                         })()}
                                     </div>
-                                )}
-                                {activeTab === 'messages' && (
-                                    <MessagesTab modules={modules} />
                                 )}
                                 {activeTab === 'ipd' && (
                                     ipds.length > 0 ? (

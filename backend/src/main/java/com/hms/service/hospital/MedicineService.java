@@ -2,7 +2,6 @@ package com.hms.service.hospital;
 
 import com.hms.entity.Medicine;
 import com.hms.entity.MedicineList;
-import com.hms.event.MedicineDispensedEvent;
 import com.hms.repository.MedicineRepository;
 import com.hms.repository.MedicineListRepository;
 import com.hms.security.SecurityContextHelper;
@@ -13,7 +12,6 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -50,8 +48,6 @@ public class MedicineService {
     @Autowired
     private com.hms.security.HospitalWebSocketHandler webSocketHandler;
 
-    @Autowired
-    private ApplicationEventPublisher eventPublisher;
 
     // --- Master Catalog Search & CRUD ---
 
@@ -255,12 +251,6 @@ public class MedicineService {
             logger.warn("Failed to broadcast WebSocket refresh after medicine purchase", e);
         }
 
-        try {
-            eventPublisher.publishEvent(new MedicineDispensedEvent(
-                    hospitalId, null, savedPurchase.getId()));
-        } catch (Exception e) {
-            // intentionally silent — WhatsApp failures must not affect dispensing
-        }
 
         return savedPurchase;
     }

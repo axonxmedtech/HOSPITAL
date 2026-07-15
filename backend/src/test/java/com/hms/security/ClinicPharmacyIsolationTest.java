@@ -75,8 +75,7 @@ class ClinicPharmacyIsolationTest {
             "PrescriptionPresetController",
             "ReceptionistController",
             "VitalSettingsController",
-            "WardController",
-            "WhatsAppController"));
+            "WardController"));
 
     /** OT is a hospital-only capability. These must never be reachable by Clinic/Pharmacy. */
     private static final Set<String> OT_CONTROLLERS = Set.of(
