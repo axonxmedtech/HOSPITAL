@@ -11,25 +11,29 @@
  * @param {string} rawHtml full HTML document string
  */
 export const printHtml = (rawHtml) => {
-  // Strip EVERY <script>…</script> block before writing to the iframe. This removes the
-  // builders' own auto-print scripts (so the dialog fires once) and defends the print sink.
+  // Strip EVERY <script>…</script> block (tags + content) AND any orphan <script>/</script>
+  // tag before writing to the iframe. This removes the builders' own auto-print scripts (so the
+  // dialog fires once) and defends the print sink.
   //
-  // The end-tag pattern is "</script" + [^>]* + ">" (not "</script\s*>"): the HTML parser closes
-  // a script on tags like "</script >", "</script bar>" or "</script\n\tfoo>" too, so matching
-  // only whitespace before ">" would let "…</script bar>" smuggle a live script past the filter
-  // (CodeQL js/bad-tag-filter). Loop until the string stops changing so overlapping tags
-  // (e.g. "<scr<script>ipt>") cannot leave a residual "<script>" (incomplete sanitization).
+  // Two things make this robust:
+  //  1. End-tag pattern is "</script" + [^>]* + ">" (not "</script\s*>"): the HTML parser closes
+  //     a script on "</script >", "</script bar>" or "</script\n\tfoo>" too, so matching only
+  //     whitespace before ">" would let "…</script bar>" smuggle a live script past the filter
+  //     (CodeQL js/bad-tag-filter).
+  //  2. BOTH replacements run inside a fixpoint loop that repeats until the string stops changing.
+  //     A single pass of a multi-character removal can let the pattern reappear — e.g.
+  //     "<scr<script>…</script>ipt>" collapses to a lone "<script>" — so only repeating until
+  //     stable guarantees no "<script" survives to the sink (CodeQL
+  //     js/incomplete-multi-character-sanitization).
   // Interpolated data is already HTML-escaped by the callers (utils/escapeHtml).
   let html = String(rawHtml || '');
   let previous;
   do {
     previous = html;
-    html = html.replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, '');
+    html = html
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, '')
+      .replace(/<\/?script\b[^>]*>/gi, '');
   } while (html !== previous);
-  // Final sweep: remove any orphan <script …> / </script …> tags the paired pass could leave
-  // behind (e.g. an overlapping "<scr<script>…</script>ipt>" collapses to a lone "<script>"),
-  // so no script tag survives to the sink at all.
-  html = html.replace(/<\/?script\b[^>]*>/gi, '');
 
   const iframe = document.createElement('iframe');
   iframe.style.position = 'fixed';
