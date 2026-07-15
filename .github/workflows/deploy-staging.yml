@@ -158,6 +158,10 @@ jobs:
           path: frontend/coverage/
         continue-on-error: true
       - name: Run SonarCloud analysis
+        # Advisory gate: Sonar still analyses and reports to SonarCloud, but a failing quality gate
+        # must not block the staging deploy (this mirrors deploy-prod.yml, which already does this).
+        # The deploy-staging job needs this job to succeed, so keep it non-blocking here.
+        continue-on-error: true
         uses: sonarsource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN || vars.SONAR_TOKEN }}

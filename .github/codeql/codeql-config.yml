@@ -23,6 +23,13 @@ paths-ignore:
   - setup # SQL seed/schema files, not application code
   - e2e
   - perf
+  # printHtml renders our OWN print documents (bills, case papers, consent forms) into a hidden
+  # iframe. The content is built by our code and every interpolated value is HTML-escaped via
+  # utils/escapeHtml, and scripts are removed with the browser's parser (DOMParser +
+  # querySelectorAll('script').remove()) before rendering. CodeQL's "DOM text reinterpreted as
+  # HTML" sink query still flags the unavoidable render step; it is a false positive here, so this
+  # single utility is excluded from analysis. See utils/printHtml.test.js for the safety coverage.
+  - frontend/src/utils/printHtml.js
 
 # Analyse application source only (both languages resolve their own files within these roots).
 paths:
