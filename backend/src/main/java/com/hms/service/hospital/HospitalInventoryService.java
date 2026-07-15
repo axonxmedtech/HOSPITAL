@@ -193,7 +193,7 @@ public class HospitalInventoryService {
     public HospitalInventory updateInventoryItem(Long id, HospitalInventory request) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         HospitalInventory stock = hospitalInventoryRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Stock inventory record not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Stock inventory record not found"));
 
         if (!stock.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Unauthorized access to stock inventory");
@@ -241,7 +241,7 @@ public class HospitalInventoryService {
     public void deleteInventoryItem(Long id) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         HospitalInventory stock = hospitalInventoryRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Stock inventory record not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Stock inventory record not found"));
 
         if (!stock.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Unauthorized access to stock inventory");
@@ -284,7 +284,7 @@ public class HospitalInventoryService {
     @Transactional
     public java.math.BigDecimal consumeService(Long serviceId, int quantity, Long hospitalId) {
         com.hms.entity.HospitalServiceEntity svc = hospitalServiceRepository.findByIdAndHospitalId(serviceId, hospitalId)
-                .orElseThrow(() -> new RuntimeException("Service not found: " + serviceId));
+                .orElseThrow(() -> new ResourceNotFoundException("Service not found: " + serviceId));
 
         java.util.List<com.hms.entity.HospitalServiceItem> links = hospitalServiceItemRepository.findByServiceId(serviceId);
 

@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.dto.HospitalFeeDTO;
 import com.hms.entity.HospitalFee;
 import com.hms.repository.HospitalFeeRepository;
@@ -14,7 +16,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/hospital/settings/fees/custom")
+@RequestMapping({"/hospital/settings/fees/custom", "/clinic/settings/fees/custom", "/pharmacy/settings/fees/custom"})
 @RequireModule("BILLING")
 public class HospitalFeeController {
 
@@ -58,7 +60,7 @@ public class HospitalFeeController {
     public ResponseEntity<?> updateCustomFee(@PathVariable Long id, @RequestBody HospitalFeeDTO dto) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         HospitalFee fee = hospitalFeeRepository.findByIdAndHospitalId(id, hospitalId)
-                .orElseThrow(() -> new RuntimeException("Fee not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Fee not found"));
 
         if (dto.getName() != null && !dto.getName().trim().isEmpty()) {
             fee.setName(dto.getName().trim());
@@ -74,7 +76,7 @@ public class HospitalFeeController {
     public ResponseEntity<?> deleteCustomFee(@PathVariable Long id) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         HospitalFee fee = hospitalFeeRepository.findByIdAndHospitalId(id, hospitalId)
-                .orElseThrow(() -> new RuntimeException("Fee not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Fee not found"));
 
         fee.setIsActive(false);
         hospitalFeeRepository.save(fee);

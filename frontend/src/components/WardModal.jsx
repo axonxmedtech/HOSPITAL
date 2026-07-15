@@ -29,11 +29,20 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
     // basic client-side validation
     if (!wardName || wardName.trim() === '') { toastError('Please enter ward name'); return; }
     if (!bedPrice || Number.isNaN(Number(bedPrice))) { toastError('Enter valid bed price'); return; }
+    if (totalBeds !== '' && (Number.isNaN(Number(totalBeds)) || Number(totalBeds) < 0)) {
+      toastError('Total beds must be 0 or more'); return;
+    }
 
     setSaving(true);
     try {
       if (initial && initial.wardId) {
-        const payload = { wardName, bedPrice: Number(bedPrice), floorNumber: floorNumber ? Number(floorNumber) : null };
+        const payload = {
+          wardName,
+          bedPrice: Number(bedPrice),
+          floorNumber: floorNumber ? Number(floorNumber) : null,
+          // Bed count is editable on edit too — the backend adds/removes beds to match.
+          totalBeds: totalBeds === '' ? null : Number(totalBeds),
+        };
         await WardService.updateWard(initial.wardId, payload);
       } else {
         const payload = { wardName, bedPrice: Number(bedPrice), totalBeds: totalBeds ? Number(totalBeds) : 0, floorNumber: floorNumber ? Number(floorNumber) : null };
@@ -67,12 +76,15 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
             <input value={bedPrice} onChange={e => setBedPrice(e.target.value)} type="number" step="0.01" className="mt-1 w-full p-2 border rounded" />
           </div>
 
-          {!initial && (
-            <div>
-              <label className="block text-sm text-slate-600">Total Beds</label>
-              <input value={totalBeds} onChange={e => setTotalBeds(e.target.value)} type="number" className="mt-1 w-full p-2 border rounded" />
-            </div>
-          )}
+          <div>
+            <label className="block text-sm text-slate-600">Total Beds</label>
+            <input value={totalBeds} onChange={e => setTotalBeds(e.target.value)} type="number" min="0" className="mt-1 w-full p-2 border rounded" />
+            {initial && (
+              <p className="mt-1 text-xs text-slate-500">
+                Increasing adds new beds. Decreasing removes free beds only — occupied beds are never deleted.
+              </p>
+            )}
+          </div>
 
           <div>
             <label className="block text-sm text-slate-600">Floor Number</label>

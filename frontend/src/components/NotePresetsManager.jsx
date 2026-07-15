@@ -8,7 +8,17 @@ import ConfirmationModal from './ConfirmationModal';
  * fieldType (currently only 'TREATMENT_NOTES' is used). Self-contained: does
  * its own data fetching, so it can be dropped into a modal or a full page.
  */
-const NotePresetsManager = ({ fieldType, isAdmin = false }) => {
+const NotePresetsManager = ({
+    fieldType,
+    isAdmin = false,
+    // Copy is parameterized so the same component serves any field type
+    // (defaults preserve the original Quick Notes wording).
+    title = 'Quick Notes',
+    noun = 'quick note',
+    placeholder = 'e.g. Avoid oily food',
+    description = 'Common phrases that appear as one-click buttons under Treatment Notes during a consultation.',
+}) => {
+    const nounCap = noun.charAt(0).toUpperCase() + noun.slice(1);
     const { success, error: toastError } = useToast();
     const [presets, setPresets] = useState([]);
     const [doctors, setDoctors] = useState([]);
@@ -28,7 +38,7 @@ const NotePresetsManager = ({ fieldType, isAdmin = false }) => {
             const data = await hospitalService.getConsultationNotePresets(fieldType);
             setPresets(data || []);
         } catch (err) {
-            toastError('Failed to load quick notes');
+            toastError(`Failed to load ${noun}s`);
         } finally {
             setLoading(false);
         }
@@ -63,9 +73,9 @@ const NotePresetsManager = ({ fieldType, isAdmin = false }) => {
             setPresets(prev => [...prev, created]);
             setNewText('');
             setNewDoctorId('');
-            success('Quick note added');
+            success(`${nounCap} added`);
         } catch (err) {
-            toastError(err?.response?.data || 'Failed to add quick note');
+            toastError(err?.response?.data || `Failed to add ${noun}`);
         } finally {
             setAdding(false);
         }
@@ -84,9 +94,9 @@ const NotePresetsManager = ({ fieldType, isAdmin = false }) => {
             const updated = await hospitalService.updateConsultationNotePreset(id, { text: editingText.trim(), ...assignment });
             setPresets(prev => prev.map(p => (p.id === id ? updated : p)));
             setEditingId(null);
-            success('Quick note updated');
+            success(`${nounCap} updated`);
         } catch (err) {
-            toastError('Failed to update quick note');
+            toastError(`Failed to update ${noun}`);
         }
     };
 
@@ -99,9 +109,9 @@ const NotePresetsManager = ({ fieldType, isAdmin = false }) => {
         try {
             await hospitalService.deleteConsultationNotePreset(id);
             setPresets(prev => prev.filter(p => p.id !== id));
-            success('Quick note deleted');
+            success(`${nounCap} deleted`);
         } catch (err) {
-            toastError('Failed to delete quick note');
+            toastError(`Failed to delete ${noun}`);
         }
     };
 
@@ -121,7 +131,7 @@ const NotePresetsManager = ({ fieldType, isAdmin = false }) => {
             next[targetIndex] = updatedA;
             setPresets(next);
         } catch (err) {
-            toastError('Failed to reorder quick notes');
+            toastError(`Failed to reorder ${noun}s`);
             // One of the two PUTs may have already succeeded, leaving the
             // server's displayOrder out of sync with what's shown locally —
             // refetch to reconcile rather than risk a stale/duplicate order.
@@ -132,10 +142,8 @@ const NotePresetsManager = ({ fieldType, isAdmin = false }) => {
     return (
         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
             <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-1">Quick Notes</h3>
-                <p className="text-xs text-gray-500">
-                    Common phrases that appear as one-click buttons under Treatment Notes during a consultation.
-                </p>
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">{title}</h3>
+                <p className="text-xs text-gray-500">{description}</p>
             </div>
 
             <form onSubmit={handleAdd} className="flex gap-2">
@@ -143,7 +151,7 @@ const NotePresetsManager = ({ fieldType, isAdmin = false }) => {
                     type="text"
                     value={newText}
                     onChange={(e) => setNewText(e.target.value)}
-                    placeholder="e.g. Avoid oily food"
+                    placeholder={placeholder}
                     maxLength={255}
                     className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                 />
@@ -172,7 +180,7 @@ const NotePresetsManager = ({ fieldType, isAdmin = false }) => {
                 <p className="text-sm text-gray-500">Loading...</p>
             ) : presets.length === 0 ? (
                 <div className="text-center py-8 border border-dashed border-gray-200 rounded-xl bg-gray-50">
-                    <p className="text-sm text-gray-500">No quick notes added yet. Add your first one above.</p>
+                    <p className="text-sm text-gray-500">{`No ${noun}s added yet. Add your first one above.`}</p>
                 </div>
             ) : (
                 <div className="divide-y divide-gray-200">
@@ -253,8 +261,8 @@ const NotePresetsManager = ({ fieldType, isAdmin = false }) => {
 
             <ConfirmationModal
                 isOpen={deleteConfirm.isOpen}
-                title="Delete Quick Note"
-                message="Are you sure you want to delete this quick note? It will no longer appear as a one-click option."
+                title={`Delete ${nounCap}`}
+                message={`Are you sure you want to delete this ${noun}? It will no longer appear as a one-click option.`}
                 onConfirm={confirmDelete}
                 onCancel={() => setDeleteConfirm({ isOpen: false, id: null })}
             />

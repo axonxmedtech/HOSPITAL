@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import authService from '../../services/authService';
 import { validateForm } from '../../utils/validation';
 
@@ -16,10 +16,7 @@ const PORTAL_CONFIG = {
             { value: 'DOCTOR', label: 'Doctor' },
             { value: 'RECEPTIONIST', label: 'Reception & Registration' },
             { value: 'PHARMACIST', label: 'Pharmacy Services' },
-        ],
-        otherPortals: [
-            { label: 'Login as Clinic', path: '/login/clinic' },
-            { label: 'Login as Pharmacy', path: '/login/pharmacy' },
+            { value: 'NURSE', label: 'Nurse' },
         ],
     },
     CLINIC: {
@@ -34,10 +31,6 @@ const PORTAL_CONFIG = {
             { value: 'RECEPTIONIST', label: 'Reception & Registration' },
             { value: 'PHARMACIST', label: 'Pharmacy Services' },
         ],
-        otherPortals: [
-            { label: 'Login as Hospital', path: '/login/hospital' },
-            { label: 'Login as Pharmacy', path: '/login/pharmacy' },
-        ],
     },
     PHARMACY: {
         title: 'Pharmacy Login',
@@ -48,10 +41,6 @@ const PORTAL_CONFIG = {
         roles: [
             { value: 'HOSPITAL_ADMIN', label: 'Pharmacy Administration' },
             { value: 'PHARMACIST', label: 'Pharmacist' },
-        ],
-        otherPortals: [
-            { label: 'Login as Hospital', path: '/login/hospital' },
-            { label: 'Login as Clinic', path: '/login/clinic' },
         ],
     },
 };
@@ -88,7 +77,9 @@ const HospitalLogin = ({ portalType = 'HOSPITAL' }) => {
             const isStandalonePharmacy = response.modules?.includes('PHARMACY') && !response.modules?.includes('OPD');
             const isValidRole = response.role === selectedRole ||
                 (response.role === 'HOSPITAL_ADMIN' && response.isSingleDoctor && selectedRole === 'DOCTOR') ||
-                (response.role === 'HOSPITAL_ADMIN' && isStandalonePharmacy && selectedRole === 'PHARMACIST');
+                (response.role === 'HOSPITAL_ADMIN' && isStandalonePharmacy && selectedRole === 'PHARMACIST') ||
+                // The "Nurse" option covers both staff nurses and nurse incharges.
+                (selectedRole === 'NURSE' && response.role === 'NURSE_INCHARGE');
 
             if (!isValidRole) {
                 authService.logout();
@@ -115,6 +106,10 @@ const HospitalLogin = ({ portalType = 'HOSPITAL' }) => {
                 navigate('/hospital/receptionist');
             } else if (response.role === 'PHARMACIST') {
                 navigate('/hospital/pharmacy');
+            } else if (response.role === 'NURSE') {
+                navigate('/hospital/nurse');
+            } else if (response.role === 'NURSE_INCHARGE') {
+                navigate('/hospital/nurse-incharge');
             } else {
                 setErrors({ submit: 'Invalid user role' });
             }
@@ -291,22 +286,6 @@ const HospitalLogin = ({ portalType = 'HOSPITAL' }) => {
                                     </button>
                                 </div>
                             </form>
-                        </div>
-
-                        {/* Portal Switcher Links */}
-                        <div className="px-6 pb-6 text-center">
-                            <p className="text-xs text-gray-500 mb-2">Other portals:</p>
-                            <div className="flex justify-center gap-4">
-                                {config.otherPortals.map(p => (
-                                    <Link
-                                        key={p.path}
-                                        to={p.path}
-                                        className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
-                                    >
-                                        {p.label}
-                                    </Link>
-                                ))}
-                            </div>
                         </div>
                     </div>
                 </div>

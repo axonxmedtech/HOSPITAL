@@ -23,13 +23,25 @@ public class CreateOpdRequest {
     @DecimalMin(value = "0.0", message = "Weight cannot be negative")
     private Double weight;
 
+    @DecimalMin(value = "0.0", message = "Height cannot be negative")
+    private Double height;
+
     @Min(value = 0, message = "SpO2 cannot be negative")
     private Integer spo2;
+
+    /** Hospital-defined custom vitals, keyed by vital_key. No validation by design. */
+    private java.util.Map<String, String> customVitals;
 
     private String problem;
 
     @NotBlank(message = "Visit type is required")
     private String visitType; // NEW or FOLLOWUP
+
+    // "Payment first" only: how the consultation + case-paper fee was collected at OPD entry.
+    // CASH or UPI (+ a UTR/reference for UPI), mirroring the mark-as-paid flow. Ignored when
+    // the hospital's bill payment timing is LAST.
+    private String paymentMethod;
+    private String paymentReference;
 
     public String getPatientId() { return patientId; }
     public void setPatientId(String patientId) { this.patientId = patientId; }
@@ -51,4 +63,12 @@ public class CreateOpdRequest {
     public void setProblem(String problem) { this.problem = problem; }
     public String getVisitType() { return visitType; }
     public void setVisitType(String visitType) { this.visitType = visitType; }
+    public String getPaymentMethod() { return paymentMethod; }
+    public void setPaymentMethod(String paymentMethod) { this.paymentMethod = paymentMethod; }
+    public String getPaymentReference() { return paymentReference; }
+    public void setPaymentReference(String paymentReference) { this.paymentReference = paymentReference; }
+    public Double getHeight() { return height; }
+    public void setHeight(Double height) { this.height = height; }
+    public java.util.Map<String, String> getCustomVitals() { return customVitals; }
+    public void setCustomVitals(java.util.Map<String, String> customVitals) { this.customVitals = customVitals; }
 }

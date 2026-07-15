@@ -2,10 +2,10 @@ package com.hms.service.hospital;
 
 import com.hms.entity.HospitalServiceEntity;
 import com.hms.entity.HospitalServiceItem;
-import com.hms.entity.InventoryMasterItem;
+import com.hms.entity.InventoryItem;
 import com.hms.repository.HospitalServiceItemRepository;
 import com.hms.repository.HospitalServiceRepository;
-import com.hms.repository.InventoryMasterItemRepository;
+import com.hms.repository.InventoryItemRepository;
 import com.hms.security.SecurityContextHelper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,7 +29,7 @@ class HospitalServiceServiceTest {
 
     @Mock HospitalServiceRepository serviceRepository;
     @Mock HospitalServiceItemRepository serviceItemRepository;
-    @Mock InventoryMasterItemRepository masterItemRepository;
+    @Mock InventoryItemRepository inventoryItemRepository;
     @Mock SecurityContextHelper securityHelper;
 
     @InjectMocks HospitalServiceService service;
@@ -90,9 +90,9 @@ class HospitalServiceServiceTest {
         HospitalServiceItem link = new HospitalServiceItem();
         link.setMasterItemId(2L);
         when(serviceItemRepository.findByServiceId(9L)).thenReturn(List.of(link));
-        InventoryMasterItem cotton = new InventoryMasterItem();
+        InventoryItem cotton = new InventoryItem();
         cotton.setName("Cotton");
-        when(masterItemRepository.findById(2L)).thenReturn(Optional.of(cotton));
+        when(inventoryItemRepository.findById(2L)).thenReturn(Optional.of(cotton));
 
         assertThat(service.getItemNamesForService(9L)).containsExactly("Cotton");
     }

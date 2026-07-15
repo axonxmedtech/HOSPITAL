@@ -1,7 +1,7 @@
 package com.hms.controller.hospital;
 
 import com.hms.entity.HospitalServiceEntity;
-import com.hms.repository.InventoryMasterItemRepository;
+import com.hms.repository.InventoryItemRepository;
 import com.hms.security.JwtUtil;
 import com.hms.service.AuditLogService;
 import com.hms.service.hospital.HospitalServiceService;
@@ -36,7 +36,8 @@ class HospitalServiceControllerTest {
     @Autowired private MockMvc mockMvc;
 
     @MockBean private HospitalServiceService serviceService;
-    @MockBean private InventoryMasterItemRepository masterItemRepository;
+    @MockBean private InventoryItemRepository inventoryItemRepository;
+    @MockBean private com.hms.security.SecurityContextHelper securityHelper;
     @MockBean private JwtUtil jwtUtil;
     @MockBean private AuditLogService auditLogService;
 
@@ -89,7 +90,8 @@ class HospitalServiceControllerTest {
     @Test
     @WithMockUser(roles = "DOCTOR")
     void listMasterItems_okForDoctor() throws Exception {
-        when(masterItemRepository.findAllByOrderByNameAsc()).thenReturn(Collections.emptyList());
+        when(securityHelper.getCurrentUserDetails()).thenReturn(null);
+        when(inventoryItemRepository.findAll()).thenReturn(Collections.emptyList());
         mockMvc.perform(get("/hospital/inventory-master").contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk());
     }

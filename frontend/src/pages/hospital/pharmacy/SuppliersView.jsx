@@ -4,10 +4,14 @@ import { ViewLayout, ViewToolbar, SearchInput } from '../../../components/pharma
 import suppliersApi from '../../../services/pharmacy/suppliersApi';
 import DataTable from '../../../components/DataTable';
 import SupplierForm from '../../../components/SupplierForm';
+import ActionMenu from '../../../components/ActionMenu';
+import authService from '../../../services/authService';
 import { useToast } from '../../../context/ToastContext';
 
 const SuppliersView = () => {
     const toast = useToast();
+    const currentUser = authService.getCurrentUser();
+    const isStandalonePharmacy = currentUser?.modules?.includes('PHARMACY') && !currentUser?.modules?.includes('OPD');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalMode, setModalMode] = useState('create');
     const [selectedSupplier, setSelectedSupplier] = useState(null);
@@ -32,6 +36,17 @@ const SuppliersView = () => {
         handlePageChange,
         refresh
     } = useViewManager(suppliersApi.getAll);
+
+    const handleDelete = async (supplier) => {
+        if (!window.confirm(`Delete supplier "${supplier.supplierName}"? This cannot be undone.`)) return;
+        try {
+            await suppliersApi.delete(supplier.id);
+            toast.success('Supplier deleted');
+            refresh();
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Failed to delete supplier (it may be linked to purchases)');
+        }
+    };
 
     const handleSave = async (formData) => {
         try {
@@ -88,28 +103,52 @@ const SuppliersView = () => {
         {
             header: 'Actions',
             cell: ({ row }) => (
-                <div className="flex gap-2">
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            toggleRow(row.original.id);
-                        }}
-                        className="px-3 py-1 text-xs font-bold text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors"
-                    >
-                        {expandedRowIds.includes(row.original.id) ? 'Collapse' : 'Details'}
-                    </button>
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedSupplier(row.original);
-                            setModalMode('edit');
-                            setIsModalOpen(true);
-                        }}
-                        className="px-3 py-1 text-xs font-bold text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 transition-colors"
-                    >
-                        Edit
-                    </button>
-                </div>
+                isStandalonePharmacy ? (
+                    <ActionMenu
+                        actions={[
+                            {
+                                label: expandedRowIds.includes(row.original.id) ? 'Hide details' : 'View details',
+                                onClick: () => toggleRow(row.original.id),
+                            },
+                            {
+                                label: 'Edit details',
+                                onClick: () => {
+                                    setSelectedSupplier(row.original);
+                                    setModalMode('edit');
+                                    setIsModalOpen(true);
+                                },
+                            },
+                            {
+                                label: 'Delete',
+                                danger: true,
+                                onClick: () => handleDelete(row.original),
+                            },
+                        ]}
+                    />
+                ) : (
+                    <div className="flex gap-2">
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                toggleRow(row.original.id);
+                            }}
+                            className="px-3 py-1 text-xs font-bold text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors"
+                        >
+                            {expandedRowIds.includes(row.original.id) ? 'Collapse' : 'Details'}
+                        </button>
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedSupplier(row.original);
+                                setModalMode('edit');
+                                setIsModalOpen(true);
+                            }}
+                            className="px-3 py-1 text-xs font-bold text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+                        >
+                            Edit
+                        </button>
+                    </div>
+                )
             )
         }
     ];

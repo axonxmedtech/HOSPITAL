@@ -1,4 +1,5 @@
 package com.hms.service.hospital;
+import com.hms.util.LogSanitizer;
 
 import com.hms.entity.Patient;
 import com.hms.entity.Billing;
@@ -146,7 +147,7 @@ public class PatientService {
         // Set hospital_id to ensure multi-tenant isolation
         patient.setHospitalId(hospitalId);
 
-        logger.info("Hospital {} creating new patient: {}", hospitalId, patient.getName());
+        logger.info("Hospital {} creating new patient: {}", hospitalId, LogSanitizer.clean(patient.getName()));
         Patient savedPatient = patientRepository.save(patient);
 
         // Set sequential customId using the auto-increment id: PAT1, PAT2, PAT3...
@@ -377,7 +378,7 @@ public class PatientService {
 
         // Find patient only if it belongs to this hospital and is active
         return patientRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(publicId, hospitalId)
-                .orElseThrow(() -> new RuntimeException("Patient not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
     }
 
     @Transactional(readOnly = true)
@@ -388,7 +389,7 @@ public class PatientService {
         }
         return patientRepository.findById(id)
                 .filter(p -> p.getHospitalId().equals(hospitalId))
-                .orElseThrow(() -> new RuntimeException("Patient not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
     }
 
     /**
@@ -402,9 +403,9 @@ public class PatientService {
             throw new UnauthorizedException("Hospital ID not found in context");
 
         Patient patient = patientRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(publicId, hospitalId)
-                .orElseThrow(() -> new RuntimeException("Patient not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
 
-        logger.info("Hospital {} soft deleting patient ID: {}. Reason: {}", hospitalId, publicId, reason);
+        logger.info("Hospital {} soft deleting patient ID: {}. Reason: {}", hospitalId, LogSanitizer.clean(publicId), LogSanitizer.clean(reason));
         patient.setIsActive(false);
         patientRepository.save(patient);
         evictStatsCache(hospitalId);
@@ -445,10 +446,10 @@ public class PatientService {
         }
 
         Patient patient = patientRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(publicId, hospitalId)
-                .orElseThrow(() -> new RuntimeException("Patient not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
 
         logger.info("Hospital {} updating patient {} status from {} to {}",
-                hospitalId, publicId, patient.getStatus(), status);
+                hospitalId, LogSanitizer.clean(publicId), LogSanitizer.clean(patient.getStatus()), LogSanitizer.clean(status));
 
         patient.setStatus(status);
         Patient saved = patientRepository.save(patient);
@@ -842,7 +843,7 @@ public class PatientService {
     public java.util.Map<String, Object> getLatestPrescription(String publicId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         com.hms.entity.Patient patient = patientRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(publicId, hospitalId)
-                .orElseThrow(() -> new RuntimeException("Patient not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
 
         com.hms.entity.MedicalRecord record = medicalRecordRepository
                 .findTopByPatientIdOrderByCreatedAtDesc(patient.getId())
@@ -872,16 +873,23 @@ public class PatientService {
     public java.io.ByteArrayInputStream getOpdMedicinesPdf(Long opdId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
         
         com.hms.entity.MedicalRecord record = medicalRecordRepository.findByOpdId(opdId)
-                .orElseThrow(() -> new RuntimeException("Medical record not found for OPD"));
-        
-        com.hms.entity.Patient patient = patientRepository.findById(record.getPatientId())
-                .orElseThrow(() -> new RuntimeException("Patient not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Medical record not found for OPD"));
 
-        com.hms.entity.Doctor doctor = (record.getDoctorId() != null) 
-                ? doctorRepository.findById(record.getDoctorId()).orElse(null) 
+        // hospitalId above was only used to brand the PDF header. Enforce that the record
+        // actually belongs to the caller's hospital, or another tenant's prescription is
+        // rendered onto this hospital's letterhead.
+        if (record.getHospitalId() == null || !record.getHospitalId().equals(hospitalId)) {
+            throw new ResourceNotFoundException("Medical record not found for OPD");
+        }
+
+        com.hms.entity.Patient patient = patientRepository.findById(record.getPatientId())
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
+
+        com.hms.entity.Doctor doctor = (record.getDoctorId() != null)
+                ? doctorRepository.findById(record.getDoctorId()).orElse(null)
                 : null;
         com.hms.entity.Opd opd = opdRepository.findById(opdId).orElse(null);
         String customNo = (opd != null) ? opd.getCaseId() : "-";
@@ -939,13 +947,17 @@ public class PatientService {
     public java.io.ByteArrayInputStream getIpdMedicinesPdf(Long ipdId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
         
         com.hms.entity.IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId)
-                .orElseThrow(() -> new RuntimeException("IPD Admission not found"));
-        
+                .orElseThrow(() -> new ResourceNotFoundException("IPD Admission not found"));
+
+        if (ipd.getHospitalId() == null || !ipd.getHospitalId().equals(hospitalId)) {
+            throw new ResourceNotFoundException("IPD Admission not found");
+        }
+
         com.hms.entity.Patient patient = patientRepository.findById(ipd.getPatientId())
-                .orElseThrow(() -> new RuntimeException("Patient not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
 
         com.hms.entity.Doctor doctor = (ipd.getDoctorId() != null)
                 ? doctorRepository.findById(ipd.getDoctorId()).orElse(null)
@@ -1027,13 +1039,17 @@ public class PatientService {
     public java.io.ByteArrayInputStream getIpdPrescriptionPdf(Long ipdId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
         
         com.hms.entity.IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId)
-                .orElseThrow(() -> new RuntimeException("IPD Admission not found"));
-        
+                .orElseThrow(() -> new ResourceNotFoundException("IPD Admission not found"));
+
+        if (ipd.getHospitalId() == null || !ipd.getHospitalId().equals(hospitalId)) {
+            throw new ResourceNotFoundException("IPD Admission not found");
+        }
+
         com.hms.entity.Patient patient = patientRepository.findById(ipd.getPatientId())
-                .orElseThrow(() -> new RuntimeException("Patient not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
 
         java.util.List<com.hms.entity.Prescription> prescriptions = prescriptionRepository.findByIpdAdmissionIdOrderByStartDate(ipdId);
         

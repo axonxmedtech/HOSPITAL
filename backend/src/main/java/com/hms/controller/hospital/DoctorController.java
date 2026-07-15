@@ -1,4 +1,7 @@
 package com.hms.controller.hospital;
+import com.hms.util.LogSanitizer;
+
+import com.hms.exception.ResourceNotFoundException;
 
 import com.hms.dto.AddDoctorRequest;
 import com.hms.entity.Doctor;
@@ -17,7 +20,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
 @RestController
-@RequestMapping("/hospital/doctors")
+@RequestMapping({"/hospital/doctors", "/clinic/doctors", "/pharmacy/doctors"})
 public class DoctorController {
 
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(DoctorController.class);
@@ -148,10 +151,10 @@ public class DoctorController {
             }
         }
         com.hms.entity.Appointment appointment = apptOpt
-                .orElseThrow(() -> new RuntimeException("Appointment not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Appointment not found"));
 
         com.hms.entity.MedicalRecord record = medicalRecordRepository.findByAppointmentId(appointment.getId())
-                .orElseThrow(() -> new RuntimeException("Consultation record not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Consultation record not found"));
 
         java.util.List<com.hms.entity.Prescription> prescriptions = prescriptionRepository
                 .findByMedicalRecordId(record.getId());
@@ -183,7 +186,7 @@ public class DoctorController {
     public ResponseEntity<?> downloadPrescription(@PathVariable String appointmentId) {
         try {
             Long hospitalId = securityHelper.getCurrentHospitalId();
-            logger.info("Downloading prescription for appointment: {} in hospital: {}", appointmentId, hospitalId);
+            logger.info("Downloading prescription for appointment: {} in hospital: {}", LogSanitizer.clean(appointmentId), hospitalId);
 
             // Resolve Appointment ID
             java.util.Optional<com.hms.entity.Appointment> apptOpt = appointmentRepository
@@ -196,19 +199,19 @@ public class DoctorController {
                 }
             }
             com.hms.entity.Appointment appointment = apptOpt
-                    .orElseThrow(() -> new RuntimeException("Appointment not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Appointment not found"));
 
             com.hms.entity.MedicalRecord record = medicalRecordRepository.findByAppointmentId(appointment.getId())
-                    .orElseThrow(() -> new RuntimeException("Consultation not found for this appointment"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Consultation not found for this appointment"));
             java.util.List<com.hms.entity.Prescription> prescriptions = prescriptionRepository
                     .findByMedicalRecordId(record.getId());
 
             Doctor doctor = doctorRepository.findByIdOrUserId(record.getDoctorId(), userRepository)
-                    .orElseThrow(() -> new RuntimeException("Doctor not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Doctor not found"));
 
             com.hms.entity.Patient patient = patientService.getPatientById(record.getPatientId());
             com.hms.entity.Hospital hospital = hospitalRepository.findById(record.getHospitalId())
-                    .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
             java.io.ByteArrayInputStream pdf = pdfService.generatePrescriptionPdf(hospital, doctor, patient, record,
                     prescriptions);
@@ -222,7 +225,7 @@ public class DoctorController {
                     .contentType(MediaType.APPLICATION_PDF)
                     .body(new InputStreamResource(pdf));
         } catch (Exception e) {
-            logger.error("Error downloading prescription for appointment {}", appointmentId, e);
+            logger.error("Error downloading prescription for appointment {}", LogSanitizer.clean(appointmentId), e);
             return ResponseEntity.status(500).body("Failed to generate PDF");
         }
     }
@@ -233,20 +236,28 @@ public class DoctorController {
             Long hospitalId = securityHelper.getCurrentHospitalId();
 
             com.hms.entity.Opd opd = opdRepository.findById(opdId)
-                .orElseThrow(() -> new RuntimeException("OPD not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("OPD not found"));
 
             com.hms.entity.MedicalRecord record = medicalRecordRepository.findByOpdId(opd.getId())
-                .orElseThrow(() -> new RuntimeException("Consultation not found for this OPD"));
+                .orElseThrow(() -> new ResourceNotFoundException("Consultation not found for this OPD"));
+
+            // hospitalId was read but never compared: the consultation, prescriptions and
+            // doctor were all fetched by raw id, and a foreign tenant only failed because
+            // PatientService happens to scope its own lookup — protected by accident.
+            // Check the tenant explicitly, before any patient data is loaded.
+            if (hospitalId == null || !hospitalId.equals(record.getHospitalId())) {
+                throw new ResourceNotFoundException("OPD not found");
+            }
 
             java.util.List<com.hms.entity.Prescription> prescriptions = prescriptionRepository
                 .findByMedicalRecordId(record.getId());
 
             Doctor doctor = doctorRepository.findByIdOrUserId(record.getDoctorId(), userRepository)
-                .orElseThrow(() -> new RuntimeException("Doctor not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Doctor not found"));
 
             com.hms.entity.Patient patient = patientService.getPatientById(record.getPatientId());
             com.hms.entity.Hospital hospital = hospitalRepository.findById(record.getHospitalId())
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
             java.io.ByteArrayInputStream pdf = pdfService.generatePrescriptionPdf(hospital, doctor, patient, record,
                 prescriptions);
@@ -259,6 +270,10 @@ public class DoctorController {
                 .headers(headers)
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(new InputStreamResource(pdf));
+        } catch (ResourceNotFoundException e) {
+            // A missing (or foreign-tenant) OPD is a 404, not a server fault. Letting this
+            // fall into the catch-all below reported it as "Failed to generate PDF" / 500.
+            throw e;
         } catch (Exception e) {
             logger.error("Error downloading prescription for opd {}", opdId, e);
             return ResponseEntity.status(500).body("Failed to generate PDF");

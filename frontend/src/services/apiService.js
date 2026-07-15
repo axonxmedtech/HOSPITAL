@@ -25,15 +25,46 @@ const apiClient = axios.create({
   maxContentLength: 5242880, // 5 MB response cap
 });
 
+// Module-namespace rewrite: shared UI components declare API paths under the
+// /hospital/** namespace, but each tenant type owns its own API namespace on the
+// backend (/hospital/**, /clinic/**, /pharmacy/**). Rewrite the prefix to match
+// the logged-in tenant so a clinic session only ever talks to /clinic/** and a
+// standalone pharmacy session to /pharmacy/**.
+const MODULE_PREFIX_BY_TYPE = {
+  CLINIC: '/clinic/',
+  PHARMACY: '/pharmacy/',
+};
+
+const rewriteModulePrefix = (url) => {
+  if (!url || !url.startsWith('/hospital/')) return url;
+  try {
+    const userStr = sessionStorage.getItem('user');
+    const type = userStr ? JSON.parse(userStr)?.hospitalType : null;
+    const prefix = MODULE_PREFIX_BY_TYPE[type];
+    return prefix ? url.replace('/hospital/', prefix) : url;
+  } catch {
+    return url; // malformed session data — leave the URL unchanged
+  }
+};
+
 // Request interceptor to add JWT token to headers
 apiClient.interceptors.request.use(
   (config) => {
+    // Route the request to the tenant's module namespace
+    config.url = rewriteModulePrefix(config.url);
+
     // Get token from sessionStorage
     const token = sessionStorage.getItem('token');
 
     // Add token to Authorization header if it exists
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+
+    // Add branch impersonation header if set (multi pharmacy)
+    const selectedBranchId = sessionStorage.getItem('selectedBranchId');
+    if (selectedBranchId) {
+      config.headers['X-Branch-ID'] = selectedBranchId;
     }
 
     return config;
@@ -47,6 +78,7 @@ apiClient.interceptors.request.use(
 const loginUrlForType = (hospitalType) => {
   if (hospitalType === 'CLINIC') return '/login/clinic';
   if (hospitalType === 'PHARMACY') return '/login/pharmacy';
+  if (hospitalType === 'PLATFORM') return '/platform/login';
   return '/login/hospital';
 };
 
@@ -56,6 +88,9 @@ const clearSessionAndRedirect = () => {
   try {
     const userStr = sessionStorage.getItem('user');
     hospitalType = userStr ? JSON.parse(userStr)?.hospitalType : null;
+    // Session already gone (expired tab) — use the last-used portal instead
+    // of defaulting a clinic/pharmacy user to the hospital login.
+    if (!hospitalType) hospitalType = localStorage.getItem('lastPortal');
   } catch {
     hospitalType = null; // fall back to the default hospital login
   }

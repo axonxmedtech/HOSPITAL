@@ -1,14 +1,43 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import authService from '../services/authService';
 import hospitalService from '../services/hospitalService';
+import vitalsService from '../services/vitalsService';
 import { useToast } from '../context/ToastContext';
 import MedicineAutocomplete from './MedicineAutocomplete';
 import CharCountInput from './CharCountInput';
 import IpdAdmitModal from './IpdAdmitModal';
 import ManageNotePresetsModal from './ManageNotePresetsModal';
 import ManagePrescriptionPresetsModal from './ManagePrescriptionPresetsModal';
+import ManageInClinicPresetsModal from './ManageInClinicPresetsModal';
+
+/** Built-in vital key -> the Opd field that stores it. */
+const BUILT_IN_OPD_FIELD = {
+    BP: 'bp',
+    TEMPERATURE: 'temperature',
+    PULSE: 'pulse',
+    HEIGHT: 'height',
+    WEIGHT: 'weight',
+    SPO2: 'spo2',
+};
 
 const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, opd }) => {
+    // Only the vitals this hospital has switched on are shown at diagnosis.
+    const [enabledVitals, setEnabledVitals] = useState([]);
+    useEffect(() => {
+        if (!isOpen) return;
+        let active = true;
+        vitalsService.enabled()
+            .then((list) => { if (active) setEnabledVitals(Array.isArray(list) ? list : []); })
+            .catch(() => { if (active) setEnabledVitals([]); });
+        return () => { active = false; };
+    }, [isOpen]);
+
+    // opd.customVitals is a JSON string of hospital-defined vitals.
+    const opdCustomVitals = React.useMemo(() => {
+        if (!opd?.customVitals) return {};
+        try { return JSON.parse(opd.customVitals) || {}; } catch { return {}; }
+    }, [opd?.customVitals]);
+
     console.log("ConsultationModal render:", { isOpen, appointment, patient, opd });
     const [activeTab, setActiveTab] = useState('clinical'); // 'clinical' or 'prescription'
     const [patientDetails, setPatientDetails] = useState(null);
@@ -18,8 +47,13 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     const [admitModalOpd, setAdmitModalOpd] = useState(null);
     const [notePresets, setNotePresets] = useState([]);
     const [showManagePresets, setShowManagePresets] = useState(false);
+    const [symptomPresets, setSymptomPresets] = useState([]);
+    const [showManageSymptomPresets, setShowManageSymptomPresets] = useState(false);
+    const [diagnosisPresets, setDiagnosisPresets] = useState([]);
+    const [showManageDiagnosisPresets, setShowManageDiagnosisPresets] = useState(false);
     const [prescriptionPresets, setPrescriptionPresets] = useState([]);
     const [showManagePrescriptionPresets, setShowManagePrescriptionPresets] = useState(false);
+    const [showManageInClinicPresets, setShowManageInClinicPresets] = useState(false);
     const [editingMedicineIndex, setEditingMedicineIndex] = useState(null);
 
     const user = authService.getCurrentUser();
@@ -30,8 +64,59 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     const hasHospitalInventory = modules.includes('HOSPITAL_INVENTORY');
     const [inventory, setInventory] = useState([]);
     const [administeredList, setAdministeredList] = useState([]); // List of { medicineId, medicineName, quantity, maxStock }
+    const [inClinicPresets, setInClinicPresets] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [showSuggestions, setShowSuggestions] = useState(false);
+
+    /**
+     * Add every medicine in a preset to the administered list in one click. Quantities are
+     * capped at what's actually in stock (and an already-added medicine is topped up rather
+     * than duplicated), so a preset can never push the list past available stock.
+     */
+    const applyInClinicPreset = (preset) => {
+        const skipped = [];
+        setAdministeredList(prev => {
+            const next = [...prev];
+            (preset.items || []).forEach(item => {
+                const stockItem = inventory.find(m => m.id === item.medicineId);
+                if (!stockItem) { skipped.push(item.medicineName); return; }
+
+                const maxStock = stockItem.stockQuantity ?? 0;
+                const wanted = Number(item.quantity) || 1;
+                const existing = next.find(x => x.medicineId === stockItem.id);
+                const current = existing ? existing.quantity : 0;
+                const allowed = Math.min(current + wanted, maxStock);
+
+                if (allowed <= current) { skipped.push(stockItem.name); return; }
+
+                // The preset's own dosage/frequency/duration/instructions win; fall back to the
+                // medicine's defaults, exactly as picking it manually from the dropdown does.
+                if (existing) {
+                    existing.quantity = allowed;
+                    existing.dosage = item.dosage || existing.dosage || stockItem.defaultDosage || '';
+                    existing.frequency = item.frequency || existing.frequency || stockItem.defaultFrequency || '';
+                    existing.duration = item.duration || existing.duration || stockItem.defaultDuration || '';
+                    existing.instructions = item.instructions || existing.instructions || '';
+                } else {
+                    next.push({
+                        medicineId: stockItem.id,
+                        medicineName: stockItem.name,
+                        quantity: allowed,
+                        maxStock,
+                        dosage: item.dosage || stockItem.defaultDosage || '',
+                        frequency: item.frequency || stockItem.defaultFrequency || '',
+                        duration: item.duration || stockItem.defaultDuration || '',
+                        instructions: item.instructions || '',
+                    });
+                }
+            });
+            return next;
+        });
+
+        if (skipped.length) {
+            toastError(`Not added (out of stock or unavailable): ${[...new Set(skipped)].join(', ')}`);
+        }
+    };
 
     const [appliedCharges, setAppliedCharges] = useState([]);
     const [availableCustomFees, setAvailableCustomFees] = useState([]);
@@ -77,6 +162,12 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
             hospitalService.getConsultationNotePresets('TREATMENT_NOTES')
                 .then(data => setNotePresets(data || []))
                 .catch(() => setNotePresets([]));
+            hospitalService.getConsultationNotePresets('SYMPTOMS')
+                .then(data => setSymptomPresets(data || []))
+                .catch(() => setSymptomPresets([]));
+            hospitalService.getConsultationNotePresets('DIAGNOSIS')
+                .then(data => setDiagnosisPresets(data || []))
+                .catch(() => setDiagnosisPresets([]));
         }
     }, [isOpen]);
 
@@ -95,6 +186,10 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         const handler = () => {
             hospitalService.getConsultationNotePresets('TREATMENT_NOTES')
                 .then(data => setNotePresets(data || [])).catch(() => { /* non-critical refresh */ });
+            hospitalService.getConsultationNotePresets('SYMPTOMS')
+                .then(data => setSymptomPresets(data || [])).catch(() => { /* non-critical refresh */ });
+            hospitalService.getConsultationNotePresets('DIAGNOSIS')
+                .then(data => setDiagnosisPresets(data || [])).catch(() => { /* non-critical refresh */ });
             hospitalService.getPrescriptionPresets()
                 .then(data => setPrescriptionPresets(data || [])).catch(() => { /* non-critical refresh */ });
         };
@@ -211,8 +306,17 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                     console.error('Failed to load hospital services/inventory', err);
                 }
             };
+            // In-Clinic presets: named bundles of stock medicines, applied in one click below.
+            const fetchInClinicPresets = async () => {
+                try {
+                    setInClinicPresets(await hospitalService.getInClinicPresets() || []);
+                } catch (err) {
+                    console.error('Failed to load in-clinic presets', err);
+                }
+            };
             fetchInventory();
             fetchHospitalInventory();
+            fetchInClinicPresets();
         }
         if (!isOpen) {
             setAdministeredList([]);
@@ -321,6 +425,20 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         }));
     };
 
+    const handleInsertSymptomPreset = (text) => {
+        setFormData(prev => ({
+            ...prev,
+            symptoms: prev.symptoms ? `${prev.symptoms}\n${text}` : text,
+        }));
+    };
+
+    const handleInsertDiagnosisPreset = (text) => {
+        setFormData(prev => ({
+            ...prev,
+            diagnosis: prev.diagnosis ? `${prev.diagnosis}\n${text}` : text,
+        }));
+    };
+
     const handleAddMedicine = () => {
         setFormData(prev => {
             if (editingMedicineIndex !== null) {
@@ -383,6 +501,34 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
             setPrescriptionPresets(data || []);
         } catch (err) {
             toastError(err?.response?.data || 'Failed to save preset');
+        }
+    };
+
+    /** Turn the medicines currently being administered into a reusable in-clinic preset. */
+    const handleSaveCurrentAsInClinicPreset = async () => {
+        if (administeredList.length === 0) {
+            toastError('Add at least one in-clinic medicine before saving a preset');
+            return;
+        }
+        const name = window.prompt('Name this in-clinic preset (e.g. "Dressing Kit"):');
+        if (!name || !name.trim()) return;
+        try {
+            await hospitalService.createInClinicPreset({
+                name: name.trim(),
+                items: administeredList.map(it => ({
+                    medicineId: it.medicineId,
+                    medicineName: it.medicineName,
+                    quantity: it.quantity,
+                    dosage: it.dosage || '',
+                    frequency: it.frequency || '',
+                    duration: it.duration || '',
+                    instructions: it.instructions || '',
+                })),
+            });
+            success('In-clinic preset saved');
+            setInClinicPresets(await hospitalService.getInClinicPresets() || []);
+        } catch (err) {
+            toastError(err?.response?.data?.error || err?.response?.data || 'Failed to save preset');
         }
     };
 
@@ -460,7 +606,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         }
 
         // Prepare payload; include selected lab tests if any
-        const payload = { ...formData };
+        const payload = { ...formData, ipdAdmitRecommended: true };
         if (!payload.labRequired) payload.labTests = [];
         payload.administeredItems = administeredList.map(item => ({
             medicineId: item.medicineId,
@@ -485,13 +631,13 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
 
         setSubmitting(true);
         try {
-            const resp = await hospitalService.submitConsultation(payload);
-            success('Consultation submitted successfully. Opening IPD Admission...');
-            setAdmitModalOpd(resp.opd || { id: resp.opdId, problem: formData.diagnosis || formData.symptoms });
-            setShowIpdAdmitModal(true);
+            await hospitalService.submitConsultation(payload);
+            success('Consultation completed. Patient IPD admission request sent to reception.');
+            onSuccess("Patient IPD admission recommended successfully!");
+            onClose();
         } catch (err) {
             console.error("Consultation submit for IPD failed", err);
-            const errorMsg = err.response?.data?.error || err.response?.data?.message || (typeof err.response?.data === 'string' ? err.response.data : null) || 'Failed to submit consultation before IPD admission';
+            const errorMsg = err.response?.data?.error || err.response?.data?.message || (typeof err.response?.data === 'string' ? err.response.data : null) || 'Failed to submit consultation';
             toastError(errorMsg);
         } finally {
             setSubmitting(false);
@@ -518,6 +664,45 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                         </svg>
                     </button>
                 </div>
+
+                {/* What was captured at OPD entry: the reason the patient came, and the vitals
+                    (only the ones this hospital has switched on). The reason was being recorded
+                    at OPD entry but never surfaced to the doctor — it shows here, beside the
+                    vitals, so it's read before the consultation starts. */}
+                {opd && (opd.problem || enabledVitals.length > 0) && (
+                    <div className="px-6 py-3 border-b border-gray-200 bg-gray-50/70 space-y-3">
+                        {opd.problem && (
+                            <div>
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
+                                    Reason for visit
+                                </p>
+                                <p className="text-sm font-semibold text-gray-900 whitespace-pre-wrap break-words">
+                                    {opd.problem}
+                                </p>
+                            </div>
+                        )}
+
+                        {enabledVitals.length > 0 && (
+                            <div>
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Vitals at OPD entry</p>
+                                <div className="flex flex-wrap gap-x-6 gap-y-2">
+                                    {enabledVitals.map((v) => {
+                                        const value = v.isCustom ? opdCustomVitals[v.key] : BUILT_IN_OPD_FIELD[v.key] && opd[BUILT_IN_OPD_FIELD[v.key]];
+                                        const has = value !== null && value !== undefined && value !== '';
+                                        return (
+                                            <div key={v.key} className="min-w-[86px]">
+                                                <p className="text-[11px] text-gray-500">{v.label}</p>
+                                                <p className="text-sm font-semibold text-gray-900">
+                                                    {has ? `${value}${v.unit ? ` ${v.unit}` : ''}` : '—'}
+                                                </p>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* 2-Column Layout */}
                 <div className="flex flex-1 overflow-hidden">
@@ -654,6 +839,37 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                         placeholder="Enter patient's symptoms..."
                                     />
 
+                                    <div className="flex flex-wrap items-center gap-2 -mt-2">
+                                        {symptomPresets.map(preset => (
+                                            <button
+                                                key={preset.id}
+                                                type="button"
+                                                onClick={() => handleInsertSymptomPreset(preset.text)}
+                                                className="inline-flex items-center px-3 py-1 text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200 rounded-full hover:bg-teal-100 transition"
+                                            >
+                                                {preset.text}
+                                            </button>
+                                        ))}
+                                        {symptomPresets.length === 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowManageSymptomPresets(true)}
+                                                className="text-xs text-gray-500 hover:text-gray-700 underline"
+                                            >
+                                                Add your first symptom preset
+                                            </button>
+                                        )}
+                                        {symptomPresets.length > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowManageSymptomPresets(true)}
+                                                className="text-xs text-gray-500 hover:text-gray-700 underline ml-1"
+                                            >
+                                                Manage
+                                            </button>
+                                        )}
+                                    </div>
+
                                     <CharCountInput
                                         label="Diagnosis"
                                         textarea
@@ -663,6 +879,37 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                         maxLength={500}
                                         placeholder="Enter diagnosis..."
                                     />
+
+                                    <div className="flex flex-wrap items-center gap-2 -mt-2">
+                                        {diagnosisPresets.map(preset => (
+                                            <button
+                                                key={preset.id}
+                                                type="button"
+                                                onClick={() => handleInsertDiagnosisPreset(preset.text)}
+                                                className="inline-flex items-center px-3 py-1 text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200 rounded-full hover:bg-teal-100 transition"
+                                            >
+                                                {preset.text}
+                                            </button>
+                                        ))}
+                                        {diagnosisPresets.length === 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowManageDiagnosisPresets(true)}
+                                                className="text-xs text-gray-500 hover:text-gray-700 underline"
+                                            >
+                                                Add your first diagnosis preset
+                                            </button>
+                                        )}
+                                        {diagnosisPresets.length > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowManageDiagnosisPresets(true)}
+                                                className="text-xs text-gray-500 hover:text-gray-700 underline ml-1"
+                                            >
+                                                Manage
+                                            </button>
+                                        )}
+                                    </div>
 
                                     {/* Hospital Inventory Items Used Section */}
                                     {(hasBilling || hasHospitalInventory) && (
@@ -775,6 +1022,52 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                             <div>
                                                 <h4 className="text-sm font-bold text-gray-800">Diagnosis medicines</h4>
                                                 <p className="text-xs text-gray-550 mt-0.5">Administer clinical items and medicines in-clinic during consultation.</p>
+                                            </div>
+
+                                            {/* In-Clinic presets — one click adds the whole bundle. The doctor can
+                                                build them here too, exactly like prescription/note presets. */}
+                                            <div className="mb-3">
+                                                <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                                                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">Quick Add</p>
+                                                    <span className="flex-1" />
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleSaveCurrentAsInClinicPreset}
+                                                        className="text-xs text-gray-600 hover:text-gray-800 underline whitespace-nowrap"
+                                                    >
+                                                        Save current as preset
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowManageInClinicPresets(true)}
+                                                        className="text-xs text-gray-600 hover:text-gray-800 underline whitespace-nowrap"
+                                                    >
+                                                        Manage Presets
+                                                    </button>
+                                                </div>
+
+                                                {inClinicPresets.length > 0 ? (
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {inClinicPresets.map(preset => (
+                                                            <button
+                                                                key={preset.id}
+                                                                type="button"
+                                                                onClick={() => applyInClinicPreset(preset)}
+                                                                title={(preset.items || []).map(it => {
+                                                                    const detail = [it.dosage, it.frequency, it.duration].filter(Boolean).join(' · ');
+                                                                    return `${it.medicineName} ×${it.quantity ?? 1}${detail ? ` — ${detail}` : ''}`;
+                                                                }).join('\n')}
+                                                                className="px-3 py-1.5 text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-200 rounded-full hover:bg-teal-100 transition-colors"
+                                                            >
+                                                                + {preset.name}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-xs text-gray-400">
+                                                        No in-clinic presets yet — build one with “Manage Presets”.
+                                                    </p>
+                                                )}
                                             </div>
 
                                             {/* Search and Auto-Complete Input */}
@@ -1243,12 +1536,55 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                 }}
                 fieldType="TREATMENT_NOTES"
             />
+            <ManageNotePresetsModal
+                isOpen={showManageSymptomPresets}
+                onClose={() => {
+                    setShowManageSymptomPresets(false);
+                    hospitalService.getConsultationNotePresets('SYMPTOMS')
+                        .then(data => setSymptomPresets(data || []))
+                        .catch(() => {});
+                }}
+                fieldType="SYMPTOMS"
+                title="Manage Symptom Presets"
+                managerProps={{
+                    title: 'Symptom Presets',
+                    noun: 'symptom preset',
+                    placeholder: 'e.g. Fever x 3 days',
+                    description: 'Common complaints that appear as one-click buttons under Symptoms during a consultation.',
+                }}
+            />
+            <ManageNotePresetsModal
+                isOpen={showManageDiagnosisPresets}
+                onClose={() => {
+                    setShowManageDiagnosisPresets(false);
+                    hospitalService.getConsultationNotePresets('DIAGNOSIS')
+                        .then(data => setDiagnosisPresets(data || []))
+                        .catch(() => {});
+                }}
+                fieldType="DIAGNOSIS"
+                title="Manage Diagnosis Presets"
+                managerProps={{
+                    title: 'Diagnosis Presets',
+                    noun: 'diagnosis preset',
+                    placeholder: 'e.g. Essential Hypertension',
+                    description: 'Common diagnoses that appear as one-click buttons under Diagnosis during a consultation.',
+                }}
+            />
             <ManagePrescriptionPresetsModal
                 isOpen={showManagePrescriptionPresets}
                 onClose={() => {
                     setShowManagePrescriptionPresets(false);
                     hospitalService.getPrescriptionPresets()
                         .then(data => setPrescriptionPresets(data || []))
+                        .catch(() => {});
+                }}
+            />
+            <ManageInClinicPresetsModal
+                isOpen={showManageInClinicPresets}
+                onClose={() => {
+                    setShowManageInClinicPresets(false);
+                    hospitalService.getInClinicPresets()
+                        .then(data => setInClinicPresets(data || []))
                         .catch(() => {});
                 }}
             />

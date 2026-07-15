@@ -1,7 +1,7 @@
 package com.hms.service.hospital;
+import com.hms.util.LogSanitizer;
 
 import com.hms.entity.Appointment;
-import com.hms.event.AppointmentCreatedEvent;
 import com.hms.repository.AppointmentRepository;
 import com.hms.repository.DoctorRepository;
 import com.hms.repository.PatientRepository;
@@ -10,7 +10,6 @@ import com.hms.security.SecurityContextHelper;
 import com.hms.exception.ResourceNotFoundException;
 import com.hms.exception.UnauthorizedException;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
@@ -71,8 +70,6 @@ public class AppointmentService {
     @Autowired
     private com.hms.security.HospitalWebSocketHandler webSocketHandler;
 
-    @Autowired
-    private ApplicationEventPublisher eventPublisher;
 
     /**
      * Create a new appointment
@@ -120,7 +117,7 @@ public class AppointmentService {
                 // Use existing patient (first one found if duplicates exist)
                 com.hms.entity.Patient existingPatient = existingPatients.get(0);
                 patientId = existingPatient.getId();
-                logger.info("Found existing patient with phone {}, using patient ID {}", patientPhone, patientId);
+                logger.info("Found existing patient with phone {}, using patient ID {}", LogSanitizer.clean(patientPhone), patientId);
             } else {
                 // Create new patient
                 com.hms.entity.Patient newPatient = new com.hms.entity.Patient();
@@ -149,22 +146,22 @@ public class AppointmentService {
 
                 com.hms.entity.Patient savedPatient = patientRepository.save(newPatient);
                 patientId = savedPatient.getId();
-                logger.info("Created new patient {} with ID {} for hospital {}", patientName, patientId, hospitalId);
+                logger.info("Created new patient {} with ID {} for hospital {}", LogSanitizer.clean(patientName), patientId, hospitalId);
             }
 
             // Set the patientId in the appointment
             appointment.setPatientId(patientId);
         } else {
             // Verify patient belongs to this hospital and is active
-            com.hms.entity.Patient patient = patientRepository
+            patientRepository
                     .findByIdAndHospitalIdAndIsActiveTrue(patientId, hospitalId)
-                    .orElseThrow(() -> new RuntimeException("Patient not found in your hospital or is inactive"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Patient not found in your hospital or is inactive"));
         }
 
         // Verify doctor belongs to this hospital and is active
-        com.hms.entity.Doctor doctor = doctorRepository
+        doctorRepository
                 .findByIdAndHospitalIdAndIsActiveTrue(appointment.getDoctorId(), hospitalId)
-                .orElseThrow(() -> new RuntimeException("Doctor not found in your hospital or is inactive"));
+                .orElseThrow(() -> new ResourceNotFoundException("Doctor not found in your hospital or is inactive"));
 
         // -----------------------------------------------------------
         // Time Slot Validation (New Feature)
@@ -231,12 +228,6 @@ public class AppointmentService {
             // ignore
         }
 
-        try {
-            eventPublisher.publishEvent(new AppointmentCreatedEvent(
-                    hospitalId, savedAppointment.getPatientId(), savedAppointment.getId()));
-        } catch (Exception e) {
-            logger.warn("Failed to publish AppointmentCreatedEvent", e);
-        }
 
         return savedAppointment;
     }
@@ -382,7 +373,7 @@ public class AppointmentService {
 
         // Verify doctor belongs to this hospital and is active
         doctorRepository.findByIdAndHospitalIdAndIsActiveTrue(doctorId, hospitalId)
-                .orElseThrow(() -> new RuntimeException("Doctor not found in your hospital or is inactive"));
+                .orElseThrow(() -> new ResourceNotFoundException("Doctor not found in your hospital or is inactive"));
 
         List<Appointment> appointments;
         java.time.LocalDate today = java.time.LocalDate.now();
@@ -439,7 +430,7 @@ public class AppointmentService {
             }
         }
 
-        com.hms.entity.Patient patient = patientOpt.orElseThrow(() -> new RuntimeException("Patient not found"));
+        com.hms.entity.Patient patient = patientOpt.orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
 
         List<Appointment> appointments = appointmentRepository
                 .findByPatientIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(patient.getId(), hospitalId);
@@ -479,7 +470,7 @@ public class AppointmentService {
             }
         }
 
-        Appointment appointment = apptOpt.orElseThrow(() -> new RuntimeException("Appointment not found"));
+        Appointment appointment = apptOpt.orElseThrow(() -> new ResourceNotFoundException("Appointment not found"));
 
         // Populate names for single appointment
         populateNames(java.util.Collections.singletonList(appointment));
@@ -542,9 +533,9 @@ public class AppointmentService {
             }
         }
 
-        Appointment appointment = apptOpt.orElseThrow(() -> new RuntimeException("Appointment not found"));
+        Appointment appointment = apptOpt.orElseThrow(() -> new ResourceNotFoundException("Appointment not found"));
 
-        logger.info("Hospital {} soft deleting appointment ID: {}. Reason: {}", hospitalId, publicId, reason);
+        logger.info("Hospital {} soft deleting appointment ID: {}. Reason: {}", hospitalId, LogSanitizer.clean(publicId), LogSanitizer.clean(reason));
 
         appointment.setIsActive(false);
         appointmentRepository.save(appointment);
@@ -592,7 +583,7 @@ public class AppointmentService {
             }
         }
 
-        Appointment appointment = apptOpt.orElseThrow(() -> new RuntimeException("Appointment not found"));
+        Appointment appointment = apptOpt.orElseThrow(() -> new ResourceNotFoundException("Appointment not found"));
 
         // Basic validation
         if (!status.equals(STATUS_SCHEDULED) && !status.equals(STATUS_COMPLETED) && !status.equals(STATUS_CANCELLED)) {
@@ -608,7 +599,7 @@ public class AppointmentService {
             try {
                 billingService.autoGenerateOpdBill(saved);
             } catch (Exception e) {
-                logger.error("Failed to auto-generate bill for appointment {}", publicId, e);
+                logger.error("Failed to auto-generate bill for appointment {}", LogSanitizer.clean(publicId), e);
             }
         }
 
@@ -664,7 +655,7 @@ public class AppointmentService {
             }
         }
 
-        Appointment appointment = apptOpt.orElseThrow(() -> new RuntimeException("Appointment not found"));
+        Appointment appointment = apptOpt.orElseThrow(() -> new ResourceNotFoundException("Appointment not found"));
 
         String oldStatus = appointment.getStatus();
         if (status != null && !status.isEmpty()) {
@@ -689,7 +680,7 @@ public class AppointmentService {
             try {
                 billingService.autoGenerateOpdBill(saved);
             } catch (Exception e) {
-                logger.error("Failed to auto-generate bill for appointment {}", publicId, e);
+                logger.error("Failed to auto-generate bill for appointment {}", LogSanitizer.clean(publicId), e);
             }
         }
 
@@ -753,7 +744,7 @@ public class AppointmentService {
         String email = securityHelper.getCurrentUserEmail();
 
         com.hms.entity.Doctor doctor = doctorRepository.findByEmailAndHospitalId(email, hospitalId)
-                .orElseThrow(() -> new RuntimeException("Doctor profile not found for current user"));
+                .orElseThrow(() -> new ResourceNotFoundException("Doctor profile not found for current user"));
 
         return getAppointmentsByDoctorPaginated(doctor.getId(), view, search, pageable);
     }
@@ -772,7 +763,7 @@ public class AppointmentService {
 
         // Verify doctor belongs to this hospital and is active
         doctorRepository.findByIdAndHospitalIdAndIsActiveTrue(doctorId, hospitalId)
-                .orElseThrow(() -> new RuntimeException("Doctor not found in your hospital or is inactive"));
+                .orElseThrow(() -> new ResourceNotFoundException("Doctor not found in your hospital or is inactive"));
 
         org.springframework.data.domain.Page<Appointment> page;
         java.time.LocalDate today = java.time.LocalDate.now();
@@ -840,7 +831,7 @@ public class AppointmentService {
         if (hospitalId == null)
             return;
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
         if (hospital.getModules() == null || !hospital.getModules().contains("OPD")) {
             throw new IllegalArgumentException("OPD module is disabled for your hospital.");
         }

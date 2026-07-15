@@ -28,6 +28,10 @@ public class PlatformPlanService {
     @Autowired private HospitalSettingRepository hospitalSettingRepository;
     @Autowired private AuditLogRepository auditLogRepository;
     @Autowired private UserRepository userRepository;
+    @Autowired private com.hms.security.HospitalWebSocketHandler webSocketHandler;
+
+    @Autowired
+    private com.hms.service.RealtimeNotifier notifier;
 
     // ─── Plan CRUD ─────────────────────────────────────────────────────────
 
@@ -41,10 +45,37 @@ public class PlatformPlanService {
         plan.setModules(req.getModules() != null ? req.getModules() : new ArrayList<>());
         plan.setFeatures(req.getFeatures() != null ? req.getFeatures() : new ArrayList<>());
         plan.setInClinic(Boolean.TRUE.equals(req.getInClinic()));
+        applyOutletSettings(plan, req);
+        ensurePharmacyBaseModule(plan);
         plan.setIsActive(true);
         Plan saved = planRepository.save(plan);
         logAction("PLAN_CREATED", "Created plan: " + saved.getName() + " [" + saved.getType() + "]");
         return saved;
+    }
+
+    /**
+     * Multi-outlet is a PHARMACY-only capability (one owner, several medical shops).
+     * For any other plan type it is forced off so the flag can never leak into
+     * hospital/clinic plans. When enabled, maxOutlets (null = unlimited) is preserved.
+     */
+    private void applyOutletSettings(Plan plan, CreatePlanRequest req) {
+        boolean isPharmacy = plan.getType() == HospitalType.PHARMACY;
+        boolean multiOutlet = isPharmacy && Boolean.TRUE.equals(req.getMultiOutlet());
+        plan.setMultiOutlet(multiOutlet);
+        plan.setMaxOutlets(multiOutlet ? req.getMaxOutlets() : null);
+    }
+
+    /**
+     * Pharmacy tenants are detected across the app by the "PHARMACY" module. The
+     * pharmacy plan tiers (SINGLE_PHARMACY / SINGLE_PHARMACIST_ADMIN / MULTI_PHARMACY)
+     * drive the mode, but we also keep the base PHARMACY module present so existing
+     * detection (standalone-pharmacy gating, dashboards) keeps working.
+     */
+    private void ensurePharmacyBaseModule(Plan plan) {
+        if (plan.getType() == HospitalType.PHARMACY && plan.getModules() != null
+                && !plan.getModules().contains("PHARMACY")) {
+            plan.getModules().add("PHARMACY");
+        }
     }
 
     @Transactional
@@ -56,6 +87,7 @@ public class PlatformPlanService {
         plan.setMonthlyPrice(req.getMonthlyPrice());
         plan.setYearlyPrice(req.getYearlyPrice());
         plan.setInClinic(Boolean.TRUE.equals(req.getInClinic()));
+        applyOutletSettings(plan, req);
 
         if (req.getModules() != null) {
             plan.getModules().clear();
@@ -65,6 +97,7 @@ public class PlatformPlanService {
             plan.getFeatures().clear();
             plan.getFeatures().addAll(req.getFeatures());
         }
+        ensurePharmacyBaseModule(plan);
 
         Plan saved = planRepository.save(plan);
         propagateModulesToSubscribers(saved);
@@ -182,6 +215,48 @@ public class PlatformPlanService {
             setting.setInClinic(inClinicEnabled);
             hospitalSettingRepository.save(setting);
         });
+
+        // Every plan change funnels through here (assignPlan and a plan edit propagating to its
+        // subscribers), so this is the one place that has to tell the tenant its plan moved.
+        notifyPlanChanged(hospital.getId());
+    }
+
+    /**
+     * Push a plan change to everyone currently signed in at that tenant, so modules appear and
+     * disappear live instead of on the next login.
+     *
+     * SETTINGS_UPDATED makes each client re-read /auth/me (which returns the hospital's modules
+     * from the DB), and REFRESH_DATA reloads the lists the new modules unlock. The server side
+     * needs no message at all: ModuleAccessAspect reads modules from the hospital row, so the
+     * new plan is enforced on the very next request regardless of what any old JWT claims.
+     *
+     * Fired AFTER the transaction commits, never inside it: a client that re-fetched /auth/me
+     * while this transaction was still open would read the OLD modules and cache them, which is
+     * exactly the staleness this is meant to remove. Best-effort — a socket problem must never
+     * roll back a paid plan change.
+     */
+    private void notifyPlanChanged(Long hospitalId) {
+        if (hospitalId == null) return;
+        Runnable push = () -> {
+            try {
+                webSocketHandler.broadcast(hospitalId, "{\"type\":\"SETTINGS_UPDATED\"}");
+                webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+            } catch (Exception e) {
+                logger.warn("Failed to broadcast plan change to hospital {}", hospitalId, e);
+            }
+        };
+
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            push.run();
+                        }
+                    });
+        } else {
+            push.run();
+        }
     }
 
     private Long resolveCurrentUserId() {

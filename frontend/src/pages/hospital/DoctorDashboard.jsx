@@ -1,8 +1,10 @@
+import OpdPaymentFields, { isPayFirst, validateOpdPayment } from '../../components/OpdPaymentFields';
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
 import { API_BASE_URL } from '../../services/apiService'; // BUG-028: single source-of-truth for base URL
+import apiClient from '../../services/apiService';
 import { useToast } from '../../context/ToastContext';
 import EmptyState from '../../components/EmptyState';
 import ConfirmationModal from '../../components/ConfirmationModal';
@@ -13,6 +15,7 @@ import HistoryDrawer from '../../components/HistoryDrawer';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import useWebSocket from '../../hooks/useWebSocket';
+import useEnabledVitals from '../../hooks/useEnabledVitals';
 import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
 
 import PageHeader from '../../components/PageHeader';
@@ -28,6 +31,8 @@ import IpdAdmitModal from '../../components/IpdAdmitModal';
 import { SkeletonDashboard, SkeletonStatsGrid, SkeletonOverviewDual, SkeletonTable } from '../../components/Skeleton';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
 import LowStockBanner from '../../components/LowStockBanner';
+import OtBoard from './ot/OtBoard';
+import otService from '../../services/otService';
 
 /**
  * DoctorDashboard - Doctor dashboard
@@ -45,6 +50,7 @@ const DoctorDashboard = () => {
     const modules = user?.modules || [];
     const hasIPD = modules.includes('IPD');
     const hasAppointments = modules.includes('APPOINTMENTS');
+    const hasOT = modules.includes('OT');
     const [searchParams, setSearchParams] = useSearchParams();
     const activeTab = searchParams.get('tab') || 'overview';
     const viewFilter = searchParams.get('appointmentFilter') || 'today';
@@ -183,6 +189,17 @@ const DoctorDashboard = () => {
     // Resolved Doctor record state
     const [doctorRecord, setDoctorRecord] = useState(null);
 
+    // --- OT (Operation Theatre) board — visible to all doctors ---
+    const [otRows, setOtRows] = useState([]);
+    const [otLoading, setOtLoading] = useState(false);
+
+    useEffect(() => {
+        if (activeTab !== 'ot' || !hasOT) return;
+        setOtLoading(true);
+        otService.getMyBoard().then((d) => setOtRows(Array.isArray(d) ? d : []))
+            .catch(() => setOtRows([])).finally(() => setOtLoading(false));
+    }, [activeTab, hasOT]);
+
     // Fetch doctor record corresponding to user email
     useEffect(() => {
         const fetchDoctorRecord = async () => {
@@ -211,11 +228,15 @@ const DoctorDashboard = () => {
         bp: '',
         temperature: '',
         pulse: '',
-        weight: '',
+        weight: '', height: '', customVitals: {},
         spo2: '',
         problem: '',
-        visitType: 'NEW'
+        visitType: 'NEW',
+        // Only used when Bill Payment = First (fee collected at OPD entry).
+        paymentMethod: 'CASH',
+        paymentReference: ''
     });
+    const { isOn, customs } = useEnabledVitals();
     const [patientSearchText, setPatientSearchText] = useState('');
     const [showPatientDropdown, setShowPatientDropdown] = useState(false);
 
@@ -231,7 +252,7 @@ const DoctorDashboard = () => {
                 bp: '',
                 temperature: '',
                 pulse: '',
-                weight: '',
+                weight: '', height: '', customVitals: {},
                 spo2: '',
                 problem: '',
                 visitType: 'NEW'
@@ -711,6 +732,7 @@ const DoctorDashboard = () => {
         { id: 'opd', label: 'OPD', icon: null },
         ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
         ...((isSolo || hasBilling) ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
+        ...(hasOT ? [{ id: 'ot', label: 'Operation Theatre', icon: null }] : []),
         ...((isSolo && hasInClinic && hasMedicalInventory) ? [{ id: 'inventory', label: 'Medicine Inventory', icon: null }] : []),
         ...(isSolo && hasHospitalInventory ? [{ id: 'hospital-inventory', label: `${tenantWord} Inventory`, icon: null }] : []),
     ];
@@ -759,16 +781,36 @@ const DoctorDashboard = () => {
         setConsultationModal({ isOpen: true, appointment });
     };
 
-    const openPdfInNewTab = (endpointPath) => {
-        const token = sessionStorage.getItem('token');
-        const separator = endpointPath.includes('?') ? '&' : '?';
-        const url = `${API_BASE_URL}${endpointPath}${separator}token=${encodeURIComponent(token)}`;
-        const win = window.open(url, '_blank');
-        if (!win || win.closed || typeof win.closed === 'undefined') {
-            return false;
-        }
-        return true;
-    };
+    // Print a server PDF the way the forms print: fetch it (auth + tenant rewrite via
+    // apiClient), load it into a hidden iframe, and fire the print dialog. This avoids the
+    // pop-up blocker entirely — opening several new tabs in a row (case paper, prescription,
+    // bill) got blocked, which is why some documents silently never printed.
+    const printPdf = (endpointPath) => new Promise((resolve) => {
+        apiClient.get(endpointPath, { responseType: 'blob' })
+            .then((resp) => {
+                const blobUrl = URL.createObjectURL(new Blob([resp.data], { type: 'application/pdf' }));
+                const iframe = document.createElement('iframe');
+                iframe.style.position = 'fixed';
+                iframe.style.left = '-10000px';
+                iframe.style.width = '210mm';
+                iframe.style.height = '297mm';
+                iframe.style.border = '0';
+                iframe.onload = () => {
+                    setTimeout(() => {
+                        try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch (e) { /* ignore */ }
+                        resolve(true);
+                    }, 300);
+                    // Revoke well after the print dialog has had time to render the document.
+                    setTimeout(() => { URL.revokeObjectURL(blobUrl); iframe.remove(); }, 120000);
+                };
+                iframe.src = blobUrl;
+                document.body.appendChild(iframe);
+            })
+            .catch(() => resolve(false));
+    });
+
+    // Kept for the single-document print buttons: fire the print without waiting.
+    const openPdfInNewTab = (endpointPath) => { printPdf(endpointPath); return true; };
 
     const handlePrintPrescription = (appointmentId) => {
         openPdfInNewTab(`/hospital/doctors/prescription/${appointmentId}/pdf`);
@@ -1419,7 +1461,14 @@ const DoctorDashboard = () => {
                                                                     <td className="px-4 py-3">{wardName}</td>
                                                                     <td className="px-4 py-3">{bedNumber}</td>
                                                                     <td className="px-4 py-3">{admittedAt ? new Date(admittedAt).toLocaleString() : '-'}</td>
-                                                                    <td className="px-4 py-3">{status}</td>
+                                                                    <td className="px-4 py-3">
+                                                                        <div className="flex flex-col gap-1 items-start">
+                                                                            {(row.admissionConfirmed ?? row.ipd?.admissionConfirmed)
+                                                                                ? <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-green-100 text-green-700">ADMITTED</span>
+                                                                                : <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-700">ADMISSION PENDING</span>}
+                                                                            {status && status !== 'ADMITTED' && <span className="text-[10px] text-gray-500">{status}</span>}
+                                                                        </div>
+                                                                    </td>
                                                                     <td className="px-4 py-3">
                                                                         {(() => {
                                                                             const theId = row.ipdId || row.id || row.ipd?.id || row.ipd?.ipdId || null;
@@ -1514,6 +1563,12 @@ const DoctorDashboard = () => {
                                 {activeTab === 'hospital-inventory' && (
                                     <HospitalInventoryTab />
                                 )}
+
+                                {activeTab === 'ot' && (
+                                    otLoading
+                                        ? <div className="text-center text-gray-400 py-16">Loading…</div>
+                                        : <OtBoard rows={otRows} mode="doctor" />
+                                )}
                             </div>
                             )}
                 </main>
@@ -1583,32 +1638,16 @@ const DoctorDashboard = () => {
                             const billId = res.billId;
 
                             if (opdId) {
-                                let blockedCount = 0;
+                                // One combined PDF, printed as a single job so one print dialog outputs
+                                // every page (firing a dialog per document dropped pages):
+                                //   1. case paper (always)
+                                //   2. bill (always)
+                                //   3. prescription — only when medicines were prescribed
+                                //   4. in-clinic medicines slip — only when items were administered
+                                const printed = await printPdf(`/hospital/opd/${opdId}/documents/pdf`);
 
-                                // 1. Case Paper / Consultation Print (always)
-                                const p1 = openPdfInNewTab(`/hospital/opd/${opdId}/pdf`);
-                                if (!p1) blockedCount++;
-
-                                // 2. Prescription Print (only if hasPrescription is true)
-                                if (res.hasPrescription) {
-                                    const p2 = openPdfInNewTab(`/hospital/doctors/prescription/opd/${opdId}/pdf`);
-                                    if (!p2) blockedCount++;
-                                }
-
-                                // 3. Bill / Invoice Print (always if billId is present)
-                                if (billId) {
-                                    const p3 = openPdfInNewTab(`/hospital/billing/${billId}/pdf`);
-                                    if (!p3) blockedCount++;
-                                }
-
-                                // 4. In-Clinic Medicines Print (only if hasAdministered is true)
-                                if (res.hasAdministered) {
-                                    const p4 = openPdfInNewTab(`/hospital/patients/opd/${opdId}/medicines/pdf`);
-                                    if (!p4) blockedCount++;
-                                }
-
-                                if (blockedCount > 0) {
-                                    toastError("Some print windows were blocked. Please select 'Always allow pop-ups' in your browser address bar to enable automatic printing of all documents.");
+                                if (!printed) {
+                                    toastError("The consultation documents could not be printed. Please try printing them again from the patient record.");
                                 } else {
                                     success("Consultation completed successfully! Documents sent to print.");
                                 }
@@ -1729,6 +1768,10 @@ const DoctorDashboard = () => {
                                         return;
                                     }
                                 }
+                                // Bill Payment = First: the fee is collected here, so the method is required.
+                                const payErr = validateOpdPayment(opdForm.paymentMethod, opdForm.paymentReference);
+                                if (payErr) { toastError(payErr); return; }
+
                                 try {
                                     const payload = {
                                         patientId: opdForm.patientId,
@@ -1737,9 +1780,15 @@ const DoctorDashboard = () => {
                                         temperature: opdForm.temperature ? parseFloat(opdForm.temperature) : null,
                                         pulse: opdForm.pulse ? parseInt(opdForm.pulse) : null,
                                         weight: opdForm.weight ? parseFloat(opdForm.weight) : null,
+                                        height: opdForm.height ? parseFloat(opdForm.height) : null,
+                                        customVitals: opdForm.customVitals || {},
                                         spo2: opdForm.spo2 ? parseInt(opdForm.spo2) : null,
                                         problem: opdForm.problem,
-                                        visitType: opdForm.visitType
+                                        visitType: opdForm.visitType,
+                                        ...(isPayFirst() ? {
+                                            paymentMethod: opdForm.paymentMethod,
+                                            paymentReference: opdForm.paymentReference || null,
+                                        } : {}),
                                     };
                                     const res = await hospitalService.createOpd(payload);
                                     setIsOpdModalOpen(false);
@@ -1816,28 +1865,54 @@ const DoctorDashboard = () => {
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
+                                    {isOn('BP') && (
                                     <div>
                                         <label className="block text-sm font-semibold text-neutral-700 mb-2">BP</label>
                                         <input className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.bp} onChange={(e) => setOpdForm(prev => ({ ...prev, bp: e.target.value.replace(/[^0-9/]/g, '') }))} placeholder="120/80" />
                                     </div>
+                                    )}
+                                    {isOn('TEMPERATURE') && (
                                     <div>
                                         <label className="block text-sm font-semibold text-neutral-700 mb-2">Temperature (°F)</label>
                                         <input type="number" step="0.1" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.temperature} onChange={(e) => setOpdForm(prev => ({ ...prev, temperature: e.target.value }))} />
                                     </div>
+                                    )}
                                 </div>
                                 <div className="grid grid-cols-3 gap-4">
+                                    {isOn('PULSE') && (
                                     <div>
                                         <label className="block text-sm font-semibold text-neutral-700 mb-2">Pulse</label>
                                         <input type="number" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.pulse} onChange={(e) => setOpdForm(prev => ({ ...prev, pulse: e.target.value }))} />
                                     </div>
+                                    )}
+                                    {isOn('HEIGHT') && (
+                                    <div>
+                                        <label className="block text-sm font-semibold text-neutral-700 mb-2">Height (cm)</label>
+                                        <input type="number" step="0.1" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.height} onChange={(e) => setOpdForm(prev => ({ ...prev, height: e.target.value }))} />
+                                    </div>
+                                    )}
+                                    {isOn('WEIGHT') && (
                                     <div>
                                         <label className="block text-sm font-semibold text-neutral-700 mb-2">Weight (kg)</label>
                                         <input type="number" step="0.1" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.weight} onChange={(e) => setOpdForm(prev => ({ ...prev, weight: e.target.value }))} />
                                     </div>
+                                    )}
+                                    {isOn('SPO2') && (
                                     <div>
                                         <label className="block text-sm font-semibold text-neutral-700 mb-2">SpO2 (%)</label>
                                         <input type="number" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={opdForm.spo2} onChange={(e) => setOpdForm(prev => ({ ...prev, spo2: e.target.value }))} />
                                     </div>
+                                    )}
+                                    {customs.map((v) => (
+                                        <div key={v.key}>
+                                            <label className="block text-sm font-semibold text-neutral-700 mb-2">{v.label}{v.unit ? ` (${v.unit})` : ''}</label>
+                                            <input
+                                                className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800"
+                                                value={opdForm.customVitals?.[v.key] || ''}
+                                                onChange={(e) => setOpdForm(prev => ({ ...prev, customVitals: { ...(prev.customVitals || {}), [v.key]: e.target.value } }))}
+                                            />
+                                        </div>
+                                    ))}
                                 </div>
 
                                 <div>
@@ -1850,6 +1925,12 @@ const DoctorDashboard = () => {
                                     <label className="inline-flex items-center gap-2 cursor-pointer"><input type="radio" name="visitType" value="NEW" checked={opdForm.visitType === 'NEW'} onChange={() => setOpdForm(prev => ({ ...prev, visitType: 'NEW' }))} /> New</label>
                                     <label className="inline-flex items-center gap-2 cursor-pointer"><input type="radio" name="visitType" value="FOLLOWUP" checked={opdForm.visitType === 'FOLLOWUP'} onChange={() => setOpdForm(prev => ({ ...prev, visitType: 'FOLLOWUP' }))} /> Follow-up</label>
                                 </div>
+
+                                <OpdPaymentFields
+                                    method={opdForm.paymentMethod}
+                                    reference={opdForm.paymentReference}
+                                    onChange={(patch) => setOpdForm(prev => ({ ...prev, ...patch }))}
+                                />
 
                                 <div className="flex gap-4 pt-4">
                                     <button type="button" onClick={() => setIsOpdModalOpen(false)} className="flex-1 py-2.5 rounded-xl border border-gray-300 font-semibold text-gray-700 hover:bg-gray-50 transition">Cancel</button>

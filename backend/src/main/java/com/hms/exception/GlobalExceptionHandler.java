@@ -9,6 +9,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -97,6 +101,62 @@ public class GlobalExceptionHandler {
         Map<String, Object> body = new HashMap<>();
         body.put("errors", errors);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    /**
+     * Handle a request to a URL that maps to no handler — 404 Not Found.
+     * Without this, an unknown path falls through to the catch-all below and is reported
+     * as a 500 and logged at ERROR, so every typo'd URL and every drive-by scanner request
+     * looks like a server crash.
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoResourceFound() {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error("Not found"));
+    }
+
+    /**
+     * Handle a path variable or request param of the wrong type — 400 Bad Request.
+     * e.g. a UUID supplied where a numeric id is declared. The caller sent a malformed
+     * value, so this is a client fault, not a server fault.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error("Invalid value for '" + ex.getName() + "'"));
+    }
+
+    /**
+     * Handle an unreadable/malformed request body (e.g. invalid JSON, or a JSON object
+     * where an array is expected) — 400 Bad Request. The caller sent a body the endpoint
+     * cannot parse, which is a client fault; without this it surfaced as a 500.
+     */
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnreadableBody() {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error("Malformed or unreadable request body"));
+    }
+
+    /**
+     * Handle a missing required query/form parameter — 400 Bad Request.
+     * The caller omitted something required, so this is a client fault; without this it
+     * fell through to the catch-all and was reported as a 500 logged at ERROR.
+     */
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingParam(MissingServletRequestParameterException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error("Missing required parameter '" + ex.getParameterName() + "'"));
+    }
+
+    /**
+     * Handle a request whose HTTP method the endpoint does not support — 405 Method Not
+     * Allowed. e.g. POSTing to a PUT-only route. A client using the wrong verb is not a
+     * server fault; without this it was reported as a 500.
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .body(ApiResponse.error("Method " + ex.getMethod() + " not supported for this endpoint"));
     }
 
     /**

@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.security.RequireModule;
 import com.hms.service.hospital.AppointmentService;
 import com.hms.service.hospital.DoctorService;
@@ -32,7 +34,7 @@ import java.util.Map;
  * @version Phase-1
  */
 @RestController
-@RequestMapping("/hospital/stats")
+@RequestMapping({"/hospital/stats", "/clinic/stats", "/pharmacy/stats"})
 @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
 public class HospitalStatsController {
 
@@ -105,7 +107,7 @@ public class HospitalStatsController {
         List<Map<String, Object>> activities = statsService.getPatientActivityByDate(hospitalId, date);
 
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
         ByteArrayInputStream pdfStream = pdfService.generatePatientActivityPdf(hospital, date, activities);
         org.springframework.core.io.InputStreamResource resource = new org.springframework.core.io.InputStreamResource(pdfStream);

@@ -12,7 +12,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.Collections;
 
 /**
  * JwtAuthenticationFilter - Filter to validate JWT tokens and set security
@@ -71,16 +70,38 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     String role = jwtUtil.extractRole(token);
                     Long hospitalId = jwtUtil.extractHospitalId(token);
 
-                    // Create authentication object with role
-                    UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                            email,
-                            null,
-                            Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + role)));
+                    // ROLE_<role> is unchanged: Clinic and Pharmacy authorize on it and must
+                    // never see a permission. OT permissions are ADDED as plain authorities,
+                    // so @PreAuthorize("hasAuthority('OT_SCHEDULE')") works with no custom
+                    // PermissionEvaluator.
+                    java.util.List<org.springframework.security.core.GrantedAuthority> authorities =
+                            new java.util.ArrayList<>();
+                    authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
+                    for (String permission : resolvePermissions(token, role)) {
+                        authorities.add(new SimpleGrantedAuthority(permission));
+                    }
 
-                    // Store additional details (userId, hospitalId, modules) in authentication
+                    UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                            email, null, authorities);
+
+                    // Store additional details (userId, hospitalId, modules, branchId) in authentication
                     java.util.List<String> modules = jwtUtil.extractModules(token);
+                    Long branchId = jwtUtil.extractBranchId(token);
+
+                    // Multi Pharmacy branch impersonation for Hospital Admin
+                    String branchHeader = request.getHeader("X-Branch-ID");
+                    if (branchHeader != null && !branchHeader.trim().isEmpty() && "HOSPITAL_ADMIN".equals(role)) {
+                        try {
+                            branchId = Long.parseLong(branchHeader.trim());
+                        } catch (NumberFormatException e) {
+                            // ignore malformed branch header
+                        }
+                    }
+
                     UserAuthenticationDetails details = new UserAuthenticationDetails(userId, role, hospitalId,
                             modules);
+                    details.setBranchId(branchId);
+                    details.setHospitalType(jwtUtil.extractHospitalType(token));
                     authentication.setDetails(details);
 
                     // Set authentication in security context
@@ -94,5 +115,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         // Continue filter chain
         filterChain.doFilter(request, response);
+    }
+
+    /**
+     * Permissions are minted into the token at login. A token issued before the claim
+     * existed carries none, and revoking a live session's access mid-token would be a
+     * regression, so fall back to the role's defaults for one release. An explicitly
+     * empty list means the hospital granted this role nothing -- honour it.
+     */
+    private java.util.List<String> resolvePermissions(String token, String role) {
+        java.util.List<String> claim = jwtUtil.extractPermissions(token);
+        if (claim != null) return claim;
+        return new java.util.ArrayList<>(OtPermissions.defaultsFor(role));
     }
 }

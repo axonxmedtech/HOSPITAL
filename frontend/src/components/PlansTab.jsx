@@ -2,8 +2,26 @@ import React, { useState, useEffect } from 'react';
 import platformService from '../services/platformService';
 import { useToast } from '../context/ToastContext';
 
-const ENTITY_TYPES = ['HOSPITAL', 'CLINIC', 'PHARMACY'];
-const AVAILABLE_MODULES = ['OPD', 'IPD', 'PHARMACY', 'BILLING', 'APPOINTMENTS', 'MEDICAL_INVENTORY', 'HOSPITAL_INVENTORY', 'REPORTS', 'OT', 'PATHOLOGY'];
+// NURSING is HOSPITAL-only: it lives in AVAILABLE_MODULES (used by MODULES_BY_TYPE.HOSPITAL)
+// and is deliberately absent from the CLINIC and PHARMACY module lists below.
+const AVAILABLE_MODULES = ['OPD', 'IPD', 'PHARMACY', 'BILLING', 'APPOINTMENTS', 'MEDICAL_INVENTORY', 'HOSPITAL_INVENTORY', 'REPORTS', 'OT', 'PATHOLOGY', 'NURSING'];
+
+// Pharmacy plans are defined by a single mutually-exclusive tier rather than the
+// generic hospital module list. These are the only options offered for PHARMACY.
+const PHARMACY_TIERS = [
+    ['SINGLE_PHARMACIST_ADMIN', 'Single Pharmacist Admin'],
+    ['SINGLE_PHARMACY', 'Single Pharmacy'],
+    ['MULTI_PHARMACY', 'Multi Pharmacy'],
+];
+const PHARMACY_TIER_KEYS = PHARMACY_TIERS.map(t => t[0]);
+
+// Modules selectable per entity type. Pharmacy uses the tier keys above.
+const MODULES_BY_TYPE = {
+    HOSPITAL: AVAILABLE_MODULES,
+    CLINIC: ['OPD', 'PHARMACY', 'BILLING', 'APPOINTMENTS', 'MEDICAL_INVENTORY', 'REPORTS'],
+    PHARMACY: PHARMACY_TIER_KEYS,
+};
+const modulesForType = (type) => MODULES_BY_TYPE[type] || AVAILABLE_MODULES;
 
 const emptyForm = {
     name: '',
@@ -13,25 +31,30 @@ const emptyForm = {
     modules: [],
     features: '',
     inClinic: false,
+    multiOutlet: false,
+    maxOutlets: '',
 };
 
-export default function PlansTab() {
+export default function PlansTab({ hospitalType = null }) {
     const { success } = useToast();
     const [plans, setPlans] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [typeFilter, setTypeFilter] = useState('');
     const [showModal, setShowModal] = useState(false);
     const [editingPlan, setEditingPlan] = useState(null);
     const [form, setForm] = useState(emptyForm);
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
 
-    useEffect(() => { loadPlans(); }, [typeFilter]);
+    // The tab is always opened from a tenant-type group (Hospital / Clinic /
+    // Pharmacy), so the plan type comes from the tab — never from the user.
+    const planType = hospitalType || 'HOSPITAL';
+
+    useEffect(() => { loadPlans(); }, [hospitalType]);
 
     const loadPlans = async () => {
         setLoading(true);
         try {
-            const data = await platformService.getPlans(typeFilter);
+            const data = await platformService.getPlans(planType);
             setPlans(data);
         } catch {
             setError('Failed to load plans');
@@ -42,7 +65,7 @@ export default function PlansTab() {
 
     const openCreate = () => {
         setEditingPlan(null);
-        setForm(emptyForm);
+        setForm({ ...emptyForm, type: planType });
         setError('');
         setShowModal(true);
     };
@@ -57,6 +80,8 @@ export default function PlansTab() {
             modules: plan.modules || [],
             features: (plan.features || []).join('\n'),
             inClinic: plan.inClinic || false,
+            multiOutlet: plan.multiOutlet || false,
+            maxOutlets: plan.maxOutlets ?? '',
         });
         setError('');
         setShowModal(true);
@@ -86,6 +111,10 @@ export default function PlansTab() {
             modules: form.modules,
             features: form.features.split('\n').map(f => f.trim()).filter(Boolean),
             inClinic: form.inClinic,
+            multiOutlet: form.type === 'PHARMACY' && form.modules.includes('MULTI_PHARMACY'),
+            maxOutlets: form.type === 'PHARMACY' && form.modules.includes('MULTI_PHARMACY') && form.maxOutlets !== ''
+                ? parseInt(form.maxOutlets, 10)
+                : null,
         };
 
         try {
@@ -116,9 +145,6 @@ export default function PlansTab() {
         }
     };
 
-    const waMode = form.modules.includes('WHATSAPP_PLATFORM') ? 'platform'
-        : form.modules.includes('WHATSAPP_CUSTOM') ? 'custom' : 'none';
-
     const typeBadge = (type) => {
         const colors = {
             HOSPITAL: 'bg-blue-100 text-blue-700',
@@ -140,22 +166,7 @@ export default function PlansTab() {
                 </div>
             )}
 
-            <div className="flex items-center justify-between mb-4">
-                <div className="flex gap-2">
-                    {['', ...ENTITY_TYPES].map(t => (
-                        <button
-                            key={t}
-                            onClick={() => setTypeFilter(t)}
-                            className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors ${
-                                typeFilter === t
-                                    ? 'bg-gray-900 text-white border-gray-900'
-                                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                            }`}
-                        >
-                            {t || 'All'}
-                        </button>
-                    ))}
-                </div>
+            <div className="flex items-center justify-end mb-4">
                 <button
                     onClick={openCreate}
                     className="px-4 py-2 bg-gray-900 text-white text-sm font-medium hover:bg-gray-700 transition-colors"
@@ -217,7 +228,8 @@ export default function PlansTab() {
                     <div className="bg-white w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl shadow-xl">
                         <div className="flex items-center justify-between px-6 py-4 border-b">
                             <h3 className="text-lg font-bold text-gray-900">
-                                {editingPlan ? 'Edit Plan' : 'Create Plan'}
+                                {editingPlan ? 'Edit Plan' : 'Create Plan'}{' '}
+                                {typeBadge(editingPlan ? form.type : planType)}
                             </h3>
                             <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
                         </div>
@@ -232,19 +244,6 @@ export default function PlansTab() {
                                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
                                     placeholder="e.g. Clinic Essential"
                                 />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Type *</label>
-                                <select
-                                    value={form.type}
-                                    onChange={e => setForm(p => ({ ...p, type: e.target.value }))}
-                                    disabled={!!editingPlan}
-                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:bg-gray-50"
-                                >
-                                    {ENTITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                                </select>
-                                {editingPlan && <p className="text-xs text-gray-500 mt-1">Type cannot be changed after creation.</p>}
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
@@ -268,10 +267,34 @@ export default function PlansTab() {
                                 </div>
                             </div>
 
+                            {form.type === 'PHARMACY' ? (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Pharmacy Plan Type</label>
+                                <div className="flex flex-col gap-2">
+                                    {PHARMACY_TIERS.map(([key, label]) => (
+                                        <label key={key} className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="radio"
+                                                name="pharmacyTier"
+                                                checked={form.modules.includes(key)}
+                                                onChange={() => setForm(p => ({
+                                                    // tiers are mutually exclusive; drop any other tier, keep non-tier modules
+                                                    ...p,
+                                                    modules: [...p.modules.filter(m => !PHARMACY_TIER_KEYS.includes(m)), key],
+                                                    maxOutlets: key === 'MULTI_PHARMACY' ? p.maxOutlets : '',
+                                                }))}
+                                                className="accent-gray-900"
+                                            />
+                                            <span className="text-sm text-gray-700">{label}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                            ) : (
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-2">Enabled Modules</label>
                                 <div className="flex flex-wrap gap-2">
-                                    {AVAILABLE_MODULES.map(mod => (
+                                    {modulesForType(form.type).map(mod => (
                                         <button
                                             type="button"
                                             key={mod}
@@ -287,79 +310,9 @@ export default function PlansTab() {
                                     ))}
                                 </div>
                             </div>
+                            )}
 
-                            {/* WhatsApp */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">WhatsApp Messaging</label>
-                                <div className="flex gap-4 mb-2">
-                                    {[['none', 'None'], ['platform', 'Platform (Shared)'], ['custom', 'Custom (Own Number)']].map(([val, label]) => (
-                                        <label key={val} className="flex items-center gap-1.5 cursor-pointer">
-                                            <input
-                                                type="radio"
-                                                name="waMode"
-                                                checked={waMode === val}
-                                                onChange={() => {
-                                                    if (val === 'none') {
-                                                        setForm(p => ({
-                                                            ...p,
-                                                            modules: p.modules.filter(m =>
-                                                                !['WHATSAPP_PLATFORM','WHATSAPP_CUSTOM','WA_APPOINTMENTS','WA_BILLING','WA_CASE_PAPERS','WA_PRESCRIPTION','WA_MEDICINE_LIST'].includes(m)
-                                                            ),
-                                                        }));
-                                                    } else if (val === 'platform') {
-                                                        setForm(p => ({
-                                                            ...p,
-                                                            modules: [
-                                                                ...p.modules.filter(m => m !== 'WHATSAPP_CUSTOM' && m !== 'WHATSAPP_PLATFORM'),
-                                                                'WHATSAPP_PLATFORM',
-                                                            ],
-                                                        }));
-                                                    } else {
-                                                        setForm(p => ({
-                                                            ...p,
-                                                            modules: [
-                                                                ...p.modules.filter(m =>
-                                                                    !['WHATSAPP_PLATFORM','WA_APPOINTMENTS','WA_BILLING','WA_CASE_PAPERS','WA_PRESCRIPTION','WA_MEDICINE_LIST'].includes(m)
-                                                                ),
-                                                                'WHATSAPP_CUSTOM',
-                                                            ],
-                                                        }));
-                                                    }
-                                                }}
-                                                className="accent-gray-900"
-                                            />
-                                            <span className="text-sm text-gray-700">{label}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                                {waMode === 'platform' && (
-                                    <div className="ml-4 flex flex-col gap-1">
-                                        {[
-                                            ['WA_APPOINTMENTS', 'Appointments'],
-                                            ['WA_BILLING', 'Billing'],
-                                            ['WA_CASE_PAPERS', 'Case Papers'],
-                                            ['WA_PRESCRIPTION', 'Prescriptions'],
-                                            ['WA_MEDICINE_LIST', 'In-Clinic Medicine List'],
-                                        ].map(([mod, label]) => (
-                                            <label key={mod} className="flex items-center gap-2 cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={form.modules.includes(mod)}
-                                                    onChange={() => setForm(p => ({
-                                                        ...p,
-                                                        modules: p.modules.includes(mod)
-                                                            ? p.modules.filter(m => m !== mod)
-                                                            : [...p.modules, mod],
-                                                    }))}
-                                                    className="rounded"
-                                                />
-                                                <span className="text-sm text-gray-600">{label}</span>
-                                            </label>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
+                            {form.type !== 'PHARMACY' && (
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">In-Clinic Medicine</label>
                                 <label className="flex items-center gap-2 cursor-pointer">
@@ -372,6 +325,21 @@ export default function PlansTab() {
                                     <span className="text-sm text-gray-700">Enable in-clinic medicine option for this plan</span>
                                 </label>
                             </div>
+                            )}
+
+                            {form.type === 'PHARMACY' && form.modules.includes('MULTI_PHARMACY') && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Maximum Outlets</label>
+                                <input
+                                    type="number" min="1" step="1"
+                                    value={form.maxOutlets}
+                                    onChange={e => setForm(p => ({ ...p, maxOutlets: e.target.value }))}
+                                    placeholder="Leave blank for unlimited"
+                                    className="w-56 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                                />
+                                <p className="text-xs text-gray-400 mt-1">Number of pharmacy outlets (medical shops) allowed under one owner. Blank = unlimited.</p>
+                            </div>
+                            )}
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">

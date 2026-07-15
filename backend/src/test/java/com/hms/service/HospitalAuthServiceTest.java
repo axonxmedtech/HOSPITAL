@@ -17,6 +17,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -31,6 +33,8 @@ class HospitalAuthServiceTest {
     @Mock ReceptionistProfileRepository receptionistProfileRepository;
     @Mock PharmacistProfileRepository pharmacistProfileRepository;
     @Mock DoctorRepository doctorRepository;
+    @Mock com.hms.service.hospital.ot.OtPermissionService otPermissionService;
+    @Mock com.hms.security.HospitalWebSocketHandler webSocketHandler;
 
     @InjectMocks HospitalAuthService service;
 
@@ -105,6 +109,56 @@ class HospitalAuthServiceTest {
         assertThatThrownBy(() -> service.updateHospitalOperationsSettings("admin@test.com", dto))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("billingHandler");
+    }
+
+    private User nurseUser() {
+        User u = new User();
+        u.setId(50L);
+        u.setEmail("nurse@test.com");
+        u.setRole("NURSE");
+        u.setHospitalId(1L);
+        u.setPassword("ENC");
+        u.setIsActive(true);
+        return u;
+    }
+
+    private void primeNurseLogin(boolean separateNurseLoginOn) {
+        when(userRepository.findByEmail("nurse@test.com")).thenReturn(Optional.of(nurseUser()));
+        when(passwordEncoder.matches("pw", "ENC")).thenReturn(true);
+        Hospital h = new Hospital();
+        h.setId(1L);
+        h.setIsActive(true);
+        when(hospitalRepository.findById(1L)).thenReturn(Optional.of(h));
+        existingSetting.setSeparateNurseLogin(separateNurseLoginOn);
+        when(hospitalSettingRepository.findByHospital_Id(1L)).thenReturn(Optional.of(existingSetting));
+    }
+
+    @Test
+    void login_staffNurse_blockedWhenSeparateNurseLoginOff() {
+        primeNurseLogin(false);
+        com.hms.dto.LoginRequest req = new com.hms.dto.LoginRequest();
+        req.setEmail("nurse@test.com");
+        req.setPassword("pw");
+
+        assertThatThrownBy(() -> service.login(req))
+                .isInstanceOf(com.hms.exception.UnauthorizedException.class)
+                .hasMessageContaining("Nurse login is disabled");
+        verify(jwtUtil, never()).generateToken(any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void login_staffNurse_allowedWhenSeparateNurseLoginOn() {
+        primeNurseLogin(true);
+        when(jwtUtil.generateToken(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn("tok");
+        com.hms.dto.LoginRequest req = new com.hms.dto.LoginRequest();
+        req.setEmail("nurse@test.com");
+        req.setPassword("pw");
+
+        com.hms.dto.LoginResponse resp = service.login(req);
+        assertThat(resp.getToken()).isEqualTo("tok");
+        // The tenant type is minted into the token; a null Hospital.type defaults to HOSPITAL.
+        verify(jwtUtil).generateToken(eq(50L), eq("nurse@test.com"), eq("NURSE"), eq(1L), any(), any(),
+                eq("HOSPITAL"), any());
     }
 
     @Test

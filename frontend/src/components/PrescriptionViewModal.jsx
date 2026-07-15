@@ -1,3 +1,4 @@
+import { printHtml } from '../utils/printHtml';
 import React, { useEffect, useState } from 'react';
 import hospitalService from '../services/hospitalService';
 
@@ -69,12 +70,7 @@ const PrescriptionViewModal = ({ isOpen, onClose, patient }) => {
         <script>window.onload = function() { window.print(); };<\/script>
         </body></html>`;
 
-        const w = window.open('', '_blank');
-        if (w) {
-            w.document.open();
-            w.document.write(html);
-            w.document.close();
-        }
+        printHtml(html);
     };
 
     if (!isOpen) return null;

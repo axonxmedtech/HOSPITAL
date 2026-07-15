@@ -1,3 +1,4 @@
+import { printBlob } from '../../utils/printPdf';
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import hospitalService from '../../services/hospitalService';
@@ -12,6 +13,16 @@ import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import ProfileModal from '../../components/ProfileModal';
 import ConfirmationModal from '../../components/ConfirmationModal';
+import SurgeryRequestModal from './ot/SurgeryRequestModal';
+import otService from '../../services/otService';
+import formAccessService from '../../services/formAccessService';
+import VitalsPanel from './nurse/VitalsPanel';
+import NotesPanel from './nurse/NotesPanel';
+import InitialAssessmentPanel from './nurse/InitialAssessmentPanel';
+import VulnerabilityAssessmentPanel from './nurse/VulnerabilityAssessmentPanel';
+import SugarChartPanel from './nurse/SugarChartPanel';
+import ConsentFormsPanel from './nurse/ConsentFormsPanel';
+import MedicationPanel from './nurse/MedicationPanel';
 
 const IpdDetails = () => {
     const { id } = useParams();
@@ -23,6 +34,56 @@ const IpdDetails = () => {
     const isReceptionist = authService.isReceptionist();
     const isSoloDoctor = isDoctor && user?.receptionMode === 'SOLO';
     const { success, error: toastError } = useToast();
+    const [otSurgery, setOtSurgery] = useState(null);
+    const [otModalOpen, setOtModalOpen] = useState(false);
+    const hasOT = (user?.modules || []).includes('OT');
+
+    // Files & Access: which clinical forms this role may see / edit here.
+    const [tab, setTab] = useState('overview');
+    const [formVerdicts, setFormVerdicts] = useState({});
+    useEffect(() => {
+        let active = true;
+        formAccessService.effective()
+            .then((v) => { if (active) setFormVerdicts(v || {}); })
+            .catch(() => { if (active) setFormVerdicts({}); });
+        return () => { active = false; };
+    }, []);
+
+    const FORM_KEY_BY_TAB = {
+        vitals: 'VITALS',
+        medication: 'MEDICATION',
+        notes: 'NOTES',
+        assessment: 'INITIAL_ASSESSMENT',
+        vulnerability: 'VULNERABILITY_ASSESSMENT',
+        sugar: 'SUGAR_CHART',
+    };
+    const verdictFor = (tabId) => formVerdicts[FORM_KEY_BY_TAB[tabId]] || 'EDITABLE';
+    const admissionId = Number(id);
+
+    const tabs = [
+        { id: 'overview', label: 'Overview' },
+        ...(verdictFor('vitals') !== 'HIDDEN' ? [{ id: 'vitals', label: 'Vitals' }] : []),
+        ...(verdictFor('medication') !== 'HIDDEN' ? [{ id: 'medication', label: 'Medication' }] : []),
+        ...(verdictFor('notes') !== 'HIDDEN' ? [{ id: 'notes', label: 'Notes' }] : []),
+        ...(verdictFor('assessment') !== 'HIDDEN' ? [{ id: 'assessment', label: 'Initial Assessment' }] : []),
+        ...(verdictFor('vulnerability') !== 'HIDDEN' ? [{ id: 'vulnerability', label: 'Vulnerability Assessment' }] : []),
+        ...(verdictFor('sugar') !== 'HIDDEN' ? [{ id: 'sugar', label: 'Sugar Chart' }] : []),
+        ...(hasOT && otSurgery ? [{ id: 'consent', label: 'Consent Forms' }] : []),
+    ];
+    // If the active tab got hidden by a Files & Access change, fall back to Overview.
+    useEffect(() => {
+        if (!tabs.some((t) => t.id === tab)) setTab('overview');
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [formVerdicts, otSurgery, tab]);
+
+    useEffect(() => {
+        if (!hasOT || !isDoctor || !id) return;
+        let active = true;
+        otService.getActiveForAdmission(id)
+            .then((s) => { if (active) setOtSurgery(s || null); })
+            .catch(() => { if (active) setOtSurgery(null); });
+        return () => { active = false; };
+    }, [hasOT, isDoctor, id, otModalOpen]);
 
     const parseError = (err, fallback) => {
         if (!err) return fallback;
@@ -138,7 +199,10 @@ const IpdDetails = () => {
 
     const [followupModal, setFollowupModal] = useState({ isOpen: false, diagnosis: '', notes: '', saving: false });
     const [dischargeModal, setDischargeModal] = useState({ isOpen: false, finalDiagnosis: '', treatmentGiven: '', dischargeNotes: '', followUpDate: '', saving: false });
-    const [medicineModal, setMedicineModal] = useState({ isOpen: false, medicineId: null, medicineName: '', type: 'TABLET', route: 'ORAL', dose: '', frequency: '', durationDays: 0, startDate: '', saving: false });
+    // Local calendar date as YYYY-MM-DD (en-CA), matching the <input type="date"> value and the
+    // start-date validation. Prescriptions usually start the same day, so default to today.
+    const todayStr = () => new Date().toLocaleDateString('en-CA');
+    const [medicineModal, setMedicineModal] = useState({ isOpen: false, medicineId: null, medicineName: '', type: 'TABLET', route: 'ORAL', dose: '', frequency: '', durationDays: 0, startDate: todayStr(), saving: false });
     const [medSearchResults, setMedSearchResults] = useState([]);
 
     const [inventory, setInventory] = useState([]);
@@ -316,7 +380,7 @@ const IpdDetails = () => {
     };
 
     const onAddMedicine = () => {
-        setMedicineModal({ isOpen: true, medicineName: '', type: 'TABLET', route: 'ORAL', dose: '', frequency: '', durationDays: 0, startDate: '', saving: false });
+        setMedicineModal({ isOpen: true, medicineName: '', type: 'TABLET', route: 'ORAL', dose: '', frequency: '', durationDays: 0, startDate: todayStr(), saving: false });
     };
 
     const onStopMedicine = (prescriptionId) => {
@@ -406,36 +470,15 @@ const IpdDetails = () => {
     const handlePrintIpdBill = async () => {
         if (printingBill) return;
         setPrintingBill(true);
-        
-        // Pre-open the window synchronously to bypass popup blocker
-        const printWindow = window.open('', '_blank');
-        if (printWindow) {
-            printWindow.document.write('<p style="font-family: sans-serif; text-align: center; margin-top: 20px;">Generating bill PDF, please wait...</p>');
-        }
-        
         try {
             const billData = await hospitalService.getIpdBill(id);
             if (!billData || !billData.billingId) {
                 throw new Error("No billing ID found for this IPD admission");
             }
-            
             const blob = await hospitalService.downloadReceipt(billData.billingId);
-            const url = window.URL.createObjectURL(blob);
-            if (printWindow) {
-                printWindow.document.open();
-                printWindow.document.write(
-                    '<!DOCTYPE html><html><head><title>Bill</title></head>' +
-                    '<body style="margin:0;padding:0;">' +
-                    '<embed type="application/pdf" src="' + url + '" style="position:fixed;top:0;left:0;width:100%;height:100%;border:none;">' +
-                    '</body></html>'
-                );
-                printWindow.document.close();
-            }
+            printBlob(blob); // print on this page (hidden iframe), not a new tab
         } catch (err) {
             console.error(err);
-            if (printWindow) {
-                printWindow.close();
-            }
             toastError(err.message || 'Failed to load bill for printing');
         } finally {
             setPrintingBill(false);
@@ -486,10 +529,62 @@ const IpdDetails = () => {
                     Back
                 </button>
             </div>
-            <PageHeader title={`IPD ${data.ipdNumber || ''}`} subtitle={`${data.patient?.name || ''} • ${data.patient?.age || ''} • ${data.patient?.gender || ''}`} />
+            {/* Case header — the only top-right actions are Discharge and Create Surgery Request. */}
+            <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                    <PageHeader title={`IPD ${data.ipdNumber || ''}`} subtitle={`${data.patient?.name || ''} • ${data.patient?.age || ''} • ${data.patient?.gender || ''}`} />
+                </div>
+                <div className="flex items-center gap-2 shrink-0 pt-1">
+                    {hasOT && isDoctor && !otSurgery && (
+                        <button
+                            onClick={() => setOtModalOpen(true)}
+                            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 whitespace-nowrap"
+                        >
+                            Create Surgery Request
+                        </button>
+                    )}
+                    {isDoctor && data.status === 'ADMITTED' && (
+                        <button
+                            onClick={onPlanDischarge}
+                            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-yellow-600 hover:bg-yellow-700 whitespace-nowrap"
+                        >
+                            Plan Discharge
+                        </button>
+                    )}
+                    {(isReceptionist || isSoloDoctor || isAdmin) && data.status === 'DISCHARGE_PLANNED' && (
+                        <button
+                            onClick={onConfirmDischarge}
+                            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-green-600 hover:bg-green-700 whitespace-nowrap"
+                        >
+                            Confirm Discharge
+                        </button>
+                    )}
+                </div>
+            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
+            {/* Sub-tabs — same set the nurse sees; form tabs respect Files & Access. */}
+            <div className="mt-4 border-b border-gray-200 flex gap-1 overflow-x-auto">
+                {tabs.map((t) => (
+                    <button
+                        key={t.id}
+                        onClick={() => setTab(t.id)}
+                        className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap ${tab === t.id ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                    >
+                        {t.label}
+                    </button>
+                ))}
+            </div>
+
+            {tab === 'vitals' && <div className="mt-4"><VitalsPanel admissionId={admissionId} readOnly={verdictFor('vitals') === 'READ_ONLY'} /></div>}
+            {tab === 'notes' && <div className="mt-4"><NotesPanel admissionId={admissionId} readOnly={verdictFor('notes') === 'READ_ONLY'} /></div>}
+            {tab === 'assessment' && <div className="mt-4"><InitialAssessmentPanel admissionId={admissionId} readOnly={verdictFor('assessment') === 'READ_ONLY'} /></div>}
+            {tab === 'vulnerability' && <div className="mt-4"><VulnerabilityAssessmentPanel admissionId={admissionId} readOnly={verdictFor('vulnerability') === 'READ_ONLY'} /></div>}
+            {tab === 'sugar' && <div className="mt-4"><SugarChartPanel admissionId={admissionId} readOnly={verdictFor('sugar') === 'READ_ONLY'} /></div>}
+            {tab === 'consent' && <div className="mt-4"><ConsentFormsPanel admissionId={admissionId} formVerdicts={formVerdicts} /></div>}
+
+            <div className={(tab === 'overview' || tab === 'medication') ? 'grid grid-cols-1 md:grid-cols-3 gap-6 mt-4' : 'hidden'}>
                 <div className="col-span-2 bg-white border rounded p-4">
+                    {tab === 'overview' && (<>
                     <h3 className="font-semibold mb-2">Admission Info</h3>
                     <div className="grid grid-cols-2 gap-2 text-sm">
                         <div><strong>Admitted:</strong> {data.admission?.admissionDateTime ? new Date(data.admission.admissionDateTime).toLocaleString() : '-'}</div>
@@ -522,11 +617,12 @@ const IpdDetails = () => {
                         <div className="text-sm text-gray-500">No follow-ups recorded.</div>
                     )}
 
-                    <div className="mt-3">
+                    <div className="mt-3 flex items-center gap-2">
                         {isDoctor && data.status !== 'DISCHARGE_PLANNED' && data.status !== 'DISCHARGED' && (
                             <button className="px-3 py-1 bg-green-600 text-white rounded" onClick={onAddFollowUp}>+ Add Follow-up</button>
                         )}
                     </div>
+                    </>)}
 
                     {followupModal.isOpen && (
                         <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
@@ -677,9 +773,10 @@ const IpdDetails = () => {
                                                     if (!medicineModal.type) return toastError('Type is required');
                                                     if (!medicineModal.route) return toastError('Route is required');
                                                     if (!medicineModal.startDate) return toastError('Start date is required');
-                                                    
-                                                    const today = new Date().toISOString().split('T')[0];
-                                                    if (medicineModal.startDate < today) {
+
+                                                    // Compare against local today (same basis as the default + the date input),
+                                                    // so a same-day prescription is never wrongly flagged as "in the past".
+                                                    if (medicineModal.startDate < todayStr()) {
                                                         return toastError('Prescription start date cannot be in the past');
                                                     }
                                                     if (!medicineModal.durationDays || medicineModal.durationDays <= 0) {
@@ -1054,35 +1151,45 @@ const IpdDetails = () => {
                             </div>
                         )}
 
-                    <hr className="my-4" />
-
+                    {tab === 'medication' && (<>
                     <h3 className="font-semibold mb-2">Current Medicines & Items</h3>
 
-                    {/* Prescribed Medicines */}
-                    {data.activePrescriptions && data.activePrescriptions.length > 0 && (
-                        <>
-                            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1">Prescribed Medicines</p>
-                            <ul className="space-y-2 mb-3">
-                                {data.activePrescriptions.map((p, i) => (
-                                    <li key={i} className="p-2 border border-blue-100 rounded bg-blue-50 flex justify-between items-center">
-                                        <div>
-                                            <div className="font-medium">{p.name}</div>
-                                            <div className="text-xs text-gray-600">{p.type} • {p.route} • {p.frequency}</div>
-                                        </div>
-                                        <div>
-                                            {isDoctor ? (
-                                                <div className="flex gap-2">
-                                                    <button className="px-2 py-1 bg-yellow-500 text-white rounded text-xs" onClick={() => onStopMedicine(p.id)}>Stop</button>
+                    {/* Prescribed Medicines — full history; stopped kept & struck-through */}
+                    {(() => {
+                        const rxList = data.allPrescriptions || data.activePrescriptions || [];
+                        if (rxList.length === 0) return null;
+                        return (
+                            <>
+                                <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1">Prescribed Medicines</p>
+                                <ul className="space-y-2 mb-3">
+                                    {rxList.map((p, i) => {
+                                        const st = (p.status || '').toUpperCase();
+                                        const stopped = st === 'STOPPED';
+                                        const completed = st === 'COMPLETED';
+                                        return (
+                                            <li key={i} className={`p-2 border rounded flex justify-between items-center ${stopped ? 'border-red-100 bg-red-50' : completed ? 'border-gray-200 bg-gray-50' : 'border-blue-100 bg-blue-50'}`}>
+                                                <div>
+                                                    <div className={`font-medium ${stopped ? 'line-through text-gray-500' : ''}`}>{p.name}</div>
+                                                    <div className="text-xs text-gray-600">{p.type} • {p.route} • {p.frequency}</div>
                                                 </div>
-                                            ) : (
-                                                <div className="text-xs text-gray-500">{p.status}</div>
-                                            )}
-                                        </div>
-                                    </li>
-                                ))}
-                            </ul>
-                        </>
-                    )}
+                                                <div>
+                                                    {stopped ? (
+                                                        <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-red-100 text-red-700">STOPPED</span>
+                                                    ) : completed ? (
+                                                        <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-gray-200 text-gray-600">COMPLETED</span>
+                                                    ) : isDoctor ? (
+                                                        <button className="px-2 py-1 bg-yellow-500 text-white rounded text-xs" onClick={() => onStopMedicine(p.id)}>Stop</button>
+                                                    ) : (
+                                                        <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-green-100 text-green-700">ACTIVE</span>
+                                                    )}
+                                                </div>
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            </>
+                        );
+                    })()}
 
                     {/* Administered Stock Items */}
                     {data.administeredItems && data.administeredItems.length > 0 && (
@@ -1105,9 +1212,9 @@ const IpdDetails = () => {
                     )}
 
                     {/* Empty state — no prescriptions AND no administered items */}
-                    {(!data.activePrescriptions || data.activePrescriptions.length === 0) &&
+                    {(!(data.allPrescriptions || data.activePrescriptions) || (data.allPrescriptions || data.activePrescriptions).length === 0) &&
                      (!data.administeredItems || data.administeredItems.length === 0) && (
-                        <div className="text-sm text-gray-500">No active medicines or administered items.</div>
+                        <div className="text-sm text-gray-500">No medicines or administered items.</div>
                     )}
 
                     {isDoctor && data.status !== 'DISCHARGE_PLANNED' && data.status !== 'DISCHARGED' && (
@@ -1115,9 +1222,29 @@ const IpdDetails = () => {
                             <button className="px-3 py-1 bg-blue-600 text-white rounded" onClick={onAddMedicine}>+ Add Medicine</button>
                         </div>
                     )}
+
+                    {/* Medication Administration Record — read-only here; nurses record it. */}
+                    <hr className="my-4" />
+                    <h3 className="font-semibold mb-2">Medication Administration History (MAR)</h3>
+                    <MedicationPanel admissionId={admissionId} readOnly />
+                    </>)}
                 </div>
 
                 <aside className="bg-white border rounded p-4">
+                    {/* Discharge + Create Surgery Request now live in the case header (top right). */}
+                    {hasOT && otSurgery && (
+                        <>
+                            <h3 className="font-semibold mb-2">Operation Theatre</h3>
+                            <div className="text-sm space-y-1">
+                                <div className="font-medium text-gray-800">{otSurgery.procedureName}</div>
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700">
+                                    Surgery: {otSurgery.status?.replace('_', ' ')}
+                                </span>
+                            </div>
+                            <hr className="my-4" />
+                        </>
+                    )}
+
                     <h3 className="font-semibold mb-2">Billing</h3>
                     {canManageBilling ? (
                         <div>
@@ -1132,8 +1259,8 @@ const IpdDetails = () => {
                             )}
                             <div className="mt-3 flex gap-2">
                                 <button className="px-3 py-1 bg-green-600 text-white rounded" onClick={openBillModal}>Take Payment</button>
-                                <button 
-                                    className="px-3 py-1 bg-gray-600 text-white rounded disabled:opacity-50" 
+                                <button
+                                    className="px-3 py-1 bg-gray-600 text-white rounded disabled:opacity-50"
                                     onClick={handlePrintIpdBill}
                                     disabled={printingBill}
                                 >
@@ -1144,20 +1271,17 @@ const IpdDetails = () => {
                     ) : (
                         <div className="text-sm text-gray-500">Billing is not visible to your role.</div>
                     )}
-
-                    <hr className="my-4" />
-
-                    <h3 className="font-semibold mb-2">Discharge</h3>
-                    {isDoctor && data.status === 'ADMITTED' && (
-                        <button className="px-3 py-1 bg-yellow-600 text-white rounded" onClick={onPlanDischarge}>📝 Plan Discharge</button>
-                    )}
-                    {(isReceptionist || isSoloDoctor || isAdmin) && data.status === 'DISCHARGE_PLANNED' && (
-                        <div>
-                            <button className="px-3 py-1 bg-green-600 text-white rounded" onClick={onConfirmDischarge}>✅ Confirm Discharge</button>
-                        </div>
-                    )}
                 </aside>
             </div>
+
+            {/* Surgery Request Modal — top level so it opens from any sub-tab (its trigger is the header button). */}
+            {otModalOpen && (
+                <SurgeryRequestModal
+                    admissionId={id}
+                    onClose={() => setOtModalOpen(false)}
+                    onCreated={() => {}}
+                />
+            )}
 
             {/* Discharge Modal */}
             {dischargeModal.isOpen && (

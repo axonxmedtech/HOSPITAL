@@ -105,10 +105,15 @@ public class Billing {
     private BigDecimal amount;
 
     /**
-     * Payment status (PAID, PENDING)
+     * Payment status: PENDING (nothing collected), PARTIAL (a balance is owed), PAID (ledger
+     * covers the total), CLOSED (written off / cancelled).
+     *
+     * Defaults to PENDING, never PAID: a bill must be paid for, not assumed paid. The old
+     * default of "PAID" meant any creator that forgot to set a status produced a silently free
+     * bill. It is normally derived from the payments ledger — see BillingService.recalculateTotal.
      */
     @Column(nullable = false, length = 20)
-    private String paymentStatus = "PAID";
+    private String paymentStatus = "PENDING";
 
     /**
      * Payment Method (Cash, Online, Card, etc.)

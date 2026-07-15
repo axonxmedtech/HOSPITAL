@@ -9,6 +9,7 @@ import authService from '../../../services/authService';
 const BillingCounterView = ({ initialData }) => {
     const user = authService.getCurrentUser();
     const isStandalonePharmacy = user?.modules?.includes('PHARMACY') && !user?.modules?.includes('OPD');
+    const barcodeEnabled = user?.barcodeEnabled !== false;
 
     const toast = useToast();
     const [barcodeMode, setBarcodeMode] = useState(false);
@@ -403,12 +404,14 @@ const BillingCounterView = ({ initialData }) => {
                                 Pharmacy Sales Billing Grid
                              </h3>
                              <div className="flex items-center gap-4">
+                                 {barcodeEnabled && (
                                  <label className="flex items-center gap-2 cursor-pointer select-none">
                                      <div className={`w-8 h-4 rounded-full transition-colors relative ${barcodeMode ? 'bg-green-500' : 'bg-gray-300'}`} onClick={() => setBarcodeMode(!barcodeMode)}>
                                          <div className={`absolute top-0.5 left-0.5 bg-white w-3 h-3 rounded-full transition-transform ${barcodeMode ? 'translate-x-4' : ''}`}></div>
                                      </div>
                                      <span className="text-xs font-bold text-gray-600">Barcode Mode</span>
                                  </label>
+                                 )}
                                  <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold">Total Items: {billItems.length}</span>
                              </div>
                         </div>

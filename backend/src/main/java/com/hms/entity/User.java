@@ -1,5 +1,6 @@
 package com.hms.entity;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -55,9 +56,9 @@ public class User {
         if (this.publicId == null) {
             this.publicId = java.util.UUID.randomUUID().toString();
         }
-        // customId for RECEPTIONIST is set by ReceptionistService after save (sequential)
-        // Other roles retain random generation for now
-        if (this.customId == null && !"RECEPTIONIST".equals(this.role)) {
+        // customId for RECEPTIONIST and NURSE is set by their service after save
+        // (sequential, e.g. REC1 / NRS1). Other roles retain random generation for now.
+        if (this.customId == null && !"RECEPTIONIST".equals(this.role) && !"NURSE".equals(this.role)) {
             String prefix = "USR";
             if ("HOSPITAL_ADMIN".equals(this.role))
                 prefix = "ADM";
@@ -77,9 +78,14 @@ public class User {
     private String email;
 
     /**
-     * Encrypted password
+     * Encrypted password.
+     *
+     * WRITE_ONLY: still bound from an inbound request body, but never serialised back out.
+     * Several endpoints (e.g. POST /hospital/nurses) return the saved User entity directly,
+     * which put the BCrypt hash in the response body.
      */
     @Column(nullable = false)
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
 
     /**
@@ -103,6 +109,14 @@ public class User {
      */
     @Column(name = "hospital_id")
     private Long hospitalId;
+
+    /**
+     * Branch ID for Multi Pharmacy tenants — the pharmacy_branch a PHARMACIST login
+     * belongs to. NULL for all non-branch users (admins, single-shop pharmacists,
+     * doctors, etc.).
+     */
+    @Column(name = "branch_id")
+    private Long branchId;
 
     /**
      * Soft delete flag
@@ -187,6 +201,14 @@ public class User {
 
     public void setHospitalId(Long hospitalId) {
         this.hospitalId = hospitalId;
+    }
+
+    public Long getBranchId() {
+        return branchId;
+    }
+
+    public void setBranchId(Long branchId) {
+        this.branchId = branchId;
     }
 
     public LocalDateTime getCreatedAt() {

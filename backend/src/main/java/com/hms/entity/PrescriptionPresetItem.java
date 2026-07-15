@@ -39,6 +39,17 @@ public class PrescriptionPresetItem {
     @Column(length = 200)
     private String instructions;
 
+    /**
+     * IN_CLINIC presets only: the stock medicine to administer and how many units. The id keeps
+     * the link to Medicine Inventory so applying a preset still deducts stock correctly.
+     * Null for PRESCRIPTION presets, which are free-text by name.
+     */
+    @Column(name = "medicine_id")
+    private Long medicineId;
+
+    @Column(name = "quantity")
+    private Integer quantity;
+
     @Column(name = "sort_order", nullable = false)
     private Integer sortOrder = 0;
 }

@@ -56,7 +56,7 @@ class PrescriptionPresetServiceTest {
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
         PrescriptionPreset p1 = new PrescriptionPreset();
         p1.setName("Fever Protocol");
-        when(presetRepository.findByHospitalIdAndIsActiveTrueOrderByDisplayOrderAsc(1L))
+        when(presetRepository.findByHospitalIdAndPresetTypeAndIsActiveTrueOrderByDisplayOrderAsc(1L, "PRESCRIPTION"))
                 .thenReturn(List.of(p1));
 
         List<PrescriptionPreset> result = service.listPresets();
@@ -95,7 +95,7 @@ class PrescriptionPresetServiceTest {
     @Test
     void createPreset_valid_savesPresetAndItemsWithHospitalIdAndNextDisplayOrder() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
-        when(presetRepository.findByHospitalIdAndIsActiveTrueOrderByDisplayOrderAsc(1L))
+        when(presetRepository.findByHospitalIdAndPresetTypeAndIsActiveTrueOrderByDisplayOrderAsc(1L, "PRESCRIPTION"))
                 .thenReturn(List.of(new PrescriptionPreset())); // 1 existing
         when(presetRepository.save(any(PrescriptionPreset.class))).thenAnswer(inv -> {
             PrescriptionPreset p = inv.getArgument(0);

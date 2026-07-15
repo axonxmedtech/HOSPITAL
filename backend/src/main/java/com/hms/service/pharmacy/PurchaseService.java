@@ -40,6 +40,9 @@ public class PurchaseService {
     @Autowired
     private HospitalWebSocketHandler webSocketHandler;
 
+    @Autowired
+    private MedicineMasterRepository medicineMasterRepository;
+
     @Transactional
     public PurchaseInvoice createPurchase(PurchaseRequest req) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
@@ -60,6 +63,7 @@ public class PurchaseService {
     private PurchaseInvoice buildInvoiceHeader(PurchaseRequest req, Long hospitalId) {
         PurchaseInvoice invoice = new PurchaseInvoice();
         invoice.setHospitalId(hospitalId);
+        invoice.setBranchId(securityHelper.getCurrentBranchId());
         invoice.setSupplierId(req.getSupplierId());
         invoice.setInvoiceNumber(req.getInvoiceNumber());
         invoice.setInvoiceDate(req.getInvoiceDate());
@@ -127,7 +131,7 @@ public class PurchaseService {
 
     private PurchaseInvoiceItem buildInvoiceItem(PurchaseRequest.PurchaseItemRequest itemReq, PurchaseInvoice invoice) {
         PurchaseInvoiceItem item = new PurchaseInvoiceItem();
-        item.setMedicineId(itemReq.getMedicineId());
+        item.setMedicineId(resolveMedicineId(itemReq, invoice.getHospitalId()));
         item.setBatchNumber(itemReq.getBatchNumber());
         item.setExpiryDate(itemReq.getExpiryDate());
         item.setQuantity(itemReq.getQuantity());
@@ -141,6 +145,39 @@ public class PurchaseService {
         return item;
     }
 
+    /**
+     * Resolve the local MedicineMaster id for a purchase line. If the client sent an
+     * explicit medicineId (existing local medicine), use it. Otherwise find-or-create
+     * a MedicineMaster for this hospital from the platform-sourced name/type plus the
+     * free-text manufacturer — the standalone pharmacy has no Medicine Master tab, so
+     * medicines enter the catalog through purchases.
+     */
+    private Long resolveMedicineId(PurchaseRequest.PurchaseItemRequest itemReq, Long hospitalId) {
+        if (itemReq.getMedicineId() != null) {
+            return itemReq.getMedicineId();
+        }
+        String name = itemReq.getMedicineName() != null ? itemReq.getMedicineName().trim() : null;
+        if (name == null || name.isEmpty()) {
+            throw new IllegalArgumentException("Medicine name is required");
+        }
+        return medicineMasterRepository.findFirstScopedByName(hospitalId, securityHelper.getCurrentBranchId(), name)
+                .map(MedicineMaster::getId)
+                .orElseGet(() -> {
+                    MedicineMaster m = new MedicineMaster();
+                    m.setHospitalId(hospitalId);
+                    m.setBranchId(securityHelper.getCurrentBranchId());
+                    m.setMedicineName(name);
+                    m.setMedicineType(itemReq.getMedicineType());
+                    m.setManufacturerName(itemReq.getManufacturerName());
+                    if (itemReq.getGstPercentage() != null) {
+                        m.setGstPercentage(itemReq.getGstPercentage());
+                    }
+                    MedicineMaster saved = medicineMasterRepository.save(m);
+                    saved.setMedicineCode("MED" + (1000 + saved.getId()));
+                    return medicineMasterRepository.save(saved).getId();
+                });
+    }
+
     private void broadcastRefresh(Long hospitalId) {
         try {
             webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
@@ -152,8 +189,8 @@ public class PurchaseService {
     @Transactional
     public PurchaseInvoice postInvoice(Long id) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
-        PurchaseInvoice invoice = invoiceRepository.findByIdAndHospitalId(id, hospitalId)
-                .orElseThrow(() -> new RuntimeException("Invoice not found"));
+        PurchaseInvoice invoice = invoiceRepository.findByIdScoped(id, hospitalId, securityHelper.getCurrentBranchId())
+                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found"));
 
         if ("POSTED".equalsIgnoreCase(invoice.getPostingStatus())) {
             throw new IllegalArgumentException("Invoice already posted");
@@ -173,7 +210,7 @@ public class PurchaseService {
         for (PurchaseInvoiceItem item : invoice.getItems()) {
             // 1. Find or create batch with Pessimistic Lock
             MedicineBatch batch = batchRepository.findByHospitalIdAndMedicineIdAndBatchNumberForUpdate(
-                    hospitalId, item.getMedicineId(), item.getBatchNumber())
+                    hospitalId, invoice.getBranchId(), item.getMedicineId(), item.getBatchNumber())
                     .orElse(new MedicineBatch());
 
             BigDecimal qtyBefore = batch.getCurrentQuantity() != null ? batch.getCurrentQuantity() : BigDecimal.ZERO;
@@ -183,6 +220,7 @@ public class PurchaseService {
 
             if (batch.getId() == null) {
                 batch.setHospitalId(hospitalId);
+                batch.setBranchId(invoice.getBranchId());
                 batch.setMedicineId(item.getMedicineId());
                 batch.setBatchNumber(item.getBatchNumber());
                 batch.setCurrentQuantity(totalInward);
@@ -205,6 +243,7 @@ public class PurchaseService {
             // 2. Record Transaction
             InventoryTransaction tx = new InventoryTransaction();
             tx.setHospitalId(hospitalId);
+            tx.setBranchId(invoice.getBranchId());
             tx.setMedicineBatchId(savedBatch.getId());
             tx.setTransactionType("PURCHASE");
             tx.setQuantity(totalInward);
@@ -218,12 +257,12 @@ public class PurchaseService {
     }
 
     public Page<PurchaseInvoice> listInvoices(Pageable pageable) {
-        return invoiceRepository.findByHospitalIdOrderByCreatedAtDesc(securityHelper.getCurrentHospitalId(), pageable);
+        return invoiceRepository.findScopedHistory(securityHelper.getCurrentHospitalId(), securityHelper.getCurrentBranchId(), pageable);
     }
 
     public PurchaseInvoice getInvoice(Long id) {
-        return invoiceRepository.findByIdAndHospitalId(id, securityHelper.getCurrentHospitalId())
-                .orElseThrow(() -> new RuntimeException("Invoice not found"));
+        return invoiceRepository.findByIdScoped(id, securityHelper.getCurrentHospitalId(), securityHelper.getCurrentBranchId())
+                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found"));
     }
 }
 

@@ -44,7 +44,7 @@ class PrescriptionPresetControllerTest {
     @Test
     @WithMockUser(roles = "HOSPITAL_ADMIN")
     void listPresets_returnsOkForHospitalAdmin() throws Exception {
-        when(presetService.listPresets()).thenReturn(Collections.emptyList());
+        when(presetService.listPresets(any())).thenReturn(Collections.emptyList());
 
         mockMvc.perform(get("/hospital/prescription-presets").contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk());
@@ -53,12 +53,13 @@ class PrescriptionPresetControllerTest {
     @Test
     @WithMockUser(roles = "DOCTOR")
     void listPresets_returnsOkForDoctor() throws Exception {
-        when(presetService.listPresets()).thenReturn(Collections.emptyList());
+        when(presetService.listPresets(any())).thenReturn(Collections.emptyList());
 
         mockMvc.perform(get("/hospital/prescription-presets").contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk());
     }
 
+    /** Presets — prescription and in-clinic alike — are clinical, so reception has no access. */
     @Test
     @WithMockUser(roles = "RECEPTIONIST")
     void listPresets_returnsForbiddenForReceptionist() throws Exception {
@@ -73,7 +74,7 @@ class PrescriptionPresetControllerTest {
         saved.setId(1L);
         saved.setName("Fever Protocol");
         saved.setDisplayOrder(0);
-        when(presetService.createPreset(eq("Fever Protocol"), anyList(), any())).thenReturn(saved);
+        when(presetService.createPreset(eq("Fever Protocol"), anyList(), any(), any())).thenReturn(saved);
         when(presetService.getItems(1L)).thenReturn(Collections.emptyList());
 
         mockMvc.perform(post("/hospital/prescription-presets")
@@ -87,7 +88,7 @@ class PrescriptionPresetControllerTest {
     @Test
     @WithMockUser(roles = "DOCTOR")
     void createPreset_returnsBadRequestWhenServiceThrows() throws Exception {
-        when(presetService.createPreset(anyString(), anyList(), any()))
+        when(presetService.createPreset(anyString(), anyList(), any(), any()))
                 .thenThrow(new IllegalArgumentException("Preset name is required"));
 
         mockMvc.perform(post("/hospital/prescription-presets")
@@ -105,6 +106,28 @@ class PrescriptionPresetControllerTest {
                         .content("{\"name\":\"Fever Protocol\",\"items\":[]}")
                         .with(csrf()))
                 .andExpect(status().isForbidden());
+    }
+
+    /** A doctor builds in-clinic presets from inside the consultation (stock medicine + qty). */
+    @Test
+    @WithMockUser(roles = "DOCTOR")
+    void createPreset_savesInClinicPresetForDoctor() throws Exception {
+        PrescriptionPreset saved = new PrescriptionPreset();
+        saved.setId(2L);
+        saved.setName("Dressing Kit");
+        saved.setPresetType(PrescriptionPreset.IN_CLINIC);
+        saved.setDisplayOrder(0);
+        when(presetService.createPreset(eq("Dressing Kit"), anyList(), any(), eq("IN_CLINIC"))).thenReturn(saved);
+        when(presetService.getItems(2L)).thenReturn(Collections.emptyList());
+
+        mockMvc.perform(post("/hospital/prescription-presets")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Dressing Kit\",\"presetType\":\"IN_CLINIC\","
+                                + "\"items\":[{\"medicineId\":7,\"medicineName\":\"Betadine\",\"quantity\":2,"
+                                + "\"dosage\":\"10ml\",\"frequency\":\"1-0-1\",\"duration\":\"5 Days\"}]}")
+                        .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.presetType").value("IN_CLINIC"));
     }
 
     @Test

@@ -57,11 +57,32 @@ public class JwtUtil {
      */
     public String generateToken(Long userId, String email, String role, Long hospitalId,
             java.util.List<String> modules) {
+        return generateToken(userId, email, role, hospitalId, modules, null, null);
+    }
+
+    public String generateToken(Long userId, String email, String role, Long hospitalId,
+            java.util.List<String> modules, Long branchId) {
+        return generateToken(userId, email, role, hospitalId, modules, branchId, null);
+    }
+
+    public String generateToken(Long userId, String email, String role, Long hospitalId,
+            java.util.List<String> modules, Long branchId, String hospitalType) {
+        return generateToken(userId, email, role, hospitalId, modules, branchId, hospitalType, null);
+    }
+
+    public String generateToken(Long userId, String email, String role, Long hospitalId,
+            java.util.List<String> modules, Long branchId, String hospitalType,
+            java.util.Collection<String> permissions) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", userId);
         claims.put("role", role);
         claims.put("hospitalId", hospitalId); // null for Super Admin
         claims.put("modules", modules);
+        claims.put("branchId", branchId); // Multi Pharmacy branch login; null otherwise
+        claims.put("hospitalType", hospitalType); // HOSPITAL | CLINIC | PHARMACY; null for Super Admin
+        // OT permissions, minted at login. Absent for non-hospital tenants; a token issued
+        // before this claim existed falls back to the role defaults in the filter.
+        claims.put("permissions", permissions == null ? null : new java.util.ArrayList<>(permissions));
 
         return Jwts.builder()
                 .claims(claims)
@@ -126,6 +147,35 @@ public class JwtUtil {
     public Long extractHospitalId(String token) {
         Object hospitalId = extractClaims(token).get("hospitalId");
         return hospitalId != null ? ((Number) hospitalId).longValue() : null;
+    }
+
+    /**
+     * OT permissions carried by the token. Null (not empty) when the claim is absent,
+     * which distinguishes "a token minted before permissions existed" from "this user
+     * was granted nothing" -- the filter treats the two differently.
+     */
+    @SuppressWarnings("unchecked")
+    public java.util.List<String> extractPermissions(String token) {
+        Object permissions = extractClaims(token).get("permissions");
+        return permissions instanceof java.util.List ? (java.util.List<String>) permissions : null;
+    }
+
+    /**
+     * Tenant type of the logged-in session: HOSPITAL, CLINIC or PHARMACY.
+     * Null for Super Admin, and null for tokens issued before this claim existed —
+     * callers must treat null as "unknown", never as a particular type.
+     */
+    public String extractHospitalType(String token) {
+        Object type = extractClaims(token).get("hospitalType");
+        return type != null ? type.toString() : null;
+    }
+
+    /**
+     * Extract the Multi Pharmacy branch ID from the token. Null for non-branch users.
+     */
+    public Long extractBranchId(String token) {
+        Object branchId = extractClaims(token).get("branchId");
+        return branchId != null ? ((Number) branchId).longValue() : null;
     }
 
     /**

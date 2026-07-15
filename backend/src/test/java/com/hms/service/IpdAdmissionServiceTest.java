@@ -27,6 +27,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -57,6 +58,8 @@ class IpdAdmissionServiceTest {
     @Mock HospitalInventoryRepository hospitalInventoryRepository;
     @Mock HospitalInventoryService hospitalInventoryService;
     @Mock HospitalWebSocketHandler webSocketHandler;
+    @Mock com.hms.service.hospital.PatientAssignmentService patientAssignmentService;
+    @Mock com.hms.service.hospital.BedStatusService bedStatusService;
 
     @InjectMocks
     IpdAdmissionService service;
@@ -101,6 +104,12 @@ class IpdAdmissionServiceTest {
         when(bedRepository.findById(2L)).thenReturn(Optional.of(bed));
         when(ipdAdmissionRepository.findMaxIpdSequence()).thenReturn(0);
 
+        Bed occupiedBed = new Bed();
+        occupiedBed.setBedId(2L);
+        occupiedBed.setStatus("occupied");
+        when(bedStatusService.change(eq(2L), eq(com.hms.entity.BedStatus.OCCUPIED), any()))
+                .thenReturn(occupiedBed);
+
         IpdAdmission savedIpd = new IpdAdmission();
         savedIpd.setId(10L);
         savedIpd.setIpdNumber("IPD-1");
@@ -114,7 +123,10 @@ class IpdAdmissionServiceTest {
         when(ipdAdmissionRepository.save(any(IpdAdmission.class))).thenReturn(savedIpd);
         when(billingRepository.save(any(Billing.class))).thenAnswer(i -> i.getArguments()[0]);
         when(ipdBedHistoryRepository.save(any(com.hms.entity.IpdBedHistory.class))).thenAnswer(i -> i.getArguments()[0]);
-        when(wardRepository.findById(1L)).thenReturn(Optional.empty());
+        com.hms.entity.Ward ward = new com.hms.entity.Ward();
+        ward.setWardId(1L);
+        ward.setInchargeNurseId(99L);
+        when(wardRepository.findById(1L)).thenReturn(Optional.of(ward));
         when(appointmentRepository.findByPatientIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(any(), any()))
                 .thenReturn(List.of());
 
@@ -138,9 +150,11 @@ class IpdAdmissionServiceTest {
     @Test
     void planDischarge_whenPatientNotAdmitted_throwsRuntimeException() {
         when(securityHelper.getCurrentUserRole()).thenReturn("DOCTOR");
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
 
         IpdAdmission ipd = new IpdAdmission();
         ipd.setId(1L);
+        ipd.setHospitalId(1L); // must belong to the caller's hospital to reach the status check
         ipd.setStatus("DISCHARGED");
 
         when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(ipd));
@@ -156,6 +170,7 @@ class IpdAdmissionServiceTest {
         
         IpdAdmission ipd = new IpdAdmission();
         ipd.setId(1L);
+        ipd.setHospitalId(1L); // must belong to the caller's hospital to reach validation
         ipd.setStatus("ADMITTED");
         when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(ipd));
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);

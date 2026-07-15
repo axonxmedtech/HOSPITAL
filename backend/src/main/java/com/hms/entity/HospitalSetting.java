@@ -39,6 +39,44 @@ public class HospitalSetting {
     @Column(name = "in_clinic", nullable = false)
     private Boolean inClinic = true;
 
+    // Pharmacy: enables the barcode scan/print workflow (billing barcode mode,
+    // inventory label printing). Defaults on; toggled from the pharmacy Settings tab.
+    @Column(name = "barcode_enabled", nullable = false)
+    private Boolean barcodeEnabled = true;
+
+    @Column(name = "separate_nurse_login", nullable = false)
+    private Boolean separateNurseLogin = false;
+
+    @Column(name = "ot_incharge_enabled", nullable = false)
+    private Boolean otInchargeEnabled = false;
+
+    // Print Settings: which pages the consultation-complete combined print includes. All default
+    // on (today's behaviour). An "off" page is left out of the merged PDF at consultation.
+    @Column(name = "print_case_paper", nullable = false)
+    private Boolean printCasePaper = true;
+
+    @Column(name = "print_bill", nullable = false)
+    private Boolean printBill = true;
+
+    @Column(name = "print_prescription", nullable = false)
+    private Boolean printPrescription = true;
+
+    @Column(name = "print_in_clinic", nullable = false)
+    private Boolean printInClinic = true;
+
+    // Bill payment timing: FIRST = charge consultation + case-paper fee at OPD entry (billed &
+    // paid there); LAST = current flow (payment at/after consultation). Defaults LAST.
+    @Column(name = "bill_payment_timing", nullable = false, length = 10)
+    private String billPaymentTiming = "LAST";
+
+    public Boolean getOtInchargeEnabled() {
+        return otInchargeEnabled;
+    }
+
+    public void setOtInchargeEnabled(Boolean otInchargeEnabled) {
+        this.otInchargeEnabled = otInchargeEnabled;
+    }
+
     public Long getId() {
         return id;
     }
@@ -77,5 +115,21 @@ public class HospitalSetting {
 
     public void setInClinic(Boolean inClinic) {
         this.inClinic = inClinic;
+    }
+
+    public Boolean getBarcodeEnabled() {
+        return barcodeEnabled;
+    }
+
+    public void setBarcodeEnabled(Boolean barcodeEnabled) {
+        this.barcodeEnabled = barcodeEnabled;
+    }
+
+    public Boolean getSeparateNurseLogin() {
+        return separateNurseLogin;
+    }
+
+    public void setSeparateNurseLogin(Boolean separateNurseLogin) {
+        this.separateNurseLogin = separateNurseLogin;
     }
 }

@@ -1,4 +1,7 @@
 package com.hms.service.hospital;
+import com.hms.util.LogSanitizer;
+
+import com.hms.exception.ResourceNotFoundException;
 
 import com.hms.dto.CreateOpdRequest;
 import com.hms.entity.*;
@@ -28,6 +31,17 @@ public class OpdService {
     private final SecurityContextHelper securityHelper;
     private final AuditLogService auditLogService;
     private final HospitalWebSocketHandler webSocketHandler;
+    private final VitalSettingsService vitalSettingsService;
+
+    // Field-injected (not in the constructor) to avoid changing every OpdService construction
+    // site. Used only by the "payment first" flow. @Lazy guards against any init-order cycle.
+    @org.springframework.beans.factory.annotation.Autowired @org.springframework.context.annotation.Lazy
+    private BillingService billingService;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.hms.repository.HospitalSettingRepository hospitalSettingRepository;
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper VITALS_JSON =
+            new com.fasterxml.jackson.databind.ObjectMapper();
 
     public OpdService(OpdRepository opdRepository,
                       QueueEntryRepository queueEntryRepository,
@@ -37,7 +51,8 @@ public class OpdService {
                       MedicalRecordRepository medicalRecordRepository,
                       SecurityContextHelper securityHelper,
                       AuditLogService auditLogService,
-                      HospitalWebSocketHandler webSocketHandler) {
+                      HospitalWebSocketHandler webSocketHandler,
+                      VitalSettingsService vitalSettingsService) {
         this.opdRepository = opdRepository;
         this.queueEntryRepository = queueEntryRepository;
         this.patientRepository = patientRepository;
@@ -47,6 +62,24 @@ public class OpdService {
         this.securityHelper = securityHelper;
         this.auditLogService = auditLogService;
         this.webSocketHandler = webSocketHandler;
+        this.vitalSettingsService = vitalSettingsService;
+    }
+
+    /** Keep only the hospital's enabled custom vitals, stored as a JSON object. */
+    private String serializeCustomVitals(java.util.Map<String, String> submitted) {
+        if (submitted == null || submitted.isEmpty()) return null;
+        java.util.Set<String> allowed = vitalSettingsService.enabledCustomKeys();
+        java.util.Map<String, String> kept = new java.util.LinkedHashMap<>();
+        submitted.forEach((k, v) -> {
+            if (allowed.contains(k) && v != null && !v.trim().isEmpty()) kept.put(k, v.trim());
+        });
+        if (kept.isEmpty()) return null;
+        try {
+            return VITALS_JSON.writeValueAsString(kept);
+        } catch (Exception e) {
+            logger.warn("Could not serialize custom vitals; storing none", e);
+            return null;
+        }
     }
 
     @Transactional
@@ -108,27 +141,36 @@ public class OpdService {
         if (req.getDoctorId() != null && !req.getDoctorId().trim().isEmpty()) {
             String docIdStr = req.getDoctorId().trim();
             java.util.Optional<Doctor> docOpt = java.util.Optional.empty();
+            Long hospitalId = securityHelper.getCurrentHospitalId();
             if (docIdStr.matches("^\\d+$")) {
                 Long numericId = Long.parseLong(docIdStr);
                 docOpt = doctorRepository.findByIdOrUserId(numericId, userRepository);
             } else {
-                Long hospitalId = securityHelper.getCurrentHospitalId();
                 docOpt = doctorRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(docIdStr, hospitalId);
             }
-            docOpt.ifPresent(opd::setDoctor);
+            // findByIdOrUserId is not tenant-scoped: without this filter a numeric doctorId
+            // would attach another hospital's doctor to this hospital's OPD (and print that
+            // doctor on the case paper). Drop any doctor that is not in the caller's hospital.
+            docOpt.filter(d -> hospitalId != null && hospitalId.equals(d.getHospitalId()))
+                    .ifPresent(opd::setDoctor);
         }
 
-        opd.setBp(req.getBp());
-        opd.setTemperature(req.getTemperature());
-        opd.setPulse(req.getPulse());
-        opd.setWeight(req.getWeight());
-        opd.setSpo2(req.getSpo2());
+        // Only vitals the hospital has switched ON are captured. Disabled built-ins are
+        // dropped server-side, and submitted custom vitals are filtered to enabled keys.
+        java.util.Set<String> onBuiltIns = vitalSettingsService.enabledBuiltInKeys();
+        opd.setBp(onBuiltIns.contains("BP") ? req.getBp() : null);
+        opd.setTemperature(onBuiltIns.contains("TEMPERATURE") ? req.getTemperature() : null);
+        opd.setPulse(onBuiltIns.contains("PULSE") ? req.getPulse() : null);
+        opd.setWeight(onBuiltIns.contains("WEIGHT") ? req.getWeight() : null);
+        opd.setHeight(onBuiltIns.contains("HEIGHT") ? req.getHeight() : null);
+        opd.setSpo2(onBuiltIns.contains("SPO2") ? req.getSpo2() : null);
+        opd.setCustomVitals(serializeCustomVitals(req.getCustomVitals()));
         opd.setProblem(req.getProblem());
         if (req.getVisitType() != null) {
             try {
                 opd.setVisitType(Opd.VisitType.valueOf(req.getVisitType().toUpperCase()));
             } catch (IllegalArgumentException e) {
-                logger.warn("Invalid visit type '{}'; defaulting to NEW", req.getVisitType());
+                logger.warn("Invalid visit type '{}'; defaulting to NEW", LogSanitizer.clean(req.getVisitType()));
                 opd.setVisitType(Opd.VisitType.NEW);
             }
         }
@@ -144,6 +186,22 @@ public class OpdService {
             entry.setOpd(saved);
             entry.setDoctor(saved.getDoctor());
             queueEntryRepository.save(entry);
+        }
+
+        // "Payment first": bill the consultation + case-paper fee and mark it paid right now,
+        // at OPD entry. Best-effort — a billing hiccup must not block creating the OPD case.
+        try {
+            Long billHospitalId = saved.getPatient() != null ? saved.getPatient().getHospitalId() : null;
+            boolean payFirst = billHospitalId != null && hospitalSettingRepository.findByHospital_Id(billHospitalId)
+                    .map(s -> "FIRST".equalsIgnoreCase(s.getBillPaymentTiming()))
+                    .orElse(false);
+            if (payFirst) {
+                Long docId = saved.getDoctor() != null ? saved.getDoctor().getId() : null;
+                billingService.createPaidOpdBillAtEntry(saved.getId(), saved.getPatient().getId(), docId,
+                        req.getPaymentMethod(), req.getPaymentReference());
+            }
+        } catch (Exception e) {
+            logger.warn("Payment-first OPD billing failed for OPD {}", saved.getId(), e);
         }
 
         // Audit log for OPD creation
@@ -187,11 +245,16 @@ public class OpdService {
     }
 
     public java.util.List<QueueEntry> getQueueForDoctor(Long doctorId) {
+        // findQueueForDoctorToday is keyed only on doctorId. Doctor ids are sequential and
+        // global, so without this ownership check one hospital could read another hospital's
+        // live OPD queue (its waiting patients) by enumerating doctor ids.
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null
+                || doctorRepository.findByIdAndHospitalIdAndIsActiveTrue(doctorId, hospitalId).isEmpty()) {
+            throw new ResourceNotFoundException("Doctor not found");
+        }
         try {
-            Long hospitalId = securityHelper.getCurrentHospitalId();
-            if (hospitalId != null) {
-                autoQueueTodaysFollowupsForDoctor(hospitalId, doctorId);
-            }
+            autoQueueTodaysFollowupsForDoctor(hospitalId, doctorId);
         } catch (Exception e) {
             logger.warn("Failed to auto-queue today's follow-ups for doctor {}", doctorId, e);
         }
@@ -223,7 +286,7 @@ public class OpdService {
                 startDate = date.atStartOfDay();
                 endDate = date.atTime(23, 59, 59, 999999999);
             } catch (Exception e) {
-                logger.warn("Invalid date filter '{}' ignored for OPD listing", dateStr);
+                logger.warn("Invalid date filter '{}' ignored for OPD listing", LogSanitizer.clean(dateStr));
             }
         }
 

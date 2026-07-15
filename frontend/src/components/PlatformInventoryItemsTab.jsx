@@ -14,7 +14,7 @@ const extractError = (err, fallback) => {
     return d.message || d.error || d.detail || fallback;
 };
 
-export default function PlatformInventoryItemsTab() {
+export default function PlatformInventoryItemsTab({ hospitalType = null }) {
     const { success, error: toastError } = useToast();
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -40,7 +40,7 @@ export default function PlatformInventoryItemsTab() {
             loadItems(0);
         }, 300);
         return () => clearTimeout(delayDebounce);
-    }, [search]);
+    }, [search, hospitalType]);
 
     useEffect(() => {
         if (!isMountedRef.current) {
@@ -53,7 +53,7 @@ export default function PlatformInventoryItemsTab() {
     const loadItems = async (pageNum) => {
         setLoading(true);
         try {
-            const data = await platformService.getMasterItems(search, pageNum, PAGE_SIZE);
+            const data = await platformService.getMasterItems(search, pageNum, PAGE_SIZE, hospitalType);
             setItems(data.content || []);
             setTotalPages(data.totalPages || 0);
             setTotalElements(data.totalElements || 0);
@@ -97,10 +97,10 @@ export default function PlatformInventoryItemsTab() {
             };
 
             if (editingItem) {
-                await platformService.updateMasterItem(editingItem.id, payload);
+                await platformService.updateMasterItem(editingItem.id, payload, hospitalType);
                 success('Master item updated successfully');
             } else {
-                await platformService.createMasterItem(payload);
+                await platformService.createMasterItem(payload, hospitalType);
                 success('Master item added successfully');
             }
             setShowModal(false);
@@ -118,7 +118,7 @@ export default function PlatformInventoryItemsTab() {
         }
 
         try {
-            await platformService.deleteMasterItem(item.id);
+            await platformService.deleteMasterItem(item.id, hospitalType);
             success('Master item deleted successfully');
             loadItems(page);
         } catch (err) {

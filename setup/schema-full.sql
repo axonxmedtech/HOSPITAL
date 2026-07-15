@@ -250,6 +250,7 @@ DROP TABLE IF EXISTS `inventory_transactions`;
 CREATE TABLE `inventory_transactions` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `hospital_id` bigint NOT NULL,
+  `branch_id` bigint DEFAULT NULL,
   `medicine_batch_id` bigint NOT NULL,
   `transaction_type` varchar(50) DEFAULT NULL,
   `quantity` decimal(38,2) NOT NULL,
@@ -376,6 +377,7 @@ DROP TABLE IF EXISTS `medicine_batches`;
 CREATE TABLE `medicine_batches` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `hospital_id` bigint NOT NULL,
+  `branch_id` bigint DEFAULT NULL,
   `medicine_id` bigint NOT NULL,
   `batch_number` varchar(100) NOT NULL,
   `expiry_date` date NOT NULL,
@@ -431,11 +433,13 @@ DROP TABLE IF EXISTS `medicine_master`;
 CREATE TABLE `medicine_master` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `hospital_id` bigint NOT NULL,
+  `branch_id` bigint DEFAULT NULL,
   `medicine_code` varchar(50) DEFAULT NULL,
   `medicine_name` varchar(255) NOT NULL,
   `generic_name` varchar(255) DEFAULT NULL,
   `category_id` bigint DEFAULT NULL,
   `manufacturer_id` bigint DEFAULT NULL,
+  `manufacturer_name` varchar(255) DEFAULT NULL,
   `medicine_type` varchar(50) DEFAULT NULL,
   `schedule_type` varchar(20) DEFAULT NULL,
   `dosage_form` varchar(100) DEFAULT NULL,
@@ -499,10 +503,13 @@ CREATE TABLE `opd` (
   `pulse` int DEFAULT NULL,
   `spo2` int DEFAULT NULL,
   `status` enum('QUEUED','CONSULTED','COMPLETED','IN_IPD') NOT NULL,
+  `ipd_admit_recommended` tinyint(1) NOT NULL DEFAULT '0',
   `temperature` double DEFAULT NULL,
   `token_number` int DEFAULT NULL,
   `visit_type` enum('NEW','FOLLOWUP') DEFAULT NULL,
   `weight` double DEFAULT NULL,
+  `height` double DEFAULT NULL,
+  `custom_vitals` text,
   `doctor_id` bigint DEFAULT NULL,
   `patient_id` bigint DEFAULT NULL,
   `receptionist_id` bigint DEFAULT NULL,
@@ -604,6 +611,7 @@ DROP TABLE IF EXISTS `pharmacy_sales`;
 CREATE TABLE `pharmacy_sales` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `hospital_id` bigint NOT NULL,
+  `branch_id` bigint DEFAULT NULL,
   `invoice_number` varchar(100) DEFAULT NULL,
   `patient_id` bigint DEFAULT NULL,
   `prescription_id` bigint DEFAULT NULL,
@@ -685,6 +693,7 @@ DROP TABLE IF EXISTS `purchase_invoices`;
 CREATE TABLE `purchase_invoices` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `hospital_id` bigint NOT NULL,
+  `branch_id` bigint DEFAULT NULL,
   `supplier_id` bigint NOT NULL,
   `invoice_number` varchar(100) DEFAULT NULL,
   `invoice_date` date DEFAULT NULL,
@@ -778,6 +787,7 @@ CREATE TABLE `suppliers` (
   `email` varchar(255) DEFAULT NULL,
   `gst_number` varchar(255) DEFAULT NULL,
   `hospital_id` bigint NOT NULL,
+  `branch_id` bigint DEFAULT NULL,
   `is_active` bit(1) DEFAULT NULL,
   `phone` varchar(255) DEFAULT NULL,
   `supplier_name` varchar(255) NOT NULL,
@@ -799,6 +809,7 @@ CREATE TABLE `users` (
   `custom_id` varchar(255) DEFAULT NULL,
   `email` varchar(100) NOT NULL,
   `hospital_id` bigint DEFAULT NULL,
+  `branch_id` bigint DEFAULT NULL,
   `is_active` bit(1) NOT NULL,
   `name` varchar(100) NOT NULL,
   `password` varchar(255) NOT NULL,
@@ -809,6 +820,25 @@ CREATE TABLE `users` (
   UNIQUE KEY `UK_s24bux761rbgowsl7a4b386ba` (`public_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `pharmacy_branch`
+-- (Multi Pharmacy branches/outlets under one owner tenant)
+--
+DROP TABLE IF EXISTS `pharmacy_branch`;
+CREATE TABLE `pharmacy_branch` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `address` varchar(255) DEFAULT NULL,
+  `phone` varchar(30) DEFAULT NULL,
+  `login_user_id` bigint DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `created_at` datetime(6) DEFAULT NULL,
+  `updated_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_pharmacy_branch_hospital` (`hospital_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 --
 -- Table structure for table `wards`
@@ -822,6 +852,7 @@ CREATE TABLE `wards` (
   `bed_price` decimal(38,2) NOT NULL,
   `created_at` datetime(6) DEFAULT NULL,
   `floor_number` int DEFAULT NULL,
+  `incharge_nurse_id` bigint DEFAULT NULL,
   `hospital_id` bigint NOT NULL,
   `total_beds` int NOT NULL,
   `ward_name` varchar(255) NOT NULL,
@@ -865,6 +896,8 @@ CREATE TABLE `plans` (
   `monthly_price` decimal(10,2) NOT NULL DEFAULT 0.00,
   `yearly_price` decimal(10,2) NOT NULL DEFAULT 0.00,
   `in_clinic` tinyint(1) NOT NULL DEFAULT 0,
+  `multi_outlet` tinyint(1) NOT NULL DEFAULT 0,
+  `max_outlets` int DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
   `created_at` datetime(6) NOT NULL,
   `updated_at` datetime(6) DEFAULT NULL,
@@ -932,6 +965,16 @@ CREATE TABLE `hospital_settings` (
   `reception_mode` varchar(20) NOT NULL DEFAULT 'HAS_RECEPTIONIST',
   `billing_handler` varchar(20) NOT NULL DEFAULT 'RECEPTIONIST',
   `in_clinic` tinyint(1) NOT NULL DEFAULT 1,
+  `barcode_enabled` tinyint(1) NOT NULL DEFAULT 1,
+  `separate_nurse_login` tinyint(1) NOT NULL DEFAULT 0,
+  `ot_incharge_enabled` tinyint(1) NOT NULL DEFAULT 0,
+  -- Print Settings: pages included in the consultation-complete combined print.
+  `print_case_paper` tinyint(1) NOT NULL DEFAULT 1,
+  `print_bill` tinyint(1) NOT NULL DEFAULT 1,
+  `print_prescription` tinyint(1) NOT NULL DEFAULT 1,
+  `print_in_clinic` tinyint(1) NOT NULL DEFAULT 1,
+  -- FIRST = charge consultation + case-paper at OPD entry; LAST = current flow.
+  `bill_payment_timing` varchar(10) NOT NULL DEFAULT 'LAST',
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_hospital_settings_hospital_id` (`hospital_id`),
   CONSTRAINT `FK_hospital_settings_hospital_id` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`)
@@ -964,6 +1007,9 @@ CREATE TABLE `prescription_presets` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `hospital_id` bigint NOT NULL,
   `name` varchar(150) NOT NULL,
+  -- PRESCRIPTION (medicines a doctor prescribes) or IN_CLINIC (bundles of stock medicines
+  -- administered in the clinic). Two preset lists sharing one table.
+  `preset_type` varchar(20) NOT NULL DEFAULT 'PRESCRIPTION',
   `display_order` int NOT NULL DEFAULT '0',
   `is_active` tinyint(1) NOT NULL DEFAULT '1',
   `created_at` datetime(6) NOT NULL,
@@ -980,53 +1026,14 @@ CREATE TABLE `prescription_preset_items` (
   `frequency` varchar(50) DEFAULT NULL,
   `duration` varchar(50) DEFAULT NULL,
   `instructions` varchar(200) DEFAULT NULL,
+  -- IN_CLINIC items only: the stock medicine + units to administer, so applying a preset
+  -- still deducts from Medicine Inventory. NULL for PRESCRIPTION presets (free-text names).
+  `medicine_id` bigint DEFAULT NULL,
+  `quantity` int DEFAULT NULL,
   `sort_order` int NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
   KEY `FK_prescription_preset_items_preset` (`preset_id`),
   CONSTRAINT `FK_prescription_preset_items_preset` FOREIGN KEY (`preset_id`) REFERENCES `prescription_presets` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
---
--- WhatsApp integration tables (added with V4 migration)
---
-
-CREATE TABLE IF NOT EXISTS `whatsapp_config` (
-  `id` bigint NOT NULL AUTO_INCREMENT,
-  `hospital_id` bigint NOT NULL,
-  `access_token` varchar(500) NOT NULL,
-  `phone_number_id` varchar(100) NOT NULL,
-  `waba_id` varchar(100) DEFAULT NULL,
-  `is_active` tinyint(1) NOT NULL DEFAULT 1,
-  `send_appointments` tinyint(1) NOT NULL DEFAULT 1,
-  `send_billing` tinyint(1) NOT NULL DEFAULT 1,
-  `send_case_papers` tinyint(1) NOT NULL DEFAULT 1,
-  `send_prescription` tinyint(1) NOT NULL DEFAULT 1,
-  `send_medicine_list` tinyint(1) NOT NULL DEFAULT 1,
-  `created_at` datetime(6) NOT NULL,
-  `updated_at` datetime(6) DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  CONSTRAINT `uq_wc_hospital` UNIQUE (`hospital_id`),
-  CONSTRAINT `FK_whatsapp_config_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
-CREATE TABLE IF NOT EXISTS `whatsapp_message_log` (
-  `id` bigint NOT NULL AUTO_INCREMENT,
-  `hospital_id` bigint NOT NULL,
-  `patient_id` bigint DEFAULT NULL,
-  `patient_phone` varchar(20) NOT NULL,
-  `message_type` varchar(50) NOT NULL,
-  `status` varchar(25) NOT NULL,
-  `error_message` varchar(500) DEFAULT NULL,
-  `template_name` varchar(100) DEFAULT NULL,
-  `template_params_json` varchar(1000) DEFAULT NULL,
-  `media_url` varchar(500) DEFAULT NULL,
-  `retry_count` int NOT NULL DEFAULT 0,
-  `next_retry_at` datetime(6) DEFAULT NULL,
-  `sent_at` datetime(6) DEFAULT NULL,
-  `created_at` datetime(6) NOT NULL,
-  PRIMARY KEY (`id`),
-  KEY `idx_wml_hospital_status` (`hospital_id`, `status`),
-  KEY `idx_wml_retry` (`status`, `next_retry_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 --
@@ -1043,7 +1050,7 @@ CREATE TABLE `inventory_items` (
   `name` varchar(255) NOT NULL,
   `type` varchar(50) DEFAULT NULL,
   `manufacturer` varchar(100) DEFAULT NULL,
-  `hospital_id` bigint NOT NULL,
+  `hospital_id` bigint DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT '1',
   `linked_fee_id` bigint DEFAULT NULL,
   `relative_item_ids` varchar(1000) DEFAULT NULL,
@@ -1077,4 +1084,696 @@ CREATE TABLE `hospital_service_items` (
   PRIMARY KEY (`id`),
   KEY `FK_hospital_service_items_service` (`service_id`),
   CONSTRAINT `FK_hospital_service_items_service` FOREIGN KEY (`service_id`) REFERENCES `hospital_services` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Nurse module (Phase 1): thin staff profile for NURSE users (HOSPITAL tenant only).
+CREATE TABLE `nurse_profiles` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `custom_id` varchar(255) DEFAULT NULL,
+  `user_id` bigint DEFAULT NULL,
+  `hospital_id` bigint NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `phone` varchar(20) DEFAULT NULL,
+  `email` varchar(100) NOT NULL,
+  `license_number` varchar(50) DEFAULT NULL,
+  `ward_id` bigint DEFAULT NULL,
+  `is_incharge` tinyint(1) NOT NULL DEFAULT 0,
+  `gender` varchar(10) DEFAULT NULL,
+  `qualification` varchar(120) DEFAULT NULL,
+  `registration_number` varchar(60) DEFAULT NULL,
+  `joining_date` date DEFAULT NULL,
+  `on_shift` tinyint(1) NOT NULL DEFAULT '0',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_nurse_profiles_public_id` (`public_id`),
+  KEY `idx_nurse_profiles_hospital` (`hospital_id`),
+  KEY `idx_nurse_profiles_user` (`user_id`),
+  CONSTRAINT `FK_nurse_profiles_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Nurse module (Phase 1): manual assignment of a nurse to an IPD admission.
+CREATE TABLE `patient_nurse_assignments` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ipd_admission_id` bigint NOT NULL,
+  `patient_id` bigint NOT NULL,
+  `nurse_user_id` bigint NOT NULL,
+  `assigned_by_user_id` bigint NOT NULL,
+  `assigned_at` datetime(6) NOT NULL,
+  `unassigned_at` datetime(6) DEFAULT NULL,
+  `notes` varchar(255) DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_pna_public_id` (`public_id`),
+  KEY `idx_pna_admission_active` (`ipd_admission_id`,`is_active`),
+  KEY `idx_pna_nurse_active` (`nurse_user_id`,`is_active`),
+  KEY `idx_pna_hospital_active` (`hospital_id`,`is_active`),
+  CONSTRAINT `FK_pna_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Nurse module (Phase 1): time-series IPD vitals recorded by nurses.
+CREATE TABLE `vitals_records` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ipd_admission_id` bigint NOT NULL,
+  `patient_id` bigint NOT NULL,
+  `recorded_by_user_id` bigint NOT NULL,
+  `performed_by_nurse_id` bigint DEFAULT NULL,
+  `recorded_at` datetime(6) NOT NULL,
+  `temperature` decimal(12,1) DEFAULT NULL,
+  `pulse` int DEFAULT NULL,
+  `bp_systolic` int DEFAULT NULL,
+  `bp_diastolic` int DEFAULT NULL,
+  `respiratory_rate` int DEFAULT NULL,
+  `spo2` int DEFAULT NULL,
+  `weight` decimal(12,2) DEFAULT NULL,
+  `pain_score` int DEFAULT NULL,
+  `remarks` varchar(500) DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  `updated_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_vitals_public_id` (`public_id`),
+  KEY `idx_vitals_admission_time` (`ipd_admission_id`,`recorded_at`),
+  KEY `idx_vitals_hospital` (`hospital_id`),
+  CONSTRAINT `FK_vitals_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Nurse module (Phase 1): nursing observation notes.
+CREATE TABLE `nursing_notes` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ipd_admission_id` bigint NOT NULL,
+  `patient_id` bigint NOT NULL,
+  `nurse_user_id` bigint NOT NULL,
+  `performed_by_nurse_id` bigint DEFAULT NULL,
+  `note_text` text NOT NULL,
+  `orders` text,
+  `category` varchar(40) DEFAULT NULL,
+  `surgery_id` bigint DEFAULT NULL,
+  `recorded_at` datetime(6) NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  `updated_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_nursing_notes_public_id` (`public_id`),
+  KEY `idx_nursing_notes_admission_time` (`ipd_admission_id`,`recorded_at`),
+  KEY `idx_nursing_notes_hospital` (`hospital_id`),
+  CONSTRAINT `FK_nursing_notes_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Nurse module (Phase 1): medication administration records (against doctor's ACTIVE prescriptions).
+CREATE TABLE `medication_administrations` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ipd_admission_id` bigint NOT NULL,
+  `prescription_id` bigint NOT NULL,
+  `patient_id` bigint NOT NULL,
+  `nurse_user_id` bigint NOT NULL,
+  `performed_by_nurse_id` bigint DEFAULT NULL,
+  `scheduled_time` datetime(6) DEFAULT NULL,
+  `administered_time` datetime(6) DEFAULT NULL,
+  `status` varchar(20) NOT NULL,
+  `remarks` varchar(500) DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_mar_public_id` (`public_id`),
+  KEY `idx_mar_admission_time` (`ipd_admission_id`,`administered_time`),
+  KEY `idx_mar_prescription` (`prescription_id`),
+  KEY `idx_mar_hospital` (`hospital_id`),
+  CONSTRAINT `FK_mar_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Nurse module (Phase 1, M7): manual tasks.
+CREATE TABLE `manual_tasks` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `title` varchar(150) NOT NULL,
+  `description` text DEFAULT NULL,
+  `assigned_to_nurse_user_id` bigint NOT NULL,
+  `assigned_by_user_id` bigint NOT NULL,
+  `ipd_admission_id` bigint DEFAULT NULL,
+  `priority` varchar(10) NOT NULL DEFAULT 'MEDIUM',
+  `status` varchar(15) NOT NULL DEFAULT 'PENDING',
+  `due_date` datetime(6) DEFAULT NULL,
+  `completed_at` datetime(6) DEFAULT NULL,
+  `operative_note` text,
+  `operative_note_by_user_id` bigint DEFAULT NULL,
+  `operative_note_at` datetime(6) DEFAULT NULL,
+  `completion_remarks` varchar(500) DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  `updated_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_manual_tasks_public_id` (`public_id`),
+  KEY `idx_tasks_nurse_status` (`assigned_to_nurse_user_id`,`status`),
+  KEY `idx_tasks_hospital_status` (`hospital_id`,`status`),
+  KEY `idx_tasks_admission` (`ipd_admission_id`),
+  CONSTRAINT `FK_tasks_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Nurse module (Phase 1, M8): notifications.
+CREATE TABLE `notifications` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `recipient_user_id` bigint NOT NULL,
+  `type` varchar(30) NOT NULL,
+  `title` varchar(150) NOT NULL,
+  `message` text NOT NULL,
+  `reference_type` varchar(50) DEFAULT NULL,
+  `reference_id` bigint DEFAULT NULL,
+  `is_read` tinyint(1) NOT NULL DEFAULT '0',
+  `read_at` datetime(6) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_notifications_public_id` (`public_id`),
+  KEY `idx_ntf_recipient` (`recipient_user_id`),
+  KEY `idx_ntf_hospital` (`hospital_id`),
+  CONSTRAINT `FK_notifications_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Nurse module: nurse-confirmed admission flag on ipd_admission.
+ALTER TABLE `ipd_admission` ADD COLUMN `admission_confirmed` tinyint(1) NOT NULL DEFAULT '0';
+ALTER TABLE `ipd_admission` ADD COLUMN `admission_confirmed_at` datetime(6) DEFAULT NULL;
+ALTER TABLE `ipd_admission` ADD COLUMN `admitted_by_user_id` bigint DEFAULT NULL;
+
+-- Nurse module: IPD admission form (one per admission).
+CREATE TABLE `admission_forms` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ipd_admission_id` bigint NOT NULL,
+  `prn_no` varchar(60) DEFAULT NULL, `bed_no` varchar(60) DEFAULT NULL, `category` varchar(40) DEFAULT NULL,
+  `patient_surname` varchar(100) DEFAULT NULL, `patient_first_name` varchar(100) DEFAULT NULL, `husband_father_name` varchar(150) DEFAULT NULL,
+  `patient_address` text, `age` varchar(20) DEFAULT NULL, `sex` varchar(20) DEFAULT NULL, `occupation` varchar(100) DEFAULT NULL,
+  `patient_category` varchar(40) DEFAULT NULL, `mediclaim` varchar(20) DEFAULT NULL, `tpa_name` varchar(200) DEFAULT NULL,
+  `relative_name` varchar(150) DEFAULT NULL, `email` varchar(120) DEFAULT NULL, `telephone` varchar(40) DEFAULT NULL,
+  `receptionist_name` varchar(120) DEFAULT NULL, `ref_dr` varchar(150) DEFAULT NULL,
+  `ipd_registration_no` varchar(60) DEFAULT NULL, `department` varchar(120) DEFAULT NULL, `under_care_of_dr` varchar(150) DEFAULT NULL,
+  `admitted_date` varchar(40) DEFAULT NULL, `admitted_time` varchar(40) DEFAULT NULL,
+  `prov_diagnosis1` text, `prov_diagnosis2` text, `hypersensitivity_history` text,
+  `relative_address` text, `relative_phone` varchar(40) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL, `updated_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_admission_forms_public_id` (`public_id`),
+  UNIQUE KEY `UK_admission_forms_ipd` (`ipd_admission_id`),
+  KEY `idx_admission_forms_hospital` (`hospital_id`),
+  CONSTRAINT `FK_admission_forms_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Nurse module: initial assessment (nurse-captured clinical fields).
+CREATE TABLE `initial_assessments` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ipd_admission_id` bigint NOT NULL,
+  `chief_complaints` text, `associated_illness` text, `relevant_investigations` text,
+  `allergies` text, `vaccination_history` text, `others` text,
+  `past_history` text, `family_history` text, `personal_history` text,
+  `provisional_diagnosis` text, `care_plan` text,
+  `pain_score` int DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL, `updated_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_initial_assessments_public_id` (`public_id`),
+  UNIQUE KEY `UK_initial_assessments_ipd` (`ipd_admission_id`),
+  KEY `idx_initial_assessments_hospital` (`hospital_id`),
+  CONSTRAINT `FK_initial_assessments_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Nurse module: vulnerability assessment (nurse-captured).
+CREATE TABLE `vulnerability_assessments` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ipd_admission_id` bigint NOT NULL,
+  `category` varchar(120) DEFAULT NULL, `fall_risk_assessment` text, `sensory_deficit` text,
+  `disorientation` varchar(120) DEFAULT NULL, `self_care_deficit` varchar(10) DEFAULT NULL, `mobility_problem` varchar(10) DEFAULT NULL,
+  `history_of_fall` varchar(10) DEFAULT NULL, `impaired_judgement` varchar(10) DEFAULT NULL,
+  `psychological_status` varchar(200) DEFAULT NULL, `remarks` text, `nursing_intervention` text,
+  `reason_for_transfer` text, `investigation_lab` text, `investigation_radiology` text,
+  `transfer_provisional_diagnosis` text, `transfer_doctor_name` varchar(150) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL, `updated_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_vuln_public_id` (`public_id`),
+  UNIQUE KEY `UK_vuln_ipd` (`ipd_admission_id`),
+  KEY `idx_vuln_hospital` (`hospital_id`),
+  CONSTRAINT `FK_vuln_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Nurse module: sugar chart entries (blood sugar + treatment).
+CREATE TABLE `sugar_chart_entries` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ipd_admission_id` bigint NOT NULL,
+  `patient_id` bigint NOT NULL,
+  `nurse_user_id` bigint NOT NULL,
+  `performed_by_nurse_id` bigint DEFAULT NULL,
+  `blood_sugar` varchar(60) DEFAULT NULL,
+  `treatment` text,
+  `recorded_at` datetime(6) NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL, `updated_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_sugar_public_id` (`public_id`),
+  KEY `idx_sugar_admission_time` (`ipd_admission_id`,`recorded_at`),
+  KEY `idx_sugar_hospital` (`hospital_id`),
+  CONSTRAINT `FK_sugar_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- OT module (Phase 2): surgeries (OT case lifecycle).
+CREATE TABLE `surgeries` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  -- NULL for a DAY_CARE procedure: the surgery is anchored on the patient, not an admission.
+  `ipd_admission_id` bigint DEFAULT NULL,
+  `encounter_type` varchar(20) NOT NULL DEFAULT 'IPD',
+  `waitlist_priority` int NOT NULL DEFAULT '0',
+  `target_date` date DEFAULT NULL,
+  `approved_at` datetime(6) DEFAULT NULL,
+  `ot_room_id` bigint DEFAULT NULL,
+  `estimated_duration_minutes` int DEFAULT NULL,
+  `patient_id` bigint NOT NULL,
+  `procedure_name` varchar(255) DEFAULT NULL,
+  `clinical_notes` text,
+  `priority` varchar(20) DEFAULT NULL,
+  `preferred_date` date DEFAULT NULL,
+  `requested_by_doctor_id` bigint DEFAULT NULL,
+  `requested_by_user_id` bigint DEFAULT NULL,
+  `requested_at` datetime(6) NOT NULL,
+  `status` varchar(20) NOT NULL,
+  `surgeon_doctor_id` bigint DEFAULT NULL,
+  `surgeon_name` varchar(255) DEFAULT NULL,
+  `anaesthetist_name` varchar(255) DEFAULT NULL,
+  `scheduled_at` datetime(6) DEFAULT NULL,
+  `ot_ward_id` bigint DEFAULT NULL,
+  `ot_bed_id` bigint DEFAULT NULL,
+  `scheduled_by_user_id` bigint DEFAULT NULL,
+  `started_at` datetime(6) DEFAULT NULL,
+  `completed_at` datetime(6) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL, `updated_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_surgery_public_id` (`public_id`),
+  KEY `idx_surgery_hospital_status` (`hospital_id`,`status`),
+  KEY `idx_surgery_admission` (`ipd_admission_id`),
+  CONSTRAINT `FK_surgery_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- OT Phase 2 — a hospital's OT permission grants, keyed on the role STRING.
+-- Overrides only: zero rows for a hospital means "use OtPermissions.defaultsFor(role)".
+CREATE TABLE `role_permissions` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `role` varchar(30) NOT NULL,
+  `permission_code` varchar(40) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_role_permission` (`hospital_id`,`role`,`permission_code`),
+  KEY `idx_role_permission_hospital` (`hospital_id`),
+  CONSTRAINT `FK_role_permission_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- OT Phase 3 — append-only audit of every surgical case status change.
+-- Every board metric (turnover, on-time start, cancellation rate by reason) queries this.
+CREATE TABLE `surgery_state_transitions` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `surgery_id` bigint NOT NULL,
+  `from_status` varchar(20) DEFAULT NULL,
+  `to_status` varchar(20) NOT NULL,
+  `actor_user_id` bigint DEFAULT NULL,
+  -- SYSTEM when a policy auto-satisfied the step; an approval nobody made must not read as one somebody made.
+  `actor_kind` varchar(10) NOT NULL,
+  `reason_code` varchar(60) DEFAULT NULL,
+  `reason_text` varchar(255) DEFAULT NULL,
+  `payload_json` text,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_sst_surgery` (`surgery_id`,`created_at`),
+  KEY `idx_sst_hospital_to` (`hospital_id`,`to_status`,`created_at`),
+  CONSTRAINT `FK_sst_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- OT Phase 4 — an operation theatre as a first-class resource (not a ward named "OT").
+CREATE TABLE `ot_rooms` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `status` varchar(20) NOT NULL DEFAULT 'AVAILABLE',
+  `current_surgery_id` bigint DEFAULT NULL,
+  `turnover_minutes` int NOT NULL DEFAULT '15',
+  `source_ward_id` bigint DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_ot_room_public_id` (`public_id`),
+  UNIQUE KEY `uk_ot_room_name` (`hospital_id`,`name`),
+  CONSTRAINT `FK_ot_room_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- OT Phase 5 — per-hospital workflow policy overrides. Absent row = built-in default.
+CREATE TABLE `ot_workflow_policies` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `policy_key` varchar(40) NOT NULL,
+  `priority_scope` varchar(10) NOT NULL DEFAULT 'ANY',
+  `value` varchar(120) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_ot_policy` (`hospital_id`,`policy_key`,`priority_scope`),
+  KEY `idx_ot_policy_hospital` (`hospital_id`),
+  CONSTRAINT `FK_ot_policy_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- OT Phase 6 — the surgical team, and a hospital's custom case roles.
+CREATE TABLE `case_roles` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `code` varchar(40) NOT NULL,
+  `label` varchar(100) NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_case_role` (`hospital_id`,`code`),
+  CONSTRAINT `FK_case_role_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `surgery_team_members` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `surgery_id` bigint NOT NULL,
+  `case_role_code` varchar(40) NOT NULL,
+  -- Exactly one of user_id / external_name is set. external_name is the legitimate
+  -- fallback for an operator with no login (mirrors surgeries.surgeon_name).
+  `user_id` bigint DEFAULT NULL,
+  `external_name` varchar(255) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_team_surgery` (`surgery_id`),
+  CONSTRAINT `FK_team_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- OT Phase 7 — WHO Surgical Safety Checklist (phases as signed columns) + milestones.
+CREATE TABLE `who_checklists` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `surgery_id` bigint NOT NULL,
+  `sign_in_at` datetime(6) DEFAULT NULL, `sign_in_by_user_id` bigint DEFAULT NULL,
+  `time_out_at` datetime(6) DEFAULT NULL, `time_out_by_user_id` bigint DEFAULT NULL,
+  `sign_out_at` datetime(6) DEFAULT NULL, `sign_out_by_user_id` bigint DEFAULT NULL,
+  `site_marked` tinyint(1) DEFAULT NULL, `counts_correct` tinyint(1) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_who_surgery` (`surgery_id`),
+  CONSTRAINT `FK_who_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `surgery_milestones` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `surgery_id` bigint NOT NULL,
+  `milestone` varchar(30) NOT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `recorded_by_user_id` bigint DEFAULT NULL,
+  `performed_by_nurse_id` bigint DEFAULT NULL,
+  `note` varchar(255) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_milestone_surgery` (`surgery_id`,`occurred_at`),
+  CONSTRAINT `FK_milestone_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- OT Phase 8 — PACU recovery. Never a case state: the theatre is free while the patient recovers.
+CREATE TABLE `ot_recovery_episodes` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `surgery_id` bigint NOT NULL,
+  `patient_id` bigint NOT NULL,
+  `arrived_at` datetime(6) NOT NULL,
+  `discharged_at` datetime(6) DEFAULT NULL,
+  `transfer_destination` varchar(20) DEFAULT NULL,
+  `arrived_by_user_id` bigint DEFAULT NULL,
+  `discharged_by_user_id` bigint DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_recovery_surgery` (`surgery_id`),
+  CONSTRAINT `FK_recovery_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `ot_recovery_observations` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `episode_id` bigint NOT NULL,
+  `observed_at` datetime(6) NOT NULL,
+  `aldrete_score` int DEFAULT NULL,
+  `recorded_by_user_id` bigint DEFAULT NULL,
+  `performed_by_nurse_id` bigint DEFAULT NULL,
+  `note` varchar(255) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_recovery_obs_episode` (`episode_id`,`observed_at`),
+  CONSTRAINT `FK_recovery_obs_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- OT Phase 9 — the theatre occupancy timeline (utilisation & turnover from real spans).
+CREATE TABLE `ot_room_occupancy` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `ot_room_id` bigint NOT NULL,
+  `surgery_id` bigint NOT NULL,
+  `occupied_from` datetime(6) NOT NULL,
+  `occupied_to` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_occupancy_room` (`ot_room_id`,`occupied_from`),
+  KEY `idx_occupancy_hospital` (`hospital_id`,`occupied_from`),
+  CONSTRAINT `FK_occupancy_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `surgery_forms` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ipd_admission_id` bigint DEFAULT NULL,
+  `surgery_id` bigint DEFAULT NULL,
+  `form_type` varchar(60) NOT NULL,
+  `data_json` longtext,
+  `saved_by_user_id` bigint DEFAULT NULL,
+  `performed_by_nurse_id` bigint DEFAULT NULL,
+  `recorded_by_user_id` bigint DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  -- TRUE for the live row, NULL once superseded. Never FALSE: the unique key below
+  -- relies on MySQL treating NULLs as distinct so superseded versions can coexist.
+  `is_current` tinyint(1) DEFAULT '1',
+  `signed_at` datetime(6) DEFAULT NULL,
+  `signed_by_user_id` bigint DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL, `updated_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_surgery_form_public_id` (`public_id`),
+  -- Scoped to the PROCEDURE, not the admission: two surgeries in one admission each
+  -- keep their own signed consent and WHO checklist.
+  UNIQUE KEY `UK_surgery_form_surgery_type` (`surgery_id`,`form_type`,`is_current`),
+  KEY `idx_surgery_form_hospital` (`hospital_id`),
+  CONSTRAINT `FK_surgery_form_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Nursing Mgmt Phase B1 — reusable nurse shift definitions
+CREATE TABLE `shift_templates` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `name` varchar(60) NOT NULL,
+  `start_time` time NOT NULL,
+  `end_time` time NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_shift_template_public` (`public_id`),
+  KEY `idx_shift_template_hospital` (`hospital_id`),
+  CONSTRAINT `FK_shift_template_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Nursing Mgmt Phase B1 — bookable appointment slot definitions
+CREATE TABLE `appointment_slots` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `start_time` time NOT NULL,
+  `end_time` time NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_appt_slot_public` (`public_id`),
+  KEY `idx_appt_slot_hospital` (`hospital_id`),
+  CONSTRAINT `FK_appt_slot_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Nursing Mgmt Phase B2 — nurse shift schedules (snapshots template times per date)
+CREATE TABLE `nurse_shift_schedules` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `nurse_profile_id` bigint NOT NULL,
+  `ward_id` bigint DEFAULT NULL,
+  `shift_date` date NOT NULL,
+  `shift_template_id` bigint NOT NULL,
+  `start_time` time NOT NULL,
+  `end_time` time NOT NULL,
+  `created_by_user_id` bigint DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_nss_public` (`public_id`),
+  UNIQUE KEY `UK_nss_nurse_date` (`nurse_profile_id`,`shift_date`),
+  KEY `idx_nss_hospital_date` (`hospital_id`,`shift_date`),
+  KEY `idx_nss_ward_date` (`ward_id`,`shift_date`),
+  CONSTRAINT `FK_nss_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Nursing Mgmt Phase D — daily nurse attendance
+CREATE TABLE `nurse_attendance` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `nurse_profile_id` bigint NOT NULL,
+  `ward_id` bigint DEFAULT NULL,
+  `attendance_date` date NOT NULL,
+  `status` varchar(20) NOT NULL,
+  `shift_template_id` bigint DEFAULT NULL,
+  `shift_start_time` time DEFAULT NULL,
+  `shift_end_time` time DEFAULT NULL,
+  `check_in_time` time DEFAULT NULL,
+  `check_out_time` time DEFAULT NULL,
+  `remarks` varchar(255) DEFAULT NULL,
+  `marked_by_user_id` bigint DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  `updated_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_na_public` (`public_id`),
+  UNIQUE KEY `UK_na_nurse_date` (`nurse_profile_id`,`attendance_date`),
+  KEY `idx_na_hospital_date` (`hospital_id`,`attendance_date`),
+  KEY `idx_na_ward_date` (`ward_id`,`attendance_date`),
+  CONSTRAINT `FK_na_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Nursing Mgmt Phase F — temporary ward assignment + nurse substitution
+CREATE TABLE `nurse_ward_assignments` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `nurse_profile_id` bigint NOT NULL,
+  `temp_ward_id` bigint NOT NULL,
+  `from_date` date NOT NULL,
+  `to_date` date NOT NULL,
+  `reason` varchar(255) DEFAULT NULL,
+  `created_by_user_id` bigint DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_nwa_public` (`public_id`),
+  KEY `idx_nwa_nurse` (`nurse_profile_id`,`from_date`,`to_date`),
+  KEY `idx_nwa_ward` (`temp_ward_id`,`from_date`,`to_date`),
+  KEY `idx_nwa_hospital` (`hospital_id`,`to_date`),
+  CONSTRAINT `FK_nwa_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `nurse_substitutions` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `primary_nurse_profile_id` bigint NOT NULL,
+  `replacement_nurse_profile_id` bigint NOT NULL,
+  `from_date` date NOT NULL,
+  `to_date` date NOT NULL,
+  `reason` varchar(255) DEFAULT NULL,
+  `created_by_user_id` bigint DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_nsub_public` (`public_id`),
+  KEY `idx_nsub_repl` (`replacement_nurse_profile_id`,`from_date`,`to_date`),
+  KEY `idx_nsub_hospital` (`hospital_id`,`to_date`),
+  CONSTRAINT `FK_nsub_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Hospital calendar events (Nursing Mgmt Phase G)
+CREATE TABLE IF NOT EXISTS calendar_events (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    public_id VARCHAR(64) NOT NULL UNIQUE,
+    hospital_id BIGINT NOT NULL,
+    title VARCHAR(160) NOT NULL,
+    event_type VARCHAR(20) NOT NULL,
+    from_date DATE NOT NULL,
+    to_date DATE NOT NULL,
+    description VARCHAR(500),
+    created_by_user_id BIGINT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_calevent_hosp_dates (hospital_id, from_date, to_date),
+    CONSTRAINT fk_calevent_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE
+);
+
+-- Per-hospital OPD vitals config: built-in overrides + custom vitals
+CREATE TABLE IF NOT EXISTS hospital_vitals (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    public_id VARCHAR(64) NOT NULL UNIQUE,
+    hospital_id BIGINT NOT NULL,
+    vital_key VARCHAR(60) NOT NULL,
+    label VARCHAR(60) NOT NULL,
+    unit VARCHAR(20),
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
+    is_custom TINYINT(1) NOT NULL DEFAULT 0,
+    sort_order INT DEFAULT 0,
+    created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_hosp_vital (hospital_id, vital_key),
+    CONSTRAINT fk_hosp_vital_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE
+);
+
+-- Per-hospital clinical form availability + edit access (Files & Access, Phase 1)
+CREATE TABLE IF NOT EXISTS hospital_form_access (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    hospital_id BIGINT NOT NULL,
+    form_key VARCHAR(60) NOT NULL,
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
+    access_role VARCHAR(10) NOT NULL DEFAULT 'BOTH',
+    updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_form_access_hosp_key (hospital_id, form_key),
+    CONSTRAINT fk_form_access_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE
+);
+
+-- Nursing Mgmt Phase C1 — bed status change audit trail
+CREATE TABLE `bed_status_audits` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `bed_id` bigint NOT NULL,
+  `ward_id` bigint DEFAULT NULL,
+  `previous_status` varchar(20) DEFAULT NULL,
+  `new_status` varchar(20) NOT NULL,
+  `changed_by_user_id` bigint DEFAULT NULL,
+  `remarks` varchar(255) DEFAULT NULL,
+  `changed_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UK_bsa_public` (`public_id`),
+  KEY `idx_bsa_bed_time` (`bed_id`,`changed_at`),
+  KEY `idx_bsa_hospital` (`hospital_id`),
+  CONSTRAINT `FK_bsa_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- OT Incharge profiles table
+CREATE TABLE `ot_incharges` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(64) NOT NULL UNIQUE,
+  `hospital_id` bigint NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `phone` varchar(15) NOT NULL,
+  `email` varchar(100) NOT NULL,
+  `age` int DEFAULT NULL,
+  `gender` varchar(10) DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  CONSTRAINT `FK_ot_incharges_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

@@ -32,6 +32,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.hms.util.LogSanitizer;
 
 /**
  * HospitalAuthService - Authentication service for Hospital users
@@ -85,6 +86,9 @@ public class HospitalAuthService {
 
     @Autowired
     private DoctorRepository doctorRepository;
+
+    @Autowired
+    private com.hms.service.hospital.ot.OtPermissionService otPermissionService;
 
     /**
      * Helper to populate detailed profile fields on LoginResponse.
@@ -208,36 +212,36 @@ public class HospitalAuthService {
      *                          user, or hospital is inactive
      */
     public LoginResponse login(LoginRequest request) {
-        logger.info("Hospital login attempt for email: {}", request.getEmail());
+        logger.info("Hospital login attempt for email: {}", LogSanitizer.clean(request.getEmail()));
 
         // Find user by email — same message as wrong password to prevent user enumeration
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> {
-                    logger.warn("Login failed - user not found: {}", request.getEmail());
+                    logger.warn("Login failed - user not found: {}", LogSanitizer.clean(request.getEmail()));
                     return new UnauthorizedException("Invalid credentials");
                 });
 
         // Verify password
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            logger.warn("Login failed - invalid password for user: {}", request.getEmail());
+            logger.warn("Login failed - invalid password for user: {}", LogSanitizer.clean(request.getEmail()));
             throw new UnauthorizedException("Invalid credentials");
         }
 
-        logger.debug("Password verified for user: {}", request.getEmail());
+        logger.debug("Password verified for user: {}", LogSanitizer.clean(request.getEmail()));
 
         // Verify user is a hospital user (not Super Admin)
         if ("SUPER_ADMIN".equals(user.getRole())) {
-            logger.warn("Login failed - Super Admin tried to login via hospital endpoint: {}", request.getEmail());
+            logger.warn("Login failed - Super Admin tried to login via hospital endpoint: {}", LogSanitizer.clean(request.getEmail()));
             throw new UnauthorizedException("Access denied. Please use platform login.");
         }
 
         // Verify user has a hospital_id
         if (user.getHospitalId() == null) {
-            logger.error("Login failed - hospital user has null hospital_id: {}", request.getEmail());
+            logger.error("Login failed - hospital user has null hospital_id: {}", LogSanitizer.clean(request.getEmail()));
             throw new UnauthorizedException("Invalid hospital user account");
         }
 
-        logger.debug("User role and hospital_id validated for: {}", request.getEmail());
+        logger.debug("User role and hospital_id validated for: {}", LogSanitizer.clean(request.getEmail()));
 
         // Verify hospital exists and is active
         Hospital hospital = hospitalRepository.findById(user.getHospitalId())
@@ -264,7 +268,7 @@ public class HospitalAuthService {
                 String portalName = expectedType == HospitalType.CLINIC ? "Clinic" :
                                     expectedType == HospitalType.PHARMACY ? "Pharmacy" : "Hospital";
                 logger.warn("Login failed - wrong portal: user belongs to {} but tried {} portal: {}",
-                        actualType, expectedType, request.getEmail());
+                        actualType, expectedType, LogSanitizer.clean(request.getEmail()));
                 throw new UnauthorizedException(
                     "This account belongs to a " + actualType.name().toLowerCase() +
                     ". Please use the " + actualType.name().charAt(0) +
@@ -285,25 +289,42 @@ public class HospitalAuthService {
 
         // Restrict receptionist login if Solo Doctor mode is active
         if ("RECEPTIONIST".equals(user.getRole()) && "SOLO".equals(settings.getReceptionMode())) {
-            logger.warn("Login failed - Receptionist login restricted under Solo Doctor mode: {}", request.getEmail());
+            logger.warn("Login failed - Receptionist login restricted under Solo Doctor mode: {}", LogSanitizer.clean(request.getEmail()));
             throw new UnauthorizedException("Solo Doctor Mode is active. Receptionist login is restricted.");
+        }
+
+        // Staff-nurse login requires Separate Nurse Login to be ON. A Nurse Incharge
+        // (NURSE_INCHARGE) can always log in; a staff NURSE only when the setting is on.
+        if ("NURSE".equals(user.getRole()) && !Boolean.TRUE.equals(settings.getSeparateNurseLogin())) {
+            logger.warn("Login failed - staff nurse login disabled (Separate Nurse Login off): {}", LogSanitizer.clean(request.getEmail()));
+            throw new UnauthorizedException("Nurse login is disabled for this hospital. Please contact your Nurse Incharge or administrator.");
         }
 
         // Verify user account is active (handle null as active for backward compatibility)
         if (user.getIsActive() != null && !user.getIsActive()) {
-            logger.warn("Login failed - user account is inactive: {}", request.getEmail());
+            logger.warn("Login failed - user account is inactive: {}", LogSanitizer.clean(request.getEmail()));
             throw new UnauthorizedException("User account is inactive. Please contact administrator.");
         }
 
-        logger.info("Login successful for user: {} at hospital: {}", request.getEmail(), hospital.getName());
+        logger.info("Login successful for user: {} at hospital: {}", LogSanitizer.clean(request.getEmail()), hospital.getName());
 
-        // Generate JWT token with hospital_id and modules
+        // Generate JWT token with hospital_id, modules, tenant type and OT permissions
+        HospitalType tenantType = hospital.getType() != null ? hospital.getType() : HospitalType.HOSPITAL;
+        // OT is hospital-only: a clinic or pharmacy token never carries a permission.
+        java.util.Collection<String> permissions = tenantType == HospitalType.HOSPITAL
+                ? otPermissionService.effectiveFor(user.getHospitalId(), user.getRole())
+                : java.util.List.of();
+
         String token = jwtUtil.generateToken(
                 user.getId(),
                 user.getEmail(),
                 user.getRole(),
                 user.getHospitalId(), // Include hospital_id for multi-tenant filtering
-                hospital.getModules());
+                hospital.getModules(),
+                user.getBranchId(), // Multi Pharmacy branch login scoping
+                // Tenant type gates hospital-only modules and controllers server-side.
+                tenantType.name(),
+                permissions);
 
         // Create response
         LoginResponse response = new LoginResponse();
@@ -320,6 +341,8 @@ public class HospitalAuthService {
         response.setIsSingleDoctor(hospital.getIsSingleDoctor());
         boolean inClinicAllowed = hospital.getModules() != null && hospital.getModules().contains("IN_CLINIC");
         response.setInClinic(inClinicAllowed && Boolean.TRUE.equals(settings.getInClinic()));
+        response.setBarcodeEnabled(settings.getBarcodeEnabled() == null ? Boolean.TRUE : settings.getBarcodeEnabled());
+        response.setBillPaymentTiming(settings.getBillPaymentTiming() == null ? "LAST" : settings.getBillPaymentTiming());
         response.setHospitalType(hospital.getType() != null ? hospital.getType().name() : "HOSPITAL");
 
         // Populate profile details
@@ -393,6 +416,9 @@ public class HospitalAuthService {
         response.setIsSingleDoctor(hospital.getIsSingleDoctor());
         boolean inClinicAllowed = hospital.getModules() != null && hospital.getModules().contains("IN_CLINIC");
         response.setInClinic(inClinicAllowed && Boolean.TRUE.equals(settings.getInClinic()));
+        response.setBarcodeEnabled(settings.getBarcodeEnabled() == null ? Boolean.TRUE : settings.getBarcodeEnabled());
+        response.setBillPaymentTiming(settings.getBillPaymentTiming() == null ? "LAST" : settings.getBillPaymentTiming());
+        response.setOtInchargeEnabled(settings.getOtInchargeEnabled() == null ? Boolean.FALSE : settings.getOtInchargeEnabled());
         response.setLogoUrl(hospital.getLogoUrl());
         response.setParentOrganization(hospital.getParentOrganization());
         response.setHospitalAddress(hospital.getAddress());
@@ -581,6 +607,17 @@ public class HospitalAuthService {
         hospital.setConsultationFee(fees.getConsultationFee());
         hospital.setCasePaperFee(fees.getCasePaperFee());
         hospitalRepository.save(hospital);
+
+        // Fees are money: the next OPD bill any receptionist or doctor raises must charge the new
+        // amount, not the one their tab loaded hours ago. This was the only settings update in this
+        // service that told nobody. Best-effort — a socket failure must not fail the save.
+        try {
+            webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
+            webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket fees update", e);
+        }
+
         com.hms.dto.HospitalFeesDTO dto = new com.hms.dto.HospitalFeesDTO(hospital.getConsultationFee(), hospital.getCasePaperFee());
         return dto;
     }
@@ -592,8 +629,176 @@ public class HospitalAuthService {
         User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
         if (user.getHospitalId() == null) throw new UnauthorizedException("Invalid hospital user account");
         return hospitalSettingRepository.findByHospital_Id(user.getHospitalId())
-                .map(s -> new HospitalSettingDTO(s.getReceptionMode(), s.getBillingHandler(), s.getInClinic()))
+                .map(this::toSettingDto)
                 .orElse(new HospitalSettingDTO("HAS_RECEPTIONIST", "RECEPTIONIST", true));
+    }
+
+    /** Map a settings row to its DTO, including the print + payment-timing settings. */
+    private HospitalSettingDTO toSettingDto(HospitalSetting s) {
+        HospitalSettingDTO dto = new HospitalSettingDTO(s.getReceptionMode(), s.getBillingHandler(), s.getInClinic());
+        dto.setBarcodeEnabled(s.getBarcodeEnabled() == null ? Boolean.TRUE : s.getBarcodeEnabled());
+        dto.setSeparateNurseLogin(s.getSeparateNurseLogin() == null ? Boolean.FALSE : s.getSeparateNurseLogin());
+        dto.setOtInchargeEnabled(s.getOtInchargeEnabled() == null ? Boolean.FALSE : s.getOtInchargeEnabled());
+        dto.setPrintCasePaper(s.getPrintCasePaper() == null ? Boolean.TRUE : s.getPrintCasePaper());
+        dto.setPrintBill(s.getPrintBill() == null ? Boolean.TRUE : s.getPrintBill());
+        dto.setPrintPrescription(s.getPrintPrescription() == null ? Boolean.TRUE : s.getPrintPrescription());
+        dto.setPrintInClinic(s.getPrintInClinic() == null ? Boolean.TRUE : s.getPrintInClinic());
+        dto.setBillPaymentTiming(s.getBillPaymentTiming() == null ? "LAST" : s.getBillPaymentTiming());
+        return dto;
+    }
+
+    /**
+     * Update the Print Settings (which pages the consultation-complete print includes) and/or
+     * the bill payment timing. Only HOSPITAL_ADMIN. Null fields are left unchanged.
+     */
+    @Transactional
+    public HospitalSettingDTO updatePrintAndPaymentSettings(String email, HospitalSettingDTO dto) {
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (user.getHospitalId() == null) throw new UnauthorizedException("Invalid hospital user account");
+        if (!"HOSPITAL_ADMIN".equals(user.getRole())) {
+            throw new UnauthorizedException("Access denied: requires HOSPITAL_ADMIN role");
+        }
+        Hospital hospital = hospitalRepository.findById(user.getHospitalId())
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
+
+        HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(user.getHospitalId())
+                .orElseGet(() -> {
+                    HospitalSetting n = new HospitalSetting();
+                    n.setHospital(hospital);
+                    return n;
+                });
+
+        if (dto.getPrintCasePaper() != null)   settings.setPrintCasePaper(dto.getPrintCasePaper());
+        if (dto.getPrintBill() != null)        settings.setPrintBill(dto.getPrintBill());
+        if (dto.getPrintPrescription() != null) settings.setPrintPrescription(dto.getPrintPrescription());
+        if (dto.getPrintInClinic() != null)    settings.setPrintInClinic(dto.getPrintInClinic());
+        if (dto.getBillPaymentTiming() != null) {
+            String t = dto.getBillPaymentTiming().trim().toUpperCase();
+            if (!"FIRST".equals(t) && !"LAST".equals(t)) {
+                throw new IllegalArgumentException("billPaymentTiming must be FIRST or LAST");
+            }
+            settings.setBillPaymentTiming(t);
+        }
+        hospitalSettingRepository.save(settings);
+
+        try {
+            webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket settings update", e);
+        }
+        return toSettingDto(settings);
+    }
+
+    /**
+     * Toggle whether nurses/nurse incharges log in via a separate nurse login
+     * page. Kept as its own endpoint (mirrors {@link #updateBarcodeSetting})
+     * so it can be flipped independently of the reception/billing form.
+     */
+    @Transactional
+    public HospitalSettingDTO updateSeparateNurseLoginSetting(String email, boolean separateNurseLogin) {
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (user.getHospitalId() == null) throw new UnauthorizedException("Invalid hospital user account");
+        if (!"HOSPITAL_ADMIN".equals(user.getRole())) {
+            throw new UnauthorizedException("Access denied: requires HOSPITAL_ADMIN role");
+        }
+
+        Hospital hospital = hospitalRepository.findById(user.getHospitalId())
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
+
+        HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(user.getHospitalId())
+                .orElseGet(() -> {
+                    HospitalSetting newSettings = new HospitalSetting();
+                    newSettings.setHospital(hospital);
+                    return newSettings;
+                });
+        settings.setSeparateNurseLogin(separateNurseLogin);
+        hospitalSettingRepository.save(settings);
+
+        try {
+            webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket settings update", e);
+        }
+
+        HospitalSettingDTO dto = new HospitalSettingDTO(settings.getReceptionMode(), settings.getBillingHandler(), settings.getInClinic());
+        dto.setBarcodeEnabled(settings.getBarcodeEnabled() == null ? Boolean.TRUE : settings.getBarcodeEnabled());
+        dto.setSeparateNurseLogin(separateNurseLogin);
+        dto.setOtInchargeEnabled(settings.getOtInchargeEnabled() == null ? Boolean.FALSE : settings.getOtInchargeEnabled());
+        return dto;
+    }
+
+    /**
+     * Toggle the OT Incharge setting.
+     */
+    @Transactional
+    public HospitalSettingDTO updateOtInchargeSetting(String email, boolean otInchargeEnabled) {
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (user.getHospitalId() == null) throw new UnauthorizedException("Invalid hospital user account");
+        if (!"HOSPITAL_ADMIN".equals(user.getRole())) {
+            throw new UnauthorizedException("Access denied: requires HOSPITAL_ADMIN role");
+        }
+
+        Hospital hospital = hospitalRepository.findById(user.getHospitalId())
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
+
+        HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(user.getHospitalId())
+                .orElseGet(() -> {
+                    HospitalSetting newSettings = new HospitalSetting();
+                    newSettings.setHospital(hospital);
+                    return newSettings;
+                });
+        settings.setOtInchargeEnabled(otInchargeEnabled);
+        hospitalSettingRepository.save(settings);
+
+        try {
+            webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket settings update", e);
+        }
+
+        HospitalSettingDTO dto = new HospitalSettingDTO(settings.getReceptionMode(), settings.getBillingHandler(), settings.getInClinic());
+        dto.setBarcodeEnabled(settings.getBarcodeEnabled() == null ? Boolean.TRUE : settings.getBarcodeEnabled());
+        dto.setSeparateNurseLogin(settings.getSeparateNurseLogin() == null ? Boolean.FALSE : settings.getSeparateNurseLogin());
+        dto.setOtInchargeEnabled(otInchargeEnabled);
+        return dto;
+    }
+
+    /**
+     * Update the pharmacy barcode workflow toggle. Only `HOSPITAL_ADMIN` may change it.
+     * Kept separate from operations settings so pharmacy tenants (which have no
+     * reception/billing config) can update it without tripping those validations.
+     */
+    @Transactional
+    public HospitalSettingDTO updateBarcodeSetting(String email, boolean barcodeEnabled) {
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (user.getHospitalId() == null) throw new UnauthorizedException("Invalid hospital user account");
+        if (!"HOSPITAL_ADMIN".equals(user.getRole())) {
+            throw new UnauthorizedException("Access denied: requires HOSPITAL_ADMIN role");
+        }
+
+        Hospital hospital = hospitalRepository.findById(user.getHospitalId())
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
+
+        HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(user.getHospitalId())
+                .orElseGet(() -> {
+                    HospitalSetting newSettings = new HospitalSetting();
+                    newSettings.setHospital(hospital);
+                    return newSettings;
+                });
+        settings.setBarcodeEnabled(barcodeEnabled);
+        hospitalSettingRepository.save(settings);
+
+        try {
+            webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket settings update", e);
+        }
+
+        HospitalSettingDTO dto = new HospitalSettingDTO(settings.getReceptionMode(), settings.getBillingHandler(), settings.getInClinic());
+        dto.setBarcodeEnabled(barcodeEnabled);
+        dto.setSeparateNurseLogin(settings.getSeparateNurseLogin() == null ? Boolean.FALSE : settings.getSeparateNurseLogin());
+        dto.setOtInchargeEnabled(settings.getOtInchargeEnabled() == null ? Boolean.FALSE : settings.getOtInchargeEnabled());
+        return dto;
     }
 
     /**
@@ -631,7 +836,7 @@ public class HospitalAuthService {
         // Enforce plan gate: only allow inClinic=true if IN_CLINIC module is in hospital modules.
         // null means "don't change" — preserve the existing value in that case.
         Hospital hospital = hospitalRepository.findById(user.getHospitalId())
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
         boolean inClinicModuleEnabled = hospital.getModules() != null && hospital.getModules().contains("IN_CLINIC");
         Boolean inClinic;
         if (inClinicRequested == null) {
@@ -668,7 +873,11 @@ public class HospitalAuthService {
             logger.warn("Failed to broadcast WebSocket settings update", e);
         }
 
-        return new HospitalSettingDTO(receptionMode, billingHandler,
+        HospitalSettingDTO responseDto = new HospitalSettingDTO(receptionMode, billingHandler,
                 inClinic != null ? inClinic : settings.getInClinic());
+        responseDto.setBarcodeEnabled(settings.getBarcodeEnabled() == null ? Boolean.TRUE : settings.getBarcodeEnabled());
+        responseDto.setSeparateNurseLogin(settings.getSeparateNurseLogin() == null ? Boolean.FALSE : settings.getSeparateNurseLogin());
+        responseDto.setOtInchargeEnabled(settings.getOtInchargeEnabled() == null ? Boolean.FALSE : settings.getOtInchargeEnabled());
+        return responseDto;
     }
 }

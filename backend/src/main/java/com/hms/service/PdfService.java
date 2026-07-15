@@ -29,6 +29,33 @@ public class PdfService {
     @Autowired
     private ReportPdfService reportPdfService;
 
+    /**
+     * Merge several PDFs into one, page after page. Used to print the consultation documents
+     * (case paper, bill, prescription) as a single multi-page job — a single print dialog is
+     * reliable, whereas firing one dialog per document is not. Null/empty inputs are skipped.
+     */
+    public ByteArrayInputStream mergePdfs(List<byte[]> pdfs) {
+        com.lowagie.text.Document document = new com.lowagie.text.Document();
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        try {
+            com.lowagie.text.pdf.PdfCopy copy = new com.lowagie.text.pdf.PdfCopy(document, out);
+            document.open();
+            for (byte[] pdf : pdfs) {
+                if (pdf == null || pdf.length == 0) continue;
+                com.lowagie.text.pdf.PdfReader reader = new com.lowagie.text.pdf.PdfReader(pdf);
+                for (int i = 1; i <= reader.getNumberOfPages(); i++) {
+                    copy.addPage(copy.getImportedPage(reader, i));
+                }
+                copy.freeReader(reader);
+                reader.close();
+            }
+            document.close();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to merge PDFs", e);
+        }
+        return new ByteArrayInputStream(out.toByteArray());
+    }
+
     public ByteArrayInputStream generatePrescriptionPdf(
             Hospital hospital,
             Doctor doctor,
@@ -78,7 +105,17 @@ public class PdfService {
             Patient patient,
             Opd opd,
             MedicalRecord medicalRecord) {
-        return clinicalPdfService.generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord);
+        return generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord, java.util.List.of());
+    }
+
+    public ByteArrayInputStream generateCasePaperPdf(
+            Hospital hospital,
+            Doctor doctor,
+            Patient patient,
+            Opd opd,
+            MedicalRecord medicalRecord,
+            List<com.hms.entity.LabOrder> labOrders) {
+        return clinicalPdfService.generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord, labOrders);
     }
 
     public ByteArrayInputStream generatePatientsReportPdf(

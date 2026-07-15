@@ -24,6 +24,10 @@ public class MedicineBatch {
     @Column(name = "hospital_id", nullable = false)
     private Long hospitalId;
 
+    /** Multi Pharmacy branch scope; null for non-branch tenants. */
+    @Column(name = "branch_id")
+    private Long branchId;
+
     @Column(name = "medicine_id", nullable = false)
     private Long medicineId;
 
@@ -62,6 +66,7 @@ public class MedicineBatch {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "supplier_id", insertable = false, updatable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private Supplier supplier;
 
     @Column(name = "purchase_invoice_item_id")

@@ -3,7 +3,12 @@ import hospitalService from '../services/hospitalService';
 import { useToast } from '../context/ToastContext';
 import ConfirmationModal from './ConfirmationModal';
 
-const MedicineInventoryTab = () => {
+/**
+ * @param {boolean} hidePrescribingColumns - Hide the Frequency / Duration / Manufacturer
+ *   columns in Purchase History. Reception doesn't prescribe, so those columns are noise for
+ *   them; the admin and doctor views keep them.
+ */
+const MedicineInventoryTab = ({ hidePrescribingColumns = false }) => {
     const [subTab, setSubTab] = useState('inventory'); // 'inventory' or 'purchase'
 
     // Data states
@@ -286,9 +291,13 @@ const MedicineInventoryTab = () => {
                                 <th className="pb-3 text-right">Total Cost</th>
                                 <th className="pb-3 text-center">Expiry Date</th>
                                 <th className="pb-3 text-left">Dosage</th>
-                                <th className="pb-3 text-left">Frequency</th>
-                                <th className="pb-3 text-left">Duration</th>
-                                <th className="pb-3 text-left">Manufacturer</th>
+                                {!hidePrescribingColumns && (
+                                    <>
+                                        <th className="pb-3 text-left">Frequency</th>
+                                        <th className="pb-3 text-left">Duration</th>
+                                        <th className="pb-3 text-left">Manufacturer</th>
+                                    </>
+                                )}
                                 <th className="pb-3 text-center">Purchase Date</th>
                             </tr>
                         </thead>
@@ -306,9 +315,13 @@ const MedicineInventoryTab = () => {
                                         <td className="py-3 text-right text-teal-700 font-semibold">₹{totalCost.toFixed(2)}</td>
                                         <td className="py-3 text-center text-gray-500">{item.expiryDate ? new Date(item.expiryDate).toLocaleDateString() : '-'}</td>
                                         <td className="py-3 text-left text-gray-600">{item.defaultDosage || '-'}</td>
-                                        <td className="py-3 text-left text-gray-600">{item.defaultFrequency || '-'}</td>
-                                        <td className="py-3 text-left text-gray-600">{item.defaultDuration || '-'}</td>
-                                        <td className="py-3 text-left text-gray-500">{item.manufacturer || '-'}</td>
+                                        {!hidePrescribingColumns && (
+                                            <>
+                                                <td className="py-3 text-left text-gray-600">{item.defaultFrequency || '-'}</td>
+                                                <td className="py-3 text-left text-gray-600">{item.defaultDuration || '-'}</td>
+                                                <td className="py-3 text-left text-gray-500">{item.manufacturer || '-'}</td>
+                                            </>
+                                        )}
                                         <td className="py-3 text-center text-gray-500">
                                             {item.purchaseDate ? new Date(item.purchaseDate).toLocaleString() : '-'}
                                         </td>
@@ -317,7 +330,7 @@ const MedicineInventoryTab = () => {
                             })}
                             {purchaseList.length === 0 && (
                                 <tr>
-                                    <td colSpan={11} className="py-8 text-center text-gray-400">
+                                    <td colSpan={hidePrescribingColumns ? 8 : 11} className="py-8 text-center text-gray-400">
                                         No purchase history found. Click "+ Add Stock (Purchase Intake)" to record a purchase.
                                     </td>
                                 </tr>

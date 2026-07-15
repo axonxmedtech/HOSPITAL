@@ -31,6 +31,65 @@ public class ClinicalPdfService {
     @Autowired
     private PdfLayoutHelper helper;
 
+    @Autowired
+    private com.hms.service.hospital.VitalSettingsService vitalSettingsService;
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper VITALS_JSON =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /**
+     * The vitals to print for this OPD: the hospital's enabled vitals, in order,
+     * as [header, value] pairs. Built-ins read their typed Opd column; custom
+     * vitals are read from the opd.custom_vitals JSON. Values default to "--".
+     */
+    private java.util.List<String[]> resolveVitalsForPrint(Hospital hospital, com.hms.entity.Opd opd) {
+        java.util.List<String[]> out = new java.util.ArrayList<>();
+        if (hospital == null || hospital.getId() == null) return out;
+
+        java.util.Map<String, String> customs = java.util.Collections.emptyMap();
+        if (opd.getCustomVitals() != null && !opd.getCustomVitals().isBlank()) {
+            try {
+                customs = VITALS_JSON.readValue(opd.getCustomVitals(),
+                        new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, String>>() {});
+            } catch (Exception e) {
+                logger.debug("Could not parse custom vitals for OPD {}", opd.getId(), e);
+            }
+        }
+
+        java.util.List<java.util.Map<String, Object>> enabled;
+        try {
+            enabled = vitalSettingsService.enabledVitalsFor(hospital.getId());
+        } catch (Exception e) {
+            logger.warn("Could not load vitals config; printing none", e);
+            return out;
+        }
+
+        for (java.util.Map<String, Object> v : enabled) {
+            String key = (String) v.get("key");
+            String label = (String) v.get("label");
+            String unit = (String) v.get("unit");
+            boolean isCustom = Boolean.TRUE.equals(v.get("isCustom"));
+
+            String value;
+            if (isCustom) {
+                value = customs.get(key);
+            } else {
+                value = switch (key) {
+                    case "BP" -> opd.getBp();
+                    case "TEMPERATURE" -> opd.getTemperature() == null ? null : String.valueOf(opd.getTemperature());
+                    case "PULSE" -> opd.getPulse() == null ? null : String.valueOf(opd.getPulse());
+                    case "HEIGHT" -> opd.getHeight() == null ? null : String.valueOf(opd.getHeight());
+                    case "WEIGHT" -> opd.getWeight() == null ? null : String.valueOf(opd.getWeight());
+                    case "SPO2" -> opd.getSpo2() == null ? null : String.valueOf(opd.getSpo2());
+                    default -> null;
+                };
+            }
+            String header = (unit == null || unit.isBlank()) ? label : label + " (" + unit + ")";
+            out.add(new String[] { header, (value == null || value.isBlank()) ? "--" : value });
+        }
+        return out;
+    }
+
     public ByteArrayInputStream generatePrescriptionPdf(
             Hospital hospital,
             Doctor doctor,
@@ -204,6 +263,16 @@ public class ClinicalPdfService {
             Patient patient,
             Opd opd,
             MedicalRecord medicalRecord) {
+        return generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord, java.util.List.of());
+    }
+
+    public ByteArrayInputStream generateCasePaperPdf(
+            Hospital hospital,
+            Doctor doctor,
+            Patient patient,
+            Opd opd,
+            MedicalRecord medicalRecord,
+            java.util.List<com.hms.entity.LabOrder> labOrders) {
 
         Document document = new Document(PageSize.A4, 36, 36, 36, 180);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -235,30 +304,28 @@ public class ClinicalPdfService {
                     "OPD CASE PAPER / CONSULTATION RECORD"
             );
 
-            // 2. Vitals Signs Section
+            // 2. Vitals Signs Section — only the vitals this hospital has switched on,
+            //    including any it defined itself.
             if (opd != null) {
-                Paragraph vitalsTitle = new Paragraph("VITAL SIGNS", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Font.BOLD, PdfLayoutHelper.NAVY_BLUE));
-                vitalsTitle.setSpacingBefore(10f);
-                vitalsTitle.setSpacingAfter(5f);
-                document.add(vitalsTitle);
+                java.util.List<String[]> vitals = resolveVitalsForPrint(hospital, opd); // [header, value]
+                if (!vitals.isEmpty()) {
+                    Paragraph vitalsTitle = new Paragraph("VITAL SIGNS", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Font.BOLD, PdfLayoutHelper.NAVY_BLUE));
+                    vitalsTitle.setSpacingBefore(10f);
+                    vitalsTitle.setSpacingAfter(5f);
+                    document.add(vitalsTitle);
 
-                PdfPTable vitalsTable = new PdfPTable(5);
-                vitalsTable.setWidthPercentage(100);
-                vitalsTable.setSpacingAfter(15f);
-
-                helper.addTableHeaderCell(vitalsTable, "BP (mmHg)");
-                helper.addTableHeaderCell(vitalsTable, "Temp (°F)");
-                helper.addTableHeaderCell(vitalsTable, "Pulse (bpm)");
-                helper.addTableHeaderCell(vitalsTable, "Weight (kg)");
-                helper.addTableHeaderCell(vitalsTable, "SpO2 (%)");
-
-                helper.addTableCell(vitalsTable, (opd.getBp() != null && !opd.getBp().trim().isEmpty()) ? opd.getBp() : "--", false);
-                helper.addTableCell(vitalsTable, (opd.getTemperature() != null) ? String.valueOf(opd.getTemperature()) : "--", false);
-                helper.addTableCell(vitalsTable, (opd.getPulse() != null) ? String.valueOf(opd.getPulse()) : "--", false);
-                helper.addTableCell(vitalsTable, (opd.getWeight() != null) ? String.valueOf(opd.getWeight()) : "--", false);
-                helper.addTableCell(vitalsTable, (opd.getSpo2() != null) ? String.valueOf(opd.getSpo2()) : "--", false);
-
-                document.add(vitalsTable);
+                    // Chunk into tables of at most 5 columns so any number of vitals lays out cleanly.
+                    final int MAX_COLS = 5;
+                    for (int start = 0; start < vitals.size(); start += MAX_COLS) {
+                        java.util.List<String[]> chunk = vitals.subList(start, Math.min(start + MAX_COLS, vitals.size()));
+                        PdfPTable vitalsTable = new PdfPTable(chunk.size());
+                        vitalsTable.setWidthPercentage(100);
+                        vitalsTable.setSpacingAfter(start + MAX_COLS >= vitals.size() ? 15f : 4f);
+                        for (String[] v : chunk) helper.addTableHeaderCell(vitalsTable, v[0]);
+                        for (String[] v : chunk) helper.addTableCell(vitalsTable, v[1], false);
+                        document.add(vitalsTable);
+                    }
+                }
             }
 
             // 3. Clinical Consultation Info
@@ -328,7 +395,29 @@ public class ClinicalPdfService {
                 document.add(clinicalTable);
             }
 
-            // 4. Fixed Bottom Signature Footer
+            // 4. Lab Tests Advised (printed when the doctor ordered any at this consultation)
+            if (labOrders != null && !labOrders.isEmpty()) {
+                Paragraph labHead = new Paragraph("LAB TESTS ADVISED:", PdfLayoutHelper.SMALL_BOLD_FONT);
+                labHead.setSpacingBefore(10f);
+                document.add(labHead);
+                String tests = labOrders.stream()
+                        .map(com.hms.entity.LabOrder::getTestName)
+                        .filter(java.util.Objects::nonNull)
+                        .collect(java.util.stream.Collectors.joining(", "));
+                document.add(new Paragraph(tests, PdfLayoutHelper.NORMAL_FONT));
+            }
+
+            // 5. Follow-up date (printed when the doctor scheduled one)
+            if (medicalRecord != null && medicalRecord.getFollowUpDate() != null) {
+                Paragraph flwHead = new Paragraph("FOLLOW UP DATE:", PdfLayoutHelper.SMALL_BOLD_FONT);
+                flwHead.setSpacingBefore(10f);
+                document.add(flwHead);
+                document.add(new Paragraph(
+                        medicalRecord.getFollowUpDate().format(DateTimeFormatter.ofPattern("MMM dd, yyyy")),
+                        PdfLayoutHelper.NORMAL_FONT));
+            }
+
+            // 6. Fixed Bottom Signature Footer
             helper.addPremiumFooter(writer, hospital, patient, (opd != null) ? opd.getCaseId() : "-", "Doctor Authorized Signature");
 
             document.close();

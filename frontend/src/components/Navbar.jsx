@@ -9,7 +9,10 @@ const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggle
     const isSingleDoctor = user?.role === 'HOSPITAL_ADMIN' && user?.isSingleDoctor;
     const isDoctorDashboard = location.pathname.includes('/hospital/doctor');
 
-    const isStandalonePharmacy = user?.role === 'HOSPITAL_ADMIN' && user?.modules?.includes('PHARMACY') && !user?.modules?.includes('OPD');
+    // Only the Single Pharmacist Admin (solo) acts as both admin and pharmacist and
+    // gets the dual-dashboard switch. SINGLE_PHARMACY has separate pharmacist logins;
+    // MULTI_PHARMACY manages branches instead.
+    const isStandalonePharmacy = user?.role === 'HOSPITAL_ADMIN' && user?.modules?.includes('SINGLE_PHARMACIST_ADMIN');
     const isPharmacyDashboard = location.pathname.includes('/hospital/pharmacy');
 
     return (

@@ -10,4 +10,5 @@ public class WardResponse {
     private BigDecimal bedPrice;
     private Integer totalBeds;
     private Integer floorNumber;
+    private Long inchargeNurseId;
 }

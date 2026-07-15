@@ -22,4 +22,8 @@ runs:
     - name: Install dependencies
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      # npm ci = strict, reproducible install from the lockfile. It FAILS if package.json and
+      # package-lock.json drift, which is the guardrail that stops accidental dependency changes
+      # from reaching staging/production. Keep this as `npm ci` (never `npm install`) in CI; if it
+      # fails on drift, fix by committing a synced lockfile, not by loosening the command.
       run: npm ci

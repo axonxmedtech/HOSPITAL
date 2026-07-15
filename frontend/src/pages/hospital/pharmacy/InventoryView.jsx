@@ -5,8 +5,14 @@ import inventoryApi from '../../../services/pharmacy/inventoryApi';
 import categoriesApi from '../../../services/pharmacy/categoriesApi';
 import StockAdjustmentModal from '../../../components/StockAdjustmentModal';
 import { SkeletonTableRow, SkeletonFeed } from '../../../components/Skeleton';
+import authService from '../../../services/authService';
 
 const InventoryView = ({ onNavigate, refreshKey = 0 }) => {
+    const currentUser = authService.getCurrentUser();
+    const barcodeEnabled = currentUser?.barcodeEnabled !== false;
+    // Standalone pharmacy ERP: no category filter / no manual "Add Medicine"
+    // (medicines enter via Purchase). Hospital/clinic pharmacy keeps current UI.
+    const isStandalonePharmacy = currentUser?.modules?.includes('PHARMACY') && !currentUser?.modules?.includes('OPD');
     const [categories, setCategories] = useState([]);
     const [selectedItem, setSelectedItem] = useState(null);
     const [transactions, setTransactions] = useState([]);
@@ -138,7 +144,8 @@ const InventoryView = ({ onNavigate, refreshKey = 0 }) => {
                                 value={search}
                                 onChange={(e) => handleSearch(e.target.value)}
                             />
-                            <select 
+                            {!isStandalonePharmacy && (
+                            <select
                                 value={selectedCategory}
                                 onChange={(e) => setSelectedCategory(e.target.value)}
                                 className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-gray-900/5 focus:border-gray-900 outline-none transition-all"
@@ -146,7 +153,8 @@ const InventoryView = ({ onNavigate, refreshKey = 0 }) => {
                                 <option value="all">All Categories</option>
                                 {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.categoryName}</option>)}
                             </select>
-                            <select 
+                            )}
+                            <select
                                 value={selectedStatus}
                                 onChange={(e) => setSelectedStatus(e.target.value)}
                                 className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-gray-900/5 focus:border-gray-900 outline-none transition-all"
@@ -163,9 +171,11 @@ const InventoryView = ({ onNavigate, refreshKey = 0 }) => {
                             <button onClick={handleExport} className="px-4 py-2 border border-gray-300 text-gray-700 text-sm font-bold rounded-lg hover:bg-gray-50 transition-colors">
                                 Export
                             </button>
+                            {!isStandalonePharmacy && (
                             <button onClick={() => onNavigate('medicine_master')} className="px-4 py-2 bg-gray-900 text-white text-sm font-bold rounded-lg hover:bg-gray-800 transition-all shadow-md">
                                 + Add Medicine
                             </button>
+                            )}
                         </div>
                     }
                 />
@@ -391,9 +401,11 @@ const InventoryView = ({ onNavigate, refreshKey = 0 }) => {
                                 >
                                     Adjust Stock (Audit)
                                 </button>
+                                {barcodeEnabled && (
                                 <button className="px-4 py-2 border border-gray-300 text-gray-700 hover:bg-gray-100 text-xs font-bold rounded-lg transition-all active:scale-95">
                                     Print Barcode Labels
                                 </button>
+                                )}
                             </div>
                             <button 
                                 onClick={() => { setIsDetailModalOpen(false); setSelectedItem(null); }}

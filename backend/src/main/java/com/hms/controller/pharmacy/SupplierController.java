@@ -14,7 +14,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/pharmacy/suppliers")
+@RequestMapping("/pharmacy/suppliers")
 public class SupplierController {
 
     @Autowired
@@ -51,5 +51,12 @@ public class SupplierController {
     @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> update(@PathVariable Long id, @Valid @RequestBody SupplierRequest req) {
         return ResponseEntity.ok(service.update(id, req));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> delete(@PathVariable Long id) {
+        service.delete(id);
+        return ResponseEntity.noContent().build();
     }
 }

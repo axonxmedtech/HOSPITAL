@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.entity.Medicine;
 import com.hms.entity.Prescription;
 import com.hms.repository.PrescriptionRepository;
@@ -15,7 +17,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/hospital/pharmacy")
+@RequestMapping({"/hospital/pharmacy", "/clinic/pharmacy", "/pharmacy/pharmacy"})
 public class PharmacyController {
 
     @Autowired
@@ -157,8 +159,12 @@ public class PharmacyController {
     @PostMapping("/dispense/{prescriptionId}")
     @PreAuthorize("hasRole('PHARMACIST')")
     public ResponseEntity<?> dispenseMedicine(@PathVariable Long prescriptionId) {
+        // Scope to the caller's hospital: an unscoped findById let a pharmacist dispense
+        // another hospital's prescription (and deduct stock against it) by guessing the id.
+        Long dispenseHospitalId = securityHelper.getCurrentHospitalId();
         Prescription p = prescriptionRepository.findById(prescriptionId)
-                .orElseThrow(() -> new RuntimeException("Prescription not found"));
+                .filter(x -> x.getHospitalId() != null && x.getHospitalId().equals(dispenseHospitalId))
+                .orElseThrow(() -> new ResourceNotFoundException("Prescription not found"));
 
         if (!p.getStatus().equals("PENDING")) {
             return ResponseEntity.badRequest().body("Prescription already dispensed");

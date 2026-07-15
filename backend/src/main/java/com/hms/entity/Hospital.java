@@ -45,6 +45,10 @@ public class Hospital {
     @Column(name = "custom_id", unique = true)
     private String customId;
 
+    // Reused SecureRandom for the numeric suffix of custom IDs (a single shared, non-predictable
+    // instance rather than a new java.util.Random() per call).
+    private static final java.security.SecureRandom CUSTOM_ID_RANDOM = new java.security.SecureRandom();
+
     @PrePersist
     public void generateIds() {
         if (this.publicId == null) {
@@ -56,7 +60,7 @@ public class Hospital {
                 case PHARMACY -> "PHR";
                 default       -> "HSP";
             };
-            this.customId = prefix + (1000 + new java.util.Random().nextInt(9000));
+            this.customId = prefix + (1000 + CUSTOM_ID_RANDOM.nextInt(9000));
         }
     }
 

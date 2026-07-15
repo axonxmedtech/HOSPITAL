@@ -30,6 +30,7 @@ class PlatformPlanServiceTest {
     @Mock HospitalSettingRepository hospitalSettingRepository;
     @Mock AuditLogRepository auditLogRepository;
     @Mock UserRepository userRepository;
+    @Mock com.hms.security.HospitalWebSocketHandler webSocketHandler;
 
     @InjectMocks PlatformPlanService service;
 

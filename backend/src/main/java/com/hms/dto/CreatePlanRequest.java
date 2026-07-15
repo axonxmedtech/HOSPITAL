@@ -27,4 +27,9 @@ public class CreatePlanRequest {
     private List<String> features;
 
     private Boolean inClinic = false;
+
+    // Pharmacy chain support: enable multiple outlets (medical shops) under one owner.
+    private Boolean multiOutlet = false;
+
+    private Integer maxOutlets;
 }

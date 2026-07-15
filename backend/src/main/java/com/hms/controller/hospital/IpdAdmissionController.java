@@ -10,7 +10,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/ipd")
+@RequestMapping({"/hospital/ipd", "/clinic/ipd", "/pharmacy/ipd"})
 public class IpdAdmissionController {
 
     @Autowired

@@ -17,11 +17,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.util.List;
+import org.mockito.ArgumentCaptor;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -41,6 +43,8 @@ class PharmacySaleServiceTest {
 
     @Mock
     PrescriptionRepository prescriptionRepository;
+
+    @Mock com.hms.service.RealtimeNotifier notifier;
 
     @InjectMocks
     PharmacySaleService saleService;
@@ -80,7 +84,7 @@ class PharmacySaleServiceTest {
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Sale quantity must be positive");
 
-        verify(batchRepository, never()).findByIdAndHospitalIdForUpdate(any(), any());
+        verify(batchRepository, never()).findByIdAndHospitalIdForUpdate(any(), any(), any());
     }
 
     @Test
@@ -94,7 +98,7 @@ class PharmacySaleServiceTest {
         batch.setCurrentQuantity(BigDecimal.valueOf(5));
         batch.setBatchNumber("B001");
 
-        when(batchRepository.findByIdAndHospitalIdForUpdate(1L, 1L)).thenReturn(Optional.of(batch));
+        when(batchRepository.findByIdAndHospitalIdForUpdate(eq(1L), eq(1L), any())).thenReturn(Optional.of(batch));
 
         assertThatThrownBy(() -> saleService.createSale(request))
                 .isInstanceOf(RuntimeException.class)
@@ -104,7 +108,7 @@ class PharmacySaleServiceTest {
     @Test
     void getSaleDetails_withUnknownId_throwsRuntimeException() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
-        when(saleRepository.findByIdAndHospitalId(99L, 1L)).thenReturn(Optional.empty());
+        when(saleRepository.findByIdScoped(eq(99L), eq(1L), any())).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> saleService.getSaleDetails(99L))
                 .isInstanceOf(RuntimeException.class)
@@ -122,17 +126,51 @@ class PharmacySaleServiceTest {
         batch.setCurrentQuantity(BigDecimal.valueOf(10));
         batch.setBatchNumber("B001");
 
-        when(batchRepository.findByIdAndHospitalIdForUpdate(1L, 1L)).thenReturn(Optional.of(batch));
+        when(batchRepository.findByIdAndHospitalIdForUpdate(eq(1L), eq(1L), any())).thenReturn(Optional.of(batch));
 
         PharmacySale savedSale = new PharmacySale();
         savedSale.setId(5L);
+        savedSale.setBillNumber("PHB-5");
         when(saleRepository.save(any(PharmacySale.class))).thenReturn(savedSale);
-        when(transactionRepository.save(any(InventoryTransaction.class))).thenAnswer(i -> i.getArguments()[0]);
 
         PharmacySale result = saleService.createSale(request);
 
         assertThat(result).isNotNull();
         assertThat(result.getId()).isEqualTo(5L);
         verify(batchRepository, times(1)).save(any());
+    }
+
+    /**
+     * The stock movement must be traceable back to the sale that caused it. The transaction
+     * used to be written before the sale was persisted, so it recorded referenceId=null and
+     * the literal remark "Sale Bill #null" — a pharmacy audit could not tie stock to a bill.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void createSale_stockMovementReferencesTheSavedSale() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        when(securityHelper.getCurrentUserId()).thenReturn(10L);
+
+        MedicineBatch batch = new MedicineBatch();
+        batch.setId(7L);
+        batch.setCurrentQuantity(BigDecimal.valueOf(10));
+        batch.setBatchNumber("B001");
+        when(batchRepository.findByIdAndHospitalIdForUpdate(eq(1L), eq(1L), any())).thenReturn(Optional.of(batch));
+
+        PharmacySale savedSale = new PharmacySale();
+        savedSale.setId(5L);
+        savedSale.setBillNumber("PHB-5");
+        when(saleRepository.save(any(PharmacySale.class))).thenReturn(savedSale);
+
+        saleService.createSale(buildRequest(new BigDecimal("2")));
+
+        ArgumentCaptor<List<InventoryTransaction>> captor = ArgumentCaptor.forClass(List.class);
+        verify(transactionRepository).saveAll(captor.capture());
+
+        assertThat(captor.getValue()).singleElement().satisfies(tx -> {
+            assertThat(tx.getReferenceId()).isEqualTo(5L);
+            assertThat(tx.getRemarks()).isEqualTo("Sale Bill #PHB-5");
+            assertThat(tx.getQuantityAfter()).isEqualByComparingTo("8");
+        });
     }
 }

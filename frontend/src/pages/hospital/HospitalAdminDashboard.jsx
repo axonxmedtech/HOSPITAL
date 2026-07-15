@@ -1,14 +1,18 @@
 import BillingTable from './BillingTable';
-import MessagesTab from './MessagesTab';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
+import wardService from '../../services/wardService';
+import timeSlotService from '../../services/timeSlotService';
 import { API_BASE_URL } from '../../services/apiService'; // BUG-028: single source-of-truth for base URL
 import { useToast } from '../../context/ToastContext';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import NotePresetsManager from '../../components/NotePresetsManager';
 import PrescriptionPresetsManager from '../../components/PrescriptionPresetsManager';
+import InClinicPresetsManager from '../../components/InClinicPresetsManager';
+import { printPdf, printBlob } from '../../utils/printPdf';
+import { printHtml } from '../../utils/printHtml';
 import { validateForm } from '../../utils/validation';
 import EmptyState from '../../components/EmptyState';
 import OverviewDashboard from '../../components/OverviewDashboard';
@@ -28,13 +32,28 @@ import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import PageHeader from '../../components/PageHeader';
 import WardsAndBeds from './WardsAndBeds';
+import TimeSlotsView from './TimeSlotsView';
+import FilesAndAccessCard from './FilesAndAccessCard';
+import PrintPaymentSettingsCard from './PrintPaymentSettingsCard';
+import OpdPaymentFields, { isPayFirst, validateOpdPayment } from '../../components/OpdPaymentFields';
+import VitalsSettingsCard from './VitalsSettingsCard';
+import OtPermissionsCard from './OtPermissionsCard';
+import OtRoomsCard from './OtRoomsCard';
+import OtPoliciesCard from './OtPoliciesCard';
+import OtAnalyticsCard from './OtAnalyticsCard';
+import HospitalCalendar from './HospitalCalendar';
 import WardModal from '../../components/WardModal';
 import useWebSocket from '../../hooks/useWebSocket';
+import useEnabledVitals from '../../hooks/useEnabledVitals';
 import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
 import { SkeletonDashboard, SkeletonFormCard, SkeletonSettingsCard, SkeletonTable, SkeletonStatsGrid, SkeletonOverviewDual } from '../../components/Skeleton';
 import reportsApi from '../../services/pharmacy/reportsApi';
+import salesApi from '../../services/pharmacy/salesApi';
+import branchesApi from '../../services/pharmacy/branchesApi';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
+import SuppliersView from './pharmacy/SuppliersView';
+import inventoryApi from '../../services/pharmacy/inventoryApi';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
 import LowStockBanner from '../../components/LowStockBanner';
 import {
@@ -61,6 +80,10 @@ const HospitalAdminDashboard = () => {
     const hasIPD = modules.includes('IPD');
     // Tenant-aware label: clinic logins say "Clinic" wherever we'd otherwise say "Hospital".
     const tenantWord = user?.hospitalType === 'CLINIC' ? 'Clinic' : 'Hospital';
+    const isPharmacyTenant = user?.hospitalType === 'PHARMACY';
+    const pharmacyMode = modules.includes('MULTI_PHARMACY') ? 'MULTI'
+        : modules.includes('SINGLE_PHARMACIST_ADMIN') ? 'SOLO'
+        : 'SINGLE'; // default single pharmacy
     const defaultTab = 'overview';
     const activeTab = searchParams.get('tab') || defaultTab;
 
@@ -75,7 +98,14 @@ const HospitalAdminDashboard = () => {
     const [patients, setPatients] = useState([]);
     const [doctors, setDoctors] = useState([]);
     const [receptionists, setReceptionists] = useState([]);
+    const [nurses, setNurses] = useState([]);
+    const [nurseAssignments, setNurseAssignments] = useState([]);
+    const [nurseOptions, setNurseOptions] = useState([]);
+    const [assignNurseModal, setAssignNurseModal] = useState({ isOpen: false, row: null });
+    const [nurseTasks, setNurseTasks] = useState([]);
+    const [createTaskModal, setCreateTaskModal] = useState(false);
     const [pharmacists, setPharmacists] = useState([]);
+    const [otIncharges, setOtIncharges] = useState([]);
     const [appointments, setAppointments] = useState([]);
     const [billing, setBilling] = useState([]);
     const [ipds, setIpds] = useState([]);
@@ -88,6 +118,16 @@ const HospitalAdminDashboard = () => {
     const [pharmacyStatsLoading, setPharmacyStatsLoading] = useState(false);
     const [analyticsData, setAnalyticsData] = useState(null);
     const [analyticsTimePeriod, setAnalyticsTimePeriod] = useState('Last 6 Months');
+
+    // Pharmacy Branch filter state (multi pharmacy)
+    const [filterBranches, setFilterBranches] = useState([]);
+    const [selectedFilterBranchId, setSelectedFilterBranchId] = useState('ALL');
+    const [pharmacyRefreshKey, setPharmacyRefreshKey] = useState(0);
+
+    // Pharmacy Admin Overview Dashboard States
+    const [pharmacyRecentBills, setPharmacyRecentBills] = useState([]);
+    const [pharmacyLowStock, setPharmacyLowStock] = useState([]);
+    const [pharmacyRightTab, setPharmacyRightTab] = useState('low-stock');
 
     // Dashboard state
     const [dashboardStats, setDashboardStats] = useState({ totalPatients: 0, totalDoctors: 0, todaysAppointments: 0 });
@@ -117,10 +157,15 @@ const HospitalAdminDashboard = () => {
         billNumber: ''
     });
     const [editBillItemsSubmitting, setEditBillItemsSubmitting] = useState(false);
-    const [operationsSettings, setOperationsSettings] = useState({ receptionMode: 'HAS_RECEPTIONIST', billingHandler: 'RECEPTIONIST', inClinic: true });
+    const [operationsSettings, setOperationsSettings] = useState({ receptionMode: 'HAS_RECEPTIONIST', billingHandler: 'RECEPTIONIST', inClinic: true, separateNurseLogin: false, otInchargeEnabled: false });
     const [origOperationsSettings, setOrigOperationsSettings] = useState(null);
     const [settingsLoading, setSettingsLoading] = useState(false);
     const [settingsEditing, setSettingsEditing] = useState(false);
+    // Which Settings box is open: null (show the grid) | 'operations' | 'vitals'
+    // | 'ot-forms' | 'nursing' | 'permissions' | 'policies'.
+    const [settingsView, setSettingsView] = useState(null);
+    // Leaving Settings resets to the box grid, so returning never lands mid-section.
+    useEffect(() => { if (activeTab !== 'settings') setSettingsView(null); }, [activeTab]);
     const [auditLogRoleFilter, setAuditLogRoleFilter] = useState('ALL');
     const [page, setPage] = useState(0);
     const [pageSize, setPageSize] = useState(10);
@@ -175,7 +220,8 @@ const HospitalAdminDashboard = () => {
 
     // OPD Modal State (Admin)
     const [isAdminOpdModalOpen, setIsAdminOpdModalOpen] = useState(false);
-    const [adminOpdForm, setAdminOpdForm] = useState({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', spo2: '', problem: '', visitType: 'NEW' });
+    const [adminOpdForm, setAdminOpdForm] = useState({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', height: '', customVitals: {}, spo2: '', problem: '', visitType: 'NEW', paymentMethod: 'CASH', paymentReference: '' });
+    const { isOn, customs } = useEnabledVitals();
     const [adminOpdPatientSearch, setAdminOpdPatientSearch] = useState('');
     const [adminOpdShowDropdown, setAdminOpdShowDropdown] = useState(false);
 
@@ -250,7 +296,7 @@ const HospitalAdminDashboard = () => {
         // Prevent double fetch when searchInput was just cleared but debounced searchTerm hasn't updated yet
         if (searchInput === '' && searchTerm !== '') return;
         loadData(page, pageSize);
-    }, [activeTab, searchTerm, page, billingStatus, auditLogRoleFilter, patientTabView, patientDateFilter, opdTabView, opdDateFilter, appointmentsViewFilter]);
+    }, [activeTab, searchTerm, page, billingStatus, auditLogRoleFilter, patientTabView, patientDateFilter, opdTabView, opdDateFilter, appointmentsViewFilter, pharmacyRefreshKey]);
 
     // Periodic background polling replaced with WebSocket real-time sync
 
@@ -432,7 +478,10 @@ const HospitalAdminDashboard = () => {
                 const loaded = {
                     receptionMode: data.receptionMode || 'HAS_RECEPTIONIST',
                     billingHandler: data.billingHandler || 'RECEPTIONIST',
-                    inClinic: data.inClinic !== false
+                    inClinic: data.inClinic !== false,
+                    barcodeEnabled: data.barcodeEnabled !== false,
+                    separateNurseLogin: data.separateNurseLogin === true,
+                    otInchargeEnabled: data.otInchargeEnabled === true
                 };
                 setOperationsSettings(loaded);
                 setOrigOperationsSettings(loaded);
@@ -468,6 +517,17 @@ const HospitalAdminDashboard = () => {
         loadSupportData();
     }, [activeTab]);
 
+    // Fetch branches for Multi-Pharmacy admin filter dropdown
+    useEffect(() => {
+        if (isPharmacyTenant && pharmacyMode === 'MULTI') {
+            branchesApi.getAll().then(data => {
+                setFilterBranches(Array.isArray(data) ? data : []);
+            }).catch(err => {
+                console.error("Failed to fetch branches for filter:", err);
+            });
+        }
+    }, [isPharmacyTenant, pharmacyMode]);
+
     // Load Pharmacy Dashboard Analytics when Pharmacy tab is active
     useEffect(() => {
         const loadPharmacyDashboard = async () => {
@@ -484,7 +544,7 @@ const HospitalAdminDashboard = () => {
             }
         };
         loadPharmacyDashboard();
-    }, [activeTab]);
+    }, [activeTab, pharmacyRefreshKey]);
 
     const handleExportLedger = async () => {
         try {
@@ -617,18 +677,98 @@ const HospitalAdminDashboard = () => {
                 const loaded = {
                     receptionMode: data.receptionMode || 'HAS_RECEPTIONIST',
                     billingHandler: data.billingHandler || 'RECEPTIONIST',
-                    inClinic: data.inClinic !== false
+                    inClinic: data.inClinic !== false,
+                    barcodeEnabled: operationsSettings.barcodeEnabled,
+                    separateNurseLogin: operationsSettings.separateNurseLogin,
+                    otInchargeEnabled: operationsSettings.otInchargeEnabled
                 };
                 setOperationsSettings(loaded);
                 setOrigOperationsSettings(loaded);
                 success('Operational settings updated successfully.');
-                
+
                 // Refresh local user profile session
                 const profile = await authService.getProfile();
                 authService.updateCurrentUser(profile);
                 setUser(profile);
             } catch (err) {
                 const msg = err.response?.data || 'Failed to update In-Clinic mode';
+                toastError(msg);
+            } finally {
+                setSettingsLoading(false);
+            }
+        }, false);
+    };
+
+    const toggleBarcode = () => {
+        const isCurrentlyEnabled = operationsSettings.barcodeEnabled !== false;
+        const nextValue = !isCurrentlyEnabled;
+        const title = isCurrentlyEnabled ? 'Disable Barcode Workflow' : 'Enable Barcode Workflow';
+        const message = isCurrentlyEnabled
+            ? 'Disable barcode scanning and label printing? The barcode mode at the Billing Counter and barcode label printing in Inventory will be hidden.'
+            : 'Enable barcode scanning and label printing across the Billing Counter and Inventory?';
+
+        openConfirmation(title, message, async () => {
+            try {
+                setSettingsLoading(true);
+                const data = await hospitalService.updateBarcodeSetting(nextValue);
+                setOperationsSettings(prev => ({ ...prev, barcodeEnabled: data.barcodeEnabled !== false }));
+                setOrigOperationsSettings(prev => ({ ...prev, barcodeEnabled: data.barcodeEnabled !== false }));
+                success('Barcode setting updated successfully.');
+
+                // Refresh local user profile so the pharmacist views pick up the change
+                const profile = await authService.getProfile();
+                authService.updateCurrentUser(profile);
+                setUser(profile);
+            } catch (err) {
+                const msg = err.response?.data || 'Failed to update barcode setting';
+                toastError(msg);
+            } finally {
+                setSettingsLoading(false);
+            }
+        }, false);
+    };
+
+    const toggleSeparateNurseLogin = () => {
+        const isCurrentlyEnabled = operationsSettings.separateNurseLogin === true;
+        const nextValue = !isCurrentlyEnabled;
+        const title = isCurrentlyEnabled ? 'Disable Separate Nurse Login' : 'Enable Separate Nurse Login';
+        const message = isCurrentlyEnabled
+            ? 'Disable the separate Nurse login page? Nurses and Nurse Incharges will log in through the shared hospital login page.'
+            : 'Enable a separate login page for Nurses and Nurse Incharges?';
+
+        openConfirmation(title, message, async () => {
+            try {
+                setSettingsLoading(true);
+                const data = await hospitalService.updateSeparateNurseLoginSetting(nextValue);
+                setOperationsSettings(prev => ({ ...prev, separateNurseLogin: data.separateNurseLogin === true }));
+                setOrigOperationsSettings(prev => ({ ...prev, separateNurseLogin: data.separateNurseLogin === true }));
+                success('Nurse login setting updated successfully.');
+            } catch (err) {
+                const msg = err?.response?.data?.error || err.response?.data || 'Failed to update nurse login setting';
+                toastError(msg);
+            } finally {
+                setSettingsLoading(false);
+            }
+        }, false);
+    };
+
+    const toggleOtIncharge = () => {
+        const isCurrentlyEnabled = operationsSettings.otInchargeEnabled === true;
+        const nextValue = !isCurrentlyEnabled;
+        const title = isCurrentlyEnabled ? 'Disable OT Incharge' : 'Enable OT Incharge';
+        const message = isCurrentlyEnabled
+            ? 'Disable the OT Incharge role? This will hide the OT Incharge management tab.'
+            : 'Enable the OT Incharge role? This will show the OT Incharge management tab under Staff.';
+
+        openConfirmation(title, message, async () => {
+            try {
+                setSettingsLoading(true);
+                const data = await hospitalService.updateOtInchargeSetting(nextValue);
+                setOperationsSettings(prev => ({ ...prev, otInchargeEnabled: data.otInchargeEnabled === true }));
+                setOrigOperationsSettings(prev => ({ ...prev, otInchargeEnabled: data.otInchargeEnabled === true }));
+                success('OT Incharge setting updated successfully.');
+            } catch (err) {
+                const msg = err?.response?.data?.error || err.response?.data || 'Failed to update OT Incharge setting';
                 toastError(msg);
             } finally {
                 setSettingsLoading(false);
@@ -666,24 +806,69 @@ const HospitalAdminDashboard = () => {
         }
     };
 
+    const renderBranchFilterBar = () => {
+        if (!isPharmacyTenant || pharmacyMode !== 'MULTI') return null;
+        return (
+            <div className="flex items-center gap-3 bg-slate-50 border border-slate-200/60 p-4 rounded-2xl mb-6 shadow-sm">
+                <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
+                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">Select Branch:</span>
+                </div>
+                <select
+                    value={selectedFilterBranchId}
+                    onChange={(e) => {
+                        const val = e.target.value;
+                        setSelectedFilterBranchId(val);
+                        if (val === 'ALL') {
+                            sessionStorage.removeItem('selectedBranchId');
+                        } else {
+                            sessionStorage.setItem('selectedBranchId', val);
+                        }
+                        // Trigger a refetch
+                        setPharmacyRefreshKey(k => k + 1);
+                    }}
+                    className="px-3.5 py-1.5 border border-slate-300 rounded-xl text-xs font-semibold outline-none focus:border-slate-900 bg-white transition-all cursor-pointer hover:border-slate-400"
+                >
+                    <option value="ALL">All Branches (Aggregated)</option>
+                    {filterBranches.map(b => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                </select>
+            </div>
+        );
+    };
+
     const loadData = async (pageNum = page, sizeNum = pageSize, showSpinner = true) => {
         if (showSpinner) setLoading(true);
         try {
             if (activeTab === 'overview') {
-                const [statsData, globalStatsData, todaysAppts, docData] = await Promise.all([
-                    hospitalService.getAppointmentStats(),
-                    hospitalService.getGlobalStats(),
-                    hospitalService.getTodaysAppointments(),
-                    hospitalService.getDoctors('', 0, 100)
-                ]);
-                setStats({ ...statsData, ...globalStatsData });
-                setTodaysAppointments(todaysAppts);
-                if (docData.content) {
-                    setDoctors(docData.content);
+                if (isPharmacyTenant) {
+                    const [dashboardData, recentBillsData, lowStockData] = await Promise.all([
+                        reportsApi.getDashboardData(),
+                        salesApi.getHistory(0, 5),
+                        inventoryApi.getLowStock(0, 5)
+                    ]);
+                    setPharmacyStats(dashboardData);
+                    setPharmacyRecentBills(recentBillsData.content || recentBillsData || []);
+                    setPharmacyLowStock(lowStockData.content || lowStockData || []);
                 } else {
-                    setDoctors(docData);
+                    const [statsData, globalStatsData, todaysAppts, docData] = await Promise.all([
+                        hospitalService.getAppointmentStats(),
+                        hospitalService.getGlobalStats(),
+                        hospitalService.getTodaysAppointments(),
+                        hospitalService.getDoctors('', 0, 100)
+                    ]);
+                    setStats({ ...statsData, ...globalStatsData });
+                    setTodaysAppointments(todaysAppts);
+                    if (docData.content) {
+                        setDoctors(docData.content);
+                    } else {
+                        setDoctors(docData);
+                    }
+                    await loadPatients(patientsSearchTerm, patientsPage);
                 }
-                await loadPatients(patientsSearchTerm, patientsPage);
             } else if (activeTab === 'dashboard') {
                 // Load dashboard data
                 const [statsData, todaysAppts] = await Promise.all([
@@ -694,8 +879,10 @@ const HospitalAdminDashboard = () => {
                 setTodaysAppointments(todaysAppts);
             } else {
                 // Always fetch stats when loading data to keep numbers fresh
-                const statsData = await hospitalService.getAppointmentStats();
-                setStats(statsData);
+                if (!isPharmacyTenant) {
+                    const statsData = await hospitalService.getAppointmentStats();
+                    setStats(statsData);
+                }
 
                 if (activeTab === 'patients') {
                     const dateParam = patientTabView === 'Date' ? patientDateFilter : '';
@@ -732,6 +919,39 @@ const HospitalAdminDashboard = () => {
                         setTotalPages(1);
                         setTotalElements(data.length);
                     }
+                } else if (activeTab === 'nurses') {
+                    const data = await hospitalService.getNurses(searchTerm, page, pageSize);
+                    if (data.content) {
+                        setNurses(data.content);
+                        setTotalPages(data.totalPages);
+                        setTotalElements(data.totalElements);
+                    } else {
+                        setNurses(data);
+                        setTotalPages(1);
+                        setTotalElements(data.length);
+                    }
+                } else if (activeTab === 'nurse-assignments') {
+                    // Overview of active admissions + their nurse, plus the nurse
+                    // list for the assign dropdown (fetch a large page = "all").
+                    const [overview, nurseList] = await Promise.all([
+                        hospitalService.getNurseAssignmentsOverview(),
+                        hospitalService.getNurses('', 0, 500),
+                    ]);
+                    setNurseAssignments(Array.isArray(overview) ? overview : []);
+                    setNurseOptions(nurseList.content || nurseList || []);
+                    setTotalPages(1);
+                    setTotalElements(Array.isArray(overview) ? overview.length : 0);
+                } else if (activeTab === 'nurse-tasks') {
+                    const [tasks, nurseList, overview] = await Promise.all([
+                        hospitalService.getNurseTasks(),
+                        hospitalService.getNurses('', 0, 500),
+                        hospitalService.getNurseAssignmentsOverview(),
+                    ]);
+                    setNurseTasks(Array.isArray(tasks) ? tasks : []);
+                    setNurseOptions(nurseList.content || nurseList || []);
+                    setNurseAssignments(Array.isArray(overview) ? overview : []);
+                    setTotalPages(1);
+                    setTotalElements(Array.isArray(tasks) ? tasks.length : 0);
                 } else if (activeTab === 'pharmacists') {
                     const data = await hospitalService.getPharmacists(searchTerm,page, pageSize);
                     if (data.content) {
@@ -742,6 +962,17 @@ const HospitalAdminDashboard = () => {
                         setPharmacists(data); // Fallback if API returns list directly
                         setTotalPages(1);
                         setTotalElements(data.length);
+                    }
+                } else if (activeTab === 'ot-incharges') {
+                    const data = await hospitalService.getOtIncharges(searchTerm, page, pageSize);
+                    if (data.content) {
+                        setOtIncharges(data.content);
+                        setTotalPages(data.totalPages);
+                        setTotalElements(data.totalElements);
+                    } else {
+                        setOtIncharges(data || []);
+                        setTotalPages(1);
+                        setTotalElements((data || []).length);
                     }
                 } else if (activeTab === 'appointments') {
                     // Fetch both appointments and doctors (for name lookup)
@@ -848,7 +1079,9 @@ const HospitalAdminDashboard = () => {
                         setTotalElements(0);
                     }
                 } else if (activeTab === 'audit-logs') {
-                    const data = await hospitalService.getAuditLogs(searchTerm, auditLogRoleFilter);
+                    const data = isPharmacyTenant
+                        ? await hospitalService.getPharmacyAuditLogs(searchTerm, auditLogRoleFilter === 'ALL' ? null : auditLogRoleFilter)
+                        : await hospitalService.getAuditLogs(searchTerm, auditLogRoleFilter);
                     setAuditLogs(data);
                     setTotalPages(1); // Audit logs don't have pagination yet
                 } else if (activeTab === 'analytics') {
@@ -958,12 +1191,165 @@ const HospitalAdminDashboard = () => {
             "Reason for deletion?"
         );
     };
+
+    const handleDeleteOtIncharge = (id) => {
+        openConfirmation(
+            'Delete OT Incharge',
+            'Are you sure you want to delete this OT Incharge?',
+            async (reason) => {
+                try {
+                    await hospitalService.deleteOtIncharge(id, reason);
+                    success('OT Incharge deleted successfully');
+                    loadData();
+                } catch (err) {
+                    toastError('Failed to delete OT Incharge');
+                }
+            },
+            true,
+            "Reason for deletion?"
+        );
+    };
+
+    const handleDeleteNurse = (id) => {
+        openConfirmation(
+            'Delete Nurse',
+            'Are you sure you want to delete this nurse?',
+            async (reason) => {
+                try {
+                    await hospitalService.deleteNurse(id, reason);
+                    success('Nurse deleted successfully');
+                    loadData();
+                } catch (err) {
+                    toastError('Failed to delete nurse');
+                }
+            },
+            true,
+            "Why are you deleting this nurse?"
+        );
+    };
+
+    const handlePromoteNurse = (nurse) => {
+        const id = nurse.publicId || nurse.id;
+        openConfirmation(
+            'Promote to Nurse Incharge',
+            `Promote ${nurse.name} to Nurse Incharge? They will be eligible to be assigned as a ward incharge.`,
+            async () => {
+                try {
+                    await hospitalService.promoteNurse(id);
+                    success('Nurse promoted to incharge');
+                    loadData();
+                } catch (err) {
+                    toastError(err?.response?.data?.error || 'Failed to promote nurse');
+                }
+            }
+        );
+    };
+
+    const handleDemoteNurse = (nurse) => {
+        const id = nurse.publicId || nurse.id;
+        openConfirmation(
+            'Demote to Nurse',
+            `Demote ${nurse.name} back to a plain nurse? Reassign their ward(s) first if they are currently a ward incharge.`,
+            async () => {
+                try {
+                    await hospitalService.demoteNurse(id);
+                    success('Incharge demoted to nurse');
+                    loadData();
+                } catch (err) {
+                    toastError(err?.response?.data?.error || 'Failed to demote nurse');
+                }
+            }
+        );
+    };
+
+    const handleToggleNurseActive = (nurse) => {
+        const id = nurse.publicId || nurse.id;
+        const nextActive = nurse.isActive === false;
+        openConfirmation(
+            nextActive ? 'Activate Nurse' : 'Deactivate Nurse',
+            nextActive
+                ? `Activate ${nurse.name}? They will be able to log in again.`
+                : `Deactivate ${nurse.name}? They will no longer be able to log in.`,
+            async () => {
+                try {
+                    await hospitalService.setNurseActive(id, nextActive);
+                    success(nextActive ? 'Nurse activated' : 'Nurse deactivated');
+                    loadData();
+                } catch (err) {
+                    toastError(err?.response?.data?.error || 'Failed to update nurse status');
+                }
+            }
+        );
+    };
+
+    const handleUnassignNurse = (assignmentPublicId) => {
+        openConfirmation(
+            'Unassign Nurse',
+            'Remove this nurse from the patient? The patient will drop off the nurse\'s list.',
+            async () => {
+                try {
+                    await hospitalService.unassignNurse(assignmentPublicId);
+                    success('Nurse unassigned');
+                    loadData();
+                } catch (err) {
+                    toastError('Failed to unassign nurse');
+                }
+            }
+        );
+    };
+
+    const handleCreateNurseTask = async (payload) => {
+        try {
+            await hospitalService.createNurseTask(payload);
+            success('Task created successfully');
+            setCreateTaskModal(false);
+            loadData();
+        } catch (err) {
+            const msg = err.response?.data?.message || err.response?.data || 'Failed to create task';
+            toastError(typeof msg === 'string' ? msg : 'Failed to create task');
+        }
+    };
+
+    const handleCancelNurseTask = async (publicId) => {
+        openConfirmation(
+            'Cancel Task',
+            'Are you sure you want to cancel this task?',
+            async () => {
+                try {
+                    await hospitalService.updateNurseTaskStatus(publicId, { status: 'CANCELLED' });
+                    success('Task cancelled');
+                    loadData();
+                } catch (err) {
+                    const msg = err.response?.data?.message || err.response?.data || 'Failed to cancel task';
+                    toastError(typeof msg === 'string' ? msg : 'Failed to cancel task');
+                }
+            }
+        );
+    };
+
+    const handleSubmitAssignNurse = async (nurseUserId, notes) => {
+        const row = assignNurseModal.row;
+        if (!row || !nurseUserId) return;
+        try {
+            if (row.assignmentPublicId) {
+                await hospitalService.reassignNurse(row.assignmentPublicId, { nurseUserId, notes });
+                success('Nurse reassigned');
+            } else {
+                await hospitalService.assignNurse({ ipdAdmissionId: row.ipdAdmissionId, nurseUserId, notes });
+                success('Nurse assigned');
+            }
+            setAssignNurseModal({ isOpen: false, row: null });
+            loadData();
+        } catch (err) {
+            const msg = err.response?.data?.message || err.response?.data || 'Failed to assign nurse';
+            toastError(typeof msg === 'string' ? msg : 'Failed to assign nurse');
+        }
+    };
     
     const handlePrintOpd = async (opd) => {
         try {
             const blob = await hospitalService.downloadCasePaper(opd.id);
-            const url = window.URL.createObjectURL(blob);
-            window.open(url, '_blank');
+            printBlob(blob); // print on this page (hidden iframe), not a new tab
         } catch (err) {
             console.error('Failed to download case paper', err);
             toastError('Failed to download case paper');
@@ -973,20 +1359,15 @@ const HospitalAdminDashboard = () => {
     const handleDownloadActivityReport = async () => {
         try {
             const blob = await hospitalService.downloadPatientActivityPdf(patientDateFilter);
-            const url = window.URL.createObjectURL(blob);
-            window.open(url, '_blank');
+            printBlob(blob);
         } catch (err) {
             console.error('Failed to generate report', err);
             toastError('Failed to generate PDF report');
         }
     };
 
-    const openPdfInNewTab = (endpointPath) => {
-        const token = sessionStorage.getItem('token');
-        const separator = endpointPath.includes('?') ? '&' : '?';
-        const url = `${API_BASE_URL}${endpointPath}${separator}token=${encodeURIComponent(token)}`;
-        window.open(url, '_blank');
-    };
+    // Print server PDFs on the current page (hidden iframe), like the bill/case-paper prints.
+    const openPdfInNewTab = (endpointPath) => { printPdf(endpointPath); };
 
     const handleDownloadPatientsReport = () => {
         let endpoint = `/hospital/patients/report/pdf`;
@@ -1116,6 +1497,10 @@ const HospitalAdminDashboard = () => {
                 await hospitalService.resetReceptionistPassword(id, newPassword);
             } else if (role === 'pharmacist') {
                 await hospitalService.resetPharmacistPassword(id, newPassword);
+            } else if (role === 'nurse') {
+                await hospitalService.resetNursePassword(id, newPassword);
+            } else if (role === 'ot-incharge') {
+                await hospitalService.resetOtInchargePassword(id, newPassword);
             }
             success('Password reset successfully');
             setResetPasswordModal({ isOpen: false, staff: null, role: '' });
@@ -1160,8 +1545,7 @@ const HospitalAdminDashboard = () => {
 
     const handleExportPDF = () => {
         if (!analyticsData) return;
-        const printWindow = window.open("", "_blank");
-        printWindow.document.write(`
+        printHtml(`
             <html>
             <head>
                 <title>Hospital Analytics Report</title>
@@ -1286,7 +1670,6 @@ const HospitalAdminDashboard = () => {
             </body>
             </html>
         `);
-        printWindow.document.close();
     };
 
     const allTabs = [
@@ -1310,25 +1693,61 @@ const HospitalAdminDashboard = () => {
         // Staff
         { id: 'doctors', label: 'Doctors', icon: null, requiredModule: 'OPD' },
         { id: 'receptionists', label: 'Receptionists', icon: null, requiredModule: 'OPD' },
+        { id: 'ot-incharges', label: 'OT Incharge', icon: null, requiredModule: 'OT' },
+        { id: 'ot-theatres', label: 'OT Theatres', icon: null, requiredModule: 'OT' },
+        { id: 'ot-analytics', label: 'OT Analytics', icon: null, requiredModule: 'OT' },
+        { id: 'nurses', label: 'Nurses', icon: null, requiredModule: 'NURSING' },
+        { id: 'nurse-assignments', label: 'Nurse Assignments', icon: null, requiredModule: 'NURSING' },
+        { id: 'nurse-tasks', label: 'Nurse Tasks', icon: null, requiredModule: 'NURSING' },
+        { id: 'time-slots', label: 'Time Slots', icon: null, requiredModule: 'NURSING' },
+        { id: 'calendar', label: 'Calendar', icon: null, requiredModule: 'NURSING' },
         // Admin & meta
         { id: 'analytics', label: 'Reports & Analytics', icon: null, requiredModule: 'REPORTS' },
         { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
-        { id: 'messages', label: 'Messages', icon: null, requiredModule: null },
         { id: 'settings', label: 'Settings', icon: null, requiredModule: null },
         { id: 'support', label: 'Support', icon: null, requiredModule: null },
         { id: 'quick-notes', label: 'Quick Notes', icon: null, requiredModule: null },
+        { id: 'symptom-presets', label: 'Symptom Presets', icon: null, requiredModule: null },
+        { id: 'diagnosis-presets', label: 'Diagnosis Presets', icon: null, requiredModule: null },
         { id: 'prescription-presets', label: 'Prescription Presets', icon: null, requiredModule: null },
+        // In-Clinic presets are bundles of stock medicines administered in the clinic, so they
+        // only make sense while the In-Clinic flow is on (gated below, like Medicine Inventory).
+        { id: 'in-clinic-presets', label: 'In-Clinic Presets', icon: null, requiredModule: null },
     ];
 
     // In-Clinic medicine flow gates the Medicine Inventory tab. When an admin
     // turns In-Clinic off, the tab is hidden (updated live via the SETTINGS_UPDATED
     // WebSocket message, which refreshes user.inClinic — see useWebSocket).
     const hasInClinic = user?.inClinic !== false;
-    const tabs = allTabs.filter(tab => {
-        if (tab.requiredModule && !modules.includes(tab.requiredModule)) return false;
-        if (tab.id === 'inventory' && !hasInClinic) return false;
-        return true;
-    });
+    // Standalone pharmacy tenants get a dedicated sidebar driven by the pharmacy plan tier.
+
+    let tabs;
+    if (isPharmacyTenant) {
+        const pick = (id) => allTabs.find(t => t.id === id);
+        tabs = [
+            pick('overview'),
+            // SINGLE Pharmacy manages pharmacists; SOLO is a one-person shop (no staff tab);
+            // MULTI manages branches (Pharmacies tab).
+            ...(pharmacyMode === 'SINGLE' ? [{ id: 'pharmacists', label: 'Pharmacists', icon: null, requiredModule: null }] : []),
+            ...(pharmacyMode === 'MULTI' ? [
+                { id: 'pharmacies', label: 'Pharmacies', icon: null, requiredModule: null },
+                { id: 'suppliers', label: 'Suppliers', icon: null, requiredModule: null }
+            ] : []),
+            { id: 'pharmacy-billing', label: 'Billing', icon: null, requiredModule: null },
+            { id: 'pharmacy', label: 'Analytics', icon: null, requiredModule: null },
+            pick('audit-logs'),
+            pick('settings'),
+            pick('support'),
+        ].filter(Boolean);
+    } else {
+        tabs = allTabs.filter(tab => {
+            if (tab.requiredModule && !modules.includes(tab.requiredModule)) return false;
+            if (tab.id === 'inventory' && !hasInClinic) return false;
+            if (tab.id === 'in-clinic-presets' && !hasInClinic) return false;
+            if (tab.id === 'ot-incharges' && !operationsSettings.otInchargeEnabled) return false;
+            return true;
+        });
+    }
 
     // If the active tab is no longer visible (e.g. In-Clinic just got disabled
     // while viewing Medicine Inventory), fall back to the overview tab.
@@ -1339,28 +1758,33 @@ const HospitalAdminDashboard = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [hasInClinic, activeTab]);
 
-    // Grouped sidebar — Hospital Admin only (user?.hospitalType === 'HOSPITAL').
-    // Clinic/Pharmacy admins and every other role keep the existing flat
-    // `tabs` list untouched; this is purely a presentational regrouping of
-    // the same tab ids/labels/routes computed above, so navigation, module
-    // gating, and permissions are unaffected.
+    // Grouped sidebar — Hospital AND Clinic admins (both tenant types run this dashboard).
+    // Pharmacy tenants keep the flat, plan-driven list built above, because their tabs come
+    // from the pharmacy tier rather than from these groups.
+    // This is purely a presentational regrouping of the same tab ids/labels/routes computed
+    // above, so navigation, module gating, and permissions are unaffected.
+    // The same groups serve both tenants: a group whose tabs are all absent (a clinic with no
+    // IPD/OT/Nursing on its plan) has no subItems and is dropped, so a clinic naturally shows
+    // only the groups it actually has — no separate clinic group list to keep in sync.
     // Dashboard/Overview is deliberately NOT one of these groups — it's a
     // single item, so it stays a plain top-level link instead of a
     // one-item dropdown (see groupedSidebarTabs below).
     const SIDEBAR_GROUPS = [
-        { id: 'group-patient-management', label: 'Patient Management', tabIds: ['patients', 'appointments', 'opd', 'ipd', 'wards', 'ot', 'pathology'] },
-        { id: 'group-staff', label: 'Staff', tabIds: ['doctors', 'pharmacists', 'receptionists'] },
+        { id: 'group-patient-management', label: 'Patient Management', tabIds: ['patients', 'appointments', 'opd', 'ipd', 'ot', 'pathology'] },
+        { id: 'group-rooms', label: 'Rooms', tabIds: ['wards'] },
+        { id: 'group-staff', label: 'Staff', tabIds: ['doctors', 'pharmacists', 'receptionists', 'ot-incharges', 'ot-theatres'] },
+        { id: 'group-nursing', label: 'Nursing', tabIds: ['nurses', 'nurse-assignments', 'nurse-tasks', 'time-slots', 'calendar'] },
         { id: 'group-pharmacy', label: 'Pharmacy', tabIds: ['pharmacy'] },
         { id: 'group-inventory', label: 'Inventory', tabIds: ['inventory', 'hospital-inventory'] },
         { id: 'group-finance', label: 'Finance', tabIds: ['billing', 'fees'] },
-        { id: 'group-reports', label: 'Reports', tabIds: ['analytics', 'audit-logs'] },
-        { id: 'group-communication', label: 'Communication', tabIds: ['messages'] },
-        { id: 'group-administration', label: 'Administration', tabIds: ['settings', 'support', 'quick-notes', 'prescription-presets'] },
+        { id: 'group-reports', label: 'Reports', tabIds: ['analytics', 'ot-analytics', 'audit-logs'] },
+        { id: 'group-presets', label: 'Presets', tabIds: ['quick-notes', 'symptom-presets', 'diagnosis-presets', 'prescription-presets', 'in-clinic-presets'] },
+        { id: 'group-administration', label: 'Administration', tabIds: ['settings', 'support'] },
     ];
 
-    const isHospitalAdminTenant = user?.hospitalType === 'HOSPITAL';
+    const usesGroupedSidebar = user?.hospitalType === 'HOSPITAL' || user?.hospitalType === 'CLINIC';
 
-    const groupedSidebarTabs = isHospitalAdminTenant
+    const groupedSidebarTabs = usesGroupedSidebar
         ? [
             ...tabs.filter(t => t.id === 'overview'),
             ...SIDEBAR_GROUPS
@@ -1370,11 +1794,25 @@ const HospitalAdminDashboard = () => {
                     subItems: group.tabIds
                         .map(id => tabs.find(t => t.id === id))
                         .filter(Boolean),
-                    isExpanded: expandedSidebarGroups.has(group.id) || group.tabIds.includes(activeTab),
+                    // Expansion is driven ONLY by state. It used to also OR in
+                    // `group.tabIds.includes(activeTab)`, which force-expanded the group owning
+                    // the open tab — so clicking that group's header could never close it.
+                    // The active tab's group is instead auto-expanded once, when the tab changes
+                    // (see the effect below), exactly like the platform sidebar.
+                    isExpanded: expandedSidebarGroups.has(group.id),
                 }))
                 .filter(group => group.subItems.length > 0),
         ]
         : tabs;
+
+    // Keep the group that owns the active tab visible — on first render and whenever the tab
+    // changes. Because this only runs on a tab change, a manual collapse of that group sticks.
+    useEffect(() => {
+        const owning = SIDEBAR_GROUPS.find(g => g.tabIds.includes(activeTab));
+        if (!owning) return;
+        setExpandedSidebarGroups(prev => (prev.has(owning.id) ? prev : new Set(prev).add(owning.id)));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab]);
 
     const handleToggleSidebarGroup = (groupId) => {
         setExpandedSidebarGroups(prev => {
@@ -1458,35 +1896,19 @@ const HospitalAdminDashboard = () => {
     };
 
     const [printingReceiptId, setPrintingReceiptId] = useState(null);
+    /**
+     * Print the receipt on this page (hidden iframe), like the consultation documents and the
+     * clinical forms — not in a stray new tab that the user then has to close. The Payment
+     * Successful dialog has done its job once print is invoked, so it dismisses itself instead
+     * of leaving "Print Receipt" / "Close" sitting behind the print preview.
+     */
     const handlePrintReceipt = async (id) => {
         if (printingReceiptId) return;
         setPrintingReceiptId(id);
-        
-        // Pre-open the window synchronously to bypass popup blocker
-        const printWindow = window.open('', '_blank');
-        if (printWindow) {
-            printWindow.document.write('<p style="font-family: sans-serif; text-align: center; margin-top: 20px;">Generating receipt PDF, please wait...</p>');
-        }
-        
+        setPaymentSuccessModal(prev => ({ ...prev, isOpen: false }));
         try {
-            const blob = await hospitalService.downloadReceipt(id);
-            const url = window.URL.createObjectURL(blob);
-            if (printWindow) {
-                printWindow.document.open();
-                printWindow.document.write(
-                    '<!DOCTYPE html><html><head><title>Receipt</title></head>' +
-                    '<body style="margin:0;padding:0;">' +
-                    '<embed type="application/pdf" src="' + url + '" style="position:fixed;top:0;left:0;width:100%;height:100%;border:none;">' +
-                    '</body></html>'
-                );
-                printWindow.document.close();
-            }
-        } catch (err) {
-            console.error(err);
-            if (printWindow) {
-                printWindow.close();
-            }
-            toastError('Failed to load receipt for printing');
+            const printed = await printPdf(`/hospital/billing/${id}/pdf`);
+            if (!printed) toastError('Failed to load receipt for printing');
         } finally {
             setPrintingReceiptId(null);
         }
@@ -1528,7 +1950,7 @@ const HospitalAdminDashboard = () => {
                 tabs={groupedSidebarTabs}
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
-                onToggleGroup={isHospitalAdminTenant ? handleToggleSidebarGroup : undefined}
+                onToggleGroup={usesGroupedSidebar ? handleToggleSidebarGroup : undefined}
                 footerTitle={tenantWord}
                 footerData={user?.hospitalName}
                 variant="plain"
@@ -1554,7 +1976,189 @@ const HospitalAdminDashboard = () => {
                     {modules.includes('HOSPITAL_INVENTORY') && <LowStockBanner />}
 
                     {/* Overview Tab - Stats & Inline Tables Split Grid */}
-                    {activeTab === 'overview' && !loading && (
+                    {activeTab === 'overview' && !loading && isPharmacyTenant ? (
+                        <div className="space-y-6 animate-in fade-in duration-300">
+                            {renderBranchFilterBar()}
+                            
+                            {/* KPI Metrics Cards */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                {/* Total Sales Card */}
+                                <div className="bg-white p-6 rounded-2xl border border-gray-150 shadow-sm relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 w-20 h-20 bg-blue-50/50 rounded-bl-full -z-10"></div>
+                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Gross Sales</p>
+                                    <h3 className="text-2xl font-black text-gray-900 mt-2">
+                                        ₹{(pharmacyStats?.kpis?.totalSales || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </h3>
+                                    <p className="text-[10px] text-gray-400 mt-1 font-semibold">Total processed invoices</p>
+                                </div>
+
+                                {/* Net Sales Card */}
+                                <div className="bg-white p-6 rounded-2xl border border-gray-150 shadow-sm relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 w-20 h-20 bg-green-50/50 rounded-bl-full -z-10"></div>
+                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Net Revenue</p>
+                                    <h3 className="text-2xl font-black text-emerald-600 mt-2">
+                                        ₹{(pharmacyStats?.kpis?.netRevenue || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </h3>
+                                    <p className="text-[10px] text-emerald-600/80 mt-1 font-semibold">Net profit after customer returns</p>
+                                </div>
+
+                                {/* Inventory Valuation Card */}
+                                <div className="bg-white p-6 rounded-2xl border border-gray-150 shadow-sm relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 w-20 h-20 bg-indigo-50/50 rounded-bl-full -z-10"></div>
+                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Stock Valuation</p>
+                                    <h3 className="text-2xl font-black text-indigo-600 mt-2">
+                                        ₹{(pharmacyStats?.kpis?.inventoryValue || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </h3>
+                                    <p className="text-[10px] text-indigo-500/80 mt-1 font-semibold">Cash value of active shelf stock</p>
+                                </div>
+
+                                {/* Profit Margin Card */}
+                                <div className="bg-white p-6 rounded-2xl border border-gray-150 shadow-sm relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 w-20 h-20 bg-amber-50/50 rounded-bl-full -z-10"></div>
+                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Profit Margin</p>
+                                    <h3 className="text-2xl font-black text-amber-600 mt-2">
+                                        {pharmacyStats?.kpis?.profitMargin || 0}%
+                                    </h3>
+                                    <p className="text-[10px] text-amber-600/80 mt-1 font-semibold">Average mark-up profit margin</p>
+                                </div>
+                            </div>
+
+                            {/* Split Grid */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-6">
+                                {/* Left Panel: Recent Invoices */}
+                                <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-sm flex flex-col">
+                                    <div className="px-6 py-5 border-b border-neutral-100 bg-neutral-50/50 flex flex-row justify-between items-center">
+                                        <div>
+                                            <h3 className="text-base font-bold text-slate-800">Recent Sales Invoices</h3>
+                                            <p className="text-xs text-slate-500 mt-0.5">Summary of the latest customer sales counter bills</p>
+                                        </div>
+                                    </div>
+                                    <div className="p-6 flex-1 overflow-x-auto">
+                                        {pharmacyRecentBills.length > 0 ? (
+                                            <table className="w-full text-left text-xs">
+                                                <thead className="bg-gray-50 text-[10px] uppercase tracking-widest text-gray-400 font-black border-b border-gray-100">
+                                                    <tr>
+                                                        <th className="px-4 py-3">Bill Number</th>
+                                                        <th className="px-4 py-3">Patient Name</th>
+                                                        <th className="px-4 py-3 text-right">Net Amount</th>
+                                                        <th className="px-4 py-3 text-center">Status</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100">
+                                                    {pharmacyRecentBills.map(bill => (
+                                                        <tr key={bill.id} className="hover:bg-gray-50/50 transition-colors">
+                                                            <td className="px-4 py-3.5 font-bold text-gray-900">{bill.billNumber}</td>
+                                                            <td className="px-4 py-3.5 text-gray-600 font-medium">{bill.patientName || 'Walk-in'}</td>
+                                                            <td className="px-4 py-3.5 text-right font-bold text-gray-900">₹{bill.netAmount}</td>
+                                                            <td className="px-4 py-3.5 text-center">
+                                                                <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase border ${
+                                                                    bill.paymentStatus === 'PAID' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+                                                                }`}>
+                                                                    {bill.paymentStatus}
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        ) : (
+                                            <div className="text-center py-12 text-gray-400 italic">No recent bills found.</div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Right Panel: Tabbed widget for Low Stock & Fast Movers */}
+                                <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-sm flex flex-col">
+                                    <div className="px-6 py-4 border-b border-neutral-100 bg-neutral-50/50 flex flex-row justify-between items-center">
+                                        <div className="flex bg-gray-100 rounded-lg p-0.5 border border-gray-200 items-center">
+                                            <button
+                                                onClick={() => setPharmacyRightTab('low-stock')}
+                                                className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
+                                                    pharmacyRightTab === 'low-stock'
+                                                        ? 'bg-white text-gray-900 shadow-sm border border-gray-100'
+                                                        : 'text-gray-500 hover:text-gray-700'
+                                                }`}
+                                            >
+                                                Low Stock Alerts
+                                            </button>
+                                            <button
+                                                onClick={() => setPharmacyRightTab('fast-movers')}
+                                                className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
+                                                    pharmacyRightTab === 'fast-movers'
+                                                        ? 'bg-white text-gray-900 shadow-sm border border-gray-100'
+                                                        : 'text-gray-500 hover:text-gray-700'
+                                                }`}
+                                            >
+                                                Best Selling Items
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-6 flex-1 overflow-x-auto">
+                                        {pharmacyRightTab === 'low-stock' ? (
+                                            pharmacyLowStock.length > 0 ? (
+                                                <table className="w-full text-left text-xs">
+                                                    <thead className="bg-gray-50 text-[10px] uppercase tracking-widest text-gray-400 font-black border-b border-gray-100">
+                                                        <tr>
+                                                            <th className="px-4 py-3">Medicine</th>
+                                                            <th className="px-4 py-3">Batch</th>
+                                                            <th className="px-4 py-3 text-right">Available Qty</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-100">
+                                                        {pharmacyLowStock.map((item, idx) => (
+                                                            <tr key={item.id || idx} className="hover:bg-gray-50/50 transition-colors">
+                                                                <td className="px-4 py-3.5">
+                                                                    <div className="flex flex-col">
+                                                                        <span className="font-bold text-gray-900">{item.medicine?.medicineName || 'Unknown Medicine'}</span>
+                                                                        <span className="text-[10px] text-gray-400 font-bold uppercase">{item.medicine?.genericName || '-'}</span>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-4 py-3.5 text-gray-600 font-bold">{item.batchNumber || '-'}</td>
+                                                                <td className="px-4 py-3.5 text-right font-black text-red-650 bg-red-50/30 rounded-lg">
+                                                                    {item.currentQuantity}
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            ) : (
+                                                <div className="text-center py-12 text-green-600 font-bold text-xs flex items-center justify-center gap-1">
+                                                    <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                    </svg>
+                                                    All medicine stocks are healthy!
+                                                </div>
+                                            )
+                                        ) : (
+                                            (pharmacyStats?.fastMoving || []).length > 0 ? (
+                                                <table className="w-full text-left text-xs">
+                                                    <thead className="bg-gray-50 text-[10px] uppercase tracking-widest text-gray-400 font-black border-b border-gray-100">
+                                                        <tr>
+                                                            <th className="px-4 py-3">Medicine</th>
+                                                            <th className="px-4 py-3 text-right">Sold Qty</th>
+                                                            <th className="px-4 py-3 text-right">Total Revenue</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-100">
+                                                        {(pharmacyStats?.fastMoving || []).map((item, idx) => (
+                                                            <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
+                                                                <td className="px-4 py-3.5 font-bold text-gray-900">{item.name}</td>
+                                                                <td className="px-4 py-3.5 text-right font-bold text-gray-700">{item.quantity}</td>
+                                                                <td className="px-4 py-3.5 text-right font-black text-emerald-600">₹{item.revenue}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            ) : (
+                                                <div className="text-center py-12 text-gray-400 italic">No sales data recorded yet.</div>
+                                            )
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    ) : activeTab === 'overview' && !loading && (
                         <div className="space-y-6">
                             <h2 className="text-2xl font-bold text-gray-900">Overview</h2>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1709,15 +2313,15 @@ const HospitalAdminDashboard = () => {
                     )}
 
                     {/* Standardized Header */}
-                    {activeTab !== 'overview' && activeTab !== 'pharmacy' &&  activeTab !== 'ipd' &&  activeTab !== 'pathology' && activeTab !== 'support' && activeTab !== 'inventory' && activeTab !== 'hospital-inventory' && activeTab !== 'messages' && (
+                    {activeTab !== 'overview' && activeTab !== 'pharmacy' &&  activeTab !== 'ipd' &&  activeTab !== 'pathology' && activeTab !== 'support' && activeTab !== 'inventory' && activeTab !== 'hospital-inventory' && (
                         <PageHeader
                             title={tabs.find(t => t.id === activeTab)?.label}
                             subtitle={activeTab === 'settings' ? 'Configure operational settings and permissions' : activeTab === 'opd' ? 'Active patients currently in queue or being consulted' : `Manage hospital ${activeTab} records`}
                             onSearch={(activeTab === 'fees' || activeTab === 'settings') ? null : (e) => setSearchInput(e.target.value)}
                             searchValue={(activeTab === 'fees' || activeTab === 'settings') ? '' : searchInput}
                             searchPlaceholder={(activeTab === 'fees' || activeTab === 'settings') ? '' : `Search ${activeTab}...`}
-                            onAdd={activeTab === 'opd' ? () => setIsAdminOpdModalOpen(true) : (activeTab !== 'billing' && activeTab !== 'audit-logs' && activeTab !== 'fees' && activeTab !== 'settings' && user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null)}
-                            addLabel={activeTab === 'opd' ? 'New OPD' : (activeTab === 'fees' || activeTab === 'settings') ? '' : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`}
+                            onAdd={activeTab === 'opd' ? () => setIsAdminOpdModalOpen(true) : activeTab === 'nurse-tasks' ? () => setCreateTaskModal(true) : (activeTab !== 'billing' && activeTab !== 'audit-logs' && activeTab !== 'fees' && activeTab !== 'settings' && activeTab !== 'ot' && activeTab !== 'time-slots' && activeTab !== 'calendar' && user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null)}
+                            addLabel={activeTab === 'opd' ? 'New OPD' : activeTab === 'nurse-tasks' ? 'New Task' : (activeTab === 'fees' || activeTab === 'settings') ? '' : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'nurses' ? 'Nurse' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'ot-incharges' ? 'OT Incharge' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`}
                             filter={activeTab === 'patients' ? (
                                 <div className="flex items-center gap-2">
                                     <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 h-[38px] items-center">
@@ -1833,13 +2437,19 @@ const HospitalAdminDashboard = () => {
                                 </div>
                             ) : activeTab === 'audit-logs' ? (
                                 <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 gap-1">
-                                    {[
-                                        { id: 'ALL', label: 'All' },
-                                        { id: 'DOCTOR', label: 'Doctor' },
-                                        { id: 'HOSPITAL_ADMIN', label: 'Admin' },
-                                        ...(operationsSettings.receptionMode !== 'SOLO' ? [{ id: 'RECEPTIONIST', label: 'Reception' }] : []),
-                                        ...(modules.includes('PHARMACY') ? [{ id: 'PHARMACIST', label: 'Pharmacy' }] : [])
-                                    ].map(item => (
+                                    {(isPharmacyTenant
+                                        ? [
+                                            { id: 'ALL', label: 'All Pharmacy Users' },
+                                            { id: 'HOSPITAL_ADMIN', label: 'Pharmacy Admin' },
+                                            { id: 'PHARMACIST', label: 'Pharmacists' }
+                                        ]
+                                        : [
+                                            { id: 'ALL', label: 'All' },
+                                            { id: 'DOCTOR', label: 'Doctor' },
+                                            { id: 'HOSPITAL_ADMIN', label: 'Admin' },
+                                            ...(operationsSettings.receptionMode !== 'SOLO' ? [{ id: 'RECEPTIONIST', label: 'Reception' }] : [])
+                                        ]
+                                    ).map(item => (
                                         <button
                                             key={item.id}
                                             onClick={() => setAuditLogRoleFilter(item.id)}
@@ -1871,7 +2481,7 @@ const HospitalAdminDashboard = () => {
                         <>
                             {/* Overview tab content already rendered above */}
 
-                            {(activeTab === 'patients' || activeTab === 'doctors' || activeTab === 'pharmacists' || activeTab === 'receptionists' || activeTab === 'wards' || activeTab === 'billing' || activeTab === 'fees' || activeTab === 'opd' || activeTab === 'appointments') && (
+                            {(activeTab === 'patients' || activeTab === 'doctors' || activeTab === 'pharmacists' || activeTab === 'receptionists' || activeTab === 'nurses' || activeTab === 'nurse-assignments' || activeTab === 'nurse-tasks' || activeTab === 'wards' || activeTab === 'billing' || activeTab === 'fees' || activeTab === 'opd' || activeTab === 'appointments' || activeTab === 'ot-incharges') && (
                                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
                                     {activeTab === 'patients' && (
                                         patients.length > 0 ? (
@@ -1967,6 +2577,73 @@ const HospitalAdminDashboard = () => {
                                             onAction={user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
                                         />
                                     )
+                                )}
+
+                                {activeTab === 'ot-incharges' && (
+                                    otIncharges.length > 0 ? (
+                                        <OtInchargesTable 
+                                            otIncharges={otIncharges} 
+                                            isAdmin={user?.role === 'HOSPITAL_ADMIN'} 
+                                            onDelete={handleDeleteOtIncharge} 
+                                            onEdit={(ot) => handleEdit(ot, 'ot-incharges')}
+                                            onViewDetails={(ot) => handleViewStaffDetails(ot, 'ot-incharge')}
+                                            onResetPassword={(ot) => handleResetStaffPassword(ot, 'ot-incharge')}
+                                            startIndex={page * pageSize} 
+                                            pagination={pagination} 
+                                        />
+                                    ) : (
+                                        <EmptyState
+                                            icon={null}
+                                            title="No OT Incharges Found"
+                                            message="Add OT Incharges to help manage your operation theatre operations."
+                                            actionLabel="Add OT Incharge"
+                                            onAction={user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
+                                        />
+                                    )
+                                )}
+
+                                 {activeTab === 'nurses' && (
+                                    nurses.length > 0 ? (
+                                        <NursesTable
+                                            nurses={nurses}
+                                            isAdmin={user?.role === 'HOSPITAL_ADMIN'}
+                                            onDelete={handleDeleteNurse}
+                                            onEdit={(n) => handleEdit(n, 'nurses')}
+                                            onViewDetails={(n) => handleViewStaffDetails(n, 'nurse')}
+                                            onResetPassword={(n) => handleResetStaffPassword(n, 'nurse')}
+                                            onPromote={handlePromoteNurse}
+                                            onDemote={handleDemoteNurse}
+                                            onToggleActive={handleToggleNurseActive}
+                                            startIndex={page * pageSize}
+                                            pagination={pagination}
+                                        />
+                                    ) : (
+                                        <EmptyState
+                                            icon={null}
+                                            title="No Nurses Found"
+                                            message="Add nurses to record vitals, medication, and nursing notes for admitted patients."
+                                            actionLabel="Add Nurse"
+                                            onAction={user?.role === 'HOSPITAL_ADMIN' ? handleAdd : null}
+                                        />
+                                    )
+                                )}
+
+                                {activeTab === 'nurse-assignments' && (
+                                    <NurseAssignmentsTable
+                                        rows={nurseAssignments}
+                                        isAdmin={user?.role === 'HOSPITAL_ADMIN'}
+                                        onAssign={(row) => setAssignNurseModal({ isOpen: true, row })}
+                                        onUnassign={handleUnassignNurse}
+                                    />
+                                )}
+
+                                {activeTab === 'nurse-tasks' && (
+                                    <NurseTasksTable
+                                        rows={nurseTasks}
+                                        nurseOptions={nurseOptions}
+                                        onCancel={handleCancelNurseTask}
+                                        isAdmin={user?.role === 'HOSPITAL_ADMIN'}
+                                    />
                                 )}
 
                                 {activeTab === 'wards' && (
@@ -2149,20 +2826,151 @@ const HospitalAdminDashboard = () => {
                             </div>
                         )}
 
+                        {activeTab === 'ot-theatres' && (
+                            <div className="max-w-3xl mx-auto my-4">
+                                <OtRoomsCard />
+                            </div>
+                        )}
+
+                        {activeTab === 'ot-analytics' && (
+                            <div className="max-w-4xl mx-auto my-4">
+                                <OtAnalyticsCard />
+                            </div>
+                        )}
+
+                        {activeTab === 'symptom-presets' && (
+                            <div className="max-w-2xl mx-auto my-4">
+                                <NotePresetsManager
+                                    fieldType="SYMPTOMS"
+                                    isAdmin
+                                    title="Symptom Presets"
+                                    noun="symptom preset"
+                                    placeholder="e.g. Fever x 3 days"
+                                    description="Common complaints that appear as one-click buttons under Symptoms during a consultation."
+                                />
+                            </div>
+                        )}
+
+                        {activeTab === 'diagnosis-presets' && (
+                            <div className="max-w-2xl mx-auto my-4">
+                                <NotePresetsManager
+                                    fieldType="DIAGNOSIS"
+                                    isAdmin
+                                    title="Diagnosis Presets"
+                                    noun="diagnosis preset"
+                                    placeholder="e.g. Essential Hypertension"
+                                    description="Common diagnoses that appear as one-click buttons under Diagnosis during a consultation."
+                                />
+                            </div>
+                        )}
+
                         {activeTab === 'prescription-presets' && (
                             <div className="max-w-3xl mx-auto my-4">
                                 <PrescriptionPresetsManager isAdmin />
                             </div>
                         )}
+
+                        {activeTab === 'in-clinic-presets' && (
+                            <div className="max-w-3xl mx-auto my-4">
+                                <InClinicPresetsManager />
+                            </div>
+                        )}
                                 {activeTab === 'settings' && (
+                                    <>
+                                    {/* Non-pharmacy: Settings is a grid of boxes; each opens its section on click. */}
+                                    {!isPharmacyTenant && !settingsView && (
+                                        <div className="max-w-4xl mx-auto my-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {[
+                                                { view: 'operations', title: 'Operations Settings', desc: 'Reception mode, billing responsibility, nurse login and OT incharge.', iconClass: 'bg-sky-50 text-sky-600' },
+                                                { view: 'vitals', title: 'Vitals', desc: 'Which vitals are captured at OPD entry; add your own.', iconClass: 'bg-rose-50 text-rose-600' },
+                                                { view: 'print-payment', title: 'Print & Payment', desc: 'Which pages print at consultation, and whether the bill is taken before or after the OPD.', iconClass: 'bg-violet-50 text-violet-600' },
+                                                ...(modules.includes('NURSING') ? [
+                                                    { view: 'nursing', title: 'Nursing Records', desc: 'Turn nursing forms on or off and choose who edits each.', iconClass: 'bg-emerald-50 text-emerald-600' }
+                                                ] : []),
+                                                // Without nursing there is no "Nursing Records" card, but the IPD still needs
+                                                // its clinical sub-divs (Vitals, Medication, Notes, …). This gives the same
+                                                // on/off + who-edits control, with Reception as the editor instead of Nurse.
+                                                ...(modules.includes('IPD') && !modules.includes('NURSING') ? [
+                                                    { view: 'ipd-forms', title: 'IPD Forms', desc: 'Turn IPD sub-divisions on or off and choose who edits each (Doctor / Reception).', iconClass: 'bg-emerald-50 text-emerald-600' }
+                                                ] : []),
+                                                ...(modules.includes('OT') ? [
+                                                    { view: 'ot-forms', title: 'OT / Surgery Forms', desc: 'Turn OT and NABH forms on or off and choose who edits each.', iconClass: 'bg-amber-50 text-amber-600' },
+                                                    { view: 'permissions', title: 'OT Permissions', desc: 'Choose which role may do what in the Operation Theatre.', iconClass: 'bg-indigo-50 text-indigo-600' },
+                                                    { view: 'policies', title: 'OT Policies', desc: 'Which workflow steps your theatre requires; one-click presets.', iconClass: 'bg-teal-50 text-teal-600' },
+                                                ] : []),
+                                            ].map((b) => (
+                                                <button key={b.view} onClick={() => setSettingsView(b.view)}
+                                                    className="text-left bg-slate-50/50 rounded-2xl border border-gray-200 p-6 hover:shadow-md transition-all duration-300">
+                                                    <div className={`p-3 rounded-xl w-fit mb-4 ${b.iconClass}`}>
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                        </svg>
+                                                    </div>
+                                                    <h3 className="text-lg font-bold text-gray-900 mb-1">{b.title}</h3>
+                                                    <p className="text-sm text-gray-600 leading-relaxed">{b.desc}</p>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {!isPharmacyTenant && settingsView && (
+                                        <div className="max-w-4xl mx-auto mt-4">
+                                            <button onClick={() => setSettingsView(null)}
+                                                className="inline-flex items-center gap-1 text-sm font-semibold text-gray-600 hover:text-gray-900">
+                                                ← Back to Settings
+                                            </button>
+                                        </div>
+                                    )}
+                                    {(isPharmacyTenant || settingsView === 'operations') && (
                                     <div className="p-6 bg-white rounded-2xl border border-gray-200/80 shadow-sm max-w-4xl mx-auto my-4">
-                                        <h2 className="text-xl font-bold mb-1 text-gray-900">Operations Settings</h2>
-                                        <p className="text-sm text-gray-500 mb-8">Configure operational scenarios, staff access permissions, and billing responsibilities.</p>
-                                        
+                                        <h2 className="text-xl font-bold mb-1 text-gray-900">{isPharmacyTenant ? 'Pharmacy Settings' : 'Operations Settings'}</h2>
+                                        <p className="text-sm text-gray-500 mb-8">{isPharmacyTenant ? 'Configure your pharmacy workflow options.' : 'Configure operational scenarios, staff access permissions, and billing responsibilities.'}</p>
+
                                         {settingsLoading ? (
                                             <SkeletonSettingsCard />
                                         ) : (
                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                                                {/* Barcode Workflow Card — pharmacy tenants only */}
+                                                {isPharmacyTenant && (
+                                                <div className="bg-slate-50/50 rounded-2xl border border-gray-200 p-6 flex flex-col justify-between hover:shadow-md transition-all duration-300">
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-4">
+                                                            <div className="p-3 bg-violet-50 rounded-xl text-violet-600">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5h1v14H4V5zm3 0h1v14H7V5zm3 0h2v14h-2V5zm4 0h1v14h-1V5zm3 0h2v14h-2V5z" />
+                                                                </svg>
+                                                            </div>
+                                                            <span className={`px-3 py-1 text-xs font-semibold rounded-full ${operationsSettings.barcodeEnabled !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                                                                {operationsSettings.barcodeEnabled !== false ? 'Barcode Enabled' : 'Barcode Disabled'}
+                                                            </span>
+                                                        </div>
+                                                        <h3 className="text-lg font-bold text-gray-900 mb-2">Barcode Workflow</h3>
+                                                        <p className="text-sm text-gray-600 leading-relaxed mb-6">
+                                                            Enable barcode scanning at the Billing Counter and barcode label printing in Inventory. Turn this off if your pharmacy does not use barcodes.
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                                                        <span className="text-sm font-medium text-gray-700">
+                                                            {operationsSettings.barcodeEnabled !== false ? 'Barcode Active' : 'Barcode Off'}
+                                                        </span>
+                                                        <button
+                                                            onClick={toggleBarcode}
+                                                            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 ${
+                                                                operationsSettings.barcodeEnabled !== false ? 'bg-sky-600' : 'bg-gray-200'
+                                                            }`}
+                                                        >
+                                                            <span className="sr-only">Toggle Barcode Workflow</span>
+                                                            <span
+                                                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                                                    operationsSettings.barcodeEnabled !== false ? 'translate-x-5' : 'translate-x-0'
+                                                                }`}
+                                                            />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                )}
+                                                {/* Clinic-oriented cards — hidden for standalone pharmacy tenants */}
+                                                {!isPharmacyTenant && (<>
                                                 {/* Receptionist Access Card */}
                                                 <div className="bg-slate-50/50 rounded-2xl border border-gray-200 p-6 flex flex-col justify-between hover:shadow-md transition-all duration-300">
                                                     <div>
@@ -2285,13 +3093,148 @@ const HospitalAdminDashboard = () => {
                                                         </button>
                                                     </div>
                                                 </div>}
+
+                                                {/* Separate Nurse Login Card — only shown when NURSING module is in plan */}
+                                                {modules.includes('NURSING') && <div className="bg-slate-50/50 rounded-2xl border border-gray-200 p-6 flex flex-col justify-between hover:shadow-md transition-all duration-300">
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-4">
+                                                            <div className="p-3 bg-rose-50 rounded-xl text-rose-600">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                                                </svg>
+                                                            </div>
+                                                            <span className={`px-3 py-1 text-xs font-semibold rounded-full ${operationsSettings.separateNurseLogin === true ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                                                                {operationsSettings.separateNurseLogin === true ? 'Separate Login Enabled' : 'Shared Login'}
+                                                            </span>
+                                                        </div>
+                                                        <h3 className="text-lg font-bold text-gray-900 mb-2">Separate Nurse Login</h3>
+                                                        <p className="text-sm text-gray-600 leading-relaxed mb-6">
+                                                            When enabled, nurses and nurse incharges sign in through a dedicated nurse login page instead of the shared hospital login.
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                                                        <span className="text-sm font-medium text-gray-700">
+                                                            {operationsSettings.separateNurseLogin === true ? 'Separate Login Active' : 'Using Shared Login'}
+                                                        </span>
+                                                        <button
+                                                            onClick={toggleSeparateNurseLogin}
+                                                            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 ${
+                                                                operationsSettings.separateNurseLogin === true ? 'bg-sky-600' : 'bg-gray-200'
+                                                            }`}
+                                                        >
+                                                            <span className="sr-only">Toggle Separate Nurse Login</span>
+                                                            <span
+                                                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                                                    operationsSettings.separateNurseLogin === true ? 'translate-x-5' : 'translate-x-0'
+                                                                }`}
+                                                            />
+                                                        </button>
+                                                    </div>
+                                                </div>}
+
+                                                {/* OT Incharge Setting Card — only shown when OT module is in plan */}
+                                                {modules.includes('OT') && <div className="bg-slate-50/50 rounded-2xl border border-gray-200 p-6 flex flex-col justify-between hover:shadow-md transition-all duration-300">
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-4">
+                                                            <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                                                                </svg>
+                                                            </div>
+                                                            <span className={`px-3 py-1 text-xs font-semibold rounded-full ${operationsSettings.otInchargeEnabled === true ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                                                                {operationsSettings.otInchargeEnabled === true ? 'OT Incharge Enabled' : 'Disabled'}
+                                                            </span>
+                                                        </div>
+                                                        <h3 className="text-lg font-bold text-gray-900 mb-2">OT Incharge Staff Option</h3>
+                                                        <p className="text-sm text-gray-600 leading-relaxed mb-6">
+                                                            When enabled, an OT Incharge profile can be managed under the Staff tab.
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                                                        <span className="text-sm font-medium text-gray-700">
+                                                            {operationsSettings.otInchargeEnabled === true ? 'OT Incharge Tab Active' : 'OT Incharge Tab Hidden'}
+                                                        </span>
+                                                        <button
+                                                            onClick={toggleOtIncharge}
+                                                            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 ${
+                                                                operationsSettings.otInchargeEnabled === true ? 'bg-sky-600' : 'bg-gray-200'
+                                                            }`}
+                                                        >
+                                                            <span className="sr-only">Toggle OT Incharge Option</span>
+                                                            <span
+                                                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                                                    operationsSettings.otInchargeEnabled === true ? 'translate-x-5' : 'translate-x-0'
+                                                                }`}
+                                                            />
+                                                        </button>
+                                                    </div>
+                                                </div>}
+                                                </>)}
                                             </div>
                                         )}
+                                    </div>
+                                    )}
+                                        {!isPharmacyTenant && settingsView === 'vitals' && (
+                                            <div className="max-w-4xl mx-auto my-4">
+                                                <VitalsSettingsCard />
+                                            </div>
+                                        )}
+                                        {!isPharmacyTenant && settingsView === 'print-payment' && (
+                                            <div className="max-w-4xl mx-auto my-4">
+                                                <PrintPaymentSettingsCard />
+                                            </div>
+                                        )}
+                                        {!isPharmacyTenant && modules.includes('NURSING') && settingsView === 'nursing' && (
+                                            <div className="max-w-4xl mx-auto my-4">
+                                                <FilesAndAccessCard category="NURSING" title="Nursing Records"
+                                                    description="Turn nursing forms on or off for this hospital and choose who can edit each. Off forms are hidden everywhere." />
+                                            </div>
+                                        )}
+                                        {/* IPD Forms — same engine as Nursing Records, shown only when nursing is off.
+                                            Reception is the editor instead of a nurse. */}
+                                        {!isPharmacyTenant && modules.includes('IPD') && !modules.includes('NURSING') && settingsView === 'ipd-forms' && (
+                                            <div className="max-w-4xl mx-auto my-4">
+                                                <FilesAndAccessCard category="NURSING" title="IPD Forms" accessContext="RECEPTION"
+                                                    description="Turn IPD sub-divisions on or off and choose who can edit each. Forms stay visible to everyone in the IPD; only the chosen role (and admin) can edit. Off forms are hidden." />
+                                            </div>
+                                        )}
+                                        {!isPharmacyTenant && modules.includes('OT') && settingsView === 'ot-forms' && (
+                                            <div className="max-w-4xl mx-auto my-4">
+                                                <FilesAndAccessCard category="OT" title="OT / Surgery Forms"
+                                                    description="Turn OT and NABH forms on or off for this hospital and choose who can edit each. Off forms are hidden everywhere." />
+                                            </div>
+                                        )}
+                                        {modules.includes('OT') && settingsView === 'permissions' && (
+                                            <div className="max-w-4xl mx-auto my-4">
+                                                <OtPermissionsCard />
+                                            </div>
+                                        )}
+                                        {modules.includes('OT') && settingsView === 'policies' && (
+                                            <div className="max-w-4xl mx-auto my-4">
+                                                <OtPoliciesCard />
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                                {activeTab === 'pharmacy-billing' && (
+                                    <div className="space-y-6">
+                                        {renderBranchFilterBar()}
+                                        <PharmacyBillingTab refreshKey={pharmacyRefreshKey} />
+                                    </div>
+                                )}
+                                {activeTab === 'pharmacies' && (
+                                    <PharmaciesTab />
+                                )}
+                                {activeTab === 'suppliers' && (
+                                    <div className="space-y-6">
+                                        {renderBranchFilterBar()}
+                                        <SuppliersView key={pharmacyRefreshKey} />
                                     </div>
                                 )}
                                 {activeTab === 'pharmacy' && (
                                     <div className="space-y-6 animate-in fade-in duration-300">
-                                        
+                                        {renderBranchFilterBar()}
+
                                         {/* Header Controls Panel */}
                                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-emerald-600 to-teal-600 p-6 rounded-2xl text-white shadow-lg relative overflow-hidden">
                                             <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_107%,rgba(255,255,255,0.1)_0%,rgba(255,255,255,0)_50%)]"></div>
@@ -2588,6 +3531,12 @@ const HospitalAdminDashboard = () => {
                                         <p className="text-gray-600 mt-2 font-medium">This feature will is in process and will be available soon</p>
                                     </div>
                                 )}
+                                {activeTab === 'time-slots' && (
+                                    <TimeSlotsView />
+                                )}
+                                {activeTab === 'calendar' && (
+                                    <HospitalCalendar />
+                                )}
                                 {activeTab === 'analytics' && (
                                     <div className="p-6 space-y-8 bg-gray-50/50 min-h-screen">
                                         {/* Header and filters */}
@@ -2876,9 +3825,6 @@ const HospitalAdminDashboard = () => {
                                         })()}
                                     </div>
                                 )}
-                                {activeTab === 'messages' && (
-                                    <MessagesTab modules={modules} />
-                                )}
                                 {activeTab === 'ipd' && (
                                     ipds.length > 0 ? (
                                         <div className="p-4 overflow-x-auto">
@@ -2942,15 +3888,18 @@ const HospitalAdminDashboard = () => {
                                     )
                                 )}
                                 {activeTab === 'audit-logs' && (
-                                    auditLogs.length > 0 ? (
-                                        <AuditLogsTable auditLogs={auditLogs} />
-                                    ) : (
-                                        <EmptyState
-                                            icon={null}
-                                            title="No Audit Logs"
-                                            message="No activity has been logged yet for your hospital."
-                                        />
-                                    )
+                                    <div className="space-y-6">
+                                        {renderBranchFilterBar()}
+                                        {auditLogs.length > 0 ? (
+                                            <AuditLogsTable auditLogs={auditLogs} />
+                                        ) : (
+                                            <EmptyState
+                                                icon={null}
+                                                title="No Audit Logs"
+                                                message="No activity has been logged yet for your hospital."
+                                            />
+                                        )}
+                                    </div>
                                 )}
 
                             {activeTab === 'support' && (
@@ -3251,7 +4200,7 @@ const HospitalAdminDashboard = () => {
                                     <h3 className="text-2xl font-bold text-neutral-800">New OPD Case</h3>
                                     <p className="text-sm text-neutral-600 mt-1">Register a patient into the OPD queue</p>
                                 </div>
-                                <button onClick={() => { setIsAdminOpdModalOpen(false); setAdminOpdPatientSearch(''); setAdminOpdShowDropdown(false); setAdminOpdForm({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', spo2: '', problem: '', visitType: 'NEW' }); }} className="w-10 h-10 rounded-xl bg-white/80 hover:bg-white flex items-center justify-center text-neutral-400 hover:text-neutral-600 cursor-pointer border-0">
+                                <button onClick={() => { setIsAdminOpdModalOpen(false); setAdminOpdPatientSearch(''); setAdminOpdShowDropdown(false); setAdminOpdForm({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', height: '', customVitals: {}, spo2: '', problem: '', visitType: 'NEW', paymentMethod: 'CASH', paymentReference: '' }); }} className="w-10 h-10 rounded-xl bg-white/80 hover:bg-white flex items-center justify-center text-neutral-400 hover:text-neutral-600 cursor-pointer border-0">
                                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                                 </button>
                             </div>
@@ -3302,6 +4251,10 @@ const HospitalAdminDashboard = () => {
                                     return;
                                 }
                             }
+                            // Bill Payment = First: the fee is collected here, so the method is required.
+                            const payErr = validateOpdPayment(adminOpdForm.paymentMethod, adminOpdForm.paymentReference);
+                            if (payErr) { toastError(payErr); return; }
+
                             try {
                                 const payload = {
                                     patientId: adminOpdForm.patientId,
@@ -3310,14 +4263,20 @@ const HospitalAdminDashboard = () => {
                                     temperature: adminOpdForm.temperature ? parseFloat(adminOpdForm.temperature) : null,
                                     pulse: adminOpdForm.pulse ? parseInt(adminOpdForm.pulse) : null,
                                     weight: adminOpdForm.weight ? parseFloat(adminOpdForm.weight) : null,
+                                        height: adminOpdForm.height ? parseFloat(adminOpdForm.height) : null,
+                                        customVitals: adminOpdForm.customVitals || {},
                                     spo2: adminOpdForm.spo2 ? parseInt(adminOpdForm.spo2) : null,
                                     problem: adminOpdForm.problem,
-                                    visitType: adminOpdForm.visitType
+                                    visitType: adminOpdForm.visitType,
+                                    ...(isPayFirst() ? {
+                                        paymentMethod: adminOpdForm.paymentMethod,
+                                        paymentReference: adminOpdForm.paymentReference || null,
+                                    } : {}),
                                 };
                                 const res = await hospitalService.createOpd(payload);
                                 setIsAdminOpdModalOpen(false);
                                 setAdminOpdPatientSearch('');
-                                setAdminOpdForm({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', spo2: '', problem: '', visitType: 'NEW' });
+                                setAdminOpdForm({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', height: '', customVitals: {}, spo2: '', problem: '', visitType: 'NEW', paymentMethod: 'CASH', paymentReference: '' });
                                 success('OPD Case created — ID: ' + res.caseId);
                                 loadData();
                             } catch (err) {
@@ -3373,28 +4332,54 @@ const HospitalAdminDashboard = () => {
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
+                                {isOn('BP') && (
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">BP</label>
                                     <input className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.bp} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, bp: e.target.value.replace(/[^0-9/]/g, '') }))} placeholder="120/80" />
                                 </div>
+                                )}
+                                {isOn('TEMPERATURE') && (
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Temperature (°F)</label>
                                     <input type="number" step="0.1" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.temperature} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, temperature: e.target.value }))} />
                                 </div>
+                                )}
                             </div>
                             <div className="grid grid-cols-3 gap-4">
+                                {isOn('PULSE') && (
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Pulse</label>
                                     <input type="number" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.pulse} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, pulse: e.target.value }))} />
                                 </div>
+                                )}
+                                {isOn('HEIGHT') && (
+                                <div>
+                                    <label className="block text-sm font-semibold text-neutral-700 mb-2">Height (cm)</label>
+                                    <input type="number" step="0.1" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.height} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, height: e.target.value }))} />
+                                </div>
+                                )}
+                                {isOn('WEIGHT') && (
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">Weight (kg)</label>
                                     <input type="number" step="0.1" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.weight} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, weight: e.target.value }))} />
                                 </div>
+                                )}
+                                {isOn('SPO2') && (
                                 <div>
                                     <label className="block text-sm font-semibold text-neutral-700 mb-2">SpO2 (%)</label>
                                     <input type="number" min="0" className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800" value={adminOpdForm.spo2} onChange={(e) => setAdminOpdForm(prev => ({ ...prev, spo2: e.target.value }))} />
                                 </div>
+                                )}
+                                {customs.map((v) => (
+                                    <div key={v.key}>
+                                        <label className="block text-sm font-semibold text-neutral-700 mb-2">{v.label}{v.unit ? ` (${v.unit})` : ''}</label>
+                                        <input
+                                            className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm text-slate-800"
+                                            value={adminOpdForm.customVitals?.[v.key] || ''}
+                                            onChange={(e) => setAdminOpdForm(prev => ({ ...prev, customVitals: { ...(prev.customVitals || {}), [v.key]: e.target.value } }))}
+                                        />
+                                    </div>
+                                ))}
                             </div>
                             <div>
                                 <label className="block text-sm font-semibold text-neutral-700 mb-2">Problem / Reason</label>
@@ -3405,8 +4390,15 @@ const HospitalAdminDashboard = () => {
                                 <label className="inline-flex items-center gap-2 cursor-pointer"><input type="radio" name="adminVisitType" value="NEW" checked={adminOpdForm.visitType === 'NEW'} onChange={() => setAdminOpdForm(prev => ({ ...prev, visitType: 'NEW' }))} /> New</label>
                                 <label className="inline-flex items-center gap-2 cursor-pointer"><input type="radio" name="adminVisitType" value="FOLLOWUP" checked={adminOpdForm.visitType === 'FOLLOWUP'} onChange={() => setAdminOpdForm(prev => ({ ...prev, visitType: 'FOLLOWUP' }))} /> Follow-up</label>
                             </div>
+
+                            <OpdPaymentFields
+                                method={adminOpdForm.paymentMethod}
+                                reference={adminOpdForm.paymentReference}
+                                onChange={(patch) => setAdminOpdForm(prev => ({ ...prev, ...patch }))}
+                            />
+
                             <div className="flex gap-4 pt-4">
-                                <button type="button" onClick={() => { setIsAdminOpdModalOpen(false); setAdminOpdPatientSearch(''); setAdminOpdForm({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', spo2: '', problem: '', visitType: 'NEW' }); }} className="flex-1 py-2.5 rounded-xl border border-gray-300 font-semibold text-gray-700 hover:bg-gray-50 transition">Cancel</button>
+                                <button type="button" onClick={() => { setIsAdminOpdModalOpen(false); setAdminOpdPatientSearch(''); setAdminOpdForm({ patientId: null, doctorId: null, bp: '', temperature: '', pulse: '', weight: '', height: '', customVitals: {}, spo2: '', problem: '', visitType: 'NEW', paymentMethod: 'CASH', paymentReference: '' }); }} className="flex-1 py-2.5 rounded-xl border border-gray-300 font-semibold text-gray-700 hover:bg-gray-50 transition">Cancel</button>
                                 <button type="submit" className="flex-1 py-2.5 rounded-xl bg-slate-900 text-white font-semibold hover:bg-slate-800 transition">Create OPD Case</button>
                             </div>
                         </form>
@@ -3478,6 +4470,24 @@ const HospitalAdminDashboard = () => {
                     staff={staffDetailsModal.staff}
                     role={staffDetailsModal.role}
                     onClose={() => setStaffDetailsModal({ isOpen: false, staff: null, role: null })}
+                />
+            )}
+
+            {assignNurseModal.isOpen && (
+                <AssignNurseModal
+                    row={assignNurseModal.row}
+                    nurseOptions={nurseOptions}
+                    onSubmit={handleSubmitAssignNurse}
+                    onClose={() => setAssignNurseModal({ isOpen: false, row: null })}
+                />
+            )}
+
+            {createTaskModal && (
+                <CreateNurseTaskModal
+                    nurseOptions={nurseOptions}
+                    activeAdmissions={nurseAssignments}
+                    onSubmit={handleCreateNurseTask}
+                    onClose={() => setCreateTaskModal(false)}
                 />
             )}
 
@@ -4176,6 +5186,57 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
         }
     }, [type, doctors, initialData]);
 
+    // Load wards for the nurse form's "Select Ward" dropdown (nurses are assigned
+    // to a ward created in the Wards & Beds tab).
+    const [wardOptions, setWardOptions] = useState([]);
+    useEffect(() => {
+        if (type !== 'nurses') return;
+        let active = true;
+        wardService.getWards()
+            .then(data => { if (active) setWardOptions(Array.isArray(data) ? data : (data?.content || [])); })
+            .catch(() => { if (active) setWardOptions([]); });
+        return () => { active = false; };
+    }, [type]);
+
+    // Load active shift templates for the optional "Assign Shift" section on nurse creation.
+    const [shiftTemplateOptions, setShiftTemplateOptions] = useState([]);
+    useEffect(() => {
+        if (type !== 'nurses') return;
+        let active = true;
+        timeSlotService.listShiftTemplates(true)
+            .then(data => { if (active) setShiftTemplateOptions(Array.isArray(data) ? data : []); })
+            .catch(() => { if (active) setShiftTemplateOptions([]); });
+        return () => { active = false; };
+    }, [type]);
+
+    // Days-of-week are held in formData.shiftDaysOfWeek as a CSV "1,2,..." (1=Mon..7=Sun).
+    const SHIFT_DOW = [['Mon', 1], ['Tue', 2], ['Wed', 3], ['Thu', 4], ['Fri', 5], ['Sat', 6], ['Sun', 7]];
+    const shiftDaysArray = () => (formData.shiftDaysOfWeek ? String(formData.shiftDaysOfWeek).split(',').filter(Boolean).map(Number) : []);
+    const toggleShiftDay = (dow) => {
+        const cur = shiftDaysArray();
+        const next = cur.includes(dow) ? cur.filter(d => d !== dow) : [...cur, dow];
+        handleChange('shiftDaysOfWeek', next.sort((a, b) => a - b).join(','));
+    };
+
+    // For an incharge being edited, pre-check the wards they currently manage
+    // (Ward.inchargeNurseId === their profile id) once the ward list has loaded.
+    useEffect(() => {
+        if (type !== 'nurses' || !isEdit || !formData.isIncharge) return;
+        if (formData.inchargeWardIds !== undefined) return;
+        if (!wardOptions.length) return;
+        const managed = wardOptions
+            .filter((w) => w.inchargeNurseId === formData.nurseProfileId)
+            .map((w) => w.wardId);
+        setFormData((prev) => ({ ...prev, inchargeWardIds: managed }));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [type, isEdit, formData.isIncharge, formData.nurseProfileId, formData.inchargeWardIds, wardOptions]);
+
+    const toggleInchargeWard = (wardId) => {
+        const cur = Array.isArray(formData.inchargeWardIds) ? formData.inchargeWardIds : [];
+        const next = cur.includes(wardId) ? cur.filter((id) => id !== wardId) : [...cur, wardId];
+        handleChange('inchargeWardIds', next);
+    };
+
     const handleChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
         // Clear error for this field
@@ -4226,6 +5287,29 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
             if (!isEdit) {
                 rules.password = ['required', 'password'];
             }
+        } else if (type === 'ot-incharges') {
+            Object.assign(rules, {
+                name: ['required', 'name'],
+                email: ['required', 'email'],
+                phone: ['required', 'phone']
+            });
+            if (!isEdit) {
+                rules.password = ['required', 'password'];
+            }
+        } else if (type === 'nurses') {
+            Object.assign(rules, {
+                name: ['required', 'name'],
+                email: ['required', 'email'],
+                phone: ['required', 'phone']
+            });
+            // An incharge manages wards via the multi-select, so a single "home
+            // ward" isn't required when editing one.
+            if (!(isEdit && formData.isIncharge)) {
+                rules.wardId = ['required'];
+            }
+            if (!isEdit) {
+                rules.password = ['required', 'password'];
+            }
         } else if (type === 'billing') {
             rules.amount = ['required', 'positiveNumber'];
         } else if (type === 'appointments') {
@@ -4250,7 +5334,7 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
         }
 
         const action = isEdit ? 'Update' : 'Add';
-        const entity = type === 'patients' ? 'Patient' : type === 'doctors' ? 'Doctor' : type === 'receptionists' ? 'Receptionist' : type === 'pharmacists' ? 'Pharmacist' : type === 'appointments' ? 'Appointment' : 'Billing Record';
+        const entity = type === 'patients' ? 'Patient' : type === 'doctors' ? 'Doctor' : type === 'receptionists' ? 'Receptionist' : type === 'nurses' ? 'Nurse' : type === 'pharmacists' ? 'Pharmacist' : type === 'ot-incharges' ? 'OT Incharge' : type === 'appointments' ? 'Appointment' : 'Billing Record';
 
         openConfirmation(
             `${action} ${entity}`,
@@ -4269,6 +5353,25 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
                     } else if (type === 'pharmacists') {
                         if (isEdit) await hospitalService.updatePharmacist(initialData.publicId || initialData.id, formData);
                         else await hospitalService.addPharmacist(formData);
+                    } else if (type === 'ot-incharges') {
+                        if (isEdit) await hospitalService.updateOtIncharge(initialData.publicId || initialData.id, formData);
+                        else await hospitalService.addOtIncharge(formData);
+                    } else if (type === 'nurses') {
+                        if (isEdit) {
+                            await hospitalService.updateNurse(initialData.publicId || initialData.id, formData);
+                            // Reconcile the incharge's managed wards (Ward.inchargeNurseId).
+                            if (formData.isIncharge && Array.isArray(formData.inchargeWardIds)) {
+                                const profileId = formData.nurseProfileId;
+                                const currentlyManaged = wardOptions.filter((w) => w.inchargeNurseId === profileId).map((w) => w.wardId);
+                                const selected = formData.inchargeWardIds;
+                                const toClear = currentlyManaged.filter((id) => !selected.includes(id));
+                                const toAssign = selected.filter((id) => !currentlyManaged.includes(id));
+                                for (const wid of toClear) await hospitalService.setWardIncharge(wid, null);
+                                for (const wid of toAssign) await hospitalService.setWardIncharge(wid, profileId);
+                            }
+                        } else {
+                            await hospitalService.addNurse(formData);
+                        }
                     } else if (type === 'appointments') {
                         // Appointments editing not supported in this modal yet
                         await hospitalService.createAppointment(formData);
@@ -4287,7 +5390,7 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
     const isFieldDisabled = (field) => {
         if (!isEdit) return false;
         // Disable email/password editing for doctors, receptionists, pharmacists as per security rules
-        if ((type === 'doctors' || type === 'receptionists' || type === 'pharmacists') && (field === 'email' || field === 'password')) return true;
+        if ((type === 'doctors' || type === 'receptionists' || type === 'pharmacists' || type === 'nurses' || type === 'ot-incharges') && (field === 'email' || field === 'password')) return true;
         return false;
     };
 
@@ -4526,6 +5629,235 @@ const AddModal = ({ type, onClose, onSuccess, doctors, patients, openConfirmatio
                                             className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.password ? 'border-red-500' : 'border-gray-300'}`}
                                         />
                                         {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
+                                    </div>
+                                )}
+                            </>
+                        )}
+
+                        {type === 'ot-incharges' && (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Name</label>
+                                    <input
+                                        type="text"
+                                        placeholder="OT Incharge Name"
+                                        value={formData.name || ''}
+                                        onChange={(e) => handleChange('name', e.target.value)}
+                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.name ? 'border-red-500' : 'border-gray-300'}`}
+                                    />
+                                    {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                                    <input
+                                        type="email"
+                                        placeholder="otincharge@hospital.com"
+                                        value={formData.email || ''}
+                                        onChange={(e) => handleChange('email', e.target.value)}
+                                        disabled={isFieldDisabled('email')}
+                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.email ? 'border-red-500' : 'border-gray-300'} ${isFieldDisabled('email') ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                                    />
+                                    {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                                    <input
+                                        type="tel"
+                                        placeholder="10-digit number"
+                                        value={formData.phone || ''}
+                                        onChange={(e) => handleChange('phone', e.target.value)}
+                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.phone ? 'border-red-500' : 'border-gray-300'}`}
+                                    />
+                                    {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone}</p>}
+                                </div>
+                                {!isEdit && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                                        <input
+                                            type="password"
+                                            placeholder="******"
+                                            value={formData.password || ''}
+                                            onChange={(e) => handleChange('password', e.target.value)}
+                                            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.password ? 'border-red-500' : 'border-gray-300'}`}
+                                        />
+                                        {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
+                                    </div>
+                                )}
+                            </>
+                        )}
+
+                        {type === 'nurses' && (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Name</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Nurse Name"
+                                        value={formData.name || ''}
+                                        onChange={(e) => handleChange('name', e.target.value)}
+                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.name ? 'border-red-500' : 'border-gray-300'}`}
+                                    />
+                                    {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                                    <input
+                                        type="email"
+                                        placeholder="nurse@hospital.com"
+                                        value={formData.email || ''}
+                                        onChange={(e) => handleChange('email', e.target.value)}
+                                        disabled={isFieldDisabled('email')}
+                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.email ? 'border-red-500' : 'border-gray-300'} ${isFieldDisabled('email') ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                                    />
+                                    {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                                    <input
+                                        type="tel"
+                                        placeholder="10-digit number"
+                                        value={formData.phone || ''}
+                                        onChange={(e) => handleChange('phone', e.target.value)}
+                                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.phone ? 'border-red-500' : 'border-gray-300'}`}
+                                    />
+                                    {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone}</p>}
+                                </div>
+                                {isEdit && formData.isIncharge ? (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Wards Managed (Incharge)</label>
+                                        <div className="border border-gray-300 rounded-lg p-2 max-h-44 overflow-y-auto space-y-1">
+                                            {wardOptions.map((w) => {
+                                                const selected = Array.isArray(formData.inchargeWardIds) && formData.inchargeWardIds.includes(w.wardId);
+                                                const takenByOther = w.inchargeNurseId != null && w.inchargeNurseId !== formData.nurseProfileId;
+                                                return (
+                                                    <label key={w.wardId} className="flex items-center gap-2 text-sm text-gray-700 px-1 py-0.5 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={!!selected}
+                                                            onChange={() => toggleInchargeWard(w.wardId)}
+                                                            className="h-4 w-4"
+                                                        />
+                                                        <span>{w.wardName}{w.floorNumber != null ? ` (Floor ${w.floorNumber})` : ''}</span>
+                                                        {takenByOther && <span className="text-xs text-amber-600">(another incharge)</span>}
+                                                    </label>
+                                                );
+                                            })}
+                                            {wardOptions.length === 0 && (
+                                                <p className="text-amber-600 text-xs">No wards yet — create wards in the Wards &amp; Beds tab first.</p>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-gray-400 mt-1">Select every ward this incharge manages. Unchecking a ward removes them as its incharge.</p>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Select Ward</label>
+                                        <select
+                                            value={formData.wardId || ''}
+                                            onChange={(e) => handleChange('wardId', e.target.value)}
+                                            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.wardId ? 'border-red-500' : 'border-gray-300'}`}
+                                        >
+                                            <option value="">Select a ward…</option>
+                                            {wardOptions.map((w) => (
+                                                <option key={w.wardId} value={w.wardId}>
+                                                    {w.wardName}{w.floorNumber != null ? ` (Floor ${w.floorNumber})` : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {errors.wardId && <p className="text-red-500 text-xs mt-1">{errors.wardId}</p>}
+                                        {wardOptions.length === 0 && (
+                                            <p className="text-amber-600 text-xs mt-1">No wards yet — create wards in the Wards &amp; Beds tab first.</p>
+                                        )}
+                                    </div>
+                                )}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">License Number (optional)</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Nursing council registration no."
+                                        value={formData.licenseNumber || ''}
+                                        onChange={(e) => handleChange('licenseNumber', e.target.value)}
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                    />
+                                </div>
+                                {!isEdit && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                                        <input
+                                            type="password"
+                                            placeholder="******"
+                                            value={formData.password || ''}
+                                            onChange={(e) => handleChange('password', e.target.value)}
+                                            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.password ? 'border-red-500' : 'border-gray-300'}`}
+                                        />
+                                        {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
+                                    </div>
+                                )}
+                                {(
+                                    <div className="pt-3 mt-1 border-t border-gray-100 space-y-3">
+                                        <p className="text-sm font-semibold text-gray-700">Assign Shift <span className="font-normal text-gray-400">(optional)</span></p>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-500 mb-1">Shift Template</label>
+                                            <select
+                                                value={formData.shiftTemplatePublicId || ''}
+                                                onChange={(e) => handleChange('shiftTemplatePublicId', e.target.value)}
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                            >
+                                                <option value="">No shift for now</option>
+                                                {shiftTemplateOptions.map((t) => (
+                                                    <option key={t.publicId} value={t.publicId}>
+                                                        {t.name} ({String(t.startTime).slice(0, 5)}–{String(t.endTime).slice(0, 5)})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {shiftTemplateOptions.length === 0 && (
+                                                <p className="text-amber-600 text-xs mt-1">No shift templates — create them in the Time Slots tab first.</p>
+                                            )}
+                                        </div>
+                                        {formData.shiftTemplatePublicId && (
+                                            <>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-gray-500 mb-1">From</label>
+                                                        <input
+                                                            type="date"
+                                                            value={formData.shiftFromDate || ''}
+                                                            onChange={(e) => handleChange('shiftFromDate', e.target.value)}
+                                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-gray-500 mb-1">To</label>
+                                                        <input
+                                                            type="date"
+                                                            value={formData.shiftToDate || ''}
+                                                            onChange={(e) => handleChange('shiftToDate', e.target.value)}
+                                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-medium text-gray-500 mb-1">Days of Week <span className="text-gray-400">(none = all days)</span></label>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {SHIFT_DOW.map(([label, dow]) => {
+                                                            const checked = shiftDaysArray().includes(dow);
+                                                            return (
+                                                                <button
+                                                                    type="button"
+                                                                    key={dow}
+                                                                    onClick={() => toggleShiftDay(dow)}
+                                                                    className={`px-2.5 py-1 text-xs font-semibold rounded-lg border ${checked ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-300'}`}
+                                                                >
+                                                                    {label}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                                {(!formData.shiftFromDate || !formData.shiftToDate) && (
+                                                    <p className="text-amber-600 text-xs">Pick a From and To date to create the shifts.</p>
+                                                )}
+                                            </>
+                                        )}
                                     </div>
                                 )}
                             </>
@@ -4798,6 +6130,488 @@ const ReceptionistsTable = ({ receptionists, isAdmin, onDelete, onEdit, onViewDe
     return <DataTable data={receptionists} columns={columns} pagination={pagination} />;
 };
 
+// OT Incharges Table Component
+const OtInchargesTable = ({ otIncharges, isAdmin, onDelete, onEdit, onViewDetails, onResetPassword, startIndex = 0, pagination }) => {
+    const columnHelper = createColumnHelper();
+
+    const columns = [
+        columnHelper.display({
+            id: 'sno',
+            header: 'S.NO.',
+            cell: info => startIndex + info.row.index + 1,
+        }),
+        columnHelper.accessor(row => row.customId || row.id, {
+            id: 'id',
+            header: 'ID',
+            cell: info => <span title="Serial Number">{info.getValue()}</span>,
+        }),
+        columnHelper.accessor('name', {
+            header: 'NAME',
+            cell: info => <span className="font-medium text-gray-900">{info.getValue()}</span>,
+        }),
+        columnHelper.accessor('email', {
+            header: 'EMAIL',
+        }),
+        ...(isAdmin ? [
+            columnHelper.display({
+                id: 'actions',
+                header: () => <div className="text-right">ACTIONS</div>,
+                cell: info => (
+                    <div className="text-right">
+                        <ActionMenu actions={[
+                            {
+                                label: 'View Details',
+                                onClick: () => onViewDetails(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                            },
+                            {
+                                label: 'Edit',
+                                onClick: () => onEdit(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /></svg>
+                            },
+                            {
+                                label: 'Reset Password',
+                                onClick: () => onResetPassword(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v-2l2-2 1-.743A6 6 0 1118 8zm-6-2a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" /></svg>
+                            },
+                            {
+                                label: 'Delete',
+                                onClick: () => onDelete(info.row.original.publicId || info.row.original.id),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>,
+                                danger: true
+                            }
+                        ]} />
+                    </div>
+                ),
+            })
+        ] : []),
+    ];
+
+    return <DataTable data={otIncharges} columns={columns} pagination={pagination} />;
+};
+
+// NursesTable Component (Phase 1 Nurse module) — mirrors ReceptionistsTable.
+const NursesTable = ({ nurses, isAdmin, onDelete, onEdit, onViewDetails, onResetPassword, onPromote, onDemote, onToggleActive, startIndex = 0, pagination }) => {
+    const columnHelper = createColumnHelper();
+
+    const columns = [
+        columnHelper.display({
+            id: 'sno',
+            header: 'S.NO.',
+            cell: info => startIndex + info.row.index + 1,
+        }),
+        columnHelper.accessor(row => row.customId || row.id, {
+            id: 'id',
+            header: 'ID',
+            cell: info => <span title="Serial Number">{info.getValue()}</span>,
+        }),
+        columnHelper.accessor('name', {
+            header: 'NAME',
+            cell: info => <span className="font-medium text-gray-900">{info.getValue()}</span>,
+        }),
+        columnHelper.accessor('email', {
+            header: 'EMAIL',
+        }),
+        columnHelper.accessor('wardName', {
+            header: 'WARD',
+            cell: info => info.getValue() || <span className="text-gray-400">—</span>,
+        }),
+        ...(isAdmin ? [
+            columnHelper.display({
+                id: 'actions',
+                header: () => <div className="text-right">ACTIONS</div>,
+                cell: info => (
+                    <div className="text-right">
+                        <ActionMenu actions={[
+                            {
+                                label: 'View Details',
+                                onClick: () => onViewDetails(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                            },
+                            {
+                                label: 'Edit',
+                                onClick: () => onEdit(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /></svg>
+                            },
+                            {
+                                label: 'Reset Password',
+                                onClick: () => onResetPassword(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v-2l2-2 1-.743A6 6 0 1118 8zm-6-2a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" /></svg>
+                            },
+                            info.row.original.isIncharge ? {
+                                label: 'Demote to Nurse',
+                                onClick: () => onDemote(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg>
+                            } : {
+                                label: 'Promote to Incharge',
+                                onClick: () => onPromote(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
+                            },
+                            {
+                                label: info.row.original.isActive === false ? 'Activate' : 'Deactivate',
+                                onClick: () => onToggleActive(info.row.original),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                            },
+                            {
+                                label: 'Delete',
+                                onClick: () => onDelete(info.row.original.publicId || info.row.original.id),
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>,
+                                danger: true
+                            }
+                        ]} />
+                    </div>
+                ),
+            })
+        ] : []),
+    ];
+
+    return <DataTable data={nurses} columns={columns} pagination={pagination} />;
+};
+
+// NurseAssignmentsTable Component (Phase 1 Nurse module).
+// Lists active IPD admissions with their currently assigned nurse (or none),
+// and lets a Hospital Admin assign / reassign / unassign.
+const NurseAssignmentsTable = ({ rows, isAdmin, onAssign, onUnassign }) => {
+    if (!rows || rows.length === 0) {
+        return (
+            <EmptyState
+                icon={null}
+                title="No Active Admissions"
+                message="Nurse assignments appear here once patients are admitted (IPD)."
+            />
+        );
+    }
+    const fmt = (dt) => dt ? new Date(dt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+    return (
+        <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+                <thead>
+                    <tr className="text-left text-xs font-semibold text-gray-500 border-b border-gray-200">
+                        <th className="px-4 py-3">IPD NO.</th>
+                        <th className="px-4 py-3">PATIENT</th>
+                        <th className="px-4 py-3">DOCTOR</th>
+                        <th className="px-4 py-3">ADMITTED</th>
+                        <th className="px-4 py-3">ASSIGNED NURSE</th>
+                        {isAdmin && <th className="px-4 py-3 text-right">ACTIONS</th>}
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map((r) => (
+                        <tr key={r.ipdAdmissionId} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="px-4 py-3 font-medium text-gray-900">{r.ipdNumber}</td>
+                            <td className="px-4 py-3">{r.patientName || '—'}</td>
+                            <td className="px-4 py-3">{r.doctorName || '—'}</td>
+                            <td className="px-4 py-3 text-gray-500">{fmt(r.admissionDateTime)}</td>
+                            <td className="px-4 py-3">
+                                {r.nurseName
+                                    ? <span className="font-medium text-gray-900">{r.nurseName}</span>
+                                    : <span className="text-amber-600">Unassigned</span>}
+                            </td>
+                            {isAdmin && (
+                                <td className="px-4 py-3 text-right whitespace-nowrap">
+                                    <button
+                                        onClick={() => onAssign(r)}
+                                        className="px-3 py-1 text-xs font-semibold rounded-lg bg-gray-900 text-white hover:bg-gray-800"
+                                    >
+                                        {r.assignmentPublicId ? 'Reassign' : 'Assign'}
+                                    </button>
+                                    {r.assignmentPublicId && (
+                                        <button
+                                            onClick={() => onUnassign(r.assignmentPublicId)}
+                                            className="ml-2 px-3 py-1 text-xs font-semibold rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
+                                        >
+                                            Unassign
+                                        </button>
+                                    )}
+                                </td>
+                            )}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+};
+
+// AssignNurseModal Component (Phase 1 Nurse module).
+const AssignNurseModal = ({ row, nurseOptions, onSubmit, onClose }) => {
+    const [nurseUserId, setNurseUserId] = useState(row?.nurseUserId ? String(row.nurseUserId) : '');
+    const [notes, setNotes] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+
+    const handleSave = async () => {
+        if (!nurseUserId) return;
+        setSubmitting(true);
+        await onSubmit(Number(nurseUserId), notes);
+        setSubmitting(false);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+            <div className="bg-white rounded-lg border border-gray-200 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+                <div className="p-6">
+                    <h2 className="text-xl font-bold text-gray-900 mb-1">
+                        {row?.assignmentPublicId ? 'Reassign Nurse' : 'Assign Nurse'}
+                    </h2>
+                    <p className="text-xs text-gray-500 mb-5">
+                        {row?.ipdNumber} &middot; {row?.patientName}
+                    </p>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Nurse</label>
+                            <select
+                                value={nurseUserId}
+                                onChange={(e) => setNurseUserId(e.target.value)}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            >
+                                <option value="">Select a nurse…</option>
+                                {nurseOptions.map((n) => (
+                                    <option key={n.id} value={n.id}>
+                                        {n.name}{n.customId ? ` (${n.customId})` : ''}
+                                    </option>
+                                ))}
+                            </select>
+                            {nurseOptions.length === 0 && (
+                                <p className="text-amber-600 text-xs mt-1">No nurses yet — add nurses in the Nurses tab first.</p>
+                            )}
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Notes (optional)</label>
+                            <input
+                                type="text"
+                                placeholder="e.g. beds 1-8"
+                                value={notes}
+                                onChange={(e) => setNotes(e.target.value)}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            />
+                        </div>
+                    </div>
+                    <div className="mt-6 flex justify-end gap-3">
+                        <button onClick={onClose} className="px-4 py-2 text-sm font-semibold rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100">Cancel</button>
+                        <button
+                            onClick={handleSave}
+                            disabled={!nurseUserId || submitting}
+                            className={`px-4 py-2 text-sm font-semibold text-white rounded-lg ${(!nurseUserId || submitting) ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-900 hover:bg-gray-800'}`}
+                        >
+                            {submitting ? 'Saving…' : (row?.assignmentPublicId ? 'Reassign' : 'Assign')}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// NurseTasksTable Component (Phase 1 Nurse module, M7).
+const NurseTasksTable = ({ rows, nurseOptions, onCancel, isAdmin }) => {
+    if (!rows || rows.length === 0) {
+        return (
+            <EmptyState
+                icon={null}
+                title="No Tasks Found"
+                message="Create a task to assign duties to a nurse."
+            />
+        );
+    }
+
+    const getNurseName = (id) => {
+        const found = nurseOptions.find(n => n.id === id);
+        return found ? found.name : `Nurse ID: ${id}`;
+    };
+
+    const fmt = (dt) => dt ? new Date(dt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+
+    const getStatusColor = (s) => {
+        switch (s) {
+            case 'PENDING': return 'bg-yellow-100 text-yellow-800';
+            case 'IN_PROGRESS': return 'bg-blue-100 text-blue-800';
+            case 'COMPLETED': return 'bg-green-100 text-green-800';
+            case 'CANCELLED': return 'bg-red-100 text-red-800';
+            default: return 'bg-gray-100 text-gray-800';
+        }
+    };
+
+    return (
+        <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+                <thead>
+                    <tr className="text-left text-xs font-semibold text-gray-500 border-b border-gray-200">
+                        <th className="px-4 py-3">TITLE</th>
+                        <th className="px-4 py-3">DESCRIPTION</th>
+                        <th className="px-4 py-3">ASSIGNED TO</th>
+                        <th className="px-4 py-3">PRIORITY</th>
+                        <th className="px-4 py-3">STATUS</th>
+                        <th className="px-4 py-3">DUE DATE</th>
+                        <th className="px-4 py-3">COMPLETED AT</th>
+                        {isAdmin && <th className="px-4 py-3 text-right">ACTIONS</th>}
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map((r) => (
+                        <tr key={r.publicId || r.id} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="px-4 py-3 font-medium text-gray-900">{r.title}</td>
+                            <td className="px-4 py-3 max-w-xs truncate text-gray-500" title={r.description}>{r.description || '—'}</td>
+                            <td className="px-4 py-3">{getNurseName(r.assignedToNurseUserId)}</td>
+                            <td className="px-4 py-3">
+                                <span className={`px-2 py-0.5 text-xs font-semibold rounded ${r.priority === 'HIGH' ? 'bg-red-50 text-red-700' : r.priority === 'LOW' ? 'bg-gray-50 text-gray-600' : 'bg-blue-50 text-blue-700'}`}>
+                                    {r.priority}
+                                </span>
+                            </td>
+                            <td className="px-4 py-3">
+                                <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${getStatusColor(r.status)}`}>
+                                    {r.status}
+                                </span>
+                            </td>
+                            <td className="px-4 py-3 text-gray-500">{fmt(r.dueDate)}</td>
+                            <td className="px-4 py-3 text-gray-500">
+                                {r.completedAt ? (
+                                    <div>
+                                        <div>{fmt(r.completedAt)}</div>
+                                        {r.completionRemarks && <div className="text-xxs italic text-gray-400">"{r.completionRemarks}"</div>}
+                                    </div>
+                                ) : '—'}
+                            </td>
+                            {isAdmin && (
+                                <td className="px-4 py-3 text-right whitespace-nowrap">
+                                    {(r.status === 'PENDING' || r.status === 'IN_PROGRESS') && (
+                                        <button
+                                            onClick={() => onCancel(r.publicId)}
+                                            className="px-3 py-1 text-xs font-semibold rounded-lg border border-red-200 text-red-600 hover:bg-red-50"
+                                        >
+                                            Cancel
+                                        </button>
+                                    )}
+                                </td>
+                            )}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+};
+
+// CreateNurseTaskModal Component (Phase 1 Nurse module, M7).
+const CreateNurseTaskModal = ({ nurseOptions, activeAdmissions, onSubmit, onClose }) => {
+    const [title, setTitle] = useState('');
+    const [description, setDescription] = useState('');
+    const [assignedToNurseUserId, setAssignedToNurseUserId] = useState('');
+    const [ipdAdmissionId, setIpdAdmissionId] = useState('');
+    const [priority, setPriority] = useState('MEDIUM');
+    const [dueDate, setDueDate] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+
+    const handleSave = async () => {
+        if (!title.trim() || !assignedToNurseUserId) return;
+        setSubmitting(true);
+        const payload = {
+            title: title.trim(),
+            description: description.trim() || null,
+            assignedToNurseUserId: Number(assignedToNurseUserId),
+            ipdAdmissionId: ipdAdmissionId ? Number(ipdAdmissionId) : null,
+            priority,
+            dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+        };
+        await onSubmit(payload);
+        setSubmitting(false);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+            <div className="bg-white rounded-lg border border-gray-200 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+                <div className="p-6">
+                    <h2 className="text-xl font-bold text-gray-900 mb-5">Create Nurse Task</h2>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Title *</label>
+                            <input
+                                type="text"
+                                placeholder="e.g. Change dressing, check vitals"
+                                value={title}
+                                onChange={(e) => setTitle(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>
+                            <textarea
+                                placeholder="Details about the task..."
+                                value={description}
+                                onChange={(e) => setDescription(e.target.value)}
+                                rows={3}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Assign Nurse *</label>
+                            <select
+                                value={assignedToNurseUserId}
+                                onChange={(e) => setAssignedToNurseUserId(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            >
+                                <option value="">Select a nurse…</option>
+                                {nurseOptions.map((n) => (
+                                    <option key={n.id} value={n.id}>
+                                        {n.name} ({n.customId || 'No ID'})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Patient Admission (optional)</label>
+                            <select
+                                value={ipdAdmissionId}
+                                onChange={(e) => setIpdAdmissionId(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            >
+                                <option value="">Select admission…</option>
+                                {activeAdmissions.map((adm) => (
+                                    <option key={adm.ipdAdmissionId || adm.id} value={adm.ipdAdmissionId || adm.id}>
+                                        {adm.ipdNumber} - {adm.patientName}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Priority</label>
+                                <select
+                                    value={priority}
+                                    onChange={(e) => setPriority(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                >
+                                    <option value="LOW">LOW</option>
+                                    <option value="MEDIUM">MEDIUM</option>
+                                    <option value="HIGH">HIGH</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Due Date</label>
+                                <input
+                                    type="datetime-local"
+                                    value={dueDate}
+                                    onChange={(e) => setDueDate(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                    <div className="mt-6 flex justify-end gap-3">
+                        <button onClick={onClose} className="px-4 py-2 text-sm font-semibold rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100">Cancel</button>
+                        <button
+                            onClick={handleSave}
+                            disabled={!title.trim() || !assignedToNurseUserId || submitting}
+                            className={`px-4 py-2 text-sm font-semibold text-white rounded-lg ${(!title.trim() || !assignedToNurseUserId || submitting) ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-900 hover:bg-gray-800'}`}
+                        >
+                            {submitting ? 'Creating…' : 'Create Task'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // AuditLogsTable Component
 const AuditLogsTable = ({ auditLogs, startIndex = 0 }) => {
     const columnHelper = createColumnHelper();
@@ -4893,6 +6707,291 @@ const AuditLogsTable = ({ auditLogs, startIndex = 0 }) => {
     };
 
     return <DataTable data={paginatedLogs} columns={columns} pagination={pagination} />;
+};
+
+// Pharmacies Tab — Multi Pharmacy owner manages branch outlets (each with one login).
+const PharmaciesTab = () => {
+    const navigate = useNavigate();
+    const { success, error: toastError } = useToast();
+    const [branches, setBranches] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [modalOpen, setModalOpen] = useState(false);
+    const [editing, setEditing] = useState(null); // branch being edited, or null for create
+    const [form, setForm] = useState({ name: '', address: '', phone: '', email: '', password: '' });
+    const [submitting, setSubmitting] = useState(false);
+
+    const load = useCallback(async () => {
+        setLoading(true);
+        try {
+            const data = await branchesApi.getAll();
+            setBranches(Array.isArray(data) ? data : []);
+        } catch (e) {
+            setBranches([]);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => { load(); }, [load]);
+
+    const openCreate = () => {
+        setEditing(null);
+        setForm({ name: '', address: '', phone: '', email: '', password: '' });
+        setModalOpen(true);
+    };
+
+    const openEdit = (branch) => {
+        setEditing(branch);
+        setForm({ name: branch.name || '', address: branch.address || '', phone: branch.phone || '', email: '', password: '' });
+        setModalOpen(true);
+    };
+
+    const handleSubmit = async () => {
+        if (!form.name.trim()) { toastError('Branch name is required'); return; }
+        if (!editing && (!form.email.trim() || !form.password.trim())) { toastError('Login email and password are required'); return; }
+        setSubmitting(true);
+        try {
+            if (editing) {
+                await branchesApi.update(editing.id, { name: form.name, address: form.address, phone: form.phone });
+                success('Branch updated');
+            } else {
+                await branchesApi.create({ name: form.name, address: form.address, phone: form.phone, email: form.email, password: form.password });
+                success('Branch created');
+            }
+            setModalOpen(false);
+            load();
+        } catch (e) {
+            toastError(e.response?.data?.message || e.response?.data || 'Failed to save branch');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const handleResetPassword = async (branch) => {
+        const pw = window.prompt(`Enter a new login password for "${branch.name}":`);
+        if (!pw) return;
+        try {
+            await branchesApi.resetPassword(branch.id, pw);
+            success('Branch password reset');
+        } catch (e) {
+            toastError(e.response?.data?.message || 'Failed to reset password');
+        }
+    };
+
+    const handleDelete = async (branch) => {
+        if (!window.confirm(`Delete branch "${branch.name}"? Its login will be disabled.`)) return;
+        try {
+            await branchesApi.delete(branch.id);
+            success('Branch deleted');
+            load();
+        } catch (e) {
+            toastError(e.response?.data?.message || 'Failed to delete branch');
+        }
+    };
+
+    return (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                    <h2 className="text-lg font-bold text-gray-900">Pharmacies</h2>
+                    <p className="text-xs text-gray-500 mt-0.5">Branch outlets under your ownership · {branches.length} active</p>
+                </div>
+                <button onClick={openCreate} className="px-4 py-2 bg-gray-900 text-white text-sm font-bold rounded-lg hover:bg-gray-800 transition-all shadow-md">
+                    + Create Branch
+                </button>
+            </div>
+            <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                    <thead className="bg-gray-50 text-[10px] uppercase tracking-widest text-gray-400 font-black border-b border-gray-100">
+                        <tr>
+                            <th className="px-6 py-3">Branch</th>
+                            <th className="px-6 py-3">Phone</th>
+                            <th className="px-6 py-3">Address</th>
+                            <th className="px-6 py-3 text-center">Status</th>
+                            <th className="px-6 py-3 text-center">Open</th>
+                            <th className="px-6 py-3 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {loading ? (
+                            <tr><td colSpan={6} className="py-16 text-center text-gray-400">Loading branches...</td></tr>
+                        ) : branches.length > 0 ? branches.map(b => (
+                            <tr key={b.id} className="hover:bg-gray-50/50">
+                                <td className="px-6 py-3 font-bold text-gray-900">{b.name}</td>
+                                <td className="px-6 py-3 text-gray-600">{b.phone || '-'}</td>
+                                <td className="px-6 py-3 text-gray-600">{b.address || '-'}</td>
+                                <td className="px-6 py-3 text-center">
+                                    <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${b.isActive !== false ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{b.isActive !== false ? 'Active' : 'Inactive'}</span>
+                                </td>
+                                <td className="px-6 py-3 text-center">
+                                    <button
+                                        onClick={() => {
+                                            sessionStorage.setItem('selectedBranchId', b.id);
+                                            sessionStorage.setItem('selectedBranchName', b.name);
+                                            navigate('/hospital/pharmacy');
+                                        }}
+                                        className="inline-flex items-center gap-1 px-3 py-1 bg-green-50 hover:bg-green-100 text-green-700 hover:text-green-800 text-xs font-bold rounded-lg border border-green-200/50 transition-all cursor-pointer"
+                                    >
+                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                        </svg>
+                                        Open
+                                    </button>
+                                </td>
+                                <td className="px-6 py-3 text-right">
+                                    <ActionMenu actions={[
+                                        { label: 'Edit details', onClick: () => openEdit(b) },
+                                        { label: 'Reset password', onClick: () => handleResetPassword(b) },
+                                        { label: 'Delete branch', danger: true, onClick: () => handleDelete(b) },
+                                    ]} />
+                                </td>
+                            </tr>
+                        )) : (
+                            <tr><td colSpan={6} className="py-16 text-center text-gray-400 italic">No branches yet. Create your first outlet.</td></tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+
+            {modalOpen && (
+                <div className="fixed inset-0 bg-gray-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-2xl border border-gray-150 max-w-md w-full p-6">
+                        <div className="flex justify-between items-start mb-4">
+                            <h3 className="font-bold text-gray-900 text-lg">{editing ? 'Edit Branch' : 'Create Branch'}</h3>
+                            <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Branch Name</label>
+                                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-900" placeholder="e.g. MG Road Outlet" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Address</label>
+                                <input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-900" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone</label>
+                                <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-900" />
+                            </div>
+                            {!editing && (
+                                <>
+                                    <div className="pt-2 border-t border-gray-100">
+                                        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-2">Branch Login (one per outlet)</p>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Login Email</label>
+                                        <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-900" placeholder="branch@pharmacy.com" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Password</label>
+                                        <input type="text" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-900" />
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                        <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-gray-100">
+                            <button onClick={() => setModalOpen(false)} disabled={submitting} className="px-4 py-2 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+                            <button onClick={handleSubmit} disabled={submitting} className={`px-4 py-2 text-white text-xs font-bold rounded-lg ${submitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-900 hover:bg-gray-800'}`}>{submitting ? 'Saving...' : (editing ? 'Save' : 'Create Branch')}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// Pharmacy Billing Tab — paginated list of all pharmacy sales bills (Single Pharmacy admin).
+const PharmacyBillingTab = () => {
+    const [bills, setBills] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [page, setPage] = useState(0);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalElements, setTotalElements] = useState(0);
+    const pageSize = 10;
+
+    useEffect(() => {
+        let active = true;
+        setLoading(true);
+        salesApi.getHistory(page, pageSize)
+            .then(data => {
+                if (!active) return;
+                const content = data.content || data || [];
+                setBills(content);
+                setTotalPages(data.totalPages || 1);
+                setTotalElements(data.totalElements != null ? data.totalElements : content.length);
+            })
+            .catch(() => { if (active) setBills([]); })
+            .finally(() => { if (active) setLoading(false); });
+        return () => { active = false; };
+    }, [page]);
+
+    const handlePdf = async (bill) => {
+        try {
+            const blob = await salesApi.downloadPDF(bill.id);
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${bill.billNumber || 'bill'}.pdf`;
+            link.click();
+            window.URL.revokeObjectURL(url);
+        } catch (e) { /* ignore download errors */ }
+    };
+
+    return (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                    <h2 className="text-lg font-bold text-gray-900">Billing</h2>
+                    <p className="text-xs text-gray-500 mt-0.5">All pharmacy sales bills</p>
+                </div>
+                <span className="text-xs font-medium text-gray-500">{totalElements} bills</span>
+            </div>
+            <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                    <thead className="bg-gray-50 text-[10px] uppercase tracking-widest text-gray-400 font-black border-b border-gray-100">
+                        <tr>
+                            <th className="px-6 py-3">Bill No.</th>
+                            <th className="px-6 py-3">Date</th>
+                            <th className="px-6 py-3">Customer</th>
+                            <th className="px-6 py-3 text-center">Items</th>
+                            <th className="px-6 py-3">Payment</th>
+                            <th className="px-6 py-3 text-right">Amount</th>
+                            <th className="px-6 py-3 text-right">Invoice</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {loading ? (
+                            <tr><td colSpan={7} className="py-16 text-center text-gray-400">Loading bills...</td></tr>
+                        ) : bills.length > 0 ? bills.map(b => (
+                            <tr key={b.id} className="hover:bg-gray-50/50">
+                                <td className="px-6 py-3 font-bold text-gray-900">{b.billNumber}</td>
+                                <td className="px-6 py-3 text-gray-600">{b.createdAt ? new Date(b.createdAt).toLocaleDateString() : '-'}</td>
+                                <td className="px-6 py-3 text-gray-700">{b.patientName || 'Walk-in'}</td>
+                                <td className="px-6 py-3 text-center text-gray-600">{b.items?.length ?? '-'}</td>
+                                <td className="px-6 py-3">
+                                    <span className="text-xs font-medium text-gray-600">{b.paymentMethod || '-'}</span>
+                                    <span className={`ml-2 px-2 py-0.5 rounded text-[9px] font-black uppercase ${b.paymentStatus === 'PAID' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{b.paymentStatus || '-'}</span>
+                                </td>
+                                <td className="px-6 py-3 text-right font-bold text-gray-900">₹{Number(b.netAmount || 0).toLocaleString()}</td>
+                                <td className="px-6 py-3 text-right">
+                                    <button onClick={() => handlePdf(b)} className="px-3 py-1 text-xs font-bold text-gray-700 border border-gray-300 rounded hover:bg-gray-50">PDF</button>
+                                </td>
+                            </tr>
+                        )) : (
+                            <tr><td colSpan={7} className="py-16 text-center text-gray-400 italic">No bills yet.</td></tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+            <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
+                <span className="text-xs text-gray-500">Page {page + 1} of {Math.max(totalPages, 1)}</span>
+                <div className="flex gap-2">
+                    <button disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))} className={`px-3 py-1.5 rounded border text-xs font-bold ${page === 0 ? 'text-gray-300 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}>← Prev</button>
+                    <button disabled={page + 1 >= totalPages} onClick={() => setPage(p => p + 1)} className={`px-3 py-1.5 rounded border text-xs font-bold ${page + 1 >= totalPages ? 'text-gray-300 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}>Next →</button>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 // Pharmacists Table Component (Reusing similar structure)
@@ -5011,7 +7110,7 @@ const AdminOpdTable = ({ opds, onPrintOpd, onAdmitToIpd, startIndex = 0, paginat
                         </svg>
                         Print
                     </button>
-                    {info.row.original.status !== 'IN_IPD' && (
+                    {info.row.original.status !== 'IN_IPD' && info.row.original.ipdAdmitRecommended && (
                         <button
                             onClick={() => onAdmitToIpd && onAdmitToIpd(info.row.original)}
                             className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 px-3 py-1 rounded-md text-xs font-semibold shadow-sm transition-all inline-flex items-center gap-1"

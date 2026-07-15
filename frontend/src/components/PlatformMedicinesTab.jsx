@@ -16,7 +16,7 @@ const extractError = (err, fallback) => {
     return d.message || d.error || d.detail || fallback;
 };
 
-export default function PlatformMedicinesTab() {
+export default function PlatformMedicinesTab({ hospitalType = null }) {
     const { success, error: toastError } = useToast();
     const [medicines, setMedicines] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -47,7 +47,7 @@ export default function PlatformMedicinesTab() {
             loadMedicines(0);
         }, 300);
         return () => clearTimeout(delayDebounce);
-    }, [search]);
+    }, [search, hospitalType]);
 
     // Effect 2: fires on explicit page navigation. Skips the initial mount to
     // avoid duplicating the call that Effect 1 already makes.
@@ -63,7 +63,7 @@ export default function PlatformMedicinesTab() {
     const loadMedicines = async (pageNum) => {
         setLoading(true);
         try {
-            const data = await platformService.getPlatformMedicines(search, pageNum, PAGE_SIZE);
+            const data = await platformService.getPlatformMedicines(search, pageNum, PAGE_SIZE, hospitalType);
             setMedicines(data.content || []);
             setTotalPages(data.totalPages || 0);
             setTotalElements(data.totalElements || 0);
@@ -108,10 +108,10 @@ export default function PlatformMedicinesTab() {
 
         try {
             if (editingMedicine) {
-                await platformService.updatePlatformMedicine(editingMedicine.id, payload);
+                await platformService.updatePlatformMedicine(editingMedicine.id, payload, hospitalType);
                 success('Medicine updated successfully');
             } else {
-                await platformService.createPlatformMedicine(payload);
+                await platformService.createPlatformMedicine(payload, hospitalType);
                 success('Medicine registered successfully');
             }
             setShowModal(false);
@@ -127,7 +127,7 @@ export default function PlatformMedicinesTab() {
     const handleDelete = async (med) => {
         if (!window.confirm(`Are you sure you want to delete "${med.name}"? This will remove it from the global catalog.`)) return;
         try {
-            await platformService.deletePlatformMedicine(med.id);
+            await platformService.deletePlatformMedicine(med.id, hospitalType);
             success('Medicine deleted successfully');
             // If deleting the last item on the page, go to previous page
             const newPage = medicines.length === 1 && page > 0 ? page - 1 : page;

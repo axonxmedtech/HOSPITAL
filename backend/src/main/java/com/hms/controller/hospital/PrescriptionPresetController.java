@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/hospital/prescription-presets")
+@RequestMapping({"/hospital/prescription-presets", "/clinic/prescription-presets", "/pharmacy/prescription-presets"})
 public class PrescriptionPresetController {
 
     @Autowired
@@ -25,7 +25,8 @@ public class PrescriptionPresetController {
     private com.hms.repository.DoctorRepository doctorRepository;
 
     private PrescriptionPresetItemDTO toItemDto(PrescriptionPresetItem i) {
-        return new PrescriptionPresetItemDTO(i.getId(), i.getMedicineName(), i.getDosage(), i.getFrequency(), i.getDuration(), i.getInstructions());
+        return new PrescriptionPresetItemDTO(i.getId(), i.getMedicineName(), i.getDosage(), i.getFrequency(),
+                i.getDuration(), i.getInstructions(), i.getMedicineId(), i.getQuantity());
     }
 
     private String doctorNameOrNull(Long doctorId) {
@@ -38,7 +39,7 @@ public class PrescriptionPresetController {
                 .map(this::toItemDto)
                 .toList();
         return new PrescriptionPresetDTO(p.getId(), p.getName(), items, p.getDisplayOrder(),
-                p.getDoctorId(), doctorNameOrNull(p.getDoctorId()));
+                p.getDoctorId(), doctorNameOrNull(p.getDoctorId()), p.getPresetType());
     }
 
     private PrescriptionPresetItem toItemEntity(PrescriptionPresetItemDTO dto) {
@@ -48,13 +49,16 @@ public class PrescriptionPresetController {
         item.setFrequency(dto.getFrequency());
         item.setDuration(dto.getDuration());
         item.setInstructions(dto.getInstructions());
+        item.setMedicineId(dto.getMedicineId());
+        item.setQuantity(dto.getQuantity());
         return item;
     }
 
+    /** @param type PRESCRIPTION (default) or IN_CLINIC — two preset lists sharing one table. */
     @GetMapping
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR')")
-    public ResponseEntity<?> listPresets() {
-        List<PrescriptionPresetDTO> dtos = presetService.listPresets().stream()
+    public ResponseEntity<?> listPresets(@RequestParam(required = false) String type) {
+        List<PrescriptionPresetDTO> dtos = presetService.listPresets(type).stream()
                 .map(this::toDto)
                 .toList();
         return ResponseEntity.ok(dtos);
@@ -67,7 +71,7 @@ public class PrescriptionPresetController {
             List<PrescriptionPresetItem> items = dto.getItems() == null ? Collections.emptyList() : dto.getItems().stream()
                     .map(this::toItemEntity)
                     .collect(Collectors.toList());
-            PrescriptionPreset saved = presetService.createPreset(dto.getName(), items, dto.getDoctorId());
+            PrescriptionPreset saved = presetService.createPreset(dto.getName(), items, dto.getDoctorId(), dto.getPresetType());
             return ResponseEntity.ok(toDto(saved));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());

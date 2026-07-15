@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/hospital/medicines")
+@RequestMapping({"/hospital/medicines", "/clinic/medicines"})
 public class MedicineController {
 
     @Autowired

@@ -14,4 +14,6 @@ public class PrescriptionPresetItemDTO {
     private String frequency;
     private String duration;
     private String instructions;
+    private Long medicineId;    // IN_CLINIC: stock link, so applying still deducts stock
+    private Integer quantity;   // IN_CLINIC: units to administer
 }

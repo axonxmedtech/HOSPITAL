@@ -72,16 +72,21 @@ public class SecurityConfig {
                         .requestMatchers("/platform/login", "/login").permitAll()
                         .requestMatchers("/api/public/health").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
-                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
 
                         // Platform endpoints - only Super Admin
                         .requestMatchers("/platform/**").hasRole("SUPER_ADMIN")
 
                         // WebSocket endpoints - authenticated standard HMS roles & Super Admin
-                        .requestMatchers("/ws/**").hasAnyRole("HOSPITAL_ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST", "SUPER_ADMIN")
+                        .requestMatchers("/ws/**").hasAnyRole("HOSPITAL_ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST", "NURSE", "NURSE_INCHARGE", "SUPER_ADMIN", "OT_INCHARGE")
 
-                        // Hospital and API endpoints - only standard HMS roles allowed
-                        .requestMatchers("/hospital/**", "/api/pharmacy/**")
+                        // Module namespaces - only standard HMS roles allowed.
+                        // /hospital/** = hospital tenants, /clinic/** = clinic tenants,
+                        // /pharmacy/** = standalone pharmacy tenants (ERP + shared admin endpoints).
+                        // NURSE is hospital-only: it is authorized on /hospital/** but never on
+                        // /clinic/** or /pharmacy/**, keeping the Nurse role out of those tenants.
+                        .requestMatchers("/hospital/**")
+                        .hasAnyRole("HOSPITAL_ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST", "NURSE", "NURSE_INCHARGE", "OT_INCHARGE")
+                        .requestMatchers("/clinic/**", "/pharmacy/**")
                         .hasAnyRole("HOSPITAL_ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST")
                         // All other requests require authentication
                         .anyRequest().authenticated())

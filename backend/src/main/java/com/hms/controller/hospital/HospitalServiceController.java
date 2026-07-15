@@ -2,8 +2,6 @@ package com.hms.controller.hospital;
 
 import com.hms.dto.HospitalServiceDTO;
 import com.hms.entity.HospitalServiceEntity;
-import com.hms.entity.InventoryMasterItem;
-import com.hms.repository.InventoryMasterItemRepository;
 import com.hms.service.hospital.HospitalServiceService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -14,14 +12,17 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/hospital")
+@RequestMapping({"/hospital", "/clinic", "/pharmacy"})
 public class HospitalServiceController {
 
     @Autowired
     private HospitalServiceService serviceService;
 
     @Autowired
-    private InventoryMasterItemRepository masterItemRepository;
+    private com.hms.repository.InventoryItemRepository inventoryItemRepository;
+
+    @Autowired
+    private com.hms.security.SecurityContextHelper securityHelper;
 
     private HospitalServiceDTO toDto(HospitalServiceEntity s) {
         return new HospitalServiceDTO(
@@ -30,11 +31,38 @@ public class HospitalServiceController {
                 serviceService.getItemNamesForService(s.getId()));
     }
 
-    // --- Global master item list (read-only for hospital roles) ---
+    /**
+     * Global master item list for this tenant (read-only for hospital roles).
+     *
+     * The platform's Inventory Items tab always sends a hospitalType, so it writes the catalog
+     * to `inventory_items` (tenant-typed). This endpoint used to read `inventory_master_items`
+     * — a legacy, now-unused table — so the Service Lookup's item search always came back
+     * empty no matter what the platform admin added. Read the catalog the platform actually
+     * writes, scoped to the caller's tenant type so a clinic never sees hospital items.
+     */
     @GetMapping("/inventory-master")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<List<InventoryMasterItem>> listMasterItems() {
-        return ResponseEntity.ok(masterItemRepository.findAllByOrderByNameAsc());
+    public ResponseEntity<?> listMasterItems() {
+        String tenantType = currentTenantType();
+        List<com.hms.entity.InventoryItem> items = (tenantType == null)
+                ? inventoryItemRepository.findAll()
+                : inventoryItemRepository.findByHospitalType(tenantType);
+
+        return ResponseEntity.ok(items.stream()
+                // Only the platform-owned global catalog rows (hospital_id IS NULL); a
+                // hospital's own stock items live in the same table but are hospital-scoped.
+                .filter(i -> i.getHospitalId() == null)
+                .filter(i -> !Boolean.FALSE.equals(i.getIsActive()))
+                .sorted(java.util.Comparator.comparing(
+                        com.hms.entity.InventoryItem::getName,
+                        java.util.Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
+                .collect(Collectors.toList()));
+    }
+
+    /** Tenant type (HOSPITAL / CLINIC / PHARMACY) of the caller, from the JWT claim. */
+    private String currentTenantType() {
+        com.hms.security.UserAuthenticationDetails d = securityHelper.getCurrentUserDetails();
+        return d != null ? d.getHospitalType() : null;
     }
 
     // --- Per-hospital services ---

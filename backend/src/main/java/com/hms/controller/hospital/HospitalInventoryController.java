@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/hospital/hospital-inventory")
+@RequestMapping({"/hospital/hospital-inventory", "/clinic/hospital-inventory", "/pharmacy/hospital-inventory"})
 @RequireModule("HOSPITAL_INVENTORY")
 public class HospitalInventoryController {
 

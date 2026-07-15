@@ -200,6 +200,141 @@ const hospitalService = {
     },
 
 
+    // ========== Nurse APIs (Phase 1 Nurse module — HOSPITAL tenant only) ==========
+
+    /**
+     * Get all nurses for the current hospital
+     */
+    getNurses: async (search, page = 0, size = 10) => {
+        const query = search ? `?search=${search}&page=${page}&size=${size}` : `?page=${page}&size=${size}`;
+        const response = await apiClient.get(`/hospital/nurses${query}`);
+        return response.data;
+    },
+
+    /**
+     * Add a new nurse
+     */
+    addNurse: async (nurseData) => {
+        const response = await apiClient.post('/hospital/nurses', nurseData);
+        return response.data;
+    },
+
+    /**
+     * Delete nurse
+     */
+    deleteNurse: async (id, reason) => {
+        const query = reason ? `?reason=${encodeURIComponent(reason)}` : '';
+        const response = await apiClient.delete(`/hospital/nurses/${id}${query}`);
+        return response.data;
+    },
+
+    /**
+     * Get nurse by ID
+     */
+    getNurseById: async (id) => {
+        const response = await apiClient.get(`/hospital/nurses/${id}`);
+        return response.data;
+    },
+
+    /**
+     * Update nurse
+     */
+    updateNurse: async (id, data) => {
+        const response = await apiClient.put(`/hospital/nurses/${id}`, data);
+        return response.data;
+    },
+
+    /**
+     * Reset nurse password
+     */
+    resetNursePassword: async (id, newPassword) => {
+        const response = await apiClient.post(`/hospital/nurses/${id}/reset-password`, { newPassword });
+        return response.data;
+    },
+
+    /**
+     * Promote a nurse to Nurse Incharge.
+     */
+    promoteNurse: async (id) => (await apiClient.post(`/hospital/nurses/${id}/promote`)).data,
+
+    /**
+     * Demote a Nurse Incharge back to a plain nurse.
+     */
+    demoteNurse: async (id) => (await apiClient.post(`/hospital/nurses/${id}/demote`)).data,
+
+    /**
+     * Activate/deactivate a nurse account.
+     */
+    setNurseActive: async (id, active) => (await apiClient.post(`/hospital/nurses/${id}/active/${active}`)).data,
+
+    /**
+     * Set (or clear, when inchargeNurseProfileId is null) the Nurse Incharge for a ward.
+     */
+    setWardIncharge: async (wardId, inchargeNurseProfileId) =>
+        (await apiClient.post('/hospital/nurses/ward-incharge', { wardId, inchargeNurseProfileId })).data,
+
+
+    // ========== Nurse Assignment APIs (Phase 1 Nurse module) ==========
+
+    /**
+     * Overview of active admissions with their currently assigned nurse (or none).
+     */
+    getNurseAssignmentsOverview: async () => {
+        const response = await apiClient.get('/hospital/nurse-assignments/overview');
+        return response.data;
+    },
+
+    /**
+     * Assign a nurse to an IPD admission.
+     */
+    assignNurse: async ({ ipdAdmissionId, nurseUserId, notes }) => {
+        const response = await apiClient.post('/hospital/nurse-assignments', { ipdAdmissionId, nurseUserId, notes });
+        return response.data;
+    },
+
+    /**
+     * Reassign the nurse for an existing assignment.
+     */
+    reassignNurse: async (assignmentPublicId, { nurseUserId, notes }) => {
+        const response = await apiClient.put(`/hospital/nurse-assignments/${assignmentPublicId}/reassign`, { nurseUserId, notes });
+        return response.data;
+    },
+
+    /**
+     * Unassign (close) an assignment.
+     */
+    unassignNurse: async (assignmentPublicId) => {
+        const response = await apiClient.delete(`/hospital/nurse-assignments/${assignmentPublicId}`);
+        return response.data;
+    },
+
+    // ========== Nurse Tasks APIs (Phase 1 Nurse module, M7) ==========
+
+    /**
+     * Get all nurse tasks for the hospital (admin).
+     */
+    getNurseTasks: async () => {
+        const response = await apiClient.get('/hospital/nurse-tasks');
+        return response.data;
+    },
+
+    /**
+     * Create a new task assigned to a nurse.
+     */
+    createNurseTask: async (payload) => {
+        const response = await apiClient.post('/hospital/nurse-tasks', payload);
+        return response.data;
+    },
+
+    /**
+     * Update/Cancel a task status (admin).
+     */
+    updateNurseTaskStatus: async (publicId, payload) => {
+        const response = await apiClient.put(`/hospital/nurse-tasks/${publicId}/status`, payload);
+        return response.data;
+    },
+
+
     // ========== Pharmacist APIs ==========
 
     /**
@@ -252,6 +387,56 @@ const hospitalService = {
         return response.data;
     },
 
+    /**
+     * Get all OT incharges
+     */
+    getOtIncharges: async (search, page = 0, size = 10) => {
+        const query = search ? `?search=${search}&page=${page}&size=${size}` : `?page=${page}&size=${size}`;
+        const response = await apiClient.get(`/hospital/ot-incharges${query}`);
+        return response.data;
+    },
+
+    /**
+     * Add a new OT incharge
+     */
+    addOtIncharge: async (data) => {
+        const response = await apiClient.post('/hospital/ot-incharges', data);
+        return response.data;
+    },
+
+    /**
+     * Delete OT incharge
+     */
+    deleteOtIncharge: async (id, reason) => {
+        const query = reason ? `?reason=${encodeURIComponent(reason)}` : '';
+        const response = await apiClient.delete(`/hospital/ot-incharges/${id}${query}`);
+        return response.data;
+    },
+
+    /**
+     * Get OT incharge by ID
+     */
+    getOtInchargeById: async (id) => {
+        const response = await apiClient.get(`/hospital/ot-incharges/${id}`);
+        return response.data;
+    },
+
+    /**
+     * Update OT incharge
+     */
+    updateOtIncharge: async (id, data) => {
+        const response = await apiClient.put(`/hospital/ot-incharges/${id}`, data);
+        return response.data;
+    },
+
+    /**
+     * Reset OT incharge password
+     */
+    resetOtInchargePassword: async (id, newPassword) => {
+        const response = await apiClient.post(`/hospital/ot-incharges/${id}/reset-password`, { newPassword });
+        return response.data;
+    },
+
 
     /**
      * Get pending prescriptions for pharmacy
@@ -296,30 +481,6 @@ const hospitalService = {
     // --- In-Clinic Medicine & Inventory ---
     getCatalogMedicines: async () => {
         const response = await apiClient.get('/hospital/medicines/catalog');
-        return response.data;
-    },
-
-    addCatalogMedicine: async (data) => {
-        const response = await apiClient.post('/hospital/medicines/catalog', data);
-        return response.data;
-    },
-
-    updateCatalogMedicine: async (id, data) => {
-        const response = await apiClient.put(`/hospital/medicines/catalog/${id}`, data);
-        return response.data;
-    },
-
-    deleteCatalogMedicine: async (id) => {
-        const response = await apiClient.delete(`/hospital/medicines/catalog/${id}`);
-        return response.data;
-    },
-
-    importCatalogCsv: async (file) => {
-        const formData = new FormData();
-        formData.append('file', file);
-        const response = await apiClient.post('/hospital/medicines/catalog/import-csv', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-        });
         return response.data;
     },
 
@@ -459,31 +620,31 @@ const hospitalService = {
         return response.data;
     },
     createIpdAdmission: async (payload) => {
-        const response = await apiClient.post('/api/ipd/admit', payload);
+        const response = await apiClient.post('/hospital/ipd/admit', payload);
         return response.data;
     },
     getIpdAdmissions: async (page = 0, size = 10, search = '') => {
-        const response = await apiClient.get('/api/ipd', { params: { page, size, search } });
+        const response = await apiClient.get('/hospital/ipd', { params: { page, size, search } });
         return response.data;
     },
     getMyIpdAdmissions: async () => {
-        const response = await apiClient.get('/api/ipd/my');
+        const response = await apiClient.get('/hospital/ipd/my');
         return response.data;
     },
     getAdmittedIpdAdmissions: async () => {
-        const response = await apiClient.get('/api/ipd/admissions');
+        const response = await apiClient.get('/hospital/ipd/admissions');
         return response.data; // returns array of DTOs
     },
     getIpdDetails: async (id) => {
-        const response = await apiClient.get(`/api/ipd/${id}`, { timeout: 30000 });
+        const response = await apiClient.get(`/hospital/ipd/${id}`, { timeout: 30000 });
         return response.data;
     },
     planDischarge: async (id, payload) => {
-        const response = await apiClient.post(`/api/ipd/${id}/plan-discharge`, payload);
+        const response = await apiClient.post(`/hospital/ipd/${id}/plan-discharge`, payload);
         return response.data;
     },
     confirmDischarge: async (id) => {
-        const response = await apiClient.post(`/api/ipd/${id}/confirm-discharge`);
+        const response = await apiClient.post(`/hospital/ipd/${id}/confirm-discharge`);
         return response.data;
     },
     getIpdBill: async (ipdId) => {
@@ -495,27 +656,27 @@ const hospitalService = {
         return response.data;
     },
     addIpdFollowup: async (id, payload) => {
-        const response = await apiClient.post(`/api/ipd/${id}/followup`, payload);
+        const response = await apiClient.post(`/hospital/ipd/${id}/followup`, payload);
         return response.data;
     },
     administerIpdItems: async (id, items) => {
-        const response = await apiClient.post(`/api/ipd/${id}/administer`, { administeredItems: items });
+        const response = await apiClient.post(`/hospital/ipd/${id}/administer`, { administeredItems: items });
         return response.data;
     },
     administerIpdHospitalItems: async (id, items) => {
-        const response = await apiClient.post(`/api/ipd/${id}/administer-hospital-items`, { items });
+        const response = await apiClient.post(`/hospital/ipd/${id}/administer-hospital-items`, { items });
         return response.data;
     },
     addIpdPrescription: async (id, payload) => {
-        const response = await apiClient.post(`/api/ipd/${id}/prescriptions`, payload);
+        const response = await apiClient.post(`/hospital/ipd/${id}/prescriptions`, payload);
         return response.data;
     },
     stopPrescription: async (prescriptionId) => {
-        const response = await apiClient.put(`/api/ipd/prescriptions/${prescriptionId}/stop`);
+        const response = await apiClient.put(`/hospital/ipd/prescriptions/${prescriptionId}/stop`);
         return response.data;
     },
     changeBed: async (ipdId, newBedId) => {
-        const response = await apiClient.put(`/api/ipd/${ipdId}/change-bed?newBedId=${newBedId}`);
+        const response = await apiClient.put(`/hospital/ipd/${ipdId}/change-bed?newBedId=${newBedId}`);
         return response.data;
     },
 
@@ -697,6 +858,19 @@ const hospitalService = {
         return response.data;
     },
 
+    // Pharmacy-specific audit logs (SUPPLIER, MEDICINE_BATCH, PURCHASE_INVOICE, PHARMACY_SALE)
+    getPharmacyAuditLogs: async (searchTerm, role) => {
+        let url = '/hospital/audit-logs/pharmacy';
+        const params = [];
+        if (searchTerm) params.push(`search=${encodeURIComponent(searchTerm)}`);
+        if (role) params.push(`role=${encodeURIComponent(role)}`);
+        if (params.length > 0) {
+            url += `?${params.join('&')}`;
+        }
+        const response = await apiClient.get(url);
+        return response.data;
+    },
+
     // ========== Hospital Settings / Fees ==========
     getHospitalFees: async () => {
         const response = await apiClient.get('/hospital/settings/fees');
@@ -758,6 +932,28 @@ const hospitalService = {
         return response.data;
     },
 
+    // ─── In-Clinic presets (bundles of stock medicines administered in the clinic) ──────
+    // Same endpoints as prescription presets, split by presetType on the server.
+    getInClinicPresets: async () => {
+        const response = await apiClient.get('/hospital/prescription-presets', { params: { type: 'IN_CLINIC' } });
+        return response.data;
+    },
+
+    createInClinicPreset: async (data) => {
+        const response = await apiClient.post('/hospital/prescription-presets', { ...data, presetType: 'IN_CLINIC' });
+        return response.data;
+    },
+
+    updateInClinicPreset: async (id, data) => {
+        const response = await apiClient.put(`/hospital/prescription-presets/${id}`, { ...data, presetType: 'IN_CLINIC' });
+        return response.data;
+    },
+
+    deleteInClinicPreset: async (id) => {
+        const response = await apiClient.delete(`/hospital/prescription-presets/${id}`);
+        return response.data;
+    },
+
     updatePrescriptionPreset: async (id, data) => {
         const response = await apiClient.put(`/hospital/prescription-presets/${id}`, data);
         return response.data;
@@ -783,6 +979,27 @@ const hospitalService = {
         return response.data;
     },
 
+    updateBarcodeSetting: async (barcodeEnabled) => {
+        const response = await apiClient.put('/hospital/settings/barcode', { barcodeEnabled });
+        return response.data;
+    },
+
+    // Print Settings (pages in the consultation print) + bill payment timing. Partial update.
+    updatePrintPaymentSettings: async (settings) => {
+        const response = await apiClient.put('/hospital/settings/print-payment', settings);
+        return response.data;
+    },
+
+    updateSeparateNurseLoginSetting: async (separateNurseLogin) => {
+        const response = await apiClient.put('/hospital/settings/nurse-login', { separateNurseLogin });
+        return response.data;
+    },
+
+    updateOtInchargeSetting: async (otInchargeEnabled) => {
+        const response = await apiClient.put('/hospital/settings/ot-incharge', { otInchargeEnabled });
+        return response.data;
+    },
+
     /**
      * Get history for specific entity
      */
@@ -792,8 +1009,11 @@ const hospitalService = {
     },
 
     // ========== Support & FAQ APIs ==========
+    // Tenant-scoped: the interceptor rewrites /hospital/ -> /clinic/ or /pharmacy/ for the
+    // logged-in tenant, and the backend returns only that tenant type's FAQs. This replaces
+    // the old /api/public/faqs call, which leaked every tenant's FAQs to every admin.
     getPublicFaqs: async () => {
-        const response = await apiClient.get('/api/public/faqs');
+        const response = await apiClient.get('/hospital/faqs');
         return response.data;
     },
 

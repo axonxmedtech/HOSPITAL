@@ -21,4 +21,7 @@ public class MedicineList {
 
     @Column(nullable = false)
     private String type; // e.g., Tablet, Syrup, Injection, Saline, Cream
+
+    @Column(name = "hospital_type")
+    private String hospitalType; // HOSPITAL, CLINIC, or PHARMACY - for tenant isolation
 }

@@ -12,7 +12,7 @@ import org.springframework.data.domain.Pageable;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/hospital/pharmacists")
+@RequestMapping({"/hospital/pharmacists", "/clinic/pharmacists", "/pharmacy/pharmacists"})
 @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
 public class PharmacistController {
 
@@ -29,8 +29,9 @@ public class PharmacistController {
             return ResponseEntity.badRequest().body("Name, Email, and Password are required");
         }
 
-        User created = pharmacistService.createPharmacist(name, email, password);
-        return ResponseEntity.ok(created);
+        // phone was previously dropped here — the admin form sends it, the API ignored it.
+        User created = pharmacistService.createPharmacist(name, email, password, payload.get("phone"));
+        return ResponseEntity.ok(pharmacistService.toView(created));
     }
 
     @GetMapping
@@ -51,8 +52,7 @@ public class PharmacistController {
 
     @GetMapping("/{id}")
     public ResponseEntity<?> getPharmacistById(@PathVariable String id) {
-        User pharmacist = pharmacistService.getPharmacistByPublicId(id);
-        return ResponseEntity.ok(pharmacist);
+        return ResponseEntity.ok(pharmacistService.getPharmacistViewByPublicId(id));
     }
 
     @PutMapping("/{id}")
@@ -61,8 +61,8 @@ public class PharmacistController {
         if (name == null || name.trim().isEmpty()) {
             return ResponseEntity.badRequest().body("Name is required");
         }
-        User updated = pharmacistService.updatePharmacist(id, name);
-        return ResponseEntity.ok(updated);
+        User updated = pharmacistService.updatePharmacist(id, name, payload.get("phone"));
+        return ResponseEntity.ok(pharmacistService.toView(updated));
     }
 
     @PostMapping("/{id}/reset-password")

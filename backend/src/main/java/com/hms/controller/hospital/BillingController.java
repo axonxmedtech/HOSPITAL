@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.entity.Billing;
 import com.hms.entity.BillingItem;
 import com.hms.entity.BillingPayment;
@@ -26,7 +28,7 @@ import com.hms.service.hospital.PatientService;
 import com.hms.service.PdfService;
 
 @RestController
-@RequestMapping("/hospital/billing")
+@RequestMapping({"/hospital/billing", "/clinic/billing", "/pharmacy/billing"})
 public class BillingController {
 
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(BillingController.class);
@@ -51,7 +53,7 @@ public class BillingController {
         com.hms.entity.HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(hospitalId)
                 .orElseGet(() -> {
                     Hospital hospital = hospitalRepository.findById(hospitalId)
-                            .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                            .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
                     com.hms.entity.HospitalSetting newSettings = new com.hms.entity.HospitalSetting();
                     newSettings.setHospital(hospital);
                     return hospitalSettingRepository.save(newSettings);
@@ -228,7 +230,7 @@ public class BillingController {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Billing billing = billingRepository.findById(id)
                 .filter(b -> b.getHospitalId().equals(hospitalId))
-                .orElseThrow(() -> new RuntimeException("Bill not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Bill not found"));
 
         if ("PAID".equalsIgnoreCase(billing.getPaymentStatus()) || "CLOSED".equalsIgnoreCase(billing.getPaymentStatus())) {
             throw new IllegalArgumentException("Cannot edit items of a paid or closed bill");
@@ -319,7 +321,7 @@ public class BillingController {
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> downloadReceipt(@PathVariable Long id) {
         Billing billing = billingRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Bill not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Bill not found"));
 
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null || !hospitalId.equals(billing.getHospitalId())) {
@@ -327,7 +329,7 @@ public class BillingController {
         }
 
         Hospital hospital = hospitalRepository.findById(billing.getHospitalId())
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
         Patient patient = patientService.getPatientById(billing.getPatientId());
 
@@ -347,9 +349,15 @@ public class BillingController {
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> getIpdBill(@PathVariable Long ipdId) {
         validateBillingAccess();
+        // findByIpdAdmissionId is not tenant-scoped, so without this check any hospital could
+        // read another hospital's IPD bill — items, payments and patient — by admission id.
+        Long ipdBillHospitalId = securityHelper.getCurrentHospitalId();
         List<Billing> bills = billingRepository.findByIpdAdmissionId(ipdId);
         if (bills == null || bills.isEmpty()) return ResponseEntity.notFound().build();
         Billing bill = bills.get(0);
+        if (bill.getHospitalId() == null || !bill.getHospitalId().equals(ipdBillHospitalId)) {
+            return ResponseEntity.notFound().build();
+        }
 
         List<BillingItem> items = billingItemRepository.findByBillingId(bill.getId());
         List<com.hms.entity.BillingMedicine> medicines = billingMedicineRepository.findByBillingId(bill.getId());
@@ -431,7 +439,13 @@ public class BillingController {
             return ResponseEntity.status(403).body("Not allowed");
         }
 
-        Billing bill = billingRepository.findById(billingId).orElse(null);
+        // Scope the lookup to the caller's hospital. Without this filter any hospital could
+        // settle another hospital's bill by guessing its (sequential) numeric id — a
+        // cross-tenant financial write. The sibling endpoints above already filter this way.
+        Long payHospitalId = securityHelper.getCurrentHospitalId();
+        Billing bill = billingRepository.findById(billingId)
+                .filter(b -> b.getHospitalId() != null && b.getHospitalId().equals(payHospitalId))
+                .orElse(null);
         if (bill == null) return ResponseEntity.notFound().build();
 
         if (req.amount == null || req.amount.compareTo(BigDecimal.ZERO) <= 0) {

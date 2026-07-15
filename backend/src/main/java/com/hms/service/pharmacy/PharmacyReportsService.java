@@ -25,37 +25,56 @@ public class PharmacyReportsService {
 
     public Map<String, Object> getReportsDashboard() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
+        Long branchId = securityHelper.getCurrentBranchId();
         Map<String, Object> report = new HashMap<>();
 
         // 1. Fetch Gross Sales and GST Outputs (Optimized single-pass query)
-        Object[] salesData = em.createQuery(
-            "SELECT COALESCE(SUM(s.netAmount), 0), COALESCE(SUM(s.taxAmount), 0) " +
-            "FROM PharmacySale s WHERE s.hospitalId = :hospitalId AND s.paymentStatus = 'PAID'", Object[].class)
-            .setParameter("hospitalId", hospitalId)
-            .getSingleResult();
+        String salesQueryStr = "SELECT COALESCE(SUM(s.netAmount), 0), COALESCE(SUM(s.taxAmount), 0) " +
+            "FROM PharmacySale s WHERE s.hospitalId = :hospitalId AND s.paymentStatus = 'PAID'";
+        if (branchId != null) {
+            salesQueryStr += " AND s.branchId = :branchId";
+        }
+        jakarta.persistence.TypedQuery<Object[]> salesQuery = em.createQuery(salesQueryStr, Object[].class)
+            .setParameter("hospitalId", hospitalId);
+        if (branchId != null) {
+            salesQuery.setParameter("branchId", branchId);
+        }
+        Object[] salesData = salesQuery.getSingleResult();
         BigDecimal grossSales = (BigDecimal) salesData[0];
         BigDecimal outputGst = (BigDecimal) salesData[1];
 
         // 2. Fetch Total Patient Reversals / Refunds
-        BigDecimal totalRefundAmount = em.createQuery(
-            "SELECT COALESCE(SUM(t.quantity * b.sellingPrice), 0) " +
+        String refundsQueryStr = "SELECT COALESCE(SUM(t.quantity * b.sellingPrice), 0) " +
             "FROM InventoryTransaction t JOIN MedicineBatch b ON t.medicineBatchId = b.id " +
-            "WHERE t.hospitalId = :hospitalId AND t.transactionType = 'RETURN' AND t.referenceType = 'PHARMACY_SALE'", BigDecimal.class)
-            .setParameter("hospitalId", hospitalId)
-            .getSingleResult();
+            "WHERE t.hospitalId = :hospitalId AND t.transactionType = 'RETURN' AND t.referenceType = 'PHARMACY_SALE'";
+        if (branchId != null) {
+            refundsQueryStr += " AND t.branchId = :branchId";
+        }
+        jakarta.persistence.TypedQuery<BigDecimal> refundsQuery = em.createQuery(refundsQueryStr, BigDecimal.class)
+            .setParameter("hospitalId", hospitalId);
+        if (branchId != null) {
+            refundsQuery.setParameter("branchId", branchId);
+        }
+        BigDecimal totalRefundAmount = refundsQuery.getSingleResult();
 
         // 3. Compute Net Revenue
         BigDecimal netRevenue = grossSales.subtract(totalRefundAmount);
 
         // 4. Calculate COGS (Cost of Goods Sold) using explicit JOINs for maximum performance
-        BigDecimal cogs = em.createQuery(
-            "SELECT COALESCE(SUM(si.quantity * b.purchaseRate), 0) " +
+        String cogsQueryStr = "SELECT COALESCE(SUM(si.quantity * b.purchaseRate), 0) " +
             "FROM PharmacySaleItem si " +
             "JOIN si.pharmacySale s " +
             "JOIN MedicineBatch b ON si.medicineBatchId = b.id " +
-            "WHERE s.hospitalId = :hospitalId AND s.paymentStatus = 'PAID'", BigDecimal.class)
-            .setParameter("hospitalId", hospitalId)
-            .getSingleResult();
+            "WHERE s.hospitalId = :hospitalId AND s.paymentStatus = 'PAID'";
+        if (branchId != null) {
+            cogsQueryStr += " AND s.branchId = :branchId";
+        }
+        jakarta.persistence.TypedQuery<BigDecimal> cogsQuery = em.createQuery(cogsQueryStr, BigDecimal.class)
+            .setParameter("hospitalId", hospitalId);
+        if (branchId != null) {
+            cogsQuery.setParameter("branchId", branchId);
+        }
+        BigDecimal cogs = cogsQuery.getSingleResult();
 
         // 5. Calculate Gross Profit & Margin Percentage
         BigDecimal grossProfit = netRevenue.subtract(cogs);
@@ -65,26 +84,31 @@ public class PharmacyReportsService {
         }
 
         // 6. SINGLE-PASS Batch Aggregate Query (Valuation & Expiry Risks)
-        // This collapses 5 separate heavy DB queries into one single, high-speed aggregate pass!
         LocalDate today = LocalDate.now();
         LocalDate date30 = today.plusDays(30);
         LocalDate date60 = today.plusDays(60);
         LocalDate date90 = today.plusDays(90);
 
-        Object[] batchSummary = em.createQuery(
-            "SELECT " +
+        String batchQueryStr = "SELECT " +
             "  COALESCE(SUM(CASE WHEN b.expiryDate > :today THEN b.currentQuantity * b.purchaseRate ELSE 0 END), 0), " +
             "  COALESCE(SUM(CASE WHEN b.expiryDate <= :today THEN b.currentQuantity * b.purchaseRate ELSE 0 END), 0), " +
             "  COALESCE(SUM(CASE WHEN b.expiryDate BETWEEN :today AND :date30 THEN b.currentQuantity * b.purchaseRate ELSE 0 END), 0), " +
             "  COALESCE(SUM(CASE WHEN b.expiryDate BETWEEN :date30 AND :date60 THEN b.currentQuantity * b.purchaseRate ELSE 0 END), 0), " +
             "  COALESCE(SUM(CASE WHEN b.expiryDate BETWEEN :date60 AND :date90 THEN b.currentQuantity * b.purchaseRate ELSE 0 END), 0) " +
-            "FROM MedicineBatch b WHERE b.hospitalId = :hospitalId AND b.currentQuantity > 0", Object[].class)
+            "FROM MedicineBatch b WHERE b.hospitalId = :hospitalId AND b.currentQuantity > 0";
+        if (branchId != null) {
+            batchQueryStr += " AND b.branchId = :branchId";
+        }
+        jakarta.persistence.TypedQuery<Object[]> batchQuery = em.createQuery(batchQueryStr, Object[].class)
             .setParameter("hospitalId", hospitalId)
             .setParameter("today", today)
             .setParameter("date30", date30)
             .setParameter("date60", date60)
-            .setParameter("date90", date90)
-            .getSingleResult();
+            .setParameter("date90", date90);
+        if (branchId != null) {
+            batchQuery.setParameter("branchId", branchId);
+        }
+        Object[] batchSummary = batchQuery.getSingleResult();
 
         BigDecimal inventoryValuation = (BigDecimal) batchSummary[0];
         BigDecimal expiredLoss = (BigDecimal) batchSummary[1];
@@ -104,11 +128,17 @@ public class PharmacyReportsService {
         report.put("kpis", kpis);
 
         // 7. Fetch Purchase Input GST
-        BigDecimal inputGst = em.createQuery(
-            "SELECT COALESCE(SUM(p.gstAmount), 0) " +
-            "FROM PurchaseInvoice p WHERE p.hospitalId = :hospitalId AND p.postingStatus = 'POSTED'", BigDecimal.class)
-            .setParameter("hospitalId", hospitalId)
-            .getSingleResult();
+        String purchaseGstQueryStr = "SELECT COALESCE(SUM(p.gstAmount), 0) " +
+            "FROM PurchaseInvoice p WHERE p.hospitalId = :hospitalId AND p.postingStatus = 'POSTED'";
+        if (branchId != null) {
+            purchaseGstQueryStr += " AND p.branchId = :branchId";
+        }
+        jakarta.persistence.TypedQuery<BigDecimal> purchaseGstQuery = em.createQuery(purchaseGstQueryStr, BigDecimal.class)
+            .setParameter("hospitalId", hospitalId);
+        if (branchId != null) {
+            purchaseGstQuery.setParameter("branchId", branchId);
+        }
+        BigDecimal inputGst = purchaseGstQuery.getSingleResult();
 
         Map<String, Object> taxSummary = new HashMap<>();
         taxSummary.put("inputGst", inputGst);
@@ -123,18 +153,22 @@ public class PharmacyReportsService {
         report.put("expiryRisk", expiryRisk);
 
         // 8. Fetch Fast-Moving Items using optimized explicit JOINs
-        List<Object[]> fastMovingData = em.createQuery(
-            "SELECT m.medicineName, SUM(si.quantity), SUM(si.totalAmount) " +
+        String fastMovingQueryStr = "SELECT m.medicineName, SUM(si.quantity), SUM(si.totalAmount) " +
             "FROM PharmacySaleItem si " +
             "JOIN si.pharmacySale s " +
             "JOIN MedicineBatch b ON si.medicineBatchId = b.id " +
             "JOIN MedicineMaster m ON b.medicineId = m.id " +
-            "WHERE s.hospitalId = :hospitalId AND s.paymentStatus = 'PAID' " +
-            "GROUP BY m.medicineName " +
-            "ORDER BY SUM(si.quantity) DESC", Object[].class)
-            .setParameter("hospitalId", hospitalId)
-            .setMaxResults(5)
-            .getResultList();
+            "WHERE s.hospitalId = :hospitalId AND s.paymentStatus = 'PAID'";
+        if (branchId != null) {
+            fastMovingQueryStr += " AND s.branchId = :branchId";
+        }
+        fastMovingQueryStr += " GROUP BY m.medicineName ORDER BY SUM(si.quantity) DESC";
+        jakarta.persistence.TypedQuery<Object[]> fastMovingQuery = em.createQuery(fastMovingQueryStr, Object[].class)
+            .setParameter("hospitalId", hospitalId);
+        if (branchId != null) {
+            fastMovingQuery.setParameter("branchId", branchId);
+        }
+        List<Object[]> fastMovingData = fastMovingQuery.setMaxResults(5).getResultList();
 
         List<Map<String, Object>> fastMoving = new ArrayList<>();
         for (Object[] row : fastMovingData) {
@@ -147,16 +181,22 @@ public class PharmacyReportsService {
         report.put("fastMoving", fastMoving);
 
         // 9. Fetch Category Stock Valuations using optimized explicit JOINs
-        List<Object[]> categoryData = em.createQuery(
-            "SELECT COALESCE(c.categoryName, 'Other'), SUM(b.currentQuantity * b.purchaseRate), COUNT(b.id) " +
+        String categoryQueryStr = "SELECT COALESCE(c.categoryName, 'Other'), SUM(b.currentQuantity * b.purchaseRate), COUNT(b.id) " +
             "FROM MedicineBatch b " +
             "JOIN MedicineMaster m ON b.medicineId = m.id " +
             "LEFT JOIN MedicineCategory c ON m.categoryId = c.id " +
-            "WHERE b.hospitalId = :hospitalId AND b.currentQuantity > 0 AND b.expiryDate > :today " +
-            "GROUP BY c.categoryName", Object[].class)
+            "WHERE b.hospitalId = :hospitalId AND b.currentQuantity > 0 AND b.expiryDate > :today";
+        if (branchId != null) {
+            categoryQueryStr += " AND b.branchId = :branchId";
+        }
+        categoryQueryStr += " GROUP BY c.categoryName";
+        jakarta.persistence.TypedQuery<Object[]> categoryQuery = em.createQuery(categoryQueryStr, Object[].class)
             .setParameter("hospitalId", hospitalId)
-            .setParameter("today", today)
-            .getResultList();
+            .setParameter("today", today);
+        if (branchId != null) {
+            categoryQuery.setParameter("branchId", branchId);
+        }
+        List<Object[]> categoryData = categoryQuery.getResultList();
 
         List<Map<String, Object>> categoryValuation = new ArrayList<>();
         for (Object[] row : categoryData) {
@@ -169,26 +209,37 @@ public class PharmacyReportsService {
         report.put("categoryValuation", categoryValuation);
 
         // 10. LIGHTNING-FAST 7-Day Trend: Pull raw datasets in bulk and group in memory
-        // This completely removes the 14-database-call loop and reduces it to just 2 index-friendly DB reads!
         LocalDateTime startOfWeek = today.minusDays(6).atStartOfDay();
         
-        List<Object[]> rawSales = em.createQuery(
-            "SELECT s.createdAt, s.netAmount " +
+        String rawSalesQueryStr = "SELECT s.createdAt, s.netAmount " +
             "FROM PharmacySale s " +
-            "WHERE s.hospitalId = :hospitalId AND s.paymentStatus = 'PAID' AND s.createdAt >= :startOfWeek", Object[].class)
+            "WHERE s.hospitalId = :hospitalId AND s.paymentStatus = 'PAID' AND s.createdAt >= :startOfWeek";
+        if (branchId != null) {
+            rawSalesQueryStr += " AND s.branchId = :branchId";
+        }
+        jakarta.persistence.TypedQuery<Object[]> rawSalesQuery = em.createQuery(rawSalesQueryStr, Object[].class)
             .setParameter("hospitalId", hospitalId)
-            .setParameter("startOfWeek", startOfWeek)
-            .getResultList();
+            .setParameter("startOfWeek", startOfWeek);
+        if (branchId != null) {
+            rawSalesQuery.setParameter("branchId", branchId);
+        }
+        List<Object[]> rawSales = rawSalesQuery.getResultList();
 
-        List<Object[]> rawRefunds = em.createQuery(
-            "SELECT t.createdAt, t.quantity * b.sellingPrice " +
+        String rawRefundsQueryStr = "SELECT t.createdAt, t.quantity * b.sellingPrice " +
             "FROM InventoryTransaction t " +
             "JOIN MedicineBatch b ON t.medicineBatchId = b.id " +
             "WHERE t.hospitalId = :hospitalId AND t.transactionType = 'RETURN' AND t.referenceType = 'PHARMACY_SALE' " +
-            "AND t.createdAt >= :startOfWeek", Object[].class)
+            "AND t.createdAt >= :startOfWeek";
+        if (branchId != null) {
+            rawRefundsQueryStr += " AND t.branchId = :branchId";
+        }
+        jakarta.persistence.TypedQuery<Object[]> rawRefundsQuery = em.createQuery(rawRefundsQueryStr, Object[].class)
             .setParameter("hospitalId", hospitalId)
-            .setParameter("startOfWeek", startOfWeek)
-            .getResultList();
+            .setParameter("startOfWeek", startOfWeek);
+        if (branchId != null) {
+            rawRefundsQuery.setParameter("branchId", branchId);
+        }
+        List<Object[]> rawRefunds = rawRefundsQuery.getResultList();
 
         // Map sales to calendar days in memory
         Map<String, BigDecimal> salesByDay = new HashMap<>();

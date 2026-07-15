@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import authService from '../../services/authService';
 import platformService from '../../services/platformService';
+import { API_BASE_URL } from '../../services/apiService';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import { validateForm } from '../../utils/validation';
 import ActionMenu from '../../components/ActionMenu';
@@ -105,15 +106,61 @@ const PlatformDashboard = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const activeTab = searchParams.get('tab') || 'dashboard';
 
-    // Helper to switch tabs
+    // Which sidebar groups are currently expanded. Auto-expands the group that
+    // owns the active subtab so a page refresh keeps the correct group open.
+    const [expandedGroups, setExpandedGroups] = useState(() => {
+        if (activeTab.includes(':')) {
+            return { [activeTab.split(':')[0]]: true };
+        }
+        return {};
+    });
+
+    // Toggle a sidebar group open/closed (does NOT change the active tab)
+    const toggleGroup = (groupId) => {
+        setExpandedGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
+    };
+
+    // Helper to switch tabs. When navigating to a subtab, ensure its parent
+    // group is expanded so the selection stays visible.
     const setActiveTab = (tab) => {
+        if (tab && tab.includes(':')) {
+            const group = tab.split(':')[0];
+            setExpandedGroups((prev) => ({ ...prev, [group]: true }));
+        }
         setSearchParams({ tab });
     };
 
+    // Helper: Parse tab string in format "group:subtab" or top-level tab
+    const parseTab = (tab) => {
+        if (!tab) return { isTopLevel: true, tab: 'dashboard' };
+        if (tab.includes(':')) {
+            const [group, subtab] = tab.split(':');
+            return { isTopLevel: false, group, subtab };
+        }
+        return { isTopLevel: true, tab };
+    };
+
+    // Helper: Convert group name to hospital type
+    const getHospitalTypeFromGroup = (group) => {
+        if (group === 'clinic') return 'CLINIC';
+        if (group === 'pharmacy') return 'PHARMACY';
+        if (group === 'hospital') return 'HOSPITAL';
+        return null;
+    };
+
+    // Helper: Get entity type from activeTab (backward compatible)
     const getEntityType = (tab) => {
-        if (tab === 'clinics') return 'CLINIC';
-        if (tab === 'pharmacies') return 'PHARMACY';
-        return 'HOSPITAL';
+        const parsed = parseTab(tab);
+        if (parsed.isTopLevel) return 'HOSPITAL';
+        const type = getHospitalTypeFromGroup(parsed.group);
+        return type || 'HOSPITAL';
+    };
+
+    // Helper: Get current hospitalType for props
+    const getCurrentHospitalType = () => {
+        const parsed = parseTab(activeTab);
+        if (parsed.isTopLevel) return null;
+        return getHospitalTypeFromGroup(parsed.group);
     };
 
     // BUG-013: Centralised error extractor – all catch blocks must use this.
@@ -212,6 +259,7 @@ const PlatformDashboard = () => {
     // Tickets State
     const [tickets, setTickets] = useState([]);
     const [ticketsLoading, setTicketsLoading] = useState(false);
+    const [viewTicket, setViewTicket] = useState(null); // ticket whose full details are open
 
     // FAQs State
     const [faqs, setFaqs] = useState([]);
@@ -230,17 +278,20 @@ const PlatformDashboard = () => {
 
     // Load data based on active tab
     useEffect(() => {
+        const parsed = parseTab(activeTab);
+        const subtab = parsed.isTopLevel ? parsed.tab : activeTab.split(':')[1];
+
         if (activeTab === 'dashboard') {
             loadHospitals();
             loadHospitalStats();
-        } else if (activeTab === 'hospitals' || activeTab === 'clinics' || activeTab === 'pharmacies') {
+        } else if (subtab === 'hospitals' || subtab === 'clinics' || subtab === 'pharmacies') {
             // BUG-015: use PLATFORM_PAGE_SIZE constant instead of hard-coded 10
             loadHospitals(0, PLATFORM_PAGE_SIZE, getEntityType(activeTab));
-        } else if (activeTab === 'audit_logs') {
+        } else if (subtab === 'audit_logs') {
             loadAuditLogs();
-        } else if (activeTab === 'tickets') {
+        } else if (subtab === 'tickets') {
             loadTickets();
-        } else if (activeTab === 'faqs') {
+        } else if (subtab === 'faqs') {
             loadFaqs();
         }
     }, [activeTab]);
@@ -315,7 +366,7 @@ const PlatformDashboard = () => {
     const loadTickets = async () => {
         setTicketsLoading(true);
         try {
-            const data = await platformService.getTickets();
+            const data = await platformService.getTickets(getCurrentHospitalType());
             setTickets(data);
         } catch {
             setTickets([]); // graceful fallback if endpoint not yet live
@@ -324,12 +375,53 @@ const PlatformDashboard = () => {
         }
     };
 
+    // Keep live pointers to the loaders so the mount-once WebSocket effect below always calls the
+    // current closure (fresh activeTab / hospital type / page), avoiding a stale capture.
+    const reloadTicketsRef = useRef(() => {});
+    const reloadTenantsRef = useRef(() => {});
+    useEffect(() => {
+        reloadTicketsRef.current = () => { loadTickets(); };
+        // Reload the tenant list the Super Admin is actually looking at — same page, same type —
+        // so a live refresh never yanks them back to page 1 of a different group.
+        reloadTenantsRef.current = () => {
+            loadHospitals(hospitalPage.number, hospitalPage.size, getEntityType(activeTab));
+        };
+    });
+
+    // Real-time: the platform (Super Admin) connects to the reserved channel (/ws/hospital/0).
+    //   NEW_TICKET   — a tenant filed a ticket.
+    //   REFRESH_DATA — a tenant was created/blocked/updated/deleted, or a plan was assigned or
+    //                  edited. Previously the platform listened for NEW_TICKET and nothing else,
+    //                  so its own tenant list (including the Plan column) went stale the moment a
+    //                  second Super Admin tab — or this one's own plan edit — changed anything.
+    // Best-effort: a socket failure just falls back to manual reload.
+    useEffect(() => {
+        const token = sessionStorage.getItem('token');
+        if (!token) return;
+        let ws;
+        try {
+            const base = API_BASE_URL || '';
+            const wsBase = base.startsWith('http')
+                ? base.replace(/^http/, 'ws')
+                : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}${base.startsWith('/') ? '' : '/'}${base}`;
+            ws = new WebSocket(`${wsBase}/ws/hospital/0?token=${encodeURIComponent(token)}`);
+            ws.onmessage = (evt) => {
+                try {
+                    const data = JSON.parse(evt.data);
+                    if (data?.type === 'NEW_TICKET') reloadTicketsRef.current();
+                    else if (data?.type === 'REFRESH_DATA') reloadTenantsRef.current();
+                } catch { /* ignore malformed frames */ }
+            };
+        } catch { /* WebSocket unsupported/unavailable — silently skip */ }
+        return () => { try { ws && ws.close(); } catch { /* noop */ } };
+    }, []);
+
     const [resolvingTicketId, setResolvingTicketId] = useState(null);
     const handleResolveTicket = async (ticketId) => {
         if (resolvingTicketId) return;
         setResolvingTicketId(ticketId);
         try {
-            await platformService.resolveTicket(ticketId);
+            await platformService.resolveTicket(ticketId, getCurrentHospitalType());
             loadTickets();
         } catch {
             setError('Failed to resolve ticket');
@@ -341,7 +433,7 @@ const PlatformDashboard = () => {
     const loadFaqs = async () => {
         setFaqsLoading(true);
         try {
-            const data = await platformService.getFaqs();
+            const data = await platformService.getPlatformFaqs(getCurrentHospitalType());
             setFaqs(data || []);
         } catch {
             setError('Failed to load FAQs');
@@ -358,7 +450,7 @@ const PlatformDashboard = () => {
         }
         setFaqSubmitting(true);
         try {
-            await platformService.addFaq(faqForm);
+            await platformService.addFaq(faqForm, getCurrentHospitalType());
             success('FAQ added successfully');
             setShowFaqModal(false);
             setFaqForm({ question: '', answer: '' });
@@ -376,7 +468,7 @@ const PlatformDashboard = () => {
             'Are you sure you want to delete this FAQ? This action cannot be undone.',
             async () => {
                 try {
-                    await platformService.deleteFaq(faqId);
+                    await platformService.deleteFaq(faqId, getCurrentHospitalType());
                     setConfirmModal(prev => ({ ...prev, isOpen: false }));
                     success('FAQ deleted successfully');
                     loadFaqs();
@@ -424,7 +516,8 @@ const PlatformDashboard = () => {
             return;
         }
 
-        const entityLabel = activeTab === 'clinics' ? 'Clinic' : activeTab === 'pharmacies' ? 'Pharmacy' : 'Hospital';
+        const subtabForCreate = activeTab.split(':')[1];
+        const entityLabel = subtabForCreate === 'clinics' ? 'Clinic' : subtabForCreate === 'pharmacies' ? 'Pharmacy' : 'Hospital';
         openConfirmation(
             `Create ${entityLabel}`,
             `Are you sure you want to create this new ${entityLabel.toLowerCase()}?`,
@@ -591,17 +684,65 @@ const PlatformDashboard = () => {
     const user = authService.getCurrentUser();
 
     const tabs = [
-        { id: 'dashboard', label: 'Dashboard' },
-        { id: 'hospitals', label: 'Hospitals' },
-        { id: 'clinics', label: 'Clinics' },
-        { id: 'pharmacies', label: 'Pharmacies' },
-        { id: 'medicines', label: 'Medicines' },
-        { id: 'inventory_items', label: 'Inventory Items' },
-        { id: 'plans', label: 'Plans' },
-        { id: 'tickets', label: 'Tickets' },
-        { id: 'faqs', label: 'FAQs' },
-        { id: 'audit_logs', label: 'Audit Logs' },
+        { id: 'dashboard', label: 'Dashboard', isTopLevel: true },
+        {
+            id: 'hospital',
+            label: 'Hospital',
+            group: true,
+            isExpanded: !!expandedGroups['hospital'],
+            subItems: [
+                { id: 'hospital:hospitals', label: 'Hospitals' },
+                { id: 'hospital:inventory_items', label: 'Inventory Items' },
+                { id: 'hospital:plans', label: 'Plans' },
+                { id: 'hospital:tickets', label: 'Tickets' },
+                { id: 'hospital:faqs', label: 'FAQs' },
+            ]
+        },
+        {
+            id: 'clinic',
+            label: 'Clinic',
+            group: true,
+            isExpanded: !!expandedGroups['clinic'],
+            subItems: [
+                { id: 'clinic:clinics', label: 'Clinics' },
+                { id: 'clinic:inventory_items', label: 'Inventory Items' },
+                { id: 'clinic:plans', label: 'Plans' },
+                { id: 'clinic:tickets', label: 'Tickets' },
+                { id: 'clinic:faqs', label: 'FAQs' },
+            ]
+        },
+        {
+            id: 'pharmacy',
+            label: 'Pharmacy',
+            group: true,
+            isExpanded: !!expandedGroups['pharmacy'],
+            subItems: [
+                { id: 'pharmacy:pharmacies', label: 'Pharmacies' },
+                { id: 'pharmacy:plans', label: 'Plans' },
+                { id: 'pharmacy:tickets', label: 'Tickets' },
+                { id: 'pharmacy:faqs', label: 'FAQs' },
+            ]
+        },
+        // Global medicine catalog — one shared list used by hospital, clinic and
+        // pharmacy searches alike, so it lives outside the tenant-type groups.
+        { id: 'medicines', label: 'Medicines', isTopLevel: true },
+        { id: 'audit_logs', label: 'Audit Logs', isTopLevel: true },
     ];
+
+    // Helper: Get display label for active tab
+    const getTabLabel = () => {
+        const parsed = parseTab(activeTab);
+        if (parsed.isTopLevel) {
+            return tabs.find(t => t.id === parsed.tab)?.label || 'Dashboard';
+        }
+        // For grouped tabs, find the subtab label
+        const group = tabs.find(t => t.id === parsed.group);
+        if (group?.subItems) {
+            const subtab = group.subItems.find(st => st.id === activeTab);
+            return subtab?.label || 'Dashboard';
+        }
+        return 'Dashboard';
+    };
 
     return (
         <div className="flex h-screen bg-gray-50">
@@ -611,6 +752,7 @@ const PlatformDashboard = () => {
                 tabs={tabs}
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
+                onToggleGroup={toggleGroup}
                 footerTitle="Platform"
                 footerData="Super Admin"
                 variant="plain"
@@ -621,7 +763,7 @@ const PlatformDashboard = () => {
             <div className="flex-1 flex flex-col overflow-hidden">
                 {/* Navbar */}
                 <Navbar
-                    title={tabs.find(t => t.id === activeTab)?.label}
+                    title={getTabLabel()}
                     user={user}
                     onLogout={handleLogout}
                     onProfile={() => setProfileOpen(true)}
@@ -633,47 +775,53 @@ const PlatformDashboard = () => {
                     {/* Standardized Header */}
                     {activeTab !== 'dashboard' && (
                         <div className="mb-6">
-                            <PageHeader
-                                title={tabs.find(t => t.id === activeTab)?.label}
-                                subtitle={
-                                    activeTab === 'hospitals'
-                                        ? 'Manage and monitor all registered hospitals on the platform.'
-                                        : activeTab === 'clinics'
-                                        ? 'Manage and monitor all registered clinics on the platform.'
-                                        : activeTab === 'pharmacies'
-                                        ? 'Manage and monitor all registered pharmacies on the platform.'
-                                        : activeTab === 'tickets'
-                                        ? 'View and resolve support tickets submitted by hospital admins.'
-                                        : activeTab === 'faqs'
-                                        ? 'Manage global frequently asked questions for hospital admins.'
-                                        : activeTab === 'medicines'
-                                        ? 'Manage the central unified global medicine catalog directory.'
-                                        : activeTab === 'inventory_items'
-                                        ? 'Manage the central unified global hospital inventory item directory.'
-                                        : 'Track system activities and administrative actions across the platform.'
-                                }
-                                onAdd={
-                                    (activeTab === 'hospitals' || activeTab === 'clinics' || activeTab === 'pharmacies')
-                                        ? openCreateModal
-                                        : activeTab === 'faqs'
-                                        ? () => {
-                                            setFaqForm({ question: '', answer: '' });
-                                            setShowFaqModal(true);
-                                          }
-                                        : null
-                                }
-                                addLabel={
-                                    activeTab === 'hospitals'
-                                        ? 'Create Hospital'
-                                        : activeTab === 'clinics'
-                                        ? 'Create Clinic'
-                                        : activeTab === 'pharmacies'
-                                        ? 'Create Pharmacy'
-                                        : activeTab === 'faqs'
-                                        ? 'Add FAQ'
-                                        : ''
-                                }
-                            />
+                            {(() => {
+                                const parsed = parseTab(activeTab);
+                                const subtab = parsed.isTopLevel ? parsed.tab : activeTab.split(':')[1];
+
+                                // Determine if this is a manageable entity (hospitals, clinics, pharmacies)
+                                const isEntityTab = subtab === 'hospitals' || subtab === 'clinics' || subtab === 'pharmacies';
+                                const isFaqTab = subtab === 'faqs';
+
+                                // Generate subtitle
+                                let subtitle = '';
+                                if (subtab === 'hospitals') subtitle = 'Manage and monitor all registered hospitals on the platform.';
+                                else if (subtab === 'clinics') subtitle = 'Manage and monitor all registered clinics on the platform.';
+                                else if (subtab === 'pharmacies') subtitle = 'Manage and monitor all registered pharmacies on the platform.';
+                                else if (subtab === 'medicines') subtitle = 'Manage the central unified global medicine catalog directory.';
+                                else if (subtab === 'inventory_items') subtitle = 'Manage the central unified global hospital inventory item directory.';
+                                else if (subtab === 'tickets') subtitle = 'View and resolve support tickets submitted by hospital admins.';
+                                else if (isFaqTab) subtitle = 'Manage global frequently asked questions for hospital admins.';
+                                else subtitle = 'Track system activities and administrative actions across the platform.';
+
+                                return (
+                                    <PageHeader
+                                        title={getTabLabel()}
+                                        subtitle={subtitle}
+                                        onAdd={
+                                            isEntityTab
+                                                ? openCreateModal
+                                                : isFaqTab
+                                                ? () => {
+                                                    setFaqForm({ question: '', answer: '' });
+                                                    setShowFaqModal(true);
+                                                  }
+                                                : null
+                                        }
+                                        addLabel={
+                                            subtab === 'hospitals'
+                                                ? 'Create Hospital'
+                                                : subtab === 'clinics'
+                                                ? 'Create Clinic'
+                                                : subtab === 'pharmacies'
+                                                ? 'Create Pharmacy'
+                                                : isFaqTab
+                                                ? 'Add FAQ'
+                                                : ''
+                                        }
+                                    />
+                                );
+                            })()}
                         </div>
                     )}
 
@@ -746,14 +894,14 @@ const PlatformDashboard = () => {
                                                                 {hospital.isActive ? 'Active' : 'Inactive'}
                                                             </span>
                                                         </td>
+                                                        {/* The tenant's actual subscribed plan. Plan names are free text the Super
+                                                            Admin types when creating a plan, so there are no fixed tiers to colour-code
+                                                            against — a neutral badge that shows the real name beats a coloured one that
+                                                            has to guess. "—" means no current subscription, which is a data problem worth
+                                                            seeing rather than papering over with a default. */}
                                                         <td className="px-6 py-4">
-                                                            <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${
-                                                                (hospital.planName || 'FREE') === 'PREMIUM' ? 'bg-purple-100 text-purple-700 border-purple-200'
-                                                                : (hospital.planName || 'FREE') === 'BASIC'   ? 'bg-blue-100 text-blue-700 border-blue-200'
-                                                                : (hospital.planName || 'FREE') === 'ENTERPRISE' ? 'bg-amber-100 text-amber-700 border-amber-200'
-                                                                : 'bg-gray-100 text-gray-600 border-gray-200'
-                                                            }`}>
-                                                                {hospital.planName || 'FREE'}
+                                                            <span className="px-2.5 py-1 text-xs font-semibold rounded-full border bg-gray-100 text-gray-700 border-gray-200">
+                                                                {hospital.planName || '—'}
                                                             </span>
                                                         </td>
                                                         <td className="px-6 py-4 text-sm text-gray-600">
@@ -821,61 +969,98 @@ const PlatformDashboard = () => {
                     )}
 
                     {/* Plans Tab */}
-                    {activeTab === 'plans' && (
-                        <PlansTab />
-                    )}
+                    {(() => {
+                        const subtab = activeTab.split(':')[1];
+                        const hospitalType = getCurrentHospitalType();
+                        return subtab === 'plans' && <PlansTab hospitalType={hospitalType} />;
+                    })()}
 
-                    {/* Medicines Tab */}
-                    {activeTab === 'medicines' && (
-                        <PlatformMedicinesTab />
-                    )}
+                    {/* Medicines Tab — global catalog, shared by all tenant types */}
+                    {activeTab === 'medicines' && <PlatformMedicinesTab hospitalType={null} />}
 
                     {/* Inventory Items Tab */}
-                    {activeTab === 'inventory_items' && (
-                        <PlatformInventoryItemsTab />
-                    )}
+                    {(() => {
+                        const subtab = activeTab.split(':')[1];
+                        const hospitalType = getCurrentHospitalType();
+                        return subtab === 'inventory_items' && <PlatformInventoryItemsTab hospitalType={hospitalType} />;
+                    })()}
 
                     {/* Content Sections */}
-                    {loading ? (
-                        activeTab !== 'plans' ? <SkeletonDashboard statCount={3} tableRows={6} tableCols={7} /> : null
-                    ) : (activeTab === 'hospitals' || activeTab === 'clinics' || activeTab === 'pharmacies') ? (
-                        <div className="bg-white border border-gray-200">
-                            <HospitalsTable
-                                hospitals={hospitals}
-                                hospitalPage={hospitalPage}
-                                handleToggleStatus={handleToggleStatus}
-                                openEditHospitalModal={openEditHospitalModal}
-                                onResetPassword={handleResetPassword}
-                                onDeleteHospital={handleDeleteHospital}
-                                loadHospitals={loadHospitals}
-                                entityType={getEntityType(activeTab)}
-                            />
-                        </div>
-                    ) : activeTab === 'audit_logs' ? (
-                        <div className="bg-white border border-gray-200">
-                            {auditLogs.length > 0 ? (
-                                <AuditLogsTable auditLogs={auditLogs} />
-                            ) : (
-                                <div className="p-12 text-center">
-                                    <h3 className="text-lg font-medium text-gray-900 mb-2">No audit logs yet</h3>
-                                    <p className="text-gray-600">System activities will appear here once actions are performed</p>
+                    {(() => {
+                        const parsed = parseTab(activeTab);
+                        const subtab = parsed.isTopLevel ? parsed.tab : activeTab.split(':')[1];
+
+                        // The global `loading` flag is set ONLY by loadHospitals() and
+                        // loadAuditLogs(), and it starts as `true`. So it must gate only the
+                        // subtabs those two fetch for. Every other subtab (plans, tickets,
+                        // faqs, medicines, inventory_items, …) owns its own loading state and
+                        // renders its own skeleton — gating them on the global flag pinned a
+                        // skeleton on screen forever, since nothing ever cleared it.
+                        // Allowlist, not blocklist: a new subtab must opt IN, so it can't
+                        // silently inherit a stuck skeleton.
+                        const usesGlobalLoading = subtab === 'dashboard' || subtab === 'hospitals'
+                            || subtab === 'clinics' || subtab === 'pharmacies' || subtab === 'audit_logs';
+
+                        if (loading && usesGlobalLoading) {
+                            return <SkeletonDashboard statCount={3} tableRows={6} tableCols={7} />;
+                        }
+
+                        if (subtab === 'hospitals' || subtab === 'clinics' || subtab === 'pharmacies') {
+                            return (
+                                <div className="bg-white border border-gray-200">
+                                    <HospitalsTable
+                                        hospitals={hospitals}
+                                        hospitalPage={hospitalPage}
+                                        handleToggleStatus={handleToggleStatus}
+                                        openEditHospitalModal={openEditHospitalModal}
+                                        onResetPassword={handleResetPassword}
+                                        onDeleteHospital={handleDeleteHospital}
+                                        loadHospitals={loadHospitals}
+                                        entityType={getEntityType(activeTab)}
+                                    />
                                 </div>
-                            )}
-                        </div>
-                    ) : activeTab === 'tickets' ? (
-                        <TicketsTable
-                            tickets={tickets}
-                            loading={ticketsLoading}
-                            onResolve={handleResolveTicket}
-                            resolvingId={resolvingTicketId}
-                        />
-                    ) : activeTab === 'faqs' ? (
-                        <FaqsTable
-                            faqs={faqs}
-                            loading={faqsLoading}
-                            onDelete={handleDeleteFaq}
-                        />
-                    ) : null}
+                            );
+                        }
+
+                        if (subtab === 'audit_logs') {
+                            return (
+                                <div className="bg-white border border-gray-200">
+                                    {auditLogs.length > 0 ? (
+                                        <AuditLogsTable auditLogs={auditLogs} />
+                                    ) : (
+                                        <div className="p-12 text-center">
+                                            <h3 className="text-lg font-medium text-gray-900 mb-2">No audit logs yet</h3>
+                                            <p className="text-gray-600">System activities will appear here once actions are performed</p>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        }
+
+                        if (subtab === 'tickets') {
+                            return (
+                                <TicketsTable
+                                    tickets={tickets}
+                                    loading={ticketsLoading}
+                                    onResolve={handleResolveTicket}
+                                    resolvingId={resolvingTicketId}
+                                    onView={setViewTicket}
+                                />
+                            );
+                        }
+
+                        if (subtab === 'faqs') {
+                            return (
+                                <FaqsTable
+                                    faqs={faqs}
+                                    loading={faqsLoading}
+                                    onDelete={handleDeleteFaq}
+                                />
+                            );
+                        }
+
+                        return null;
+                    })()}
                 </main>
             </div>
 
@@ -889,6 +1074,66 @@ const PlatformDashboard = () => {
                 showReasonInput={confirmModal.showReasonInput}
                 inputPlaceholder={confirmModal.inputPlaceholder}
             />
+
+            {/* Ticket Detail Modal — shows the full description the truncated row can't */}
+            {viewTicket && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setViewTicket(null)}>
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-start justify-between p-6 border-b border-gray-100">
+                            <div>
+                                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Support Ticket</p>
+                                <h3 className="text-lg font-semibold text-gray-900 mt-1">{viewTicket.subject}</h3>
+                            </div>
+                            <button onClick={() => setViewTicket(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Hospital</p>
+                                    <p className="text-sm text-gray-900 mt-1">{viewTicket.hospitalName || '—'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Submitted By</p>
+                                    <p className="text-sm text-gray-900 mt-1">{viewTicket.adminName || '—'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Priority</p>
+                                    <p className="text-sm text-gray-900 mt-1">{viewTicket.priority || '—'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Status</p>
+                                    <p className="text-sm text-gray-900 mt-1">{viewTicket.status?.replace('_', ' ') || '—'}</p>
+                                </div>
+                                <div className="col-span-2">
+                                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Submitted</p>
+                                    <p className="text-sm text-gray-900 mt-1">
+                                        {viewTicket.createdAt
+                                            ? new Date(viewTicket.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
+                                            : '—'}
+                                    </p>
+                                </div>
+                            </div>
+                            <div>
+                                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Description</p>
+                                <p className="text-sm text-gray-800 mt-1 whitespace-pre-wrap break-words">{viewTicket.message || '—'}</p>
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-2 p-6 border-t border-gray-100">
+                            {viewTicket.status !== 'RESOLVED' && (
+                                <button
+                                    onClick={() => { handleResolveTicket(viewTicket.id); setViewTicket(null); }}
+                                    className="px-4 h-10 text-sm font-semibold bg-green-50 text-green-700 border border-green-200 rounded-xl hover:bg-green-100 transition-colors"
+                                >
+                                    Mark Resolved
+                                </button>
+                            )}
+                            <button onClick={() => setViewTicket(null)} className="px-4 h-10 text-sm font-semibold bg-gray-900 text-white rounded-xl hover:bg-gray-700 transition-colors">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Password Reset Display Modal */}
             {passwordModal.isOpen && (
@@ -920,28 +1165,35 @@ const PlatformDashboard = () => {
             )}
 
             {/* Create Hospital Modal */}
-            {showCreateModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowCreateModal(false)}>
-                    <div className="bg-white border border-gray-200 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                        <div className="p-6">
-                            <div className="mb-6">
-                                <h2 className="text-xl font-bold text-gray-900 mb-2">
-                                    {activeTab === 'clinics' ? 'Create New Clinic' : activeTab === 'pharmacies' ? 'Create New Pharmacy' : 'Create New Hospital'}
-                                </h2>
-                                <p className="text-gray-600">Add a new {activeTab === 'clinics' ? 'clinic' : activeTab === 'pharmacies' ? 'pharmacy' : 'hospital'} to the platform with admin credentials</p>
-                            </div>
-                            
-                            <form onSubmit={handleCreateHospital} className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-900 mb-2">{activeTab === 'clinics' ? 'Clinic Name' : activeTab === 'pharmacies' ? 'Pharmacy Name' : 'Hospital Name'}</label>
-                                    <input
-                                        type="text"
-                                        value={formData.hospitalName}
-                                        onChange={(e) => {
-                                            setFormData({ ...formData, hospitalName: e.target.value });
-                                            if (errors.hospitalName) setErrors({ ...errors, hospitalName: null });
-                                        }}
-                                        placeholder={activeTab === 'clinics' ? 'Enter clinic name' : activeTab === 'pharmacies' ? 'Enter pharmacy name' : 'Enter hospital name'}
+            {showCreateModal && (() => {
+                const subtab = activeTab.split(':')[1];
+                const isClinic = subtab === 'clinics';
+                const isPharmacy = subtab === 'pharmacies';
+                const entityName = isClinic ? 'clinic' : isPharmacy ? 'pharmacy' : 'hospital';
+                const entityNameCap = entityName.charAt(0).toUpperCase() + entityName.slice(1);
+
+                return (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowCreateModal(false)}>
+                        <div className="bg-white border border-gray-200 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                            <div className="p-6">
+                                <div className="mb-6">
+                                    <h2 className="text-xl font-bold text-gray-900 mb-2">
+                                        Create New {entityNameCap}
+                                    </h2>
+                                    <p className="text-gray-600">Add a new {entityName} to the platform with admin credentials</p>
+                                </div>
+
+                                <form onSubmit={handleCreateHospital} className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-900 mb-2">{entityNameCap} Name</label>
+                                        <input
+                                            type="text"
+                                            value={formData.hospitalName}
+                                            onChange={(e) => {
+                                                setFormData({ ...formData, hospitalName: e.target.value });
+                                                if (errors.hospitalName) setErrors({ ...errors, hospitalName: null });
+                                            }}
+                                            placeholder={`Enter ${entityName} name`}
                                         className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 ${errors.hospitalName ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
                                     />
                                     {errors.hospitalName && <p className="text-red-600 text-sm font-medium mt-1">{errors.hospitalName}</p>}
@@ -971,7 +1223,7 @@ const PlatformDashboard = () => {
                                             setFormData({ ...formData, adminEmail: e.target.value });
                                             if (errors.adminEmail) setErrors({ ...errors, adminEmail: null });
                                         }}
-                                        placeholder={activeTab === 'clinics' ? 'admin@clinic.com' : activeTab === 'pharmacies' ? 'admin@pharmacy.com' : 'admin@hospital.com'}
+                                        placeholder={`admin@${entityName}.com`}
                                         className={`w-full px-3 py-2 bg-white border text-gray-900 placeholder-gray-500 focus:border-gray-900 ${errors.adminEmail ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
                                     />
                                     {errors.adminEmail && <p className="text-red-600 text-sm font-medium mt-1">{errors.adminEmail}</p>}
@@ -1036,7 +1288,7 @@ const PlatformDashboard = () => {
                                 </div>
 
                                 {/* Doesn't apply to Pharmacy — pharmacies have no doctors */}
-                                {activeTab !== 'pharmacies' && (
+                                {!isPharmacy && (
                                     <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
                                         <label className="flex items-center space-x-2.5 cursor-pointer">
                                             <input
@@ -1048,8 +1300,8 @@ const PlatformDashboard = () => {
                                                 className="w-4 h-4 rounded text-gray-900 border-gray-300 focus:ring-gray-900"
                                             />
                                             <div>
-                                                <span className="text-sm font-bold text-gray-900">{activeTab === 'clinics' ? 'Single Doctor Clinic' : 'Single Doctor Hospital'}</span>
-                                                <p className="text-xs text-gray-500 mt-0.5">Enable unified doctor-admin dashboards for single-doctor {activeTab === 'clinics' ? 'clinics' : 'hospitals'}.</p>
+                                                <span className="text-sm font-bold text-gray-900">Single Doctor {entityNameCap}</span>
+                                                <p className="text-xs text-gray-500 mt-0.5">Enable unified doctor-admin dashboards for single-doctor {entityName}s.</p>
                                             </div>
                                         </label>
                                     </div>
@@ -1067,14 +1319,15 @@ const PlatformDashboard = () => {
                                         type="submit"
                                         className="flex-1 bg-gray-900 text-white px-4 py-2 font-medium hover:bg-gray-700"
                                     >
-                                        {activeTab === 'clinics' ? 'Create Clinic' : activeTab === 'pharmacies' ? 'Create Pharmacy' : 'Create Hospital'}
+                                        Create {entityNameCap}
                                     </button>
                                 </div>
                             </form>
                         </div>
                     </div>
                 </div>
-            )}
+                );
+            })()}
 
             {/* Create FAQ Modal */}
             {showFaqModal && (
@@ -1587,6 +1840,7 @@ const SuperAdminProfileModal = ({ user, onClose }) => {
     const initials = (name || 'SA').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
     const handleSave = async () => {
+        if (!name || !name.trim()) return setMsg({ type: 'error', text: 'Name is required.' });
         if (showPwSection) {
             if (!currentPw) return setMsg({ type: 'error', text: 'Current password is required.' });
             if (newPw.length < 6) return setMsg({ type: 'error', text: 'New password must be at least 6 characters.' });
@@ -1594,11 +1848,21 @@ const SuperAdminProfileModal = ({ user, onClose }) => {
         }
         setSaving(true);
         try {
-            await new Promise(r => setTimeout(r, 800));
+            // This used to be a fake `await setTimeout(800)` that reported success without
+            // calling the backend — the Super Admin's name and password changes were silently
+            // discarded. Persist for real; authService.updateProfile also refreshes the
+            // cached user, so the dashboard header shows the new name once the modal closes.
+            await authService.updateProfile({
+                name: name.trim(),
+                currentPassword: showPwSection ? currentPw : null,
+                newPassword: showPwSection ? newPw : null,
+            });
             setMsg({ type: 'success', text: 'Profile updated successfully.' });
             setTimeout(onClose, 1200);
-        } catch {
-            setMsg({ type: 'error', text: 'Failed to save changes.' });
+        } catch (err) {
+            const text = err?.response?.data?.error || err?.response?.data
+                || 'Failed to save changes.';
+            setMsg({ type: 'error', text: typeof text === 'string' ? text : 'Failed to save changes.' });
         } finally {
             setSaving(false);
         }
@@ -1652,11 +1916,15 @@ const SuperAdminProfileModal = ({ user, onClose }) => {
                                 {user?.email || 'sa@hms.com'}
                             </div>
                         </div>
+                        {/* Platform accounts have no actor row (hospital_admins/doctors/…), which
+                            is where a phone number is stored — so there is nowhere to persist it.
+                            Shown disabled rather than as an editable field that silently discards
+                            input, matching how ProfileModal treats SUPER_ADMIN phone. */}
                         <div>
                             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Phone</label>
-                            <input value={phone} onChange={e => setPhone(e.target.value)}
-                                placeholder="+91 98765 43210"
-                                className="w-full h-10 px-3 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                            <input value={phone} disabled
+                                placeholder="Not stored for platform accounts"
+                                className="w-full h-10 px-3 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-400 cursor-not-allowed" />
                         </div>
                     </div>
 
@@ -1714,7 +1982,7 @@ const SuperAdminProfileModal = ({ user, onClose }) => {
 }; // end SuperAdminProfileModal
 
 // TicketsTable Component
-const TicketsTable = ({ tickets, loading, onResolve, resolvingId }) => {
+const TicketsTable = ({ tickets, loading, onResolve, resolvingId, onView }) => {
     const priorityBadge = (p) => {
         if (p === 'HIGH')   return 'bg-red-100 text-red-700 border-red-200';
         if (p === 'MEDIUM') return 'bg-yellow-100 text-yellow-700 border-yellow-200';
@@ -1762,10 +2030,13 @@ const TicketsTable = ({ tickets, loading, onResolve, resolvingId }) => {
                                 <p className="text-sm font-medium text-gray-900">{ticket.hospitalName}</p>
                             </td>
                             <td className="px-6 py-4">
-                                <p className="text-sm text-gray-900">{ticket.subject}</p>
-                                {ticket.message && (
-                                    <p className="text-xs text-gray-400 mt-0.5 truncate max-w-xs">{ticket.message}</p>
-                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => onView && onView(ticket)}
+                                    className="text-sm text-gray-900 text-left hover:text-blue-600 hover:underline"
+                                >
+                                    {ticket.subject}
+                                </button>
                             </td>
                             <td className="px-6 py-4">
                                 <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${priorityBadge(ticket.priority)}`}>
@@ -1790,17 +2061,25 @@ const TicketsTable = ({ tickets, loading, onResolve, resolvingId }) => {
                                 ) : <span className="text-gray-300 text-xs">—</span>}
                             </td>
                             <td className="px-6 py-4">
-                                {ticket.status !== 'RESOLVED' ? (
+                                <div className="flex items-center gap-2">
                                     <button
-                                        onClick={() => onResolve(ticket.id)}
-                                        disabled={!!resolvingId}
-                                        className={`px-3 py-1.5 text-xs font-semibold border rounded-lg transition-colors ${resolvingId === ticket.id ? 'bg-gray-200 text-gray-400 border-gray-200 cursor-not-allowed' : resolvingId ? 'opacity-50 cursor-not-allowed bg-green-50 text-green-700 border-green-200' : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'}`}
+                                        onClick={() => onView && onView(ticket)}
+                                        className="px-3 py-1.5 text-xs font-semibold border rounded-lg bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100 transition-colors"
                                     >
-                                        {resolvingId === ticket.id ? 'Resolving...' : 'Resolve'}
+                                        View
                                     </button>
-                                ) : (
-                                    <span className="text-xs text-gray-400 italic">Closed</span>
-                                )}
+                                    {ticket.status !== 'RESOLVED' ? (
+                                        <button
+                                            onClick={() => onResolve(ticket.id)}
+                                            disabled={!!resolvingId}
+                                            className={`px-3 py-1.5 text-xs font-semibold border rounded-lg transition-colors ${resolvingId === ticket.id ? 'bg-gray-200 text-gray-400 border-gray-200 cursor-not-allowed' : resolvingId ? 'opacity-50 cursor-not-allowed bg-green-50 text-green-700 border-green-200' : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'}`}
+                                        >
+                                            {resolvingId === ticket.id ? 'Resolving...' : 'Resolve'}
+                                        </button>
+                                    ) : (
+                                        <span className="text-xs text-gray-400 italic">Closed</span>
+                                    )}
+                                </div>
                             </td>
                         </tr>
                     ))}
@@ -1903,14 +2182,13 @@ const HospitalsTable = ({ hospitals, hospitalPage, handleToggleStatus, openEditH
         columnHelper.accessor('planName', {
             header: 'Plan',
             cell: info => {
-                const plan = info.getValue() || 'FREE';
-                const planClass = plan === 'PREMIUM' ? 'bg-purple-100 text-purple-700 border-purple-200'
-                    : plan === 'BASIC'     ? 'bg-blue-100 text-blue-700 border-blue-200'
-                    : plan === 'ENTERPRISE' ? 'bg-amber-100 text-amber-700 border-amber-200'
-                    : 'bg-gray-100 text-gray-600 border-gray-200';
+                // Plan names are free text (the Super Admin names them in the Plans tab), so a
+                // neutral badge showing the real name beats guessing at fixed tiers. "—" means the
+                // tenant has no current subscription — surface that instead of defaulting it.
+                const plan = info.getValue() || '—';
                 return (
                     <div className="flex items-center gap-2">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${planClass}`}>{plan}</span>
+                        <span className="px-2.5 py-1 rounded-full text-xs font-semibold border bg-gray-100 text-gray-700 border-gray-200">{plan}</span>
                         <button
                             onClick={() => openEditHospitalModal(info.row.original)}
                             className="text-gray-400 hover:text-blue-600 transition-colors"

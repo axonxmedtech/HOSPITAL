@@ -1,4 +1,6 @@
 package com.hms.controller.pharmacy;
+
+import com.hms.exception.ResourceNotFoundException;
  
 import com.hms.dto.pharmacy.PharmacySaleRequest;
 import com.hms.entity.Hospital;
@@ -18,7 +20,7 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
  
 @RestController
-@RequestMapping("/api/pharmacy/sales")
+@RequestMapping("/pharmacy/sales")
 public class PharmacySaleController {
  
     @Autowired
@@ -59,7 +61,7 @@ public class PharmacySaleController {
         PharmacySale sale = saleService.getSaleDetails(id);
 
         Hospital hospital = hospitalRepository.findById(sale.getHospitalId())
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
         Patient patient = null;
         if (sale.getPatientId() != null) {

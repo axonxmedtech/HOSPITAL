@@ -1,6 +1,6 @@
 import apiClient from '../apiService';
 
-const API_URL = '/api/pharmacy/purchases';
+const API_URL = '/pharmacy/purchases';
 
 const purchaseApi = {
     create: async (data) => {

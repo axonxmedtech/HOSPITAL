@@ -35,7 +35,7 @@ public class InventoryService {
     @Transactional
     public Medicine updateStock(Long medicineId, Integer quantityAdded) {
         Medicine medicine = medicineRepository.findById(medicineId)
-                .orElseThrow(() -> new RuntimeException("Medicine not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Medicine not found"));
 
         // Ensure hospital isolation
         Long hospitalId = securityHelper.getCurrentHospitalId();
@@ -56,7 +56,7 @@ public class InventoryService {
     @Transactional
     public void deductStock(Long medicineId, Integer quantityDeducted) {
         Medicine medicine = medicineRepository.findById(medicineId)
-                .orElseThrow(() -> new RuntimeException("Medicine not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Medicine not found"));
 
         if (medicine.getStockQuantity() < quantityDeducted) {
             throw new IllegalArgumentException("Insufficient stock for: " + medicine.getName());

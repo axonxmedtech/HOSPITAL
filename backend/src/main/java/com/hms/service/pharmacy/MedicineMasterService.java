@@ -1,7 +1,11 @@
 package com.hms.service.pharmacy;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.dto.pharmacy.MedicineMasterRequest;
+import com.hms.entity.MedicineList;
 import com.hms.entity.pharmacy.MedicineMaster;
+import com.hms.repository.MedicineListRepository;
 import com.hms.repository.pharmacy.MedicineMasterRepository;
 import com.hms.security.HospitalWebSocketHandler;
 import com.hms.security.SecurityContextHelper;
@@ -25,6 +29,9 @@ public class MedicineMasterService {
     private MedicineMasterRepository repository;
 
     @Autowired
+    private MedicineListRepository medicineListRepository;
+
+    @Autowired
     private SecurityContextHelper securityHelper;
 
     @Autowired
@@ -35,6 +42,7 @@ public class MedicineMasterService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         MedicineMaster m = new MedicineMaster();
         m.setHospitalId(hospitalId);
+        m.setBranchId(securityHelper.getCurrentBranchId());
         mapDtoToEntity(req, m);
         m = repository.save(m);
         m.setMedicineCode("MED" + (1000 + m.getId()));
@@ -49,7 +57,7 @@ public class MedicineMasterService {
     public MedicineMaster update(Long id, MedicineMasterRequest req) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         MedicineMaster m = repository.findByIdAndHospitalId(id, hospitalId)
-                .orElseThrow(() -> new RuntimeException("Medicine not found in catalog"));
+                .orElseThrow(() -> new ResourceNotFoundException("Medicine not found in catalog"));
         mapDtoToEntity(req, m);
         m = repository.save(m);
         try { webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}"); } catch (Exception e) {
@@ -60,19 +68,31 @@ public class MedicineMasterService {
 
     public MedicineMaster getById(Long id) {
         return repository.findByIdAndHospitalId(id, securityHelper.getCurrentHospitalId())
-                .orElseThrow(() -> new RuntimeException("Medicine not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Medicine not found"));
     }
 
     public Page<MedicineMaster> searchAndList(String query, Pageable pageable) {
         Long hid = securityHelper.getCurrentHospitalId();
+        Long branchId = securityHelper.getCurrentBranchId();
         if (query != null && !query.trim().isEmpty()) {
-            return repository.searchMedicines(hid, query, pageable);
+            return repository.searchMedicines(hid, branchId, query, pageable);
         }
-        return repository.findByHospitalId(hid, pageable);
+        return repository.findScoped(hid, branchId, pageable);
     }
 
     public List<MedicineMaster> autocomplete(String query) {
-        return repository.findTop10ByHospitalIdAndMedicineNameContainingIgnoreCase(securityHelper.getCurrentHospitalId(), query);
+        return repository.findTop10ByHospitalIdAndMedicineNameContainingIgnoreCase(
+                securityHelper.getCurrentHospitalId(), securityHelper.getCurrentBranchId(), query);
+    }
+
+    /**
+     * Search the platform-wide medicine catalog (name + type). Used by the pharmacy
+     * purchase form to source medicine names/types now that the pharmacy-local
+     * Medicine Master tab is gone; the purchase itself creates the local record.
+     */
+    public List<MedicineList> searchPlatformCatalog(String query) {
+        if (query == null || query.trim().isEmpty()) return java.util.Collections.emptyList();
+        return medicineListRepository.findByNameContainingIgnoreCase(query.trim());
     }
 
     private void mapDtoToEntity(MedicineMasterRequest req, MedicineMaster m) {
@@ -95,7 +115,7 @@ public class MedicineMasterService {
     @Transactional
     public MedicineMaster toggleStatus(Long id, Boolean isActive) {
         MedicineMaster m = repository.findByIdAndHospitalId(id, securityHelper.getCurrentHospitalId())
-                .orElseThrow(() -> new RuntimeException("Medicine not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Medicine not found"));
         m.setIsActive(isActive);
         return repository.save(m);
     }

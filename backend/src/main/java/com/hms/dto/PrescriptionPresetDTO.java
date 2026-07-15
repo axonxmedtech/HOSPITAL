@@ -18,4 +18,6 @@ public class PrescriptionPresetDTO {
     // doctorName is populated on read for the admin view; null when shared.
     private Long doctorId;
     private String doctorName;
+    // PRESCRIPTION (default) or IN_CLINIC — two lists sharing one table.
+    private String presetType;
 }

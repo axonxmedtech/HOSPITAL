@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.entity.Patient;
 import com.hms.service.hospital.PatientService;
 import jakarta.validation.Valid;
@@ -12,7 +14,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
 @RestController
-@RequestMapping("/hospital/patients")
+@RequestMapping({"/hospital/patients", "/clinic/patients", "/pharmacy/patients"})
 public class PatientController {
 
     @Autowired
@@ -154,7 +156,7 @@ public class PatientController {
         java.util.List<Patient> patients = patientService.getAllPatients(null, null, date, pageable).getContent();
 
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
         java.io.ByteArrayInputStream pdfStream = pdfService.generatePatientsReportPdf(hospital, date, patients);
         org.springframework.core.io.InputStreamResource resource = new org.springframework.core.io.InputStreamResource(pdfStream);

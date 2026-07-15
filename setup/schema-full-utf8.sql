@@ -1,4 +1,4 @@
-﻿CREATE DATABASE  IF NOT EXISTS `railway` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
+CREATE DATABASE  IF NOT EXISTS `railway` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
 USE `railway`;
 -- MySQL dump 10.13  Distrib 8.0.36, for Win64 (x86_64)
 --
@@ -932,50 +932,11 @@ CREATE TABLE `hospital_settings` (
   `reception_mode` varchar(20) NOT NULL DEFAULT 'HAS_RECEPTIONIST',
   `billing_handler` varchar(20) NOT NULL DEFAULT 'RECEPTIONIST',
   `in_clinic` tinyint(1) NOT NULL DEFAULT 1,
+  `barcode_enabled` tinyint(1) NOT NULL DEFAULT 1,
+  `separate_nurse_login` tinyint(1) NOT NULL DEFAULT 0,
+  `ot_incharge_enabled` tinyint(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_hospital_settings_hospital_id` (`hospital_id`),
   CONSTRAINT `FK_hospital_settings_hospital_id` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
---
--- WhatsApp integration tables (added with V4 migration)
---
-
-CREATE TABLE IF NOT EXISTS `whatsapp_config` (
-  `id` bigint NOT NULL AUTO_INCREMENT,
-  `hospital_id` bigint NOT NULL,
-  `access_token` varchar(500) NOT NULL,
-  `phone_number_id` varchar(100) NOT NULL,
-  `waba_id` varchar(100) DEFAULT NULL,
-  `is_active` tinyint(1) NOT NULL DEFAULT 1,
-  `send_appointments` tinyint(1) NOT NULL DEFAULT 1,
-  `send_billing` tinyint(1) NOT NULL DEFAULT 1,
-  `send_case_papers` tinyint(1) NOT NULL DEFAULT 1,
-  `send_prescription` tinyint(1) NOT NULL DEFAULT 1,
-  `send_medicine_list` tinyint(1) NOT NULL DEFAULT 1,
-  `created_at` datetime(6) NOT NULL,
-  `updated_at` datetime(6) DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  CONSTRAINT `uq_wc_hospital` UNIQUE (`hospital_id`),
-  CONSTRAINT `FK_whatsapp_config_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
-CREATE TABLE IF NOT EXISTS `whatsapp_message_log` (
-  `id` bigint NOT NULL AUTO_INCREMENT,
-  `hospital_id` bigint NOT NULL,
-  `patient_id` bigint DEFAULT NULL,
-  `patient_phone` varchar(20) NOT NULL,
-  `message_type` varchar(50) NOT NULL,
-  `status` varchar(25) NOT NULL,
-  `error_message` varchar(500) DEFAULT NULL,
-  `template_name` varchar(100) DEFAULT NULL,
-  `template_params_json` varchar(1000) DEFAULT NULL,
-  `media_url` varchar(500) DEFAULT NULL,
-  `retry_count` int NOT NULL DEFAULT 0,
-  `next_retry_at` datetime(6) DEFAULT NULL,
-  `sent_at` datetime(6) DEFAULT NULL,
-  `created_at` datetime(6) NOT NULL,
-  PRIMARY KEY (`id`),
-  KEY `idx_wml_hospital_status` (`hospital_id`, `status`),
-  KEY `idx_wml_retry` (`status`, `next_retry_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

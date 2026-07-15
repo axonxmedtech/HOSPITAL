@@ -18,6 +18,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class HospitalAuthController {
 
+    private static final org.slf4j.Logger logger =
+            org.slf4j.LoggerFactory.getLogger(HospitalAuthController.class);
+
     @Autowired
     private HospitalAuthService authService;
 
@@ -54,10 +57,24 @@ public class HospitalAuthController {
             return ResponseEntity.status(401).body("Unauthorized");
         }
         LoginResponse response = authService.updateProfile(principal.getName(), request);
+
+        // Editing a profile changed the name/phone/specialization the dashboards render, so
+        // tell the hospital's clients to re-read it. SETTINGS_UPDATED makes each client
+        // re-fetch its OWN profile (so the editor's own header updates without a reload);
+        // REFRESH_DATA refreshes the lists this person appears in (e.g. the admin's Doctors
+        // table). Best-effort — a socket failure must not fail the save.
+        try {
+            userRepository.findByEmail(principal.getName()).ifPresent(user -> {
+                webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
+                webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"REFRESH_DATA\"}");
+            });
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after profile update", e);
+        }
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/hospital/settings/fees")
+    @GetMapping({"/hospital/settings/fees", "/clinic/settings/fees", "/pharmacy/settings/fees"})
     @RequireModule("BILLING")
     public ResponseEntity<?> getHospitalFees(java.security.Principal principal) {
         if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
@@ -65,7 +82,7 @@ public class HospitalAuthController {
         return ResponseEntity.ok(dto);
     }
 
-    @PutMapping("/hospital/settings/fees")
+    @PutMapping({"/hospital/settings/fees", "/clinic/settings/fees", "/pharmacy/settings/fees"})
     @RequireModule("BILLING")
     public ResponseEntity<?> updateHospitalFees(java.security.Principal principal, @RequestBody com.hms.dto.HospitalFeesDTO fees) {
         if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
@@ -76,13 +93,13 @@ public class HospitalAuthController {
         return ResponseEntity.ok(updated);
     }
 
-    @GetMapping("/hospital/settings/operations")
+    @GetMapping({"/hospital/settings/operations", "/clinic/settings/operations", "/pharmacy/settings/operations"})
     public ResponseEntity<?> getOperationsSettings(java.security.Principal principal) {
         if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
         return ResponseEntity.ok(authService.getHospitalOperationsSettings(principal.getName()));
     }
 
-    @PutMapping("/hospital/settings/operations")
+    @PutMapping({"/hospital/settings/operations", "/clinic/settings/operations", "/pharmacy/settings/operations"})
     public ResponseEntity<?> updateOperationsSettings(java.security.Principal principal, @RequestBody com.hms.dto.HospitalSettingDTO dto) {
         if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
         com.hms.dto.HospitalSettingDTO updated = authService.updateHospitalOperationsSettings(principal.getName(), dto);
@@ -92,7 +109,44 @@ public class HospitalAuthController {
         return ResponseEntity.ok(updated);
     }
 
-    @GetMapping("/hospital/subscription")
+    /**
+     * Update Print Settings (pages in the consultation print) and/or bill payment timing.
+     * Body is a partial HospitalSettingDTO; null fields are left unchanged.
+     */
+    @PutMapping({"/hospital/settings/print-payment", "/clinic/settings/print-payment"})
+    public ResponseEntity<?> updatePrintAndPaymentSettings(java.security.Principal principal, @RequestBody com.hms.dto.HospitalSettingDTO dto) {
+        if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
+        return ResponseEntity.ok(authService.updatePrintAndPaymentSettings(principal.getName(), dto));
+    }
+
+    /** Toggle the pharmacy barcode workflow. Body: { "barcodeEnabled": true|false }. */
+    @PutMapping({"/hospital/settings/barcode", "/clinic/settings/barcode", "/pharmacy/settings/barcode"})
+    public ResponseEntity<?> updateBarcodeSetting(java.security.Principal principal, @RequestBody java.util.Map<String, Boolean> body) {
+        if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
+        Boolean enabled = body.get("barcodeEnabled");
+        if (enabled == null) return ResponseEntity.badRequest().body("barcodeEnabled is required");
+        return ResponseEntity.ok(authService.updateBarcodeSetting(principal.getName(), enabled));
+    }
+
+    /** Toggle the separate Nurse Login page. Body: { "separateNurseLogin": true|false }. */
+    @PutMapping({"/hospital/settings/nurse-login", "/clinic/settings/nurse-login", "/pharmacy/settings/nurse-login"})
+    public ResponseEntity<?> updateSeparateNurseLoginSetting(java.security.Principal principal, @RequestBody java.util.Map<String, Boolean> body) {
+        if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
+        Boolean enabled = body.get("separateNurseLogin");
+        if (enabled == null) return ResponseEntity.badRequest().body("separateNurseLogin is required");
+        return ResponseEntity.ok(authService.updateSeparateNurseLoginSetting(principal.getName(), enabled));
+    }
+
+    /** Toggle the OT Incharge setting. Body: { "otInchargeEnabled": true|false }. */
+    @PutMapping({"/hospital/settings/ot-incharge", "/clinic/settings/ot-incharge", "/pharmacy/settings/ot-incharge"})
+    public ResponseEntity<?> updateOtInchargeSetting(java.security.Principal principal, @RequestBody java.util.Map<String, Boolean> body) {
+        if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
+        Boolean enabled = body.get("otInchargeEnabled");
+        if (enabled == null) return ResponseEntity.badRequest().body("otInchargeEnabled is required");
+        return ResponseEntity.ok(authService.updateOtInchargeSetting(principal.getName(), enabled));
+    }
+
+    @GetMapping({"/hospital/subscription", "/clinic/subscription", "/pharmacy/subscription"})
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<?> getSubscriptionInfo() {
         try {
