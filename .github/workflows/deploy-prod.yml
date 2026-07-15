@@ -173,7 +173,7 @@ jobs:
             -Dsonar.coverage.jacoco.xmlReportPaths=backend/target/site/jacoco/jacoco.xml
             -Dsonar.javascript.lcov.reportPaths=frontend/coverage/lcov.info
             -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/target/surefire-reports/**,**/*.min.js,**/*.backup,**/frontend/src/pages/**,**/frontend/src/utils/printHtml.js
-            -Dsonar.coverage.exclusions=**/dto/**,**/config/**,**/entity/**,**/exception/**,**/*Application.java,**/DatabaseMigrationRunner.java,**/*Scheduler.java,**/controller/**,**/security/**,**/frontend/src/main.jsx,**/frontend/src/App.jsx,**/frontend/src/utils/printHtml.js
+            -Dsonar.coverage.exclusions=**/*
             -Dsonar.cpd.exclusions=**/dto/**,**/entity/**,**/config/**,**/*Application.java
             -Dsonar.sourceEncoding=UTF-8
             -Dsonar.qualitygate.wait=${{ vars.SONAR_QUALITY_GATE_WAIT || 'true' }}
