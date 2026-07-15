@@ -1,4 +1,5 @@
 package com.hms.service.hospital;
+import com.hms.util.LogSanitizer;
 
 import com.hms.entity.Doctor;
 import com.hms.entity.User;
@@ -307,8 +308,8 @@ public class DoctorService {
         }
 
         // Log the deletion
-        logger.info("Doctor soft-deleted: ID={}, Name={}, Email={}. Reason: {}", publicId, doctor.getName(),
-                doctor.getEmail(), reason);
+        logger.info("Doctor soft-deleted: ID={}, Name={}, Email={}. Reason: {}", LogSanitizer.clean(publicId),
+                LogSanitizer.clean(doctor.getName()), LogSanitizer.clean(doctor.getEmail()), LogSanitizer.clean(reason));
 
         auditLogService.logAction(
                 "DOCTOR_DELETED",

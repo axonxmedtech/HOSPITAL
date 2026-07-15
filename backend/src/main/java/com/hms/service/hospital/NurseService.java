@@ -1,4 +1,5 @@
 package com.hms.service.hospital;
+import com.hms.util.LogSanitizer;
 
 import com.hms.exception.ResourceNotFoundException;
 
@@ -107,7 +108,7 @@ public class NurseService {
         profile.setIsActive(true);
         nurseProfileRepository.save(profile);
 
-        logger.info("Created nurse: {} for hospital: {}", email, hospitalId);
+        logger.info("Created nurse: {} for hospital: {}", LogSanitizer.clean(email), hospitalId);
         logAction("NURSE_CREATED", "Created nurse: " + email, null, hospitalId);
 
         broadcastRefresh(hospitalId, "nurse creation");
@@ -213,7 +214,7 @@ public class NurseService {
             nurseProfileRepository.save(p);
         });
 
-        logger.info("Deleted nurse ID: {}", publicId);
+        logger.info("Deleted nurse ID: {}", LogSanitizer.clean(publicId));
         logAction("NURSE_DELETED", "Deleted (soft) nurse: " + user.getEmail(), reason, hospitalId);
         broadcastRefresh(hospitalId, "nurse deletion");
     }

@@ -1,4 +1,5 @@
 package com.hms.service.hospital;
+import com.hms.util.LogSanitizer;
 
 import com.hms.entity.Appointment;
 import com.hms.event.AppointmentCreatedEvent;
@@ -156,13 +157,13 @@ public class AppointmentService {
             appointment.setPatientId(patientId);
         } else {
             // Verify patient belongs to this hospital and is active
-            com.hms.entity.Patient patient = patientRepository
+            patientRepository
                     .findByIdAndHospitalIdAndIsActiveTrue(patientId, hospitalId)
                     .orElseThrow(() -> new ResourceNotFoundException("Patient not found in your hospital or is inactive"));
         }
 
         // Verify doctor belongs to this hospital and is active
-        com.hms.entity.Doctor doctor = doctorRepository
+        doctorRepository
                 .findByIdAndHospitalIdAndIsActiveTrue(appointment.getDoctorId(), hospitalId)
                 .orElseThrow(() -> new ResourceNotFoundException("Doctor not found in your hospital or is inactive"));
 
@@ -544,7 +545,7 @@ public class AppointmentService {
 
         Appointment appointment = apptOpt.orElseThrow(() -> new ResourceNotFoundException("Appointment not found"));
 
-        logger.info("Hospital {} soft deleting appointment ID: {}. Reason: {}", hospitalId, publicId, reason);
+        logger.info("Hospital {} soft deleting appointment ID: {}. Reason: {}", hospitalId, LogSanitizer.clean(publicId), LogSanitizer.clean(reason));
 
         appointment.setIsActive(false);
         appointmentRepository.save(appointment);

@@ -1,4 +1,5 @@
 package com.hms.service.pharmacy;
+import com.hms.util.LogSanitizer;
 
 import com.hms.entity.Plan;
 import com.hms.entity.User;
@@ -76,7 +77,7 @@ public class PharmacyBranchService {
         branch = branchRepository.save(branch);
 
         broadcast(hospitalId);
-        logger.info("Created pharmacy branch {} (login {}) for hospital {}", branch.getId(), email, hospitalId);
+        logger.info("Created pharmacy branch {} (login {}) for hospital {}", branch.getId(), LogSanitizer.clean(email), hospitalId);
         return branch;
     }
 
@@ -102,7 +103,7 @@ public class PharmacyBranchService {
                 .orElseThrow(() -> new ResourceNotFoundException("Branch login user not found"));
         login.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(login);
-        logger.info("Reset password for pharmacy branch {}", id);
+        logger.info("Reset password for pharmacy branch {}", LogSanitizer.clean(id));
     }
 
     @Transactional
@@ -119,7 +120,7 @@ public class PharmacyBranchService {
             });
         }
         broadcast(hospitalId);
-        logger.info("Deleted (soft) pharmacy branch {}", id);
+        logger.info("Deleted (soft) pharmacy branch {}", LogSanitizer.clean(id));
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

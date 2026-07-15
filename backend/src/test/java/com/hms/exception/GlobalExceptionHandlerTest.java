@@ -67,10 +67,7 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void anUnreadableBodyIsA400NotA500() {
-        var ex = new org.springframework.http.converter.HttpMessageNotReadableException(
-                "bad json", (org.springframework.http.HttpInputMessage) null);
-
-        ResponseEntity<?> res = handler.handleUnreadableBody(ex);
+        ResponseEntity<?> res = handler.handleUnreadableBody();
 
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }

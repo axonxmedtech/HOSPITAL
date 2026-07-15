@@ -1,4 +1,5 @@
 package com.hms.controller.hospital;
+import com.hms.util.LogSanitizer;
 
 import com.hms.exception.ResourceNotFoundException;
 
@@ -185,7 +186,7 @@ public class DoctorController {
     public ResponseEntity<?> downloadPrescription(@PathVariable String appointmentId) {
         try {
             Long hospitalId = securityHelper.getCurrentHospitalId();
-            logger.info("Downloading prescription for appointment: {} in hospital: {}", appointmentId, hospitalId);
+            logger.info("Downloading prescription for appointment: {} in hospital: {}", LogSanitizer.clean(appointmentId), hospitalId);
 
             // Resolve Appointment ID
             java.util.Optional<com.hms.entity.Appointment> apptOpt = appointmentRepository

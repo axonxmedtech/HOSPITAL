@@ -1,4 +1,5 @@
 package com.hms.service.hospital;
+import com.hms.util.LogSanitizer;
 
 import com.hms.entity.Patient;
 import com.hms.entity.Billing;
@@ -404,7 +405,7 @@ public class PatientService {
         Patient patient = patientRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(publicId, hospitalId)
                 .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
 
-        logger.info("Hospital {} soft deleting patient ID: {}. Reason: {}", hospitalId, publicId, reason);
+        logger.info("Hospital {} soft deleting patient ID: {}. Reason: {}", hospitalId, LogSanitizer.clean(publicId), LogSanitizer.clean(reason));
         patient.setIsActive(false);
         patientRepository.save(patient);
         evictStatsCache(hospitalId);
@@ -448,7 +449,7 @@ public class PatientService {
                 .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
 
         logger.info("Hospital {} updating patient {} status from {} to {}",
-                hospitalId, publicId, patient.getStatus(), status);
+                hospitalId, LogSanitizer.clean(publicId), LogSanitizer.clean(patient.getStatus()), LogSanitizer.clean(status));
 
         patient.setStatus(status);
         Patient saved = patientRepository.save(patient);

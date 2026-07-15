@@ -1,4 +1,5 @@
 package com.hms.service.hospital;
+import com.hms.util.LogSanitizer;
 
 import com.hms.entity.Receptionist;
 import com.hms.entity.User;
@@ -113,7 +114,7 @@ public class ReceptionistService {
         receptionistProfileRepository.save(receptionistProfile);
 
 
-        logger.info("Created receptionist: {} for hospital: {}", email, hospitalId);
+        logger.info("Created receptionist: {} for hospital: {}", LogSanitizer.clean(email), hospitalId);
 
         logAction("RECEPTIONIST_CREATED", "Created receptionist: " + email, null, hospitalId);
 
@@ -197,7 +198,7 @@ public class ReceptionistService {
 
         user.setIsActive(false);
         userRepository.save(user);
-        logger.info("Deleted receptionist ID: {}", publicId);
+        logger.info("Deleted receptionist ID: {}", LogSanitizer.clean(publicId));
 
         logAction("RECEPTIONIST_DELETED", "Deleted (soft) receptionist: " + user.getEmail(), reason, hospitalId);
 

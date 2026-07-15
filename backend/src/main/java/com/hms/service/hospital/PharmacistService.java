@@ -1,4 +1,5 @@
 package com.hms.service.hospital;
+import com.hms.util.LogSanitizer;
 
 import com.hms.entity.Pharmacist;
 import com.hms.entity.User;
@@ -90,7 +91,7 @@ public class PharmacistService {
         pharmacistProfileRepository.save(pharmacistProfile);
 
 
-        logger.info("Created pharmacist: {} for hospital: {}", email, hospitalId);
+        logger.info("Created pharmacist: {} for hospital: {}", LogSanitizer.clean(email), hospitalId);
 
         logAction("PHARMACIST_CREATED", "Created pharmacist: " + email, null, hospitalId);
 
@@ -162,7 +163,7 @@ public class PharmacistService {
 
         user.setIsActive(false);
         userRepository.save(user);
-        logger.info("Deleted pharmacist ID: {}", publicId);
+        logger.info("Deleted pharmacist ID: {}", LogSanitizer.clean(publicId));
 
         logAction("PHARMACIST_DELETED", "Deleted (soft) pharmacist: " + user.getEmail(), reason, hospitalId);
 

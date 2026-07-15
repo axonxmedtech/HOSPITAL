@@ -110,7 +110,7 @@ public class GlobalExceptionHandler {
      * looks like a server crash.
      */
     @ExceptionHandler(NoResourceFoundException.class)
-    public ResponseEntity<ApiResponse<Void>> handleNoResourceFound(NoResourceFoundException ex) {
+    public ResponseEntity<ApiResponse<Void>> handleNoResourceFound() {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(ApiResponse.error("Not found"));
     }
@@ -132,8 +132,7 @@ public class GlobalExceptionHandler {
      * cannot parse, which is a client fault; without this it surfaced as a 500.
      */
     @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
-    public ResponseEntity<ApiResponse<Void>> handleUnreadableBody(
-            org.springframework.http.converter.HttpMessageNotReadableException ex) {
+    public ResponseEntity<ApiResponse<Void>> handleUnreadableBody() {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error("Malformed or unreadable request body"));
     }

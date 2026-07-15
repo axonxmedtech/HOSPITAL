@@ -1,4 +1,5 @@
 package com.hms.service.hospital;
+import com.hms.util.LogSanitizer;
 
 import com.hms.exception.ResourceNotFoundException;
 
@@ -285,7 +286,7 @@ public class OpdService {
                 startDate = date.atStartOfDay();
                 endDate = date.atTime(23, 59, 59, 999999999);
             } catch (Exception e) {
-                logger.warn("Invalid date filter '{}' ignored for OPD listing", dateStr);
+                logger.warn("Invalid date filter '{}' ignored for OPD listing", LogSanitizer.clean(dateStr));
             }
         }
 

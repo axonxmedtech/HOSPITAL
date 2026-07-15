@@ -1,4 +1,5 @@
 package com.hms.service.hospital;
+import com.hms.util.LogSanitizer;
 
 import com.hms.entity.Billing;
 import com.hms.entity.Hospital;
@@ -454,7 +455,7 @@ public class BillingService {
             bill.setAmount(total);
             syncStatusToLedger(bill, total);
             billingRepository.save(bill);
-            logger.info("Recalculated total for bill {}: {} (status {})", billingId, total, bill.getPaymentStatus());
+            logger.info("Recalculated total for bill {}: {} (status {})", LogSanitizer.clean(billingId), total, LogSanitizer.clean(bill.getPaymentStatus()));
         }
     }
 

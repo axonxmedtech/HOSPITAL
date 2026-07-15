@@ -1,4 +1,5 @@
 package com.hms.service.hospital;
+import com.hms.util.LogSanitizer;
 
 import com.hms.entity.OtIncharge;
 import com.hms.entity.User;
@@ -72,7 +73,7 @@ public class OtInchargeService {
         otInchargeProfile.setIsActive(true);
         otInchargeProfileRepository.save(otInchargeProfile);
 
-        logger.info("Created OT Incharge: {} for hospital: {}", email, hospitalId);
+        logger.info("Created OT Incharge: {} for hospital: {}", LogSanitizer.clean(email), hospitalId);
         logAction("OT_INCHARGE_CREATED", "Created OT Incharge: " + email, null, hospitalId);
 
         try {
@@ -114,7 +115,7 @@ public class OtInchargeService {
 
         user.setIsActive(false);
         userRepository.save(user);
-        logger.info("Deleted OT Incharge ID: {}", publicId);
+        logger.info("Deleted OT Incharge ID: {}", LogSanitizer.clean(publicId));
 
         logAction("OT_INCHARGE_DELETED", "Deleted (soft) OT Incharge: " + user.getEmail(), reason, hospitalId);
 

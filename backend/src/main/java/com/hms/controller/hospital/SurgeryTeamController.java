@@ -47,7 +47,12 @@ public class SurgeryTeamController {
     @PreAuthorize("hasAuthority('OT_ASSIGN_TEAM')")
     public ResponseEntity<?> assign(@PathVariable Long surgeryId, @RequestBody Map<String, Object> body) {
         String roleCode = (String) body.get("caseRoleCode");
-        Long userId = body.get("userId") == null ? null : Long.valueOf(String.valueOf(body.get("userId")));
+        Long userId;
+        try {
+            userId = body.get("userId") == null ? null : Long.valueOf(String.valueOf(body.get("userId")));
+        } catch (NumberFormatException e) {
+            return ResponseEntity.badRequest().body(java.util.Map.of("message", "Invalid userId"));
+        }
         String externalName = (String) body.get("externalName");
         return ResponseEntity.ok(service.assign(surgeryId, roleCode, userId, externalName));
     }
