@@ -1,9 +1,10 @@
-import { printHtml } from '../../../utils/printHtml';
 import React, { useState, useEffect, useCallback } from 'react';
-import nurseService from '../../../services/nurseService';
-import authService from '../../../services/authService';
-import { useToast } from '../../../context/ToastContext';
 import LoadingSpinner from '../../../components/LoadingSpinner';
+import { useToast } from '../../../context/ToastContext';
+import authService from '../../../services/authService';
+import nurseService from '../../../services/nurseService';
+import escapeHtml from '../../../utils/escapeHtml';
+import { printHtml } from '../../../utils/printHtml';
 import { titleCase } from '../../../utils/text';
 
 /**
@@ -13,7 +14,7 @@ import { titleCase } from '../../../utils/text';
  */
 const MAX = 2000;
 
-const esc = (v) => (v == null ? '' : String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+const esc = escapeHtml;
 
 // Prints the nursing notes as the "RE-ASSESSMENT SHEET" — a repeating table
 // (Date/Time | Clinical Notes | Orders) that flows onto extra pages as needed.

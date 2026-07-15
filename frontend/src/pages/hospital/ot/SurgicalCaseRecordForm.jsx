@@ -1,4 +1,5 @@
 import React from 'react';
+import escapeHtml from '../../../utils/escapeHtml';
 import { titleCase } from '../../../utils/text';
 import SurgeryFormFrame from './SurgeryFormFrame';
 
@@ -8,7 +9,7 @@ import SurgeryFormFrame from './SurgeryFormFrame';
  * Notes + surgeon/anaesthetist signatures. Notes print over ruled lines.
  */
 
-const esc = (v) => (v == null ? '' : String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+const esc = escapeHtml;
 
 const buildPrintHtml = (data, prefill, hospital) => {
     const f = prefill || {};

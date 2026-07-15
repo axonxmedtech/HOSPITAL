@@ -225,7 +225,7 @@ public class DoctorController {
                     .contentType(MediaType.APPLICATION_PDF)
                     .body(new InputStreamResource(pdf));
         } catch (Exception e) {
-            logger.error("Error downloading prescription for appointment {}", appointmentId, e);
+            logger.error("Error downloading prescription for appointment {}", LogSanitizer.clean(appointmentId), e);
             return ResponseEntity.status(500).body("Failed to generate PDF");
         }
     }

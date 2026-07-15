@@ -1,4 +1,5 @@
 import React from 'react';
+import escapeHtml from '../../../utils/escapeHtml';
 import { titleCase } from '../../../utils/text';
 import SurgeryFormFrame from './SurgeryFormFrame';
 
@@ -9,7 +10,7 @@ import SurgeryFormFrame from './SurgeryFormFrame';
  * optional remark. Header auto-fills; signatures print blank.
  */
 
-const esc = (v) => (v == null ? '' : String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+const esc = escapeHtml;
 
 export const GROUPS = [
     {

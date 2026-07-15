@@ -109,7 +109,7 @@ public class DoctorService {
         doctorUser.setHospitalId(hospitalId);
         userRepository.save(doctorUser);
 
-        logger.info("Hospital {} created new doctor: {}", hospitalId, doctor.getEmail());
+        logger.info("Hospital {} created new doctor: {}", hospitalId, LogSanitizer.clean(doctor.getEmail()));
 
         // Log Audit
         try {
@@ -349,7 +349,7 @@ public class DoctorService {
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
 
-        logger.info("Reset password for doctor: {}", doctor.getEmail());
+        logger.info("Reset password for doctor: {}", LogSanitizer.clean(doctor.getEmail()));
 
         try {
             Long hospitalId = securityHelper.getCurrentHospitalId();

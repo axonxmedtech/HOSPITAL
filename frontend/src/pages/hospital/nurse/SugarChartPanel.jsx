@@ -1,9 +1,10 @@
-import { printHtml } from '../../../utils/printHtml';
 import React, { useState, useEffect, useCallback } from 'react';
-import nurseService from '../../../services/nurseService';
-import authService from '../../../services/authService';
-import { useToast } from '../../../context/ToastContext';
 import LoadingSpinner from '../../../components/LoadingSpinner';
+import { useToast } from '../../../context/ToastContext';
+import authService from '../../../services/authService';
+import nurseService from '../../../services/nurseService';
+import escapeHtml from '../../../utils/escapeHtml';
+import { printHtml } from '../../../utils/printHtml';
 import { titleCase } from '../../../utils/text';
 
 /**
@@ -12,7 +13,7 @@ import { titleCase } from '../../../utils/text';
  * "Print Sugar Chart" prints the NABH form; entries flow to extra pages.
  */
 
-const esc = (v) => (v == null ? '' : String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+const esc = escapeHtml;
 
 export const buildSugarChartHtml = (entries, f, hospital) => {
     const hname = esc(titleCase(hospital.name)) || 'Hospital';

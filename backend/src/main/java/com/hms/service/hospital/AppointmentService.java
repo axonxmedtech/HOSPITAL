@@ -117,7 +117,7 @@ public class AppointmentService {
                 // Use existing patient (first one found if duplicates exist)
                 com.hms.entity.Patient existingPatient = existingPatients.get(0);
                 patientId = existingPatient.getId();
-                logger.info("Found existing patient with phone {}, using patient ID {}", patientPhone, patientId);
+                logger.info("Found existing patient with phone {}, using patient ID {}", LogSanitizer.clean(patientPhone), patientId);
             } else {
                 // Create new patient
                 com.hms.entity.Patient newPatient = new com.hms.entity.Patient();
@@ -146,7 +146,7 @@ public class AppointmentService {
 
                 com.hms.entity.Patient savedPatient = patientRepository.save(newPatient);
                 patientId = savedPatient.getId();
-                logger.info("Created new patient {} with ID {} for hospital {}", patientName, patientId, hospitalId);
+                logger.info("Created new patient {} with ID {} for hospital {}", LogSanitizer.clean(patientName), patientId, hospitalId);
             }
 
             // Set the patientId in the appointment
@@ -599,7 +599,7 @@ public class AppointmentService {
             try {
                 billingService.autoGenerateOpdBill(saved);
             } catch (Exception e) {
-                logger.error("Failed to auto-generate bill for appointment {}", publicId, e);
+                logger.error("Failed to auto-generate bill for appointment {}", LogSanitizer.clean(publicId), e);
             }
         }
 
@@ -680,7 +680,7 @@ public class AppointmentService {
             try {
                 billingService.autoGenerateOpdBill(saved);
             } catch (Exception e) {
-                logger.error("Failed to auto-generate bill for appointment {}", publicId, e);
+                logger.error("Failed to auto-generate bill for appointment {}", LogSanitizer.clean(publicId), e);
             }
         }
 

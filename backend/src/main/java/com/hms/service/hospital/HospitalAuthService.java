@@ -32,6 +32,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.hms.util.LogSanitizer;
 
 /**
  * HospitalAuthService - Authentication service for Hospital users
@@ -211,36 +212,36 @@ public class HospitalAuthService {
      *                          user, or hospital is inactive
      */
     public LoginResponse login(LoginRequest request) {
-        logger.info("Hospital login attempt for email: {}", request.getEmail());
+        logger.info("Hospital login attempt for email: {}", LogSanitizer.clean(request.getEmail()));
 
         // Find user by email — same message as wrong password to prevent user enumeration
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> {
-                    logger.warn("Login failed - user not found: {}", request.getEmail());
+                    logger.warn("Login failed - user not found: {}", LogSanitizer.clean(request.getEmail()));
                     return new UnauthorizedException("Invalid credentials");
                 });
 
         // Verify password
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            logger.warn("Login failed - invalid password for user: {}", request.getEmail());
+            logger.warn("Login failed - invalid password for user: {}", LogSanitizer.clean(request.getEmail()));
             throw new UnauthorizedException("Invalid credentials");
         }
 
-        logger.debug("Password verified for user: {}", request.getEmail());
+        logger.debug("Password verified for user: {}", LogSanitizer.clean(request.getEmail()));
 
         // Verify user is a hospital user (not Super Admin)
         if ("SUPER_ADMIN".equals(user.getRole())) {
-            logger.warn("Login failed - Super Admin tried to login via hospital endpoint: {}", request.getEmail());
+            logger.warn("Login failed - Super Admin tried to login via hospital endpoint: {}", LogSanitizer.clean(request.getEmail()));
             throw new UnauthorizedException("Access denied. Please use platform login.");
         }
 
         // Verify user has a hospital_id
         if (user.getHospitalId() == null) {
-            logger.error("Login failed - hospital user has null hospital_id: {}", request.getEmail());
+            logger.error("Login failed - hospital user has null hospital_id: {}", LogSanitizer.clean(request.getEmail()));
             throw new UnauthorizedException("Invalid hospital user account");
         }
 
-        logger.debug("User role and hospital_id validated for: {}", request.getEmail());
+        logger.debug("User role and hospital_id validated for: {}", LogSanitizer.clean(request.getEmail()));
 
         // Verify hospital exists and is active
         Hospital hospital = hospitalRepository.findById(user.getHospitalId())
@@ -267,7 +268,7 @@ public class HospitalAuthService {
                 String portalName = expectedType == HospitalType.CLINIC ? "Clinic" :
                                     expectedType == HospitalType.PHARMACY ? "Pharmacy" : "Hospital";
                 logger.warn("Login failed - wrong portal: user belongs to {} but tried {} portal: {}",
-                        actualType, expectedType, request.getEmail());
+                        actualType, expectedType, LogSanitizer.clean(request.getEmail()));
                 throw new UnauthorizedException(
                     "This account belongs to a " + actualType.name().toLowerCase() +
                     ". Please use the " + actualType.name().charAt(0) +
@@ -288,24 +289,24 @@ public class HospitalAuthService {
 
         // Restrict receptionist login if Solo Doctor mode is active
         if ("RECEPTIONIST".equals(user.getRole()) && "SOLO".equals(settings.getReceptionMode())) {
-            logger.warn("Login failed - Receptionist login restricted under Solo Doctor mode: {}", request.getEmail());
+            logger.warn("Login failed - Receptionist login restricted under Solo Doctor mode: {}", LogSanitizer.clean(request.getEmail()));
             throw new UnauthorizedException("Solo Doctor Mode is active. Receptionist login is restricted.");
         }
 
         // Staff-nurse login requires Separate Nurse Login to be ON. A Nurse Incharge
         // (NURSE_INCHARGE) can always log in; a staff NURSE only when the setting is on.
         if ("NURSE".equals(user.getRole()) && !Boolean.TRUE.equals(settings.getSeparateNurseLogin())) {
-            logger.warn("Login failed - staff nurse login disabled (Separate Nurse Login off): {}", request.getEmail());
+            logger.warn("Login failed - staff nurse login disabled (Separate Nurse Login off): {}", LogSanitizer.clean(request.getEmail()));
             throw new UnauthorizedException("Nurse login is disabled for this hospital. Please contact your Nurse Incharge or administrator.");
         }
 
         // Verify user account is active (handle null as active for backward compatibility)
         if (user.getIsActive() != null && !user.getIsActive()) {
-            logger.warn("Login failed - user account is inactive: {}", request.getEmail());
+            logger.warn("Login failed - user account is inactive: {}", LogSanitizer.clean(request.getEmail()));
             throw new UnauthorizedException("User account is inactive. Please contact administrator.");
         }
 
-        logger.info("Login successful for user: {} at hospital: {}", request.getEmail(), hospital.getName());
+        logger.info("Login successful for user: {} at hospital: {}", LogSanitizer.clean(request.getEmail()), hospital.getName());
 
         // Generate JWT token with hospital_id, modules, tenant type and OT permissions
         HospitalType tenantType = hospital.getType() != null ? hospital.getType() : HospitalType.HOSPITAL;

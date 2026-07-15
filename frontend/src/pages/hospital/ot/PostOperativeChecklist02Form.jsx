@@ -1,7 +1,8 @@
 import React from 'react';
+import escapeHtml from '../../../utils/escapeHtml';
 import { titleCase } from '../../../utils/text';
-import SurgeryFormFrame from './SurgeryFormFrame';
 import { GROUPS, ChecklistRow, buildChecklistBody } from './PostOperativeChecklistForm';
+import SurgeryFormFrame from './SurgeryFormFrame';
 
 /**
  * Post Operative Check List — VH/NABH/OT/02/2026.
@@ -10,7 +11,7 @@ import { GROUPS, ChecklistRow, buildChecklistBody } from './PostOperativeCheckli
  * attached blank Input/Output grid as page 2.
  */
 
-const esc = (v) => (v == null ? '' : String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+const esc = escapeHtml;
 
 const buildPrintHtml = (data, prefill, hospital) => {
     const f = prefill || {};

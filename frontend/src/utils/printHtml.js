@@ -11,8 +11,17 @@
  * @param {string} rawHtml full HTML document string
  */
 export const printHtml = (rawHtml) => {
-    const html = String(rawHtml || '')
-        .replace(/<script[^>]*>[\s\S]*?window\.print\(\)[\s\S]*?<\/script>/gi, '');
+    // Strip EVERY <script>…</script> block before writing to the iframe. This removes the
+    // builders' own auto-print scripts (so the dialog fires once) and defends the print sink.
+    // Loop until the string stops changing: a single pass can leave a residual "<script>" when
+    // tags overlap (e.g. "<scr<script>ipt>"), which CodeQL flags as incomplete multi-character
+    // sanitization. Interpolated data is already HTML-escaped by the callers (utils/escapeHtml).
+    let html = String(rawHtml || '');
+    let previous;
+    do {
+        previous = html;
+        html = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+    } while (html !== previous);
 
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';

@@ -23,6 +23,9 @@ public class WardService {
 
     private static final Logger logger = LoggerFactory.getLogger(WardService.class);
 
+    /** Upper bound on beds auto-created for one ward — a domain sanity cap and an overflow guard. */
+    private static final int MAX_BEDS_PER_WARD = 2000;
+
     private final WardRepository wardRepository;
     private final BedRepository bedRepository;
     private final SecurityContextHelper securityHelper;
@@ -87,6 +90,14 @@ public class WardService {
 
         // auto-create beds
         int total = req.getTotalBeds() == null ? 0 : req.getTotalBeds();
+        // Bound the user-supplied count to a sane maximum. Besides being a domain rule (no real
+        // ward has thousands of beds), this stops a huge value from overflowing the bed-number
+        // arithmetic below and from creating a runaway number of rows (CodeQL: user-controlled
+        // data in arithmetic expression).
+        if (total < 0 || total > MAX_BEDS_PER_WARD) {
+            throw new IllegalArgumentException(
+                    "Total beds must be between 0 and " + MAX_BEDS_PER_WARD);
+        }
         // ensure unique bed codes within a ward by checking existing highest index
         int startIndex = 1;
         List<Bed> existing = bedRepository.findByWardIdAndHospitalId(saved.getWardId(), hospitalId);
@@ -101,11 +112,12 @@ public class WardService {
             startIndex = max + 1;
         }
 
-        for (int i = startIndex; i < startIndex + total; i++) {
+        for (int i = 0; i < total; i++) {
+            long bedNumber = (long) startIndex + i;   // long so a high startIndex can never overflow
             Bed b = new Bed();
             b.setHospitalId(hospitalId);
             b.setWardId(saved.getWardId());
-            b.setBedCode(String.format("%s-B%d", req.getWardName(), i));
+            b.setBedCode(String.format("%s-B%d", req.getWardName(), bedNumber));
             b.setStatus("available");
             bedRepository.save(b);
         }

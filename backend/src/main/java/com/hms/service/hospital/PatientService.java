@@ -147,7 +147,7 @@ public class PatientService {
         // Set hospital_id to ensure multi-tenant isolation
         patient.setHospitalId(hospitalId);
 
-        logger.info("Hospital {} creating new patient: {}", hospitalId, patient.getName());
+        logger.info("Hospital {} creating new patient: {}", hospitalId, LogSanitizer.clean(patient.getName()));
         Patient savedPatient = patientRepository.save(patient);
 
         // Set sequential customId using the auto-increment id: PAT1, PAT2, PAT3...

@@ -1,4 +1,5 @@
 import React from 'react';
+import escapeHtml from '../../../utils/escapeHtml';
 import { titleCase } from '../../../utils/text';
 import SurgeryFormFrame from './SurgeryFormFrame';
 
@@ -8,7 +9,7 @@ import SurgeryFormFrame from './SurgeryFormFrame';
  * team ticks. Every item is a toggle that prints ticked. Header auto-fills.
  */
 
-const esc = (v) => (v == null ? '' : String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+const esc = escapeHtml;
 
 const CHECKLIST = [
     {

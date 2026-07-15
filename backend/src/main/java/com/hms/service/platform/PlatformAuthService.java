@@ -11,6 +11,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.hms.util.LogSanitizer;
 
 /**
  * PlatformAuthService - Authentication service for Super Admin
@@ -46,44 +47,44 @@ public class PlatformAuthService {
      *                          Admin
      */
     public LoginResponse login(LoginRequest request) {
-        logger.info("Platform login attempt for email: {}", request.getEmail());
+        logger.info("Platform login attempt for email: {}", LogSanitizer.clean(request.getEmail()));
 
         // Find user by email — same message as wrong password to prevent user enumeration
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> {
-                    logger.warn("Login failed - user not found: {}", request.getEmail());
+                    logger.warn("Login failed - user not found: {}", LogSanitizer.clean(request.getEmail()));
                     return new UnauthorizedException("Invalid credentials");
                 });
 
         // Verify password
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            logger.warn("Login failed - invalid password for user: {}", request.getEmail());
+            logger.warn("Login failed - invalid password for user: {}", LogSanitizer.clean(request.getEmail()));
             throw new UnauthorizedException("Invalid credentials");
         }
 
-        logger.debug("Password verified for user: {}", request.getEmail());
+        logger.debug("Password verified for user: {}", LogSanitizer.clean(request.getEmail()));
 
         // Verify user is Super Admin
         if (!"SUPER_ADMIN".equals(user.getRole())) {
             logger.warn("Login failed - non-Super Admin tried to login via platform endpoint: {} (role: {})",
-                    request.getEmail(), user.getRole());
+                    LogSanitizer.clean(request.getEmail()), user.getRole());
             throw new UnauthorizedException("Access denied. Super Admin only.");
         }
 
         // Verify hospital_id is null (Super Admin should not belong to any hospital)
         if (user.getHospitalId() != null) {
             logger.error("Login failed - Super Admin has non-null hospital_id: {} (hospital_id: {})",
-                    request.getEmail(), user.getHospitalId());
+                    LogSanitizer.clean(request.getEmail()), user.getHospitalId());
             throw new UnauthorizedException("Invalid Super Admin account");
         }
 
         // Verify user account is active (handle null as active for backward compatibility)
         if (user.getIsActive() != null && !user.getIsActive()) {
-            logger.warn("Login failed - Super Admin account is inactive: {}", request.getEmail());
+            logger.warn("Login failed - Super Admin account is inactive: {}", LogSanitizer.clean(request.getEmail()));
             throw new UnauthorizedException("User account is inactive. Please contact administrator.");
         }
 
-        logger.info("Login successful for Super Admin: {}", request.getEmail());
+        logger.info("Login successful for Super Admin: {}", LogSanitizer.clean(request.getEmail()));
 
         // Generate JWT token (no hospital_id for super admin)
         String token = jwtUtil.generateToken(

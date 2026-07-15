@@ -1,9 +1,10 @@
-import { printHtml } from '../../../utils/printHtml';
 import React, { useState, useEffect } from 'react';
-import nurseService from '../../../services/nurseService';
-import authService from '../../../services/authService';
-import { useToast } from '../../../context/ToastContext';
 import LoadingSpinner from '../../../components/LoadingSpinner';
+import { useToast } from '../../../context/ToastContext';
+import authService from '../../../services/authService';
+import nurseService from '../../../services/nurseService';
+import escapeHtml from '../../../utils/escapeHtml';
+import { printHtml } from '../../../utils/printHtml';
 import { titleCase } from '../../../utils/text';
 
 /**
@@ -41,7 +42,7 @@ const Select = ({ label, value, onChange, options }) => (
 );
 
 export const buildPrintHtml = (f, hospital) => {
-    const esc = (v) => (v == null ? '' : String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+    const esc = escapeHtml;
     // A labelled field with the value sitting on an underline that fills the row.
     const fld = (label, value, flex = 1) =>
         `<span class="fld" style="flex:${flex}"><span class="lbl">${label}:</span><span class="val">${esc(value)}</span></span>`;
@@ -165,7 +166,7 @@ export const buildPrintHtml = (f, hospital) => {
 };
 
 export const buildConsentHtml = (f, hospital) => {
-    const esc = (v) => (v == null ? '' : String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+    const esc = escapeHtml;
     const hname = esc(titleCase(hospital.name)) || 'Hospital';
     const patientName = [f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' ');
     const sex = (f.sex || '').toUpperCase();

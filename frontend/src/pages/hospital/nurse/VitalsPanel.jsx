@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import nurseService from '../../../services/nurseService';
-import authService from '../../../services/authService';
-import { useToast } from '../../../context/ToastContext';
 import LoadingSpinner from '../../../components/LoadingSpinner';
+import { useToast } from '../../../context/ToastContext';
+import authService from '../../../services/authService';
+import nurseService from '../../../services/nurseService';
+import escapeHtml from '../../../utils/escapeHtml';
 import { titleCase } from '../../../utils/text';
 
-const esch = (v) => (v == null ? '' : String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+const esch = escapeHtml;
 
 // Prints vitals as the NABH "INPUT & OUTPUT CHART". Vital columns are filled
 // from our data; input/output columns are blank for offline entry. Flows to

@@ -1,4 +1,5 @@
 import React from 'react';
+import escapeHtml from '../../../utils/escapeHtml';
 import { titleCase } from '../../../utils/text';
 import SurgeryFormFrame from './SurgeryFormFrame';
 
@@ -8,7 +9,7 @@ import SurgeryFormFrame from './SurgeryFormFrame';
  * anaesthesia-type checkboxes + individual-risk-factor line, blank signatures.
  */
 
-const esc = (v) => (v == null ? '' : String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+const esc = escapeHtml;
 
 const ANAES_TYPES = [
     'General Anaesthesia',
