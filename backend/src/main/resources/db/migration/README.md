@@ -27,5 +27,12 @@ Do **not** edit or "fix" V6–V11 — they are inert below the baseline.
 
 ## Environments
 - **dev/test:** Flyway disabled (`spring.flyway.enabled=false`); Hibernate `ddl-auto=update`.
-- **staging/prod:** Flyway enabled, `ddl-auto=validate`, baseline V11, `clean-disabled` (a
-  full-schema drop can never run).
+- **staging & prod:** Flyway enabled (baseline V11, `clean-disabled`), Hibernate `ddl-auto=update`.
+
+`update` is the single source of truth for schema shape because `DatabaseMigrationRunner`
+(which owns ~40 tables + ~50 columns) runs on `ApplicationReadyEvent` — under `validate` a single
+missing object aborts startup *before* the runner can create it, which took the site down when the
+Nurse module was added without a migration. `update` reconciles the schema to the entities before
+startup, so that failure mode is structurally impossible. It is **additive only** (creates missing
+tables/columns, never drops/narrows), so it cannot lose data — but it does **not** handle renames,
+drops, or data migrations. Do those as an explicit, reviewed step alongside the pre-deploy backup.
