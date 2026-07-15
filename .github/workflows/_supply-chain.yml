@@ -125,29 +125,26 @@ jobs:
       # Pin to SHA in production: https://github.com/actions/checkout/releases
       - uses: actions/checkout@v4
 
-      # Install Trivy directly (pinned) rather than via trivy-action, which resolves a separate
-      # setup-trivy action whose binary install has been unreliable on the runner.
-      - name: Install Trivy
-        run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-            | sudo sh -s -- -b /usr/local/bin v0.58.1
-          trivy --version
+      # Run Trivy from its official pinned Docker image. The install.sh path fetches the binary
+      # through a redirect service (get.trivy.dev) that has been unreliable on the runner; the
+      # Docker image is pulled straight from Docker Hub (preinstalled on the runner) and pinned by
+      # tag, which is stable. See https://github.com/aquasecurity/trivy/pkgs.
+      - name: Pull Trivy image
+        run: docker pull aquasec/trivy:0.58.1
 
       - name: Trivy filesystem scan (vuln + secret + misconfig) → SARIF
-        env:
-          TRIVY_DISABLE_VEX_NOTICE: 'true'
         run: |
           # Observe mode: --exit-code 0 so findings surface in the Security tab without blocking.
-          trivy fs --scanners vuln,secret,misconfig \
+          docker run --rm -e TRIVY_DISABLE_VEX_NOTICE=true -v "$PWD:/repo" -w /repo \
+            aquasec/trivy:0.58.1 fs --scanners vuln,secret,misconfig \
             --severity CRITICAL,HIGH --ignore-unfixed --ignorefile .trivyignore \
             --format sarif --output trivy-fs.sarif --exit-code 0 . \
             || echo "trivy SARIF scan hit an issue (non-blocking)"
 
       - name: Trivy human-readable table → step summary
-        env:
-          TRIVY_DISABLE_VEX_NOTICE: 'true'
         run: |
-          trivy fs --scanners vuln,secret,misconfig \
+          docker run --rm -e TRIVY_DISABLE_VEX_NOTICE=true -v "$PWD:/repo" -w /repo \
+            aquasec/trivy:0.58.1 fs --scanners vuln,secret,misconfig \
             --severity CRITICAL,HIGH --ignore-unfixed --ignorefile .trivyignore \
             --format table --output trivy-fs.txt --exit-code 0 . \
             || echo "trivy table scan hit an issue (non-blocking)"

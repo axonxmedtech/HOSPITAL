@@ -31,6 +31,7 @@ regexes = [
   '''admin@e2e\.com''',
   '''nobody@example\.com''',
   '''HMS Backend Running''',             # public health-check response string
+  '''test-encryption-key-123''',         # obvious placeholder in a now-deleted test; still in git history (commit dd23ec8), which Gitleaks scans
 ]
 
 # Common example/placeholder tokens across docs and .env.example style files.
