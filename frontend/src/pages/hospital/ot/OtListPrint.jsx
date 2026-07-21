@@ -60,8 +60,6 @@ const OtListPrint = ({ onClose }) => {
               <th>#</th><th>Time</th><th>Theatre</th><th>Patient (Age)</th><th>Procedure</th><th>Surgeon</th><th>Anaesthetist</th><th>Status</th>
             </tr></thead><tbody>${body || '<tr><td colspan="8" style="text-align:center">No cases</td></tr>'}</tbody></table>
             </body></html>`);
-        w.focus();
-        w.print();
     };
 
     return (

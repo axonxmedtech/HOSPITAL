@@ -5,6 +5,7 @@ import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
 import { API_BASE_URL } from '../../services/apiService'; // BUG-028: single source-of-truth for base URL
 import apiClient from '../../services/apiService';
+import { printPdf } from '../../utils/printPdf';
 import { useToast } from '../../context/ToastContext';
 import EmptyState from '../../components/EmptyState';
 import ConfirmationModal from '../../components/ConfirmationModal';
@@ -781,33 +782,10 @@ const DoctorDashboard = () => {
         setConsultationModal({ isOpen: true, appointment });
     };
 
-    // Print a server PDF the way the forms print: fetch it (auth + tenant rewrite via
-    // apiClient), load it into a hidden iframe, and fire the print dialog. This avoids the
-    // pop-up blocker entirely — opening several new tabs in a row (case paper, prescription,
-    // bill) got blocked, which is why some documents silently never printed.
-    const printPdf = (endpointPath) => new Promise((resolve) => {
-        apiClient.get(endpointPath, { responseType: 'blob' })
-            .then((resp) => {
-                const blobUrl = URL.createObjectURL(new Blob([resp.data], { type: 'application/pdf' }));
-                const iframe = document.createElement('iframe');
-                iframe.style.position = 'fixed';
-                iframe.style.left = '-10000px';
-                iframe.style.width = '210mm';
-                iframe.style.height = '297mm';
-                iframe.style.border = '0';
-                iframe.onload = () => {
-                    setTimeout(() => {
-                        try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch (e) { /* ignore */ }
-                        resolve(true);
-                    }, 300);
-                    // Revoke well after the print dialog has had time to render the document.
-                    setTimeout(() => { URL.revokeObjectURL(blobUrl); iframe.remove(); }, 120000);
-                };
-                iframe.src = blobUrl;
-                document.body.appendChild(iframe);
-            })
-            .catch(() => resolve(false));
-    });
+    // Print server PDFs via the shared util (utils/printPdf): desktop uses a hidden iframe (avoids
+    // the pop-up blocker when several documents print in a row); iOS/iPadOS opens the PDF in a real
+    // foreground tab, because WebKit can't print a hidden iframe and would otherwise print a
+    // "screenshot" of the visible page instead of the document.
 
     // Kept for the single-document print buttons: fire the print without waiting.
     const openPdfInNewTab = (endpointPath) => { printPdf(endpointPath); return true; };
