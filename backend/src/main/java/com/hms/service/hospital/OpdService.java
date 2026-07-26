@@ -206,14 +206,8 @@ public class OpdService {
 
         // Audit log for OPD creation
         try {
-            String performedBy = null;
-            try { performedBy = securityHelper.getCurrentUserEmail(); } catch (Exception e) {
-                logger.debug("Could not resolve current user email for audit log", e);
-            }
-            Long auditHospitalId = null;
-            try { auditHospitalId = securityHelper.getCurrentHospitalId(); } catch (Exception e) {
-                logger.debug("Could not resolve hospital ID for audit log", e);
-            }
+            String performedBy = resolveCurrentEmailQuietly();
+            Long auditHospitalId = resolveCurrentHospitalIdQuietly();
 
             String details = "OPD " + (saved.getCaseId() != null ? saved.getCaseId() : saved.getId())
                     + " created for patient " + (saved.getPatient() != null ? saved.getPatient().getId() : "-");
@@ -411,5 +405,25 @@ public class OpdService {
 
     public java.util.Optional<String> getDoctorName(Long doctorId) {
         return doctorRepository.findById(doctorId).map(com.hms.entity.Doctor::getName);
+    }
+
+    /** Current user's email for audit, or null if it can't be resolved (best-effort). */
+    private String resolveCurrentEmailQuietly() {
+        try {
+            return securityHelper.getCurrentUserEmail();
+        } catch (Exception e) {
+            logger.debug("Could not resolve current user email for audit log", e);
+            return null;
+        }
+    }
+
+    /** Current hospital id for audit, or null if it can't be resolved (best-effort). */
+    private Long resolveCurrentHospitalIdQuietly() {
+        try {
+            return securityHelper.getCurrentHospitalId();
+        } catch (Exception e) {
+            logger.debug("Could not resolve hospital ID for audit log", e);
+            return null;
+        }
     }
 }

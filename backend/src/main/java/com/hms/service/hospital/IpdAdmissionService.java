@@ -809,28 +809,10 @@ public class IpdAdmissionService {
 
         if (items != null && !items.isEmpty()) {
             for (com.hms.dto.AdministerHospitalItemsRequest.HospitalItem item : items) {
-                java.math.BigDecimal serviceCharge = hospitalInventoryService.consumeService(
-                        item.getServiceId(), item.getQuantity(), hospitalId);
-
-                if (hasBillingModule && ipdBill != null) {
-                    com.hms.entity.HospitalServiceEntity svc = hospitalServiceRepository.findByIdAndHospitalId(item.getServiceId(), hospitalId).orElse(null);
-                    String svcName = svc != null ? svc.getName() : ("Service #" + item.getServiceId());
-                    com.hms.entity.BillingItem bi = new com.hms.entity.BillingItem();
-                    bi.setBillingId(ipdBill.getId());
-                    bi.setHospitalId(hospitalId);
-                    bi.setDescription(svcName + " (Qty: " + item.getQuantity() + ")");
-                    bi.setAmount(serviceCharge);
-                    billingItemRepository.save(bi);
-                }
+                administerSingleHospitalItem(item, hospitalId, hasBillingModule, ipdBill);
             }
-
             if (hasBillingModule && ipdBill != null) {
-                // Recalculate bill total (incorporates consultation fee + medicines + bed fees + hospital items)
-                try {
-                    billingService.recalculateTotal(ipdBill.getId());
-                } catch (Exception e) {
-                    logger.warn("Failed to recalculate billing total after hospital item administration", e);
-                }
+                recalcBillTotalQuietly(ipdBill.getId());
             }
         }
 
@@ -838,6 +820,32 @@ public class IpdAdmissionService {
             webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
         } catch (Exception e) {
             logger.warn("Failed to broadcast WebSocket refresh data from administerHospitalItems", e);
+        }
+    }
+
+    /** Consumes one hospital service and, when billing is active, appends a billing line for it. */
+    private void administerSingleHospitalItem(com.hms.dto.AdministerHospitalItemsRequest.HospitalItem item,
+            Long hospitalId, boolean hasBillingModule, Billing ipdBill) {
+        java.math.BigDecimal serviceCharge = hospitalInventoryService.consumeService(
+                item.getServiceId(), item.getQuantity(), hospitalId);
+        if (hasBillingModule && ipdBill != null) {
+            com.hms.entity.HospitalServiceEntity svc = hospitalServiceRepository.findByIdAndHospitalId(item.getServiceId(), hospitalId).orElse(null);
+            String svcName = svc != null ? svc.getName() : ("Service #" + item.getServiceId());
+            com.hms.entity.BillingItem bi = new com.hms.entity.BillingItem();
+            bi.setBillingId(ipdBill.getId());
+            bi.setHospitalId(hospitalId);
+            bi.setDescription(svcName + " (Qty: " + item.getQuantity() + ")");
+            bi.setAmount(serviceCharge);
+            billingItemRepository.save(bi);
+        }
+    }
+
+    /** Recalculates a bill's total (consultation + medicines + bed fees + hospital items); best-effort. */
+    private void recalcBillTotalQuietly(Long billingId) {
+        try {
+            billingService.recalculateTotal(billingId);
+        } catch (Exception e) {
+            logger.warn("Failed to recalculate billing total after hospital item administration", e);
         }
     }
 

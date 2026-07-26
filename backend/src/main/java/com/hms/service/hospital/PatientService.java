@@ -23,6 +23,8 @@ import java.util.List;
 
 @Service
 public class PatientService {
+    private static final String HOSPITAL_NOT_FOUND = "Hospital not found";
+
 
     private static final Logger logger = LoggerFactory.getLogger(PatientService.class);
 
@@ -115,10 +117,10 @@ public class PatientService {
         if (dateOfBirth == null) {
             throw new IllegalArgumentException("Date of birth is required");
         }
-        if (dateOfBirth.isAfter(LocalDate.now())) {
+        if (dateOfBirth.isAfter(LocalDate.now(java.time.ZoneId.systemDefault()))) {
             throw new IllegalArgumentException("Date of birth cannot be in the future");
         }
-        if (dateOfBirth.isBefore(LocalDate.now().minusYears(120))) {
+        if (dateOfBirth.isBefore(LocalDate.now(java.time.ZoneId.systemDefault()).minusYears(120))) {
             throw new IllegalArgumentException("Date of birth cannot be more than 120 years ago");
         }
     }
@@ -596,22 +598,22 @@ public class PatientService {
 
         // 1. Flat medical history - map from pre-fetched data (for backward compatibility)
         List<java.util.Map<String, Object>> historyList = new java.util.ArrayList<>();
-        for (com.hms.entity.MedicalRecord record : medicalHistory) {
+        for (com.hms.entity.MedicalRecord mr : medicalHistory) {
             java.util.Map<String, Object> historyItem = new java.util.HashMap<>();
-            historyItem.put("id", record.getId());
-            historyItem.put("date", record.getCreatedAt());
-            historyItem.put("symptoms", record.getSymptoms());
-            historyItem.put("diagnosis", record.getDiagnosis());
-            historyItem.put("treatment", record.getTreatmentNotes());
-            historyItem.put("followUpDate", record.getFollowUpDate());
+            historyItem.put("id", mr.getId());
+            historyItem.put("date", mr.getCreatedAt());
+            historyItem.put("symptoms", mr.getSymptoms());
+            historyItem.put("diagnosis", mr.getDiagnosis());
+            historyItem.put("treatment", mr.getTreatmentNotes());
+            historyItem.put("followUpDate", mr.getFollowUpDate());
 
             String doctorName = "Unknown Doctor";
-            if (record.getDoctorId() != null) {
-                doctorName = doctorNameMap.getOrDefault(record.getDoctorId(), "Unknown Doctor");
+            if (mr.getDoctorId() != null) {
+                doctorName = doctorNameMap.getOrDefault(mr.getDoctorId(), "Unknown Doctor");
             }
             historyItem.put("doctorName", doctorName);
 
-            historyItem.put("prescriptions", prescriptionMap.getOrDefault(record.getId(), java.util.Collections.emptyList()));
+            historyItem.put("prescriptions", prescriptionMap.getOrDefault(mr.getId(), java.util.Collections.emptyList()));
 
             historyList.add(historyItem);
         }
@@ -873,7 +875,7 @@ public class PatientService {
     public java.io.ByteArrayInputStream getOpdMedicinesPdf(Long opdId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
-                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(HOSPITAL_NOT_FOUND));
         
         com.hms.entity.MedicalRecord record = medicalRecordRepository.findByOpdId(opdId)
                 .orElseThrow(() -> new ResourceNotFoundException("Medical record not found for OPD"));
@@ -947,7 +949,7 @@ public class PatientService {
     public java.io.ByteArrayInputStream getIpdMedicinesPdf(Long ipdId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
-                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(HOSPITAL_NOT_FOUND));
         
         com.hms.entity.IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId)
                 .orElseThrow(() -> new ResourceNotFoundException("IPD Admission not found"));
@@ -1039,7 +1041,7 @@ public class PatientService {
     public java.io.ByteArrayInputStream getIpdPrescriptionPdf(Long ipdId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
-                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(HOSPITAL_NOT_FOUND));
         
         com.hms.entity.IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId)
                 .orElseThrow(() -> new ResourceNotFoundException("IPD Admission not found"));

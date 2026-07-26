@@ -253,18 +253,21 @@ const HospitalInventoryTab = () => {
         {/* Segmented Top-Tab Toggle */}
         <div className="flex bg-gray-100 p-1 rounded-xl w-full sm:w-auto overflow-x-auto whitespace-nowrap scrollbar-none">
           <button
+            type="button"
             onClick={() => setSubTab('inventory')}
             className={`flex-1 sm:flex-none px-3 sm:px-5 py-2 text-sm font-semibold rounded-lg transition-all whitespace-nowrap ${subTab === 'inventory' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
           >
             Active Stock
           </button>
           <button
+            type="button"
             onClick={() => setSubTab('purchase')}
             className={`flex-1 sm:flex-none px-3 sm:px-5 py-2 text-sm font-semibold rounded-lg transition-all whitespace-nowrap ${subTab === 'purchase' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
           >
             Purchase History
           </button>
           <button
+            type="button"
             onClick={() => setSubTab('catalog')}
             className={`flex-1 sm:flex-none px-3 sm:px-5 py-2 text-sm font-semibold rounded-lg transition-all whitespace-nowrap ${subTab === 'catalog' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
           >
@@ -283,6 +286,7 @@ const HospitalInventoryTab = () => {
         </div>
         {subTab === 'purchase' && (
           <button
+            type="button"
             onClick={() => setStockModal({ isOpen: true, isEdit: false, data: null })}
             className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition font-semibold text-sm shadow-md shadow-teal-600/10 active:scale-95"
           >
@@ -291,6 +295,7 @@ const HospitalInventoryTab = () => {
         )}
         {subTab === 'catalog' && (
           <button
+            type="button"
             onClick={() => setServiceModal({ isOpen: true, isEdit: false, data: null })}
             className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition font-semibold text-sm shadow-md shadow-teal-600/10 active:scale-95"
           >
@@ -359,6 +364,7 @@ const HospitalInventoryTab = () => {
                       </td>
                       <td className="py-3 text-right">
                         <button
+                          type="button"
                           onClick={() => handleDeactivateStock(item.id)}
                           className="text-red-500 hover:text-red-700 font-semibold"
                         >
@@ -473,12 +479,14 @@ const HospitalInventoryTab = () => {
                   </td>
                   <td className="py-3 text-right space-x-2">
                     <button
+                      type="button"
                       onClick={() => setServiceModal({ isOpen: true, isEdit: true, data: service })}
                       className="text-teal-600 hover:text-teal-800 font-semibold"
                     >
                       Edit
                     </button>
                     <button
+                      type="button"
                       onClick={() => handleDeactivateService(service.id)}
                       className="text-red-500 hover:text-red-700 font-semibold"
                     >
@@ -506,6 +514,7 @@ const HospitalInventoryTab = () => {
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-slate-50">
               <h3 className="text-lg font-bold text-gray-800">Add Stock Intake</h3>
               <button
+                type="button"
                 onClick={() => setStockModal({ isOpen: false, isEdit: false, data: null })}
                 className="text-gray-400 hover:text-gray-600"
               >
@@ -712,6 +721,7 @@ const HospitalInventoryTab = () => {
                 {serviceModal.isEdit ? 'Edit Service' : 'Add Service'}
               </h3>
               <button
+                type="button"
                 onClick={() => setServiceModal({ isOpen: false, isEdit: false, data: null })}
                 className="text-gray-400 hover:text-gray-600"
               >

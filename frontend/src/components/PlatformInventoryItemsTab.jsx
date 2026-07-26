@@ -187,6 +187,7 @@ export default function PlatformInventoryItemsTab({ hospitalType = null }) {
             disabled={csvImporting}
           />
           <button
+            type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={csvImporting}
             className="flex-1 sm:flex-none px-4 py-2 border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 rounded-lg font-semibold text-sm transition flex items-center justify-center gap-1.5 disabled:opacity-50"
@@ -202,6 +203,7 @@ export default function PlatformInventoryItemsTab({ hospitalType = null }) {
             <span>{csvImporting ? 'Importing...' : 'Import CSV'}</span>
           </button>
           <button
+            type="button"
             onClick={openCreate}
             className="flex-1 sm:flex-none px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition text-sm font-semibold flex items-center justify-center gap-1"
           >
@@ -274,6 +276,7 @@ export default function PlatformInventoryItemsTab({ hospitalType = null }) {
                     <td className="px-6 py-4 text-gray-500">{item.description || '—'}</td>
                     <td className="px-6 py-4 text-right">
                       <button
+                        type="button"
                         onClick={() => handleDelete(item)}
                         className="text-red-500 hover:text-red-700 font-semibold transition"
                       >
@@ -299,6 +302,7 @@ export default function PlatformInventoryItemsTab({ hospitalType = null }) {
             </div>
             <div className="flex gap-2">
               <button
+                type="button"
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                 disabled={page === 0}
                 className="px-3 py-1.5 border border-gray-300 text-gray-600 bg-white rounded-lg hover:bg-gray-50 transition text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
@@ -309,6 +313,7 @@ export default function PlatformInventoryItemsTab({ hospitalType = null }) {
                 Page {page + 1} of {totalPages}
               </span>
               <button
+                type="button"
                 onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                 disabled={page === totalPages - 1}
                 className="px-3 py-1.5 border border-gray-300 text-gray-600 bg-white rounded-lg hover:bg-gray-50 transition text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
@@ -329,6 +334,7 @@ export default function PlatformInventoryItemsTab({ hospitalType = null }) {
                 {editingItem ? 'Edit Master Item' : 'Add Master Item'}
               </h3>
               <button
+                type="button"
                 onClick={() => setShowModal(false)}
                 className="text-gray-400 hover:text-gray-600 transition"
               >

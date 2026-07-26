@@ -76,6 +76,12 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
   const hasHospitalInventory = modules.includes('HOSPITAL_INVENTORY');
   const [inventory, setInventory] = useState([]);
   const [administeredList, setAdministeredList] = useState([]); // List of { medicineId, medicineName, quantity, maxStock }
+
+  // Update a single field on one administered-medicine row (keeps the row-level handlers flat).
+  const updateAdministeredField = (medicineId, field, val) =>
+    setAdministeredList((prev) =>
+      prev.map((x) => (x.medicineId === medicineId ? { ...x, [field]: val } : x))
+    );
   const [inClinicPresets, setInClinicPresets] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -803,7 +809,11 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
               </span>
             </p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition">
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 transition"
+          >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
                 strokeLinecap="round"
@@ -978,12 +988,14 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
             {/* Tabs */}
             <div className="flex border-b border-gray-200 bg-white">
               <button
+                type="button"
                 className={`flex-1 py-4 text-sm font-semibold transition-colors ${activeTab === 'clinical' ? 'text-gray-900 border-b-2 border-gray-900 bg-gray-50' : 'text-gray-500 hover:bg-gray-50'}`}
                 onClick={() => setActiveTab('clinical')}
               >
                 Clinical Notes
               </button>
               <button
+                type="button"
                 className={`flex-1 py-4 text-sm font-semibold transition-colors ${activeTab === 'prescription' ? 'text-gray-900 border-b-2 border-gray-900 bg-gray-50' : 'text-gray-500 hover:bg-gray-50'}`}
                 onClick={() => setActiveTab('prescription')}
               >
@@ -1422,32 +1434,26 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                         type="text"
                                         placeholder="Dosage"
                                         value={item.dosage || ''}
-                                        onChange={(e) => {
-                                          const val = e.target.value;
-                                          setAdministeredList((prev) =>
-                                            prev.map((x) =>
-                                              x.medicineId === item.medicineId
-                                                ? { ...x, dosage: val }
-                                                : x
-                                            )
-                                          );
-                                        }}
+                                        onChange={(e) =>
+                                          updateAdministeredField(
+                                            item.medicineId,
+                                            'dosage',
+                                            e.target.value
+                                          )
+                                        }
                                         className="border border-gray-300 rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 focus:ring-teal-500 font-normal"
                                       />
                                       <input
                                         type="text"
                                         placeholder="Duration"
                                         value={item.duration || ''}
-                                        onChange={(e) => {
-                                          const val = e.target.value;
-                                          setAdministeredList((prev) =>
-                                            prev.map((x) =>
-                                              x.medicineId === item.medicineId
-                                                ? { ...x, duration: val }
-                                                : x
-                                            )
-                                          );
-                                        }}
+                                        onChange={(e) =>
+                                          updateAdministeredField(
+                                            item.medicineId,
+                                            'duration',
+                                            e.target.value
+                                          )
+                                        }
                                         className="border border-gray-300 rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 focus:ring-teal-500 font-normal"
                                       />
                                       <div className="col-span-2 flex items-center gap-2">
@@ -1455,12 +1461,10 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                         <FrequencyInput
                                           value={item.frequency || ''}
                                           onChange={(val) =>
-                                            setAdministeredList((prev) =>
-                                              prev.map((x) =>
-                                                x.medicineId === item.medicineId
-                                                  ? { ...x, frequency: val }
-                                                  : x
-                                              )
+                                            updateAdministeredField(
+                                              item.medicineId,
+                                              'frequency',
+                                              val
                                             )
                                           }
                                         />
@@ -1469,16 +1473,13 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                         type="text"
                                         placeholder="Instruction"
                                         value={item.instructions || ''}
-                                        onChange={(e) => {
-                                          const val = e.target.value;
-                                          setAdministeredList((prev) =>
-                                            prev.map((x) =>
-                                              x.medicineId === item.medicineId
-                                                ? { ...x, instructions: val }
-                                                : x
-                                            )
-                                          );
-                                        }}
+                                        onChange={(e) =>
+                                          updateAdministeredField(
+                                            item.medicineId,
+                                            'instructions',
+                                            e.target.value
+                                          )
+                                        }
                                         className="col-span-2 border border-gray-300 rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 focus:ring-teal-500 font-normal"
                                       />
                                     </div>
@@ -1488,15 +1489,12 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                       <button
                                         type="button"
                                         onClick={() => {
-                                          if (item.quantity > 1) {
-                                            setAdministeredList((prev) =>
-                                              prev.map((x) =>
-                                                x.medicineId === item.medicineId
-                                                  ? { ...x, quantity: x.quantity - 1 }
-                                                  : x
-                                              )
+                                          if (item.quantity > 1)
+                                            updateAdministeredField(
+                                              item.medicineId,
+                                              'quantity',
+                                              item.quantity - 1
                                             );
-                                          }
                                         }}
                                         disabled={item.quantity <= 1}
                                         className="w-6 h-6 flex items-center justify-center border border-gray-300 rounded-md text-gray-500 hover:bg-slate-100 disabled:opacity-50"
@@ -1509,19 +1507,16 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                                       <button
                                         type="button"
                                         onClick={() => {
-                                          if (item.quantity < item.maxStock) {
-                                            setAdministeredList((prev) =>
-                                              prev.map((x) =>
-                                                x.medicineId === item.medicineId
-                                                  ? { ...x, quantity: x.quantity + 1 }
-                                                  : x
-                                              )
+                                          if (item.quantity < item.maxStock)
+                                            updateAdministeredField(
+                                              item.medicineId,
+                                              'quantity',
+                                              item.quantity + 1
                                             );
-                                          } else {
+                                          else
                                             toastError(
                                               `Cannot exceed available stock of ${item.maxStock} units.`
                                             );
-                                          }
                                         }}
                                         className="w-6 h-6 flex items-center justify-center border border-gray-300 rounded-md text-gray-500 hover:bg-slate-100"
                                       >
@@ -1737,12 +1732,14 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                               </div>
                             </div>
                             <button
+                              type="button"
                               onClick={() => handleEditMedicine(index)}
                               className="ml-3 text-indigo-600 hover:text-indigo-800 text-xs font-semibold"
                             >
                               Edit
                             </button>
                             <button
+                              type="button"
                               onClick={() => handleRemoveMedicine(index)}
                               className="ml-3 text-gray-500 hover:text-gray-700"
                             >
@@ -1824,6 +1821,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                     </div>
                     <div className="mt-3 flex gap-2">
                       <button
+                        type="button"
                         onClick={handleAddMedicine}
                         disabled={!newMedicine.medicineName}
                         className="flex-1 bg-primary-600 text-white py-2 rounded-lg hover:bg-primary-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-semibold"
@@ -1832,6 +1830,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                       </button>
                       {editingMedicineIndex !== null && (
                         <button
+                          type="button"
                           onClick={handleCancelEditMedicine}
                           className="px-4 py-2 text-sm font-semibold text-gray-600 hover:text-gray-800"
                         >
@@ -1847,6 +1846,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
             {/* Footer Actions */}
             <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end space-x-3">
               <button
+                type="button"
                 onClick={onClose}
                 disabled={submitting}
                 className={`px-6 py-2.5 border border-gray-300 text-gray-700 rounded-lg transition font-semibold ${submitting ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
@@ -1855,6 +1855,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
               </button>
               {(opd || appointment) && hasIPD && (
                 <button
+                  type="button"
                   onClick={handleAdmitToIpdClick}
                   disabled={submitting}
                   className={`px-6 py-2.5 bg-blue-600 text-white rounded-lg transition font-semibold shadow-md ${submitting ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700'}`}
@@ -1863,6 +1864,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                 </button>
               )}
               <button
+                type="button"
                 onClick={handleSubmit}
                 disabled={submitting}
                 className={`px-6 py-2.5 text-white rounded-lg transition font-semibold shadow-md flex items-center gap-2 ${submitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}

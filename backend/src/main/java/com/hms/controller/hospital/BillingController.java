@@ -30,6 +30,9 @@ import com.hms.service.PdfService;
 @RestController
 @RequestMapping({"/hospital/billing", "/clinic/billing", "/pharmacy/billing"})
 public class BillingController {
+    private static final String DOCTOR_ROLE = "DOCTOR";
+    private static final String AMOUNT = "amount";
+
 
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(BillingController.class);
 
@@ -60,8 +63,8 @@ public class BillingController {
                 });
 
         // Enforce settings
-        if ("ROLE_DOCTOR".equalsIgnoreCase(role) || "DOCTOR".equalsIgnoreCase(role)) {
-            if (!"DOCTOR".equalsIgnoreCase(settings.getBillingHandler()) && 
+        if ("ROLE_DOCTOR".equalsIgnoreCase(role) || DOCTOR_ROLE.equalsIgnoreCase(role)) {
+            if (!DOCTOR_ROLE.equalsIgnoreCase(settings.getBillingHandler()) && 
                 !"BOTH".equalsIgnoreCase(settings.getBillingHandler()) &&
                 !"SOLO".equalsIgnoreCase(settings.getReceptionMode())) {
                 throw new org.springframework.security.access.AccessDeniedException("Billing management is restricted to receptionists.");
@@ -194,7 +197,7 @@ public class BillingController {
             java.util.Map<String, Object> asMap = mapper.convertValue(b, java.util.Map.class);
             asMap.put("items", items);
             asMap.put("medicines", medicines);
-            asMap.put("amount", totalAmt);
+            asMap.put(AMOUNT, totalAmt);
             asMap.put("paidAmount", paidAmt);
             asMap.put("balance", totalAmt.subtract(paidAmt));
             
@@ -405,7 +408,7 @@ public class BillingController {
         for (BillingItem it : items) {
             Map<String,Object> m = new HashMap<>();
             m.put("description", it.getDescription());
-            m.put("amount", it.getAmount());
+            m.put(AMOUNT, it.getAmount());
             list.add(m);
         }
         resp.put("items", list);
@@ -416,7 +419,7 @@ public class BillingController {
             m.put("medicineName", med.getMedicineName());
             m.put("quantity", med.getQuantity());
             m.put("unitPrice", med.getUnitPrice());
-            m.put("amount", med.getAmount());
+            m.put(AMOUNT, med.getAmount());
             medList.add(m);
         }
         resp.put("medicines", medList);
@@ -435,7 +438,7 @@ public class BillingController {
     public ResponseEntity<?> payBilling(@PathVariable Long billingId, @RequestBody PayRequest req) {
         validateBillingAccess();
         String role = securityHelper.getCurrentUserRole();
-        if (!"RECEPTIONIST".equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role) && !"DOCTOR".equalsIgnoreCase(role)) {
+        if (!"RECEPTIONIST".equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role) && !DOCTOR_ROLE.equalsIgnoreCase(role)) {
             return ResponseEntity.status(403).body("Not allowed");
         }
 
@@ -597,7 +600,7 @@ public class BillingController {
             asMap.put("items", items);
             asMap.put("medicines", medicines);
             asMap.put("payments", payments);
-            asMap.put("amount", totalAmt);
+            asMap.put(AMOUNT, totalAmt);
             asMap.put("paidAmount", paidAmt);
             asMap.put("balance", totalAmt.subtract(paidAmt));
             asMap.put("patientName", patient.getName());

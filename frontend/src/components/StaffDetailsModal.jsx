@@ -133,6 +133,7 @@ const StaffDetailsModal = ({ staff, role, onClose }) => {
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="text-slate-400 hover:text-slate-600 hover:bg-neutral-200/50 p-2 rounded-lg transition-colors"
             title="Close Modal"
@@ -233,6 +234,7 @@ const StaffDetailsModal = ({ staff, role, onClose }) => {
         {/* Footer Section */}
         <div className="p-6 border-t border-neutral-100 bg-neutral-50/50 flex justify-end">
           <button
+            type="button"
             onClick={onClose}
             className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-sm font-semibold shadow-md transition-all active:scale-95"
           >

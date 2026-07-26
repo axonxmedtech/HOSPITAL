@@ -22,6 +22,8 @@ import java.math.BigDecimal;
 
 @Service
 public class BillingService {
+    private static final String BILLING_MODULE = "BILLING";
+
 
     private static final Logger logger = LoggerFactory.getLogger(BillingService.class);
 
@@ -76,7 +78,7 @@ public class BillingService {
                 .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
         // Check module access
-        if (hospital.getModules() == null || !hospital.getModules().contains("BILLING")) {
+        if (hospital.getModules() == null || !hospital.getModules().contains(BILLING_MODULE)) {
             logger.warn("Skipping bill generation for appointment {}. BILLING module disabled.", appointment.getId());
             return;
         }
@@ -210,7 +212,7 @@ public class BillingService {
                     "Bill " + saved.getCustomId() + " status updated to " + status + ".",
                     securityHelper.getCurrentUserEmail(),
                     hospitalId,
-                    "BILLING",
+                    BILLING_MODULE,
                     saved.getPublicId(),
                     null);
         } catch (Exception e) {
@@ -240,14 +242,14 @@ public class BillingService {
                     }
                 } else {
                     totalAmt = saved.getAmount() != null ? saved.getAmount() : java.math.BigDecimal.ZERO;
-                    if (totalAmt.compareTo(java.math.BigDecimal.ZERO) == 0 && "IPD".equalsIgnoreCase(saved.getBillingType())) {
-                        if (saved.getIpdAdmissionId() != null) {
-                            com.hms.entity.IpdAdmission ipd = ipdAdmissionRepository.findById(saved.getIpdAdmissionId()).orElse(null);
-                            if (ipd != null && ipd.getWardId() != null) {
-                                com.hms.entity.Ward ward = wardRepository.findById(ipd.getWardId()).orElse(null);
-                                if (ward != null && ward.getBedPrice() != null) {
-                                    totalAmt = totalAmt.add(ward.getBedPrice());
-                                }
+                    if (totalAmt.compareTo(java.math.BigDecimal.ZERO) == 0
+                            && "IPD".equalsIgnoreCase(saved.getBillingType())
+                            && saved.getIpdAdmissionId() != null) {
+                        com.hms.entity.IpdAdmission ipd = ipdAdmissionRepository.findById(saved.getIpdAdmissionId()).orElse(null);
+                        if (ipd != null && ipd.getWardId() != null) {
+                            com.hms.entity.Ward ward = wardRepository.findById(ipd.getWardId()).orElse(null);
+                            if (ward != null && ward.getBedPrice() != null) {
+                                totalAmt = totalAmt.add(ward.getBedPrice());
                             }
                         }
                     }
@@ -303,7 +305,7 @@ public class BillingService {
     private void validateBillingAccess(Long hospitalId) {
         Hospital hospital = hospitalRepository.findById(hospitalId)
                 .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
-        if (hospital.getModules() == null || !hospital.getModules().contains("BILLING")) {
+        if (hospital.getModules() == null || !hospital.getModules().contains(BILLING_MODULE)) {
             throw new IllegalArgumentException("BILLING module is disabled for your hospital.");
         }
     }
@@ -366,7 +368,7 @@ public class BillingService {
                 .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
         // Check module access
-        if (hospital.getModules() == null || !hospital.getModules().contains("BILLING")) {
+        if (hospital.getModules() == null || !hospital.getModules().contains(BILLING_MODULE)) {
             logger.warn("Skipping OPD bill generation for OPD {}. BILLING module disabled.", opdId);
             return null;
         }

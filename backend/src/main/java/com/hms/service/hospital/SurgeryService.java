@@ -25,6 +25,8 @@ import java.util.stream.Collectors;
  */
 @Service
 public class SurgeryService {
+    private static final String SURGERY_ENTITY = "SURGERY";
+
 
     private static final Logger logger = LoggerFactory.getLogger(SurgeryService.class);
     private static final Set<String> ACTIVE_STATUSES =
@@ -503,7 +505,7 @@ public class SurgeryService {
                         "Surgery scheduled",
                         "Surgery (" + safe(s.getProcedureName()) + ") scheduled for " + patientName
                                 + " on " + s.getScheduledAt() + " with " + safe(operatorName),
-                        "SURGERY", s.getId());
+                        SURGERY_ENTITY, s.getId());
             });
         } catch (Exception e) {
             logger.warn("Failed to notify nurse of OT schedule: {}", e.getMessage());
@@ -518,7 +520,7 @@ public class SurgeryService {
                             u.getId(), hospitalId, "OT_ASSIGNED",
                             "You are assigned a surgery",
                             "You are scheduled to operate (" + safe(s.getProcedureName()) + ") on " + s.getScheduledAt(),
-                            "SURGERY", s.getId()));
+                            SURGERY_ENTITY, s.getId()));
         } catch (Exception e) {
             logger.warn("Failed to notify surgeon of OT assignment: {}", e.getMessage());
         }
@@ -604,7 +606,7 @@ public class SurgeryService {
         notifier.refresh(hospitalId);
         try {
             auditLogService.logAction(action, details, securityHelper.getCurrentUserEmail(), hospitalId,
-                    "SURGERY", admissionId != null ? admissionId.toString() : null, null);
+                    SURGERY_ENTITY, admissionId != null ? admissionId.toString() : null, null);
         } catch (Exception e) {
             logger.warn("Failed to write audit log for {}", action, e);
         }

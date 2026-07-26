@@ -22,6 +22,9 @@ import org.slf4j.LoggerFactory;
 
 @Service
 public class OtInchargeService {
+    private static final String REFRESH_DATA_MESSAGE = "{\"type\":\"REFRESH_DATA\"}";
+    private static final String OT_INCHARGE_NOT_FOUND = "OT Incharge not found";
+
 
     private static final Logger logger = LoggerFactory.getLogger(OtInchargeService.class);
 
@@ -77,7 +80,7 @@ public class OtInchargeService {
         logAction("OT_INCHARGE_CREATED", "Created OT Incharge: " + email, null, hospitalId);
 
         try {
-            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+            webSocketHandler.broadcast(hospitalId, REFRESH_DATA_MESSAGE);
         } catch (Exception e) {
             logger.warn("Failed to broadcast WebSocket refresh after OT Incharge creation", e);
         }
@@ -104,7 +107,7 @@ public class OtInchargeService {
         }
 
         User user = userRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new ResourceNotFoundException("OT Incharge not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(OT_INCHARGE_NOT_FOUND));
 
         if (!user.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Access denied: User belongs to another hospital");
@@ -120,7 +123,7 @@ public class OtInchargeService {
         logAction("OT_INCHARGE_DELETED", "Deleted (soft) OT Incharge: " + user.getEmail(), reason, hospitalId);
 
         try {
-            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+            webSocketHandler.broadcast(hospitalId, REFRESH_DATA_MESSAGE);
         } catch (Exception e) {
             logger.warn("Failed to broadcast WebSocket refresh after OT Incharge deletion", e);
         }
@@ -133,7 +136,7 @@ public class OtInchargeService {
         }
 
         User user = userRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new ResourceNotFoundException("OT Incharge not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(OT_INCHARGE_NOT_FOUND));
 
         if (!user.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Access denied: User belongs to another hospital");
@@ -152,7 +155,7 @@ public class OtInchargeService {
         }
 
         User user = userRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new ResourceNotFoundException("OT Incharge not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(OT_INCHARGE_NOT_FOUND));
 
         if (!user.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Access denied: User belongs to another hospital");
@@ -176,7 +179,7 @@ public class OtInchargeService {
         }
 
         User user = userRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new ResourceNotFoundException("OT Incharge not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(OT_INCHARGE_NOT_FOUND));
 
         if (!user.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Access denied: User belongs to another hospital");
@@ -192,7 +195,7 @@ public class OtInchargeService {
         logAction("OT_INCHARGE_UPDATED", "Updated OT Incharge: " + user.getName(), null, hospitalId);
 
         try {
-            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+            webSocketHandler.broadcast(hospitalId, REFRESH_DATA_MESSAGE);
         } catch (Exception e) {
             logger.warn("Failed to broadcast WebSocket refresh after OT Incharge update", e);
         }

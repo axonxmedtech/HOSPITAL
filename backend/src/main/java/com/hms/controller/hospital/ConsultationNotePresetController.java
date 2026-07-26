@@ -9,7 +9,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping({"/hospital/consultation-note-presets", "/clinic/consultation-note-presets", "/pharmacy/consultation-note-presets"})
@@ -36,7 +35,7 @@ public class ConsultationNotePresetController {
     public ResponseEntity<?> listPresets(@RequestParam String fieldType) {
         List<ConsultationNotePresetDTO> dtos = presetService.listPresets(fieldType).stream()
                 .map(this::toDto)
-                .collect(Collectors.toList());
+                .toList();
         return ResponseEntity.ok(dtos);
     }
 

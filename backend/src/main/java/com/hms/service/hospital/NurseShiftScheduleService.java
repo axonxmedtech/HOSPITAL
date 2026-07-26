@@ -93,7 +93,7 @@ public class NurseShiftScheduleService {
     /** Future-dated schedules using this template adopt the new times; past rows unchanged. */
     @Transactional
     public int applyTemplateChangeToFuture(Long templateId, LocalTime start, LocalTime end) {
-        return scheduleRepository.applyTemplateChangeToFuture(templateId, start, end, LocalDate.now());
+        return scheduleRepository.applyTemplateChangeToFuture(templateId, start, end, LocalDate.now(java.time.ZoneId.systemDefault()));
     }
 
     public List<NurseShiftScheduleView> getWardSchedule(Long wardId, LocalDate from, LocalDate to) {

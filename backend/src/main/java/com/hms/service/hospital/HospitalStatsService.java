@@ -37,6 +37,8 @@ import java.util.stream.Collectors;
  */
 @Service
 public class HospitalStatsService {
+    private static final String ACTIVITY_TYPE = "activityType";
+
 
     @Autowired
     private PatientService patientService;
@@ -180,7 +182,7 @@ public class HospitalStatsService {
             entry.put("patientPublicId", pat != null ? pat.getPublicId() : null);
             entry.put("patientName", pat != null ? pat.getName() : "Unknown");
             entry.put("phone", pat != null ? pat.getPhone() : null);
-            entry.put("activityType", "OPD");
+            entry.put(ACTIVITY_TYPE, "OPD");
             entry.put("activityTime", opd.getCreatedAt());
             entry.put("doctorName", opd.getDoctor() != null ? doctorNameMap.getOrDefault(opd.getDoctor().getId(), "Unknown") : "N/A");
             entry.put("details", opd.getCaseId());
@@ -196,7 +198,7 @@ public class HospitalStatsService {
             entry.put("patientPublicId", pat != null ? pat.getPublicId() : null);
             entry.put("patientName", appt.getPatientName() != null ? appt.getPatientName() : (pat != null ? pat.getName() : "Unknown"));
             entry.put("phone", pat != null ? pat.getPhone() : appt.getPatientPhone());
-            entry.put("activityType", "APPOINTMENT");
+            entry.put(ACTIVITY_TYPE, "APPOINTMENT");
             // Combine date + time for sorting
             LocalDateTime activityTime = appt.getAppointmentTime() != null
                     ? appt.getAppointmentDate().atTime(appt.getAppointmentTime())
@@ -216,7 +218,7 @@ public class HospitalStatsService {
             entry.put("patientPublicId", pat != null ? pat.getPublicId() : null);
             entry.put("patientName", pat != null ? pat.getName() : "Unknown");
             entry.put("phone", pat != null ? pat.getPhone() : null);
-            entry.put("activityType", "IPD");
+            entry.put(ACTIVITY_TYPE, "IPD");
             entry.put("activityTime", ipd.getAdmissionDatetime());
             entry.put("doctorName", doctorNameMap.getOrDefault(ipd.getDoctorId(), "Unknown"));
             entry.put("details", ipd.getIpdNumber());

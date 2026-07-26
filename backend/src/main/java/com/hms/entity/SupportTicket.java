@@ -50,7 +50,7 @@ public class SupportTicket {
     private String status = "OPEN"; // OPEN, RESOLVED
 
     @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt = LocalDateTime.now(java.time.ZoneId.systemDefault());
 
     @Column(name = "resolved_at")
     private LocalDateTime resolvedAt;

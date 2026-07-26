@@ -27,6 +27,8 @@ import java.util.Optional;
 
 @Service
 public class MedicineService {
+    private static final String TABLET = "Tablet";
+
 
     private static final Logger logger = LoggerFactory.getLogger(MedicineService.class);
 
@@ -88,7 +90,8 @@ public class MedicineService {
 
     @Transactional
     public Map<String, Object> importCatalogCsv(MultipartFile file) throws Exception {
-        int imported = 0, updated = 0;
+        int imported = 0;
+        int updated = 0;
         List<String> errors = new ArrayList<>();
 
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream(), "UTF-8"))) {
@@ -106,7 +109,7 @@ public class MedicineService {
                 if (name.isEmpty()) continue;
 
                 String type = cols.length > 1 ? stripQuotes(cols[1]) : "";
-                if (type.isEmpty()) type = "Tablet";
+                if (type.isEmpty()) type = TABLET;
 
                 try {
                     Optional<MedicineList> existing = medicineListRepository.findByNameIgnoreCase(name);
@@ -226,7 +229,7 @@ public class MedicineService {
         if (!medicineListRepository.existsByNameIgnoreCase(purchase.getName())) {
             MedicineList newCatalog = new MedicineList();
             newCatalog.setName(purchase.getName());
-            newCatalog.setType(purchase.getType() != null ? purchase.getType() : "Tablet");
+            newCatalog.setType(purchase.getType() != null ? purchase.getType() : TABLET);
             medicineListRepository.save(newCatalog);
         }
 
@@ -294,7 +297,7 @@ public class MedicineService {
         if (!medicineListRepository.existsByNameIgnoreCase(medicine.getName())) {
             MedicineList newCatalog = new MedicineList();
             newCatalog.setName(medicine.getName());
-            newCatalog.setType(medicine.getType() != null ? medicine.getType() : "Tablet");
+            newCatalog.setType(medicine.getType() != null ? medicine.getType() : TABLET);
             medicineListRepository.save(newCatalog);
         }
 
@@ -444,16 +447,16 @@ public class MedicineService {
         if (medicineListRepository.count() == 0) {
             logger.info("Seeding initial medicines into catalog...");
             List<MedicineList> initialCatalog = Arrays.asList(
-                    createMedicineCatalog("Paracetamol", "Tablet"),
+                    createMedicineCatalog("Paracetamol", TABLET),
                     createMedicineCatalog("Amoxicillin", "Capsule"),
-                    createMedicineCatalog("Ibuprofen", "Tablet"),
-                    createMedicineCatalog("Cetirizine", "Tablet"),
+                    createMedicineCatalog("Ibuprofen", TABLET),
+                    createMedicineCatalog("Cetirizine", TABLET),
                     createMedicineCatalog("Cough Syrup", "Syrup"),
-                    createMedicineCatalog("Azithromycin", "Tablet"),
-                    createMedicineCatalog("Metformin", "Tablet"),
-                    createMedicineCatalog("Amlodipine", "Tablet"),
+                    createMedicineCatalog("Azithromycin", TABLET),
+                    createMedicineCatalog("Metformin", TABLET),
+                    createMedicineCatalog("Amlodipine", TABLET),
                     createMedicineCatalog("Omeprazole", "Capsule"),
-                    createMedicineCatalog("Pantoprazole", "Tablet"),
+                    createMedicineCatalog("Pantoprazole", TABLET),
                     createMedicineCatalog("Normal Saline 500ml", "Saline"),
                     createMedicineCatalog("Ringer Lactate 500ml", "Saline"),
                     createMedicineCatalog("Diclofenac Injection", "Injection")

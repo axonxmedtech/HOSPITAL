@@ -88,8 +88,8 @@ public class OtAnalyticsService {
     public Map<String, Object> nabhIndicators(LocalDate from, LocalDate to) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found in context");
-        LocalDate start = from == null ? LocalDate.now().minusDays(30) : from;
-        LocalDate end = to == null ? LocalDate.now() : to;
+        LocalDate start = from == null ? LocalDate.now(java.time.ZoneId.systemDefault()).minusDays(30) : from;
+        LocalDate end = to == null ? LocalDate.now(java.time.ZoneId.systemDefault()) : to;
         LocalDateTime f = start.atStartOfDay();
         LocalDateTime t = end.plusDays(1).atStartOfDay();
 

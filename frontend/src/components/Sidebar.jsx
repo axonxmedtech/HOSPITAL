@@ -458,6 +458,7 @@ const Sidebar = ({
           return (
             <div key={tab.id} className="space-y-1">
               <button
+                type="button"
                 onClick={() =>
                   hasSubItems && onToggleGroup ? onToggleGroup(tab.id) : onTabChange(tab.id)
                 }
@@ -515,6 +516,7 @@ const Sidebar = ({
                 <div className="pl-8 space-y-1">
                   {tab.subItems.map((subItem) => (
                     <button
+                      type="button"
                       key={subItem.id}
                       onClick={() => onTabChange(subItem.id)}
                       className={`w-full flex items-center px-3 py-1.5 text-sm font-medium transition-colors duration-200 ${

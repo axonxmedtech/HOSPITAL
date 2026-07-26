@@ -9,6 +9,20 @@ import FrequencyInput from './FrequencyInput';
  *   columns in Purchase History. Reception doesn't prescribe, so those columns are noise for
  *   them; the admin and doctor views keep them.
  */
+// Shows/hides the "will be registered in the global catalog" hint under the medicine-name field.
+const updateCatalogHint = (name, suggestions, searchingCatalog) => {
+  const hint = document.getElementById('catalog-hint');
+  if (!hint) return;
+  const isKnown = suggestions.some((x) => x.name.toLowerCase() === name.toLowerCase());
+  if (name.length >= 3 && !isKnown && !searchingCatalog) {
+    hint.innerText =
+      '💡 This medicine will be registered automatically in the global catalog dictionary.';
+    hint.classList.remove('hidden');
+  } else {
+    hint.classList.add('hidden');
+  }
+};
+
 const MedicineInventoryTab = ({ hidePrescribingColumns = false }) => {
   const [subTab, setSubTab] = useState('inventory'); // 'inventory' or 'purchase'
 
@@ -85,22 +99,7 @@ const MedicineInventoryTab = ({ hidePrescribingColumns = false }) => {
 
   // Handle catalog hint display reactively
   useEffect(() => {
-    const name = stockMedicineQuery.trim();
-    const hint = document.getElementById('catalog-hint');
-    if (hint) {
-      if (name.length >= 3) {
-        const isKnown = suggestions.some((x) => x.name.toLowerCase() === name.toLowerCase());
-        if (!isKnown && !searchingCatalog) {
-          hint.innerText =
-            '💡 This medicine will be registered automatically in the global catalog dictionary.';
-          hint.classList.remove('hidden');
-        } else {
-          hint.classList.add('hidden');
-        }
-      } else {
-        hint.classList.add('hidden');
-      }
-    }
+    updateCatalogHint(stockMedicineQuery.trim(), suggestions, searchingCatalog);
   }, [stockMedicineQuery, suggestions, searchingCatalog]);
 
   // Fetch active stock inventory
@@ -200,12 +199,14 @@ const MedicineInventoryTab = ({ hidePrescribingColumns = false }) => {
         {/* Segmented Top-Tab Toggle */}
         <div className="flex bg-gray-100 p-1 rounded-xl w-full sm:w-auto overflow-x-auto whitespace-nowrap scrollbar-none">
           <button
+            type="button"
             onClick={() => setSubTab('inventory')}
             className={`flex-1 sm:flex-none px-3 sm:px-5 py-2 text-sm font-semibold rounded-lg transition-all whitespace-nowrap ${subTab === 'inventory' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
           >
             Inventory
           </button>
           <button
+            type="button"
             onClick={() => setSubTab('purchase')}
             className={`flex-1 sm:flex-none px-3 sm:px-5 py-2 text-sm font-semibold rounded-lg transition-all whitespace-nowrap ${subTab === 'purchase' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
           >
@@ -223,6 +224,7 @@ const MedicineInventoryTab = ({ hidePrescribingColumns = false }) => {
         </div>
         {subTab === 'purchase' && (
           <button
+            type="button"
             onClick={() => setStockModal({ isOpen: true, isEdit: false, data: null })}
             className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition font-semibold text-sm shadow-md shadow-teal-600/10 active:scale-95"
           >
@@ -386,6 +388,7 @@ const MedicineInventoryTab = ({ hidePrescribingColumns = false }) => {
                 {stockModal.isEdit ? 'Edit Stock Details' : 'Add Stock Intake'}
               </h3>
               <button
+                type="button"
                 onClick={() => setStockModal({ isOpen: false, isEdit: false, data: null })}
                 className="text-gray-400 hover:text-gray-600"
               >

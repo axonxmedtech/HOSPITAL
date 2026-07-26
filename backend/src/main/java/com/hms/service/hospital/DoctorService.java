@@ -69,7 +69,7 @@ public class DoctorService {
     @Transactional
     public Doctor addDoctor(Doctor doctor, String password) {
         // Validate phone number
-        if (doctor.getPhone() == null || !doctor.getPhone().matches("^[0-9]{10}$")) {
+        if (doctor.getPhone() == null || !doctor.getPhone().matches("^\\d{10}$")) {
             throw new IllegalArgumentException("Phone number must be exactly 10 digits");
         }
 

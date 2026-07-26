@@ -120,9 +120,7 @@ public class ManualTaskService {
         }
 
         String newStatus = req.getStatus() == null ? null : req.getStatus().toUpperCase();
-        String currentStatus = task.getStatus();
         String role = securityHelper.getCurrentUserRole();
-        Long currentUserId = securityHelper.getCurrentUserId();
 
         if ("CANCELLED".equals(newStatus)) {
             if (!"HOSPITAL_ADMIN".equals(role)) {
@@ -130,29 +128,7 @@ public class ManualTaskService {
             }
             task.setStatus("CANCELLED");
         } else if ("IN_PROGRESS".equals(newStatus) || "COMPLETED".equals(newStatus)) {
-            // Must be the assigned nurse
-            if (!task.getAssignedToNurseUserId().equals(currentUserId)) {
-                throw new AccessDeniedException("Access denied: task assigned to another nurse");
-            }
-
-            // Transition guards
-            if ("PENDING".equals(currentStatus)) {
-                if (!"IN_PROGRESS".equals(newStatus) && !"COMPLETED".equals(newStatus)) {
-                    throw new IllegalArgumentException("Illegal status transition from PENDING to " + newStatus);
-                }
-            } else if ("IN_PROGRESS".equals(currentStatus)) {
-                if (!"COMPLETED".equals(newStatus)) {
-                    throw new IllegalArgumentException("Illegal status transition from IN_PROGRESS to " + newStatus);
-                }
-            } else {
-                throw new IllegalArgumentException("Task is already in a terminal state: " + currentStatus);
-            }
-
-            task.setStatus(newStatus);
-            if ("COMPLETED".equals(newStatus)) {
-                task.setCompletedAt(LocalDateTime.now());
-                task.setCompletionRemarks(req.getCompletionRemarks());
-            }
+            applyNurseTransition(task, newStatus, req);
         } else {
             throw new IllegalArgumentException("Invalid status: " + newStatus);
         }
@@ -167,6 +143,31 @@ public class ManualTaskService {
     }
 
     // --- helpers ---
+
+    /** Applies an IN_PROGRESS/COMPLETED transition for the assigned nurse, enforcing the state machine. */
+    private void applyNurseTransition(ManualTask task, String newStatus, UpdateTaskStatusRequest req) {
+        Long currentUserId = securityHelper.getCurrentUserId();
+        String currentStatus = task.getStatus();
+        if (!task.getAssignedToNurseUserId().equals(currentUserId)) {
+            throw new AccessDeniedException("Access denied: task assigned to another nurse");
+        }
+        if ("PENDING".equals(currentStatus)) {
+            if (!"IN_PROGRESS".equals(newStatus) && !"COMPLETED".equals(newStatus)) {
+                throw new IllegalArgumentException("Illegal status transition from PENDING to " + newStatus);
+            }
+        } else if ("IN_PROGRESS".equals(currentStatus)) {
+            if (!"COMPLETED".equals(newStatus)) {
+                throw new IllegalArgumentException("Illegal status transition from IN_PROGRESS to " + newStatus);
+            }
+        } else {
+            throw new IllegalArgumentException("Task is already in a terminal state: " + currentStatus);
+        }
+        task.setStatus(newStatus);
+        if ("COMPLETED".equals(newStatus)) {
+            task.setCompletedAt(LocalDateTime.now());
+            task.setCompletionRemarks(req.getCompletionRemarks());
+        }
+    }
 
     private Long requireHospitalId() {
         Long hospitalId = securityHelper.getCurrentHospitalId();

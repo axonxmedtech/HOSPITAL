@@ -23,8 +23,6 @@ import java.util.List;
 import com.hms.entity.AuditLog;
 import com.hms.repository.AuditLogRepository;
 
-import com.hms.exception.ResourceNotFoundException;
-import com.hms.exception.UnauthorizedException;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 /**

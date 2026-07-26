@@ -52,6 +52,6 @@ public class MedicinePurchase {
 
     @PrePersist
     protected void onCreate() {
-        purchaseDate = LocalDateTime.now();
+        purchaseDate = LocalDateTime.now(java.time.ZoneId.systemDefault());
     }
 }

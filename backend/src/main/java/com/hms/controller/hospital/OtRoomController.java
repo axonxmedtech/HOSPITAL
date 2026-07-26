@@ -22,6 +22,8 @@ import java.util.Map;
 @TenantType(HospitalType.HOSPITAL)
 @RequireModule("OT")
 public class OtRoomController {
+    private static final String TURNOVER_MINUTES = "turnoverMinutes";
+
 
     @Autowired
     private OtRoomService service;
@@ -44,8 +46,8 @@ public class OtRoomController {
     @PreAuthorize("hasAuthority('OT_SETTINGS')")
     public ResponseEntity<?> create(@RequestBody Map<String, Object> body) {
         String name = (String) body.get("name");
-        Integer turnover = body.get("turnoverMinutes") == null ? null
-                : Integer.valueOf(String.valueOf(body.get("turnoverMinutes")));
+        Integer turnover = body.get(TURNOVER_MINUTES) == null ? null
+                : Integer.valueOf(String.valueOf(body.get(TURNOVER_MINUTES)));
         Long sourceWardId = body.get("sourceWardId") == null ? null
                 : Long.valueOf(String.valueOf(body.get("sourceWardId")));
         return ResponseEntity.ok(service.create(name, turnover, sourceWardId));
@@ -55,8 +57,8 @@ public class OtRoomController {
     @PreAuthorize("hasAuthority('OT_SETTINGS')")
     public ResponseEntity<?> update(@PathVariable String publicId, @RequestBody Map<String, Object> body) {
         String name = (String) body.get("name");
-        Integer turnover = body.get("turnoverMinutes") == null ? null
-                : Integer.valueOf(String.valueOf(body.get("turnoverMinutes")));
+        Integer turnover = body.get(TURNOVER_MINUTES) == null ? null
+                : Integer.valueOf(String.valueOf(body.get(TURNOVER_MINUTES)));
         String status = (String) body.get("status");
         return ResponseEntity.ok(service.update(publicId, name, turnover, status));
     }

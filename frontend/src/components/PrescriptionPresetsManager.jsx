@@ -14,6 +14,10 @@ const EMPTY_ITEM = {
   instructions: '',
 };
 
+// Stable client-side key for a form row, so React keys don't fall back to the array index.
+let itemKeySeq = 0;
+const newItem = (base = EMPTY_ITEM) => ({ ...base, _key: `pi-${itemKeySeq++}` });
+
 /**
  * Lists, creates, edits, deletes, and reorders prescription presets (each a
  * named bundle of one or more medicine rows). Self-contained: does its own
@@ -31,7 +35,7 @@ const PrescriptionPresetsManager = ({ isAdmin = false }) => {
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [formName, setFormName] = useState('');
-  const [formItems, setFormItems] = useState([{ ...EMPTY_ITEM }]);
+  const [formItems, setFormItems] = useState([newItem()]);
   // '' = shared (all doctors); a doctor id = private to that doctor. Admin-only.
   const [formDoctorId, setFormDoctorId] = useState('');
   const [saving, setSaving] = useState(false);
@@ -73,7 +77,7 @@ const PrescriptionPresetsManager = ({ isAdmin = false }) => {
   const openCreateForm = () => {
     setEditingId(null);
     setFormName('');
-    setFormItems([{ ...EMPTY_ITEM }]);
+    setFormItems([newItem()]);
     setFormDoctorId('');
     setFormOpen(true);
   };
@@ -83,8 +87,8 @@ const PrescriptionPresetsManager = ({ isAdmin = false }) => {
     setFormName(preset.name);
     setFormItems(
       preset.items && preset.items.length > 0
-        ? preset.items.map((i) => ({ ...i, quantity: i.quantity ?? 1 }))
-        : [{ ...EMPTY_ITEM }]
+        ? preset.items.map((i) => newItem({ ...i, quantity: i.quantity ?? 1 }))
+        : [newItem()]
     );
     setFormDoctorId(preset.doctorId ?? '');
     setFormOpen(true);
@@ -100,7 +104,7 @@ const PrescriptionPresetsManager = ({ isAdmin = false }) => {
   };
 
   const addFormItemRow = () => {
-    setFormItems((prev) => [...prev, { ...EMPTY_ITEM }]);
+    setFormItems((prev) => [...prev, newItem()]);
   };
 
   const removeFormItemRow = (index) => {
@@ -267,7 +271,7 @@ const PrescriptionPresetsManager = ({ isAdmin = false }) => {
               (String(item.quantity).trim() === '' || !Number.isInteger(qtyNum) || qtyNum < 1);
             return (
               <div
-                key={index}
+                key={item._key ?? index}
                 className="grid grid-cols-2 gap-2 bg-white p-3 rounded-lg border border-gray-200"
               >
                 <div className="col-span-2 flex gap-2">

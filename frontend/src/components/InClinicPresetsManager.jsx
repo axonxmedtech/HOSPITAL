@@ -242,7 +242,7 @@ const InClinicPresetsManager = () => {
                     step="1"
                     value={item.quantity}
                     onChange={(e) =>
-                      updateFormItem(index, 'quantity', e.target.value.replace(/[^0-9]/g, ''))
+                      updateFormItem(index, 'quantity', e.target.value.replace(/\D/g, ''))
                     }
                     placeholder="Qty"
                     title="Quantity dispensed (must be greater than 0)"

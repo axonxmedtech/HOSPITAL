@@ -70,7 +70,7 @@ public class HospitalServiceController {
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<List<HospitalServiceDTO>> listServices() {
         List<HospitalServiceDTO> dtos = serviceService.listServices().stream()
-                .map(this::toDto).collect(Collectors.toList());
+                .map(this::toDto).toList();
         return ResponseEntity.ok(dtos);
     }
 

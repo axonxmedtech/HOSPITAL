@@ -50,6 +50,7 @@ const UserMenu = ({ user, onLogout, onProfile, onSupport }) => {
     <div className="relative" ref={menuRef}>
       {/* Trigger Button - Enhanced Avatar */}
       <button
+        type="button"
         onClick={toggleMenu}
         className="group relative h-11 w-11 rounded-lg bg-gray-900 flex items-center justify-center text-white font-semibold text-sm border-2 border-white hover:bg-gray-800 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
         aria-label="User menu"
@@ -87,6 +88,7 @@ const UserMenu = ({ user, onLogout, onProfile, onSupport }) => {
           {/* Menu Items */}
           <div className="py-2">
             <button
+              type="button"
               onClick={() => {
                 setIsOpen(false);
                 if (onProfile) onProfile();
@@ -116,6 +118,7 @@ const UserMenu = ({ user, onLogout, onProfile, onSupport }) => {
 
             {user?.role === 'HOSPITAL_ADMIN' && (
               <button
+                type="button"
                 onClick={() => {
                   setIsOpen(false);
                   if (onSupport) onSupport();
@@ -148,6 +151,7 @@ const UserMenu = ({ user, onLogout, onProfile, onSupport }) => {
           {/* Logout Section */}
           <div className="border-t border-neutral-50 py-2">
             <button
+              type="button"
               onClick={() => {
                 setIsOpen(false);
                 onLogout();

@@ -40,6 +40,11 @@ import java.util.stream.Collectors;
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
+    private static final String HOSPITAL_ADMIN = "HOSPITAL_ADMIN";
+    private static final String DOCTOR = "DOCTOR";
+    private static final String RECEPTIONIST = "RECEPTIONIST";
+    private static final String PHARMACIST = "PHARMACIST";
+
 
     @Autowired
     private JwtAuthenticationFilter jwtAuthenticationFilter;
@@ -77,7 +82,7 @@ public class SecurityConfig {
                         .requestMatchers("/platform/**").hasRole("SUPER_ADMIN")
 
                         // WebSocket endpoints - authenticated standard HMS roles & Super Admin
-                        .requestMatchers("/ws/**").hasAnyRole("HOSPITAL_ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST", "NURSE", "NURSE_INCHARGE", "SUPER_ADMIN", "OT_INCHARGE")
+                        .requestMatchers("/ws/**").hasAnyRole(HOSPITAL_ADMIN, DOCTOR, RECEPTIONIST, PHARMACIST, "NURSE", "NURSE_INCHARGE", "SUPER_ADMIN", "OT_INCHARGE")
 
                         // Module namespaces - only standard HMS roles allowed.
                         // /hospital/** = hospital tenants, /clinic/** = clinic tenants,
@@ -85,9 +90,9 @@ public class SecurityConfig {
                         // NURSE is hospital-only: it is authorized on /hospital/** but never on
                         // /clinic/** or /pharmacy/**, keeping the Nurse role out of those tenants.
                         .requestMatchers("/hospital/**")
-                        .hasAnyRole("HOSPITAL_ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST", "NURSE", "NURSE_INCHARGE", "OT_INCHARGE")
+                        .hasAnyRole(HOSPITAL_ADMIN, DOCTOR, RECEPTIONIST, PHARMACIST, "NURSE", "NURSE_INCHARGE", "OT_INCHARGE")
                         .requestMatchers("/clinic/**", "/pharmacy/**")
-                        .hasAnyRole("HOSPITAL_ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST")
+                        .hasAnyRole(HOSPITAL_ADMIN, DOCTOR, RECEPTIONIST, PHARMACIST)
                         // All other requests require authentication
                         .anyRequest().authenticated())
 
@@ -121,7 +126,7 @@ public class SecurityConfig {
         // Dynamically split by comma, trim, and strip trailing slashes
         List<String> origins = Arrays.stream(allowedOrigins.split(","))
                 .map(String::trim)
-                .map(o -> o.replaceAll("/+$", ""))
+                .map(o -> o.replaceAll("/++$", ""))
                 .filter(o -> !o.isEmpty())
                 .collect(Collectors.toList());
 

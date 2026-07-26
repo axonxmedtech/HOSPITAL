@@ -22,13 +22,6 @@ import java.util.Optional;
 public interface AppointmentRepository extends JpaRepository<Appointment, Long> {
 
   /**
-   * Find all appointments belonging to a specific hospital
-   * Used to list appointments for a hospital (multi-tenant filtering)
-   * 
-   * @param hospitalId Hospital ID to filter by
-   * @return List of appointments for the hospital
-   */
-  /**
    * Find all active appointments belonging to a specific hospital
    * Used to list appointments for a hospital (multi-tenant filtering)
    * 

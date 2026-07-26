@@ -16,6 +16,8 @@ import java.util.List;
 
 @Service
 public class ReportPdfService {
+    private static final String DATE_PATTERN = "MMM dd, yyyy";
+
 
     @Autowired
     private PdfLayoutHelper helper;
@@ -108,7 +110,7 @@ public class ReportPdfService {
             document.open();
 
             // 1. Standard Header
-            String dateStr = date.format(DateTimeFormatter.ofPattern("MMM dd, yyyy"));
+            String dateStr = date.format(DateTimeFormatter.ofPattern(DATE_PATTERN));
             String title = "PATIENT ACTIVITY REPORT - " + dateStr;
             helper.addStyledHeader(document, hospital, title);
 
@@ -260,7 +262,7 @@ public class ReportPdfService {
             document.open();
 
             // 1. Header
-            String dateStr = (date != null) ? date.format(DateTimeFormatter.ofPattern("MMM dd, yyyy")) : "All Time";
+            String dateStr = (date != null) ? date.format(DateTimeFormatter.ofPattern(DATE_PATTERN)) : "All Time";
             addListReportHeader(document, hospital, "Registered Patients Report", dateStr);
 
             // 2. Table
@@ -329,7 +331,7 @@ public class ReportPdfService {
             document.open();
 
             // 1. Header
-            String dateStr = (date != null) ? date.format(DateTimeFormatter.ofPattern("MMM dd, yyyy")) : "All Time";
+            String dateStr = (date != null) ? date.format(DateTimeFormatter.ofPattern(DATE_PATTERN)) : "All Time";
             String title = "OPD registrations report" + (reportType != null ? " (" + reportType + ")" : "");
             addListReportHeader(document, hospital, title, dateStr);
 
@@ -350,21 +352,7 @@ public class ReportPdfService {
             if (opds != null && !opds.isEmpty()) {
                 int sr = 1;
                 for (Opd o : opds) {
-                    helper.addTableCell(table, String.valueOf(sr++), false);
-                    helper.addTableCell(table, o.getCaseId() != null ? o.getCaseId() : String.valueOf(o.getId()), false);
-                    
-                    Patient pat = o.getPatient();
-                    helper.addTableCell(table, pat != null ? (pat.getCustomId() != null ? pat.getCustomId() : pat.getPublicId()) : "-", false);
-                    helper.addTableCell(table, pat != null ? pat.getName() : "-", false);
-                    helper.addTableCell(table, o.getDoctor() != null ? o.getDoctor().getName() : "-", false);
-                    helper.addTableCell(table, o.getVisitType() != null ? o.getVisitType().toString() : "-", false);
-                    helper.addTableCell(table, o.getStatus() != null ? o.getStatus().toString() : "-", false);
-                    
-                    String regDate = "-";
-                    if (o.getCreatedAt() != null) {
-                        regDate = o.getCreatedAt().format(DateTimeFormatter.ofPattern("yyyy-MM-dd hh:mm a"));
-                    }
-                    helper.addTableCell(table, regDate, false);
+                    addOpdRow(table, o, sr++);
                 }
             } else {
                 PdfPCell cell = new PdfPCell(new Phrase("No OPD registrations found.", PdfLayoutHelper.NORMAL_FONT));
@@ -384,5 +372,22 @@ public class ReportPdfService {
         }
 
         return new ByteArrayInputStream(out.toByteArray());
+    }
+
+    /** Renders one OPD registration as a table row (null-safe cells). */
+    private void addOpdRow(PdfPTable table, Opd o, int sr) {
+        helper.addTableCell(table, String.valueOf(sr), false);
+        helper.addTableCell(table, o.getCaseId() != null ? o.getCaseId() : String.valueOf(o.getId()), false);
+        Patient pat = o.getPatient();
+        helper.addTableCell(table, pat != null ? (pat.getCustomId() != null ? pat.getCustomId() : pat.getPublicId()) : "-", false);
+        helper.addTableCell(table, pat != null ? pat.getName() : "-", false);
+        helper.addTableCell(table, o.getDoctor() != null ? o.getDoctor().getName() : "-", false);
+        helper.addTableCell(table, o.getVisitType() != null ? o.getVisitType().toString() : "-", false);
+        helper.addTableCell(table, o.getStatus() != null ? o.getStatus().toString() : "-", false);
+        String regDate = "-";
+        if (o.getCreatedAt() != null) {
+            regDate = o.getCreatedAt().format(DateTimeFormatter.ofPattern("yyyy-MM-dd hh:mm a"));
+        }
+        helper.addTableCell(table, regDate, false);
     }
 }

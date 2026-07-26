@@ -203,20 +203,27 @@ public class NurseWorkspaceService {
         if (bills != null) {
             for (Billing b : bills) {
                 if (b.getAmount() != null) total = total.add(b.getAmount());
-                try {
-                    List<BillingPayment> pays = billingPaymentRepository.findByBillingId(b.getId());
-                    if (pays != null) {
-                        for (BillingPayment p : pays) {
-                            if (p.getAmount() != null) paid = paid.add(p.getAmount());
-                        }
-                    }
-                } catch (Exception ignored) { /* best-effort summary */ }
+                paid = paid.add(sumPayments(b.getId()));
             }
         }
         summary.setTotal(total);
         summary.setPaid(paid);
         summary.setBalance(total.subtract(paid));
         return summary;
+    }
+
+    /** Sum of recorded payments for one bill; best-effort (never throws to the caller). */
+    private BigDecimal sumPayments(Long billingId) {
+        BigDecimal paid = BigDecimal.ZERO;
+        try {
+            List<BillingPayment> pays = billingPaymentRepository.findByBillingId(billingId);
+            if (pays != null) {
+                for (BillingPayment p : pays) {
+                    if (p.getAmount() != null) paid = paid.add(p.getAmount());
+                }
+            }
+        } catch (Exception ignored) { /* best-effort summary */ }
+        return paid;
     }
 
     /** Patients across the incharge's wards (or all wards for admin). */
@@ -300,7 +307,8 @@ public class NurseWorkspaceService {
                 m.put("wardName", wardName);
                 m.put("hasLogin", p.getUserId() != null);
                 boolean onShift = false;
-                try { onShift = nurseShiftScheduleService.isOnShiftNow(p.getId()); } catch (Exception ignored) { }
+                try { onShift = nurseShiftScheduleService.isOnShiftNow(p.getId()); }
+                catch (Exception ignored) { /* on-shift status is best-effort */ }
                 m.put("onShiftNow", onShift);
                 out.add(m);
             }
