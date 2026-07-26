@@ -49,6 +49,10 @@ public class Billing {
     @Column(name = "custom_id")
     private String customId;
 
+    // Reused SecureRandom for the numeric suffix of custom IDs (a single shared, non-predictable
+    // instance rather than a new java.util.Random() per call).
+    private static final java.security.SecureRandom CUSTOM_ID_RANDOM = new java.security.SecureRandom();
+
     @PrePersist
     public void generateIds() {
         if (this.publicId == null) {
@@ -56,7 +60,7 @@ public class Billing {
         }
         if (this.customId == null) {
             // Generate simple random readable ID: BIL + 4 random digits
-            this.customId = "BIL" + (1000 + new java.util.Random().nextInt(9000));
+            this.customId = "BIL" + (1000 + CUSTOM_ID_RANDOM.nextInt(9000));
         }
     }
 

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import otService from '../../../services/otService';
+import { backdropProps } from '../../../utils/modalA11y';
 import { printHtml } from '../../../utils/printHtml';
 
 /**
@@ -75,15 +76,7 @@ const OtListPrint = ({ onClose }) => {
   return (
     <div
       className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto"
-      role="button"
-      tabIndex={-1}
-      aria-label="Close dialog"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose();
-      }}
+      {...backdropProps(onClose)}
     >
       <div className="bg-white rounded-2xl w-full max-w-3xl my-8">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">

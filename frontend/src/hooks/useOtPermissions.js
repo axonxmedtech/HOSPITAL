@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import otService from '../services/otService';
 import authService from '../services/authService';
+import otService from '../services/otService';
 
 /**
  * useOtPermissions - the caller's effective OT permissions.
@@ -13,24 +13,36 @@ import authService from '../services/authService';
  * action never flashes into view before the server has said it is allowed.
  */
 export default function useOtPermissions() {
-    const [permissions, setPermissions] = useState([]);
-    const [loaded, setLoaded] = useState(false);
+  const [permissions, setPermissions] = useState([]);
+  const [loaded, setLoaded] = useState(false);
 
-    const hasOt = (authService.getCurrentUser()?.modules || []).includes('OT');
+  const hasOt = (authService.getCurrentUser()?.modules || []).includes('OT');
 
-    useEffect(() => {
-        if (!hasOt) { setLoaded(true); return; }
-        let active = true;
-        otService.getMyOtPermissions()
-            .then((list) => { if (active) setPermissions(Array.isArray(list) ? list : []); })
-            .catch(() => { if (active) setPermissions([]); })
-            .finally(() => { if (active) setLoaded(true); });
-        return () => { active = false; };
-    }, [hasOt]);
-
-    return {
-        permissions,
-        loaded,
-        can: (code) => permissions.includes(code),
+  useEffect(() => {
+    if (!hasOt) {
+      setLoaded(true);
+      return;
+    }
+    let active = true;
+    otService
+      .getMyOtPermissions()
+      .then((list) => {
+        if (active) setPermissions(Array.isArray(list) ? list : []);
+      })
+      .catch(() => {
+        if (active) setPermissions([]);
+      })
+      .finally(() => {
+        if (active) setLoaded(true);
+      });
+    return () => {
+      active = false;
     };
+  }, [hasOt]);
+
+  return {
+    permissions,
+    loaded,
+    can: (code) => permissions.includes(code),
+  };
 }

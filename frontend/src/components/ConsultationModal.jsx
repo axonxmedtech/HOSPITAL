@@ -911,16 +911,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                     </div>
                     <div className="flex justify-between py-2 border-b border-gray-200">
                       <span className="text-gray-500">Status</span>
-                      <span
-                        className={`px-2 py-1 rounded text-xs font-semibold ${
-                          patientDetails.patient.status === 'COMPLETED'
-                            ? 'bg-gray-100 text-gray-800'
-                            : patientDetails.patient.status === 'CONSULTING' ||
-                                patientDetails.patient.status === 'IN_PROGRESS'
-                              ? 'bg-gray-100 text-gray-800'
-                              : 'bg-gray-100 text-gray-800'
-                        }`}
-                      >
+                      <span className="px-2 py-1 rounded text-xs font-semibold bg-gray-100 text-gray-800">
                         {patientDetails.patient.status}
                       </span>
                     </div>

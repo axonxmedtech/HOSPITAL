@@ -8,19 +8,26 @@ import vitalsService from '../services/vitalsService';
  * on so the OPD form never flickers fields away.
  */
 export default function useEnabledVitals() {
-    const [vitals, setVitals] = useState(null); // null = not loaded yet
+  const [vitals, setVitals] = useState(null); // null = not loaded yet
 
-    useEffect(() => {
-        let active = true;
-        vitalsService.enabled()
-            .then((list) => { if (active) setVitals(Array.isArray(list) ? list : []); })
-            .catch(() => { if (active) setVitals([]); });
-        return () => { active = false; };
-    }, []);
+  useEffect(() => {
+    let active = true;
+    vitalsService
+      .enabled()
+      .then((list) => {
+        if (active) setVitals(Array.isArray(list) ? list : []);
+      })
+      .catch(() => {
+        if (active) setVitals([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
-    const loaded = vitals !== null;
-    const isOn = (key) => (!loaded ? true : vitals.some((v) => v.key === key && !v.isCustom));
-    const customs = loaded ? vitals.filter((v) => v.isCustom) : [];
+  const loaded = vitals !== null;
+  const isOn = (key) => (!loaded ? true : vitals.some((v) => v.key === key && !v.isCustom));
+  const customs = loaded ? vitals.filter((v) => v.isCustom) : [];
 
-    return { isOn, customs, loaded };
+  return { isOn, customs, loaded };
 }

@@ -13,17 +13,24 @@ import SurgeryFormFrame from './SurgeryFormFrame';
 const esc = escapeHtml;
 
 const buildPrintHtml = (data, prefill, hospital) => {
-    const f = prefill || {};
-    const d = data || {};
-    const hname = esc(titleCase(hospital.name)) || 'Hospital';
-    const patientName = esc(titleCase([f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' ')));
-    const logo = hospital.logo ? `<img src="${esc(hospital.logo)}" onerror="this.style.display='none'" style="height:50px;width:auto;object-fit:contain"/>` : '';
-    const ln = (v, w = 70) => `<span class="line" style="min-width:${w}px">${esc(v)}</span>`;
-    const box = (opts, sel) => opts.map((o) => (sel === o ? `<b class="pick">${esc(o)}</b>` : esc(o))).join(' / ');
-    const row = (label, right) => `<div class="row"><span class="lab">${label}</span><span class="dash">-</span><span class="val">${right}</span></div>`;
-    const sub = (right) => `<div class="row"><span class="lab"></span><span class="dash"></span><span class="val">${right}</span></div>`;
+  const f = prefill || {};
+  const d = data || {};
+  const hname = esc(titleCase(hospital.name)) || 'Hospital';
+  const patientName = esc(
+    titleCase([f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' '))
+  );
+  const logo = hospital.logo
+    ? `<img src="${esc(hospital.logo)}" onerror="this.style.display='none'" style="height:50px;width:auto;object-fit:contain"/>`
+    : '';
+  const ln = (v, w = 70) => `<span class="line" style="min-width:${w}px">${esc(v)}</span>`;
+  const box = (opts, sel) =>
+    opts.map((o) => (sel === o ? `<b class="pick">${esc(o)}</b>` : esc(o))).join(' / ');
+  const row = (label, right) =>
+    `<div class="row"><span class="lab">${label}</span><span class="dash">-</span><span class="val">${right}</span></div>`;
+  const sub = (right) =>
+    `<div class="row"><span class="lab"></span><span class="dash"></span><span class="val">${right}</span></div>`;
 
-    return `<!doctype html><html><head><meta charset="utf-8"><title>General Anaesthesia</title>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>General Anaesthesia</title>
     <style>
       @page { size: A4; margin: 10mm; }
       * { box-sizing: border-box; }
@@ -105,90 +112,179 @@ const buildPrintHtml = (data, prefill, hospital) => {
 };
 
 const Txt = ({ label, v, on }) => (
-    <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
-        <input value={v || ''} onChange={(e) => on(e.target.value)} className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm" />
-    </div>
+  <div>
+    <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
+    <input
+      value={v || ''}
+      onChange={(e) => on(e.target.value)}
+      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+    />
+  </div>
 );
 const Sel = ({ label, v, on, options }) => (
-    <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
-        <select value={v || ''} onChange={(e) => on(e.target.value)} className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm">
-            <option value="">—</option>
-            {options.map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
-    </div>
+  <div>
+    <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
+    <select
+      value={v || ''}
+      onChange={(e) => on(e.target.value)}
+      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+    >
+      <option value="">—</option>
+      {options.map((o) => (
+        <option key={o} value={o}>
+          {o}
+        </option>
+      ))}
+    </select>
+  </div>
 );
-const H = ({ children }) => <div className="text-xs font-bold text-gray-800 uppercase tracking-wide mt-2 mb-1">{children}</div>;
+const H = ({ children }) => (
+  <div className="text-xs font-bold text-gray-800 uppercase tracking-wide mt-2 mb-1">
+    {children}
+  </div>
+);
 
 const GeneralAnaesthesiaRecordForm = ({ admissionId, onClose, readOnly = false }) => (
-    <SurgeryFormFrame
-        admissionId={admissionId}
-        readOnly={readOnly}
-        formType="GENERAL_ANAESTHESIA"
-        title="General Anaesthesia"
-        code=""
-        defaults={{}}
-        buildPrintHtml={buildPrintHtml}
-        onClose={onClose}
-        renderFields={({ data, set, prefill }) => (
-            <div className="space-y-2">
-                <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600">
-                    For <b>{titleCase([prefill.patientSurname, prefill.patientFirstName, prefill.husbandFatherName].filter(Boolean).join(' ')) || '—'}</b>
-                    {prefill.ipdRegistrationNo ? ` · IPD ${prefill.ipdRegistrationNo}` : ''} — header fills automatically.
-                </div>
-                <Txt label="Date" v={data.date} on={(x) => set('date', x)} />
+  <SurgeryFormFrame
+    admissionId={admissionId}
+    readOnly={readOnly}
+    formType="GENERAL_ANAESTHESIA"
+    title="General Anaesthesia"
+    code=""
+    defaults={{}}
+    buildPrintHtml={buildPrintHtml}
+    onClose={onClose}
+    renderFields={({ data, set, prefill }) => (
+      <div className="space-y-2">
+        <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600">
+          For{' '}
+          <b>
+            {titleCase(
+              [prefill.patientSurname, prefill.patientFirstName, prefill.husbandFatherName]
+                .filter(Boolean)
+                .join(' ')
+            ) || '—'}
+          </b>
+          {prefill.ipdRegistrationNo ? ` · IPD ${prefill.ipdRegistrationNo}` : ''} — header fills
+          automatically.
+        </div>
+        <Txt label="Date" v={data.date} on={(x) => set('date', x)} />
 
-                <H>Induction</H>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <Txt label="Premedication" v={data.premedication} on={(x) => set('premedication', x)} />
-                    <Txt label="Preoxygenation" v={data.preoxygenation} on={(x) => set('preoxygenation', x)} />
-                    <Txt label="Preinduction" v={data.preinduction} on={(x) => set('preinduction', x)} />
-                    <Txt label="Induction" v={data.induction} on={(x) => set('induction', x)} />
-                </div>
+        <H>Induction</H>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <Txt label="Premedication" v={data.premedication} on={(x) => set('premedication', x)} />
+          <Txt
+            label="Preoxygenation"
+            v={data.preoxygenation}
+            on={(x) => set('preoxygenation', x)}
+          />
+          <Txt label="Preinduction" v={data.preinduction} on={(x) => set('preinduction', x)} />
+          <Txt label="Induction" v={data.induction} on={(x) => set('induction', x)} />
+        </div>
 
-                <H>Intubation</H>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <Txt label="Intubation" v={data.intubation} on={(x) => set('intubation', x)} />
-                    <Sel label="Done with" v={data.doneWith} on={(x) => set('doneWith', x)} options={['Direct Laryngoscopy', 'Video Laryngoscopy']} />
-                    <Txt label="MCLS Grade" v={data.mclsGrade} on={(x) => set('mclsGrade', x)} />
-                    <Txt label="ETT No." v={data.ettNo} on={(x) => set('ettNo', x)} />
-                    <Sel label="Type — route" v={data.typeRoute} on={(x) => set('typeRoute', x)} options={['Oral', 'nasal']} />
-                    <Sel label="Type — tube" v={data.typeTube} on={(x) => set('typeTube', x)} options={['Portex', 'flexometallic']} />
-                    <Sel label="Type — cuff" v={data.typeCuff} on={(x) => set('typeCuff', x)} options={['Cuffed', 'Uncuffed']} />
-                    <Txt label="Fixed at (cm)" v={data.fixedAt} on={(x) => set('fixedAt', x)} />
-                    <Sel label="Throat pack" v={data.throatPack} on={(x) => set('throatPack', x)} options={['Y', 'N']} />
-                    <Sel label="Circuit used" v={data.circuit} on={(x) => set('circuit', x)} options={['Closed', 'Bains', 'JR']} />
-                    <Sel label="Ventilation" v={data.ventMode} on={(x) => set('ventMode', x)} options={['IPPV', 'Spontaneously Breathing on facemask', 'LMA']} />
-                </div>
+        <H>Intubation</H>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <Txt label="Intubation" v={data.intubation} on={(x) => set('intubation', x)} />
+          <Sel
+            label="Done with"
+            v={data.doneWith}
+            on={(x) => set('doneWith', x)}
+            options={['Direct Laryngoscopy', 'Video Laryngoscopy']}
+          />
+          <Txt label="MCLS Grade" v={data.mclsGrade} on={(x) => set('mclsGrade', x)} />
+          <Txt label="ETT No." v={data.ettNo} on={(x) => set('ettNo', x)} />
+          <Sel
+            label="Type — route"
+            v={data.typeRoute}
+            on={(x) => set('typeRoute', x)}
+            options={['Oral', 'nasal']}
+          />
+          <Sel
+            label="Type — tube"
+            v={data.typeTube}
+            on={(x) => set('typeTube', x)}
+            options={['Portex', 'flexometallic']}
+          />
+          <Sel
+            label="Type — cuff"
+            v={data.typeCuff}
+            on={(x) => set('typeCuff', x)}
+            options={['Cuffed', 'Uncuffed']}
+          />
+          <Txt label="Fixed at (cm)" v={data.fixedAt} on={(x) => set('fixedAt', x)} />
+          <Sel
+            label="Throat pack"
+            v={data.throatPack}
+            on={(x) => set('throatPack', x)}
+            options={['Y', 'N']}
+          />
+          <Sel
+            label="Circuit used"
+            v={data.circuit}
+            on={(x) => set('circuit', x)}
+            options={['Closed', 'Bains', 'JR']}
+          />
+          <Sel
+            label="Ventilation"
+            v={data.ventMode}
+            on={(x) => set('ventMode', x)}
+            options={['IPPV', 'Spontaneously Breathing on facemask', 'LMA']}
+          />
+        </div>
 
-                <H>Reversal &amp; Extubation</H>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <Sel label="Throat Pack Removed" v={data.throatPackRemoved} on={(x) => set('throatPackRemoved', x)} options={['Y', 'N']} />
-                    <Txt label="Inj Neostigmine (mg IV)" v={data.neostigmine} on={(x) => set('neostigmine', x)} />
-                    <Txt label="Inj Glycopyrrolate (mg IV)" v={data.glycopyrrolate} on={(x) => set('glycopyrrolate', x)} />
-                    <Txt label="Extubation" v={data.extubation} on={(x) => set('extubation', x)} />
-                </div>
+        <H>Reversal &amp; Extubation</H>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <Sel
+            label="Throat Pack Removed"
+            v={data.throatPackRemoved}
+            on={(x) => set('throatPackRemoved', x)}
+            options={['Y', 'N']}
+          />
+          <Txt
+            label="Inj Neostigmine (mg IV)"
+            v={data.neostigmine}
+            on={(x) => set('neostigmine', x)}
+          />
+          <Txt
+            label="Inj Glycopyrrolate (mg IV)"
+            v={data.glycopyrrolate}
+            on={(x) => set('glycopyrrolate', x)}
+          />
+          <Txt label="Extubation" v={data.extubation} on={(x) => set('extubation', x)} />
+        </div>
 
-                <H>Post-op</H>
-                <Txt label="Post-op condition" v={data.postOpCondition} on={(x) => set('postOpCondition', x)} />
-                <div className="grid grid-cols-3 gap-2">
-                    <Txt label="P" v={data.p} on={(x) => set('p', x)} />
-                    <Txt label="BP" v={data.bp} on={(x) => set('bp', x)} />
-                    <Txt label="SpO2" v={data.spo2} on={(x) => set('spo2', x)} />
-                    <Txt label="Tone" v={data.tone} on={(x) => set('tone', x)} />
-                    <Txt label="Reflexes" v={data.reflexes} on={(x) => set('reflexes', x)} />
-                    <Txt label="Obeying commands" v={data.obeying} on={(x) => set('obeying', x)} />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <Sel label="Shifted to" v={data.shiftedTo} on={(x) => set('shiftedTo', x)} options={['ICU', 'Ward', 'Room']} />
-                    <Txt label="Shifted at (time)" v={data.shiftedAt} on={(x) => set('shiftedAt', x)} />
-                </div>
-                <Txt label="Anaesthesiologist Name" v={data.anaesthetistName} on={(x) => set('anaesthetistName', x)} />
-                <p className="text-xs text-gray-400">Signature prints blank for offline signing.</p>
-            </div>
-        )}
-    />
+        <H>Post-op</H>
+        <Txt
+          label="Post-op condition"
+          v={data.postOpCondition}
+          on={(x) => set('postOpCondition', x)}
+        />
+        <div className="grid grid-cols-3 gap-2">
+          <Txt label="P" v={data.p} on={(x) => set('p', x)} />
+          <Txt label="BP" v={data.bp} on={(x) => set('bp', x)} />
+          <Txt label="SpO2" v={data.spo2} on={(x) => set('spo2', x)} />
+          <Txt label="Tone" v={data.tone} on={(x) => set('tone', x)} />
+          <Txt label="Reflexes" v={data.reflexes} on={(x) => set('reflexes', x)} />
+          <Txt label="Obeying commands" v={data.obeying} on={(x) => set('obeying', x)} />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <Sel
+            label="Shifted to"
+            v={data.shiftedTo}
+            on={(x) => set('shiftedTo', x)}
+            options={['ICU', 'Ward', 'Room']}
+          />
+          <Txt label="Shifted at (time)" v={data.shiftedAt} on={(x) => set('shiftedAt', x)} />
+        </div>
+        <Txt
+          label="Anaesthesiologist Name"
+          v={data.anaesthetistName}
+          on={(x) => set('anaesthetistName', x)}
+        />
+        <p className="text-xs text-gray-400">Signature prints blank for offline signing.</p>
+      </div>
+    )}
+  />
 );
 
 export default GeneralAnaesthesiaRecordForm;

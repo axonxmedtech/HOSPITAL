@@ -12,26 +12,32 @@ import SurgeryFormFrame from './SurgeryFormFrame';
 const esc = escapeHtml;
 
 const ANAES_TYPES = [
-    'General Anaesthesia',
-    'Nerve Block',
-    'Monitored Anaesthesia care with sedation',
-    'Spinal Anaesthesia',
-    'Monitored Anaesthesia care without sedation',
-    'Epidural Anaesthesia / Analgesia',
+  'General Anaesthesia',
+  'Nerve Block',
+  'Monitored Anaesthesia care with sedation',
+  'Spinal Anaesthesia',
+  'Monitored Anaesthesia care without sedation',
+  'Epidural Anaesthesia / Analgesia',
 ];
 
 const buildPrintHtml = (data, prefill, hospital) => {
-    const f = prefill || {};
-    const hname = esc(titleCase(hospital.name)) || 'Hospital';
-    const patientName = esc(titleCase([f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' ')));
-    const sex = (f.sex || '').toUpperCase();
-    const isM = sex.startsWith('M'), isF = sex.startsWith('F');
-    const logo = hospital.logo ? `<img src="${esc(hospital.logo)}" onerror="this.style.display='none'" style="height:52px;width:auto;object-fit:contain"/>` : '';
-    const types = Array.isArray(data.anaesthesiaTypes) ? data.anaesthesiaTypes : [];
-    const cb = (label) => `<span class="cb">${types.includes(label) ? '✓' : '&nbsp;'}</span> ${label}`;
-    const anaes = esc(titleCase(data.anaesthetistName || ''));
+  const f = prefill || {};
+  const hname = esc(titleCase(hospital.name)) || 'Hospital';
+  const patientName = esc(
+    titleCase([f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' '))
+  );
+  const sex = (f.sex || '').toUpperCase();
+  const isM = sex.startsWith('M'),
+    isF = sex.startsWith('F');
+  const logo = hospital.logo
+    ? `<img src="${esc(hospital.logo)}" onerror="this.style.display='none'" style="height:52px;width:auto;object-fit:contain"/>`
+    : '';
+  const types = Array.isArray(data.anaesthesiaTypes) ? data.anaesthesiaTypes : [];
+  const cb = (label) =>
+    `<span class="cb">${types.includes(label) ? '✓' : '&nbsp;'}</span> ${label}`;
+  const anaes = esc(titleCase(data.anaesthetistName || ''));
 
-    return `<!doctype html><html><head><meta charset="utf-8"><title>Informed Consent Anaesthesia</title>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Informed Consent Anaesthesia</title>
     <style>
       @page { size: A4; margin: 9mm; }
       * { box-sizing: border-box; }
@@ -132,61 +138,90 @@ const buildPrintHtml = (data, prefill, hospital) => {
 };
 
 const Labelled = ({ label, children }) => (
-    <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
-        {children}
-    </div>
+  <div>
+    <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
+    {children}
+  </div>
 );
 
 const InformedConsentAnaesthesiaForm = ({ admissionId, onClose, readOnly = false }) => (
-    <SurgeryFormFrame
-        admissionId={admissionId}
-        readOnly={readOnly}
-        formType="INFORMED_CONSENT_ANAES"
-        title="Informed Consent — Anaesthesia"
-        code="VH/NABH/OT/02/2026"
-        defaults={{ date: '', time: '', riskFactor: '', anaesthetistName: '', anaesthesiaTypes: [] }}
-        buildPrintHtml={buildPrintHtml}
-        onClose={onClose}
-        renderFields={({ data, set, prefill }) => {
-            const types = Array.isArray(data.anaesthesiaTypes) ? data.anaesthesiaTypes : [];
-            const toggle = (t) => set('anaesthesiaTypes', types.includes(t) ? types.filter((x) => x !== t) : [...types, t]);
-            return (
-                <div className="space-y-4">
-                    <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600">
-                        For <b>{titleCase([prefill.patientSurname, prefill.patientFirstName, prefill.husbandFatherName].filter(Boolean).join(' ')) || '—'}</b>
-                        {prefill.ipdRegistrationNo ? ` · IPD ${prefill.ipdRegistrationNo}` : ''}
-                        {prefill.category ? ` · ${prefill.category}` : ''} — header fills automatically on the printout.
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <Labelled label="Date"><input type="date" value={data.date} onChange={(e) => set('date', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" /></Labelled>
-                        <Labelled label="Time"><input type="time" value={data.time} onChange={(e) => set('time', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" /></Labelled>
-                    </div>
-                    <Labelled label="Type of Anaesthesia Planned">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {ANAES_TYPES.map((t) => (
-                                <label key={t} className="inline-flex items-center gap-2 text-sm">
-                                    <input type="checkbox" checked={types.includes(t)} onChange={() => toggle(t)} />
-                                    {t}
-                                </label>
-                            ))}
-                        </div>
-                    </Labelled>
-                    <Labelled label="Individual risk factor (optional)">
-                        <input value={data.riskFactor} onChange={(e) => set('riskFactor', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="Any specific risk factor" />
-                    </Labelled>
-                    <Labelled label="Anaesthetist's Name">
-                        <input value={data.anaesthetistName} onChange={(e) => set('anaesthetistName', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="Anaesthetist's name" />
-                    </Labelled>
-                    <p className="text-xs text-gray-400">Signature lines print blank for offline signing.</p>
-                </div>
-            );
-        }}
-    />
+  <SurgeryFormFrame
+    admissionId={admissionId}
+    readOnly={readOnly}
+    formType="INFORMED_CONSENT_ANAES"
+    title="Informed Consent — Anaesthesia"
+    code="VH/NABH/OT/02/2026"
+    defaults={{ date: '', time: '', riskFactor: '', anaesthetistName: '', anaesthesiaTypes: [] }}
+    buildPrintHtml={buildPrintHtml}
+    onClose={onClose}
+    renderFields={({ data, set, prefill }) => {
+      const types = Array.isArray(data.anaesthesiaTypes) ? data.anaesthesiaTypes : [];
+      const toggle = (t) =>
+        set('anaesthesiaTypes', types.includes(t) ? types.filter((x) => x !== t) : [...types, t]);
+      return (
+        <div className="space-y-4">
+          <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600">
+            For{' '}
+            <b>
+              {titleCase(
+                [prefill.patientSurname, prefill.patientFirstName, prefill.husbandFatherName]
+                  .filter(Boolean)
+                  .join(' ')
+              ) || '—'}
+            </b>
+            {prefill.ipdRegistrationNo ? ` · IPD ${prefill.ipdRegistrationNo}` : ''}
+            {prefill.category ? ` · ${prefill.category}` : ''} — header fills automatically on the
+            printout.
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Labelled label="Date">
+              <input
+                type="date"
+                value={data.date}
+                onChange={(e) => set('date', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              />
+            </Labelled>
+            <Labelled label="Time">
+              <input
+                type="time"
+                value={data.time}
+                onChange={(e) => set('time', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              />
+            </Labelled>
+          </div>
+          <Labelled label="Type of Anaesthesia Planned">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {ANAES_TYPES.map((t) => (
+                <label key={t} className="inline-flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={types.includes(t)} onChange={() => toggle(t)} />
+                  {t}
+                </label>
+              ))}
+            </div>
+          </Labelled>
+          <Labelled label="Individual risk factor (optional)">
+            <input
+              value={data.riskFactor}
+              onChange={(e) => set('riskFactor', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              placeholder="Any specific risk factor"
+            />
+          </Labelled>
+          <Labelled label="Anaesthetist's Name">
+            <input
+              value={data.anaesthetistName}
+              onChange={(e) => set('anaesthetistName', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              placeholder="Anaesthetist's name"
+            />
+          </Labelled>
+          <p className="text-xs text-gray-400">Signature lines print blank for offline signing.</p>
+        </div>
+      );
+    }}
+  />
 );
 
 export default InformedConsentAnaesthesiaForm;

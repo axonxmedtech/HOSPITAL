@@ -13,13 +13,13 @@
  * @returns {string} the HTML-escaped string
  */
 export const escapeHtml = (v) =>
-    v == null
-        ? ''
-        : String(v)
-              .replace(/&/g, '&amp;')
-              .replace(/</g, '&lt;')
-              .replace(/>/g, '&gt;')
-              .replace(/"/g, '&quot;')
-              .replace(/'/g, '&#39;');
+  v == null
+    ? ''
+    : String(v)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 
 export default escapeHtml;

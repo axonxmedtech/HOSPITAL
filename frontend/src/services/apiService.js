@@ -2,12 +2,12 @@ import axios from 'axios';
 
 /**
  * API Service - Axios wrapper for making HTTP requests
- * 
+ *
  * This service:
  * - Configures base URL for backend API
  * - Automatically includes JWT token in request headers
  * - Handles authentication errors
- * 
+ *
  * @author HMS Team
  * @version Phase-1
  */
@@ -21,7 +21,7 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000,            // 30 second request timeout
+  timeout: 30000, // 30 second request timeout
   maxContentLength: 5242880, // 5 MB response cap
 });
 
@@ -131,7 +131,10 @@ apiClient.interceptors.response.use(
       return handleResponseError(error);
     }
 
-    const shouldRetry = !error.response || (error.response.status >= 500 && error.response.status <= 599) || error.code === 'ECONNABORTED';
+    const shouldRetry =
+      !error.response ||
+      (error.response.status >= 500 && error.response.status <= 599) ||
+      error.code === 'ECONNABORTED';
 
     if (shouldRetry) {
       config.__retryCount += 1;

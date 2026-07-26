@@ -16,6 +16,7 @@ import { useToast } from '../../context/ToastContext';
 import { API_BASE_URL } from '../../services/apiService';
 import authService from '../../services/authService';
 import platformService from '../../services/platformService';
+import { backdropProps } from '../../utils/modalA11y';
 import { validateForm } from '../../utils/validation';
 
 /**
@@ -1149,19 +1150,9 @@ const PlatformDashboard = () => {
       {viewTicket && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          role="button"
-          tabIndex={-1}
-          aria-label="Close dialog"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setViewTicket(null);
-            }
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              setViewTicket(null);
-            }
-          }}
+          {...backdropProps(() => {
+            setViewTicket(null);
+          })}
         >
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-y-auto">
             <div className="flex items-start justify-between p-6 border-b border-gray-100">
@@ -1292,19 +1283,9 @@ const PlatformDashboard = () => {
           return (
             <div
               className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-              role="button"
-              tabIndex={-1}
-              aria-label="Close dialog"
-              onClick={(e) => {
-                if (e.target === e.currentTarget) {
-                  setShowCreateModal(false);
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  setShowCreateModal(false);
-                }
-              }}
+              {...backdropProps(() => {
+                setShowCreateModal(false);
+              })}
             >
               <div className="bg-white border border-gray-200 w-full max-w-lg max-h-[90vh] overflow-y-auto">
                 <div className="p-6">
@@ -1525,19 +1506,9 @@ const PlatformDashboard = () => {
       {showFaqModal && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          role="button"
-          tabIndex={-1}
-          aria-label="Close dialog"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowFaqModal(false);
-            }
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              setShowFaqModal(false);
-            }
-          }}
+          {...backdropProps(() => {
+            setShowFaqModal(false);
+          })}
         >
           <div className="bg-white rounded-2xl border border-gray-200 w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="p-6">
@@ -1633,19 +1604,9 @@ const PlatformDashboard = () => {
       {editHospitalModal.isOpen && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          role="button"
-          tabIndex={-1}
-          aria-label="Close dialog"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setEditHospitalModal({ ...editHospitalModal, isOpen: false });
-            }
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              setEditHospitalModal({ ...editHospitalModal, isOpen: false });
-            }
-          }}
+          {...backdropProps(() => {
+            setEditHospitalModal({ ...editHospitalModal, isOpen: false });
+          })}
         >
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="p-8">
@@ -1878,19 +1839,9 @@ const PlatformDashboard = () => {
       {passwordModal.isOpen && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          role="button"
-          tabIndex={-1}
-          aria-label="Close dialog"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setPasswordModal({ ...passwordModal, isOpen: false });
-            }
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              setPasswordModal({ ...passwordModal, isOpen: false });
-            }
-          }}
+          {...backdropProps(() => {
+            setPasswordModal({ ...passwordModal, isOpen: false });
+          })}
         >
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="p-8 text-center">
@@ -1991,15 +1942,7 @@ const SetPasswordModal = ({ hospitalId, onClose, onSuccess }) => {
   return (
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-      role="button"
-      tabIndex={-1}
-      aria-label="Close dialog"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose();
-      }}
+      {...backdropProps(onClose)}
     >
       <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl">
         {/* Header */}
@@ -2422,15 +2365,7 @@ const SuperAdminProfileModal = ({ user, onClose }) => {
   return (
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-      role="button"
-      tabIndex={-1}
-      aria-label="Close dialog"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose();
-      }}
+      {...backdropProps(onClose)}
     >
       <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import nurseService from '../../../services/nurseService';
+import { backdropProps } from '../../../utils/modalA11y';
 
 /**
  * MyTasksView - lists tasks assigned to the logged-in nurse (Phase 1 Nurse module, M7).
@@ -225,19 +226,9 @@ const MyTasksView = ({ refreshKey }) => {
       {completionModal.isOpen && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          role="button"
-          tabIndex={-1}
-          aria-label="Close dialog"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setCompletionModal({ isOpen: false, taskPublicId: null });
-            }
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              setCompletionModal({ isOpen: false, taskPublicId: null });
-            }
-          }}
+          {...backdropProps(() => {
+            setCompletionModal({ isOpen: false, taskPublicId: null });
+          })}
         >
           <div className="bg-white rounded-lg border border-gray-200 w-full max-w-sm">
             <div className="p-6">

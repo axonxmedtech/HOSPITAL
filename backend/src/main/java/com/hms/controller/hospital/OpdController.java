@@ -110,7 +110,7 @@ public class OpdController {
             headers.add("Content-Disposition", "inline; filename=case_" + opd.getCaseId() + ".pdf");
             return ResponseEntity.ok().headers(headers).body(pdfBytes);
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Failed to generate case-paper PDF", e);
             return ResponseEntity.status(500).build();
         }
     }

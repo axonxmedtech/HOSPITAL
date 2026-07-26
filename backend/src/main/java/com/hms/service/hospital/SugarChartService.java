@@ -112,7 +112,8 @@ public class SugarChartService {
         if (!e.getNurseUserId().equals(securityHelper.getCurrentUserId())) {
             throw new AccessDeniedException("Only the author can modify this entry");
         }
-        if (Duration.between(e.getCreatedAt(), LocalDateTime.now()).compareTo(EDIT_WINDOW) > 0) {
+        if (Duration.between(e.getCreatedAt().atZone(java.time.ZoneId.systemDefault()),
+                java.time.ZonedDateTime.now()).compareTo(EDIT_WINDOW) > 0) {
             throw new IllegalArgumentException("Edit window has passed for this entry");
         }
         return e;

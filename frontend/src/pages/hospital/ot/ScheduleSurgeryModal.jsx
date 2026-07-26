@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useToast } from '../../../context/ToastContext';
 import otService from '../../../services/otService';
 import wardService from '../../../services/wardService';
+import { backdropProps } from '../../../utils/modalA11y';
 
 /**
  * ScheduleSurgeryModal - assign a surgeon + date/time + theatre to a surgery.
@@ -88,15 +89,7 @@ const ScheduleSurgeryModal = ({ surgery, onClose, onScheduled }) => {
   return (
     <div
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-      role="button"
-      tabIndex={-1}
-      aria-label="Close dialog"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose();
-      }}
+      {...backdropProps(onClose)}
     >
       <div className="bg-white rounded-2xl w-full max-w-lg p-6">
         <h2 className="text-xl font-bold text-gray-900 mb-1">Schedule Surgery</h2>

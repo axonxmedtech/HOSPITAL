@@ -14,21 +14,29 @@ import SurgeryFormFrame from './SurgeryFormFrame';
 const esc = escapeHtml;
 
 const buildPrintHtml = (data, prefill, hospital) => {
-    const f = prefill || {};
-    const d = data || {};
-    const hname = esc(titleCase(hospital.name)) || 'Hospital';
-    const patientName = esc(titleCase([f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' ')));
-    const sex = (f.sex || '').toUpperCase();
-    const isM = sex.startsWith('M'), isF = sex.startsWith('F');
-    const logo = hospital.logo ? `<img src="${esc(hospital.logo)}" onerror="this.style.display='none'" style="height:52px;width:auto;object-fit:contain"/>` : '';
-    const ln = (v, w = 90) => `<span class="line" style="min-width:${w}px">${esc(v)}</span>`;
-    const pick = (opts, sel) => opts.map((o) => (sel === o ? `<b class="pk">${o}</b>` : o)).join(' / ');
-    const body = buildChecklistBody(d);
+  const f = prefill || {};
+  const d = data || {};
+  const hname = esc(titleCase(hospital.name)) || 'Hospital';
+  const patientName = esc(
+    titleCase([f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' '))
+  );
+  const sex = (f.sex || '').toUpperCase();
+  const isM = sex.startsWith('M'),
+    isF = sex.startsWith('F');
+  const logo = hospital.logo
+    ? `<img src="${esc(hospital.logo)}" onerror="this.style.display='none'" style="height:52px;width:auto;object-fit:contain"/>`
+    : '';
+  const ln = (v, w = 90) => `<span class="line" style="min-width:${w}px">${esc(v)}</span>`;
+  const pick = (opts, sel) =>
+    opts.map((o) => (sel === o ? `<b class="pk">${o}</b>` : o)).join(' / ');
+  const body = buildChecklistBody(d);
 
-    // Page 2 — blank Input/Output grid (26 rows for bedside entry).
-    const ioRows = Array.from({ length: 26 }).map(() => '<tr>' + '<td></td>'.repeat(10) + '</tr>').join('');
+  // Page 2 — blank Input/Output grid (26 rows for bedside entry).
+  const ioRows = Array.from({ length: 26 })
+    .map(() => '<tr>' + '<td></td>'.repeat(10) + '</tr>')
+    .join('');
 
-    return `<!doctype html><html><head><meta charset="utf-8"><title>Post-Operative Checklist</title>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Post-Operative Checklist</title>
     <style>
       @page { size: A4; margin: 8mm; }
       * { box-sizing: border-box; }
@@ -123,65 +131,104 @@ const buildPrintHtml = (data, prefill, hospital) => {
 };
 
 const Txt = ({ label, v, on }) => (
-    <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
-        <input value={v || ''} onChange={(e) => on(e.target.value)} className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm" />
-    </div>
+  <div>
+    <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
+    <input
+      value={v || ''}
+      onChange={(e) => on(e.target.value)}
+      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+    />
+  </div>
 );
 const Sel = ({ label, v, on, options }) => (
-    <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
-        <select value={v || ''} onChange={(e) => on(e.target.value)} className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm">
-            <option value="">—</option>{options.map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
-    </div>
+  <div>
+    <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
+    <select
+      value={v || ''}
+      onChange={(e) => on(e.target.value)}
+      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+    >
+      <option value="">—</option>
+      {options.map((o) => (
+        <option key={o} value={o}>
+          {o}
+        </option>
+      ))}
+    </select>
+  </div>
 );
 
 const PostOperativeChecklist02Form = ({ admissionId, onClose, readOnly = false }) => (
-    <SurgeryFormFrame
-        admissionId={admissionId}
-        readOnly={readOnly}
-        formType="POST_OP_CHECKLIST_02"
-        title="Post-Operative Checklist (with I/O page)"
-        code="VH/NABH/OT/02/2026"
-        defaults={{}}
-        buildPrintHtml={buildPrintHtml}
-        onClose={onClose}
-        renderFields={({ data, set, prefill }) => (
-            <div className="space-y-2">
-                <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600">
-                    For <b>{titleCase([prefill.patientSurname, prefill.patientFirstName, prefill.husbandFatherName].filter(Boolean).join(' ')) || '—'}</b>
-                    {prefill.ipdRegistrationNo ? ` · IPD ${prefill.ipdRegistrationNo}` : ''} — header fills automatically. Page 2 prints a blank I/O grid.
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <Txt label="MLC No." v={data.mlcNo} on={(x) => set('mlcNo', x)} />
-                    <Txt label="Under Dr." v={data.underDr} on={(x) => set('underDr', x)} />
-                    <Txt label="Surgeon" v={data.surgeon} on={(x) => set('surgeon', x)} />
-                    <Txt label="Name of Anesthetist" v={data.nameOfAnesthetist} on={(x) => set('nameOfAnesthetist', x)} />
-                    <Sel label="Operation" v={data.operationDone} on={(x) => set('operationDone', x)} options={['Done', 'Not Done']} />
-                    <Sel label="Type of Anesthesia" v={data.typeOfAnesthesia} on={(x) => set('typeOfAnesthesia', x)} options={['GA', 'LA']} />
-                </div>
+  <SurgeryFormFrame
+    admissionId={admissionId}
+    readOnly={readOnly}
+    formType="POST_OP_CHECKLIST_02"
+    title="Post-Operative Checklist (with I/O page)"
+    code="VH/NABH/OT/02/2026"
+    defaults={{}}
+    buildPrintHtml={buildPrintHtml}
+    onClose={onClose}
+    renderFields={({ data, set, prefill }) => (
+      <div className="space-y-2">
+        <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600">
+          For{' '}
+          <b>
+            {titleCase(
+              [prefill.patientSurname, prefill.patientFirstName, prefill.husbandFatherName]
+                .filter(Boolean)
+                .join(' ')
+            ) || '—'}
+          </b>
+          {prefill.ipdRegistrationNo ? ` · IPD ${prefill.ipdRegistrationNo}` : ''} — header fills
+          automatically. Page 2 prints a blank I/O grid.
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <Txt label="MLC No." v={data.mlcNo} on={(x) => set('mlcNo', x)} />
+          <Txt label="Under Dr." v={data.underDr} on={(x) => set('underDr', x)} />
+          <Txt label="Surgeon" v={data.surgeon} on={(x) => set('surgeon', x)} />
+          <Txt
+            label="Name of Anesthetist"
+            v={data.nameOfAnesthetist}
+            on={(x) => set('nameOfAnesthetist', x)}
+          />
+          <Sel
+            label="Operation"
+            v={data.operationDone}
+            on={(x) => set('operationDone', x)}
+            options={['Done', 'Not Done']}
+          />
+          <Sel
+            label="Type of Anesthesia"
+            v={data.typeOfAnesthesia}
+            on={(x) => set('typeOfAnesthesia', x)}
+            options={['GA', 'LA']}
+          />
+        </div>
 
-                <div className="mt-2 rounded-lg border border-gray-200">
-                    {GROUPS.map((g) => (
-                        <div key={g.name}>
-                            <div className="bg-gray-100 px-3 py-1 text-[11px] font-bold text-gray-700 uppercase tracking-wide">{g.name}</div>
-                            <div className="px-3">
-                                {g.items.map((it) => <ChecklistRow key={it.k} it={it} data={data} set={set} />)}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
-                    <Txt label="Time" v={data.bTime} on={(x) => set('bTime', x)} />
-                    <Txt label="Date" v={data.bDate} on={(x) => set('bDate', x)} />
-                    <Txt label="Place" v={data.bPlace} on={(x) => set('bPlace', x)} />
-                    <Txt label="Place (2)" v={data.bPlace2} on={(x) => set('bPlace2', x)} />
-                </div>
+        <div className="mt-2 rounded-lg border border-gray-200">
+          {GROUPS.map((g) => (
+            <div key={g.name}>
+              <div className="bg-gray-100 px-3 py-1 text-[11px] font-bold text-gray-700 uppercase tracking-wide">
+                {g.name}
+              </div>
+              <div className="px-3">
+                {g.items.map((it) => (
+                  <ChecklistRow key={it.k} it={it} data={data} set={set} />
+                ))}
+              </div>
             </div>
-        )}
-    />
+          ))}
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
+          <Txt label="Time" v={data.bTime} on={(x) => set('bTime', x)} />
+          <Txt label="Date" v={data.bDate} on={(x) => set('bDate', x)} />
+          <Txt label="Place" v={data.bPlace} on={(x) => set('bPlace', x)} />
+          <Txt label="Place (2)" v={data.bPlace2} on={(x) => set('bPlace2', x)} />
+        </div>
+      </div>
+    )}
+  />
 );
 
 export default PostOperativeChecklist02Form;

@@ -98,7 +98,8 @@ public class VitalsService {
         if (!v.getRecordedByUserId().equals(securityHelper.getCurrentUserId())) {
             throw new AccessDeniedException("Only the nurse who recorded these vitals can edit them");
         }
-        if (Duration.between(v.getCreatedAt(), LocalDateTime.now()).compareTo(EDIT_WINDOW) > 0) {
+        if (Duration.between(v.getCreatedAt().atZone(java.time.ZoneId.systemDefault()),
+                java.time.ZonedDateTime.now()).compareTo(EDIT_WINDOW) > 0) {
             throw new IllegalArgumentException("Edit window has passed for this vitals record");
         }
         validate(req);

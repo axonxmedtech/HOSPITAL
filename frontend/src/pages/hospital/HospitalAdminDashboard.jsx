@@ -19,30 +19,39 @@ import {
 import ActionMenu from '../../components/ActionMenu';
 import AppointmentModal from '../../components/AppointmentModal';
 import ConfirmationModal from '../../components/ConfirmationModal';
+import DataTable from '../../components/DataTable';
+import EmptyState from '../../components/EmptyState';
+import HistoryDrawer from '../../components/HistoryDrawer';
+import HospitalInventoryTab from '../../components/HospitalInventoryTab';
+import InClinicPresetsManager from '../../components/InClinicPresetsManager';
+import IpdAdmitModal from '../../components/IpdAdmitModal';
+import LowStockBanner from '../../components/LowStockBanner';
+import MedicineInventoryTab from '../../components/MedicineInventoryTab';
+import Navbar from '../../components/Navbar';
 import NotePresetsManager from '../../components/NotePresetsManager';
+import OpdPaymentFields, {
+  isPayFirst,
+  validateOpdPayment,
+} from '../../components/OpdPaymentFields';
+import PageHeader from '../../components/PageHeader';
+import PatientDetailsModal from '../../components/PatientDetailsModal';
+import PatientModal from '../../components/PatientModal';
+import PrescriptionPresetsManager from '../../components/PrescriptionPresetsManager';
 import { useToast } from '../../context/ToastContext';
+import { backdropProps } from '../../utils/modalA11y';
 import authService from '../../services/authService';
+import { printHtml } from '../../utils/printHtml';
+import { printPdf, printBlob } from '../../utils/printPdf';
+import { validateForm } from '../../utils/validation';
 import BillingTable from './BillingTable';
 import hospitalService from '../../services/hospitalService';
 import wardService from '../../services/wardService';
 import timeSlotService from '../../services/timeSlotService';
 // BUG-028: single source-of-truth for base URL
-import PrescriptionPresetsManager from '../../components/PrescriptionPresetsManager';
-import InClinicPresetsManager from '../../components/InClinicPresetsManager';
-import { printPdf, printBlob } from '../../utils/printPdf';
-import { printHtml } from '../../utils/printHtml';
-import { validateForm } from '../../utils/validation';
-import EmptyState from '../../components/EmptyState';
-import PatientModal from '../../components/PatientModal';
-import PatientDetailsModal from '../../components/PatientDetailsModal';
 import StaffDetailsModal from '../../components/StaffDetailsModal';
 import ProfileModal from '../../components/ProfileModal';
 import StatusBadge from '../../components/StatusBadge';
-import DataTable from '../../components/DataTable';
-import HistoryDrawer from '../../components/HistoryDrawer';
 import Sidebar from '../../components/Sidebar';
-import Navbar from '../../components/Navbar';
-import PageHeader from '../../components/PageHeader';
 import FilesAndAccessCard from './FilesAndAccessCard';
 import HospitalCalendar from './HospitalCalendar';
 import OtAnalyticsCard from './OtAnalyticsCard';
@@ -52,12 +61,8 @@ import OtRoomsCard from './OtRoomsCard';
 import SuppliersView from './pharmacy/SuppliersView';
 import PrintPaymentSettingsCard from './PrintPaymentSettingsCard';
 import TimeSlotsView from './TimeSlotsView';
-import WardsAndBeds from './WardsAndBeds';
-import OpdPaymentFields, {
-  isPayFirst,
-  validateOpdPayment,
-} from '../../components/OpdPaymentFields';
 import VitalsSettingsCard from './VitalsSettingsCard';
+import WardsAndBeds from './WardsAndBeds';
 import WardModal from '../../components/WardModal';
 import useWebSocket from '../../hooks/useWebSocket';
 import useEnabledVitals from '../../hooks/useEnabledVitals';
@@ -73,11 +78,7 @@ import {
 import reportsApi from '../../services/pharmacy/reportsApi';
 import salesApi from '../../services/pharmacy/salesApi';
 import branchesApi from '../../services/pharmacy/branchesApi';
-import MedicineInventoryTab from '../../components/MedicineInventoryTab';
-import HospitalInventoryTab from '../../components/HospitalInventoryTab';
 import inventoryApi from '../../services/pharmacy/inventoryApi';
-import IpdAdmitModal from '../../components/IpdAdmitModal';
-import LowStockBanner from '../../components/LowStockBanner';
 /**
  * HospitalAdminDashboard - Hospital Admin dashboard
  *
@@ -7607,15 +7608,7 @@ const AddModal = ({
   return (
     <div
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-      role="button"
-      tabIndex={-1}
-      aria-label="Close dialog"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose();
-      }}
+      {...backdropProps(onClose)}
     >
       <div className="bg-white rounded-lg border border-gray-200 w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="p-6">
@@ -9093,15 +9086,7 @@ const AssignNurseModal = ({ row, nurseOptions, onSubmit, onClose }) => {
   return (
     <div
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-      role="button"
-      tabIndex={-1}
-      aria-label="Close dialog"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose();
-      }}
+      {...backdropProps(onClose)}
     >
       <div className="bg-white rounded-lg border border-gray-200 w-full max-w-md">
         <div className="p-6">
@@ -9313,15 +9298,7 @@ const CreateNurseTaskModal = ({ nurseOptions, activeAdmissions, onSubmit, onClos
   return (
     <div
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-      role="button"
-      tabIndex={-1}
-      aria-label="Close dialog"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose();
-      }}
+      {...backdropProps(onClose)}
     >
       <div className="bg-white rounded-lg border border-gray-200 w-full max-w-md">
         <div className="p-6">

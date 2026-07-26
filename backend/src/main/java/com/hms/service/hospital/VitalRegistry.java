@@ -29,6 +29,6 @@ public final class VitalRegistry {
 
     /** Derive a stable key from a custom vital's name: "Random Sugar" -> "RANDOM_SUGAR". */
     public static String toKey(String name) {
-        return name.trim().toUpperCase().replaceAll("[^A-Z0-9]+", "_").replaceAll("^_|_$", "");
+        return name.trim().toUpperCase().replaceAll("[^A-Z0-9]+", "_").replaceAll("(^_)|(_$)", "");
     }
 }

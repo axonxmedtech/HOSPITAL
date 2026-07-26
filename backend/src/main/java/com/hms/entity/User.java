@@ -51,6 +51,10 @@ public class User {
     @Column(name = "custom_id")
     private String customId;
 
+    // Reused SecureRandom for the numeric suffix of custom IDs (a single shared, non-predictable
+    // instance rather than a new java.util.Random() per call).
+    private static final java.security.SecureRandom CUSTOM_ID_RANDOM = new java.security.SecureRandom();
+
     @PrePersist
     public void generateIds() {
         if (this.publicId == null) {
@@ -66,7 +70,7 @@ public class User {
                 prefix = "DOC";
             else if ("SUPER_ADMIN".equals(this.role))
                 prefix = "SUP";
-            this.customId = prefix + (1000 + new java.util.Random().nextInt(9000));
+            this.customId = prefix + (1000 + CUSTOM_ID_RANDOM.nextInt(9000));
         }
     }
 

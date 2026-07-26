@@ -8,15 +8,15 @@ import PresetModalShell from './PresetModalShell';
  * screen.
  */
 const ManagePrescriptionPresetsModal = ({ isOpen, onClose }) => (
-    <PresetModalShell
-        isOpen={isOpen}
-        onClose={onClose}
-        title="Manage Prescription Presets"
-        titleId="manage-prescription-presets-title"
-        maxWidthClass="max-w-2xl"
-    >
-        <PrescriptionPresetsManager />
-    </PresetModalShell>
+  <PresetModalShell
+    isOpen={isOpen}
+    onClose={onClose}
+    title="Manage Prescription Presets"
+    titleId="manage-prescription-presets-title"
+    maxWidthClass="max-w-2xl"
+  >
+    <PrescriptionPresetsManager />
+  </PresetModalShell>
 );
 
 export default ManagePrescriptionPresetsModal;

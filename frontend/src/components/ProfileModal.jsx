@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from '../context/ToastContext';
 import authService from '../services/authService';
+import { backdropProps } from '../utils/modalA11y';
 
 /**
  * ProfileModal - A stunning reusable component for editing actor profile settings
@@ -332,15 +333,7 @@ const ProfileModal = ({ isOpen, onClose }) => {
   return (
     <div
       className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4 animate-fadeIn"
-      role="button"
-      tabIndex={-1}
-      aria-label="Close dialog"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose();
-      }}
+      {...backdropProps(onClose)}
     >
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all duration-300 scale-100 flex flex-col max-h-[90vh]">
         {/* Modal Header */}

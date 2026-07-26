@@ -123,7 +123,8 @@ public class NursingNoteService {
         if (!n.getNurseUserId().equals(securityHelper.getCurrentUserId())) {
             throw new AccessDeniedException("Only the author can modify this note");
         }
-        if (Duration.between(n.getCreatedAt(), LocalDateTime.now()).compareTo(EDIT_WINDOW) > 0) {
+        if (Duration.between(n.getCreatedAt().atZone(java.time.ZoneId.systemDefault()),
+                java.time.ZonedDateTime.now()).compareTo(EDIT_WINDOW) > 0) {
             throw new IllegalArgumentException("Edit window has passed for this note");
         }
         return n;

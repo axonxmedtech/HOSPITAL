@@ -131,10 +131,14 @@ public class OtAnalyticsService {
         Long prevRoom = null;
         LocalDateTime prevClose = null;
         for (OtRoomOccupancy span : spans) { // room-ordered, then by start
-            occupiedMinutes += java.time.Duration.between(span.getOccupiedFrom(), span.getOccupiedTo()).toMinutes();
+            occupiedMinutes += java.time.Duration.between(
+                    span.getOccupiedFrom().atZone(java.time.ZoneId.systemDefault()),
+                    span.getOccupiedTo().atZone(java.time.ZoneId.systemDefault())).toMinutes();
             if (span.getOtRoomId().equals(prevRoom) && prevClose != null
                     && !span.getOccupiedFrom().isBefore(prevClose)) {
-                turnoverSum += java.time.Duration.between(prevClose, span.getOccupiedFrom()).toMinutes();
+                turnoverSum += java.time.Duration.between(
+                        prevClose.atZone(java.time.ZoneId.systemDefault()),
+                        span.getOccupiedFrom().atZone(java.time.ZoneId.systemDefault())).toMinutes();
                 turnoverCount++;
             }
             prevRoom = span.getOtRoomId();

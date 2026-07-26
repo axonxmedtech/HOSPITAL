@@ -12,23 +12,28 @@ import SurgeryFormFrame from './SurgeryFormFrame';
 const esc = escapeHtml;
 
 const buildPrintHtml = (data, prefill, hospital) => {
-    const f = prefill || {};
-    const hname = esc(titleCase(hospital.name)) || 'Hospital';
-    const patientName = esc(titleCase([f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' ')));
-    const sex = (f.sex || '').toUpperCase();
-    const isM = sex.startsWith('M'), isF = sex.startsWith('F');
-    const logo = hospital.logo ? `<img src="${esc(hospital.logo)}" onerror="this.style.display='none'" style="height:56px;width:auto;object-fit:contain"/>` : '';
-    const anaes = esc(titleCase(data.anaesthetistName || ''));
+  const f = prefill || {};
+  const hname = esc(titleCase(hospital.name)) || 'Hospital';
+  const patientName = esc(
+    titleCase([f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' '))
+  );
+  const sex = (f.sex || '').toUpperCase();
+  const isM = sex.startsWith('M'),
+    isF = sex.startsWith('F');
+  const logo = hospital.logo
+    ? `<img src="${esc(hospital.logo)}" onerror="this.style.display='none'" style="height:56px;width:auto;object-fit:contain"/>`
+    : '';
+  const anaes = esc(titleCase(data.anaesthetistName || ''));
 
-    const sig = (label, value = '') =>
-        `<div class="sigrow">
+  const sig = (label, value = '') =>
+    `<div class="sigrow">
             <span class="sc"><b>${label} :</b> <span class="ul">${esc(value)}</span></span>
             <span class="sc s"><b>Signature :</b> <span class="ul"></span></span>
             <span class="sc s"><b>Date :</b> <span class="ul"></span></span>
             <span class="sc s"><b>Time :</b> <span class="ul"></span></span>
         </div>`;
 
-    return `<!doctype html><html><head><meta charset="utf-8"><title>Consent for General Anaesthesia</title>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Consent for General Anaesthesia</title>
     <style>
       @page { size: A4; margin: 10mm; }
       * { box-sizing: border-box; }
@@ -106,7 +111,7 @@ const buildPrintHtml = (data, prefill, hospital) => {
       </ol>
 
       ${sig('Patient Name', patientName)}
-      ${sig("Anaesthetist Name", anaes)}
+      ${sig('Anaesthetist Name', anaes)}
       ${sig('Witness Name')}
 
       <div class="code">VH/NABH/OT/03/2026</div>
@@ -115,51 +120,77 @@ const buildPrintHtml = (data, prefill, hospital) => {
 };
 
 const Labelled = ({ label, children }) => (
-    <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
-        {children}
-    </div>
+  <div>
+    <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
+    {children}
+  </div>
 );
 
 const GeneralAnaesthesiaConsentForm = ({ admissionId, onClose, readOnly = false }) => (
-    <SurgeryFormFrame
-        admissionId={admissionId}
-        readOnly={readOnly}
-        formType="GA_CONSENT"
-        title="Consent Form for General Anaesthesia"
-        code="VH/NABH/OT/03/2026"
-        defaults={{ mlcNo: '', date: '', time: '', anaesthetistName: '' }}
-        buildPrintHtml={buildPrintHtml}
-        onClose={onClose}
-        renderFields={({ data, set, prefill }) => (
-            <div className="space-y-4">
-                <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600">
-                    For <b>{titleCase([prefill.patientSurname, prefill.patientFirstName, prefill.husbandFatherName].filter(Boolean).join(' ')) || '—'}</b>
-                    {prefill.ipdRegistrationNo ? ` · IPD ${prefill.ipdRegistrationNo}` : ''}
-                    {prefill.bedNo ? ` · Bed ${prefill.bedNo}` : ''} — header fills automatically on the printout.
-                </div>
-                <Labelled label="Anaesthetist Name">
-                    <input value={data.anaesthetistName} onChange={(e) => set('anaesthetistName', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="Anaesthetist's name" />
-                </Labelled>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <Labelled label="MLC No.">
-                        <input value={data.mlcNo} onChange={(e) => set('mlcNo', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="If applicable" />
-                    </Labelled>
-                    <Labelled label="Date">
-                        <input type="date" value={data.date} onChange={(e) => set('date', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                    </Labelled>
-                    <Labelled label="Time">
-                        <input type="time" value={data.time} onChange={(e) => set('time', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                    </Labelled>
-                </div>
-                <p className="text-xs text-gray-400">Signature lines print blank for offline signing. Empty fields print empty.</p>
-            </div>
-        )}
-    />
+  <SurgeryFormFrame
+    admissionId={admissionId}
+    readOnly={readOnly}
+    formType="GA_CONSENT"
+    title="Consent Form for General Anaesthesia"
+    code="VH/NABH/OT/03/2026"
+    defaults={{ mlcNo: '', date: '', time: '', anaesthetistName: '' }}
+    buildPrintHtml={buildPrintHtml}
+    onClose={onClose}
+    renderFields={({ data, set, prefill }) => (
+      <div className="space-y-4">
+        <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600">
+          For{' '}
+          <b>
+            {titleCase(
+              [prefill.patientSurname, prefill.patientFirstName, prefill.husbandFatherName]
+                .filter(Boolean)
+                .join(' ')
+            ) || '—'}
+          </b>
+          {prefill.ipdRegistrationNo ? ` · IPD ${prefill.ipdRegistrationNo}` : ''}
+          {prefill.bedNo ? ` · Bed ${prefill.bedNo}` : ''} — header fills automatically on the
+          printout.
+        </div>
+        <Labelled label="Anaesthetist Name">
+          <input
+            value={data.anaesthetistName}
+            onChange={(e) => set('anaesthetistName', e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            placeholder="Anaesthetist's name"
+          />
+        </Labelled>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <Labelled label="MLC No.">
+            <input
+              value={data.mlcNo}
+              onChange={(e) => set('mlcNo', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              placeholder="If applicable"
+            />
+          </Labelled>
+          <Labelled label="Date">
+            <input
+              type="date"
+              value={data.date}
+              onChange={(e) => set('date', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            />
+          </Labelled>
+          <Labelled label="Time">
+            <input
+              type="time"
+              value={data.time}
+              onChange={(e) => set('time', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            />
+          </Labelled>
+        </div>
+        <p className="text-xs text-gray-400">
+          Signature lines print blank for offline signing. Empty fields print empty.
+        </p>
+      </div>
+    )}
+  />
 );
 
 export default GeneralAnaesthesiaConsentForm;

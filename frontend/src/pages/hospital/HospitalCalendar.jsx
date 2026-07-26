@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '../../context/ToastContext';
 import calendarService from '../../services/calendarService';
+import { backdropProps } from '../../utils/modalA11y';
 
 const MONTHS = [
   'January',
@@ -240,15 +241,7 @@ const DayPanel = ({ date, detail, loading, onClose, onChanged }) => {
   return (
     <div
       className="fixed inset-0 bg-black bg-opacity-40 flex justify-end z-50"
-      role="button"
-      tabIndex={-1}
-      aria-label="Close dialog"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose();
-      }}
+      {...backdropProps(onClose)}
     >
       <div className="bg-white w-full max-w-md h-full overflow-y-auto p-5">
         <div className="flex items-center justify-between mb-4">
@@ -357,15 +350,7 @@ const EventForm = ({ initialDate, onClose, onSaved, onError }) => {
   return (
     <div
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-      role="button"
-      tabIndex={-1}
-      aria-label="Close dialog"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose();
-      }}
+      {...backdropProps(onClose)}
     >
       <div className="bg-white rounded-2xl w-full max-w-md p-6">
         <h2 className="text-lg font-bold text-gray-900 mb-4">Add Calendar Event</h2>

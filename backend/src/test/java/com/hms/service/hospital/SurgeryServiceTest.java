@@ -57,9 +57,9 @@ class SurgeryServiceTest {
         org.mockito.Mockito.lenient().when(otPolicyService.resolve(
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("CANCELLATION_REASON"),
                 org.mockito.ArgumentMatchers.any())).thenReturn("OPTIONAL");
+        stubStateMachine();
     }
 
-    @org.junit.jupiter.api.BeforeEach
     void stubStateMachine() {
         org.mockito.Mockito.lenient()
                 .when(stateMachine.transition(org.mockito.ArgumentMatchers.any(),

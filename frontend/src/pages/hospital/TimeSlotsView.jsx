@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../../context/ToastContext';
 import timeSlotService from '../../services/timeSlotService';
+import { backdropProps } from '../../utils/modalA11y';
 
 /**
  * TimeSlotsView - Nursing Management Phase B1: Shift Templates + Appointment Slots.
@@ -77,15 +78,7 @@ const TimeSlotModal = ({ open, mode, kind, initial, onClose, onSave, isSubmittin
   return (
     <div
       className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
-      role="button"
-      tabIndex={-1}
-      aria-label="Close dialog"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose();
-      }}
+      {...backdropProps(onClose)}
     >
       <div className="bg-white rounded-2xl shadow-lg w-full max-w-md max-h-[90vh] overflow-auto p-6">
         <h3 className="text-2xl font-bold mb-4">{title}</h3>

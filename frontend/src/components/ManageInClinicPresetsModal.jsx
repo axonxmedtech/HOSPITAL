@@ -8,15 +8,15 @@ import PresetModalShell from './PresetModalShell';
  * the same affordance prescription and note presets already have.
  */
 const ManageInClinicPresetsModal = ({ isOpen, onClose }) => (
-    <PresetModalShell
-        isOpen={isOpen}
-        onClose={onClose}
-        title="Manage In-Clinic Presets"
-        titleId="manage-in-clinic-presets-title"
-        maxWidthClass="max-w-2xl"
-    >
-        <InClinicPresetsManager />
-    </PresetModalShell>
+  <PresetModalShell
+    isOpen={isOpen}
+    onClose={onClose}
+    title="Manage In-Clinic Presets"
+    titleId="manage-in-clinic-presets-title"
+    maxWidthClass="max-w-2xl"
+  >
+    <InClinicPresetsManager />
+  </PresetModalShell>
 );
 
 export default ManageInClinicPresetsModal;

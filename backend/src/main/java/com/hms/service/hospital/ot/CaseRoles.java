@@ -42,7 +42,7 @@ public final class CaseRoles {
     /** Normalise a free-typed role name into a stable code, as VitalRegistry does. */
     public static String toCode(String name) {
         if (name == null) return null;
-        return name.trim().toUpperCase().replaceAll("[^A-Z0-9]+", "_").replaceAll("^_|_$", "");
+        return name.trim().toUpperCase().replaceAll("[^A-Z0-9]+", "_").replaceAll("(^_)|(_$)", "");
     }
 
     private CaseRoles() {

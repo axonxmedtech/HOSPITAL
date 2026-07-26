@@ -13,19 +13,37 @@ import SurgeryFormFrame from './SurgeryFormFrame';
 const esc = escapeHtml;
 
 const buildPrintHtml = (data, prefill, hospital) => {
-    const f = prefill || {};
-    const d = data || {};
-    const hname = esc(titleCase(hospital.name)) || 'Hospital';
-    const patientName = esc(titleCase([f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' ')));
-    const logo = hospital.logo ? `<img src="${esc(hospital.logo)}" onerror="this.style.display='none'" style="height:48px;width:auto;object-fit:contain"/>` : '';
-    const ln = (v, w = 70) => `<span class="line" style="min-width:${w}px">${esc(v)}</span>`;
-    const pick = (opts, sel) => opts.map((o) => (sel === o ? `<b class="pk">${o}</b>` : o)).join(' / ');
+  const f = prefill || {};
+  const d = data || {};
+  const hname = esc(titleCase(hospital.name)) || 'Hospital';
+  const patientName = esc(
+    titleCase([f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' '))
+  );
+  const logo = hospital.logo
+    ? `<img src="${esc(hospital.logo)}" onerror="this.style.display='none'" style="height:48px;width:auto;object-fit:contain"/>`
+    : '';
+  const ln = (v, w = 70) => `<span class="line" style="min-width:${w}px">${esc(v)}</span>`;
+  const pick = (opts, sel) =>
+    opts.map((o) => (sel === o ? `<b class="pk">${o}</b>` : o)).join(' / ');
 
-    const monRows = ['PR', 'BP', '', 'SpO2', 'IV Fluids', 'Urine', 'BSL', 'Blood Loss', 'Blood Transfusion']
-        .map((lab) => `<tr><td class="ml">${lab}</td>${'<td></td>'.repeat(5)}</tr>`).join('');
-    const painRows = Array.from({ length: 4 }).map(() => '<tr><td></td><td></td><td></td></tr>').join('');
+  const monRows = [
+    'PR',
+    'BP',
+    '',
+    'SpO2',
+    'IV Fluids',
+    'Urine',
+    'BSL',
+    'Blood Loss',
+    'Blood Transfusion',
+  ]
+    .map((lab) => `<tr><td class="ml">${lab}</td>${'<td></td>'.repeat(5)}</tr>`)
+    .join('');
+  const painRows = Array.from({ length: 4 })
+    .map(() => '<tr><td></td><td></td><td></td></tr>')
+    .join('');
 
-    return `<!doctype html><html><head><meta charset="utf-8"><title>Post Anaesthesia Recovery Chart</title>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Post Anaesthesia Recovery Chart</title>
     <style>
       @page { size: A4; margin: 8mm; }
       * { box-sizing: border-box; }
@@ -150,79 +168,157 @@ const buildPrintHtml = (data, prefill, hospital) => {
 };
 
 const Txt = ({ label, v, on, area }) => (
-    <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
-        {area
-            ? <textarea value={v || ''} onChange={(e) => on(e.target.value)} rows={3} className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm" />
-            : <input value={v || ''} onChange={(e) => on(e.target.value)} className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm" />}
-    </div>
+  <div>
+    <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
+    {area ? (
+      <textarea
+        value={v || ''}
+        onChange={(e) => on(e.target.value)}
+        rows={3}
+        className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+      />
+    ) : (
+      <input
+        value={v || ''}
+        onChange={(e) => on(e.target.value)}
+        className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+      />
+    )}
+  </div>
 );
 const Sel = ({ label, v, on, options }) => (
-    <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
-        <select value={v || ''} onChange={(e) => on(e.target.value)} className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm">
-            <option value="">—</option>{options.map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
-    </div>
+  <div>
+    <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
+    <select
+      value={v || ''}
+      onChange={(e) => on(e.target.value)}
+      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+    >
+      <option value="">—</option>
+      {options.map((o) => (
+        <option key={o} value={o}>
+          {o}
+        </option>
+      ))}
+    </select>
+  </div>
 );
-const H = ({ children }) => <div className="text-xs font-bold text-gray-800 uppercase tracking-wide mt-2 mb-1">{children}</div>;
+const H = ({ children }) => (
+  <div className="text-xs font-bold text-gray-800 uppercase tracking-wide mt-2 mb-1">
+    {children}
+  </div>
+);
 
 const PostAnaesthesiaRecoveryForm = ({ admissionId, onClose, readOnly = false }) => (
-    <SurgeryFormFrame
-        admissionId={admissionId}
-        readOnly={readOnly}
-        formType="POST_ANAES_RECOVERY"
-        title="Post Anaesthesia Recovery Chart"
-        code="VH/NABH/OT/03/2026"
-        defaults={{}}
-        buildPrintHtml={buildPrintHtml}
-        onClose={onClose}
-        renderFields={({ data, set, prefill }) => (
-            <div className="space-y-2">
-                <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600">
-                    For <b>{titleCase([prefill.patientSurname, prefill.patientFirstName, prefill.husbandFatherName].filter(Boolean).join(' ')) || '—'}</b>
-                    {prefill.ipdRegistrationNo ? ` · IPD ${prefill.ipdRegistrationNo}` : ''} — monitoring & pain grids print blank for bedside entry.
-                </div>
+  <SurgeryFormFrame
+    admissionId={admissionId}
+    readOnly={readOnly}
+    formType="POST_ANAES_RECOVERY"
+    title="Post Anaesthesia Recovery Chart"
+    code="VH/NABH/OT/03/2026"
+    defaults={{}}
+    buildPrintHtml={buildPrintHtml}
+    onClose={onClose}
+    renderFields={({ data, set, prefill }) => (
+      <div className="space-y-2">
+        <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600">
+          For{' '}
+          <b>
+            {titleCase(
+              [prefill.patientSurname, prefill.patientFirstName, prefill.husbandFatherName]
+                .filter(Boolean)
+                .join(' ')
+            ) || '—'}
+          </b>
+          {prefill.ipdRegistrationNo ? ` · IPD ${prefill.ipdRegistrationNo}` : ''} — monitoring &
+          pain grids print blank for bedside entry.
+        </div>
 
-                <H>On Arrival</H>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    <Txt label="PR" v={data.pr} on={(x) => set('pr', x)} />
-                    <Txt label="BP" v={data.bp} on={(x) => set('bp', x)} />
-                    <Txt label="SpO2" v={data.spo2} on={(x) => set('spo2', x)} />
-                    <Sel label="Airway" v={data.airway} on={(x) => set('airway', x)} options={['Nasal', 'Oral']} />
-                    <Txt label="Oxygen Flow (L/Min)" v={data.oxygenFlow} on={(x) => set('oxygenFlow', x)} />
-                    <Sel label="Oxygen Device" v={data.oxygenDevice} on={(x) => set('oxygenDevice', x)} options={['Nasal Cannula', "Hudson's Mask", 'Venti Mask']} />
-                    <Txt label="FiO2" v={data.fiO2} on={(x) => set('fiO2', x)} />
-                    <Txt label="IV lines" v={data.ivLines} on={(x) => set('ivLines', x)} />
-                    <Txt label="NGT" v={data.ngt} on={(x) => set('ngt', x)} />
-                    <Txt label="Urinary Catheter" v={data.urinaryCatheter} on={(x) => set('urinaryCatheter', x)} />
-                    <Txt label="Drains" v={data.drains} on={(x) => set('drains', x)} />
-                    <Txt label="Ramsay Score" v={data.ramsayScore} on={(x) => set('ramsayScore', x)} />
-                    <Txt label="Date" v={data.date} on={(x) => set('date', x)} />
-                </div>
+        <H>On Arrival</H>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <Txt label="PR" v={data.pr} on={(x) => set('pr', x)} />
+          <Txt label="BP" v={data.bp} on={(x) => set('bp', x)} />
+          <Txt label="SpO2" v={data.spo2} on={(x) => set('spo2', x)} />
+          <Sel
+            label="Airway"
+            v={data.airway}
+            on={(x) => set('airway', x)}
+            options={['Nasal', 'Oral']}
+          />
+          <Txt label="Oxygen Flow (L/Min)" v={data.oxygenFlow} on={(x) => set('oxygenFlow', x)} />
+          <Sel
+            label="Oxygen Device"
+            v={data.oxygenDevice}
+            on={(x) => set('oxygenDevice', x)}
+            options={['Nasal Cannula', "Hudson's Mask", 'Venti Mask']}
+          />
+          <Txt label="FiO2" v={data.fiO2} on={(x) => set('fiO2', x)} />
+          <Txt label="IV lines" v={data.ivLines} on={(x) => set('ivLines', x)} />
+          <Txt label="NGT" v={data.ngt} on={(x) => set('ngt', x)} />
+          <Txt
+            label="Urinary Catheter"
+            v={data.urinaryCatheter}
+            on={(x) => set('urinaryCatheter', x)}
+          />
+          <Txt label="Drains" v={data.drains} on={(x) => set('drains', x)} />
+          <Txt label="Ramsay Score" v={data.ramsayScore} on={(x) => set('ramsayScore', x)} />
+          <Txt label="Date" v={data.date} on={(x) => set('date', x)} />
+        </div>
 
-                <H>Event</H>
-                <Txt label="Any Specific Event & Management" v={data.specificEvent} on={(x) => set('specificEvent', x)} area />
+        <H>Event</H>
+        <Txt
+          label="Any Specific Event & Management"
+          v={data.specificEvent}
+          on={(x) => set('specificEvent', x)}
+          area
+        />
 
-                <H>Discharge from PACU</H>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    <Txt label="Discharge Time from PACU" v={data.dischargeTime} on={(x) => set('dischargeTime', x)} />
-                    <Txt label="Consciousness" v={data.consciousness} on={(x) => set('consciousness', x)} />
-                    <Txt label="Pulse" v={data.pulse} on={(x) => set('pulse', x)} />
-                    <Txt label="BP" v={data.bpD} on={(x) => set('bpD', x)} />
-                    <Txt label="SpO2" v={data.spo2D} on={(x) => set('spo2D', x)} />
-                    <Txt label="CVS" v={data.cvs} on={(x) => set('cvs', x)} />
-                    <Txt label="Modified Aldrete Score" v={data.modifiedAldreteScore} on={(x) => set('modifiedAldreteScore', x)} />
-                    <Txt label="Special instructions" v={data.specialInstructions} on={(x) => set('specialInstructions', x)} />
-                    <Txt label="Shift out PACU to ward No." v={data.shiftWardNo} on={(x) => set('shiftWardNo', x)} />
-                    <Txt label="Unplanned ICU Shifting / Ventilation" v={data.unplannedICU} on={(x) => set('unplannedICU', x)} />
-                    <Txt label="Anaesthesiologist Name" v={data.anaesthetistName} on={(x) => set('anaesthetistName', x)} />
-                    <Txt label="Time" v={data.time} on={(x) => set('time', x)} />
-                </div>
-                <p className="text-xs text-gray-400">Ramsay & Aldrete scales and the monitoring/pain grids print as on the form. Signature prints blank.</p>
-            </div>
-        )}
-    />
+        <H>Discharge from PACU</H>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <Txt
+            label="Discharge Time from PACU"
+            v={data.dischargeTime}
+            on={(x) => set('dischargeTime', x)}
+          />
+          <Txt label="Consciousness" v={data.consciousness} on={(x) => set('consciousness', x)} />
+          <Txt label="Pulse" v={data.pulse} on={(x) => set('pulse', x)} />
+          <Txt label="BP" v={data.bpD} on={(x) => set('bpD', x)} />
+          <Txt label="SpO2" v={data.spo2D} on={(x) => set('spo2D', x)} />
+          <Txt label="CVS" v={data.cvs} on={(x) => set('cvs', x)} />
+          <Txt
+            label="Modified Aldrete Score"
+            v={data.modifiedAldreteScore}
+            on={(x) => set('modifiedAldreteScore', x)}
+          />
+          <Txt
+            label="Special instructions"
+            v={data.specialInstructions}
+            on={(x) => set('specialInstructions', x)}
+          />
+          <Txt
+            label="Shift out PACU to ward No."
+            v={data.shiftWardNo}
+            on={(x) => set('shiftWardNo', x)}
+          />
+          <Txt
+            label="Unplanned ICU Shifting / Ventilation"
+            v={data.unplannedICU}
+            on={(x) => set('unplannedICU', x)}
+          />
+          <Txt
+            label="Anaesthesiologist Name"
+            v={data.anaesthetistName}
+            on={(x) => set('anaesthetistName', x)}
+          />
+          <Txt label="Time" v={data.time} on={(x) => set('time', x)} />
+        </div>
+        <p className="text-xs text-gray-400">
+          Ramsay & Aldrete scales and the monitoring/pain grids print as on the form. Signature
+          prints blank.
+        </p>
+      </div>
+    )}
+  />
 );
 
 export default PostAnaesthesiaRecoveryForm;

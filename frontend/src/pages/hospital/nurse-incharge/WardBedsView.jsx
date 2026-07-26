@@ -3,6 +3,7 @@ import EmptyState from '../../../components/EmptyState';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import nurseService from '../../../services/nurseService';
+import { backdropProps } from '../../../utils/modalA11y';
 
 const STATUS_META = {
   available: { label: 'Available', badge: 'bg-green-100 text-green-700' },
@@ -234,15 +235,7 @@ const BedActionModal = ({ bed, action, onClose, onDone, onError }) => {
   return (
     <div
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-      role="button"
-      tabIndex={-1}
-      aria-label="Close dialog"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose();
-      }}
+      {...backdropProps(onClose)}
     >
       <div className="bg-white rounded-2xl w-full max-w-sm p-6">
         <h2 className="text-lg font-bold text-gray-900 mb-1">{meta.title}</h2>
@@ -308,15 +301,7 @@ const BedHistoryModal = ({ bed, onClose, onError }) => {
   return (
     <div
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-      role="button"
-      tabIndex={-1}
-      aria-label="Close dialog"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose();
-      }}
+      {...backdropProps(onClose)}
     >
       <div className="bg-white rounded-2xl w-full max-w-lg p-6 max-h-[80vh] overflow-y-auto">
         <h2 className="text-lg font-bold text-gray-900 mb-1">Bed History</h2>

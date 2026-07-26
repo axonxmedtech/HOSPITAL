@@ -10,7 +10,6 @@ export function useFetch(fetchFn, deps = []) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const execute = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -24,7 +23,7 @@ export function useFetch(fetchFn, deps = []) {
     } finally {
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
   useEffect(() => {

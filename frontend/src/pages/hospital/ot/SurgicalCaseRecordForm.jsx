@@ -12,16 +12,21 @@ import SurgeryFormFrame from './SurgeryFormFrame';
 const esc = escapeHtml;
 
 const buildPrintHtml = (data, prefill, hospital) => {
-    const f = prefill || {};
-    const d = data || {};
-    const hname = esc(titleCase(hospital.name)) || 'Hospital';
-    const patientName = esc(titleCase([f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' ')));
-    const sex = (f.sex || '').toUpperCase();
-    const isM = sex.startsWith('M'), isF = sex.startsWith('F');
-    const logo = hospital.logo ? `<img src="${esc(hospital.logo)}" onerror="this.style.display='none'" style="height:54px;width:auto;object-fit:contain"/>` : '';
-    const val = (v) => `<span class="line">${esc(v)}</span>`;
+  const f = prefill || {};
+  const d = data || {};
+  const hname = esc(titleCase(hospital.name)) || 'Hospital';
+  const patientName = esc(
+    titleCase([f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' '))
+  );
+  const sex = (f.sex || '').toUpperCase();
+  const isM = sex.startsWith('M'),
+    isF = sex.startsWith('F');
+  const logo = hospital.logo
+    ? `<img src="${esc(hospital.logo)}" onerror="this.style.display='none'" style="height:54px;width:auto;object-fit:contain"/>`
+    : '';
+  const val = (v) => `<span class="line">${esc(v)}</span>`;
 
-    return `<!doctype html><html><head><meta charset="utf-8"><title>Surgical Case Record</title>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Surgical Case Record</title>
     <style>
       @page { size: A4; margin: 10mm; }
       * { box-sizing: border-box; }
@@ -116,65 +121,118 @@ const buildPrintHtml = (data, prefill, hospital) => {
 };
 
 const Txt = ({ label, v, on, area }) => (
-    <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
-        {area
-            ? <textarea value={v || ''} onChange={(e) => on(e.target.value)} rows={5} className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm" />
-            : <input value={v || ''} onChange={(e) => on(e.target.value)} className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm" />}
-    </div>
+  <div>
+    <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
+    {area ? (
+      <textarea
+        value={v || ''}
+        onChange={(e) => on(e.target.value)}
+        rows={5}
+        className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+      />
+    ) : (
+      <input
+        value={v || ''}
+        onChange={(e) => on(e.target.value)}
+        className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+      />
+    )}
+  </div>
 );
-const H = ({ children }) => <div className="text-xs font-bold text-gray-800 uppercase tracking-wide mt-2 mb-1">{children}</div>;
+const H = ({ children }) => (
+  <div className="text-xs font-bold text-gray-800 uppercase tracking-wide mt-2 mb-1">
+    {children}
+  </div>
+);
 
 const SurgicalCaseRecordForm = ({ admissionId, onClose, readOnly = false }) => (
-    <SurgeryFormFrame
-        admissionId={admissionId}
-        readOnly={readOnly}
-        formType="SURGICAL_CASE_RECORD"
-        title="Surgical Case Record"
-        code="VH/NABH/OT/04/2026"
-        defaults={{}}
-        buildPrintHtml={buildPrintHtml}
-        onClose={onClose}
-        renderFields={({ data, set, prefill }) => (
-            <div className="space-y-2">
-                <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600">
-                    For <b>{titleCase([prefill.patientSurname, prefill.patientFirstName, prefill.husbandFatherName].filter(Boolean).join(' ')) || '—'}</b>
-                    {prefill.ipdRegistrationNo ? ` · IPD ${prefill.ipdRegistrationNo}` : ''} — header fills automatically. Two-page printout.
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <Txt label="MLC No." v={data.mlcNo} on={(x) => set('mlcNo', x)} />
-                    <Txt label="Date" v={data.date} on={(x) => set('date', x)} />
-                    <Txt label="Time" v={data.time} on={(x) => set('time', x)} />
-                </div>
-                <Txt label="Pre-op Diagnosis" v={data.preOpDiagnosis} on={(x) => set('preOpDiagnosis', x)} />
-                <Txt label="Name of the Procedure" v={data.nameOfProcedure} on={(x) => set('nameOfProcedure', x)} />
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <Txt label="Surgeon Name" v={data.surgeonName} on={(x) => set('surgeonName', x)} />
-                    <Txt label="Anaesthetist Name" v={data.anaesthetistName} on={(x) => set('anaesthetistName', x)} />
-                    <Txt label="Assist (1)" v={data.assist1} on={(x) => set('assist1', x)} />
-                    <Txt label="Assist (2)" v={data.assist2} on={(x) => set('assist2', x)} />
-                    <Txt label="Scrub Nurse" v={data.scrubNurse} on={(x) => set('scrubNurse', x)} />
-                    <Txt label="OT Technician" v={data.otTechnician} on={(x) => set('otTechnician', x)} />
-                    <Txt label="Date of Surgery" v={data.dateOfSurgery} on={(x) => set('dateOfSurgery', x)} />
-                    <Txt label="Type of Anaesthesia" v={data.typeOfAnaesthesia} on={(x) => set('typeOfAnaesthesia', x)} />
-                    <Txt label="Started Time" v={data.startedTime} on={(x) => set('startedTime', x)} />
-                    <Txt label="Completed Time" v={data.completedTime} on={(x) => set('completedTime', x)} />
-                </div>
+  <SurgeryFormFrame
+    admissionId={admissionId}
+    readOnly={readOnly}
+    formType="SURGICAL_CASE_RECORD"
+    title="Surgical Case Record"
+    code="VH/NABH/OT/04/2026"
+    defaults={{}}
+    buildPrintHtml={buildPrintHtml}
+    onClose={onClose}
+    renderFields={({ data, set, prefill }) => (
+      <div className="space-y-2">
+        <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600">
+          For{' '}
+          <b>
+            {titleCase(
+              [prefill.patientSurname, prefill.patientFirstName, prefill.husbandFatherName]
+                .filter(Boolean)
+                .join(' ')
+            ) || '—'}
+          </b>
+          {prefill.ipdRegistrationNo ? ` · IPD ${prefill.ipdRegistrationNo}` : ''} — header fills
+          automatically. Two-page printout.
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <Txt label="MLC No." v={data.mlcNo} on={(x) => set('mlcNo', x)} />
+          <Txt label="Date" v={data.date} on={(x) => set('date', x)} />
+          <Txt label="Time" v={data.time} on={(x) => set('time', x)} />
+        </div>
+        <Txt
+          label="Pre-op Diagnosis"
+          v={data.preOpDiagnosis}
+          on={(x) => set('preOpDiagnosis', x)}
+        />
+        <Txt
+          label="Name of the Procedure"
+          v={data.nameOfProcedure}
+          on={(x) => set('nameOfProcedure', x)}
+        />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <Txt label="Surgeon Name" v={data.surgeonName} on={(x) => set('surgeonName', x)} />
+          <Txt
+            label="Anaesthetist Name"
+            v={data.anaesthetistName}
+            on={(x) => set('anaesthetistName', x)}
+          />
+          <Txt label="Assist (1)" v={data.assist1} on={(x) => set('assist1', x)} />
+          <Txt label="Assist (2)" v={data.assist2} on={(x) => set('assist2', x)} />
+          <Txt label="Scrub Nurse" v={data.scrubNurse} on={(x) => set('scrubNurse', x)} />
+          <Txt label="OT Technician" v={data.otTechnician} on={(x) => set('otTechnician', x)} />
+          <Txt label="Date of Surgery" v={data.dateOfSurgery} on={(x) => set('dateOfSurgery', x)} />
+          <Txt
+            label="Type of Anaesthesia"
+            v={data.typeOfAnaesthesia}
+            on={(x) => set('typeOfAnaesthesia', x)}
+          />
+          <Txt label="Started Time" v={data.startedTime} on={(x) => set('startedTime', x)} />
+          <Txt label="Completed Time" v={data.completedTime} on={(x) => set('completedTime', x)} />
+        </div>
 
-                <H>Operation Notes (Procedure)</H>
-                <Txt label="Operation / procedure notes" v={data.operationNotes} on={(x) => set('operationNotes', x)} area />
+        <H>Operation Notes (Procedure)</H>
+        <Txt
+          label="Operation / procedure notes"
+          v={data.operationNotes}
+          on={(x) => set('operationNotes', x)}
+          area
+        />
 
-                <H>Anaesthetist Notes (page 2)</H>
-                <Txt label="Anaesthetist notes" v={data.anaesthetistNotes} on={(x) => set('anaesthetistNotes', x)} area />
+        <H>Anaesthetist Notes (page 2)</H>
+        <Txt
+          label="Anaesthetist notes"
+          v={data.anaesthetistNotes}
+          on={(x) => set('anaesthetistNotes', x)}
+          area
+        />
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <Txt label="Surgeon Reg. No." v={data.surgeonRegNo} on={(x) => set('surgeonRegNo', x)} />
-                    <Txt label="Anaesthetist Reg. No." v={data.anaesthetistRegNo} on={(x) => set('anaesthetistRegNo', x)} />
-                </div>
-                <p className="text-xs text-gray-400">Signature lines print blank for offline signing.</p>
-            </div>
-        )}
-    />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <Txt label="Surgeon Reg. No." v={data.surgeonRegNo} on={(x) => set('surgeonRegNo', x)} />
+          <Txt
+            label="Anaesthetist Reg. No."
+            v={data.anaesthetistRegNo}
+            on={(x) => set('anaesthetistRegNo', x)}
+          />
+        </div>
+        <p className="text-xs text-gray-400">Signature lines print blank for offline signing.</p>
+      </div>
+    )}
+  />
 );
 
 export default SurgicalCaseRecordForm;

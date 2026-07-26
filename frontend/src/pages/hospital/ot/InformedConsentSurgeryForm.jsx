@@ -13,16 +13,21 @@ import SurgeryFormFrame from './SurgeryFormFrame';
 const esc = escapeHtml;
 
 const buildPrintHtml = (data, prefill, hospital) => {
-    const f = prefill || {};
-    const hname = esc(titleCase(hospital.name)) || 'Hospital';
-    const patientName = esc(titleCase([f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' ')));
-    const sex = (f.sex || '').toUpperCase();
-    const isM = sex.startsWith('M'), isF = sex.startsWith('F');
-    const logo = hospital.logo ? `<img src="${esc(hospital.logo)}" onerror="this.style.display='none'" style="height:52px;width:auto;object-fit:contain"/>` : '';
-    const surgeon = esc(titleCase(data.surgeonName || ''));
-    const uli = (v, w = 120) => `<span class="uli" style="min-width:${w}px">${esc(v)}</span>`;
+  const f = prefill || {};
+  const hname = esc(titleCase(hospital.name)) || 'Hospital';
+  const patientName = esc(
+    titleCase([f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' '))
+  );
+  const sex = (f.sex || '').toUpperCase();
+  const isM = sex.startsWith('M'),
+    isF = sex.startsWith('F');
+  const logo = hospital.logo
+    ? `<img src="${esc(hospital.logo)}" onerror="this.style.display='none'" style="height:52px;width:auto;object-fit:contain"/>`
+    : '';
+  const surgeon = esc(titleCase(data.surgeonName || ''));
+  const uli = (v, w = 120) => `<span class="uli" style="min-width:${w}px">${esc(v)}</span>`;
 
-    return `<!doctype html><html><head><meta charset="utf-8"><title>Informed Consent Surgery</title>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Informed Consent Surgery</title>
     <style>
       @page { size: A4; margin: 9mm; }
       * { box-sizing: border-box; }
@@ -104,53 +109,110 @@ const buildPrintHtml = (data, prefill, hospital) => {
 };
 
 const Labelled = ({ label, children }) => (
-    <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
-        {children}
-    </div>
+  <div>
+    <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
+    {children}
+  </div>
 );
-const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm";
+const inputCls = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm';
 
 const InformedConsentSurgeryForm = ({ admissionId, onClose, readOnly = false }) => (
-    <SurgeryFormFrame
-        admissionId={admissionId}
-        readOnly={readOnly}
-        formType="INFORMED_CONSENT_SURGERY"
-        title="Informed Consent — Surgery"
-        code="VH/NABH/OT/01/2026"
-        defaults={{ date: '', time: '', surgeonName: '', assistantDr: '', conditions: '', procedureDesc: '', anaesthetistName: '' }}
-        buildPrintHtml={buildPrintHtml}
-        onClose={onClose}
-        renderFields={({ data, set, prefill }) => (
-            <div className="space-y-4">
-                <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600">
-                    For <b>{titleCase([prefill.patientSurname, prefill.patientFirstName, prefill.husbandFatherName].filter(Boolean).join(' ')) || '—'}</b>
-                    {prefill.ipdRegistrationNo ? ` · IPD ${prefill.ipdRegistrationNo}` : ''}
-                    {prefill.category ? ` · ${prefill.category}` : ''} — header fills automatically on the printout.
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Labelled label="Date"><input type="date" value={data.date} onChange={(e) => set('date', e.target.value)} className={inputCls} /></Labelled>
-                    <Labelled label="Time"><input type="time" value={data.time} onChange={(e) => set('time', e.target.value)} className={inputCls} /></Labelled>
-                </div>
-                <Labelled label="Surgeon / Physician (Dr.)">
-                    <input value={data.surgeonName} onChange={(e) => set('surgeonName', e.target.value)} className={inputCls} placeholder="Operating surgeon's name" />
-                </Labelled>
-                <Labelled label="Assistant Doctor (optional)">
-                    <input value={data.assistantDr} onChange={(e) => set('assistantDr', e.target.value)} className={inputCls} placeholder="Name of the assistant doctor" />
-                </Labelled>
-                <Labelled label="Anaesthetist (optional)">
-                    <input value={data.anaesthetistName} onChange={(e) => set('anaesthetistName', e.target.value)} className={inputCls} placeholder="Name of anaesthetist" />
-                </Labelled>
-                <Labelled label="Condition(s) to treat (optional)">
-                    <input value={data.conditions} onChange={(e) => set('conditions', e.target.value)} className={inputCls} placeholder="Condition(s)" />
-                </Labelled>
-                <Labelled label="Procedure description (optional)">
-                    <input value={data.procedureDesc} onChange={(e) => set('procedureDesc', e.target.value)} className={inputCls} placeholder="Physician's description of the procedure" />
-                </Labelled>
-                <p className="text-xs text-gray-400">Signature lines print blank for offline signing. Empty fields print empty.</p>
-            </div>
-        )}
-    />
+  <SurgeryFormFrame
+    admissionId={admissionId}
+    readOnly={readOnly}
+    formType="INFORMED_CONSENT_SURGERY"
+    title="Informed Consent — Surgery"
+    code="VH/NABH/OT/01/2026"
+    defaults={{
+      date: '',
+      time: '',
+      surgeonName: '',
+      assistantDr: '',
+      conditions: '',
+      procedureDesc: '',
+      anaesthetistName: '',
+    }}
+    buildPrintHtml={buildPrintHtml}
+    onClose={onClose}
+    renderFields={({ data, set, prefill }) => (
+      <div className="space-y-4">
+        <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600">
+          For{' '}
+          <b>
+            {titleCase(
+              [prefill.patientSurname, prefill.patientFirstName, prefill.husbandFatherName]
+                .filter(Boolean)
+                .join(' ')
+            ) || '—'}
+          </b>
+          {prefill.ipdRegistrationNo ? ` · IPD ${prefill.ipdRegistrationNo}` : ''}
+          {prefill.category ? ` · ${prefill.category}` : ''} — header fills automatically on the
+          printout.
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Labelled label="Date">
+            <input
+              type="date"
+              value={data.date}
+              onChange={(e) => set('date', e.target.value)}
+              className={inputCls}
+            />
+          </Labelled>
+          <Labelled label="Time">
+            <input
+              type="time"
+              value={data.time}
+              onChange={(e) => set('time', e.target.value)}
+              className={inputCls}
+            />
+          </Labelled>
+        </div>
+        <Labelled label="Surgeon / Physician (Dr.)">
+          <input
+            value={data.surgeonName}
+            onChange={(e) => set('surgeonName', e.target.value)}
+            className={inputCls}
+            placeholder="Operating surgeon's name"
+          />
+        </Labelled>
+        <Labelled label="Assistant Doctor (optional)">
+          <input
+            value={data.assistantDr}
+            onChange={(e) => set('assistantDr', e.target.value)}
+            className={inputCls}
+            placeholder="Name of the assistant doctor"
+          />
+        </Labelled>
+        <Labelled label="Anaesthetist (optional)">
+          <input
+            value={data.anaesthetistName}
+            onChange={(e) => set('anaesthetistName', e.target.value)}
+            className={inputCls}
+            placeholder="Name of anaesthetist"
+          />
+        </Labelled>
+        <Labelled label="Condition(s) to treat (optional)">
+          <input
+            value={data.conditions}
+            onChange={(e) => set('conditions', e.target.value)}
+            className={inputCls}
+            placeholder="Condition(s)"
+          />
+        </Labelled>
+        <Labelled label="Procedure description (optional)">
+          <input
+            value={data.procedureDesc}
+            onChange={(e) => set('procedureDesc', e.target.value)}
+            className={inputCls}
+            placeholder="Physician's description of the procedure"
+          />
+        </Labelled>
+        <p className="text-xs text-gray-400">
+          Signature lines print blank for offline signing. Empty fields print empty.
+        </p>
+      </div>
+    )}
+  />
 );
 
 export default InformedConsentSurgeryForm;

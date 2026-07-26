@@ -78,6 +78,8 @@ jobs:
         with:
           fail-on-severity: high
           comment-summary-in-pr: always
+          # No fixed release exists yet; app is a Vite SPA (data router), RSC mode unused. See .trivyignore.
+          allow-ghsas: GHSA-qwww-vcr4-c8h2
           # Strong copyleft is denied for shipped code. LGPL is weak copyleft and here it only
           # appears in BUILD tooling (Checkstyle, FindSecBugs) that is never distributed, so those
           # two are explicitly allowed. See docs/security/DEPENDENCY_POLICY.md.
@@ -200,8 +202,25 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Enforce high-severity gate
-        run: npm audit --audit-level=high
+      - name: Enforce high-severity gate (allowlist react-router — no fixed release; SPA, not RSC)
+        run: |
+          npm audit --json > npm-audit-gate.json 2>&1 || true
+          node -e '
+            const a = require("./npm-audit-gate.json");
+            // Allowlisted: no fixed release published and not exploitable here.
+            //  react-router / react-router-dom -> GHSA-qwww-vcr4-c8h2 (RSC-mode CSRF); this is a
+            //  Vite SPA using the data router, RSC mode is not used. review-by 2026-02-15.
+            const ALLOW = new Set(["react-router", "react-router-dom"]);
+            let blocking = 0;
+            for (const [name, v] of Object.entries(a.vulnerabilities || {})) {
+              if ((v.severity === "high" || v.severity === "critical") && !ALLOW.has(name)) {
+                console.error("BLOCK " + name + " (" + v.severity + ")");
+                blocking++;
+              }
+            }
+            if (blocking) { console.error(blocking + " non-allowlisted high/critical vuln(s)."); process.exit(1); }
+            console.log("npm audit gate OK (allowlisted: " + [...ALLOW].join(", ") + ")");
+          '
 
       - name: Upload npm audit report
         if: always()
