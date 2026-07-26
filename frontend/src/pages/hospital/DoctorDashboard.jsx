@@ -8,32 +8,32 @@ import ConsultationModal from '../../components/ConsultationModal';
 import DataTable from '../../components/DataTable';
 import EmptyState from '../../components/EmptyState';
 import HistoryDrawer from '../../components/HistoryDrawer';
+import HospitalInventoryTab from '../../components/HospitalInventoryTab';
+import LowStockBanner from '../../components/LowStockBanner';
+import MedicineInventoryTab from '../../components/MedicineInventoryTab';
+import Navbar from '../../components/Navbar';
 import OpdPaymentFields, {
   isPayFirst,
   validateOpdPayment,
 } from '../../components/OpdPaymentFields';
-import { API_BASE_URL } from '../../services/apiService'; // BUG-028: single source-of-truth for base URL
+// BUG-028: single source-of-truth for base URL
+import PageHeader from '../../components/PageHeader';
+import PrescriptionViewModal from '../../components/PrescriptionViewModal';
+import Sidebar from '../../components/Sidebar';
+import StatusBadge from '../../components/StatusBadge';
+import { useToast } from '../../context/ToastContext';
 import apiClient from '../../services/apiService';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
-import { useToast } from '../../context/ToastContext';
-import StatusBadge from '../../components/StatusBadge';
-import Sidebar from '../../components/Sidebar';
-import Navbar from '../../components/Navbar';
 import useWebSocket from '../../hooks/useWebSocket';
 import useEnabledVitals from '../../hooks/useEnabledVitals';
 import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
-import PageHeader from '../../components/PageHeader';
-import PrescriptionViewModal from '../../components/PrescriptionViewModal';
 import otService from '../../services/otService';
 import BillingTable from './BillingTable';
 import PatientModal from '../../components/PatientModal';
 import PatientDetailsModal from '../../components/PatientDetailsModal';
 import ProfileModal from '../../components/ProfileModal';
 import { SkeletonStatsGrid, SkeletonOverviewDual, SkeletonTable } from '../../components/Skeleton';
-import HospitalInventoryTab from '../../components/HospitalInventoryTab';
-import MedicineInventoryTab from '../../components/MedicineInventoryTab';
-import LowStockBanner from '../../components/LowStockBanner';
 import OtBoard from './ot/OtBoard';
 
 /**
@@ -928,6 +928,10 @@ const DoctorDashboard = () => {
         })
         .catch(() => resolve(false));
     });
+  // Print server PDFs via the shared util (utils/printPdf): desktop uses a hidden iframe (avoids
+  // the pop-up blocker when several documents print in a row); iOS/iPadOS opens the PDF in a real
+  // foreground tab, because WebKit can't print a hidden iframe and would otherwise print a
+  // "screenshot" of the visible page instead of the document.
 
   // Kept for the single-document print buttons: fire the print without waiting.
   const openPdfInNewTab = (endpointPath) => {

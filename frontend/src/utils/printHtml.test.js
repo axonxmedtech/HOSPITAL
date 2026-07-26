@@ -1,13 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { isIOS } from './platform';
 import printHtml from './printHtml';
+
+vi.mock('./platform', () => ({ isIOS: vi.fn(() => false) }));
 
 const iframeDoc = () => {
   const iframe = document.querySelector('iframe');
   return iframe && (iframe.contentDocument || iframe.contentWindow.document);
 };
 
-describe('printHtml', () => {
+describe('printHtml (desktop / iframe path)', () => {
   beforeEach(() => {
+    isIOS.mockReturnValue(false);
     vi.useFakeTimers();
     document.body.innerHTML = '';
   });
@@ -71,5 +75,44 @@ describe('printHtml', () => {
     expect(document.querySelector('iframe')).not.toBeNull();
     vi.advanceTimersByTime(120001);
     expect(document.querySelector('iframe')).toBeNull();
+  });
+});
+
+describe('printHtml (iOS path)', () => {
+  let fakeWin;
+  beforeEach(() => {
+    isIOS.mockReturnValue(true);
+    document.body.innerHTML = '';
+    fakeWin = {
+      document: document.implementation.createHTMLDocument(''),
+      focus: vi.fn(),
+      print: vi.fn(),
+    };
+    vi.spyOn(window, 'open').mockReturnValue(fakeWin);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    isIOS.mockReturnValue(false);
+    document.body.innerHTML = '';
+  });
+
+  it('opens a foreground window instead of a hidden iframe', () => {
+    printHtml('<html><body><h1 id="t">Rx</h1></body></html>');
+    expect(window.open).toHaveBeenCalledWith('', '_blank');
+    expect(document.querySelector('iframe')).toBeNull();
+    expect(fakeWin.document.querySelector('#t')?.textContent).toBe('Rx');
+  });
+
+  it('injects exactly one auto-print trigger script into the new window', () => {
+    printHtml('<html><body><p>ok</p><script>window.print()</script></body></html>');
+    const scripts = fakeWin.document.querySelectorAll('script');
+    expect(scripts.length).toBe(1); // source script stripped, one controlled trigger added
+    expect(scripts[0].textContent).toContain('window.print()');
+  });
+
+  it('falls back to the hidden iframe when the popup is blocked', () => {
+    window.open.mockReturnValue(null);
+    printHtml('<html><body><h1 id="t">Rx</h1></body></html>');
+    expect(document.querySelector('iframe')).not.toBeNull();
   });
 });
