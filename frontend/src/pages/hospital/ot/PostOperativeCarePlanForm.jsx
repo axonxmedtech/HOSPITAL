@@ -12,15 +12,20 @@ import SurgeryFormFrame from './SurgeryFormFrame';
 const esc = escapeHtml;
 
 const buildPrintHtml = (data, prefill, hospital) => {
-    const f = prefill || {};
-    const d = data || {};
-    const hname = esc(titleCase(hospital.name)) || 'Hospital';
-    const patientName = esc(titleCase([f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' ')));
-    const sex = (f.sex || '').toUpperCase();
-    const isM = sex.startsWith('M'), isF = sex.startsWith('F');
-    const logo = hospital.logo ? `<img src="${esc(hospital.logo)}" onerror="this.style.display='none'" style="height:52px;width:auto;object-fit:contain"/>` : '';
+  const f = prefill || {};
+  const d = data || {};
+  const hname = esc(titleCase(hospital.name)) || 'Hospital';
+  const patientName = esc(
+    titleCase([f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' '))
+  );
+  const sex = (f.sex || '').toUpperCase();
+  const isM = sex.startsWith('M'),
+    isF = sex.startsWith('F');
+  const logo = hospital.logo
+    ? `<img src="${esc(hospital.logo)}" onerror="this.style.display='none'" style="height:52px;width:auto;object-fit:contain"/>`
+    : '';
 
-    return `<!doctype html><html><head><meta charset="utf-8"><title>Post Operative Care Plan</title>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Post Operative Care Plan</title>
     <style>
       @page { size: A4; margin: 9mm; }
       * { box-sizing: border-box; }
@@ -70,40 +75,72 @@ const buildPrintHtml = (data, prefill, hospital) => {
 };
 
 const PostOperativeCarePlanForm = ({ admissionId, onClose, readOnly = false }) => (
-    <SurgeryFormFrame
-        admissionId={admissionId}
-        readOnly={readOnly}
-        formType="POST_OP_CARE_PLAN"
-        title="Post Operative Care Plan"
-        code="VH/NABH/OT/09/2026"
-        defaults={{ date: '', time: '', notes: '' }}
-        buildPrintHtml={buildPrintHtml}
-        onClose={onClose}
-        renderFields={({ data, set, prefill }) => (
-            <div className="space-y-3">
-                <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600">
-                    For <b>{titleCase([prefill.patientSurname, prefill.patientFirstName, prefill.husbandFatherName].filter(Boolean).join(' ')) || '—'}</b>
-                    {prefill.ipdRegistrationNo ? ` · IPD ${prefill.ipdRegistrationNo}` : ''} — header fills automatically. A 2nd ruled page prints only if the notes overflow.
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-1">Date</label>
-                        <input type="date" value={data.date} onChange={(e) => set('date', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-1">Time</label>
-                        <input type="time" value={data.time} onChange={(e) => set('time', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                    </div>
-                </div>
-                <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
-                    <textarea value={data.notes} onChange={(e) => set('notes', e.target.value)} rows={10}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="Post-operative care plan / notes…" />
-                </div>
-                <p className="text-xs text-gray-400">Leave blank to print a ruled sheet for handwriting.</p>
-            </div>
-        )}
-    />
+  <SurgeryFormFrame
+    admissionId={admissionId}
+    readOnly={readOnly}
+    formType="POST_OP_CARE_PLAN"
+    title="Post Operative Care Plan"
+    code="VH/NABH/OT/09/2026"
+    defaults={{ date: '', time: '', notes: '' }}
+    buildPrintHtml={buildPrintHtml}
+    onClose={onClose}
+    renderFields={({ data, set, prefill }) => (
+      <div className="space-y-3">
+        <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600">
+          For{' '}
+          <b>
+            {titleCase(
+              [prefill.patientSurname, prefill.patientFirstName, prefill.husbandFatherName]
+                .filter(Boolean)
+                .join(' ')
+            ) || '—'}
+          </b>
+          {prefill.ipdRegistrationNo ? ` · IPD ${prefill.ipdRegistrationNo}` : ''} — header fills
+          automatically. A 2nd ruled page prints only if the notes overflow.
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div>
+            <label htmlFor="fld-197" className="block text-xs font-semibold text-gray-600 mb-1">
+              Date
+            </label>
+            <input
+              id="fld-197"
+              type="date"
+              value={data.date}
+              onChange={(e) => set('date', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            />
+          </div>
+          <div>
+            <label htmlFor="fld-196" className="block text-xs font-semibold text-gray-600 mb-1">
+              Time
+            </label>
+            <input
+              id="fld-196"
+              type="time"
+              value={data.time}
+              onChange={(e) => set('time', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            />
+          </div>
+        </div>
+        <div>
+          <label htmlFor="fld-195" className="block text-xs font-semibold text-gray-600 mb-1">
+            Notes
+          </label>
+          <textarea
+            id="fld-195"
+            value={data.notes}
+            onChange={(e) => set('notes', e.target.value)}
+            rows={10}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            placeholder="Post-operative care plan / notes…"
+          />
+        </div>
+        <p className="text-xs text-gray-400">Leave blank to print a ruled sheet for handwriting.</p>
+      </div>
+    )}
+  />
 );
 
 export default PostOperativeCarePlanForm;

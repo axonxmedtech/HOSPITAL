@@ -13,18 +13,23 @@ const esc = escapeHtml;
 const GRADES = ['I', 'II', 'III', 'IV', 'E'];
 
 const buildPrintHtml = (data, prefill, hospital) => {
-    const f = prefill || {};
-    const d = data || {};
-    const hname = esc(titleCase(hospital.name)) || 'Hospital';
-    const patientName = esc(titleCase([f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' ')));
-    const sex = (f.sex || '').toUpperCase();
-    const isM = sex.startsWith('M'), isF = sex.startsWith('F');
-    const logo = hospital.logo ? `<img src="${esc(hospital.logo)}" onerror="this.style.display='none'" style="height:52px;width:auto;object-fit:contain"/>` : '';
-    const ln = (v, w = 60) => `<span class="line" style="min-width:${w}px">${esc(v)}</span>`;
-    const hist = (label, v) => `<div class="hr">${label} - ${esc(v)}</div>`;
-    const asa = GRADES.map((g) => `<b class="g ${d.asaGrade === g ? 'on' : ''}">${g}</b>`).join('');
+  const f = prefill || {};
+  const d = data || {};
+  const hname = esc(titleCase(hospital.name)) || 'Hospital';
+  const patientName = esc(
+    titleCase([f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' '))
+  );
+  const sex = (f.sex || '').toUpperCase();
+  const isM = sex.startsWith('M'),
+    isF = sex.startsWith('F');
+  const logo = hospital.logo
+    ? `<img src="${esc(hospital.logo)}" onerror="this.style.display='none'" style="height:52px;width:auto;object-fit:contain"/>`
+    : '';
+  const ln = (v, w = 60) => `<span class="line" style="min-width:${w}px">${esc(v)}</span>`;
+  const hist = (label, v) => `<div class="hr">${label} - ${esc(v)}</div>`;
+  const asa = GRADES.map((g) => `<b class="g ${d.asaGrade === g ? 'on' : ''}">${g}</b>`).join('');
 
-    return `<!doctype html><html><head><meta charset="utf-8"><title>Pre-Anaesthesia Evaluation</title>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Pre-Anaesthesia Evaluation</title>
     <style>
       @page { size: A4; margin: 8mm; }
       * { box-sizing: border-box; }
@@ -128,91 +133,140 @@ const buildPrintHtml = (data, prefill, hospital) => {
 };
 
 const Txt = ({ label, v, on, area }) => (
-    <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
-        {area
-            ? <textarea value={v || ''} onChange={(e) => on(e.target.value)} rows={3} className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm" />
-            : <input value={v || ''} onChange={(e) => on(e.target.value)} className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm" />}
-    </div>
+  <div>
+    <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
+    {area ? (
+      <textarea
+        value={v || ''}
+        onChange={(e) => on(e.target.value)}
+        rows={3}
+        className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+      />
+    ) : (
+      <input
+        value={v || ''}
+        onChange={(e) => on(e.target.value)}
+        className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+      />
+    )}
+  </div>
 );
-const H = ({ children }) => <div className="text-xs font-bold text-gray-800 uppercase tracking-wide mt-2 mb-1">{children}</div>;
+const H = ({ children }) => (
+  <div className="text-xs font-bold text-gray-800 uppercase tracking-wide mt-2 mb-1">
+    {children}
+  </div>
+);
 
 const PreAnaesthesiaEvaluationForm = ({ admissionId, onClose, readOnly = false }) => (
-    <SurgeryFormFrame
-        admissionId={admissionId}
-        readOnly={readOnly}
-        formType="PRE_ANAES_EVAL"
-        title="Pre-Anaesthesia Evaluation"
-        code="VH/NABH/OT/03/2026"
-        defaults={{ asaGrade: '' }}
-        buildPrintHtml={buildPrintHtml}
-        onClose={onClose}
-        renderFields={({ data, set, prefill }) => (
-            <div className="space-y-2">
-                <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600">
-                    For <b>{titleCase([prefill.patientSurname, prefill.patientFirstName, prefill.husbandFatherName].filter(Boolean).join(' ')) || '—'}</b>
-                    {prefill.ipdRegistrationNo ? ` · IPD ${prefill.ipdRegistrationNo}` : ''} — header fills automatically.
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <Txt label="Date" v={data.date} on={(x) => set('date', x)} />
-                    <Txt label="Time" v={data.time} on={(x) => set('time', x)} />
-                </div>
-                <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1">ASA Grade</label>
-                    <div className="flex gap-3 text-sm">
-                        {GRADES.map((g) => (
-                            <label key={g} className="inline-flex items-center gap-1">
-                                <input type="radio" checked={data.asaGrade === g} onChange={() => set('asaGrade', g)} />{g}
-                            </label>
-                        ))}
-                    </div>
-                </div>
-                <Txt label="History of present illness" v={data.historyPresentIllness} on={(x) => set('historyPresentIllness', x)} area />
+  <SurgeryFormFrame
+    admissionId={admissionId}
+    readOnly={readOnly}
+    formType="PRE_ANAES_EVAL"
+    title="Pre-Anaesthesia Evaluation"
+    code="VH/NABH/OT/03/2026"
+    defaults={{ asaGrade: '' }}
+    buildPrintHtml={buildPrintHtml}
+    onClose={onClose}
+    renderFields={({ data, set, prefill }) => (
+      <div className="space-y-2">
+        <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600">
+          For{' '}
+          <b>
+            {titleCase(
+              [prefill.patientSurname, prefill.patientFirstName, prefill.husbandFatherName]
+                .filter(Boolean)
+                .join(' ')
+            ) || '—'}
+          </b>
+          {prefill.ipdRegistrationNo ? ` · IPD ${prefill.ipdRegistrationNo}` : ''} — header fills
+          automatically.
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <Txt label="Date" v={data.date} on={(x) => set('date', x)} />
+          <Txt label="Time" v={data.time} on={(x) => set('time', x)} />
+        </div>
+        <div>
+          <span className="block text-xs font-semibold text-gray-600 mb-1">ASA Grade</span>
+          <div className="flex gap-3 text-sm">
+            {GRADES.map((g) => (
+              <label key={g} className="inline-flex items-center gap-1">
+                <input
+                  type="radio"
+                  checked={data.asaGrade === g}
+                  onChange={() => set('asaGrade', g)}
+                />
+                {g}
+              </label>
+            ))}
+          </div>
+        </div>
+        <Txt
+          label="History of present illness"
+          v={data.historyPresentIllness}
+          on={(x) => set('historyPresentIllness', x)}
+          area
+        />
 
-                <H>History of</H>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <Txt label="Cough / Cold / Fever" v={data.h_coughColdFever} on={(x) => set('h_coughColdFever', x)} />
-                    <Txt label="Breathlessness (MET)" v={data.h_breathlessness} on={(x) => set('h_breathlessness', x)} />
-                    <Txt label="Palpitations" v={data.h_palpitations} on={(x) => set('h_palpitations', x)} />
-                    <Txt label="Chest Pain" v={data.h_chestPain} on={(x) => set('h_chestPain', x)} />
-                    <Txt label="Convulsion" v={data.h_convulsion} on={(x) => set('h_convulsion', x)} />
-                    <Txt label="Old CVA / Stroke" v={data.h_oldCVA} on={(x) => set('h_oldCVA', x)} />
-                    <Txt label="Thyroid disorder" v={data.h_thyroid} on={(x) => set('h_thyroid', x)} />
-                    <Txt label="Diabetes" v={data.h_diabetes} on={(x) => set('h_diabetes', x)} />
-                    <Txt label="Hypertension" v={data.h_hypertension} on={(x) => set('h_hypertension', x)} />
-                    <Txt label="Surgery" v={data.h_surgery} on={(x) => set('h_surgery', x)} />
-                    <Txt label="Asthma" v={data.h_asthma} on={(x) => set('h_asthma', x)} />
-                    <Txt label="OSA" v={data.h_osa} on={(x) => set('h_osa', x)} />
-                    <Txt label="TB" v={data.h_tb} on={(x) => set('h_tb', x)} />
-                    <Txt label="Current Medication" v={data.h_currentMed} on={(x) => set('h_currentMed', x)} />
-                </div>
+        <H>History of</H>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <Txt
+            label="Cough / Cold / Fever"
+            v={data.h_coughColdFever}
+            on={(x) => set('h_coughColdFever', x)}
+          />
+          <Txt
+            label="Breathlessness (MET)"
+            v={data.h_breathlessness}
+            on={(x) => set('h_breathlessness', x)}
+          />
+          <Txt label="Palpitations" v={data.h_palpitations} on={(x) => set('h_palpitations', x)} />
+          <Txt label="Chest Pain" v={data.h_chestPain} on={(x) => set('h_chestPain', x)} />
+          <Txt label="Convulsion" v={data.h_convulsion} on={(x) => set('h_convulsion', x)} />
+          <Txt label="Old CVA / Stroke" v={data.h_oldCVA} on={(x) => set('h_oldCVA', x)} />
+          <Txt label="Thyroid disorder" v={data.h_thyroid} on={(x) => set('h_thyroid', x)} />
+          <Txt label="Diabetes" v={data.h_diabetes} on={(x) => set('h_diabetes', x)} />
+          <Txt label="Hypertension" v={data.h_hypertension} on={(x) => set('h_hypertension', x)} />
+          <Txt label="Surgery" v={data.h_surgery} on={(x) => set('h_surgery', x)} />
+          <Txt label="Asthma" v={data.h_asthma} on={(x) => set('h_asthma', x)} />
+          <Txt label="OSA" v={data.h_osa} on={(x) => set('h_osa', x)} />
+          <Txt label="TB" v={data.h_tb} on={(x) => set('h_tb', x)} />
+          <Txt
+            label="Current Medication"
+            v={data.h_currentMed}
+            on={(x) => set('h_currentMed', x)}
+          />
+        </div>
 
-                <H>Investigation</H>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <Txt label="P" v={data.invP} on={(x) => set('invP', x)} />
-                    <Txt label="BP" v={data.invBP} on={(x) => set('invBP', x)} />
-                    <Txt label="SPO2" v={data.invSPO2} on={(x) => set('invSPO2', x)} />
-                </div>
+        <H>Investigation</H>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <Txt label="P" v={data.invP} on={(x) => set('invP', x)} />
+          <Txt label="BP" v={data.invBP} on={(x) => set('invBP', x)} />
+          <Txt label="SPO2" v={data.invSPO2} on={(x) => set('invSPO2', x)} />
+        </div>
 
-                <H>History &amp; Examination</H>
-                <Txt label="Past History" v={data.pastHistory} on={(x) => set('pastHistory', x)} />
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <Txt label="Addiction" v={data.addiction} on={(x) => set('addiction', x)} />
-                    <Txt label="Allergies" v={data.allergies} on={(x) => set('allergies', x)} />
-                    <Txt label="LMP" v={data.lmp} on={(x) => set('lmp', x)} />
-                </div>
-                <Txt label="Family History" v={data.familyHistory} on={(x) => set('familyHistory', x)} />
-                <Txt label="Birth and Immunisation history" v={data.birthImmunisation} on={(x) => set('birthImmunisation', x)} />
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    <Txt label="Rs" v={data.se_Rs} on={(x) => set('se_Rs', x)} />
-                    <Txt label="Ws" v={data.se_Ws} on={(x) => set('se_Ws', x)} />
-                    <Txt label="J. O. Teeth" v={data.se_teeth} on={(x) => set('se_teeth', x)} />
-                    <Txt label="MPC" v={data.se_mpc} on={(x) => set('se_mpc', x)} />
-                </div>
-                <Txt label="Advice" v={data.advice} on={(x) => set('advice', x)} area />
-            </div>
-        )}
-    />
+        <H>History &amp; Examination</H>
+        <Txt label="Past History" v={data.pastHistory} on={(x) => set('pastHistory', x)} />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <Txt label="Addiction" v={data.addiction} on={(x) => set('addiction', x)} />
+          <Txt label="Allergies" v={data.allergies} on={(x) => set('allergies', x)} />
+          <Txt label="LMP" v={data.lmp} on={(x) => set('lmp', x)} />
+        </div>
+        <Txt label="Family History" v={data.familyHistory} on={(x) => set('familyHistory', x)} />
+        <Txt
+          label="Birth and Immunisation history"
+          v={data.birthImmunisation}
+          on={(x) => set('birthImmunisation', x)}
+        />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <Txt label="Rs" v={data.se_Rs} on={(x) => set('se_Rs', x)} />
+          <Txt label="Ws" v={data.se_Ws} on={(x) => set('se_Ws', x)} />
+          <Txt label="J. O. Teeth" v={data.se_teeth} on={(x) => set('se_teeth', x)} />
+          <Txt label="MPC" v={data.se_mpc} on={(x) => set('se_mpc', x)} />
+        </div>
+        <Txt label="Advice" v={data.advice} on={(x) => set('advice', x)} area />
+      </div>
+    )}
+  />
 );
 
 export default PreAnaesthesiaEvaluationForm;

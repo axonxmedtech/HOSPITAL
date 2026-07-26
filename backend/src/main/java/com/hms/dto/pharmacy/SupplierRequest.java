@@ -20,7 +20,13 @@ public class SupplierRequest {
     private String email;
 
     private String address;
+
+    @Pattern(regexp = "^([A-Za-z0-9]{15})?$", message = "GST number must be exactly 15 alphanumeric characters")
     private String gstNumber;
+
+    @Pattern(regexp = "^([A-Za-z0-9]{10})?$", message = "PAN number must be exactly 10 alphanumeric characters")
+    private String panNumber;
+
     private String drugLicenseNumber;
 
     @Min(value = 0, message = "Credit days cannot be negative")

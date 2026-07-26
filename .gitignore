@@ -39,3 +39,9 @@ backend/.env
 backend/.env.local
 
 DOC's/
+
+docs/product/
+
+# Local-only working notes / references (never committed)
+*.local.md
+LINT_REMEDIATION.local.md

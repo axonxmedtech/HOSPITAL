@@ -12,20 +12,35 @@ const esch = escapeHtml;
 // from our data; input/output columns are blank for offline entry. Flows to
 // extra pages with repeating headers.
 export const buildIoChartHtml = (rows, f, hospital) => {
-    const hname = esch(titleCase(hospital.name)) || 'Hospital';
-    const patientName = [f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' ');
-    const sex = (f.sex || '').toUpperCase();
-    const isM = sex.startsWith('M'), isF = sex.startsWith('F');
-    const logo = hospital.logo ? `<img src="${esch(hospital.logo)}" onerror="this.style.display='none'" style="height:56px;width:auto;object-fit:contain"/>` : '';
-    const tm = (dt) => dt ? new Date(dt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '';
-    const ordered = [...(rows || [])].sort((a, b) => new Date(a.recordedAt) - new Date(b.recordedAt));
-    const bp = (v) => (v.bpSystolic != null || v.bpDiastolic != null) ? `${v.bpSystolic ?? ''}/${v.bpDiastolic ?? ''}` : '';
-    const dataRows = ordered.map((v) =>
-        `<tr><td>${esch(tm(v.recordedAt))}</td><td>${esch(v.temperature)}</td><td>${esch(v.pulse)}</td><td>${esch(v.respiratoryRate)}</td><td>${esch(bp(v))}</td><td></td><td></td><td></td><td></td><td></td></tr>`).join('');
-    const blanks = Math.max(4, 26 - ordered.length);
-    const blankRows = Array.from({ length: blanks }).map(() => '<tr>' + '<td>&nbsp;</td>' + '<td></td>'.repeat(9) + '</tr>').join('');
+  const hname = esch(titleCase(hospital.name)) || 'Hospital';
+  const patientName = [f.patientSurname, f.patientFirstName, f.husbandFatherName]
+    .filter(Boolean)
+    .join(' ');
+  const sex = (f.sex || '').toUpperCase();
+  const isM = sex.startsWith('M'),
+    isF = sex.startsWith('F');
+  const logo = hospital.logo
+    ? `<img src="${esch(hospital.logo)}" onerror="this.style.display='none'" style="height:56px;width:auto;object-fit:contain"/>`
+    : '';
+  const tm = (dt) =>
+    dt ? new Date(dt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '';
+  const ordered = [...(rows || [])].sort((a, b) => new Date(a.recordedAt) - new Date(b.recordedAt));
+  const bp = (v) =>
+    v.bpSystolic != null || v.bpDiastolic != null
+      ? `${v.bpSystolic ?? ''}/${v.bpDiastolic ?? ''}`
+      : '';
+  const dataRows = ordered
+    .map(
+      (v) =>
+        `<tr><td>${esch(tm(v.recordedAt))}</td><td>${esch(v.temperature)}</td><td>${esch(v.pulse)}</td><td>${esch(v.respiratoryRate)}</td><td>${esch(bp(v))}</td><td></td><td></td><td></td><td></td><td></td></tr>`
+    )
+    .join('');
+  const blanks = Math.max(4, 26 - ordered.length);
+  const blankRows = Array.from({ length: blanks })
+    .map(() => '<tr>' + '<td>&nbsp;</td>' + '<td></td>'.repeat(9) + '</tr>')
+    .join('');
 
-    return `<!doctype html><html><head><meta charset="utf-8"><title>Input & Output Chart</title>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Input & Output Chart</title>
     <style>
       @page { size: A4; margin: 8mm; }
       * { box-sizing: border-box; }
@@ -87,221 +102,281 @@ export const buildIoChartHtml = (rows, f, hospital) => {
  */
 
 const Metric = ({ label, value, unit }) => {
-    if (value == null || value === '') return null;
-    return (
-        <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700">
-            {label}: {value}{unit}
-        </span>
-    );
+  if (value == null || value === '') return null;
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700">
+      {label}: {value}
+      {unit}
+    </span>
+  );
 };
 
 const emptyForm = {
-    temperature: '', pulse: '', bpSystolic: '', bpDiastolic: '',
-    respiratoryRate: '', spo2: '', weight: '', painScore: '', remarks: '',
+  temperature: '',
+  pulse: '',
+  bpSystolic: '',
+  bpDiastolic: '',
+  respiratoryRate: '',
+  spo2: '',
+  weight: '',
+  painScore: '',
+  remarks: '',
 };
 
 const VitalsPanel = ({ admissionId, readOnly = false }) => {
-    const { success, error: toastError } = useToast();
-    const [loading, setLoading] = useState(true);
-    const [rows, setRows] = useState([]);
-    const [f, setF] = useState({}); // patient header data for the I/O chart print
-    const [form, setForm] = useState(emptyForm);
-    const [submitting, setSubmitting] = useState(false);
-    const user = authService.getCurrentUser();
-    const currentRole = user?.role;
-    const isNurse = currentRole === 'NURSE' || currentRole === 'NURSE_INCHARGE';
+  const { success, error: toastError } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState([]);
+  const [f, setF] = useState({}); // patient header data for the I/O chart print
+  const [form, setForm] = useState(emptyForm);
+  const [submitting, setSubmitting] = useState(false);
+  const user = authService.getCurrentUser();
+  const currentRole = user?.role;
+  const isNurse = currentRole === 'NURSE' || currentRole === 'NURSE_INCHARGE';
 
-    // Separate Nurse Login OFF ("Shared Login") -> a required "Performed By
-    // Nurse" dropdown is shown and its selection is sent with the payload.
-    // Only relevant when the logged-in user is a nurse; non-nurses (e.g. a
-    // doctor viewing this panel from the IPD case) record as themselves.
-    const [separateLogin, setSeparateLogin] = useState(true);
-    const [nurses, setNurses] = useState([]);
-    const [performedByNurseId, setPerformedByNurseId] = useState('');
+  // Separate Nurse Login OFF ("Shared Login") -> a required "Performed By
+  // Nurse" dropdown is shown and its selection is sent with the payload.
+  // Only relevant when the logged-in user is a nurse; non-nurses (e.g. a
+  // doctor viewing this panel from the IPD case) record as themselves.
+  const [separateLogin, setSeparateLogin] = useState(true);
+  const [nurses, setNurses] = useState([]);
+  const [performedByNurseId, setPerformedByNurseId] = useState('');
 
-    const load = useCallback(() => {
-        setLoading(true);
-        nurseService.getVitals(admissionId)
-            .then((d) => setRows(Array.isArray(d) ? d : []))
-            .catch(() => toastError('Failed to load vitals'))
-            .finally(() => setLoading(false));
-    }, [admissionId, toastError]);
+  const load = useCallback(() => {
+    setLoading(true);
+    nurseService
+      .getVitals(admissionId)
+      .then((d) => setRows(Array.isArray(d) ? d : []))
+      .catch(() => toastError('Failed to load vitals'))
+      .finally(() => setLoading(false));
+  }, [admissionId, toastError]);
 
-    useEffect(() => { load(); }, [load]);
-    useEffect(() => {
-        let active = true;
-        nurseService.getAdmissionForm(admissionId).then((d) => { if (active) setF(d || {}); }).catch(() => {});
-        return () => { active = false; };
-    }, [admissionId]);
-
-    useEffect(() => {
-        let active = true;
-        nurseService.getSeparateNurseLogin().then((v) => { if (active) setSeparateLogin(v); }).catch(() => {});
-        return () => { active = false; };
-    }, []);
-
-    useEffect(() => {
-        if (isNurse && separateLogin === false && f.wardId) {
-            nurseService.getWardStaffNurses(f.wardId)
-                .then((list) => setNurses(Array.isArray(list) ? list : []))
-                .catch(() => setNurses([]));
-        }
-    }, [isNurse, separateLogin, f.wardId]);
-
-    const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-
-    const num = (v) => (v === '' || v == null ? null : Number(v));
-
-    const handleSubmit = async () => {
-        const payload = {
-            ipdAdmissionId: admissionId,
-            temperature: num(form.temperature),
-            pulse: num(form.pulse),
-            bpSystolic: num(form.bpSystolic),
-            bpDiastolic: num(form.bpDiastolic),
-            respiratoryRate: num(form.respiratoryRate),
-            spo2: num(form.spo2),
-            weight: num(form.weight),
-            painScore: num(form.painScore),
-            remarks: form.remarks || null,
-        };
-        const hasAny = ['temperature', 'pulse', 'bpSystolic', 'bpDiastolic', 'respiratoryRate', 'spo2', 'weight', 'painScore']
-            .some((k) => payload[k] != null);
-        if (!hasAny) { toastError('Enter at least one measurement'); return; }
-        if (isNurse && separateLogin === false) {
-            if (!performedByNurseId) { toastError('Select the nurse who performed this'); return; }
-            payload.performedByNurseId = Number(performedByNurseId);
-        }
-
-        setSubmitting(true);
-        try {
-            await nurseService.createVitals(payload);
-            success('Vitals recorded');
-            setForm(emptyForm);
-            setPerformedByNurseId('');
-            load();
-        } catch (err) {
-            const data = err.response?.data;
-            const msg = data?.error || data?.message || (typeof data === 'string' ? data : null) || 'Failed to record vitals';
-            toastError(msg);
-        } finally {
-            setSubmitting(false);
-        }
+  useEffect(() => {
+    load();
+  }, [load]);
+  useEffect(() => {
+    let active = true;
+    nurseService
+      .getAdmissionForm(admissionId)
+      .then((d) => {
+        if (active) setF(d || {});
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
     };
+  }, [admissionId]);
 
-    const fmt = (dt) => dt ? new Date(dt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+  useEffect(() => {
+    let active = true;
+    nurseService
+      .getSeparateNurseLogin()
+      .then((v) => {
+        if (active) setSeparateLogin(v);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
-    const inputs = [
-        ['temperature', 'Temp (°F)', 0.1],
-        ['pulse', 'Pulse (bpm)', 1],
-        ['bpSystolic', 'BP Sys', 1],
-        ['bpDiastolic', 'BP Dia', 1],
-        ['respiratoryRate', 'Resp (rpm)', 1],
-        ['spo2', 'SpO₂ (%)', 1],
-        ['weight', 'Weight (kg)', 0.1],
-        ['painScore', 'Pain', 1],
-    ];
+  useEffect(() => {
+    if (isNurse && separateLogin === false && f.wardId) {
+      nurseService
+        .getWardStaffNurses(f.wardId)
+        .then((list) => setNurses(Array.isArray(list) ? list : []))
+        .catch(() => setNurses([]));
+    }
+  }, [isNurse, separateLogin, f.wardId]);
 
-    return (
-        <fieldset disabled={readOnly} style={{ display: 'contents' }}>
-            {readOnly && (
-                <div className="mb-3 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-                    Read-only — editing this form is disabled for your role (Files &amp; Access).
-                </div>
-            )}
-            <div className="space-y-5">
-            {!readOnly && (
-            <div className="bg-white border border-gray-200 rounded-xl p-5">
-                <h3 className="font-bold text-gray-800 text-sm mb-4">Record Vitals</h3>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {inputs.map(([key, label, step]) => (
-                        <div key={key}>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
-                            <input
-                                type="number"
-                                step={step}
-                                min="0"
-                                value={form[key]}
-                                onChange={(e) => setField(key, e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                            />
-                        </div>
-                    ))}
-                </div>
-                {isNurse && separateLogin === false && (
-                    <div className="mt-3">
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Performed By Nurse *</label>
-                        <select
-                            value={performedByNurseId}
-                            onChange={(e) => setPerformedByNurseId(e.target.value)}
-                            required
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                        >
-                            <option value="">Select nurse…</option>
-                            {nurses.map((n) => (
-                                <option key={n.id} value={n.id}>{n.name}</option>
-                            ))}
-                        </select>
-                    </div>
-                )}
-                <div className="mt-3">
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Remarks</label>
-                    <input
-                        type="text"
-                        value={form.remarks}
-                        onChange={(e) => setField('remarks', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    />
-                </div>
-                <div className="mt-4 flex justify-end">
-                    <button
-                        onClick={handleSubmit}
-                        disabled={submitting}
-                        className={`px-4 py-2 text-sm font-semibold text-white rounded-lg ${submitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-900 hover:bg-gray-800'}`}
-                    >
-                        {submitting ? 'Saving…' : 'Record Vitals'}
-                    </button>
-                </div>
-            </div>
-            )}
+  const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-            <div className="bg-white border border-gray-200 rounded-xl">
-                <div className="px-5 py-3 border-b border-gray-100">
-                    <h3 className="font-bold text-gray-800 text-sm">Vitals Timeline</h3>
-                </div>
-                {loading ? (
-                    <LoadingSpinner />
-                ) : rows.length === 0 ? (
-                    <p className="px-5 py-6 text-sm text-gray-500">No vitals recorded yet.</p>
-                ) : (
-                    <ul className="divide-y divide-gray-100">
-                        {rows.map((v) => (
-                            <li key={v.publicId || v.id} className="px-5 py-3">
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="text-xs font-semibold text-gray-500">{fmt(v.recordedAt)}</span>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                    <Metric label="Temp" value={v.temperature} unit="°F" />
-                                    <Metric label="Pulse" value={v.pulse} unit="" />
-                                    {(v.bpSystolic != null || v.bpDiastolic != null) && (
-                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700">
-                                            BP: {v.bpSystolic ?? '—'}/{v.bpDiastolic ?? '—'}
-                                        </span>
-                                    )}
-                                    <Metric label="Resp" value={v.respiratoryRate} unit="" />
-                                    <Metric label="SpO₂" value={v.spo2} unit="%" />
-                                    <Metric label="Weight" value={v.weight} unit="kg" />
-                                    <Metric label="Pain" value={v.painScore} unit="" />
-                                </div>
-                                {v.remarks && <p className="text-xs text-gray-500 mt-2">{v.remarks}</p>}
-                            </li>
-                        ))}
-                    </ul>
-                )}
-            </div>
+  const num = (v) => (v === '' || v == null ? null : Number(v));
+
+  const handleSubmit = async () => {
+    const payload = {
+      ipdAdmissionId: admissionId,
+      temperature: num(form.temperature),
+      pulse: num(form.pulse),
+      bpSystolic: num(form.bpSystolic),
+      bpDiastolic: num(form.bpDiastolic),
+      respiratoryRate: num(form.respiratoryRate),
+      spo2: num(form.spo2),
+      weight: num(form.weight),
+      painScore: num(form.painScore),
+      remarks: form.remarks || null,
+    };
+    const hasAny = [
+      'temperature',
+      'pulse',
+      'bpSystolic',
+      'bpDiastolic',
+      'respiratoryRate',
+      'spo2',
+      'weight',
+      'painScore',
+    ].some((k) => payload[k] != null);
+    if (!hasAny) {
+      toastError('Enter at least one measurement');
+      return;
+    }
+    if (isNurse && separateLogin === false) {
+      if (!performedByNurseId) {
+        toastError('Select the nurse who performed this');
+        return;
+      }
+      payload.performedByNurseId = Number(performedByNurseId);
+    }
+
+    setSubmitting(true);
+    try {
+      await nurseService.createVitals(payload);
+      success('Vitals recorded');
+      setForm(emptyForm);
+      setPerformedByNurseId('');
+      load();
+    } catch (err) {
+      const data = err.response?.data;
+      const msg =
+        data?.error ||
+        data?.message ||
+        (typeof data === 'string' ? data : null) ||
+        'Failed to record vitals';
+      toastError(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const fmt = (dt) =>
+    dt
+      ? new Date(dt).toLocaleString('en-IN', {
+          day: '2-digit',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : '—';
+
+  const inputs = [
+    ['temperature', 'Temp (°F)', 0.1],
+    ['pulse', 'Pulse (bpm)', 1],
+    ['bpSystolic', 'BP Sys', 1],
+    ['bpDiastolic', 'BP Dia', 1],
+    ['respiratoryRate', 'Resp (rpm)', 1],
+    ['spo2', 'SpO₂ (%)', 1],
+    ['weight', 'Weight (kg)', 0.1],
+    ['painScore', 'Pain', 1],
+  ];
+
+  return (
+    <fieldset disabled={readOnly} style={{ display: 'contents' }}>
+      {readOnly && (
+        <div className="mb-3 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+          Read-only — editing this form is disabled for your role (Files &amp; Access).
         </div>
-        </fieldset>
-    );
+      )}
+      <div className="space-y-5">
+        {!readOnly && (
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <h3 className="font-bold text-gray-800 text-sm mb-4">Record Vitals</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {inputs.map(([key, label, step]) => (
+                <div key={key}>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+                  <input
+                    type="number"
+                    step={step}
+                    min="0"
+                    value={form[key]}
+                    onChange={(e) => setField(key, e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  />
+                </div>
+              ))}
+            </div>
+            {isNurse && separateLogin === false && (
+              <div className="mt-3">
+                <label htmlFor="fld-178" className="block text-xs font-medium text-gray-600 mb-1">
+                  Performed By Nurse <span className="text-red-600">*</span>
+                </label>
+                <select
+                  id="fld-178"
+                  value={performedByNurseId}
+                  onChange={(e) => setPerformedByNurseId(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                >
+                  <option value="">Select nurse…</option>
+                  {nurses.map((n) => (
+                    <option key={n.id} value={n.id}>
+                      {n.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="mt-3">
+              <label htmlFor="fld-177" className="block text-xs font-medium text-gray-600 mb-1">
+                Remarks
+              </label>
+              <input
+                id="fld-177"
+                type="text"
+                value={form.remarks}
+                onChange={(e) => setField('remarks', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              />
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={handleSubmit}
+                disabled={submitting}
+                className={`px-4 py-2 text-sm font-semibold text-white rounded-lg ${submitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-900 hover:bg-gray-800'}`}
+              >
+                {submitting ? 'Saving…' : 'Record Vitals'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="bg-white border border-gray-200 rounded-xl">
+          <div className="px-5 py-3 border-b border-gray-100">
+            <h3 className="font-bold text-gray-800 text-sm">Vitals Timeline</h3>
+          </div>
+          {loading ? (
+            <LoadingSpinner />
+          ) : rows.length === 0 ? (
+            <p className="px-5 py-6 text-sm text-gray-500">No vitals recorded yet.</p>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {rows.map((v) => (
+                <li key={v.publicId || v.id} className="px-5 py-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-gray-500">{fmt(v.recordedAt)}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Metric label="Temp" value={v.temperature} unit="°F" />
+                    <Metric label="Pulse" value={v.pulse} unit="" />
+                    {(v.bpSystolic != null || v.bpDiastolic != null) && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700">
+                        BP: {v.bpSystolic ?? '—'}/{v.bpDiastolic ?? '—'}
+                      </span>
+                    )}
+                    <Metric label="Resp" value={v.respiratoryRate} unit="" />
+                    <Metric label="SpO₂" value={v.spo2} unit="%" />
+                    <Metric label="Weight" value={v.weight} unit="kg" />
+                    <Metric label="Pain" value={v.painScore} unit="" />
+                  </div>
+                  {v.remarks && <p className="text-xs text-gray-500 mt-2">{v.remarks}</p>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </fieldset>
+  );
 };
 
 export default VitalsPanel;

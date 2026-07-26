@@ -16,46 +16,50 @@ import { titleCase } from '../../../utils/text';
  */
 
 const Text = ({ label, value, onChange, wide }) => (
-    <div className={wide ? 'sm:col-span-2' : ''}>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
-        <input
-            type="text"
-            value={value || ''}
-            onChange={(e) => onChange(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-        />
-    </div>
+  <div className={wide ? 'sm:col-span-2' : ''}>
+    <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
+    <input
+      type="text"
+      value={value || ''}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+    />
+  </div>
 );
 
 const Select = ({ label, value, onChange, options }) => (
-    <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
-        <select
-            value={value || ''}
-            onChange={(e) => onChange(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-        >
-            <option value="">—</option>
-            {options.map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
-    </div>
+  <div>
+    <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
+    <select
+      value={value || ''}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+    >
+      <option value="">—</option>
+      {options.map((o) => (
+        <option key={o} value={o}>
+          {o}
+        </option>
+      ))}
+    </select>
+  </div>
 );
 
 export const buildPrintHtml = (f, hospital) => {
-    const esc = escapeHtml;
-    // A labelled field with the value sitting on an underline that fills the row.
-    const fld = (label, value, flex = 1) =>
-        `<span class="fld" style="flex:${flex}"><span class="lbl">${label}:</span><span class="val">${esc(value)}</span></span>`;
-    // A checkbox that is ticked when the stored category matches.
-    const box = (label, checked) =>
-        `<span class="cbx"><b>${label}</b><span class="sq">${checked ? '✕' : ''}</span></span>`;
-    const cat = (f.patientCategory || '');
-    const mc = (f.mediclaim || '').toLowerCase();
-    const logo = hospital.logo
-        ? `<img src="${esc(hospital.logo)}" alt="logo" onerror="this.style.display='none'" style="height:58px;width:auto;object-fit:contain"/>`
-        : '';
+  const esc = escapeHtml;
+  // A labelled field with the value sitting on an underline that fills the row.
+  const fld = (label, value, flex = 1) =>
+    `<span class="fld" style="flex:${flex}"><span class="lbl">${label}:</span><span class="val">${esc(value)}</span></span>`;
+  // A checkbox that is ticked when the stored category matches.
+  const box = (label, checked) =>
+    `<span class="cbx"><b>${label}</b><span class="sq">${checked ? '✕' : ''}</span></span>`;
+  const cat = f.patientCategory || '';
+  const mc = (f.mediclaim || '').toLowerCase();
+  const logo = hospital.logo
+    ? `<img src="${esc(hospital.logo)}" alt="logo" onerror="this.style.display='none'" style="height:58px;width:auto;object-fit:contain"/>`
+    : '';
 
-    return `<!doctype html><html><head><meta charset="utf-8"><title>Admission Form</title>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Admission Form</title>
     <style>
       @page { size: A4; margin: 7mm; }
       * { box-sizing: border-box; }
@@ -166,17 +170,20 @@ export const buildPrintHtml = (f, hospital) => {
 };
 
 export const buildConsentHtml = (f, hospital) => {
-    const esc = escapeHtml;
-    const hname = esc(titleCase(hospital.name)) || 'Hospital';
-    const patientName = [f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' ');
-    const sex = (f.sex || '').toUpperCase();
-    const isM = sex.startsWith('M');
-    const isF = sex.startsWith('F');
-    const logo = hospital.logo
-        ? `<img src="${esc(hospital.logo)}" alt="logo" onerror="this.style.display='none'" style="height:60px;width:auto;object-fit:contain"/>`
-        : '';
-    const fld = (label, value) => `<span class="fld"><b>${label}:</b>&nbsp;<span class="val">${esc(value)}</span></span>`;
-    return `<!doctype html><html><head><meta charset="utf-8"><title>General Consent Form</title>
+  const esc = escapeHtml;
+  const hname = esc(titleCase(hospital.name)) || 'Hospital';
+  const patientName = [f.patientSurname, f.patientFirstName, f.husbandFatherName]
+    .filter(Boolean)
+    .join(' ');
+  const sex = (f.sex || '').toUpperCase();
+  const isM = sex.startsWith('M');
+  const isF = sex.startsWith('F');
+  const logo = hospital.logo
+    ? `<img src="${esc(hospital.logo)}" alt="logo" onerror="this.style.display='none'" style="height:60px;width:auto;object-fit:contain"/>`
+    : '';
+  const fld = (label, value) =>
+    `<span class="fld"><b>${label}:</b>&nbsp;<span class="val">${esc(value)}</span></span>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>General Consent Form</title>
     <style>
       @page { size: A4; margin: 8mm; }
       * { box-sizing: border-box; }
@@ -250,179 +257,285 @@ export const buildConsentHtml = (f, hospital) => {
 };
 
 const AdmissionFormModal = ({ admissionId, onClose, onConfirmed }) => {
-    const { success, error: toastError } = useToast();
-    const user = authService.getCurrentUser();
-    const [loading, setLoading] = useState(true);
-    const [f, setF] = useState({});
-    const [saving, setSaving] = useState(false);
-    const [savedOnce, setSavedOnce] = useState(false);
-    const [confirming, setConfirming] = useState(false);
+  const { success, error: toastError } = useToast();
+  const user = authService.getCurrentUser();
+  const [loading, setLoading] = useState(true);
+  const [f, setF] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [savedOnce, setSavedOnce] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
-    useEffect(() => {
-        let active = true;
-        nurseService.getAdmissionForm(admissionId)
-            .then((data) => { if (active) { setF(data || {}); setSavedOnce(!!data?.id); } })
-            .catch(() => { if (active) toastError('Failed to load admission form'); })
-            .finally(() => { if (active) setLoading(false); });
-        return () => { active = false; };
-    }, [admissionId, toastError]);
-
-    const set = (k) => (v) => setF((prev) => ({ ...prev, [k]: v }));
-
-    const handleSave = async () => {
-        setSaving(true);
-        try {
-            const saved = await nurseService.saveAdmissionForm(admissionId, f);
-            setF(saved);
-            setSavedOnce(true);
-            success('Admission form saved');
-        } catch (err) {
-            const data = err.response?.data;
-            toastError(data?.error || data?.message || 'Failed to save admission form');
-        } finally {
-            setSaving(false);
+  useEffect(() => {
+    let active = true;
+    nurseService
+      .getAdmissionForm(admissionId)
+      .then((data) => {
+        if (active) {
+          setF(data || {});
+          setSavedOnce(!!data?.id);
         }
+      })
+      .catch(() => {
+        if (active) toastError('Failed to load admission form');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
     };
+  }, [admissionId, toastError]);
 
-    const handlePrint = () => {
-        // Prefer live branding from the backend (like the prescription/bill PDFs);
-        // fall back to the session user object.
-        printHtml(buildPrintHtml(f, {
-            name: f.hospitalName || user?.hospitalName,
-            address: f.hospitalAddress || user?.hospitalAddress,
-            logo: f.hospitalLogoUrl || user?.logoUrl,
-            nurse: user?.name,
-        }));
-    };
+  const set = (k) => (v) => setF((prev) => ({ ...prev, [k]: v }));
 
-    const handlePrintConsent = () => {
-        printHtml(buildConsentHtml(f, {
-            name: f.hospitalName || user?.hospitalName,
-            address: f.hospitalAddress || user?.hospitalAddress,
-            logo: f.hospitalLogoUrl || user?.logoUrl,
-            customId: f.hospitalCustomId,
-            nurse: user?.name,
-        }));
-    };
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const saved = await nurseService.saveAdmissionForm(admissionId, f);
+      setF(saved);
+      setSavedOnce(true);
+      success('Admission form saved');
+    } catch (err) {
+      const data = err.response?.data;
+      toastError(data?.error || data?.message || 'Failed to save admission form');
+    } finally {
+      setSaving(false);
+    }
+  };
 
-    const handleConfirm = async () => {
-        setConfirming(true);
-        try {
-            await nurseService.confirmAdmission(admissionId);
-            success('Patient marked as admitted');
-            onConfirmed && onConfirmed();
-            onClose();
-        } catch (err) {
-            const msg = err.response?.data?.error || err.response?.data?.message || err.response?.data || 'Failed to mark admitted';
-            toastError(typeof msg === 'string' ? msg : 'Failed to mark admitted');
-        } finally {
-            setConfirming(false);
-        }
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-            <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white">
-                    <h2 className="text-lg font-bold text-gray-900">Admission Form</h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
-                </div>
-
-                {loading ? <LoadingSpinner /> : (
-                    <div className="p-6 space-y-6">
-                        <section>
-                            <h3 className="text-sm font-bold text-gray-800 mb-3">Header</h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                <Text label="PRN No" value={f.prnNo} onChange={set('prnNo')} />
-                                <Text label="Bed No" value={f.bedNo} onChange={set('bedNo')} />
-                                <Text label="Category (Ward)" value={f.category} onChange={set('category')} />
-                            </div>
-                        </section>
-
-                        <section>
-                            <h3 className="text-sm font-bold text-gray-800 mb-3">Patient</h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <Text label="First Name" value={f.patientFirstName} onChange={set('patientFirstName')} />
-                                <Text label="Surname" value={f.patientSurname} onChange={set('patientSurname')} />
-                                <Text label="Husband's / Father's Name" value={f.husbandFatherName} onChange={set('husbandFatherName')} wide />
-                                <Text label="Address" value={f.patientAddress} onChange={set('patientAddress')} wide />
-                                <Text label="Age" value={f.age} onChange={set('age')} />
-                                <Text label="Sex" value={f.sex} onChange={set('sex')} />
-                                <Text label="Occupation" value={f.occupation} onChange={set('occupation')} />
-                                <Select label="Patient Category" value={f.patientCategory} onChange={set('patientCategory')}
-                                    options={['Hospital Patient', 'Private Patient', 'PMC / PMT']} />
-                            </div>
-                        </section>
-
-                        <section>
-                            <h3 className="text-sm font-bold text-gray-800 mb-3">Payer / Insurance</h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <Select label="Mediclaim" value={f.mediclaim} onChange={set('mediclaim')}
-                                    options={['Cashless', 'Reimburse']} />
-                                <Text label="TPA / Insurance Co." value={f.tpaName} onChange={set('tpaName')} />
-                            </div>
-                        </section>
-
-                        <section>
-                            <h3 className="text-sm font-bold text-gray-800 mb-3">Contacts</h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <Text label="Relative Name" value={f.relativeName} onChange={set('relativeName')} />
-                                <Text label="E-mail" value={f.email} onChange={set('email')} />
-                                <Text label="Telephone" value={f.telephone} onChange={set('telephone')} />
-                                <Text label="Receptionist Name" value={f.receptionistName} onChange={set('receptionistName')} />
-                                <Text label="Ref. Dr" value={f.refDr} onChange={set('refDr')} />
-                            </div>
-                        </section>
-
-                        <section>
-                            <h3 className="text-sm font-bold text-gray-800 mb-3">Admission Details</h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <Text label="IPD Registration No" value={f.ipdRegistrationNo} onChange={set('ipdRegistrationNo')} />
-                                <Text label="Department" value={f.department} onChange={set('department')} />
-                                <Text label="Under care of Dr" value={f.underCareOfDr} onChange={set('underCareOfDr')} />
-                                <Text label="Admitted Date" value={f.admittedDate} onChange={set('admittedDate')} />
-                                <Text label="Admitted Time" value={f.admittedTime} onChange={set('admittedTime')} />
-                                <Text label="Prov. Diagnosis 1" value={f.provDiagnosis1} onChange={set('provDiagnosis1')} wide />
-                                <Text label="Prov. Diagnosis 2" value={f.provDiagnosis2} onChange={set('provDiagnosis2')} wide />
-                                <Text label="Hypersensitivity History" value={f.hypersensitivityHistory} onChange={set('hypersensitivityHistory')} wide />
-                            </div>
-                        </section>
-
-                        <section>
-                            <h3 className="text-sm font-bold text-gray-800 mb-3">Relative (for signature)</h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <Text label="Address" value={f.relativeAddress} onChange={set('relativeAddress')} wide />
-                                <Text label="Phone" value={f.relativePhone} onChange={set('relativePhone')} />
-                            </div>
-                        </section>
-                    </div>
-                )}
-
-                <div className="px-6 py-4 border-t border-gray-200 flex flex-wrap gap-3 justify-end sticky bottom-0 bg-white">
-                    <button onClick={onClose} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 font-semibold hover:bg-gray-100">Close</button>
-                    <button onClick={handleSave} disabled={saving}
-                        className={`px-4 py-2 rounded-lg text-white font-semibold ${saving ? 'bg-gray-400' : 'bg-gray-900 hover:bg-gray-800'}`}>
-                        {saving ? 'Saving…' : 'Save'}
-                    </button>
-                    <button onClick={handlePrint} disabled={!savedOnce}
-                        title={savedOnce ? '' : 'Save the form first'}
-                        className={`px-4 py-2 rounded-lg font-semibold ${savedOnce ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}>
-                        Print Admission Form
-                    </button>
-                    <button onClick={handlePrintConsent} disabled={!savedOnce}
-                        title={savedOnce ? '' : 'Save the form first'}
-                        className={`px-4 py-2 rounded-lg font-semibold ${savedOnce ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}>
-                        Print Consent Form
-                    </button>
-                    <button onClick={handleConfirm} disabled={!savedOnce || confirming}
-                        title={savedOnce ? '' : 'Save the form first'}
-                        className={`px-4 py-2 rounded-lg font-semibold ${(savedOnce && !confirming) ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}>
-                        {confirming ? 'Marking…' : 'Mark as Admitted'}
-                    </button>
-                </div>
-            </div>
-        </div>
+  const handlePrint = () => {
+    // Prefer live branding from the backend (like the prescription/bill PDFs);
+    // fall back to the session user object.
+    printHtml(
+      buildPrintHtml(f, {
+        name: f.hospitalName || user?.hospitalName,
+        address: f.hospitalAddress || user?.hospitalAddress,
+        logo: f.hospitalLogoUrl || user?.logoUrl,
+        nurse: user?.name,
+      })
     );
+  };
+
+  const handlePrintConsent = () => {
+    printHtml(
+      buildConsentHtml(f, {
+        name: f.hospitalName || user?.hospitalName,
+        address: f.hospitalAddress || user?.hospitalAddress,
+        logo: f.hospitalLogoUrl || user?.logoUrl,
+        customId: f.hospitalCustomId,
+        nurse: user?.name,
+      })
+    );
+  };
+
+  const handleConfirm = async () => {
+    setConfirming(true);
+    try {
+      await nurseService.confirmAdmission(admissionId);
+      success('Patient marked as admitted');
+      onConfirmed && onConfirmed();
+      onClose();
+    } catch (err) {
+      const msg =
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        err.response?.data ||
+        'Failed to mark admitted';
+      toastError(typeof msg === 'string' ? msg : 'Failed to mark admitted');
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      role="button"
+      tabIndex={-1}
+      aria-label="Close dialog"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onClose();
+      }}
+    >
+      <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto">
+        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white">
+          <h2 className="text-lg font-bold text-gray-900">Admission Form</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">
+            ✕
+          </button>
+        </div>
+
+        {loading ? (
+          <LoadingSpinner />
+        ) : (
+          <div className="p-6 space-y-6">
+            <section>
+              <h3 className="text-sm font-bold text-gray-800 mb-3">Header</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Text label="PRN No" value={f.prnNo} onChange={set('prnNo')} />
+                <Text label="Bed No" value={f.bedNo} onChange={set('bedNo')} />
+                <Text label="Category (Ward)" value={f.category} onChange={set('category')} />
+              </div>
+            </section>
+
+            <section>
+              <h3 className="text-sm font-bold text-gray-800 mb-3">Patient</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Text
+                  label="First Name"
+                  value={f.patientFirstName}
+                  onChange={set('patientFirstName')}
+                />
+                <Text label="Surname" value={f.patientSurname} onChange={set('patientSurname')} />
+                <Text
+                  label="Husband's / Father's Name"
+                  value={f.husbandFatherName}
+                  onChange={set('husbandFatherName')}
+                  wide
+                />
+                <Text
+                  label="Address"
+                  value={f.patientAddress}
+                  onChange={set('patientAddress')}
+                  wide
+                />
+                <Text label="Age" value={f.age} onChange={set('age')} />
+                <Text label="Sex" value={f.sex} onChange={set('sex')} />
+                <Text label="Occupation" value={f.occupation} onChange={set('occupation')} />
+                <Select
+                  label="Patient Category"
+                  value={f.patientCategory}
+                  onChange={set('patientCategory')}
+                  options={['Hospital Patient', 'Private Patient', 'PMC / PMT']}
+                />
+              </div>
+            </section>
+
+            <section>
+              <h3 className="text-sm font-bold text-gray-800 mb-3">Payer / Insurance</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Select
+                  label="Mediclaim"
+                  value={f.mediclaim}
+                  onChange={set('mediclaim')}
+                  options={['Cashless', 'Reimburse']}
+                />
+                <Text label="TPA / Insurance Co." value={f.tpaName} onChange={set('tpaName')} />
+              </div>
+            </section>
+
+            <section>
+              <h3 className="text-sm font-bold text-gray-800 mb-3">Contacts</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Text label="Relative Name" value={f.relativeName} onChange={set('relativeName')} />
+                <Text label="E-mail" value={f.email} onChange={set('email')} />
+                <Text label="Telephone" value={f.telephone} onChange={set('telephone')} />
+                <Text
+                  label="Receptionist Name"
+                  value={f.receptionistName}
+                  onChange={set('receptionistName')}
+                />
+                <Text label="Ref. Dr" value={f.refDr} onChange={set('refDr')} />
+              </div>
+            </section>
+
+            <section>
+              <h3 className="text-sm font-bold text-gray-800 mb-3">Admission Details</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Text
+                  label="IPD Registration No"
+                  value={f.ipdRegistrationNo}
+                  onChange={set('ipdRegistrationNo')}
+                />
+                <Text label="Department" value={f.department} onChange={set('department')} />
+                <Text
+                  label="Under care of Dr"
+                  value={f.underCareOfDr}
+                  onChange={set('underCareOfDr')}
+                />
+                <Text label="Admitted Date" value={f.admittedDate} onChange={set('admittedDate')} />
+                <Text label="Admitted Time" value={f.admittedTime} onChange={set('admittedTime')} />
+                <Text
+                  label="Prov. Diagnosis 1"
+                  value={f.provDiagnosis1}
+                  onChange={set('provDiagnosis1')}
+                  wide
+                />
+                <Text
+                  label="Prov. Diagnosis 2"
+                  value={f.provDiagnosis2}
+                  onChange={set('provDiagnosis2')}
+                  wide
+                />
+                <Text
+                  label="Hypersensitivity History"
+                  value={f.hypersensitivityHistory}
+                  onChange={set('hypersensitivityHistory')}
+                  wide
+                />
+              </div>
+            </section>
+
+            <section>
+              <h3 className="text-sm font-bold text-gray-800 mb-3">Relative (for signature)</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Text
+                  label="Address"
+                  value={f.relativeAddress}
+                  onChange={set('relativeAddress')}
+                  wide
+                />
+                <Text label="Phone" value={f.relativePhone} onChange={set('relativePhone')} />
+              </div>
+            </section>
+          </div>
+        )}
+
+        <div className="px-6 py-4 border-t border-gray-200 flex flex-wrap gap-3 justify-end sticky bottom-0 bg-white">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 font-semibold hover:bg-gray-100"
+          >
+            Close
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className={`px-4 py-2 rounded-lg text-white font-semibold ${saving ? 'bg-gray-400' : 'bg-gray-900 hover:bg-gray-800'}`}
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button
+            onClick={handlePrint}
+            disabled={!savedOnce}
+            title={savedOnce ? '' : 'Save the form first'}
+            className={`px-4 py-2 rounded-lg font-semibold ${savedOnce ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+          >
+            Print Admission Form
+          </button>
+          <button
+            onClick={handlePrintConsent}
+            disabled={!savedOnce}
+            title={savedOnce ? '' : 'Save the form first'}
+            className={`px-4 py-2 rounded-lg font-semibold ${savedOnce ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+          >
+            Print Consent Form
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={!savedOnce || confirming}
+            title={savedOnce ? '' : 'Save the form first'}
+            className={`px-4 py-2 rounded-lg font-semibold ${savedOnce && !confirming ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+          >
+            {confirming ? 'Marking…' : 'Mark as Admitted'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default AdmissionFormModal;

@@ -40,6 +40,7 @@ public class SupplierService {
         s.setEmail(req.getEmail());
         s.setAddress(req.getAddress());
         s.setGstNumber(req.getGstNumber());
+        s.setPanNumber(req.getPanNumber());
         s.setDrugLicenseNumber(req.getDrugLicenseNumber());
         s.setCreditDays(req.getCreditDays() != null ? req.getCreditDays() : 0);
         s.setIsActive(req.getIsActive() != null ? req.getIsActive() : true);
@@ -79,6 +80,7 @@ public class SupplierService {
         s.setEmail(req.getEmail());
         s.setAddress(req.getAddress());
         s.setGstNumber(req.getGstNumber());
+        s.setPanNumber(req.getPanNumber());
         s.setDrugLicenseNumber(req.getDrugLicenseNumber());
         s.setCreditDays(req.getCreditDays());
         if (req.getIsActive() != null)

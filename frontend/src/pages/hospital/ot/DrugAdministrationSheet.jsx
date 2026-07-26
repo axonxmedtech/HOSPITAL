@@ -15,27 +15,34 @@ const DATE_COLS = 7;
 const esc = escapeHtml;
 
 const buildPrintHtml = (data, prefill, hospital) => {
-    const f = prefill || {};
-    const hname = esc(titleCase(hospital.name)) || 'Hospital';
-    const patientName = esc(titleCase([f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' ')));
-    const sex = (f.sex || '').toUpperCase();
-    const isM = sex.startsWith('M'), isF = sex.startsWith('F');
-    const logo = hospital.logo ? `<img src="${esc(hospital.logo)}" onerror="this.style.display='none'" style="height:56px;width:auto;object-fit:contain"/>` : '';
-    const drugs = data.drugs || [];
+  const f = prefill || {};
+  const hname = esc(titleCase(hospital.name)) || 'Hospital';
+  const patientName = esc(
+    titleCase([f.patientSurname, f.patientFirstName, f.husbandFatherName].filter(Boolean).join(' '))
+  );
+  const sex = (f.sex || '').toUpperCase();
+  const isM = sex.startsWith('M'),
+    isF = sex.startsWith('F');
+  const logo = hospital.logo
+    ? `<img src="${esc(hospital.logo)}" onerror="this.style.display='none'" style="height:56px;width:auto;object-fit:contain"/>`
+    : '';
+  const drugs = data.drugs || [];
 
-    const dateHead = '<th></th>'.repeat(DATE_COLS);
-    const emptyCells = '<td></td>'.repeat(DATE_COLS);
-    const bodyRows = Array.from({ length: ROWS }).map((_, i) => {
-        const name = esc(drugs[i] || '');
-        return `<tr>
+  const dateHead = '<th></th>'.repeat(DATE_COLS);
+  const emptyCells = '<td></td>'.repeat(DATE_COLS);
+  const bodyRows = Array.from({ length: ROWS })
+    .map((_, i) => {
+      const name = esc(drugs[i] || '');
+      return `<tr>
             <td rowspan="2" class="sr">${i + 1}</td>
             <td rowspan="2" class="drug">${name}</td>
             <td class="ts">T</td>${emptyCells}
           </tr>
           <tr><td class="ts">S</td>${emptyCells}</tr>`;
-    }).join('');
+    })
+    .join('');
 
-    return `<!doctype html><html><head><meta charset="utf-8"><title>Drug Administration Sheet</title>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Drug Administration Sheet</title>
     <style>
       @page { size: A4; margin: 9mm; }
       * { box-sizing: border-box; }
@@ -98,63 +105,97 @@ const buildPrintHtml = (data, prefill, hospital) => {
 };
 
 const DrugAdministrationSheet = ({ admissionId, onClose, readOnly = false }) => (
-    <SurgeryFormFrame
-        admissionId={admissionId}
-        readOnly={readOnly}
-        formType="DRUG_ADMIN_SHEET"
-        title="Drug Administration Sheet"
-        code="VH/NABH/OT/12/2026"
-        defaults={{ mlcNo: '', date: '', time: '', drugs: Array(ROWS).fill('') }}
-        buildPrintHtml={buildPrintHtml}
-        onClose={onClose}
-        renderFields={({ data, set, prefill }) => {
-            const drugs = data.drugs && data.drugs.length ? data.drugs : Array(ROWS).fill('');
-            const setDrug = (i, v) => {
-                const arr = [...drugs];
-                arr[i] = v;
-                set('drugs', arr);
-            };
-            return (
-                <div className="space-y-4">
-                    <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600">
-                        For <b>{titleCase([prefill.patientSurname, prefill.patientFirstName, prefill.husbandFatherName].filter(Boolean).join(' ')) || '—'}</b>
-                        {prefill.ipdRegistrationNo ? ` · IPD ${prefill.ipdRegistrationNo}` : ''}
-                        {prefill.bedNo ? ` · Bed ${prefill.bedNo}` : ''} — the date grid (T/S) prints blank for bedside entry.
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">MLC No.</label>
-                            <input value={data.mlcNo} onChange={(e) => set('mlcNo', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="If applicable" />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">Date</label>
-                            <input type="date" value={data.date} onChange={(e) => set('date', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">Time</label>
-                            <input type="time" value={data.time} onChange={(e) => set('time', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">IV / Drugs / Injections (optional — leave blank rows for bedside entry)</label>
-                        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                            {drugs.map((val, i) => (
-                                <div key={i} className="flex items-center gap-2">
-                                    <span className="w-6 text-xs font-semibold text-gray-400">{i + 1}</span>
-                                    <input value={val} onChange={(e) => setDrug(i, e.target.value)}
-                                        className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
-                                        placeholder={`Drug / injection ${i + 1}`} />
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+  <SurgeryFormFrame
+    admissionId={admissionId}
+    readOnly={readOnly}
+    formType="DRUG_ADMIN_SHEET"
+    title="Drug Administration Sheet"
+    code="VH/NABH/OT/12/2026"
+    defaults={{ mlcNo: '', date: '', time: '', drugs: Array(ROWS).fill('') }}
+    buildPrintHtml={buildPrintHtml}
+    onClose={onClose}
+    renderFields={({ data, set, prefill }) => {
+      const drugs = data.drugs && data.drugs.length ? data.drugs : Array(ROWS).fill('');
+      const setDrug = (i, v) => {
+        const arr = [...drugs];
+        arr[i] = v;
+        set('drugs', arr);
+      };
+      return (
+        <div className="space-y-4">
+          <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600">
+            For{' '}
+            <b>
+              {titleCase(
+                [prefill.patientSurname, prefill.patientFirstName, prefill.husbandFatherName]
+                  .filter(Boolean)
+                  .join(' ')
+              ) || '—'}
+            </b>
+            {prefill.ipdRegistrationNo ? ` · IPD ${prefill.ipdRegistrationNo}` : ''}
+            {prefill.bedNo ? ` · Bed ${prefill.bedNo}` : ''} — the date grid (T/S) prints blank for
+            bedside entry.
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label htmlFor="fld-194" className="block text-xs font-semibold text-gray-600 mb-1">
+                MLC No.
+              </label>
+              <input
+                id="fld-194"
+                value={data.mlcNo}
+                onChange={(e) => set('mlcNo', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                placeholder="If applicable"
+              />
+            </div>
+            <div>
+              <label htmlFor="fld-193" className="block text-xs font-semibold text-gray-600 mb-1">
+                Date
+              </label>
+              <input
+                id="fld-193"
+                type="date"
+                value={data.date}
+                onChange={(e) => set('date', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              />
+            </div>
+            <div>
+              <label htmlFor="fld-192" className="block text-xs font-semibold text-gray-600 mb-1">
+                Time
+              </label>
+              <input
+                id="fld-192"
+                type="time"
+                value={data.time}
+                onChange={(e) => set('time', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              />
+            </div>
+          </div>
+          <div>
+            <span className="block text-xs font-semibold text-gray-600 mb-2">
+              IV / Drugs / Injections (optional — leave blank rows for bedside entry)
+            </span>
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              {drugs.map((val, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="w-6 text-xs font-semibold text-gray-400">{i + 1}</span>
+                  <input
+                    value={val}
+                    onChange={(e) => setDrug(i, e.target.value)}
+                    className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+                    placeholder={`Drug / injection ${i + 1}`}
+                  />
                 </div>
-            );
-        }}
-    />
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }}
+  />
 );
 
 export default DrugAdministrationSheet;
