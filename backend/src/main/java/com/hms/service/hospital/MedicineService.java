@@ -90,6 +90,7 @@ public class MedicineService {
 
     @Transactional
     public Map<String, Object> importCatalogCsv(MultipartFile file) throws Exception {
+        com.hms.util.CsvUploads.validate(file);
         int imported = 0;
         int updated = 0;
         List<String> errors = new ArrayList<>();

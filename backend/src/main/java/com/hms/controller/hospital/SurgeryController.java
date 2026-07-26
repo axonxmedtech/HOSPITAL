@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.dto.CreateSurgeryRequest;
 import com.hms.dto.ScheduleSurgeryRequest;
 import com.hms.entity.HospitalType;
@@ -29,7 +31,7 @@ public class SurgeryController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('OT_CREATE')")
-    public ResponseEntity<?> create(@RequestBody CreateSurgeryRequest req) {
+    public ResponseEntity<?> create(@Valid @RequestBody CreateSurgeryRequest req) {
         return ResponseEntity.ok(service.createRequest(req));
     }
 
@@ -72,7 +74,7 @@ public class SurgeryController {
 
     @PostMapping("/{publicId}/schedule")
     @PreAuthorize("hasAuthority('OT_SCHEDULE')")
-    public ResponseEntity<?> schedule(@PathVariable String publicId, @RequestBody ScheduleSurgeryRequest req) {
+    public ResponseEntity<?> schedule(@PathVariable String publicId, @Valid @RequestBody ScheduleSurgeryRequest req) {
         return ResponseEntity.ok(service.schedule(publicId, req));
     }
 

@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.dto.SaveSurgeryFormRequest;
 import com.hms.entity.HospitalType;
 import com.hms.security.RequireModule;
@@ -26,7 +28,7 @@ public class SurgeryFormController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('OT_FORM_EDIT')")
-    public ResponseEntity<?> save(@RequestBody SaveSurgeryFormRequest req) {
+    public ResponseEntity<?> save(@Valid @RequestBody SaveSurgeryFormRequest req) {
         return ResponseEntity.ok(service.save(req));
     }
 

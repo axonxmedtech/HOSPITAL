@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 // BUG-028: single source-of-truth for base URL
 import authService from '../services/authService';
 import hospitalService from '../services/hospitalService';
-import { printPdf } from '../utils/printPdf';
+import PdfViewerModal from './PdfViewerModal';
 
 /**
  * PatientDetailsModal - Read-only view of patient information with tabs for additional data
@@ -11,8 +11,8 @@ import { printPdf } from '../utils/printPdf';
  * - Basic patient information (read-only)
  * - Tabbed interface for: Info, Case Papers (OPD History + Prescriptions), Bills
  */
-const PatientDetailsModal = ({ patient, onClose }) => {
-  const [activeTab, setActiveTab] = useState('info');
+const PatientDetailsModal = ({ patient, onClose, initialTab = 'info' }) => {
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   const [opdHistory, setOpdHistory] = useState([]);
   const [ipdHistory, setIpdHistory] = useState([]);
@@ -29,33 +29,36 @@ const PatientDetailsModal = ({ patient, onClose }) => {
   const [printingIpdPrescriptionId, setPrintingIpdPrescriptionId] = useState(null);
   const [printingIpdMedicinesId, setPrintingIpdMedicinesId] = useState(null);
   const [expandedAdmissionIds, setExpandedAdmissionIds] = useState({});
+  // The document to show in the inline PDF viewer: { endpointPath, title } or null.
+  const [viewerDoc, setViewerDoc] = useState(null);
 
   const user = authService.getCurrentUser();
   const inClinicEnabled = user?.inClinic !== false;
 
-  // Print server PDFs on the current page (hidden iframe), like the bill/case-paper prints.
-  const openPdfInNewTab = (endpointPath) => {
-    printPdf(endpointPath);
+  // Open the document in the inline viewer so the user can read it first, then Print/Download
+  // from the viewer's toolbar (instead of firing the print dialog straight away).
+  const openDocument = (endpointPath, title) => {
+    setViewerDoc({ endpointPath, title });
   };
 
   const handlePrintPrescription = (opdId) => {
-    openPdfInNewTab(`/hospital/doctors/prescription/opd/${opdId}/pdf`);
+    openDocument(`/hospital/doctors/prescription/opd/${opdId}/pdf`, 'Prescription');
   };
 
   const handlePrintOpdMedicines = (opdId) => {
-    openPdfInNewTab(`/hospital/patients/opd/${opdId}/medicines/pdf`);
+    openDocument(`/hospital/patients/opd/${opdId}/medicines/pdf`, 'In-Clinic Medicines');
   };
 
   const handlePrintIpdPrescription = (ipdId) => {
-    openPdfInNewTab(`/hospital/patients/ipd/${ipdId}/prescription/pdf`);
+    openDocument(`/hospital/patients/ipd/${ipdId}/prescription/pdf`, 'IPD Prescription');
   };
 
   const handlePrintIpdMedicines = (ipdId) => {
-    openPdfInNewTab(`/hospital/patients/ipd/${ipdId}/medicines/pdf`);
+    openDocument(`/hospital/patients/ipd/${ipdId}/medicines/pdf`, 'IPD Medicines');
   };
 
   const handleDownloadCasePaper = (opdId) => {
-    openPdfInNewTab(`/hospital/opd/${opdId}/pdf`);
+    openDocument(`/hospital/opd/${opdId}/pdf`, 'Case Paper');
   };
 
   useEffect(() => {
@@ -917,10 +920,15 @@ const PatientDetailsModal = ({ patient, onClose }) => {
                             </td>
                             <td className="px-4 py-3 text-center">
                               <button
-                                onClick={() => openPdfInNewTab(`/hospital/billing/${bill.id}/pdf`)}
+                                onClick={() =>
+                                  openDocument(
+                                    `/hospital/billing/${bill.id}/pdf`,
+                                    `Bill ${bill.customId || bill.id}`
+                                  )
+                                }
                                 className="px-2.5 py-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 rounded-md transition"
                               >
-                                Print
+                                View
                               </button>
                             </td>
                           </tr>
@@ -948,6 +956,14 @@ const PatientDetailsModal = ({ patient, onClose }) => {
           </button>
         </div>
       </div>
+
+      {viewerDoc && (
+        <PdfViewerModal
+          endpointPath={viewerDoc.endpointPath}
+          title={viewerDoc.title}
+          onClose={() => setViewerDoc(null)}
+        />
+      )}
     </div>
   );
 };

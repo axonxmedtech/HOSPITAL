@@ -45,7 +45,7 @@ public class PlatformTicketController {
             // Otherwise, get all tickets (backward compatibility)
             return ResponseEntity.ok(supportTicketRepository.findAll());
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 
@@ -62,7 +62,7 @@ public class PlatformTicketController {
                     .orElseThrow(() -> new ResourceNotFoundException("Ticket not found"));
             return ResponseEntity.ok(ticket);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 
@@ -95,7 +95,7 @@ public class PlatformTicketController {
             SupportTicket saved = supportTicketRepository.save(ticket);
             return ResponseEntity.ok(saved);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 
@@ -111,7 +111,7 @@ public class PlatformTicketController {
             }
             return ResponseEntity.ok().build();
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 }

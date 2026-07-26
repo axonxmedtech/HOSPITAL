@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.dto.AssignNurseRequest;
 import com.hms.security.RequireModule;
 import com.hms.service.hospital.NurseAssignmentService;
@@ -26,7 +28,7 @@ public class NurseAssignmentController {
 
     @PostMapping
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
-    public ResponseEntity<?> assign(@RequestBody AssignNurseRequest req) {
+    public ResponseEntity<?> assign(@Valid @RequestBody AssignNurseRequest req) {
         if (req.getIpdAdmissionId() == null || req.getNurseUserId() == null) {
             return ResponseEntity.badRequest().body("ipdAdmissionId and nurseUserId are required");
         }
@@ -36,7 +38,7 @@ public class NurseAssignmentController {
 
     @PutMapping("/{publicId}/reassign")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
-    public ResponseEntity<?> reassign(@PathVariable String publicId, @RequestBody AssignNurseRequest req) {
+    public ResponseEntity<?> reassign(@PathVariable String publicId, @Valid @RequestBody AssignNurseRequest req) {
         if (req.getNurseUserId() == null) {
             return ResponseEntity.badRequest().body("nurseUserId is required");
         }

@@ -4,12 +4,18 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
+import com.hms.validation.NoEmoji;
+import com.hms.validation.PersonName;
 import lombok.Data;
 
 @Data
 public class SupplierRequest {
     @NotBlank(message = "Supplier name is required")
+    @PersonName(message = "Supplier name may only contain letters, spaces and . ' -")
     private String supplierName;
+
+    @PersonName(message = "Contact person may only contain letters, spaces and . ' -")
     private String contactPerson;
 
     @NotBlank(message = "Phone number is required")
@@ -17,8 +23,11 @@ public class SupplierRequest {
     private String phone;
 
     @Email(message = "Invalid email format")
+    @Size(max = 100, message = "Email is too long")
     private String email;
 
+    @Size(max = 255, message = "Address is too long")
+    @NoEmoji
     private String address;
 
     @Pattern(regexp = "^([A-Za-z0-9]{15})?$", message = "GST number must be exactly 15 alphanumeric characters")
@@ -27,6 +36,7 @@ public class SupplierRequest {
     @Pattern(regexp = "^([A-Za-z0-9]{10})?$", message = "PAN number must be exactly 10 alphanumeric characters")
     private String panNumber;
 
+    @Pattern(regexp = "^[A-Za-z0-9/\\-]{0,50}$", message = "Drug license number is invalid")
     private String drugLicenseNumber;
 
     @Min(value = 0, message = "Credit days cannot be negative")

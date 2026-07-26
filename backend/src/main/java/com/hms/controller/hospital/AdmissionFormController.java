@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.entity.AdmissionForm;
 import com.hms.service.hospital.AdmissionFormService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,7 +31,7 @@ public class AdmissionFormController {
 
     @PostMapping("/admission/{admissionId}")
     @PreAuthorize("hasRole('NURSE')")
-    public ResponseEntity<?> save(@PathVariable Long admissionId, @RequestBody AdmissionForm form) {
+    public ResponseEntity<?> save(@PathVariable Long admissionId, @Valid @RequestBody AdmissionForm form) {
         return ResponseEntity.ok(admissionFormService.save(admissionId, form));
     }
 

@@ -7,6 +7,12 @@ import com.hms.entity.BillingItem;
 import com.hms.entity.BillingPayment;
 import com.hms.service.hospital.BillingService;
 
+import com.hms.validation.NoEmoji;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
@@ -428,14 +434,22 @@ public class BillingController {
     }
 
     public static class PayRequest {
+        @NotNull(message = "Payment amount is required")
+        @DecimalMin(value = "0.0", message = "Payment amount cannot be negative")
         public BigDecimal amount;
+
+        @Size(max = 30, message = "Payment mode is too long")
+        @NoEmoji
         public String mode;
+
+        @Size(max = 100, message = "Payment reference is too long")
+        @NoEmoji
         public String reference;
     }
 
     @PostMapping("/{billingId}/pay")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
-    public ResponseEntity<?> payBilling(@PathVariable Long billingId, @RequestBody PayRequest req) {
+    public ResponseEntity<?> payBilling(@PathVariable Long billingId, @Valid @RequestBody PayRequest req) {
         validateBillingAccess();
         String role = securityHelper.getCurrentUserRole();
         if (!"RECEPTIONIST".equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role) && !DOCTOR_ROLE.equalsIgnoreCase(role)) {

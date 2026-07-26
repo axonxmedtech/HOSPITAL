@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.dto.VitalSettingRequest;
 import com.hms.service.hospital.VitalSettingsService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,13 +36,13 @@ public class VitalSettingsController {
 
     @PutMapping("/{vitalKey}")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
-    public ResponseEntity<?> toggle(@PathVariable String vitalKey, @RequestBody VitalSettingRequest req) {
+    public ResponseEntity<?> toggle(@PathVariable String vitalKey, @Valid @RequestBody VitalSettingRequest req) {
         return ResponseEntity.ok(vitalSettingsService.toggle(vitalKey, req));
     }
 
     @PostMapping("/custom")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
-    public ResponseEntity<?> addCustom(@RequestBody VitalSettingRequest req) {
+    public ResponseEntity<?> addCustom(@Valid @RequestBody VitalSettingRequest req) {
         return ResponseEntity.ok(vitalSettingsService.addCustom(req));
     }
 

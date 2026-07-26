@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.entity.InitialAssessment;
 import com.hms.service.hospital.InitialAssessmentService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,7 +28,7 @@ public class InitialAssessmentController {
     }
 
     @PostMapping("/admission/{admissionId}")
-    public ResponseEntity<?> save(@PathVariable Long admissionId, @RequestBody InitialAssessment body) {
+    public ResponseEntity<?> save(@PathVariable Long admissionId, @Valid @RequestBody InitialAssessment body) {
         return ResponseEntity.ok(service.save(admissionId, body));
     }
 }

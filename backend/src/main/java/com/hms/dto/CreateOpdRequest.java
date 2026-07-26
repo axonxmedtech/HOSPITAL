@@ -4,6 +4,8 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import com.hms.validation.NoEmoji;
 
 public class CreateOpdRequest {
     @NotBlank(message = "Patient ID is required")
@@ -32,15 +34,22 @@ public class CreateOpdRequest {
     /** Hospital-defined custom vitals, keyed by vital_key. No validation by design. */
     private java.util.Map<String, String> customVitals;
 
+    @Size(max = 2000, message = "Problem is too long")
+    @NoEmoji
     private String problem;
 
     @NotBlank(message = "Visit type is required")
+    @Pattern(regexp = "^(NEW|FOLLOWUP)$", message = "Visit type must be NEW or FOLLOWUP")
     private String visitType; // NEW or FOLLOWUP
 
     // "Payment first" only: how the consultation + case-paper fee was collected at OPD entry.
     // CASH or UPI (+ a UTR/reference for UPI), mirroring the mark-as-paid flow. Ignored when
     // the hospital's bill payment timing is LAST.
+    @Pattern(regexp = "^(CASH|UPI)?$", message = "Payment method must be CASH or UPI")
     private String paymentMethod;
+
+    @Size(max = 100, message = "Payment reference is too long")
+    @NoEmoji
     private String paymentReference;
 
     public String getPatientId() { return patientId; }

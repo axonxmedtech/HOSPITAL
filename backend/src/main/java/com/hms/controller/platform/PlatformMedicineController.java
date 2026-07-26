@@ -1,5 +1,7 @@
 package com.hms.controller.platform;
 
+import jakarta.validation.Valid;
+
 import com.hms.entity.MedicineList;
 import com.hms.service.hospital.MedicineService;
 import com.hms.service.platform.PlatformMedicineListService;
@@ -47,14 +49,14 @@ public class PlatformMedicineController {
             Pageable pageable = PageRequest.of(page, size, Sort.by("name").ascending());
             return ResponseEntity.ok(medicineService.getPlatformMedicines(search, pageable));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 
     @PostMapping
     public ResponseEntity<?> createMedicine(
             @RequestParam(required = false) String hospitalType,
-            @RequestBody MedicineList medicine) {
+            @Valid @RequestBody MedicineList medicine) {
         try {
             // Typed catalog (legacy per-tenant-type isolation)
             if (hospitalType != null && !hospitalType.isEmpty()) {
@@ -69,7 +71,7 @@ public class PlatformMedicineController {
             // Global catalog — shared by hospital, clinic and pharmacy searches
             return ResponseEntity.ok(medicineService.addCatalogMedicine(medicine));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 
@@ -91,7 +93,7 @@ public class PlatformMedicineController {
             // Global catalog update (no tenant-type isolation)
             return ResponseEntity.ok(medicineService.updateCatalogMedicine(id, request));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 
@@ -108,7 +110,7 @@ public class PlatformMedicineController {
             }
             return ResponseEntity.ok().build();
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 
@@ -118,7 +120,7 @@ public class PlatformMedicineController {
             Map<String, Object> result = medicineService.importCatalogCsv(file);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 }

@@ -1,9 +1,18 @@
 package com.hms.dto;
 
+import com.hms.validation.NoEmoji;
+import jakarta.validation.constraints.Size;
+
 /** Toggle a vital on/off, or define a new custom vital (name + unit). */
 public class VitalSettingRequest {
     private Boolean enabled;
+
+    @Size(max = 100, message = "Vital name is too long")
+    @NoEmoji
     private String name;
+
+    @Size(max = 20, message = "Unit is too long")
+    @NoEmoji
     private String unit;
 
     public Boolean getEnabled() { return enabled; }

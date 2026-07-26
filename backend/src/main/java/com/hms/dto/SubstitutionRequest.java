@@ -2,11 +2,28 @@ package com.hms.dto;
 
 import java.time.LocalDate;
 
+import com.hms.validation.NoEmoji;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
+
 public class SubstitutionRequest {
+    @NotNull(message = "primaryNurseProfileId is required")
+    @Positive
     private Long primaryNurseProfileId;
+
+    @NotNull(message = "replacementNurseProfileId is required")
+    @Positive
     private Long replacementNurseProfileId;
+
+    @NotNull(message = "fromDate is required")
     private LocalDate fromDate;
+
+    @NotNull(message = "toDate is required")
     private LocalDate toDate;
+
+    @Size(max = 1000)
+    @NoEmoji
     private String reason;
 
     public Long getPrimaryNurseProfileId() { return primaryNurseProfileId; }

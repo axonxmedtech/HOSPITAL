@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.dto.AssignPatientNurseRequest;
 import com.hms.security.RequireModule;
 import com.hms.service.hospital.NurseWorkspaceService;
@@ -37,7 +39,7 @@ public class NurseInchargeController {
 
     @PostMapping("/assign")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','NURSE_INCHARGE')")
-    public ResponseEntity<?> assign(@RequestBody AssignPatientNurseRequest req) {
+    public ResponseEntity<?> assign(@Valid @RequestBody AssignPatientNurseRequest req) {
         workspaceService.assignPatientNurse(req.getIpdAdmissionId(), req.getNurseProfileId());
         return ResponseEntity.ok(Map.of("message", "Nurse assigned"));
     }

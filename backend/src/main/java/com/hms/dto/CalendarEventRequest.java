@@ -1,12 +1,26 @@
 package com.hms.dto;
 
+import com.hms.validation.NoEmoji;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
 import java.time.LocalDate;
 
 public class CalendarEventRequest {
+    @NotBlank(message = "Title is required")
+    @Size(max = 150, message = "Title is too long")
+    @NoEmoji
     private String title;
+
+    @Size(max = 50, message = "Event type is too long")
+    @NoEmoji
     private String eventType;
+
     private LocalDate fromDate;
     private LocalDate toDate;
+
+    @Size(max = 1000, message = "Description is too long")
+    @NoEmoji
     private String description;
 
     public String getTitle() { return title; }

@@ -1,5 +1,7 @@
 package com.hms.controller.pharmacy;
 
+import jakarta.validation.Valid;
+
 import com.hms.exception.ResourceNotFoundException;
  
 import com.hms.dto.pharmacy.PharmacySaleRequest;
@@ -37,7 +39,7 @@ public class PharmacySaleController {
  
     @PostMapping
     @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
-    public ResponseEntity<?> createSale(@jakarta.validation.Valid @RequestBody PharmacySaleRequest request) {
+    public ResponseEntity<?> createSale(@Valid @RequestBody PharmacySaleRequest request) {
         return ResponseEntity.ok(saleService.createSale(request));
     }
  

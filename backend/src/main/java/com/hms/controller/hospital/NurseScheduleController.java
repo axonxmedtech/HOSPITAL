@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.dto.AssignShiftRequest;
 import com.hms.dto.RangeFillShiftRequest;
 import com.hms.security.RequireModule;
@@ -21,11 +23,11 @@ public class NurseScheduleController {
 
     @PostMapping("/assign")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','NURSE_INCHARGE')")
-    public ResponseEntity<?> assign(@RequestBody AssignShiftRequest req) { return ResponseEntity.ok(service.assign(req)); }
+    public ResponseEntity<?> assign(@Valid @RequestBody AssignShiftRequest req) { return ResponseEntity.ok(service.assign(req)); }
 
     @PostMapping("/range-fill")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','NURSE_INCHARGE')")
-    public ResponseEntity<?> rangeFill(@RequestBody RangeFillShiftRequest req) {
+    public ResponseEntity<?> rangeFill(@Valid @RequestBody RangeFillShiftRequest req) {
         return ResponseEntity.ok(Map.of("created", service.rangeFill(req)));
     }
 

@@ -12,6 +12,10 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
     // Find logs ordered by timestamp descending (newest first)
     List<AuditLog> findAllByOrderByTimestampDesc();
 
+    // Platform-level actions only: hospitalId is null for Super Admin / platform actions
+    // (tenant onboarding, plan changes, password resets), non-null for a tenant's own events.
+    List<AuditLog> findByHospitalIdIsNullOrderByTimestampDesc();
+
     List<AuditLog> findByHospitalIdOrderByTimestampDesc(Long hospitalId);
 
     List<AuditLog> findByHospitalIdAndActionContainingIgnoreCaseOrderByTimestampDesc(Long hospitalId, String action);

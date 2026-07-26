@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.dto.HospitalServiceDTO;
 import com.hms.entity.HospitalServiceEntity;
 import com.hms.service.hospital.HospitalServiceService;
@@ -76,7 +78,7 @@ public class HospitalServiceController {
 
     @PostMapping("/services")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> createService(@RequestBody HospitalServiceDTO dto) {
+    public ResponseEntity<?> createService(@Valid @RequestBody HospitalServiceDTO dto) {
         try {
             HospitalServiceEntity saved = serviceService.createService(dto.getName(), dto.getCharge(), dto.getMasterItemIds());
             return ResponseEntity.ok(toDto(saved));
@@ -87,14 +89,14 @@ public class HospitalServiceController {
 
     @PutMapping("/services/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> updateService(@PathVariable Long id, @RequestBody HospitalServiceDTO dto) {
+    public ResponseEntity<?> updateService(@PathVariable Long id, @Valid @RequestBody HospitalServiceDTO dto) {
         try {
             HospitalServiceEntity saved = serviceService.updateService(id, dto.getName(), dto.getCharge(), dto.getMasterItemIds());
             return ResponseEntity.ok(toDto(saved));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 
@@ -105,7 +107,7 @@ public class HospitalServiceController {
             serviceService.deleteService(id);
             return ResponseEntity.ok("Service deleted successfully");
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 }

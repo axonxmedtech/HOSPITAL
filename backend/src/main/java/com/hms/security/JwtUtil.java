@@ -37,6 +37,24 @@ public class JwtUtil {
     @Value("${jwt.expiration}")
     private Long expiration;
 
+    private static final String PLACEHOLDER_SECRET = "YOUR_SECRET_KEY_HERE_MUST_BE_VERY_LONG_FOR_SECURITY";
+
+    /**
+     * Fail fast at startup if the JWT secret is missing, still the placeholder, or too short for
+     * safe HMAC signing (&lt; 32 bytes). A weak or publicly-known signing key lets anyone forge
+     * tokens, so the app must refuse to boot rather than run insecurely.
+     */
+    @jakarta.annotation.PostConstruct
+    void validateSecret() {
+        if (secret == null || secret.isBlank()
+                || secret.equals(PLACEHOLDER_SECRET)
+                || secret.getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalStateException(
+                    "JWT secret is unset, using the built-in placeholder, or shorter than 32 bytes. "
+                            + "Set a strong, unique JWT_SECRET (at least 32 characters) in the environment.");
+        }
+    }
+
     /**
      * Generate a secret key from the configured secret string
      * 

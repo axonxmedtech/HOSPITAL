@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.dto.ConsultationNotePresetDTO;
 import com.hms.entity.ConsultationNotePreset;
 import com.hms.service.hospital.ConsultationNotePresetService;
@@ -41,7 +43,7 @@ public class ConsultationNotePresetController {
 
     @PostMapping
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR')")
-    public ResponseEntity<?> createPreset(@RequestBody ConsultationNotePresetDTO dto) {
+    public ResponseEntity<?> createPreset(@Valid @RequestBody ConsultationNotePresetDTO dto) {
         try {
             ConsultationNotePreset saved = presetService.createPreset(dto.getFieldType(), dto.getText(), dto.getDoctorId());
             return ResponseEntity.ok(toDto(saved));
@@ -57,7 +59,7 @@ public class ConsultationNotePresetController {
             ConsultationNotePreset saved = presetService.updatePreset(id, dto.getText(), dto.getDisplayOrder(), dto.getDoctorId());
             return ResponseEntity.ok(toDto(saved));
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 
@@ -68,7 +70,7 @@ public class ConsultationNotePresetController {
             presetService.deletePreset(id);
             return ResponseEntity.ok("Preset deleted successfully");
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 }

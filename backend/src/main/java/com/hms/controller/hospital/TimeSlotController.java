@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.dto.AppointmentSlotRequest;
 import com.hms.dto.ShiftTemplateRequest;
 import com.hms.security.RequireModule;
@@ -26,12 +28,12 @@ public class TimeSlotController {
     }
     @PostMapping("/shift-templates")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
-    public ResponseEntity<?> createShiftTemplate(@RequestBody ShiftTemplateRequest req) {
+    public ResponseEntity<?> createShiftTemplate(@Valid @RequestBody ShiftTemplateRequest req) {
         return ResponseEntity.ok(shiftTemplateService.create(req));
     }
     @PutMapping("/shift-templates/{publicId}")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
-    public ResponseEntity<?> updateShiftTemplate(@PathVariable String publicId, @RequestBody ShiftTemplateRequest req) {
+    public ResponseEntity<?> updateShiftTemplate(@PathVariable String publicId, @Valid @RequestBody ShiftTemplateRequest req) {
         return ResponseEntity.ok(shiftTemplateService.update(publicId, req));
     }
     @DeleteMapping("/shift-templates/{publicId}")
@@ -55,12 +57,12 @@ public class TimeSlotController {
     }
     @PostMapping("/appointment-slots")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
-    public ResponseEntity<?> createSlot(@RequestBody AppointmentSlotRequest req) {
+    public ResponseEntity<?> createSlot(@Valid @RequestBody AppointmentSlotRequest req) {
         return ResponseEntity.ok(appointmentSlotService.create(req));
     }
     @PutMapping("/appointment-slots/{publicId}")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
-    public ResponseEntity<?> updateSlot(@PathVariable String publicId, @RequestBody AppointmentSlotRequest req) {
+    public ResponseEntity<?> updateSlot(@PathVariable String publicId, @Valid @RequestBody AppointmentSlotRequest req) {
         return ResponseEntity.ok(appointmentSlotService.update(publicId, req));
     }
     @DeleteMapping("/appointment-slots/{publicId}")

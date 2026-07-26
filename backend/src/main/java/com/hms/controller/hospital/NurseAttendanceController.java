@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.dto.MarkAttendanceRequest;
 import com.hms.security.RequireModule;
 import com.hms.service.hospital.NurseAttendanceService;
@@ -27,7 +29,7 @@ public class NurseAttendanceController {
 
     @PostMapping("/mark")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','NURSE_INCHARGE')")
-    public ResponseEntity<?> mark(@RequestBody MarkAttendanceRequest req) {
+    public ResponseEntity<?> mark(@Valid @RequestBody MarkAttendanceRequest req) {
         return ResponseEntity.ok(service.mark(req));
     }
 

@@ -56,7 +56,7 @@ public class DoctorController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
-    public ResponseEntity<?> updateDoctor(@PathVariable String id, @jakarta.validation.Valid @RequestBody Doctor doctor) {
+    public ResponseEntity<?> updateDoctor(@PathVariable String id, @Valid @RequestBody Doctor doctor) {
         // Note: Not validating full request as password/email might not be sent
         Doctor updatedDoctor = doctorService.updateDoctor(id, doctor);
         return ResponseEntity.ok(updatedDoctor);

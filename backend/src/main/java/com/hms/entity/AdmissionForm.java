@@ -1,6 +1,11 @@
 package com.hms.entity;
 
+import com.hms.validation.NoEmoji;
+import com.hms.validation.PersonName;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -36,71 +41,120 @@ public class AdmissionForm {
     private Long ipdAdmissionId;
 
     // Header
+    @Size(max = 60)
+    @NoEmoji
     @Column(name = "prn_no", length = 60)
     private String prnNo;
+    @Size(max = 60)
+    @NoEmoji
     @Column(name = "bed_no", length = 60)
     private String bedNo;
+    @Pattern(regexp = "^(ICU|Deluxe|Private|Semi Private|General)$",
+            message = "category must be one of ICU, Deluxe, Private, Semi Private, General")
     @Column(name = "category", length = 40) // ICU / Deluxe / Private / Semi Private / General
     private String category;
 
     // Patient
+    @PersonName
     @Column(name = "patient_surname", length = 100)
     private String patientSurname;
+    @PersonName
     @Column(name = "patient_first_name", length = 100)
     private String patientFirstName;
+    @PersonName
     @Column(name = "husband_father_name", length = 150)
     private String husbandFatherName;
+    @Size(max = 500)
+    @NoEmoji
     @Column(name = "patient_address", columnDefinition = "text")
     private String patientAddress;
+    @Size(max = 20)
+    @NoEmoji
     @Column(name = "age", length = 20)
     private String age;
+    @Size(max = 20)
+    @NoEmoji
     @Column(name = "sex", length = 20)
     private String sex;
+    @Size(max = 100)
+    @NoEmoji
     @Column(name = "occupation", length = 100)
     private String occupation;
 
     // Category / payer
+    @Pattern(regexp = "^(HOSPITAL|PRIVATE|PMC_PMT)$",
+            message = "patientCategory must be one of HOSPITAL, PRIVATE, PMC_PMT")
     @Column(name = "patient_category", length = 40) // HOSPITAL / PRIVATE / PMC_PMT
     private String patientCategory;
+    @Pattern(regexp = "^(CASHLESS|REIMBURSE)$",
+            message = "mediclaim must be one of CASHLESS, REIMBURSE")
     @Column(name = "mediclaim", length = 20) // CASHLESS / REIMBURSE
     private String mediclaim;
+    @Size(max = 200)
+    @NoEmoji
     @Column(name = "tpa_name", length = 200)
     private String tpaName;
 
     // Contacts
+    @PersonName
     @Column(name = "relative_name", length = 150)
     private String relativeName;
+    @Email
+    @Size(max = 120)
     @Column(name = "email", length = 120)
     private String email;
+    @Size(max = 40)
+    @Pattern(regexp = "^[0-9+()\\-\\s]{6,40}$", message = "Invalid telephone number")
     @Column(name = "telephone", length = 40)
     private String telephone;
+    @PersonName
     @Column(name = "receptionist_name", length = 120)
     private String receptionistName;
+    @PersonName
     @Column(name = "ref_dr", length = 150)
     private String refDr;
 
     // Admission clinical
+    @Size(max = 60)
+    @NoEmoji
     @Column(name = "ipd_registration_no", length = 60)
     private String ipdRegistrationNo;
+    @Size(max = 120)
+    @NoEmoji
     @Column(name = "department", length = 120)
     private String department;
+    @PersonName
     @Column(name = "under_care_of_dr", length = 150)
     private String underCareOfDr;
+    @Size(max = 40)
+    @NoEmoji
     @Column(name = "admitted_date", length = 40)
     private String admittedDate;
+    @Size(max = 40)
+    @NoEmoji
     @Column(name = "admitted_time", length = 40)
     private String admittedTime;
+    @Size(max = 1000)
+    @NoEmoji
     @Column(name = "prov_diagnosis1", columnDefinition = "text")
     private String provDiagnosis1;
+    @Size(max = 1000)
+    @NoEmoji
     @Column(name = "prov_diagnosis2", columnDefinition = "text")
     private String provDiagnosis2;
 
+    @Size(max = 1000)
+    @NoEmoji
     @Column(name = "hypersensitivity_history", columnDefinition = "text")
     private String hypersensitivityHistory;
 
     // Relatives block (for signature)
+    @Size(max = 500)
+    @NoEmoji
     @Column(name = "relative_address", columnDefinition = "text")
     private String relativeAddress;
+    @Size(max = 40)
+    @Pattern(regexp = "^[0-9+()\\-\\s]{6,40}$", message = "Invalid phone number")
     @Column(name = "relative_phone", length = 40)
     private String relativePhone;
 

@@ -36,7 +36,7 @@ public class PlatformPlanController {
             Plan plan = planService.createPlan(request);
             return ResponseEntity.ok(plan);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 
@@ -48,7 +48,7 @@ public class PlatformPlanController {
             Plan plan = planService.updatePlan(publicId, request);
             return ResponseEntity.ok(plan);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 
@@ -58,7 +58,7 @@ public class PlatformPlanController {
             planService.deletePlan(publicId);
             return ResponseEntity.ok("Plan deleted successfully");
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 
@@ -69,7 +69,7 @@ public class PlatformPlanController {
         try {
             return ResponseEntity.ok(planService.assignPlan(publicId, request));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 }

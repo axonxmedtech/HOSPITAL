@@ -1,5 +1,7 @@
 package com.hms.controller.pharmacy;
 
+import jakarta.validation.Valid;
+
 import com.hms.dto.pharmacy.PurchaseRequest;
 import com.hms.entity.pharmacy.PurchaseInvoice;
 import com.hms.service.pharmacy.PurchaseService;
@@ -19,7 +21,7 @@ public class PurchaseController {
     private PurchaseService purchaseService;
 
     @PostMapping
-    public ResponseEntity<PurchaseInvoice> create(@jakarta.validation.Valid @RequestBody PurchaseRequest req) {
+    public ResponseEntity<PurchaseInvoice> create(@Valid @RequestBody PurchaseRequest req) {
         return ResponseEntity.ok(purchaseService.createPurchase(req));
     }
 

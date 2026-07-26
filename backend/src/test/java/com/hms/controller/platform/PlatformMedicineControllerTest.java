@@ -149,14 +149,14 @@ class PlatformMedicineControllerTest {
     @WithMockUser(roles = "SUPER_ADMIN")
     void updateMedicine_returnsBadRequestWhenNotFound() throws Exception {
         when(platformMedicineListService.updateMedicine(eq(999L), eq("HOSPITAL"), any(), any()))
-                .thenThrow(new RuntimeException("Catalog medicine not found"));
+                .thenThrow(new com.hms.exception.ResourceNotFoundException("Catalog medicine not found"));
 
         mockMvc.perform(put("/platform/medicines/999")
                         .param("hospitalType", "HOSPITAL")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"X\"}")
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isNotFound());
     }
 
     // ─── DELETE /platform/medicines/{id} ──────────────────────────────────────
@@ -175,12 +175,12 @@ class PlatformMedicineControllerTest {
     @Test
     @WithMockUser(roles = "SUPER_ADMIN")
     void deleteMedicine_returnsBadRequestWhenNotFound() throws Exception {
-        org.mockito.Mockito.doThrow(new RuntimeException("Catalog medicine not found"))
+        org.mockito.Mockito.doThrow(new com.hms.exception.ResourceNotFoundException("Catalog medicine not found"))
                 .when(platformMedicineListService).deleteMedicine(999L, "HOSPITAL");
 
         mockMvc.perform(delete("/platform/medicines/999")
                         .param("hospitalType", "HOSPITAL")
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isNotFound());
     }
 }

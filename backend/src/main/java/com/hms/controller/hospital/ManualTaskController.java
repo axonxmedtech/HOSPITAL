@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.dto.CreateTaskRequest;
 import com.hms.dto.UpdateTaskStatusRequest;
 import com.hms.security.RequireModule;
@@ -23,7 +25,7 @@ public class ManualTaskController {
 
     @PostMapping
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
-    public ResponseEntity<?> create(@RequestBody CreateTaskRequest req) {
+    public ResponseEntity<?> create(@Valid @RequestBody CreateTaskRequest req) {
         try {
             return ResponseEntity.ok(manualTaskService.createTask(req));
         } catch (IllegalArgumentException e) {
@@ -45,7 +47,7 @@ public class ManualTaskController {
 
     @PutMapping("/{publicId}/status")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'NURSE')")
-    public ResponseEntity<?> updateStatus(@PathVariable String publicId, @RequestBody UpdateTaskStatusRequest req) {
+    public ResponseEntity<?> updateStatus(@PathVariable String publicId, @Valid @RequestBody UpdateTaskStatusRequest req) {
         try {
             return ResponseEntity.ok(manualTaskService.updateStatus(publicId, req));
         } catch (IllegalArgumentException e) {

@@ -1,5 +1,7 @@
 package com.hms.controller.platform;
 
+import jakarta.validation.Valid;
+
 import com.hms.entity.Faq;
 import com.hms.repository.FaqRepository;
 import com.hms.service.platform.PlatformFAQService;
@@ -42,7 +44,7 @@ public class PlatformFaqController {
             // Otherwise, get all FAQs (backward compatibility)
             return ResponseEntity.ok(faqRepository.findAll());
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 
@@ -59,14 +61,14 @@ public class PlatformFaqController {
                     .map(ResponseEntity::ok)
                     .orElse(ResponseEntity.notFound().build());
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 
     @PostMapping
     public ResponseEntity<?> addFaq(
             @RequestParam(required = false) String hospitalType,
-            @RequestBody Faq faq) {
+            @Valid @RequestBody Faq faq) {
         try {
             if (faq.getQuestion() == null || faq.getQuestion().trim().isEmpty() ||
                 faq.getAnswer() == null || faq.getAnswer().trim().isEmpty()) {
@@ -83,7 +85,7 @@ public class PlatformFaqController {
             Faq saved = faqRepository.save(faq);
             return ResponseEntity.ok(saved);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 
@@ -91,7 +93,7 @@ public class PlatformFaqController {
     public ResponseEntity<?> updateFaq(
             @PathVariable Long id,
             @RequestParam(required = false) String hospitalType,
-            @RequestBody Faq request) {
+            @Valid @RequestBody Faq request) {
         try {
             if (hospitalType != null && !hospitalType.isEmpty()) {
                 Faq faq = platformFAQService.updateFAQ(id, hospitalType, request.getQuestion(), request.getAnswer());
@@ -111,7 +113,7 @@ public class PlatformFaqController {
                     })
                     .orElse(ResponseEntity.notFound().build());
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 
@@ -130,7 +132,7 @@ public class PlatformFaqController {
             }
             return ResponseEntity.ok().build();
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 }

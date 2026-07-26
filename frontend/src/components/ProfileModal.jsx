@@ -167,6 +167,12 @@ const ProfileModal = ({ isOpen, onClose }) => {
     const file = e.target.files[0];
     if (!file) return;
 
+    // Only allow real raster image types (no SVG — it can carry script) and cap the size.
+    const ALLOWED_LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+    if (!ALLOWED_LOGO_TYPES.includes(file.type)) {
+      toastError('Logo must be a PNG, JPG, WEBP or GIF image.');
+      return;
+    }
     if (file.size > 1048576) {
       toastError('Logo image size must be under 1MB.');
       return;

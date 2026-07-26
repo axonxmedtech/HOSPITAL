@@ -2,13 +2,21 @@ package com.hms.dto;
 
 import lombok.Data;
 import java.math.BigDecimal;
+import com.hms.validation.NoEmoji;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Size;
 
 @Data
 public class UpdateWardRequest {
     // fields optional for partial update; when provided, validate basic constraints
+    @Size(max = 100)
+    @NoEmoji
     private String wardName;
+
+    @PositiveOrZero(message = "bedPrice must be >= 0")
     private BigDecimal bedPrice;
+
     private Integer floorNumber;
 
     /**

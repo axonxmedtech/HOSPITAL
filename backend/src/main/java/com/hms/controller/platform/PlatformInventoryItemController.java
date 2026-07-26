@@ -56,7 +56,7 @@ public class PlatformInventoryItemController {
             // Otherwise, use global catalog service (backward compatibility)
             return ResponseEntity.ok(service.createItem(body.get("name")));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 
@@ -79,7 +79,7 @@ public class PlatformInventoryItemController {
             // Fallback: direct update without type isolation
             return ResponseEntity.badRequest().body("hospitalType is required for updates");
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 
@@ -97,7 +97,7 @@ public class PlatformInventoryItemController {
             }
             return ResponseEntity.ok().build();
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 
@@ -106,7 +106,7 @@ public class PlatformInventoryItemController {
         try {
             return ResponseEntity.ok(service.importCsv(file));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 }

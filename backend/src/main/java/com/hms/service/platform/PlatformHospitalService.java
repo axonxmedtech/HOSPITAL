@@ -604,7 +604,10 @@ public class PlatformHospitalService {
      * @return List of audit logs
      */
     public List<AuditLog> getAuditLogs() {
-        return auditLogRepository.findAllByOrderByTimestampDesc();
+        // Platform login shows only platform-level activity (tenant onboarding/updates/blocks,
+        // plan changes, password resets) — i.e. Super Admin actions, which carry a null hospitalId.
+        // Each tenant's own internal events (hospitalId set) stay in that tenant's audit view.
+        return auditLogRepository.findByHospitalIdIsNullOrderByTimestampDesc();
     }
 
     /**

@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.dto.SubstitutionRequest;
 import com.hms.dto.TempWardAssignmentRequest;
 import com.hms.security.RequireModule;
@@ -31,7 +33,7 @@ public class NurseCoverageController {
 
     @PostMapping("/temp-assignments")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','NURSE_INCHARGE')")
-    public ResponseEntity<?> createTempAssignment(@RequestBody TempWardAssignmentRequest req) {
+    public ResponseEntity<?> createTempAssignment(@Valid @RequestBody TempWardAssignmentRequest req) {
         return ResponseEntity.ok(coverageService.createTempAssignment(
                 req.getNurseProfileId(), req.getTempWardId(), req.getFromDate(), req.getToDate(), req.getReason()));
     }
@@ -51,7 +53,7 @@ public class NurseCoverageController {
 
     @PostMapping("/substitutions")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','NURSE_INCHARGE')")
-    public ResponseEntity<?> createSubstitution(@RequestBody SubstitutionRequest req) {
+    public ResponseEntity<?> createSubstitution(@Valid @RequestBody SubstitutionRequest req) {
         return ResponseEntity.ok(coverageService.createSubstitution(
                 req.getPrimaryNurseProfileId(), req.getReplacementNurseProfileId(),
                 req.getFromDate(), req.getToDate(), req.getReason()));

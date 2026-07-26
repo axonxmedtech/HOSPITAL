@@ -2,11 +2,28 @@ package com.hms.dto;
 
 import java.time.LocalDate;
 
+import com.hms.validation.NoEmoji;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
+
 public class TempWardAssignmentRequest {
+    @NotNull(message = "nurseProfileId is required")
+    @Positive
     private Long nurseProfileId;
+
+    @NotNull(message = "tempWardId is required")
+    @Positive
     private Long tempWardId;
+
+    @NotNull(message = "fromDate is required")
     private LocalDate fromDate;
+
+    @NotNull(message = "toDate is required")
     private LocalDate toDate;
+
+    @Size(max = 1000)
+    @NoEmoji
     private String reason;
 
     public Long getNurseProfileId() { return nurseProfileId; }

@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.entity.HospitalInventory;
 import com.hms.entity.InventoryItem;
 import com.hms.security.RequireModule;
@@ -43,13 +45,13 @@ public class HospitalInventoryController {
 
     @PostMapping("/inventory")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> addInventoryItem(@RequestBody HospitalInventory stock) {
+    public ResponseEntity<?> addInventoryItem(@Valid @RequestBody HospitalInventory stock) {
         return ResponseEntity.ok(hospitalInventoryService.addInventoryItem(stock));
     }
 
     @PutMapping("/inventory/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> updateInventoryItem(@PathVariable Long id, @RequestBody HospitalInventory stock) {
+    public ResponseEntity<?> updateInventoryItem(@PathVariable Long id, @Valid @RequestBody HospitalInventory stock) {
         return ResponseEntity.ok(hospitalInventoryService.updateInventoryItem(id, stock));
     }
 

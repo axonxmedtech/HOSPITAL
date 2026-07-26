@@ -7,7 +7,6 @@ import ConfirmationModal from '../../components/ConfirmationModal';
 import ConsultationModal from '../../components/ConsultationModal';
 import DataTable from '../../components/DataTable';
 import EmptyState from '../../components/EmptyState';
-import HistoryDrawer from '../../components/HistoryDrawer';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
 import LowStockBanner from '../../components/LowStockBanner';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
@@ -18,22 +17,22 @@ import OpdPaymentFields, {
 } from '../../components/OpdPaymentFields';
 // BUG-028: single source-of-truth for base URL
 import PageHeader from '../../components/PageHeader';
+import PatientDetailsModal from '../../components/PatientDetailsModal';
+import PatientModal from '../../components/PatientModal';
 import PrescriptionViewModal from '../../components/PrescriptionViewModal';
+import ProfileModal from '../../components/ProfileModal';
 import Sidebar from '../../components/Sidebar';
+import { SkeletonStatsGrid, SkeletonOverviewDual, SkeletonTable } from '../../components/Skeleton';
 import StatusBadge from '../../components/StatusBadge';
 import { useToast } from '../../context/ToastContext';
+import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
+import useEnabledVitals from '../../hooks/useEnabledVitals';
+import useWebSocket from '../../hooks/useWebSocket';
 import apiClient from '../../services/apiService';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
-import useWebSocket from '../../hooks/useWebSocket';
-import useEnabledVitals from '../../hooks/useEnabledVitals';
-import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
 import otService from '../../services/otService';
 import BillingTable from './BillingTable';
-import PatientModal from '../../components/PatientModal';
-import PatientDetailsModal from '../../components/PatientDetailsModal';
-import ProfileModal from '../../components/ProfileModal';
-import { SkeletonStatsGrid, SkeletonOverviewDual, SkeletonTable } from '../../components/Skeleton';
 import OtBoard from './ot/OtBoard';
 
 /**
@@ -124,14 +123,6 @@ const DoctorDashboard = () => {
     onConfirm: null,
     showReasonInput: false,
     inputPlaceholder: '',
-  });
-
-  // Audit History Drawer (for Appointments)
-  const [auditHistory, setAuditHistory] = useState({
-    isOpen: false,
-    entityType: '',
-    entityId: null,
-    entityName: '',
   });
 
   // Sidebar collapse state
@@ -302,6 +293,35 @@ const DoctorDashboard = () => {
 
   const handleViewHistory = (patient) => {
     setPatientDetailsModal({ isOpen: true, patient });
+  };
+
+  // Appointment "View History" → the patient's full clinical history, shown in the same modal
+  // the consultation/patient views use (opened on the Medical History tab). We resolve the full
+  // patient by id first so every tab (Info / Medical History / Bills) loads correctly.
+  const handleAppointmentHistory = async (appt) => {
+    const pid = appt.patientId;
+    if (!pid) {
+      toastError('No patient is linked to this appointment.');
+      return;
+    }
+    try {
+      const patient = await hospitalService.getPatientById(pid);
+      setPatientDetailsModal({ isOpen: true, patient, initialTab: 'medicalhistory' });
+    } catch (e) {
+      // Fallback: consultation-details also accepts the numeric id, so the history still loads
+      // from the appointment's own patient fields even if the full patient fetch fails.
+      setPatientDetailsModal({
+        isOpen: true,
+        patient: {
+          id: pid,
+          name: appt.patientName,
+          phone: appt.patientPhone,
+          email: appt.patientEmail,
+          gender: appt.patientGender,
+        },
+        initialTab: 'medicalhistory',
+      });
+    }
   };
 
   const handleEditClick = (appointment) => {
@@ -649,15 +669,6 @@ const DoctorDashboard = () => {
         }
       );
     }
-  };
-
-  const handleAuditHistory = (type, id, name) => {
-    setAuditHistory({
-      isOpen: true,
-      entityType: type,
-      entityId: id,
-      entityName: name,
-    });
   };
 
   const handleBillStatus = async (id, status, billObj = null) => {
@@ -1247,13 +1258,7 @@ const DoctorDashboard = () => {
                           onEdit={handleEditClick}
                           onConsult={handleConsultClick}
                           onPrint={handlePrintPrescription}
-                          onAuditHistory={(item) =>
-                            handleAuditHistory(
-                              'APPOINTMENT',
-                              item.publicId || item.id,
-                              'Appointment'
-                            )
-                          }
+                          onAuditHistory={(item) => handleAppointmentHistory(item)}
                           onAdmitToIpd={(appt) =>
                             setConsultationModal({ isOpen: true, appointment: appt })
                           }
@@ -1659,9 +1664,7 @@ const DoctorDashboard = () => {
                     onEdit={handleEditClick}
                     onConsult={handleConsultClick}
                     onPrint={handlePrintPrescription}
-                    onAuditHistory={(item) =>
-                      handleAuditHistory('APPOINTMENT', item.publicId || item.id, 'Appointment')
-                    }
+                    onAuditHistory={(item) => handleAppointmentHistory(item)}
                     onAdmitToIpd={(appt) =>
                       setConsultationModal({ isOpen: true, appointment: appt })
                     }
@@ -1971,14 +1974,6 @@ const DoctorDashboard = () => {
           onClose={() => setViewPrescriptionModal({ isOpen: false, patient: null })}
         />
 
-        <HistoryDrawer
-          isOpen={auditHistory.isOpen}
-          onClose={() => setAuditHistory((prev) => ({ ...prev, isOpen: false }))}
-          entityType={auditHistory.entityType}
-          entityId={auditHistory.entityId}
-          entityName={auditHistory.entityName}
-        />
-
         {isAddModalOpen && (
           <AppointmentModal
             isOpen={isAddModalOpen}
@@ -2000,6 +1995,7 @@ const DoctorDashboard = () => {
         {patientDetailsModal.isOpen && (
           <PatientDetailsModal
             patient={patientDetailsModal.patient}
+            initialTab={patientDetailsModal.initialTab}
             onClose={() => setPatientDetailsModal({ isOpen: false, patient: null })}
           />
         )}

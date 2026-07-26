@@ -151,13 +151,13 @@ class PrescriptionPresetControllerTest {
     @WithMockUser(roles = "HOSPITAL_ADMIN")
     void updatePreset_returnsBadRequestWhenNotFound() throws Exception {
         when(presetService.updatePreset(eq(999L), any(), any(), any(), any()))
-                .thenThrow(new RuntimeException("Preset not found"));
+                .thenThrow(new com.hms.exception.ResourceNotFoundException("Preset not found"));
 
         mockMvc.perform(put("/hospital/prescription-presets/999")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"X\"}")
                         .with(csrf()))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isNotFound());
     }
 
     @Test

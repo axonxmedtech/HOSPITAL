@@ -115,9 +115,7 @@ const HistoryDrawer = ({ isOpen, onClose, entityType, entityId, entityName }) =>
                         <div className="flex justify-center py-8">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
                         </div>
-                      ) : entityType === 'PATIENT' &&
-                        clinicalLogs.length === 0 &&
-                        auditLogs.length === 0 ? (
+                      ) : clinicalLogs.length === 0 && auditLogs.length === 0 ? (
                         <div className="text-center text-gray-500 py-8">No history found.</div>
                       ) : (
                         <div className="space-y-8">

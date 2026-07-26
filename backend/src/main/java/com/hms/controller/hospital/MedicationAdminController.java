@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.dto.MedicationAdminRequest;
 import com.hms.service.hospital.MedicationAdministrationService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,7 +36,7 @@ public class MedicationAdminController {
 
     @PostMapping
     @PreAuthorize("hasRole('NURSE')")
-    public ResponseEntity<?> record(@RequestBody MedicationAdminRequest req) {
+    public ResponseEntity<?> record(@Valid @RequestBody MedicationAdminRequest req) {
         return ResponseEntity.ok(medicationService.record(req));
     }
 

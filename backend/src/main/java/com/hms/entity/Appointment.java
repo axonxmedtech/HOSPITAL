@@ -117,6 +117,8 @@ public class Appointment {
      * Additional notes or reason for visit
      */
     @Column(length = 500)
+    @jakarta.validation.constraints.Size(max = 500, message = "Notes is too long")
+    @com.hms.validation.NoEmoji
     private String notes;
 
     /**
@@ -138,18 +140,22 @@ public class Appointment {
      * Patient name for new patient creation (not stored in appointments table)
      */
     @Transient
+    @com.hms.validation.PersonName
     private String patientName;
 
     /**
      * Patient phone for new patient creation (not stored in appointments table)
      */
     @Transient
+    @jakarta.validation.constraints.Pattern(regexp = "^(\\d{10})?$", message = "Phone number must be exactly 10 digits")
     private String patientPhone;
 
     /**
      * Patient email for new patient creation (not stored in appointments table)
      */
     @Transient
+    @jakarta.validation.constraints.Email(message = "Invalid email format")
+    @jakarta.validation.constraints.Size(max = 100, message = "Email is too long")
     private String patientEmail;
 
     /**
@@ -165,11 +171,14 @@ public class Appointment {
      * Patient gender for new patient creation (not stored in appointments table)
      */
     @Transient
+    @jakarta.validation.constraints.Size(max = 20, message = "Gender is too long")
+    @com.hms.validation.NoEmoji
     private String patientGender;
 
     /**
      * Doctor name for display purposes (populated by service)
      */
     @Transient
+    @com.hms.validation.PersonName
     private String doctorName;
 }

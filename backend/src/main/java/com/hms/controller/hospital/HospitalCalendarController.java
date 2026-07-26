@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.dto.CalendarEventRequest;
 import com.hms.security.RequireModule;
 import com.hms.service.hospital.HospitalCalendarService;
@@ -40,12 +42,12 @@ public class HospitalCalendarController {
     }
 
     @PostMapping("/events")
-    public ResponseEntity<?> createEvent(@RequestBody CalendarEventRequest req) {
+    public ResponseEntity<?> createEvent(@Valid @RequestBody CalendarEventRequest req) {
         return ResponseEntity.ok(calendarService.createEvent(req));
     }
 
     @PutMapping("/events/{publicId}")
-    public ResponseEntity<?> updateEvent(@PathVariable String publicId, @RequestBody CalendarEventRequest req) {
+    public ResponseEntity<?> updateEvent(@PathVariable String publicId, @Valid @RequestBody CalendarEventRequest req) {
         return ResponseEntity.ok(calendarService.updateEvent(publicId, req));
     }
 

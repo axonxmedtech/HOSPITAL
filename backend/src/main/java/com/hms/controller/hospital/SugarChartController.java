@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.dto.SugarChartRequest;
 import com.hms.service.hospital.SugarChartService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,7 +25,7 @@ public class SugarChartController {
 
     @PostMapping
     @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
-    public ResponseEntity<?> create(@RequestBody SugarChartRequest req) {
+    public ResponseEntity<?> create(@Valid @RequestBody SugarChartRequest req) {
         return ResponseEntity.ok(service.create(req));
     }
 
@@ -35,7 +37,7 @@ public class SugarChartController {
 
     @PutMapping("/{publicId}")
     @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
-    public ResponseEntity<?> update(@PathVariable String publicId, @RequestBody SugarChartRequest req) {
+    public ResponseEntity<?> update(@PathVariable String publicId, @Valid @RequestBody SugarChartRequest req) {
         return ResponseEntity.ok(service.update(publicId, req));
     }
 

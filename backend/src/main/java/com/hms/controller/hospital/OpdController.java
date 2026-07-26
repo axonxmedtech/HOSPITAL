@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.exception.ResourceNotFoundException;
 
 import com.hms.dto.CreateOpdRequest;
@@ -70,7 +72,7 @@ public class OpdController {
 
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     @PostMapping
-    public ResponseEntity<Opd> createOpd(@jakarta.validation.Valid @RequestBody CreateOpdRequest req) {
+    public ResponseEntity<Opd> createOpd(@Valid @RequestBody CreateOpdRequest req) {
         Opd opd = opdService.createOpd(req);
         return ResponseEntity.ok(opd);
     }

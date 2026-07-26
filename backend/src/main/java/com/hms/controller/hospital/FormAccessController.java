@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.dto.FormAccessRequest;
 import com.hms.security.SecurityContextHelper;
 import com.hms.service.hospital.FormAccessService;
@@ -28,7 +30,7 @@ public class FormAccessController {
 
     @PutMapping("/{formKey}")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
-    public ResponseEntity<?> update(@PathVariable String formKey, @RequestBody FormAccessRequest req) {
+    public ResponseEntity<?> update(@PathVariable String formKey, @Valid @RequestBody FormAccessRequest req) {
         return ResponseEntity.ok(formAccessService.update(formKey, req));
     }
 

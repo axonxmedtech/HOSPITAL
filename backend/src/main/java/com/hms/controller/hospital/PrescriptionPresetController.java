@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.dto.PrescriptionPresetDTO;
 import com.hms.dto.PrescriptionPresetItemDTO;
 import com.hms.entity.PrescriptionPreset;
@@ -66,7 +68,7 @@ public class PrescriptionPresetController {
 
     @PostMapping
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR')")
-    public ResponseEntity<?> createPreset(@RequestBody PrescriptionPresetDTO dto) {
+    public ResponseEntity<?> createPreset(@Valid @RequestBody PrescriptionPresetDTO dto) {
         try {
             List<PrescriptionPresetItem> items = dto.getItems() == null ? Collections.emptyList() : dto.getItems().stream()
                     .map(this::toItemEntity)
@@ -80,7 +82,7 @@ public class PrescriptionPresetController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR')")
-    public ResponseEntity<?> updatePreset(@PathVariable Long id, @RequestBody PrescriptionPresetDTO dto) {
+    public ResponseEntity<?> updatePreset(@PathVariable Long id, @Valid @RequestBody PrescriptionPresetDTO dto) {
         try {
             List<PrescriptionPresetItem> items = dto.getItems() == null ? null : dto.getItems().stream()
                     .map(this::toItemEntity)
@@ -88,7 +90,7 @@ public class PrescriptionPresetController {
             PrescriptionPreset saved = presetService.updatePreset(id, dto.getName(), items, dto.getDisplayOrder(), dto.getDoctorId());
             return ResponseEntity.ok(toDto(saved));
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 
@@ -99,7 +101,7 @@ public class PrescriptionPresetController {
             presetService.deletePreset(id);
             return ResponseEntity.ok("Preset deleted successfully");
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 }

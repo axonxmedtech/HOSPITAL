@@ -52,6 +52,7 @@ public class PlatformInventoryItemService {
     }
 
     public Map<String, Object> importCsv(MultipartFile file) throws Exception {
+        com.hms.util.CsvUploads.validate(file);
         int imported = 0, skipped = 0;
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream(), "UTF-8"))) {
             String line;

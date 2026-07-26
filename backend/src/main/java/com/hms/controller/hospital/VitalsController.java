@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.dto.VitalsRequest;
 import com.hms.service.hospital.VitalsService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,7 +23,7 @@ public class VitalsController {
 
     @PostMapping
     @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
-    public ResponseEntity<?> create(@RequestBody VitalsRequest req) {
+    public ResponseEntity<?> create(@Valid @RequestBody VitalsRequest req) {
         return ResponseEntity.ok(vitalsService.create(req));
     }
 
@@ -33,7 +35,7 @@ public class VitalsController {
 
     @PutMapping("/{publicId}")
     @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
-    public ResponseEntity<?> update(@PathVariable String publicId, @RequestBody VitalsRequest req) {
+    public ResponseEntity<?> update(@PathVariable String publicId, @Valid @RequestBody VitalsRequest req) {
         return ResponseEntity.ok(vitalsService.update(publicId, req));
     }
 }

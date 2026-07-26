@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.entity.Medicine;
 import com.hms.entity.MedicineList;
 import com.hms.security.RequireModule;
@@ -64,14 +66,14 @@ public class MedicineController {
     @PostMapping("/inventory")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     @RequireModule("MEDICAL_INVENTORY")
-    public ResponseEntity<?> addInventoryMedicine(@RequestBody Medicine stock) {
+    public ResponseEntity<?> addInventoryMedicine(@Valid @RequestBody Medicine stock) {
         return ResponseEntity.ok(medicineService.addInventoryMedicine(stock));
     }
 
     @PutMapping("/inventory/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     @RequireModule("MEDICAL_INVENTORY")
-    public ResponseEntity<?> updateInventoryMedicine(@PathVariable Long id, @RequestBody Medicine stock) {
+    public ResponseEntity<?> updateInventoryMedicine(@PathVariable Long id, @Valid @RequestBody Medicine stock) {
         return ResponseEntity.ok(medicineService.updateInventoryMedicine(id, stock));
     }
 
@@ -86,7 +88,7 @@ public class MedicineController {
     // Legacy fallback
     @PostMapping
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR')")
-    public ResponseEntity<?> addMedicine(@RequestBody Medicine medicine) {
+    public ResponseEntity<?> addMedicine(@Valid @RequestBody Medicine medicine) {
         return ResponseEntity.ok(medicineService.addMedicine(medicine));
     }
 }

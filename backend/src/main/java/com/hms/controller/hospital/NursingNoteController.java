@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.dto.NursingNoteRequest;
 import com.hms.service.hospital.NursingNoteService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,7 +25,7 @@ public class NursingNoteController {
 
     @PostMapping
     @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
-    public ResponseEntity<?> create(@RequestBody NursingNoteRequest req) {
+    public ResponseEntity<?> create(@Valid @RequestBody NursingNoteRequest req) {
         return ResponseEntity.ok(noteService.create(req));
     }
 
@@ -41,7 +43,7 @@ public class NursingNoteController {
 
     @PutMapping("/{publicId}")
     @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
-    public ResponseEntity<?> update(@PathVariable String publicId, @RequestBody NursingNoteRequest req) {
+    public ResponseEntity<?> update(@PathVariable String publicId, @Valid @RequestBody NursingNoteRequest req) {
         return ResponseEntity.ok(noteService.update(publicId, req));
     }
 

@@ -69,6 +69,8 @@ public class Patient {
      * Patient's full name
      */
     @Column(nullable = false, length = 100)
+    @jakarta.validation.constraints.NotBlank(message = "Name is required")
+    @com.hms.validation.PersonName
     private String name;
 
     /**
@@ -99,6 +101,8 @@ public class Patient {
      * Patient's gender (MALE, FEMALE, OTHER)
      */
     @Column(nullable = false, length = 10)
+    @jakarta.validation.constraints.NotBlank(message = "Gender is required")
+    @jakarta.validation.constraints.Pattern(regexp = "^[A-Za-z \\-]{1,10}$", message = "Invalid gender")
     private String gender;
 
     /**
@@ -113,12 +117,16 @@ public class Patient {
      * Patient's email address (optional)
      */
     @Column(length = 100)
+    @jakarta.validation.constraints.Email(message = "Invalid email format")
+    @jakarta.validation.constraints.Size(max = 100, message = "Email is too long")
     private String email;
 
     /**
      * Patient's address
      */
     @Column(length = 255)
+    @jakarta.validation.constraints.Size(max = 255, message = "Address is too long")
+    @com.hms.validation.NoEmoji
     private String address;
 
     /**
@@ -136,6 +144,8 @@ public class Patient {
      * Simplied text field for Phase 1
      */
     @Column(name = "medical_history", length = 1000)
+    @jakarta.validation.constraints.Size(max = 1000, message = "Medical history is too long")
+    @com.hms.validation.NoEmoji
     private String medicalHistory;
 
     /**

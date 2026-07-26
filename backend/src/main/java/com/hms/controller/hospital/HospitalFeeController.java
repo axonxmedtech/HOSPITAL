@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.exception.ResourceNotFoundException;
 
 import com.hms.dto.HospitalFeeDTO;
@@ -39,7 +41,7 @@ public class HospitalFeeController {
 
     @PostMapping
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
-    public ResponseEntity<?> addCustomFee(@RequestBody HospitalFeeDTO dto) {
+    public ResponseEntity<?> addCustomFee(@Valid @RequestBody HospitalFeeDTO dto) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (dto.getName() == null || dto.getName().trim().isEmpty()) {
             return ResponseEntity.badRequest().body("Fee name is required");
@@ -57,7 +59,7 @@ public class HospitalFeeController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
-    public ResponseEntity<?> updateCustomFee(@PathVariable Long id, @RequestBody HospitalFeeDTO dto) {
+    public ResponseEntity<?> updateCustomFee(@PathVariable Long id, @Valid @RequestBody HospitalFeeDTO dto) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         HospitalFee fee = hospitalFeeRepository.findByIdAndHospitalId(id, hospitalId)
                 .orElseThrow(() -> new ResourceNotFoundException("Fee not found"));

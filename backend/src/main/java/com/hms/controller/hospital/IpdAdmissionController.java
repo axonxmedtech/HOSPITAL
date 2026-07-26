@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.dto.CreateIpdAdmissionRequest;
 import com.hms.dto.IpdAdmissionSummaryDTO;
 import com.hms.entity.IpdAdmission;
@@ -24,7 +26,7 @@ public class IpdAdmissionController {
 
     @PostMapping("/admit")
     @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
-    public ResponseEntity<?> admitToIpd(@RequestBody CreateIpdAdmissionRequest req) {
+    public ResponseEntity<?> admitToIpd(@Valid @RequestBody CreateIpdAdmissionRequest req) {
         IpdAdmission ipd = ipdAdmissionService.admitFromOpd(req.getOpdId(), req.getWardId(), req.getBedId(), req.getAdmissionType(), req.getPrimaryDiagnosis());
         return ResponseEntity.ok(ipd);
     }

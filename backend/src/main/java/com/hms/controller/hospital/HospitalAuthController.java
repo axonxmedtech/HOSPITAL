@@ -154,7 +154,7 @@ public class HospitalAuthController {
             com.hms.dto.SubscriptionInfoDTO dto = planService.getSubscriptionInfo(hospitalId);
             return ResponseEntity.ok(dto);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return com.hms.util.ApiErrors.handle(e);
         }
     }
 }
