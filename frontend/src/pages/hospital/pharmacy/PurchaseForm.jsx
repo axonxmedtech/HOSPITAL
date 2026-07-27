@@ -227,7 +227,7 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-7xl max-h-[95vh] overflow-hidden flex flex-col">
         <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">New Purchase Inward</h2>
@@ -247,9 +247,9 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
           </button>
         </div>
 
-        <div className="flex-1 overflow-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Header Section */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
             <div className="space-y-1">
               <label htmlFor="fld-220" className="text-xs font-bold text-gray-500 uppercase">
                 Supplier
@@ -300,25 +300,26 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
             </div>
           </div>
 
-          {/* Items Section */}
-          <div className="border border-gray-200 rounded-xl overflow-hidden">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-gray-900 text-white text-[10px] uppercase tracking-wider">
+          {/* Items Section — scrolls horizontally so every column keeps its full width on
+              narrow screens instead of being crushed / truncated. */}
+          <div className="border border-gray-200 rounded-xl overflow-x-auto">
+            <table className="w-full min-w-[1500px] text-sm text-left [&_th]:whitespace-nowrap">
+              <thead className="bg-gray-900 text-white text-xs uppercase tracking-wider">
                 <tr>
-                  <th className="px-3 py-3 font-medium">Medicine</th>
-                  {isStandalonePharmacy && <th className="px-3 py-3 font-medium w-24">Type</th>}
+                  <th className="px-3 py-3 font-medium min-w-[220px]">Medicine</th>
+                  {isStandalonePharmacy && <th className="px-3 py-3 font-medium w-32">Type</th>}
                   {isStandalonePharmacy && (
-                    <th className="px-3 py-3 font-medium w-28">Manufacturer</th>
+                    <th className="px-3 py-3 font-medium w-36">Manufacturer</th>
                   )}
-                  <th className="px-3 py-3 font-medium w-24">Batch</th>
-                  <th className="px-3 py-3 font-medium w-28">Expiry</th>
-                  <th className="px-3 py-3 font-medium w-20">Qty</th>
-                  <th className="px-3 py-3 font-medium w-20">Free</th>
-                  <th className="px-3 py-3 font-medium w-24">P. Rate</th>
-                  <th className="px-3 py-3 font-medium w-24 text-amber-400">MRP</th>
-                  <th className="px-3 py-3 font-medium w-24 text-green-400">S. Price</th>
-                  <th className="px-3 py-3 font-medium w-16">GST%</th>
-                  <th className="px-3 py-3 font-medium w-28 text-right">Total</th>
+                  <th className="px-3 py-3 font-medium w-32">Batch</th>
+                  <th className="px-3 py-3 font-medium w-56">Expiry</th>
+                  <th className="px-3 py-3 font-medium w-24">Qty</th>
+                  <th className="px-3 py-3 font-medium w-24">Free</th>
+                  <th className="px-3 py-3 font-medium w-28">P. Rate</th>
+                  <th className="px-3 py-3 font-medium w-28 text-amber-400">MRP</th>
+                  <th className="px-3 py-3 font-medium w-28 text-green-400">S. Price</th>
+                  <th className="px-3 py-3 font-medium w-24">GST%</th>
+                  <th className="px-3 py-3 font-medium w-32 text-right">Total</th>
                   <th className="px-3 py-3 font-medium w-10"></th>
                 </tr>
               </thead>

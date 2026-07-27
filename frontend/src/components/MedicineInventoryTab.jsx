@@ -246,7 +246,7 @@ const MedicineInventoryTab = ({ hidePrescribingColumns = false }) => {
       ) : subTab === 'inventory' ? (
         /* INVENTORY TAB LIST */
         <div className="overflow-x-auto">
-          <table className="min-w-full text-sm text-left">
+          <table className="min-w-full text-sm text-left [&_th]:px-3 [&_th]:whitespace-nowrap [&_td]:px-3">
             <thead>
               <tr className="border-b border-gray-200 text-gray-500 font-medium">
                 <th className="pb-3 text-left">Medicine Name</th>
@@ -307,7 +307,7 @@ const MedicineInventoryTab = ({ hidePrescribingColumns = false }) => {
       ) : (
         /* PURCHASE HISTORY TAB LIST */
         <div className="overflow-x-auto">
-          <table className="min-w-full text-sm text-left">
+          <table className="min-w-full text-sm text-left [&_th]:px-3 [&_th]:whitespace-nowrap [&_td]:px-3">
             <thead>
               <tr className="border-b border-gray-200 text-gray-500 font-medium">
                 <th className="pb-3 text-left">Medicine Name</th>

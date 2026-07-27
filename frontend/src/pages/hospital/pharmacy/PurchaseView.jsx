@@ -159,7 +159,7 @@ const PurchaseView = ({ refreshKey = 0 }) => {
       {/* Table */}
       <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="min-w-full text-sm text-left">
+          <table className="min-w-full text-sm text-left [&_th]:whitespace-nowrap">
             <thead className="bg-gray-50 text-[11px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100">
               <tr>
                 <th className="px-6 py-4">Invoice Detail</th>
