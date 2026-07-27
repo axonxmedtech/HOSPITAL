@@ -76,7 +76,7 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
   return (
     <div className="fixed inset-0 z-50 flex">
       <button type="button" aria-label="Close" className="flex-1 bg-black/40" onClick={onClose} />
-      <div className="w-96 bg-white p-4 shadow-xl">
+      <div className="w-96 max-w-full bg-white p-4 shadow-xl h-full overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">{initial ? 'Edit Ward' : 'Create Ward'}</h3>
           <button onClick={onClose} className="text-slate-500">

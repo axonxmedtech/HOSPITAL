@@ -1843,7 +1843,7 @@ const PlatformDashboard = () => {
             setPasswordModal({ ...passwordModal, isOpen: false });
           })}
         >
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="p-8 text-center">
               <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
                 <svg
@@ -1944,7 +1944,7 @@ const SetPasswordModal = ({ hospitalId, onClose, onSuccess }) => {
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
       {...backdropProps(onClose)}
     >
-      <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl">
+      <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100">
           <div>
@@ -2131,7 +2131,7 @@ const PasswordResetModal = ({ email, password, onClose }) => {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="p-8 pb-0 text-center">
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">

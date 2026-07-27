@@ -328,7 +328,7 @@ export default function PlatformInventoryItemsTab({ hospitalType = null }) {
       {/* Create/Edit Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden transform transition-all duration-300 scale-100">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto transform transition-all duration-300 scale-100">
             <div className="px-6 py-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
               <h3 className="text-base font-bold text-gray-900">
                 {editingItem ? 'Edit Master Item' : 'Add Master Item'}

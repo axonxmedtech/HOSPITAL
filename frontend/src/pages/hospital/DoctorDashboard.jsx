@@ -1878,7 +1878,7 @@ const DoctorDashboard = () => {
       {/* Edit Appointment Modal */}
       {editModal.isOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg border border-gray-200 w-full max-w-lg p-6 m-4">
+          <div className="bg-white rounded-lg border border-gray-200 w-full max-w-lg p-6 m-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-bold text-gray-900 mb-4">Edit Appointment Details</h3>
 
             <div className="mb-6">
@@ -2448,7 +2448,7 @@ const DoctorDashboard = () => {
               >
                 &#8203;
               </span>
-              <div className="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+              <div className="inline-block align-bottom bg-white rounded-2xl text-left max-h-[90vh] overflow-y-auto shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
                 <div className="bg-white px-8 py-6 border-b border-gray-100">
                   <h3 className="text-xl font-bold text-gray-900">Process Payment</h3>
                   <p className="text-xs text-gray-500 mt-1">
@@ -2504,7 +2504,7 @@ const DoctorDashboard = () => {
               >
                 &#8203;
               </span>
-              <div className="inline-block align-bottom bg-white rounded-2xl text-center overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full p-8">
+              <div className="inline-block align-bottom bg-white rounded-2xl text-center max-h-[90vh] overflow-y-auto shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full p-8">
                 <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
                   <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
@@ -2575,7 +2575,7 @@ const DoctorDashboard = () => {
               >
                 &#8203;
               </span>
-              <div className="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full border border-gray-200">
+              <div className="inline-block align-bottom bg-white rounded-2xl text-left max-h-[90vh] overflow-y-auto shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full border border-gray-200">
                 <div className="bg-white px-6 pt-6 pb-4">
                   <h3 className="text-lg leading-6 font-bold text-gray-900 mb-1">
                     Edit Bill Charges

@@ -37,21 +37,37 @@ import PageHeader from '../../components/PageHeader';
 import PatientDetailsModal from '../../components/PatientDetailsModal';
 import PatientModal from '../../components/PatientModal';
 import PrescriptionPresetsManager from '../../components/PrescriptionPresetsManager';
+import ProfileModal from '../../components/ProfileModal';
+import Sidebar from '../../components/Sidebar';
+import {
+  SkeletonDashboard,
+  SkeletonFormCard,
+  SkeletonSettingsCard,
+  SkeletonTable,
+  SkeletonStatsGrid,
+  SkeletonOverviewDual,
+} from '../../components/Skeleton';
+import StaffDetailsModal from '../../components/StaffDetailsModal';
+import StatusBadge from '../../components/StatusBadge';
+import WardModal from '../../components/WardModal';
 import { useToast } from '../../context/ToastContext';
-import { backdropProps } from '../../utils/modalA11y';
+import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
+import useEnabledVitals from '../../hooks/useEnabledVitals';
+import useWebSocket from '../../hooks/useWebSocket';
 import authService from '../../services/authService';
+import hospitalService from '../../services/hospitalService';
+import branchesApi from '../../services/pharmacy/branchesApi';
+import inventoryApi from '../../services/pharmacy/inventoryApi';
+import reportsApi from '../../services/pharmacy/reportsApi';
+import salesApi from '../../services/pharmacy/salesApi';
+import timeSlotService from '../../services/timeSlotService';
+import wardService from '../../services/wardService';
+import { backdropProps } from '../../utils/modalA11y';
 import { printHtml } from '../../utils/printHtml';
 import { printPdf, printBlob } from '../../utils/printPdf';
 import { validateForm } from '../../utils/validation';
 import BillingTable from './BillingTable';
-import hospitalService from '../../services/hospitalService';
-import wardService from '../../services/wardService';
-import timeSlotService from '../../services/timeSlotService';
 // BUG-028: single source-of-truth for base URL
-import StaffDetailsModal from '../../components/StaffDetailsModal';
-import ProfileModal from '../../components/ProfileModal';
-import StatusBadge from '../../components/StatusBadge';
-import Sidebar from '../../components/Sidebar';
 import FilesAndAccessCard from './FilesAndAccessCard';
 import HospitalCalendar from './HospitalCalendar';
 import OtAnalyticsCard from './OtAnalyticsCard';
@@ -63,22 +79,6 @@ import PrintPaymentSettingsCard from './PrintPaymentSettingsCard';
 import TimeSlotsView from './TimeSlotsView';
 import VitalsSettingsCard from './VitalsSettingsCard';
 import WardsAndBeds from './WardsAndBeds';
-import WardModal from '../../components/WardModal';
-import useWebSocket from '../../hooks/useWebSocket';
-import useEnabledVitals from '../../hooks/useEnabledVitals';
-import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
-import {
-  SkeletonDashboard,
-  SkeletonFormCard,
-  SkeletonSettingsCard,
-  SkeletonTable,
-  SkeletonStatsGrid,
-  SkeletonOverviewDual,
-} from '../../components/Skeleton';
-import reportsApi from '../../services/pharmacy/reportsApi';
-import salesApi from '../../services/pharmacy/salesApi';
-import branchesApi from '../../services/pharmacy/branchesApi';
-import inventoryApi from '../../services/pharmacy/inventoryApi';
 /**
  * HospitalAdminDashboard - Hospital Admin dashboard
  *
@@ -6210,7 +6210,7 @@ const HospitalAdminDashboard = () => {
       {/* Password Reset Result Modal */}
       {resetPasswordModal.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-neutral-100 overflow-hidden">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-neutral-100 max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-neutral-100 flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold text-slate-800">Reset Password</h3>
@@ -6398,7 +6398,7 @@ const HospitalAdminDashboard = () => {
             <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">
               &#8203;
             </span>
-            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+            <div className="inline-block align-bottom bg-white rounded-lg text-left max-h-[90vh] overflow-y-auto shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
               <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                 <div className="sm:flex sm:items-start">
                   <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
@@ -6471,7 +6471,7 @@ const HospitalAdminDashboard = () => {
             <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">
               &#8203;
             </span>
-            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-sm sm:w-full">
+            <div className="inline-block align-bottom bg-white rounded-lg text-left max-h-[90vh] overflow-y-auto shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-sm sm:w-full">
               <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                 <div className="sm:flex sm:items-start">
                   <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
@@ -6533,7 +6533,7 @@ const HospitalAdminDashboard = () => {
             </span>
             <form
               onSubmit={handleSaveCustomFee}
-              className="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full border border-gray-200"
+              className="inline-block align-bottom bg-white rounded-2xl text-left max-h-[90vh] overflow-y-auto shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full border border-gray-200"
             >
               <div className="bg-white px-6 pt-6 pb-4">
                 <h3 className="text-lg leading-6 font-bold text-gray-900 mb-4">
@@ -6626,7 +6626,7 @@ const HospitalAdminDashboard = () => {
             <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">
               &#8203;
             </span>
-            <div className="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full border border-gray-200">
+            <div className="inline-block align-bottom bg-white rounded-2xl text-left max-h-[90vh] overflow-y-auto shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full border border-gray-200">
               <div className="bg-white px-6 pt-6 pb-4">
                 <h3 className="text-lg leading-6 font-bold text-gray-900 mb-1">
                   Edit Bill Charges
@@ -9088,7 +9088,7 @@ const AssignNurseModal = ({ row, nurseOptions, onSubmit, onClose }) => {
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
       {...backdropProps(onClose)}
     >
-      <div className="bg-white rounded-lg border border-gray-200 w-full max-w-md">
+      <div className="bg-white rounded-lg border border-gray-200 w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <h2 className="text-xl font-bold text-gray-900 mb-1">
             {row?.assignmentPublicId ? 'Reassign Nurse' : 'Assign Nurse'}
@@ -9300,7 +9300,7 @@ const CreateNurseTaskModal = ({ nurseOptions, activeAdmissions, onSubmit, onClos
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
       {...backdropProps(onClose)}
     >
-      <div className="bg-white rounded-lg border border-gray-200 w-full max-w-md">
+      <div className="bg-white rounded-lg border border-gray-200 w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <h2 className="text-xl font-bold text-gray-900 mb-5">Create Nurse Task</h2>
           <div className="space-y-4">
@@ -9712,7 +9712,7 @@ const PharmaciesTab = () => {
 
       {modalOpen && (
         <div className="fixed inset-0 bg-gray-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl border border-gray-150 max-w-md w-full p-6">
+          <div className="bg-white rounded-xl shadow-2xl border border-gray-150 max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-start mb-4">
               <h3 className="font-bold text-gray-900 text-lg">
                 {editing ? 'Edit Branch' : 'Create Branch'}

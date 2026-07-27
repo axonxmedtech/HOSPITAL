@@ -36,7 +36,7 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, onAdjustmentComplete }) =
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200">
         <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
           <div>
             <h2 className="text-lg font-bold text-gray-900">Adjust Stock</h2>

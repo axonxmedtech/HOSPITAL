@@ -382,7 +382,7 @@ const MedicineInventoryTab = ({ hidePrescribingColumns = false }) => {
       {/* MODAL 1: ADD/EDIT ACTIVE INVENTORY STOCK */}
       {stockModal.isOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in-up">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-fade-in-up">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-slate-50">
               <h3 className="text-lg font-bold text-gray-800">
                 {stockModal.isEdit ? 'Edit Stock Details' : 'Add Stock Intake'}

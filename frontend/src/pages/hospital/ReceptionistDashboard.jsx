@@ -6,36 +6,37 @@ import AppointmentModal from '../../components/AppointmentModal';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import DataTable from '../../components/DataTable';
 import EmptyState from '../../components/EmptyState';
+import HistoryDrawer from '../../components/HistoryDrawer';
+import HospitalInventoryTab from '../../components/HospitalInventoryTab';
+import IpdAdmitModal from '../../components/IpdAdmitModal';
+import LowStockBanner from '../../components/LowStockBanner';
+import MedicineInventoryTab from '../../components/MedicineInventoryTab';
+import Navbar from '../../components/Navbar';
+import OpdPaymentFields, {
+  isPayFirst,
+  validateOpdPayment,
+} from '../../components/OpdPaymentFields';
+import PageHeader from '../../components/PageHeader';
 import PatientDetailsModal from '../../components/PatientDetailsModal';
 import PatientModal from '../../components/PatientModal';
+import PrescriptionModal from '../../components/PrescriptionModal';
+import PrescriptionViewModal from '../../components/PrescriptionViewModal';
+import ProfileModal from '../../components/ProfileModal';
+import Sidebar from '../../components/Sidebar';
+import { SkeletonStatsGrid, SkeletonOverviewDual, SkeletonTable } from '../../components/Skeleton';
+import StatusBadge from '../../components/StatusBadge';
 import { useToast } from '../../context/ToastContext';
 import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
+import useEnabledVitals from '../../hooks/useEnabledVitals';
+import useOtPermissions from '../../hooks/useOtPermissions';
+import useWebSocket from '../../hooks/useWebSocket';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
 // BUG-028: single source-of-truth for base URL
 import otService from '../../services/otService';
 import { formatDateTime, formatTime } from '../../utils/date';
-import ProfileModal from '../../components/ProfileModal';
-import StatusBadge from '../../components/StatusBadge';
-import HistoryDrawer from '../../components/HistoryDrawer';
-import Sidebar from '../../components/Sidebar';
-import Navbar from '../../components/Navbar';
-import PageHeader from '../../components/PageHeader';
-import useWebSocket from '../../hooks/useWebSocket';
-import useEnabledVitals from '../../hooks/useEnabledVitals';
 import { printPdf } from '../../utils/printPdf';
 import BillingTable from './BillingTable';
-import PrescriptionModal from '../../components/PrescriptionModal';
-import PrescriptionViewModal from '../../components/PrescriptionViewModal';
-import IpdAdmitModal from '../../components/IpdAdmitModal';
-import { SkeletonStatsGrid, SkeletonOverviewDual, SkeletonTable } from '../../components/Skeleton';
-import MedicineInventoryTab from '../../components/MedicineInventoryTab';
-import HospitalInventoryTab from '../../components/HospitalInventoryTab';
-import OpdPaymentFields, {
-  isPayFirst,
-  validateOpdPayment,
-} from '../../components/OpdPaymentFields';
-import LowStockBanner from '../../components/LowStockBanner';
 import DayCareSurgeryModal from './ot/DayCareSurgeryModal';
 import OtAnalyticsStrip from './ot/OtAnalyticsStrip';
 import OtBoard from './ot/OtBoard';
@@ -45,7 +46,6 @@ import RecoveryModal from './ot/RecoveryModal';
 import ScheduleSurgeryModal from './ot/ScheduleSurgeryModal';
 import SurgeryExecutionModal from './ot/SurgeryExecutionModal';
 import SurgeryTeamModal from './ot/SurgeryTeamModal';
-import useOtPermissions from '../../hooks/useOtPermissions';
 
 const ReceptionistDashboard = () => {
   const [user, setUser] = useState(() => authService.getCurrentUser());
@@ -2571,7 +2571,7 @@ const ReceptionistDashboard = () => {
             <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">
               &#8203;
             </span>
-            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+            <div className="inline-block align-bottom bg-white rounded-lg text-left max-h-[90vh] overflow-y-auto shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
               <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                 <div className="sm:flex sm:items-start">
                   <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-gray-100 sm:mx-0 sm:h-10 sm:w-10"></div>
@@ -2643,7 +2643,7 @@ const ReceptionistDashboard = () => {
             <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">
               &#8203;
             </span>
-            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-sm sm:w-full">
+            <div className="inline-block align-bottom bg-white rounded-lg text-left max-h-[90vh] overflow-y-auto shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-sm sm:w-full">
               <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                 <div className="sm:flex sm:items-start">
                   <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-gray-100 sm:mx-0 sm:h-10 sm:w-10"></div>
@@ -2704,7 +2704,7 @@ const ReceptionistDashboard = () => {
             <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">
               &#8203;
             </span>
-            <div className="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full border border-gray-200">
+            <div className="inline-block align-bottom bg-white rounded-2xl text-left max-h-[90vh] overflow-y-auto shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full border border-gray-200">
               <div className="bg-white px-6 pt-6 pb-4">
                 <h3 className="text-lg leading-6 font-bold text-gray-900 mb-1">
                   Edit Bill Charges

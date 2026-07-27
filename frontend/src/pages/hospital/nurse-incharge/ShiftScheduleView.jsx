@@ -367,7 +367,7 @@ const RangeFillModal = ({ nurses, templates, onClose, onDone }) => {
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
       {...backdropProps(onClose)}
     >
-      <div className="bg-white rounded-2xl w-full max-w-md p-6">
+      <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
         <h2 className="text-lg font-bold text-gray-900 mb-4">Range Fill Shifts</h2>
 
         <div className="space-y-4">
