@@ -24,6 +24,10 @@ public class PharmacySale {
     @Column(name = "hospital_id", nullable = false)
     private Long hospitalId;
 
+    /** Multi Pharmacy branch scope; null for non-branch tenants. */
+    @Column(name = "branch_id")
+    private Long branchId;
+
     @Column(name = "patient_id")
     private Long patientId;
 

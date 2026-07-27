@@ -79,6 +79,35 @@ public class HospitalWebSocketHandler extends TextWebSocketHandler {
     }
 
     /**
+     * Reserved channel for platform (Super Admin) sessions. No real hospital has id 0
+     * (auto-increment starts at 1), and the handshake interceptor lets a Super Admin
+     * connect to any path id — so Super Admin sockets register here and receive
+     * platform-wide events (e.g. a new support ticket from any tenant).
+     */
+    public static final Long PLATFORM_CHANNEL = 0L;
+
+    /** Broadcast a platform-wide event to all connected Super Admin sessions. */
+    public void broadcastToPlatform(String jsonPayload) {
+        broadcast(PLATFORM_CHANNEL, jsonPayload);
+    }
+
+    /**
+     * Broadcast to every connected TENANT (all hospitals/clinics/pharmacies), skipping the Super
+     * Admin channel.
+     *
+     * For platform-owned content that every tenant reads but no single tenant owns -- FAQs are the
+     * case that needs it. Fans out only to tenants that actually have someone connected, since
+     * `sessions` holds live connections, so this is not a scan of the hospital table.
+     */
+    public void broadcastToAllTenants(String jsonPayload) {
+        for (Long hospitalId : sessions.keySet()) {
+            if (!PLATFORM_CHANNEL.equals(hospitalId)) {
+                broadcast(hospitalId, jsonPayload);
+            }
+        }
+    }
+
+    /**
      * Broadcasts a JSON message to all active WebSocket sessions registered under the specified hospitalId.
      */
     public void broadcast(Long hospitalId, String jsonPayload) {

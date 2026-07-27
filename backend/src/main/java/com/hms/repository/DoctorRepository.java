@@ -61,6 +61,16 @@ public interface DoctorRepository extends JpaRepository<Doctor, Long> {
      */
     Optional<Doctor> findByEmailAndHospitalId(String email, Long hospitalId);
 
+    default Optional<Doctor> findByIdOrUserId(Long id, UserRepository userRepository) {
+        if (id == null) return Optional.empty();
+        Optional<Doctor> doc = findById(id);
+        if (doc.isPresent()) {
+            return doc;
+        }
+        return userRepository.findById(id)
+                .flatMap(user -> findByEmailAndHospitalId(user.getEmail(), user.getHospitalId()));
+    }
+
     /**
      * Search active doctors by name or specialization
      * 

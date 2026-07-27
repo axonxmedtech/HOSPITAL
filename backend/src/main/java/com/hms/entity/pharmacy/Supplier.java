@@ -23,6 +23,10 @@ public class Supplier {
     @Column(name = "hospital_id", nullable = false)
     private Long hospitalId;
 
+    /** Multi Pharmacy branch scope; null for non-branch tenants. */
+    @Column(name = "branch_id")
+    private Long branchId;
+
     @Column(name = "supplier_name", nullable = false)
     private String supplierName;
 

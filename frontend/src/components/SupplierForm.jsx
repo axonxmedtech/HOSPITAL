@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import suppliersApi from '../services/pharmacy/suppliersApi';
 import { useToast } from '../context/ToastContext';
+import suppliersApi from '../services/pharmacy/suppliersApi';
+import { backdropProps } from '../utils/modalA11y';
 
 /**
  * SupplierForm – modal used for both adding and editing a supplier.
@@ -12,13 +13,7 @@ import { useToast } from '../context/ToastContext';
  *   - mode: 'create' | 'edit' – determines whether we are creating or editing.
  *   - supplier: object – the supplier data to pre‑fill when mode === 'edit'.
  */
-const SupplierForm = ({
-  isOpen = false,
-  onClose,
-  onSuccess,
-  mode = 'create',
-  supplier = null,
-}) => {
+const SupplierForm = ({ isOpen = false, onClose, onSuccess, mode = 'create', supplier = null }) => {
   const { success, error: toastError } = useToast();
   const [formData, setFormData] = useState({
     supplierName: '',
@@ -71,14 +66,39 @@ const SupplierForm = ({
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    let next = type === 'checkbox' ? checked : value;
+    // PAN (10) and GST (15) are uppercase alphanumeric codes — strip anything else as typed.
+    if (name === 'panNumber')
+      next = value
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '')
+        .slice(0, 10);
+    if (name === 'gstNumber')
+      next = value
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '')
+        .slice(0, 15);
     setFormData((prev) => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value,
+      [name]: next,
     }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // PAN/GST are optional, but when provided must be exactly 10 / 15 alphanumeric characters.
+    const pan = (formData.panNumber || '').trim();
+    const gst = (formData.gstNumber || '').trim();
+    if (pan && !/^[A-Z0-9]{10}$/.test(pan)) {
+      toastError('PAN number must be exactly 10 alphanumeric characters.');
+      return;
+    }
+    if (gst && !/^[A-Z0-9]{15}$/.test(gst)) {
+      toastError('GST number must be exactly 15 alphanumeric characters.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       if (mode === 'create') {
@@ -99,14 +119,21 @@ const SupplierForm = ({
   };
 
   const modalTitle = mode === 'create' ? 'Add Supplier' : 'Edit Supplier';
-  const submitLabel = mode === 'create' ? (isSubmitting ? 'Saving...' : 'Save') : (isSubmitting ? 'Updating...' : 'Update');
+  const submitLabel =
+    mode === 'create'
+      ? isSubmitting
+        ? 'Saving...'
+        : 'Save'
+      : isSubmitting
+        ? 'Updating...'
+        : 'Update';
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div
-        className="bg-white rounded-2xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-auto p-6"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div
+      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+      {...backdropProps(onClose)}
+    >
+      <div className="bg-white rounded-2xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-auto p-6">
         <h3 className="text-2xl font-bold mb-4">{modalTitle}</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -151,14 +178,18 @@ const SupplierForm = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <input
               name="gstNumber"
-              placeholder="GST Number"
+              placeholder="GST Number (15 characters)"
+              title="GST number must be exactly 15 alphanumeric characters"
+              maxLength={15}
               value={formData.gstNumber}
               onChange={handleChange}
               className="input-field"
             />
             <input
               name="panNumber"
-              placeholder="PAN Number"
+              placeholder="PAN Number (10 characters)"
+              title="PAN number must be exactly 10 alphanumeric characters"
+              maxLength={10}
               value={formData.panNumber}
               onChange={handleChange}
               className="input-field"

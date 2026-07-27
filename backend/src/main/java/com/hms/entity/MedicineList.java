@@ -1,10 +1,12 @@
 package com.hms.entity;
 
+import com.hms.validation.NoEmoji;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "medicine_list")
@@ -18,27 +20,17 @@ public class MedicineList {
     private Long id;
 
     @Column(nullable = false)
+    @NotBlank(message = "Medicine name is required")
+    @Size(max = 200, message = "Medicine name cannot exceed 200 characters")
+    @NoEmoji
     private String name;
 
     @Column(nullable = false)
+    @NotBlank(message = "Type is required")
+    @Size(max = 100, message = "Type cannot exceed 100 characters")
+    @NoEmoji
     private String type; // e.g., Tablet, Syrup, Injection, Saline, Cream
 
-    private String defaultDosage; // e.g., 500mg
-    private String defaultFrequency; // e.g., 1-0-1
-    private String defaultDuration; // e.g., 3 Days
-    private String manufacturer;
-
-    @Column(name = "hospital_id")
-    private Long hospitalId; // Null for global catalog, specific hospital ID otherwise
-
-    @Column(name = "is_active")
-    private Boolean isActive = true;
-
-    @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
-
-    @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-    }
+    @Column(name = "hospital_type")
+    private String hospitalType; // HOSPITAL, CLINIC, or PHARMACY - for tenant isolation
 }

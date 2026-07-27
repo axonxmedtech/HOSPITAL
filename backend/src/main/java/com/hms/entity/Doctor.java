@@ -68,24 +68,34 @@ public class Doctor {
      * Doctor's full name
      */
     @Column(nullable = false, length = 100)
+    @jakarta.validation.constraints.NotBlank(message = "Name is required")
+    @com.hms.validation.PersonName
     private String name;
 
     /**
      * Doctor's specialization (e.g., General Physician, Cardiologist)
      */
     @Column(nullable = false, length = 100)
+    @jakarta.validation.constraints.NotBlank(message = "Specialization is required")
+    @jakarta.validation.constraints.Size(max = 100, message = "Specialization is too long")
+    @com.hms.validation.NoEmoji
     private String specialization;
 
     /**
      * Doctor's contact phone number
      */
     @Column(nullable = false, length = 15)
+    @jakarta.validation.constraints.NotBlank(message = "Phone number is required")
+    @jakarta.validation.constraints.Pattern(regexp = "^\\d{10}$", message = "Phone number must be exactly 10 digits")
     private String phone;
 
     /**
      * Doctor's email address
      */
     @Column(nullable = false, length = 100)
+    @jakarta.validation.constraints.NotBlank(message = "Email is required")
+    @jakarta.validation.constraints.Email(message = "Invalid email format")
+    @jakarta.validation.constraints.Size(max = 100, message = "Email is too long")
     private String email;
 
     /**

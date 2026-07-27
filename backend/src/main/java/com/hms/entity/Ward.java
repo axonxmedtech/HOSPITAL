@@ -33,6 +33,9 @@ public class Ward {
     @Column(name = "floor_number")
     private Integer floorNumber;
 
+    @Column(name = "incharge_nurse_id")
+    private Long inchargeNurseId;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 

@@ -1,5 +1,7 @@
 package com.hms.service.pharmacy.impl;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.dto.pharmacy.CategoryRequest;
 import com.hms.entity.pharmacy.MedicineCategory;
 import com.hms.repository.pharmacy.MedicineCategoryRepository;
@@ -43,7 +45,7 @@ public class MedicineCategoryServiceImpl implements MedicineCategoryService {
     @Override
     public MedicineCategory getCategoryById(Long id) {
         return categoryRepository.findByIdAndHospitalId(id, securityHelper.getCurrentHospitalId())
-                .orElseThrow(() -> new RuntimeException("Medicine category not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Medicine category not found"));
     }
 
     @Override

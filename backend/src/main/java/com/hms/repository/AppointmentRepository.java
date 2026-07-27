@@ -22,13 +22,6 @@ import java.util.Optional;
 public interface AppointmentRepository extends JpaRepository<Appointment, Long> {
 
   /**
-   * Find all appointments belonging to a specific hospital
-   * Used to list appointments for a hospital (multi-tenant filtering)
-   * 
-   * @param hospitalId Hospital ID to filter by
-   * @return List of appointments for the hospital
-   */
-  /**
    * Find all active appointments belonging to a specific hospital
    * Used to list appointments for a hospital (multi-tenant filtering)
    * 
@@ -325,6 +318,18 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
    */
   org.springframework.data.domain.Page<Appointment> findByDoctorIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(
       Long doctorId, Long hospitalId, org.springframework.data.domain.Pageable pageable);
+
+  /**
+   * Find active appointments by hospital, date, and status
+   * Used by AppointmentReminderScheduler to get tomorrow's scheduled appointments
+   *
+   * @param hospitalId Hospital ID
+   * @param date       Appointment date
+   * @param status     Appointment status (e.g. "SCHEDULED")
+   * @return List of matching active appointments
+   */
+  List<Appointment> findByHospitalIdAndAppointmentDateAndStatusAndIsActiveTrue(
+      Long hospitalId, java.time.LocalDate date, String status);
 
   // ...existing code...
 }

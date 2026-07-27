@@ -1,18 +1,22 @@
 package com.hms.controller.hospital;
 
+import jakarta.validation.Valid;
+
 import com.hms.entity.Medicine;
 import com.hms.entity.MedicineList;
+import com.hms.security.RequireModule;
 import com.hms.service.hospital.MedicineService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
-@RequestMapping("/hospital/medicines")
-@CrossOrigin(origins = "*")
+@RequestMapping({"/hospital/medicines", "/clinic/medicines"})
 public class MedicineController {
 
     @Autowired
@@ -33,84 +37,58 @@ public class MedicineController {
         return ResponseEntity.ok(medicineService.getCatalogMedicines());
     }
 
-    @PostMapping("/catalog")
+
+    // --- Purchase History Management ---
+
+    @GetMapping("/purchases")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> addCatalogMedicine(@RequestBody MedicineList catalog) {
-        try {
-            return ResponseEntity.ok(medicineService.addCatalogMedicine(catalog));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+    @RequireModule("MEDICAL_INVENTORY")
+    public ResponseEntity<List<com.hms.entity.MedicinePurchase>> getMedicinePurchases() {
+        return ResponseEntity.ok(medicineService.getMedicinePurchases());
     }
 
-    @PutMapping("/catalog/{id}")
+    @PostMapping("/purchases")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> updateCatalogMedicine(@PathVariable Long id, @RequestBody MedicineList catalog) {
-        try {
-            return ResponseEntity.ok(medicineService.updateCatalogMedicine(id, catalog));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
-    }
-
-    @DeleteMapping("/catalog/{id}")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> deleteCatalogMedicine(@PathVariable Long id) {
-        try {
-            medicineService.deleteCatalogMedicine(id);
-            return ResponseEntity.ok().build();
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+    @RequireModule("MEDICAL_INVENTORY")
+    public ResponseEntity<?> addMedicinePurchase(@RequestBody com.hms.entity.MedicinePurchase purchase) {
+        return ResponseEntity.ok(medicineService.addMedicinePurchase(purchase));
     }
 
     // --- Active Stock Inventory CRUD ---
 
     @GetMapping("/inventory")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    @RequireModule("MEDICAL_INVENTORY")
     public ResponseEntity<List<Medicine>> getInventoryMedicines() {
         return ResponseEntity.ok(medicineService.getInventoryMedicines());
     }
 
     @PostMapping("/inventory")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> addInventoryMedicine(@RequestBody Medicine stock) {
-        try {
-            return ResponseEntity.ok(medicineService.addInventoryMedicine(stock));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+    @RequireModule("MEDICAL_INVENTORY")
+    public ResponseEntity<?> addInventoryMedicine(@Valid @RequestBody Medicine stock) {
+        return ResponseEntity.ok(medicineService.addInventoryMedicine(stock));
     }
 
     @PutMapping("/inventory/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> updateInventoryMedicine(@PathVariable Long id, @RequestBody Medicine stock) {
-        try {
-            return ResponseEntity.ok(medicineService.updateInventoryMedicine(id, stock));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+    @RequireModule("MEDICAL_INVENTORY")
+    public ResponseEntity<?> updateInventoryMedicine(@PathVariable Long id, @Valid @RequestBody Medicine stock) {
+        return ResponseEntity.ok(medicineService.updateInventoryMedicine(id, stock));
     }
 
     @DeleteMapping("/inventory/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    @RequireModule("MEDICAL_INVENTORY")
     public ResponseEntity<?> deleteInventoryMedicine(@PathVariable Long id) {
-        try {
-            medicineService.deleteInventoryMedicine(id);
-            return ResponseEntity.ok().build();
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        medicineService.deleteInventoryMedicine(id);
+        return ResponseEntity.ok().build();
     }
 
     // Legacy fallback
     @PostMapping
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR')")
-    public ResponseEntity<?> addMedicine(@RequestBody Medicine medicine) {
-        try {
-            return ResponseEntity.ok(medicineService.addMedicine(medicine));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+    public ResponseEntity<?> addMedicine(@Valid @RequestBody Medicine medicine) {
+        return ResponseEntity.ok(medicineService.addMedicine(medicine));
     }
 }

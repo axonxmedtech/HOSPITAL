@@ -13,8 +13,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/pharmacy")
-@CrossOrigin
+@RequestMapping("/pharmacy")
 public class MedicineMasterController {
 
     @Autowired
@@ -63,6 +62,13 @@ public class MedicineMasterController {
     @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN', 'DOCTOR')")
     public ResponseEntity<?> autocomplete(@RequestParam("q") String query) {
         return ResponseEntity.ok(service.autocomplete(query));
+    }
+
+    /** Search the platform medicine catalog (name + type) for the purchase form. */
+    @GetMapping("/catalog/search")
+    @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> searchPlatformCatalog(@RequestParam("q") String query) {
+        return ResponseEntity.ok(service.searchPlatformCatalog(query));
     }
 
     @PatchMapping("/medicines/{id}/status")

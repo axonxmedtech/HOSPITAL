@@ -32,10 +32,9 @@ public class BillingSchedulerService {
     private BillingItemRepository billingItemRepository;
 
     /**
-     * Runs every night at 11:55 PM to calculate charges for the day just ending.
-     * Alternatively could run at 12:01 AM for current day. Setting to 11:59PM to process end-of-day.
+     * Runs at midnight IST (12:00 AM IST) to calculate charges for the day just ended.
      */
-    @Scheduled(cron = "0 59 23 * * ?") 
+    @Scheduled(cron = "0 0 0 * * ?", zone = "Asia/Kolkata")
     @Transactional
     public void processDailyBedCharges() {
         logger.info("Executing daily bed charge processing scheduled task...");

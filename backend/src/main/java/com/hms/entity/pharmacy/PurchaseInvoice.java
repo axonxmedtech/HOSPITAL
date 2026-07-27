@@ -25,6 +25,10 @@ public class PurchaseInvoice {
     @Column(name = "hospital_id", nullable = false)
     private Long hospitalId;
 
+    /** Multi Pharmacy branch scope; null for non-branch tenants. */
+    @Column(name = "branch_id")
+    private Long branchId;
+
     @Column(name = "supplier_id", nullable = false)
     private Long supplierId;
 
@@ -63,6 +67,6 @@ public class PurchaseInvoice {
     private LocalDateTime createdAt;
 
     @com.fasterxml.jackson.annotation.JsonManagedReference
-    @OneToMany(mappedBy = "purchaseInvoice", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "purchaseInvoice", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PurchaseInvoiceItem> items;
 }

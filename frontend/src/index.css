@@ -77,6 +77,12 @@
         background-repeat: no-repeat !important;
         background-size: 1.25rem 1.25rem !important;
         padding-right: 2.5rem !important; /* Prevents text colliding with the arrow */
+        /* A fixed line-height (inherited from the shared input/select/textarea rule
+           above) fights the native select widget's own text-centering in some
+           browsers/OS combinations, clipping the option text against the fixed
+           2.5rem height instead of centering it. `normal` lets each browser center
+           its own control text correctly while the height/padding stay locked. */
+        line-height: normal !important;
     }
 
     /* Strip default platform number spin buttons for uniform spacing */

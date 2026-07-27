@@ -1,5 +1,7 @@
 package com.hms.service.pharmacy;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.dto.pharmacy.ManufacturerRequest;
 import com.hms.entity.pharmacy.Manufacturer;
 import com.hms.repository.pharmacy.ManufacturerRepository;
@@ -12,6 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ManufacturerService {
+
+    @Autowired private com.hms.service.RealtimeNotifier notifier;
 
     @Autowired
     private ManufacturerRepository manufacturerRepository;
@@ -30,7 +34,9 @@ public class ManufacturerService {
         m.setAddress(req.getAddress());
         m.setLicenseNumber(req.getLicenseNumber());
         m.setIsActive(req.getIsActive() != null ? req.getIsActive() : true);
-        return manufacturerRepository.save(m);
+        Manufacturer saved = manufacturerRepository.save(m);
+        notifier.refresh(securityHelper.getCurrentHospitalId());
+        return saved;
     }
 
     public Page<Manufacturer> getAll(String search, Pageable pageable) {
@@ -43,7 +49,7 @@ public class ManufacturerService {
 
     public Manufacturer getById(Long id) {
         return manufacturerRepository.findByIdAndHospitalId(id, securityHelper.getCurrentHospitalId())
-                .orElseThrow(() -> new RuntimeException("Manufacturer not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Manufacturer not found"));
     }
 
     @Transactional
@@ -56,13 +62,17 @@ public class ManufacturerService {
         m.setAddress(req.getAddress());
         m.setLicenseNumber(req.getLicenseNumber());
         if (req.getIsActive() != null) m.setIsActive(req.getIsActive());
-        return manufacturerRepository.save(m);
+        Manufacturer saved = manufacturerRepository.save(m);
+        notifier.refresh(securityHelper.getCurrentHospitalId());
+        return saved;
     }
 
     @Transactional
     public Manufacturer toggleStatus(Long id) {
         Manufacturer m = getById(id);
         m.setIsActive(!m.getIsActive());
-        return manufacturerRepository.save(m);
+        Manufacturer saved = manufacturerRepository.save(m);
+        notifier.refresh(securityHelper.getCurrentHospitalId());
+        return saved;
     }
 }

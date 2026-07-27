@@ -1,0 +1,102 @@
+name: Database Backup
+
+# Scheduled + on-demand MySQL backup. The dump is written and retained ON THE VPS — it contains
+# patient data (PHI) and is NEVER downloaded to the runner or uploaded as an artifact. Only backup
+# metadata (filename, size, checksum, verification result) is surfaced. See
+# docs/database/BACKUP_AND_RESTORE.md.
+
+on:
+  schedule:
+    - cron: '30 20 * * *' # 20:30 UTC daily (~02:00 IST). Adjust to your low-traffic window.
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to back up
+        required: true
+        type: choice
+        options: [Production, Staging]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-backup-${{ github.event.inputs.environment || 'Production' }}
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Backup ${{ github.event.inputs.environment || 'Production' }} DB
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # Pin to SHA in production: https://github.com/actions/checkout/releases
+      - uses: actions/checkout@v4
+
+      - name: Resolve environment
+        id: env
+        run: |
+          ENV="${{ github.event.inputs.environment || 'Production' }}"
+          if [ "$ENV" = "Staging" ]; then
+            {
+              echo "label=staging"
+              echo "repo_path=${{ vars.STAGING_DEPLOY_PATH || '/var/www/hms/staging/repo_stage' }}"
+              echo "host=${{ vars.STAGING_SSH_HOST }}"
+              echo "port=${{ vars.STAGING_SSH_PORT || '22' }}"
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "label=production"
+              echo "repo_path=${{ vars.PRODUCTION_DEPLOY_PATH || '/var/www/hms/production/repo_prod' }}"
+              echo "host=${{ vars.PRODUCTION_SSH_HOST }}"
+              echo "port=${{ vars.PRODUCTION_SSH_PORT || '22' }}"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate configuration
+        env:
+          HMS_HOST: ${{ steps.env.outputs.host }}
+          HMS_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: bash scripts/deploy/validate-config.sh HMS_HOST HMS_KEY
+
+      - name: Run backup on VPS (dump stays on server)
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ steps.env.outputs.host }}
+          SSH_PORT: ${{ steps.env.outputs.port }}
+          SSH_USER: ${{ secrets.SSH_USERNAME || 'deploy' }}
+          REPO: ${{ steps.env.outputs.repo_path }}
+          ENV_LABEL: ${{ steps.env.outputs.label }}
+        run: |
+          mkdir -p backup-logs
+          echo "$SSH_KEY" > /tmp/deploy_key && chmod 600 /tmp/deploy_key
+          # Source the app env (SPRING_DATASOURCE_*) on the VPS so backup.sh finds DB credentials.
+          # Only metadata is returned over SSH; the .sql.gz never leaves the server.
+          ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "cd '$REPO' && set -a; [ -f .env ] && . ./.env; set +a; \
+             ENV_LABEL='$ENV_LABEL' RETENTION_DAYS='${{ vars.DB_BACKUP_RETENTION_DAYS || 30 }}' \
+             bash scripts/db/backup.sh" \
+            | tee backup-logs/backup.txt
+          rm -f /tmp/deploy_key
+
+      - name: Backup summary
+        if: always()
+        run: |
+          {
+            echo "## 💾 Database Backup — ${{ github.event.inputs.environment || 'Production' }}"
+            echo ""
+            echo "Dump retained on the VPS (contains PHI — never downloaded). Metadata:"
+            echo '```'
+            grep -E '^\[backup\]|sha256|bytes|pruning' backup-logs/backup.txt 2>/dev/null | tail -20 || cat backup-logs/backup.txt 2>/dev/null || echo "(no output)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload backup metadata log (no PHI)
+        if: always()
+        # Pin to SHA in production: https://github.com/actions/upload-artifact/releases
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-log-${{ github.run_id }}
+          path: backup-logs/
+          retention-days: 90
+          if-no-files-found: warn

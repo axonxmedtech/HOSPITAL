@@ -80,8 +80,15 @@ public class LoginResponse {
     private String specialization;
     private Boolean isSingleDoctor;
     private Boolean inClinic;
+    private Boolean barcodeEnabled;
+    private Boolean otInchargeEnabled;
+    /** FIRST or LAST — lets the OPD entry form know whether to collect payment up front. */
+    private String billPaymentTiming;
     private String logoUrl;
     private String parentOrganization;
     private String hospitalAddress;
     private String hospitalPhone;
+
+    /** HOSPITAL | CLINIC | PHARMACY — entity type this user belongs to */
+    private String hospitalType;
 }

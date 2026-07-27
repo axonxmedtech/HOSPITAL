@@ -24,4 +24,6 @@ public interface MedicineRepository extends JpaRepository<Medicine, Long> {
     boolean existsByNameAndHospitalId(String name, Long hospitalId);
 
     java.util.Optional<Medicine> findByIdAndHospitalId(Long id, Long hospitalId);
+
+    java.util.Optional<Medicine> findByNameIgnoreCaseAndHospitalId(String name, Long hospitalId);
 }

@@ -59,6 +59,9 @@ public class AuditLog {
     @Column(name = "hospital_id")
     private Long hospitalId; // Null for Platform/SuperAdmin actions
 
+    @Column(name = "branch_id")
+    private Long branchId; // Pharmacy branch ID (Multi Pharmacy only); null for non-branch contexts
+
     @Column(name = "entity_type")
     private String entityType; // PATIENT, DOCTOR, APPOINTMENT
 
@@ -130,6 +133,14 @@ public class AuditLog {
 
     public void setHospitalId(Long hospitalId) {
         this.hospitalId = hospitalId;
+    }
+
+    public Long getBranchId() {
+        return branchId;
+    }
+
+    public void setBranchId(Long branchId) {
+        this.branchId = branchId;
     }
 
     public String getEntityType() {

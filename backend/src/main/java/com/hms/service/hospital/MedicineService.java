@@ -5,22 +5,41 @@ import com.hms.entity.MedicineList;
 import com.hms.repository.MedicineRepository;
 import com.hms.repository.MedicineListRepository;
 import com.hms.security.SecurityContextHelper;
+
+import com.hms.exception.ResourceNotFoundException;
+import com.hms.exception.UnauthorizedException;
 import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 @Service
 public class MedicineService {
+    private static final String TABLET = "Tablet";
+
+
+    private static final Logger logger = LoggerFactory.getLogger(MedicineService.class);
 
     @Autowired
     private MedicineRepository medicineRepository;
 
     @Autowired
     private MedicineListRepository medicineListRepository;
+
+    @Autowired
+    private com.hms.repository.MedicinePurchaseRepository medicinePurchaseRepository;
 
     @Autowired
     private SecurityContextHelper securityHelper;
@@ -31,114 +50,213 @@ public class MedicineService {
     @Autowired
     private com.hms.security.HospitalWebSocketHandler webSocketHandler;
 
+
     // --- Master Catalog Search & CRUD ---
 
     public List<MedicineList> searchMedicines(String query) {
-        Long hospitalId = securityHelper.getCurrentHospitalId();
-        if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
-        }
-        return medicineListRepository.searchByName("%" + query + "%", hospitalId);
+        return medicineListRepository.findByNameContainingIgnoreCase(query);
     }
 
     public List<MedicineList> getCatalogMedicines() {
-        Long hospitalId = securityHelper.getCurrentHospitalId();
-        if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
-        }
-        return medicineListRepository.findByHospitalId(hospitalId);
+        return medicineListRepository.findAll();
     }
 
     public MedicineList addCatalogMedicine(MedicineList medicine) {
-        Long hospitalId = securityHelper.getCurrentHospitalId();
-        if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+        if (medicineListRepository.existsByNameIgnoreCase(medicine.getName())) {
+            throw new IllegalArgumentException("Medicine already exists in catalog");
         }
-
-        if (medicineListRepository.existsByNameAndHospitalId(medicine.getName(), hospitalId)) {
-            throw new RuntimeException("Medicine already exists in catalog");
-        }
-
-        medicine.setHospitalId(hospitalId);
-        MedicineList saved = medicineListRepository.save(medicine);
-
-        // Audit Log
-        try {
-            auditLogService.logAction(
-                    "CATALOG_MEDICINE_ADDED",
-                    "Added " + saved.getName() + " to master catalog",
-                    securityHelper.getCurrentUserEmail(),
-                    hospitalId,
-                    "MEDICINE",
-                    saved.getId().toString(),
-                    null
-            );
-        } catch (Exception ignored) {}
-
-        return saved;
+        return medicineListRepository.save(medicine);
     }
 
     public MedicineList updateCatalogMedicine(Long id, MedicineList request) {
-        Long hospitalId = securityHelper.getCurrentHospitalId();
         MedicineList catalog = medicineListRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Catalog medicine not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Catalog medicine not found"));
 
-        if (catalog.getHospitalId() != null && !catalog.getHospitalId().equals(hospitalId)) {
-            throw new RuntimeException("Unauthorized access to catalog medicine");
+        if (medicineListRepository.existsByNameIgnoreCaseAndIdNot(request.getName(), id)) {
+            throw new IllegalArgumentException("Medicine with this name already exists");
         }
 
         catalog.setName(request.getName());
         catalog.setType(request.getType());
-        catalog.setDefaultDosage(request.getDefaultDosage());
-        catalog.setDefaultFrequency(request.getDefaultFrequency());
-        catalog.setDefaultDuration(request.getDefaultDuration());
-        catalog.setManufacturer(request.getManufacturer());
-        if (request.getIsActive() != null) {
-            catalog.setIsActive(request.getIsActive());
-        }
 
-        MedicineList saved = medicineListRepository.save(catalog);
-
-        // Audit Log
-        try {
-            auditLogService.logAction(
-                    "CATALOG_MEDICINE_UPDATED",
-                    "Updated catalog medicine " + saved.getName(),
-                    securityHelper.getCurrentUserEmail(),
-                    hospitalId,
-                    "MEDICINE",
-                    saved.getId().toString(),
-                    null
-            );
-        } catch (Exception ignored) {}
-
-        return saved;
+        return medicineListRepository.save(catalog);
     }
 
     public void deleteCatalogMedicine(Long id) {
-        Long hospitalId = securityHelper.getCurrentHospitalId();
         MedicineList catalog = medicineListRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Catalog medicine not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Catalog medicine not found"));
+        medicineListRepository.delete(catalog);
+    }
 
-        if (catalog.getHospitalId() != null && !catalog.getHospitalId().equals(hospitalId)) {
-            throw new RuntimeException("Unauthorized access to catalog medicine");
+    @Transactional
+    public Map<String, Object> importCatalogCsv(MultipartFile file) throws Exception {
+        com.hms.util.CsvUploads.validate(file);
+        int imported = 0;
+        int updated = 0;
+        List<String> errors = new ArrayList<>();
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream(), "UTF-8"))) {
+            String line;
+            int lineNum = 0;
+            while ((line = reader.readLine()) != null) {
+                lineNum++;
+                String trimmed = line.trim();
+                if (trimmed.isEmpty()) continue;
+                // Skip header row
+                if (lineNum == 1 && trimmed.toLowerCase().startsWith("name")) continue;
+
+                String[] cols = trimmed.split(",", -1);
+                String name = stripQuotes(cols[0]);
+                if (name.isEmpty()) continue;
+
+                String type = cols.length > 1 ? stripQuotes(cols[1]) : "";
+                if (type.isEmpty()) type = TABLET;
+
+                try {
+                    Optional<MedicineList> existing = medicineListRepository.findByNameIgnoreCase(name);
+                    if (existing.isPresent()) {
+                        MedicineList m = existing.get();
+                        m.setType(type);
+                        medicineListRepository.save(m);
+                        updated++;
+                    } else {
+                        MedicineList m = new MedicineList();
+                        m.setName(name);
+                        m.setType(type);
+                        medicineListRepository.save(m);
+                        imported++;
+                    }
+                } catch (Exception e) {
+                    errors.add("Row " + lineNum + " (" + name + "): " + e.getMessage());
+                }
+            }
         }
 
-        catalog.setIsActive(false);
-        medicineListRepository.save(catalog);
+        Map<String, Object> result = new HashMap<>();
+        result.put("imported", imported);
+        result.put("updated", updated);
+        result.put("errors", errors);
+        return result;
+    }
+
+    private String stripQuotes(String s) {
+        if (s == null) return "";
+        s = s.trim();
+        if (s.startsWith("\"") && s.endsWith("\"")) s = s.substring(1, s.length() - 1);
+        return s.trim();
+    }
+
+    private Optional<MedicineList> getCatalogMatch(String name) {
+        if (name == null) {
+            return Optional.empty();
+        }
+        return medicineListRepository.findByNameIgnoreCase(name.trim());
+    }
+
+    public org.springframework.data.domain.Page<MedicineList> getPlatformMedicines(String query, org.springframework.data.domain.Pageable pageable) {
+        if (query != null && !query.trim().isEmpty()) {
+            return medicineListRepository.findByNameContainingIgnoreCase(query, pageable);
+        }
+        return medicineListRepository.findAll(pageable);
+    }
+
+    // --- Purchase History Management ---
+
+    public List<com.hms.entity.MedicinePurchase> getMedicinePurchases() {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new UnauthorizedException("Hospital ID not found in context");
+        }
+        return medicinePurchaseRepository.findByHospitalIdOrderByPurchaseDateDesc(hospitalId);
+    }
+
+    @Transactional
+    public com.hms.entity.MedicinePurchase addMedicinePurchase(com.hms.entity.MedicinePurchase purchase) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new UnauthorizedException("Hospital ID not found in context");
+        }
+        
+        if (purchase.getQuantity() == null || purchase.getQuantity() <= 0) {
+            throw new IllegalArgumentException("Purchase quantity must be positive");
+        }
+        if (purchase.getUnitPrice() == null || purchase.getUnitPrice() <= 0) {
+            throw new IllegalArgumentException("Unit price must be positive");
+        }
+        if (purchase.getExpiryDate() == null) {
+            throw new IllegalArgumentException("Expiry date is required");
+        }
+        if (purchase.getExpiryDate().isBefore(java.time.LocalDate.now())) {
+            throw new IllegalArgumentException("Expiry date cannot be in the past");
+        }
+ 
+        purchase.setHospitalId(hospitalId);
+        com.hms.entity.MedicinePurchase savedPurchase = medicinePurchaseRepository.save(purchase);
+
+        // Find existing active stock by name
+        Optional<Medicine> existingOpt = medicineRepository.findByNameIgnoreCaseAndHospitalId(purchase.getName(), hospitalId);
+        
+        Medicine stock;
+        if (existingOpt.isPresent()) {
+            stock = existingOpt.get();
+            stock.setStockQuantity(stock.getStockQuantity() + purchase.getQuantity());
+            stock.setUnitPrice(purchase.getUnitPrice());
+            stock.setExpiryDate(purchase.getExpiryDate());
+            stock.setManufacturer(purchase.getManufacturer());
+            stock.setMinStockLevel(purchase.getMinStockLevel());
+            stock.setType(purchase.getType());
+            stock.setDefaultDosage(purchase.getDefaultDosage());
+            stock.setDefaultFrequency(purchase.getDefaultFrequency());
+            stock.setDefaultDuration(purchase.getDefaultDuration());
+            stock.setIsActive(true);
+        } else {
+            stock = new Medicine();
+            stock.setName(purchase.getName());
+            stock.setStockQuantity(purchase.getQuantity());
+            stock.setUnitPrice(purchase.getUnitPrice());
+            stock.setExpiryDate(purchase.getExpiryDate());
+            stock.setMinStockLevel(purchase.getMinStockLevel());
+            stock.setType(purchase.getType());
+            stock.setManufacturer(purchase.getManufacturer());
+            stock.setDefaultDosage(purchase.getDefaultDosage());
+            stock.setDefaultFrequency(purchase.getDefaultFrequency());
+            stock.setDefaultDuration(purchase.getDefaultDuration());
+            stock.setHospitalId(hospitalId);
+            stock.setIsActive(true);
+        }
+        medicineRepository.save(stock);
+
+        // Auto-catalog medicine in lookup dictionary if it does not exist
+        if (!medicineListRepository.existsByNameIgnoreCase(purchase.getName())) {
+            MedicineList newCatalog = new MedicineList();
+            newCatalog.setName(purchase.getName());
+            newCatalog.setType(purchase.getType() != null ? purchase.getType() : TABLET);
+            medicineListRepository.save(newCatalog);
+        }
 
         // Audit Log
         try {
             auditLogService.logAction(
-                    "CATALOG_MEDICINE_DEACTIVATED",
-                    "Deactivated catalog medicine " + catalog.getName(),
+                    "MEDICINE_PURCHASE_ADDED",
+                    "Recorded purchase of " + savedPurchase.getName() + " (Qty: " + savedPurchase.getQuantity() + ", Cost: ₹" + savedPurchase.getUnitPrice() + ")",
                     securityHelper.getCurrentUserEmail(),
                     hospitalId,
                     "MEDICINE",
-                    catalog.getId().toString(),
+                    savedPurchase.getId().toString(),
                     null
             );
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to write audit log for medicine purchase", e);
+        }
+
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after medicine purchase", e);
+        }
+
+
+        return savedPurchase;
     }
 
     // --- Active Stock Inventory CRUD ---
@@ -146,7 +264,7 @@ public class MedicineService {
     public List<Medicine> getInventoryMedicines() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
         return medicineRepository.findByHospitalId(hospitalId);
     }
@@ -155,24 +273,32 @@ public class MedicineService {
     public Medicine addInventoryMedicine(Medicine medicine) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
-
+        
+        if (medicine.getStockQuantity() == null || medicine.getStockQuantity() < 0) {
+            throw new IllegalArgumentException("Stock quantity cannot be negative");
+        }
+        if (medicine.getUnitPrice() == null || medicine.getUnitPrice() <= 0) {
+            throw new IllegalArgumentException("Unit price must be positive");
+        }
+        if (medicine.getExpiryDate() == null) {
+            throw new IllegalArgumentException("Expiry date is required");
+        }
+        if (medicine.getExpiryDate().isBefore(java.time.LocalDate.now())) {
+            throw new IllegalArgumentException("Expiry date cannot be in the past");
+        }
+ 
         // Prevent duplicates in active physical stock inventory
         if (medicineRepository.existsByNameAndHospitalId(medicine.getName(), hospitalId)) {
-            throw new RuntimeException("Medicine already exists in stock inventory");
+            throw new IllegalArgumentException("Medicine already exists in stock inventory");
         }
 
         // --- Suggestion 2: Auto-catalog if it doesn't exist ---
-        if (!medicineListRepository.existsByNameAndHospitalId(medicine.getName(), hospitalId)) {
+        if (!medicineListRepository.existsByNameIgnoreCase(medicine.getName())) {
             MedicineList newCatalog = new MedicineList();
             newCatalog.setName(medicine.getName());
-            newCatalog.setType(medicine.getType() != null ? medicine.getType() : "Tablet");
-            newCatalog.setDefaultDosage(medicine.getDefaultDosage());
-            newCatalog.setDefaultFrequency(medicine.getDefaultFrequency());
-            newCatalog.setDefaultDuration(medicine.getDefaultDuration());
-            newCatalog.setManufacturer(medicine.getManufacturer());
-            newCatalog.setHospitalId(hospitalId);
+            newCatalog.setType(medicine.getType() != null ? medicine.getType() : TABLET);
             medicineListRepository.save(newCatalog);
         }
 
@@ -190,12 +316,14 @@ public class MedicineService {
                     saved.getId().toString(),
                     null
             );
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to write audit log for inventory restock", e);
+        }
 
         try {
             webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
         } catch (Exception e) {
-            // ignore
+            logger.warn("Failed to broadcast WebSocket refresh after inventory add", e);
         }
 
         return saved;
@@ -205,12 +333,25 @@ public class MedicineService {
     public Medicine updateInventoryMedicine(Long id, Medicine request) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Medicine medicine = medicineRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Stock inventory record not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Stock inventory record not found"));
 
         if (!medicine.getHospitalId().equals(hospitalId)) {
-            throw new RuntimeException("Unauthorized access to stock inventory");
+            throw new UnauthorizedException("Unauthorized access to stock inventory");
         }
-
+        
+        if (request.getStockQuantity() == null || request.getStockQuantity() < 0) {
+            throw new IllegalArgumentException("Stock quantity cannot be negative");
+        }
+        if (request.getUnitPrice() == null || request.getUnitPrice() <= 0) {
+            throw new IllegalArgumentException("Unit price must be positive");
+        }
+        if (request.getExpiryDate() == null) {
+            throw new IllegalArgumentException("Expiry date is required");
+        }
+        if (request.getExpiryDate().isBefore(java.time.LocalDate.now(java.time.ZoneId.systemDefault()))) {
+            throw new IllegalArgumentException("Expiry date cannot be in the past");
+        }
+ 
         Integer oldStock = medicine.getStockQuantity();
         medicine.setName(request.getName());
         medicine.setStockQuantity(request.getStockQuantity());
@@ -218,9 +359,16 @@ public class MedicineService {
         medicine.setMinStockLevel(request.getMinStockLevel());
         medicine.setExpiryDate(request.getExpiryDate());
         medicine.setType(request.getType());
-        medicine.setDefaultDosage(request.getDefaultDosage());
-        medicine.setDefaultFrequency(request.getDefaultFrequency());
-        medicine.setDefaultDuration(request.getDefaultDuration());
+        
+        String dosage = request.getDefaultDosage();
+        String freq = request.getDefaultFrequency();
+        String dur = request.getDefaultDuration();
+
+        // No catalog defaults lookup since catalog is global and has only name/type.
+
+        medicine.setDefaultDosage(dosage);
+        medicine.setDefaultFrequency(freq);
+        medicine.setDefaultDuration(dur);
         medicine.setManufacturer(request.getManufacturer());
         if (request.getIsActive() != null) {
             medicine.setIsActive(request.getIsActive());
@@ -239,12 +387,14 @@ public class MedicineService {
                     saved.getId().toString(),
                     null
             );
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to write audit log for inventory modification", e);
+        }
 
         try {
             webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
         } catch (Exception e) {
-            // ignore
+            logger.warn("Failed to broadcast WebSocket refresh after inventory update", e);
         }
 
         return saved;
@@ -254,10 +404,10 @@ public class MedicineService {
     public void deleteInventoryMedicine(Long id) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Medicine medicine = medicineRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Stock inventory record not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Stock inventory record not found"));
 
         if (!medicine.getHospitalId().equals(hospitalId)) {
-            throw new RuntimeException("Unauthorized access to stock inventory");
+            throw new UnauthorizedException("Unauthorized access to stock inventory");
         }
 
         medicine.setIsActive(false);
@@ -274,12 +424,14 @@ public class MedicineService {
                     medicine.getId().toString(),
                     null
             );
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.warn("Failed to write audit log for inventory deactivation", e);
+        }
 
         try {
             webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
         } catch (Exception e) {
-            // ignore
+            logger.warn("Failed to broadcast WebSocket refresh after inventory deactivation", e);
         }
     }
 
@@ -294,35 +446,31 @@ public class MedicineService {
     @PostConstruct
     public void seedMedicines() {
         if (medicineListRepository.count() == 0) {
-            System.out.println("Seeding initial medicines into catalog...");
+            logger.info("Seeding initial medicines into catalog...");
             List<MedicineList> initialCatalog = Arrays.asList(
-                    createMedicineCatalog("Paracetamol", "Tablet", "500mg", "1-0-1", "3 Days", "Generic"),
-                    createMedicineCatalog("Amoxicillin", "Capsule", "500mg", "1-1-1", "5 Days", "Generic"),
-                    createMedicineCatalog("Ibuprofen", "Tablet", "400mg", "1-0-1", "3 Days", "Generic"),
-                    createMedicineCatalog("Cetirizine", "Tablet", "10mg", "0-0-1", "3 Days", "Generic"),
-                    createMedicineCatalog("Cough Syrup", "Syrup", "10ml", "1-1-1", "5 Days", "Generic"),
-                    createMedicineCatalog("Azithromycin", "Tablet", "500mg", "1-0-0", "3 Days", "Generic"),
-                    createMedicineCatalog("Metformin", "Tablet", "500mg", "1-0-1", "30 Days", "Generic"),
-                    createMedicineCatalog("Amlodipine", "Tablet", "5mg", "1-0-0", "30 Days", "Generic"),
-                    createMedicineCatalog("Omeprazole", "Capsule", "20mg", "1-0-0", "7 Days", "Generic"),
-                    createMedicineCatalog("Pantoprazole", "Tablet", "40mg", "1-0-0", "7 Days", "Generic"),
-                    createMedicineCatalog("Normal Saline 500ml", "Saline", "500ml", "Once", "1 Day", "Generic"),
-                    createMedicineCatalog("Ringer Lactate 500ml", "Saline", "500ml", "Once", "1 Day", "Generic"),
-                    createMedicineCatalog("Diclofenac Injection", "Injection", "75mg/3ml", "Once", "1 Day", "Generic")
+                    createMedicineCatalog("Paracetamol", TABLET),
+                    createMedicineCatalog("Amoxicillin", "Capsule"),
+                    createMedicineCatalog("Ibuprofen", TABLET),
+                    createMedicineCatalog("Cetirizine", TABLET),
+                    createMedicineCatalog("Cough Syrup", "Syrup"),
+                    createMedicineCatalog("Azithromycin", TABLET),
+                    createMedicineCatalog("Metformin", TABLET),
+                    createMedicineCatalog("Amlodipine", TABLET),
+                    createMedicineCatalog("Omeprazole", "Capsule"),
+                    createMedicineCatalog("Pantoprazole", TABLET),
+                    createMedicineCatalog("Normal Saline 500ml", "Saline"),
+                    createMedicineCatalog("Ringer Lactate 500ml", "Saline"),
+                    createMedicineCatalog("Diclofenac Injection", "Injection")
             );
             medicineListRepository.saveAll(initialCatalog);
         }
     }
 
-    private MedicineList createMedicineCatalog(String name, String type, String dosage, String freq, String duration, String manufacturer) {
+    private MedicineList createMedicineCatalog(String name, String type) {
         MedicineList m = new MedicineList();
         m.setName(name);
         m.setType(type);
-        m.setDefaultDosage(dosage);
-        m.setDefaultFrequency(freq);
-        m.setDefaultDuration(duration);
-        m.setManufacturer(manufacturer);
-        m.setIsActive(true);
         return m;
     }
 }
+

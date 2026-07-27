@@ -1,5 +1,6 @@
 package com.hms.config;
 
+import com.hms.filter.RateLimitFilter;
 import com.hms.security.JwtAuthenticationFilter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -12,6 +13,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -38,9 +40,17 @@ import java.util.stream.Collectors;
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
+    private static final String HOSPITAL_ADMIN = "HOSPITAL_ADMIN";
+    private static final String DOCTOR = "DOCTOR";
+    private static final String RECEPTIONIST = "RECEPTIONIST";
+    private static final String PHARMACIST = "PHARMACIST";
+
 
     @Autowired
     private JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    @Autowired
+    private RateLimitFilter rateLimitFilter;
 
     @Value("${cors.allowed.origins}")
     private String allowedOrigins;
@@ -65,29 +75,40 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Public endpoints - no authentication required
                         .requestMatchers("/platform/login", "/login").permitAll()
-
-                        // Public endpoints - no authentication required
-                        .requestMatchers("/platform/login", "/login").permitAll()
-                        .requestMatchers("/platform/users/debug-users").permitAll()
                         .requestMatchers("/api/public/health").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/info").permitAll()
 
                         // Platform endpoints - only Super Admin
                         .requestMatchers("/platform/**").hasRole("SUPER_ADMIN")
 
                         // WebSocket endpoints - authenticated standard HMS roles & Super Admin
-                        .requestMatchers("/ws/**").hasAnyRole("HOSPITAL_ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST", "SUPER_ADMIN")
+                        .requestMatchers("/ws/**").hasAnyRole(HOSPITAL_ADMIN, DOCTOR, RECEPTIONIST, PHARMACIST, "NURSE", "NURSE_INCHARGE", "SUPER_ADMIN", "OT_INCHARGE")
 
-                        // Hospital and API endpoints - only standard HMS roles allowed
-                        .requestMatchers("/hospital/**", "/api/pharmacy/**")
-                        .hasAnyRole("HOSPITAL_ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST")
+                        // Module namespaces - only standard HMS roles allowed.
+                        // /hospital/** = hospital tenants, /clinic/** = clinic tenants,
+                        // /pharmacy/** = standalone pharmacy tenants (ERP + shared admin endpoints).
+                        // NURSE is hospital-only: it is authorized on /hospital/** but never on
+                        // /clinic/** or /pharmacy/**, keeping the Nurse role out of those tenants.
+                        .requestMatchers("/hospital/**")
+                        .hasAnyRole(HOSPITAL_ADMIN, DOCTOR, RECEPTIONIST, PHARMACIST, "NURSE", "NURSE_INCHARGE", "OT_INCHARGE")
+                        .requestMatchers("/clinic/**", "/pharmacy/**")
+                        .hasAnyRole(HOSPITAL_ADMIN, DOCTOR, RECEPTIONIST, PHARMACIST)
                         // All other requests require authentication
                         .anyRequest().authenticated())
+
+                // Return 401 (not 403) for unauthenticated requests — Http403ForbiddenEntryPoint is Spring's default
+                .exceptionHandling(e -> e
+                        .authenticationEntryPoint((req, res, ex) ->
+                                res.sendError(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized")))
 
                 // Stateless session management (JWT-based)
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
-                // Add JWT filter before UsernamePasswordAuthenticationFilter
+                // RateLimitFilter → JwtAuthenticationFilter → UsernamePasswordAuthenticationFilter
+                // Both custom filters reference the same built-in anchor. Java's stable sort
+                // preserves insertion order, so rateLimitFilter executes first.
+                .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
@@ -102,9 +123,11 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // Dynamically split by comma and trim to allow multiple origins
+        // Dynamically split by comma, trim, and strip trailing slashes
         List<String> origins = Arrays.stream(allowedOrigins.split(","))
                 .map(String::trim)
+                .map(o -> o.replaceAll("/++$", ""))
+                .filter(o -> !o.isEmpty())
                 .collect(Collectors.toList());
 
         // Always ensure standard localhost is added for safety in dev, plus the production link

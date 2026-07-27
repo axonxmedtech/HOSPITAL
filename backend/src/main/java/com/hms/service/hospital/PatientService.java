@@ -1,4 +1,5 @@
 package com.hms.service.hospital;
+import com.hms.util.LogSanitizer;
 
 import com.hms.entity.Patient;
 import com.hms.entity.Billing;
@@ -8,15 +9,22 @@ import com.hms.repository.PatientRepository;
 import com.hms.security.SecurityContextHelper;
 import com.hms.security.HospitalWebSocketHandler;
 import com.hms.service.AuditLogService;
+
+import com.hms.exception.ResourceNotFoundException;
+import com.hms.exception.UnauthorizedException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @Service
 public class PatientService {
+    private static final String HOSPITAL_NOT_FOUND = "Hospital not found";
+
 
     private static final Logger logger = LoggerFactory.getLogger(PatientService.class);
 
@@ -84,34 +92,64 @@ public class PatientService {
     private com.hms.service.PdfService pdfService;
 
     private void evictStatsCache(Long hospitalId) {
-        if (hospitalId != null && cacheManager != null) {
+        if (hospitalId == null || cacheManager == null) {
+            return;
+        }
+        try {
             org.springframework.cache.Cache cache = cacheManager.getCache("hospitalStats");
             if (cache != null) {
                 cache.evict(hospitalId);
                 logger.info("Evicted hospitalStats cache for hospitalId: {}", hospitalId);
             }
+        } catch (Exception e) {
+            // Cache eviction is a best-effort side effect (same tolerance as audit
+            // logging/websocket broadcast below) — a Redis outage must not fail the
+            // underlying patient operation.
+            logger.warn("Failed to evict hospitalStats cache for hospitalId: {}", hospitalId, e);
+        }
+    }
+
+    /**
+     * "Always required" for dateOfBirth is enforced here rather than at the
+     * DB/entity level — see the comment on Patient.dateOfBirth for why.
+     */
+    private void validateDateOfBirth(LocalDate dateOfBirth) {
+        if (dateOfBirth == null) {
+            throw new IllegalArgumentException("Date of birth is required");
+        }
+        if (dateOfBirth.isAfter(LocalDate.now(java.time.ZoneId.systemDefault()))) {
+            throw new IllegalArgumentException("Date of birth cannot be in the future");
+        }
+        if (dateOfBirth.isBefore(LocalDate.now(java.time.ZoneId.systemDefault()).minusYears(120))) {
+            throw new IllegalArgumentException("Date of birth cannot be more than 120 years ago");
         }
     }
 
     /**
      * Add a new patient
      * Automatically sets hospital_id from the authenticated user's context
-     * 
+     *
      * @param patient Patient entity to create
      * @return Created Patient entity
      */
     public Patient addPatient(Patient patient) {
+        // Validate phone number
+        if (patient.getPhone() == null || !patient.getPhone().matches("^[0-9]{10}$")) {
+            throw new IllegalArgumentException("Phone number must be exactly 10 digits");
+        }
+        validateDateOfBirth(patient.getDateOfBirth());
+
         // Get hospital_id from security context (multi-tenant isolation)
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         // Set hospital_id to ensure multi-tenant isolation
         patient.setHospitalId(hospitalId);
 
-        logger.info("Hospital {} creating new patient: {}", hospitalId, patient.getName());
+        logger.info("Hospital {} creating new patient: {}", hospitalId, LogSanitizer.clean(patient.getName()));
         Patient savedPatient = patientRepository.save(patient);
 
         // Set sequential customId using the auto-increment id: PAT1, PAT2, PAT3...
@@ -154,11 +192,18 @@ public class PatientService {
      * @return Updated Patient entity
      */
     public Patient updatePatient(Long publicId, Patient updatedData) {
+        // Validate phone number
+        if (updatedData.getPhone() == null || !updatedData.getPhone().matches("^[0-9]{10}$")) {
+            throw new IllegalArgumentException("Phone number must be exactly 10 digits");
+        }
+
         // Ensure patient exists and belongs to this hospital
         Patient existingPatient = getPatientById(publicId);
 
+        validateDateOfBirth(updatedData.getDateOfBirth());
+
         existingPatient.setName(updatedData.getName());
-        existingPatient.setAge(updatedData.getAge());
+        existingPatient.setDateOfBirth(updatedData.getDateOfBirth());
         existingPatient.setGender(updatedData.getGender());
         existingPatient.setPhone(updatedData.getPhone());
         existingPatient.setAddress(updatedData.getAddress());
@@ -201,17 +246,29 @@ public class PatientService {
      * @param view Optional filter view ('today', 'history')
      * @return Page of active patients
      */
-    public org.springframework.data.domain.Page<Patient> getAllPatients(String search, String view,
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<Patient> getAllPatients(String search, String view, java.time.LocalDate date,
             org.springframework.data.domain.Pageable pageable) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         org.springframework.data.domain.Page<Patient> patients;
 
-        // Handle 'today' view
-        if ("today".equalsIgnoreCase(view)) {
+        if (date != null) {
+            java.time.LocalDateTime localStart = date.atStartOfDay();
+            java.time.LocalDateTime localEnd = date.atTime(java.time.LocalTime.MAX);
+
+            java.time.ZoneId sysZone = java.time.ZoneId.systemDefault();
+            java.time.ZoneOffset utcOffset = java.time.ZoneOffset.UTC;
+
+            java.time.LocalDateTime startOfDay = localStart.atZone(sysZone).withZoneSameInstant(utcOffset).toLocalDateTime();
+            java.time.LocalDateTime endOfDay = localEnd.atZone(sysZone).withZoneSameInstant(utcOffset).toLocalDateTime();
+
+            patients = patientRepository.findByHospitalIdAndIsActiveTrueAndCreatedAtBetweenOrderByCreatedAtDesc(
+                    hospitalId, startOfDay, endOfDay, pageable);
+        } else if ("today".equalsIgnoreCase(view)) {
             java.time.LocalDateTime localStart = java.time.LocalDate.now().atStartOfDay();
             java.time.LocalDateTime localEnd = java.time.LocalDate.now().atTime(java.time.LocalTime.MAX);
 
@@ -234,15 +291,23 @@ public class PatientService {
         return patients;
     }
 
-    public org.springframework.data.domain.Page<Patient> getAllPatients(
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<Patient> getAllPatients(String search, String view,
             org.springframework.data.domain.Pageable pageable) {
-        return getAllPatients(null, null, pageable);
+        return getAllPatients(search, view, null, pageable);
     }
 
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<Patient> getAllPatients(
+            org.springframework.data.domain.Pageable pageable) {
+        return getAllPatients(null, null, null, pageable);
+    }
+
+    @Transactional(readOnly = true)
     public long getPatientCount() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
         return patientRepository.countByHospitalIdAndIsActiveTrue(hospitalId);
     }
@@ -264,10 +329,11 @@ public class PatientService {
     }
 
     // Kept for backward compatibility/internal use (e.g. stats)
+    @Transactional(readOnly = true)
     public List<Patient> getAllPatients() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null)
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         List<Patient> patients = patientRepository.findByHospitalIdAndIsActiveTrueOrderByCreatedAtDesc(hospitalId);
 
         // Populate latest bill
@@ -282,10 +348,11 @@ public class PatientService {
      * @param query Search term
      * @return List of matching active patients
      */
+    @Transactional(readOnly = true)
     public List<Patient> searchPatients(String query) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         if (query == null || query.trim().isEmpty()) {
@@ -302,27 +369,29 @@ public class PatientService {
         return patients;
     }
 
+    @Transactional(readOnly = true)
     public Patient getPatientByPublicId(String publicId) {
         // Get hospital_id from security context (multi-tenant isolation)
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         // Find patient only if it belongs to this hospital and is active
         return patientRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(publicId, hospitalId)
-                .orElseThrow(() -> new RuntimeException("Patient not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
     }
 
+    @Transactional(readOnly = true)
     public Patient getPatientById(Long id) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
         return patientRepository.findById(id)
                 .filter(p -> p.getHospitalId().equals(hospitalId))
-                .orElseThrow(() -> new RuntimeException("Patient not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
     }
 
     /**
@@ -333,12 +402,12 @@ public class PatientService {
     public void deletePatient(String publicId, String reason) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null)
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
 
         Patient patient = patientRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(publicId, hospitalId)
-                .orElseThrow(() -> new RuntimeException("Patient not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
 
-        logger.info("Hospital {} soft deleting patient ID: {}. Reason: {}", hospitalId, publicId, reason);
+        logger.info("Hospital {} soft deleting patient ID: {}. Reason: {}", hospitalId, LogSanitizer.clean(publicId), LogSanitizer.clean(reason));
         patient.setIsActive(false);
         patientRepository.save(patient);
         evictStatsCache(hospitalId);
@@ -375,17 +444,25 @@ public class PatientService {
     public Patient updatePatientStatus(String publicId, com.hms.entity.PatientStatus status) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         Patient patient = patientRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(publicId, hospitalId)
-                .orElseThrow(() -> new RuntimeException("Patient not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
 
         logger.info("Hospital {} updating patient {} status from {} to {}",
-                hospitalId, publicId, patient.getStatus(), status);
+                hospitalId, LogSanitizer.clean(publicId), LogSanitizer.clean(patient.getStatus()), LogSanitizer.clean(status));
 
         patient.setStatus(status);
-        return patientRepository.save(patient);
+        Patient saved = patientRepository.save(patient);
+
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after patient status update", e);
+        }
+
+        return saved;
     }
 
     /**
@@ -417,10 +494,11 @@ public class PatientService {
      * @param publicId Patient public ID
      * @return Map containing patient details and medical history
      */
+    @Transactional(readOnly = true)
     public java.util.Map<String, Object> getPatientConsultationDetails(String patientIdentifier) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
 
         // Resolve patient by numeric id or publicId
@@ -462,9 +540,12 @@ public class PatientService {
 
         // Patient demographics
         java.util.Map<String, Object> patientData = new java.util.HashMap<>();
+        patientData.put("id", patient.getId());
+        patientData.put("customId", patient.getCustomId());
         patientData.put("publicId", patient.getPublicId());
         patientData.put("name", patient.getName());
         patientData.put("age", patient.getAge());
+        patientData.put("dateOfBirth", patient.getDateOfBirth());
         patientData.put("gender", patient.getGender());
         patientData.put("phone", patient.getPhone());
         patientData.put("address", patient.getAddress());
@@ -517,22 +598,22 @@ public class PatientService {
 
         // 1. Flat medical history - map from pre-fetched data (for backward compatibility)
         List<java.util.Map<String, Object>> historyList = new java.util.ArrayList<>();
-        for (com.hms.entity.MedicalRecord record : medicalHistory) {
+        for (com.hms.entity.MedicalRecord mr : medicalHistory) {
             java.util.Map<String, Object> historyItem = new java.util.HashMap<>();
-            historyItem.put("id", record.getId());
-            historyItem.put("date", record.getCreatedAt());
-            historyItem.put("symptoms", record.getSymptoms());
-            historyItem.put("diagnosis", record.getDiagnosis());
-            historyItem.put("treatment", record.getTreatmentNotes());
-            historyItem.put("followUpDate", record.getFollowUpDate());
+            historyItem.put("id", mr.getId());
+            historyItem.put("date", mr.getCreatedAt());
+            historyItem.put("symptoms", mr.getSymptoms());
+            historyItem.put("diagnosis", mr.getDiagnosis());
+            historyItem.put("treatment", mr.getTreatmentNotes());
+            historyItem.put("followUpDate", mr.getFollowUpDate());
 
             String doctorName = "Unknown Doctor";
-            if (record.getDoctorId() != null) {
-                doctorName = doctorNameMap.getOrDefault(record.getDoctorId(), "Unknown Doctor");
+            if (mr.getDoctorId() != null) {
+                doctorName = doctorNameMap.getOrDefault(mr.getDoctorId(), "Unknown Doctor");
             }
             historyItem.put("doctorName", doctorName);
 
-            historyItem.put("prescriptions", prescriptionMap.getOrDefault(record.getId(), java.util.Collections.emptyList()));
+            historyItem.put("prescriptions", prescriptionMap.getOrDefault(mr.getId(), java.util.Collections.emptyList()));
 
             historyList.add(historyItem);
         }
@@ -655,7 +736,9 @@ public class PatientService {
                     logMap.put("assignedAt", hist.getAssignedAt());
                     logMap.put("releasedAt", hist.getReleasedAt());
                     ipdBedLogsMap.computeIfAbsent(hist.getIpdAdmissionId(), k -> new java.util.ArrayList<>()).add(logMap);
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    logger.warn("Failed to log bed assignment history: {}", e.getMessage());
+                }
             }
         }
 
@@ -720,7 +803,9 @@ public class PatientService {
                                 administeredItems.add(amMap);
                             }
                         }
-                    } catch (Exception ignored) {}
+                    } catch (Exception e) {
+                        logger.warn("Failed to parse administered items JSON: {}", e.getMessage());
+                    }
                 }
                 recordMap.put("administeredItems", administeredItems);
                 doctorEntries.add(recordMap);
@@ -742,7 +827,9 @@ public class PatientService {
                     dsMap.put("createdAt", ds.getCreatedAt());
                     ipdItem.put("dischargeSummary", dsMap);
                 });
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                logger.warn("Failed to retrieve or map discharge summary: {}", e.getMessage());
+            }
 
             ipdHistoryList.add(ipdItem);
         }
@@ -754,9 +841,11 @@ public class PatientService {
     /**
      * Get latest consultation details including prescription
      */
+    @Transactional(readOnly = true)
     public java.util.Map<String, Object> getLatestPrescription(String publicId) {
-        com.hms.entity.Patient patient = patientRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new RuntimeException("Patient not found"));
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        com.hms.entity.Patient patient = patientRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(publicId, hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
 
         com.hms.entity.MedicalRecord record = medicalRecordRepository
                 .findTopByPatientIdOrderByCreatedAtDesc(patient.getId())
@@ -770,30 +859,39 @@ public class PatientService {
         return result;
     }
 
+    @Transactional(readOnly = true)
     public List<Patient> getPatientsByIds(List<Long> ids) {
         if (ids == null || ids.isEmpty()) return java.util.Collections.emptyList();
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
-            throw new RuntimeException("Hospital ID not found in context");
+            throw new UnauthorizedException("Hospital ID not found in context");
         }
         return patientRepository.findAllById(ids).stream()
                 .filter(p -> p.getHospitalId().equals(hospitalId))
                 .collect(java.util.stream.Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public java.io.ByteArrayInputStream getOpdMedicinesPdf(Long opdId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(HOSPITAL_NOT_FOUND));
         
         com.hms.entity.MedicalRecord record = medicalRecordRepository.findByOpdId(opdId)
-                .orElseThrow(() -> new RuntimeException("Medical record not found for OPD"));
-        
-        com.hms.entity.Patient patient = patientRepository.findById(record.getPatientId())
-                .orElseThrow(() -> new RuntimeException("Patient not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Medical record not found for OPD"));
 
-        com.hms.entity.Doctor doctor = (record.getDoctorId() != null) 
-                ? doctorRepository.findById(record.getDoctorId()).orElse(null) 
+        // hospitalId above was only used to brand the PDF header. Enforce that the record
+        // actually belongs to the caller's hospital, or another tenant's prescription is
+        // rendered onto this hospital's letterhead.
+        if (record.getHospitalId() == null || !record.getHospitalId().equals(hospitalId)) {
+            throw new ResourceNotFoundException("Medical record not found for OPD");
+        }
+
+        com.hms.entity.Patient patient = patientRepository.findById(record.getPatientId())
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
+
+        com.hms.entity.Doctor doctor = (record.getDoctorId() != null)
+                ? doctorRepository.findById(record.getDoctorId()).orElse(null)
                 : null;
         com.hms.entity.Opd opd = opdRepository.findById(opdId).orElse(null);
         String customNo = (opd != null) ? opd.getCaseId() : "-";
@@ -816,7 +914,9 @@ public class PatientService {
                         itemsList.add(new String[]{name, dosage, frequency, duration, instructions, qty});
                     }
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                logger.warn("Failed to parse medicines list JSON: {}", e.getMessage());
+            }
         }
 
         if (itemsList.isEmpty()) {
@@ -845,16 +945,21 @@ public class PatientService {
         return pdfService.generateMedicinesListPdf(hospital, doctor, patient, "OPD MEDICINES & ITEMS LIST", customNo, createdAt, itemsList);
     }
 
+    @Transactional(readOnly = true)
     public java.io.ByteArrayInputStream getIpdMedicinesPdf(Long ipdId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(HOSPITAL_NOT_FOUND));
         
         com.hms.entity.IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId)
-                .orElseThrow(() -> new RuntimeException("IPD Admission not found"));
-        
+                .orElseThrow(() -> new ResourceNotFoundException("IPD Admission not found"));
+
+        if (ipd.getHospitalId() == null || !ipd.getHospitalId().equals(hospitalId)) {
+            throw new ResourceNotFoundException("IPD Admission not found");
+        }
+
         com.hms.entity.Patient patient = patientRepository.findById(ipd.getPatientId())
-                .orElseThrow(() -> new RuntimeException("Patient not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
 
         com.hms.entity.Doctor doctor = (ipd.getDoctorId() != null)
                 ? doctorRepository.findById(ipd.getDoctorId()).orElse(null)
@@ -883,7 +988,9 @@ public class PatientService {
                             itemsList.add(new String[]{name, dosage, frequency, duration, instructions, qty});
                         }
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    logger.warn("Failed to parse administered items JSON: {}", e.getMessage());
+                }
             }
         }
 
@@ -930,19 +1037,25 @@ public class PatientService {
         return new String[]{baseName, qty};
     }
 
+    @Transactional(readOnly = true)
     public java.io.ByteArrayInputStream getIpdPrescriptionPdf(Long ipdId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
-                .orElseThrow(() -> new RuntimeException("Hospital not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(HOSPITAL_NOT_FOUND));
         
         com.hms.entity.IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId)
-                .orElseThrow(() -> new RuntimeException("IPD Admission not found"));
-        
+                .orElseThrow(() -> new ResourceNotFoundException("IPD Admission not found"));
+
+        if (ipd.getHospitalId() == null || !ipd.getHospitalId().equals(hospitalId)) {
+            throw new ResourceNotFoundException("IPD Admission not found");
+        }
+
         com.hms.entity.Patient patient = patientRepository.findById(ipd.getPatientId())
-                .orElseThrow(() -> new RuntimeException("Patient not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
 
         java.util.List<com.hms.entity.Prescription> prescriptions = prescriptionRepository.findByIpdAdmissionIdOrderByStartDate(ipdId);
         
         return pdfService.generateIpdPrescriptionPdf(hospital, patient, ipd, prescriptions);
     }
 }
+

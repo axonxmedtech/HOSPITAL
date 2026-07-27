@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { backdropProps } from '../../../utils/modalA11y';
 
 /**
  * ManufacturerForm – pure UI component for adding/editing medicine manufacturers.
- * 
+ *
  * Props:
  *   - isOpen: boolean - controls visibility
  *   - onClose: function - called when cancel/close button is clicked
@@ -87,21 +88,25 @@ const ManufacturerForm = ({
   };
 
   const title = mode === 'edit' ? 'Edit Manufacturer' : 'Add Manufacturer';
-  const submitBtnLabel = mode === 'edit' 
-    ? (isSubmitting ? 'Updating...' : 'Update Manufacturer') 
-    : (isSubmitting ? 'Saving...' : 'Save Manufacturer');
+  const submitBtnLabel =
+    mode === 'edit'
+      ? isSubmitting
+        ? 'Updating...'
+        : 'Update Manufacturer'
+      : isSubmitting
+        ? 'Saving...'
+        : 'Save Manufacturer';
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div 
-        className="bg-white rounded-2xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-auto p-6"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div
+      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+      {...backdropProps(onClose)}
+    >
+      <div className="bg-white rounded-2xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-auto p-6">
         <h3 className="text-2xl font-bold mb-4">{title}</h3>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            
             {/* --- SECTION A: Manufacturer Identity --- */}
             <div className="col-span-full mt-2 mb-1 pb-1 border-b border-gray-200 text-sm font-semibold text-gray-600 uppercase tracking-wider">
               Manufacturer Identity
@@ -116,8 +121,8 @@ const ManufacturerForm = ({
                 onChange={handleChange}
                 placeholder="Manufacturer Name (e.g. Cipla Ltd) *"
                 className={`w-full px-3 py-2 border rounded focus:outline-none transition-all ${
-                  errors.manufacturerName 
-                    ? 'border-red-300 focus:border-red-500' 
+                  errors.manufacturerName
+                    ? 'border-red-300 focus:border-red-500'
                     : 'border-gray-300 focus:border-gray-900'
                 }`}
                 disabled={isSubmitting}

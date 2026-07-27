@@ -16,9 +16,17 @@ target/
 build/
 out/
 
+# Node (root dev-platform tooling + frontend)
+node_modules/
+
 # IDE Specific
 .idea/
-.vscode/
+# Ignore personal VS Code files, but keep the shared, committed ones.
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
 *.swp
 *.swo
 
@@ -31,3 +39,9 @@ backend/.env
 backend/.env.local
 
 DOC's/
+
+docs/product/
+
+# Local-only working notes / references (never committed)
+*.local.md
+LINT_REMEDIATION.local.md

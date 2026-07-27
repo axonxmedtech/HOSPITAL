@@ -9,11 +9,24 @@ import org.springframework.data.repository.query.Param;
 
 public interface QueueEntryRepository extends JpaRepository<QueueEntry, Long> {
 
-        @Query(value = "SELECT * FROM queue_entry q WHERE q.doctor_id = :doctorId ORDER BY q.created_at ASC", nativeQuery = true)
+        @Query("SELECT DISTINCT q FROM QueueEntry q " +
+            "INNER JOIN FETCH q.opd o " +
+            "INNER JOIN FETCH o.patient " +
+            "LEFT JOIN FETCH o.doctor " +
+            "LEFT JOIN FETCH o.receptionist " +
+            "INNER JOIN FETCH q.doctor d " +
+            "WHERE d.id = :doctorId " +
+            "ORDER BY q.createdAt ASC")
         java.util.List<QueueEntry> findQueueForDoctorToday(@Param("doctorId") Long doctorId);
 
-        @Query(value = "SELECT q.* FROM queue_entry q JOIN opd o ON q.opd_id = o.id JOIN patients p ON o.patient_id = p.id " +
-            "WHERE p.hospital_id = :hospitalId ORDER BY q.created_at ASC", nativeQuery = true)
+        @Query("SELECT DISTINCT q FROM QueueEntry q " +
+            "INNER JOIN FETCH q.opd o " +
+            "INNER JOIN FETCH o.patient p " +
+            "LEFT JOIN FETCH o.doctor " +
+            "LEFT JOIN FETCH o.receptionist " +
+            "LEFT JOIN FETCH q.doctor " +
+            "WHERE p.hospitalId = :hospitalId " +
+            "ORDER BY q.createdAt ASC")
         java.util.List<QueueEntry> findQueueForHospitalToday(@Param("hospitalId") Long hospitalId);
 
         // Remove queue entries associated with an OPD case

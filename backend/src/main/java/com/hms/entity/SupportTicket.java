@@ -25,6 +25,9 @@ public class SupportTicket {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "hospital_type")
+    private String hospitalType; // HOSPITAL, CLINIC, or PHARMACY - for tenant isolation
+
     @Column(name = "hospital_id", nullable = false)
     private Long hospitalId;
 
@@ -47,7 +50,7 @@ public class SupportTicket {
     private String status = "OPEN"; // OPEN, RESOLVED
 
     @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt = LocalDateTime.now(java.time.ZoneId.systemDefault());
 
     @Column(name = "resolved_at")
     private LocalDateTime resolvedAt;
@@ -58,6 +61,14 @@ public class SupportTicket {
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public String getHospitalType() {
+        return hospitalType;
+    }
+
+    public void setHospitalType(String hospitalType) {
+        this.hospitalType = hospitalType;
     }
 
     public Long getHospitalId() {

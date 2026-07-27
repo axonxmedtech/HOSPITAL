@@ -51,4 +51,6 @@ public interface BillingRepository extends JpaRepository<Billing, Long> {
     java.util.Optional<Billing> findByAppointmentId(Long appointmentId);
 
     java.util.Optional<Billing> findByOpdId(Long opdId);
+
+    java.util.List<Billing> findByHospitalIdAndCreatedAtAfter(Long hospitalId, java.time.LocalDateTime createdAt);
 }

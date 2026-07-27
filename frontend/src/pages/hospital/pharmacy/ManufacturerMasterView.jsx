@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import DataTable from '../../../components/DataTable';
 import { useToast } from '../../../context/ToastContext';
 import manufacturersApi from '../../../services/pharmacy/manufacturersApi';
-import DataTable from '../../../components/DataTable';
 import ManufacturerForm from './ManufacturerForm';
 
 /**
@@ -14,7 +14,7 @@ const ManufacturerMasterView = () => {
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState('create');
@@ -101,7 +101,9 @@ const ManufacturerMasterView = () => {
   const handleToggleStatus = async (manufacturer) => {
     try {
       await manufacturersApi.toggleStatus(manufacturer.id);
-      toast.success(`Manufacturer ${manufacturer.isActive ? 'deactivated' : 'activated'} successfully`);
+      toast.success(
+        `Manufacturer ${manufacturer.isActive ? 'deactivated' : 'activated'} successfully`
+      );
       fetchManufacturers();
     } catch (err) {
       console.error('Toggle status error:', err);
@@ -113,9 +115,7 @@ const ManufacturerMasterView = () => {
     {
       header: 'Manufacturer Name',
       accessorKey: 'manufacturerName',
-      cell: ({ getValue }) => (
-        <span className="font-semibold text-gray-900">{getValue()}</span>
-      ),
+      cell: ({ getValue }) => <span className="font-semibold text-gray-900">{getValue()}</span>,
     },
     {
       header: 'Contact Person',
@@ -130,12 +130,18 @@ const ManufacturerMasterView = () => {
     {
       header: 'Email',
       accessorKey: 'email',
-      cell: ({ getValue }) => <span className="text-gray-600 text-sm truncate max-w-[150px] inline-block">{getValue() || '-'}</span>,
+      cell: ({ getValue }) => (
+        <span className="text-gray-600 text-sm truncate max-w-[150px] inline-block">
+          {getValue() || '-'}
+        </span>
+      ),
     },
     {
       header: 'License No.',
       accessorKey: 'licenseNumber',
-      cell: ({ getValue }) => <span className="text-gray-500 font-mono text-xs">{getValue() || '-'}</span>,
+      cell: ({ getValue }) => (
+        <span className="text-gray-500 font-mono text-xs">{getValue() || '-'}</span>
+      ),
     },
     {
       header: 'Status',
@@ -143,11 +149,13 @@ const ManufacturerMasterView = () => {
       cell: ({ getValue }) => {
         const isActive = getValue();
         return (
-          <span className={`px-2 py-1 rounded text-xs font-bold ${
-            isActive 
-              ? 'bg-green-50 text-green-700 border border-green-100' 
-              : 'bg-amber-50 text-amber-700 border border-amber-100'
-          }`}>
+          <span
+            className={`px-2 py-1 rounded text-xs font-bold ${
+              isActive
+                ? 'bg-green-50 text-green-700 border border-green-100'
+                : 'bg-amber-50 text-amber-700 border border-amber-100'
+            }`}
+          >
             {isActive ? 'Active' : 'Inactive'}
           </span>
         );
@@ -165,20 +173,34 @@ const ManufacturerMasterView = () => {
               title="Edit Manufacturer"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                />
               </svg>
             </button>
             <button
               onClick={() => handleToggleStatus(m)}
               className={`p-1.5 rounded-md transition-all ${
-                m.isActive 
-                  ? 'text-amber-600 hover:text-amber-700 hover:bg-amber-50' 
+                m.isActive
+                  ? 'text-amber-600 hover:text-amber-700 hover:bg-amber-50'
                   : 'text-green-600 hover:text-green-700 hover:bg-green-50'
               }`}
               title={m.isActive ? 'Deactivate' : 'Activate'}
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={m.isActive ? "M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636" : "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"} />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d={
+                    m.isActive
+                      ? 'M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636'
+                      : 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z'
+                  }
+                />
               </svg>
             </button>
           </div>
@@ -200,8 +222,18 @@ const ManufacturerMasterView = () => {
   const emptyState = (
     <div className="flex flex-col items-center justify-center py-12 text-center">
       <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
-        <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+        <svg
+          className="w-8 h-8 text-gray-400"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+          />
         </svg>
       </div>
       <h3 className="text-lg font-bold text-gray-900">No Manufacturers Found</h3>
@@ -224,22 +256,32 @@ const ManufacturerMasterView = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-4 pr-10 py-2.5 border border-gray-200 rounded-xl w-full text-sm outline-none focus:border-gray-900 focus:ring-4 focus:ring-gray-100 transition-all"
             />
-            <button 
+            <button
               type="submit"
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-900 transition-colors"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
               </svg>
             </button>
           </form>
-          
+
           <button
             onClick={handleAdd}
             className="px-5 py-2.5 bg-gray-900 text-white text-sm font-bold rounded-xl hover:bg-gray-800 transition-all shadow-sm flex items-center gap-2"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
             </svg>
             Add Manufacturer
           </button>
@@ -262,7 +304,12 @@ const ManufacturerMasterView = () => {
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 animate-pulse">
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
           </svg>
           {error}
         </div>

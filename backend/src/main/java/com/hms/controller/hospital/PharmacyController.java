@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import com.hms.exception.ResourceNotFoundException;
+
 import com.hms.entity.Medicine;
 import com.hms.entity.Prescription;
 import com.hms.repository.PrescriptionRepository;
@@ -15,8 +17,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/hospital/pharmacy")
-@CrossOrigin(origins = { "http://localhost:3000", "http://localhost:5173" })
+@RequestMapping({"/hospital/pharmacy", "/clinic/pharmacy", "/pharmacy/pharmacy"})
 public class PharmacyController {
 
     @Autowired
@@ -158,32 +159,32 @@ public class PharmacyController {
     @PostMapping("/dispense/{prescriptionId}")
     @PreAuthorize("hasRole('PHARMACIST')")
     public ResponseEntity<?> dispenseMedicine(@PathVariable Long prescriptionId) {
-        try {
-            Prescription p = prescriptionRepository.findById(prescriptionId)
-                    .orElseThrow(() -> new RuntimeException("Prescription not found"));
+        // Scope to the caller's hospital: an unscoped findById let a pharmacist dispense
+        // another hospital's prescription (and deduct stock against it) by guessing the id.
+        Long dispenseHospitalId = securityHelper.getCurrentHospitalId();
+        Prescription p = prescriptionRepository.findById(prescriptionId)
+                .filter(x -> x.getHospitalId() != null && x.getHospitalId().equals(dispenseHospitalId))
+                .orElseThrow(() -> new ResourceNotFoundException("Prescription not found"));
 
-            if (!p.getStatus().equals("PENDING")) {
-                return ResponseEntity.badRequest().body("Prescription already dispensed");
-            }
-
-            // Deduct Stock
-            // Parse quantity from duration? Or just deduct 1 unit/strip for now?
-            // "5 Days" x "1-0-1" (2) = 10 tablets.
-            // Parsing this text is hard.
-            // V1 Simplification: Deduct 10 units fixed or pass quantity from UI.
-            // For this iteration, let's deduct 10 units by default or 0 if we can't parse.
-            // BETTER: The Pharmacist should confirm the QTY dispensed.
-
-            // For this API V1, we will just mark as dispensed and optionally deduct if
-            // stock exists.
-            inventoryService.dispenseMedicine(p.getMedicineName(), 1); // Deducting 1 unit for now
-
-            p.setStatus("DISPENSED");
-            prescriptionRepository.save(p);
-
-            return ResponseEntity.ok("Medicine dispensed successfully");
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+        if (!p.getStatus().equals("PENDING")) {
+            return ResponseEntity.badRequest().body("Prescription already dispensed");
         }
+
+        // Deduct Stock
+        // Parse quantity from duration? Or just deduct 1 unit/strip for now?
+        // "5 Days" x "1-0-1" (2) = 10 tablets.
+        // Parsing this text is hard.
+        // V1 Simplification: Deduct 10 units fixed or pass quantity from UI.
+        // For this iteration, let's deduct 10 units by default or 0 if we can't parse.
+        // BETTER: The Pharmacist should confirm the QTY dispensed.
+
+        // For this API V1, we will just mark as dispensed and optionally deduct if
+        // stock exists.
+        inventoryService.dispenseMedicine(p.getMedicineName(), 1); // Deducting 1 unit for now
+
+        p.setStatus("DISPENSED");
+        prescriptionRepository.save(p);
+
+        return ResponseEntity.ok("Medicine dispensed successfully");
     }
 }
