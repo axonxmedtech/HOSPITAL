@@ -47,6 +47,7 @@ const DateSelect = ({
   disabled = false,
   yearsBack = 100,
   yearsAhead = 15,
+  min, // optional "YYYY-MM-DD" floor: no earlier date can be picked (e.g. appointments = today onward)
 }) => {
   // Internal state so partial selections (e.g. Year picked, Month/Day not yet) persist.
   const [parts, setParts] = useState(() => splitParts(value));
@@ -63,12 +64,40 @@ const DateSelect = ({
   }, [value]);
 
   const currentYear = new Date().getFullYear();
+  const minParts = min ? splitParts(min) : null;
+  const lowYear = minParts ? Number(minParts.y) : currentYear - yearsBack;
+  const highYear = currentYear + yearsAhead;
   const years = [];
-  for (let yr = currentYear + yearsAhead; yr >= currentYear - yearsBack; yr--) years.push(yr);
+  if (minParts) {
+    // Floored picker (e.g. appointments): nearest allowed year first.
+    for (let yr = lowYear; yr <= highYear; yr++) years.push(yr);
+  } else {
+    for (let yr = highYear; yr >= lowYear; yr--) years.push(yr);
+  }
+
+  // When a min is set, hide months/days earlier than the floor within the floor's own year/month.
+  const monthOptions = MONTHS.filter(([mv]) => {
+    if (!minParts || !parts.y) return true;
+    if (Number(parts.y) > Number(minParts.y)) return true;
+    return Number(mv) >= Number(minParts.m);
+  });
 
   const maxDay = daysInMonth(parts.y, parts.m);
   const days = [];
-  for (let i = 1; i <= maxDay; i++) days.push(pad2(i));
+  for (let i = 1; i <= maxDay; i++) {
+    const dd = pad2(i);
+    if (
+      minParts &&
+      parts.y &&
+      parts.m &&
+      Number(parts.y) === Number(minParts.y) &&
+      Number(parts.m) === Number(minParts.m) &&
+      Number(dd) < Number(minParts.d)
+    ) {
+      continue;
+    }
+    days.push(dd);
+  }
 
   const setPart = (key, val) => {
     const next = { ...parts, [key]: val };
@@ -106,7 +135,7 @@ const DateSelect = ({
         className={selCls}
       >
         <option value="">Month</option>
-        {MONTHS.map(([mv, ml]) => (
+        {monthOptions.map(([mv, ml]) => (
           <option key={mv} value={mv}>
             {ml}
           </option>

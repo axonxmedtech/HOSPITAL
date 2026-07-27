@@ -44,9 +44,11 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
     '17:00',
   ];
 
-  // Get today's date and current time
+  // Get today's date and current time. Use LOCAL date parts (not toISOString, which is UTC and
+  // can be a day off) so "today" matches the clinic's calendar day for slot filtering + the
+  // appointment-date floor.
   const today = new Date();
-  const todayString = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+  const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const currentTime =
     today.getHours().toString().padStart(2, '0') +
     ':' +
@@ -193,6 +195,10 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
 
     // Run validation
     const validationErrors = validateForm(formData, rules);
+    // An appointment can only be for today or a future date.
+    if (formData.appointmentDate && formData.appointmentDate < todayString) {
+      validationErrors.appointmentDate = 'Appointment date cannot be in the past';
+    }
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
       return;
@@ -493,6 +499,7 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
               value={formData.appointmentDate || ''}
               onChange={(v) => handleChange('appointmentDate', v)}
               hasError={!!errors.appointmentDate}
+              min={todayString}
             />
             {errors.appointmentDate && (
               <p className="text-red-500 text-xs mt-1">{errors.appointmentDate}</p>
