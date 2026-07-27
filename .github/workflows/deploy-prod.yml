@@ -242,12 +242,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Validate production configuration present
+      - name: Validate production deploy credentials present
+        # Host / repo path / service name / app URL live in the "Production" GitHub Environment
+        # (vars.HOST, vars.DEPLOY_PATH, ...) and are resolved + validated by _deploy.yml, which
+        # runs *inside* that environment. This pre-approval review job has no environment scope,
+        # so it can only read repository-level secrets — here we just confirm the deploy key is
+        # present. The host/URL are checked at deploy time in the environment context.
         env:
-          HMS_SSH_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
           HMS_SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          HMS_APP_URL: ${{ vars.PRODUCTION_APP_URL }}
-        run: bash scripts/deploy/validate-config.sh HMS_SSH_HOST HMS_SSH_KEY HMS_APP_URL
+        run: bash scripts/deploy/validate-config.sh HMS_SSH_KEY
       - name: Deployment & risk summary
         run: |
           VERSION=$(git describe --tags --always 2>/dev/null || echo "${GITHUB_SHA::7}")
