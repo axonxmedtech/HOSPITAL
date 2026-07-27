@@ -11,7 +11,8 @@ import lombok.Data;
 @Data
 public class ManufacturerRequest {
     @NotBlank(message = "Manufacturer name is required")
-    @PersonName(message = "Manufacturer name may only contain letters, spaces and . ' -")
+    @Size(max = 150, message = "Manufacturer name is too long")
+    @NoEmoji
     private String manufacturerName;
 
     @PersonName(message = "Contact person may only contain letters, spaces and . ' -")

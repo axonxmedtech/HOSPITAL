@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import DateSelect from '../../../components/DateSelect';
 import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import otService from '../../../services/otService';
@@ -82,12 +83,7 @@ const OtListPrint = ({ onClose }) => {
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h2 className="text-lg font-bold text-gray-900">OT List</h2>
           <div className="flex items-center gap-3">
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="px-2 py-1 border border-gray-300 rounded-lg text-sm"
-            />
+            <DateSelect value={date} onChange={(v) => setDate(v)} />
             <button
               onClick={print}
               disabled={loading}

@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from '../context/ToastContext';
 import hospitalService from '../services/hospitalService';
+import { extractApiError } from '../utils/apiError';
 import ConfirmationModal from './ConfirmationModal';
+import DateSelect from './DateSelect';
 
 const HospitalInventoryTab = () => {
   const [subTab, setSubTab] = useState('inventory'); // 'inventory', 'purchase', or 'catalog' (Services)
@@ -34,6 +36,7 @@ const HospitalInventoryTab = () => {
     manufacturer: '',
     minStockLevel: '10',
   });
+  const [expiryDate, setExpiryDate] = useState('');
 
   // Service Modal States
   const [selectedMasterItems, setSelectedMasterItems] = useState([]);
@@ -51,6 +54,7 @@ const HospitalInventoryTab = () => {
         manufacturer: stockModal.data?.manufacturer || '',
         minStockLevel: stockModal.data?.minStockLevel?.toString() || '10',
       });
+      setExpiryDate(stockModal.data?.expiryDate || '');
     } else {
       setStockItemQuery('');
     }
@@ -170,7 +174,7 @@ const HospitalInventoryTab = () => {
       setStockModal({ isOpen: false, isEdit: false, data: null });
       loadData();
     } catch (err) {
-      toastError(err.response?.data || 'Failed to record purchase.');
+      toastError(extractApiError(err, 'Failed to record purchase.'));
     } finally {
       setLoading(false);
     }
@@ -203,7 +207,7 @@ const HospitalInventoryTab = () => {
       setServiceModal({ isOpen: false, isEdit: false, data: null });
       loadData();
     } catch (err) {
-      toastError(err.response?.data || 'Failed to save service.');
+      toastError(extractApiError(err, 'Failed to save service.'));
     } finally {
       setLoading(false);
     }
@@ -658,12 +662,8 @@ const HospitalInventoryTab = () => {
                   <label htmlFor="fld-6" className="block text-sm font-semibold text-gray-700 mb-1">
                     Expiry Date
                   </label>
-                  <input
-                    id="fld-6"
-                    type="date"
-                    name="expiryDate"
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
-                  />
+                  <DateSelect value={expiryDate} onChange={setExpiryDate} />
+                  <input type="hidden" name="expiryDate" value={expiryDate} />
                 </div>
               </div>
 

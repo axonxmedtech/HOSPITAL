@@ -70,7 +70,8 @@ public class Patient {
      */
     @Column(nullable = false, length = 100)
     @jakarta.validation.constraints.NotBlank(message = "Name is required")
-    @com.hms.validation.PersonName
+    @jakarta.validation.constraints.Size(max = 100, message = "Name is too long")
+    @com.hms.validation.NoEmoji
     private String name;
 
     /**

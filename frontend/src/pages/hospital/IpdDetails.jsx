@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ConfirmationModal from '../../components/ConfirmationModal';
+import DateSelect from '../../components/DateSelect';
 import EmptyState from '../../components/EmptyState';
 import FrequencyInput from '../../components/FrequencyInput';
 import Navbar from '../../components/Navbar';
-import ProfileModal from '../../components/ProfileModal';
 import PageHeader from '../../components/PageHeader';
+import ProfileModal from '../../components/ProfileModal';
 import Sidebar from '../../components/Sidebar';
 import { SkeletonDetailCard, SkeletonFormCard } from '../../components/Skeleton';
 import { useToast } from '../../context/ToastContext';
@@ -1051,17 +1052,14 @@ const IpdDetails = () => {
                                 <label htmlFor="fld-124" className="block text-sm font-medium mb-1">
                                   Start Date
                                 </label>
-                                <input
-                                  id="fld-124"
-                                  type="date"
+                                <DateSelect
                                   value={medicineModal.startDate}
-                                  onChange={(e) =>
+                                  onChange={(v) =>
                                     setMedicineModal((prev) => ({
                                       ...prev,
-                                      startDate: e.target.value,
+                                      startDate: v,
                                     }))
                                   }
-                                  className="w-full border p-2 rounded text-sm"
                                 />
                               </div>
                             </div>
@@ -1867,14 +1865,11 @@ const IpdDetails = () => {
                       <label htmlFor="fld-120" className="block text-sm font-medium mb-1">
                         Follow-up Date
                       </label>
-                      <input
-                        id="fld-120"
-                        type="date"
+                      <DateSelect
                         value={dischargeModal.followUpDate}
-                        onChange={(e) =>
-                          setDischargeModal((prev) => ({ ...prev, followUpDate: e.target.value }))
+                        onChange={(v) =>
+                          setDischargeModal((prev) => ({ ...prev, followUpDate: v }))
                         }
-                        className="w-full border p-2 rounded"
                       />
                     </div>
                     <div className="flex justify-end gap-3">

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import DateSelect from '../../../components/DateSelect';
 import { useToast } from '../../../context/ToastContext';
 import otService from '../../../services/otService';
 import { backdropProps } from '../../../utils/modalA11y';
@@ -94,13 +95,7 @@ const SurgeryRequestModal = ({ admissionId, onClose, onCreated }) => {
               <label htmlFor="fld-206" className="block text-sm font-semibold text-gray-700 mb-1">
                 Preferred Date
               </label>
-              <input
-                id="fld-206"
-                type="date"
-                value={form.preferredDate}
-                onChange={(e) => set('preferredDate', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              />
+              <DateSelect value={form.preferredDate} onChange={(v) => set('preferredDate', v)} />
             </div>
           </div>
         </div>

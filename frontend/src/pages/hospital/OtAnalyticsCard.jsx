@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import DateSelect from '../../components/DateSelect';
 import { useToast } from '../../context/ToastContext';
 import otService from '../../services/otService';
 
@@ -59,19 +60,9 @@ const OtAnalyticsCard = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <input
-            type="date"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-            className="px-2 py-1 border border-gray-300 rounded-lg text-sm"
-          />
+          <DateSelect value={from} onChange={(v) => setFrom(v)} />
           <span className="text-gray-400 text-sm">to</span>
-          <input
-            type="date"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            className="px-2 py-1 border border-gray-300 rounded-lg text-sm"
-          />
+          <DateSelect value={to} onChange={(v) => setTo(v)} />
         </div>
       </div>
 

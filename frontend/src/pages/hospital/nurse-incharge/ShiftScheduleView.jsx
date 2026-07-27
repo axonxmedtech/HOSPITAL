@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import DateSelect from '../../../components/DateSelect';
 import EmptyState from '../../../components/EmptyState';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
@@ -397,25 +398,13 @@ const RangeFillModal = ({ nurses, templates, onClose, onDone }) => {
               <label htmlFor="fld-160" className="block text-xs font-medium text-gray-600 mb-1">
                 From Date
               </label>
-              <input
-                id="fld-160"
-                type="date"
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500"
-              />
+              <DateSelect value={fromDate} onChange={(v) => setFromDate(v)} />
             </div>
             <div>
               <label htmlFor="fld-159" className="block text-xs font-medium text-gray-600 mb-1">
                 To Date
               </label>
-              <input
-                id="fld-159"
-                type="date"
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500"
-              />
+              <DateSelect value={toDate} onChange={(v) => setToDate(v)} />
             </div>
           </div>
 

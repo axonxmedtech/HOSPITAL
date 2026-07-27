@@ -140,7 +140,8 @@ public class Appointment {
      * Patient name for new patient creation (not stored in appointments table)
      */
     @Transient
-    @com.hms.validation.PersonName
+    @jakarta.validation.constraints.Size(max = 150, message = "Patient name is too long")
+    @com.hms.validation.NoEmoji
     private String patientName;
 
     /**
@@ -179,6 +180,7 @@ public class Appointment {
      * Doctor name for display purposes (populated by service)
      */
     @Transient
-    @com.hms.validation.PersonName
+    @jakarta.validation.constraints.Size(max = 100, message = "Doctor name is too long")
+    @com.hms.validation.NoEmoji
     private String doctorName;
 }

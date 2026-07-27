@@ -269,10 +269,9 @@ public class HospitalAuthService {
                                     expectedType == HospitalType.PHARMACY ? "Pharmacy" : "Hospital";
                 logger.warn("Login failed - wrong portal: user belongs to {} but tried {} portal: {}",
                         actualType, expectedType, LogSanitizer.clean(request.getEmail()));
-                throw new UnauthorizedException(
-                    "This account belongs to a " + actualType.name().toLowerCase() +
-                    ". Please use the " + actualType.name().charAt(0) +
-                    actualType.name().substring(1).toLowerCase() + " login portal.");
+                // Do not reveal that the account exists under a different tenant type — that leaks
+                // account existence/type. Surface the same generic message as a bad password.
+                throw new UnauthorizedException("Invalid credentials");
             }
         }
 

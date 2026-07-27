@@ -5,6 +5,7 @@ import ActionMenu from '../../components/ActionMenu';
 import AppointmentModal from '../../components/AppointmentModal';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import DataTable from '../../components/DataTable';
+import DateSelect from '../../components/DateSelect';
 import EmptyState from '../../components/EmptyState';
 import HistoryDrawer from '../../components/HistoryDrawer';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
@@ -34,6 +35,7 @@ import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
 // BUG-028: single source-of-truth for base URL
 import otService from '../../services/otService';
+import { extractApiError } from '../../utils/apiError';
 import { formatDateTime, formatTime } from '../../utils/date';
 import { printPdf } from '../../utils/printPdf';
 import BillingTable from './BillingTable';
@@ -740,7 +742,7 @@ const ReceptionistDashboard = () => {
       });
       loadData();
     } catch (err) {
-      const msg = err.response?.data || 'Failed to update bill items';
+      const msg = extractApiError(err, 'Failed to update bill items');
       toastError(msg);
     } finally {
       setEditBillItemsSubmitting(false);
@@ -1442,14 +1444,12 @@ const ReceptionistDashboard = () => {
                       ))}
                     </div>
                     {patientTabView === 'Date' && (
-                      <input
-                        type="date"
+                      <DateSelect
                         value={patientDateFilter}
-                        onChange={(e) => {
-                          setPatientDateFilter(e.target.value);
+                        onChange={(v) => {
+                          setPatientDateFilter(v);
                           setPage(0);
                         }}
-                        className="px-4 py-1.5 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-transparent bg-white text-slate-800 h-[38px]"
                       />
                     )}
                     <button
@@ -1498,14 +1498,12 @@ const ReceptionistDashboard = () => {
                       ))}
                     </div>
                     {opdTabView === 'Date' && (
-                      <input
-                        type="date"
+                      <DateSelect
                         value={opdDateFilter}
-                        onChange={(e) => {
-                          setOpdDateFilter(e.target.value);
+                        onChange={(v) => {
+                          setOpdDateFilter(v);
                           setPage(0);
                         }}
-                        className="px-4 py-1.5 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-transparent bg-white text-slate-800 h-[38px]"
                       />
                     )}
                     <button

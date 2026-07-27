@@ -1,4 +1,5 @@
 import React from 'react';
+import DateSelect from '../../../components/DateSelect';
 import escapeHtml from '../../../utils/escapeHtml';
 import { titleCase } from '../../../utils/text';
 import SurgeryFormFrame from './SurgeryFormFrame';
@@ -169,12 +170,7 @@ const GeneralAnaesthesiaConsentForm = ({ admissionId, onClose, readOnly = false 
             />
           </Labelled>
           <Labelled label="Date">
-            <input
-              type="date"
-              value={data.date}
-              onChange={(e) => set('date', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-            />
+            <DateSelect value={data.date} onChange={(v) => set('date', v)} />
           </Labelled>
           <Labelled label="Time">
             <input

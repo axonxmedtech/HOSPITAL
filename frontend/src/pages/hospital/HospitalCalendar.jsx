@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import DateSelect from '../../components/DateSelect';
 import { useToast } from '../../context/ToastContext';
 import calendarService from '../../services/calendarService';
 import { backdropProps } from '../../utils/modalA11y';
@@ -377,25 +378,13 @@ const EventForm = ({ initialDate, onClose, onSaved, onError }) => {
               <label htmlFor="fld-117" className="block text-xs text-gray-500 mb-1">
                 From
               </label>
-              <input
-                id="fld-117"
-                type="date"
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              />
+              <DateSelect value={fromDate} onChange={(v) => setFromDate(v)} />
             </div>
             <div>
               <label htmlFor="fld-116" className="block text-xs text-gray-500 mb-1">
                 To
               </label>
-              <input
-                id="fld-116"
-                type="date"
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              />
+              <DateSelect value={toDate} onChange={(v) => setToDate(v)} />
             </div>
           </div>
           <textarea

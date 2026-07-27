@@ -5,18 +5,24 @@ import java.time.LocalDateTime;
 
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
-import com.hms.validation.PersonName;
+import jakarta.validation.constraints.Size;
+import com.hms.validation.NoEmoji;
 
 /** Schedule payload: assign surgeon + date/time + theatre. */
 @Data
 public class ScheduleSurgeryRequest {
     private Long surgeonDoctorId;   // a listed doctor; null when "Other" is chosen
 
-    @PersonName
+    // Free-text external operator name ("Other"). Not @PersonName: reception legitimately enters
+    // degrees with commas ("Dr. Rao, MS"), slashes (the field's own placeholder shows
+    // "Dr. anaesthetist / visiting surgeon") or the odd digit — all of which @PersonName rejects.
+    @Size(max = 100, message = "Surgeon name is too long")
+    @NoEmoji
     private String surgeonName;     // free-text operator name, used when surgeonDoctorId is null ("Other")
 
-    @PersonName
-    private String anaesthetistName; // optional anaesthetist present for the surgery
+    @Size(max = 100, message = "Anaesthetist name is too long")
+    @NoEmoji
+    private String anaesthetistName; // optional free-text anaesthetist present for the surgery
 
     @NotNull(message = "Scheduled time is required")
     private LocalDateTime scheduledAt; // required

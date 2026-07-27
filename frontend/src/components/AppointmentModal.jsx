@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useToast } from '../context/ToastContext';
 import hospitalService from '../services/hospitalService';
 import { validateForm } from '../utils/validation';
+import DateSelect from './DateSelect';
+import DobPicker from './DobPicker';
 
 /**
  * AppointmentModal - Shared modal for creating appointments
@@ -203,8 +205,15 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
       onSuccess();
       onClose();
     } catch (err) {
-      const errorMsg =
-        err.response?.data?.message || err.response?.data || 'Failed to create appointment';
+      // Never pass an object to the toast: validation failures come back as { errors: {field: msg} }
+      // and rendering that object crashes React (#31). Extract a plain string in every shape.
+      const data = err.response?.data;
+      let errorMsg = 'Failed to create appointment';
+      if (typeof data === 'string') errorMsg = data;
+      else if (data?.error) errorMsg = data.error;
+      else if (data?.message) errorMsg = data.message;
+      else if (data?.errors && typeof data.errors === 'object')
+        errorMsg = Object.values(data.errors).join(', ');
       toastError(errorMsg);
     } finally {
       setSubmitting(false);
@@ -308,13 +317,10 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
                   >
                     Date of Birth <span className="text-red-600">*</span>
                   </label>
-                  <input
-                    id="patient-dob"
-                    type="date"
-                    max={new Date().toISOString().split('T')[0]}
+                  <DobPicker
                     value={formData.patientDateOfBirth || ''}
-                    onChange={(e) => handleChange('patientDateOfBirth', e.target.value)}
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.patientDateOfBirth ? 'border-red-500' : 'border-gray-300'}`}
+                    onChange={(v) => handleChange('patientDateOfBirth', v)}
+                    hasError={!!errors.patientDateOfBirth}
                   />
                   {errors.patientDateOfBirth && (
                     <p className="text-red-500 text-xs mt-1">{errors.patientDateOfBirth}</p>
@@ -483,13 +489,10 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
             >
               Date <span className="text-red-600">*</span>
             </label>
-            <input
-              id="appointment-date"
-              type="date"
+            <DateSelect
               value={formData.appointmentDate || ''}
-              onChange={(e) => handleChange('appointmentDate', e.target.value)}
-              min={todayString}
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.appointmentDate ? 'border-red-500' : 'border-gray-300'}`}
+              onChange={(v) => handleChange('appointmentDate', v)}
+              hasError={!!errors.appointmentDate}
             />
             {errors.appointmentDate && (
               <p className="text-red-500 text-xs mt-1">{errors.appointmentDate}</p>

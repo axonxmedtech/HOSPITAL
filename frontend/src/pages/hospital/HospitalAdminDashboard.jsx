@@ -20,6 +20,7 @@ import ActionMenu from '../../components/ActionMenu';
 import AppointmentModal from '../../components/AppointmentModal';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import DataTable from '../../components/DataTable';
+import DateSelect from '../../components/DateSelect';
 import EmptyState from '../../components/EmptyState';
 import HistoryDrawer from '../../components/HistoryDrawer';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
@@ -62,6 +63,7 @@ import reportsApi from '../../services/pharmacy/reportsApi';
 import salesApi from '../../services/pharmacy/salesApi';
 import timeSlotService from '../../services/timeSlotService';
 import wardService from '../../services/wardService';
+import { extractApiError } from '../../utils/apiError';
 import { backdropProps } from '../../utils/modalA11y';
 import { printHtml } from '../../utils/printHtml';
 import { printPdf, printBlob } from '../../utils/printPdf';
@@ -436,7 +438,7 @@ const HospitalAdminDashboard = () => {
       setOrigFees({ ...fees });
       setFeesEditing(false);
     } catch (err) {
-      const msg = err.response?.data || 'Failed to update fees';
+      const msg = extractApiError(err, 'Failed to update fees');
       toastError(msg);
     } finally {
       setFeesLoading(false);
@@ -467,7 +469,7 @@ const HospitalAdminDashboard = () => {
       }
       setCustomFeeModal({ isOpen: false, mode: 'add', feeId: null, name: '', defaultAmount: '' });
     } catch (err) {
-      const msg = err.response?.data || 'Failed to save custom fee';
+      const msg = extractApiError(err, 'Failed to save custom fee');
       toastError(msg);
     } finally {
       setCustomFeeSubmitting(false);
@@ -538,7 +540,7 @@ const HospitalAdminDashboard = () => {
       });
       loadData();
     } catch (err) {
-      const msg = err.response?.data || 'Failed to update bill items';
+      const msg = extractApiError(err, 'Failed to update bill items');
       toastError(msg);
     } finally {
       setEditBillItemsSubmitting(false);
@@ -679,7 +681,7 @@ const HospitalAdminDashboard = () => {
       setTicketForm({ subject: '', message: '', priority: 'LOW' });
     } catch (err) {
       console.error('Failed to submit support ticket', err);
-      const msg = err.response?.data?.message || err.response?.data || 'Failed to submit ticket';
+      const msg = extractApiError(err, 'Failed to submit ticket');
       toastError(msg);
     } finally {
       setSupportSubmitting(false);
@@ -715,7 +717,7 @@ const HospitalAdminDashboard = () => {
           authService.updateCurrentUser(profile);
           setUser(profile);
         } catch (err) {
-          const msg = err.response?.data || 'Failed to update operations mode';
+          const msg = extractApiError(err, 'Failed to update operations mode');
           toastError(msg);
         } finally {
           setSettingsLoading(false);
@@ -804,7 +806,7 @@ const HospitalAdminDashboard = () => {
           authService.updateCurrentUser(profile);
           setUser(profile);
         } catch (err) {
-          const msg = err.response?.data || 'Failed to update In-Clinic mode';
+          const msg = extractApiError(err, 'Failed to update In-Clinic mode');
           toastError(msg);
         } finally {
           setSettingsLoading(false);
@@ -844,7 +846,7 @@ const HospitalAdminDashboard = () => {
           authService.updateCurrentUser(profile);
           setUser(profile);
         } catch (err) {
-          const msg = err.response?.data || 'Failed to update barcode setting';
+          const msg = extractApiError(err, 'Failed to update barcode setting');
           toastError(msg);
         } finally {
           setSettingsLoading(false);
@@ -881,10 +883,7 @@ const HospitalAdminDashboard = () => {
           }));
           success('Nurse login setting updated successfully.');
         } catch (err) {
-          const msg =
-            err?.response?.data?.error ||
-            err.response?.data ||
-            'Failed to update nurse login setting';
+          const msg = extractApiError(err, 'Failed to update nurse login setting');
           toastError(msg);
         } finally {
           setSettingsLoading(false);
@@ -919,10 +918,7 @@ const HospitalAdminDashboard = () => {
           }));
           success('OT Incharge setting updated successfully.');
         } catch (err) {
-          const msg =
-            err?.response?.data?.error ||
-            err.response?.data ||
-            'Failed to update OT Incharge setting';
+          const msg = extractApiError(err, 'Failed to update OT Incharge setting');
           toastError(msg);
         } finally {
           setSettingsLoading(false);
@@ -2786,11 +2782,9 @@ const HospitalAdminDashboard = () => {
                         ))}
                       </div>
                       {patientTabView === 'Date' && (
-                        <input
-                          type="date"
+                        <DateSelect
                           value={patientDateFilter}
-                          onChange={(e) => setPatientDateFilter(e.target.value)}
-                          className="px-4 py-1.5 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-transparent bg-white text-slate-800 h-[38px]"
+                          onChange={(v) => setPatientDateFilter(v)}
                         />
                       )}
                       <button
@@ -2839,12 +2833,7 @@ const HospitalAdminDashboard = () => {
                         ))}
                       </div>
                       {opdTabView === 'Date' && (
-                        <input
-                          type="date"
-                          value={opdDateFilter}
-                          onChange={(e) => setOpdDateFilter(e.target.value)}
-                          className="px-4 py-1.5 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-transparent bg-white text-slate-800 h-[38px]"
-                        />
+                        <DateSelect value={opdDateFilter} onChange={(v) => setOpdDateFilter(v)} />
                       )}
                       <button
                         type="button"
@@ -8183,12 +8172,9 @@ const AddModal = ({
                             >
                               From
                             </label>
-                            <input
-                              id="fld-72"
-                              type="date"
+                            <DateSelect
                               value={formData.shiftFromDate || ''}
-                              onChange={(e) => handleChange('shiftFromDate', e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                              onChange={(v) => handleChange('shiftFromDate', v)}
                             />
                           </div>
                           <div>
@@ -8198,12 +8184,9 @@ const AddModal = ({
                             >
                               To
                             </label>
-                            <input
-                              id="fld-71"
-                              type="date"
+                            <DateSelect
                               value={formData.shiftToDate || ''}
-                              onChange={(e) => handleChange('shiftToDate', e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                              onChange={(v) => handleChange('shiftToDate', v)}
                             />
                           </div>
                         </div>
@@ -8412,12 +8395,10 @@ const AddModal = ({
                   <label htmlFor="fld-64" className="block text-sm font-medium text-gray-700 mb-2">
                     Date
                   </label>
-                  <input
-                    id="fld-64"
-                    type="date"
+                  <DateSelect
                     value={formData.appointmentDate || ''}
-                    onChange={(e) => handleChange('appointmentDate', e.target.value)}
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.appointmentDate ? 'border-red-500' : 'border-gray-300'}`}
+                    onChange={(v) => handleChange('appointmentDate', v)}
+                    hasError={!!errors.appointmentDate}
                   />
                   {errors.appointmentDate && (
                     <p className="text-red-500 text-xs mt-1">{errors.appointmentDate}</p>
@@ -9587,7 +9568,7 @@ const PharmaciesTab = () => {
       setModalOpen(false);
       load();
     } catch (e) {
-      toastError(e.response?.data?.message || e.response?.data || 'Failed to save branch');
+      toastError(extractApiError(e, 'Failed to save branch'));
     } finally {
       setSubmitting(false);
     }

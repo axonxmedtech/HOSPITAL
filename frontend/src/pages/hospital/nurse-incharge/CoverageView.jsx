@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import DateSelect from '../../../components/DateSelect';
 import EmptyState from '../../../components/EmptyState';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
@@ -362,25 +363,13 @@ const TempAssignmentForm = ({ nurses, wards, onDone, onError }) => {
         <label htmlFor="fld-155" className="block text-xs font-medium text-gray-500 mb-1">
           From
         </label>
-        <input
-          id="fld-155"
-          type="date"
-          value={fromDate}
-          onChange={(e) => setFromDate(e.target.value)}
-          className={inputCls}
-        />
+        <DateSelect value={fromDate} onChange={(v) => setFromDate(v)} />
       </div>
       <div>
         <label htmlFor="fld-154" className="block text-xs font-medium text-gray-500 mb-1">
           To
         </label>
-        <input
-          id="fld-154"
-          type="date"
-          value={toDate}
-          onChange={(e) => setToDate(e.target.value)}
-          className={inputCls}
-        />
+        <DateSelect value={toDate} onChange={(v) => setToDate(v)} />
       </div>
       <div className="flex-1 min-w-[160px]">
         <label htmlFor="fld-153" className="block text-xs font-medium text-gray-500 mb-1">
@@ -490,25 +479,13 @@ const SubstitutionForm = ({ nurses, onDone, onError }) => {
         <label htmlFor="fld-150" className="block text-xs font-medium text-gray-500 mb-1">
           From
         </label>
-        <input
-          id="fld-150"
-          type="date"
-          value={fromDate}
-          onChange={(e) => setFromDate(e.target.value)}
-          className={inputCls}
-        />
+        <DateSelect value={fromDate} onChange={(v) => setFromDate(v)} />
       </div>
       <div>
         <label htmlFor="fld-149" className="block text-xs font-medium text-gray-500 mb-1">
           To
         </label>
-        <input
-          id="fld-149"
-          type="date"
-          value={toDate}
-          onChange={(e) => setToDate(e.target.value)}
-          className={inputCls}
-        />
+        <DateSelect value={toDate} onChange={(v) => setToDate(v)} />
       </div>
       <div className="flex-1 min-w-[160px]">
         <label htmlFor="fld-148" className="block text-xs font-medium text-gray-500 mb-1">

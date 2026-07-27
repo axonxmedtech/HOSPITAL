@@ -166,7 +166,7 @@ export default function PlatformMedicinesTab({ hospitalType = null }) {
       }
       loadMedicines(0);
     } catch (err) {
-      toastError(err.response?.data || 'CSV import failed. Please verify format.');
+      toastError(extractError(err, 'CSV import failed. Please verify format.'));
     } finally {
       setCsvImporting(false);
     }

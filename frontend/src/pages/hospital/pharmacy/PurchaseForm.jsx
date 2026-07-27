@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import DateSelect from '../../../components/DateSelect';
 import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import medicinesApi from '../../../services/pharmacy/medicinesApi';
@@ -286,13 +287,9 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
               <label htmlFor="fld-218" className="text-xs font-bold text-gray-500 uppercase">
                 Invoice Date
               </label>
-              <input
-                id="fld-218"
-                type="date"
-                name="invoiceDate"
+              <DateSelect
                 value={header.invoiceDate}
-                onChange={handleHeaderChange}
-                className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-gray-900 outline-none"
+                onChange={(v) => setHeader((prev) => ({ ...prev, invoiceDate: v }))}
               />
             </div>
             <div className="space-y-1 text-right">
@@ -375,11 +372,9 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
                       />
                     </td>
                     <td className="px-3 py-3">
-                      <input
-                        type="date"
+                      <DateSelect
                         value={item.expiryDate}
-                        onChange={(e) => handleItemChange(index, 'expiryDate', e.target.value)}
-                        className="w-full border-b border-transparent group-hover:border-gray-200 focus:border-gray-900 focus:ring-0 text-[11px] py-1 bg-transparent outline-none"
+                        onChange={(v) => handleItemChange(index, 'expiryDate', v)}
                       />
                     </td>
                     <td className="px-3 py-3">

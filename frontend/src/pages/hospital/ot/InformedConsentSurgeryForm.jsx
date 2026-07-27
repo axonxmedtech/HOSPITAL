@@ -1,4 +1,5 @@
 import React from 'react';
+import DateSelect from '../../../components/DateSelect';
 import escapeHtml from '../../../utils/escapeHtml';
 import { titleCase } from '../../../utils/text';
 import SurgeryFormFrame from './SurgeryFormFrame';
@@ -151,12 +152,7 @@ const InformedConsentSurgeryForm = ({ admissionId, onClose, readOnly = false }) 
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Labelled label="Date">
-            <input
-              type="date"
-              value={data.date}
-              onChange={(e) => set('date', e.target.value)}
-              className={inputCls}
-            />
+            <DateSelect value={data.date} onChange={(v) => set('date', v)} />
           </Labelled>
           <Labelled label="Time">
             <input

@@ -3,7 +3,9 @@ import { useToast } from '../context/ToastContext';
 import authService from '../services/authService';
 import hospitalService from '../services/hospitalService';
 import vitalsService from '../services/vitalsService';
+import { extractApiError } from '../utils/apiError';
 import CharCountInput from './CharCountInput';
+import DateSelect from './DateSelect';
 import FrequencyInput, { isFrequencyValid } from './FrequencyInput';
 import IpdAdmitModal from './IpdAdmitModal';
 import ManageInClinicPresetsModal from './ManageInClinicPresetsModal';
@@ -605,7 +607,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
       const data = await hospitalService.getPrescriptionPresets();
       setPrescriptionPresets(data || []);
     } catch (err) {
-      toastError(err?.response?.data || 'Failed to save preset');
+      toastError(extractApiError(err, 'Failed to save preset'));
     }
   };
 
@@ -633,7 +635,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
       success('In-clinic preset saved');
       setInClinicPresets((await hospitalService.getInClinicPresets()) || []);
     } catch (err) {
-      toastError(err?.response?.data?.error || err?.response?.data || 'Failed to save preset');
+      toastError(extractApiError(err, 'Failed to save preset'));
     }
   };
 
@@ -1618,12 +1620,9 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                         >
                           Follow-up Date
                         </label>
-                        <input
-                          id="fld-1"
-                          type="date"
+                        <DateSelect
                           value={formData.followUpDate}
-                          onChange={(e) => handleChange('followUpDate', e.target.value)}
-                          className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                          onChange={(v) => handleChange('followUpDate', v)}
                         />
                       </div>
                     )}

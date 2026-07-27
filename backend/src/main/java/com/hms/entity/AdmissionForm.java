@@ -49,9 +49,9 @@ public class AdmissionForm {
     @NoEmoji
     @Column(name = "bed_no", length = 60)
     private String bedNo;
-    @Pattern(regexp = "^(ICU|Deluxe|Private|Semi Private|General)$",
-            message = "category must be one of ICU, Deluxe, Private, Semi Private, General")
-    @Column(name = "category", length = 40) // ICU / Deluxe / Private / Semi Private / General
+    @Size(max = 40)
+    @NoEmoji
+    @Column(name = "category", length = 40) // free text; pre-filled with the ward name
     private String category;
 
     // Patient
@@ -82,13 +82,13 @@ public class AdmissionForm {
     private String occupation;
 
     // Category / payer
-    @Pattern(regexp = "^(HOSPITAL|PRIVATE|PMC_PMT)$",
-            message = "patientCategory must be one of HOSPITAL, PRIVATE, PMC_PMT")
-    @Column(name = "patient_category", length = 40) // HOSPITAL / PRIVATE / PMC_PMT
+    @Size(max = 40)
+    @NoEmoji
+    @Column(name = "patient_category", length = 40) // free text label, e.g. Hospital Patient / Private Patient / PMC / PMT
     private String patientCategory;
-    @Pattern(regexp = "^(CASHLESS|REIMBURSE)$",
-            message = "mediclaim must be one of CASHLESS, REIMBURSE")
-    @Column(name = "mediclaim", length = 20) // CASHLESS / REIMBURSE
+    @Size(max = 20)
+    @NoEmoji
+    @Column(name = "mediclaim", length = 20) // free text label, e.g. Cashless / Reimburse
     private String mediclaim;
     @Size(max = 200)
     @NoEmoji

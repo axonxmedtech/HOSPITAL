@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import DateSelect from '../../../components/DateSelect';
 import { useToast } from '../../../context/ToastContext';
 import hospitalService from '../../../services/hospitalService';
 import otService from '../../../services/otService';
@@ -191,13 +192,7 @@ const DayCareSurgeryModal = ({ isOpen, onClose, onSuccess }) => {
               <label htmlFor="fld-189" className="block text-xs font-medium text-gray-600 mb-1">
                 Preferred date
               </label>
-              <input
-                id="fld-189"
-                type="date"
-                value={preferredDate}
-                onChange={(e) => setPreferredDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              />
+              <DateSelect value={preferredDate} onChange={(v) => setPreferredDate(v)} />
             </div>
           </div>
 

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import DateSelect from '../../../components/DateSelect';
 import { useToast } from '../../../context/ToastContext';
 import attendanceService from '../../../services/attendanceService';
 import nurseService from '../../../services/nurseService';
@@ -151,13 +152,7 @@ const AttendanceView = () => {
           <label htmlFor="fld-146" className="block text-xs font-semibold text-gray-600 mb-1">
             Date
           </label>
-          <input
-            id="fld-146"
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-          />
+          <DateSelect value={date} onChange={(v) => setDate(v)} />
         </div>
         {addable.length > 0 && (
           <div>

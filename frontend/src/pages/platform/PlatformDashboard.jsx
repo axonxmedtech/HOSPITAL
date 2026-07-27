@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import ActionMenu from '../../components/ActionMenu';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import DataTable from '../../components/DataTable';
+import DateSelect from '../../components/DateSelect';
 import Navbar from '../../components/Navbar';
 import PageHeader from '../../components/PageHeader';
 import PlansTab from '../../components/PlansTab';
@@ -16,6 +17,7 @@ import { useToast } from '../../context/ToastContext';
 import { API_BASE_URL } from '../../services/apiService';
 import authService from '../../services/authService';
 import platformService from '../../services/platformService';
+import { extractApiError } from '../../utils/apiError';
 import { backdropProps } from '../../utils/modalA11y';
 import { validateForm } from '../../utils/validation';
 
@@ -1933,7 +1935,7 @@ const SetPasswordModal = ({ hospitalId, onClose, onSuccess }) => {
       await platformService.resetTenantPassword(hospitalId, newPw);
       onSuccess();
     } catch (err) {
-      setError(err.response?.data || 'Failed to reset password.');
+      setError(extractApiError(err, 'Failed to reset password.'));
     } finally {
       setLoading(false);
     }
@@ -3194,25 +3196,13 @@ const AuditLogsTable = ({ auditLogs }) => {
             <label htmlFor="fld-225" className="text-xs font-medium text-gray-500">
               From
             </label>
-            <input
-              id="fld-225"
-              type="date"
-              value={fromDate}
-              onChange={(e) => handleFilterChange(setFromDate, e.target.value)}
-              className="h-9 px-3 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <DateSelect value={fromDate} onChange={(v) => handleFilterChange(setFromDate, v)} />
           </div>
           <div className="flex flex-col gap-1">
             <label htmlFor="fld-224" className="text-xs font-medium text-gray-500">
               To
             </label>
-            <input
-              id="fld-224"
-              type="date"
-              value={toDate}
-              onChange={(e) => handleFilterChange(setToDate, e.target.value)}
-              className="h-9 px-3 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <DateSelect value={toDate} onChange={(v) => handleFilterChange(setToDate, v)} />
           </div>
           <div className="flex flex-col gap-1">
             <label htmlFor="fld-223" className="text-xs font-medium text-gray-500">

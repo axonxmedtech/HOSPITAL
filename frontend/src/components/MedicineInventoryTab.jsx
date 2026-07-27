@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useToast } from '../context/ToastContext';
 import hospitalService from '../services/hospitalService';
 import ConfirmationModal from './ConfirmationModal';
+import DateSelect from './DateSelect';
 import FrequencyInput from './FrequencyInput';
 
 /**
@@ -55,6 +56,7 @@ const MedicineInventoryTab = ({ hidePrescribingColumns = false }) => {
     defaultFrequency: '',
     defaultDuration: '',
   });
+  const [expiryDate, setExpiryDate] = useState('');
 
   useEffect(() => {
     if (stockModal.isOpen) {
@@ -67,6 +69,7 @@ const MedicineInventoryTab = ({ hidePrescribingColumns = false }) => {
         defaultFrequency: stockModal.data?.defaultFrequency || '',
         defaultDuration: stockModal.data?.defaultDuration || '',
       });
+      setExpiryDate(stockModal.data?.expiryDate || '');
     } else {
       setStockMedicineQuery('');
     }
@@ -564,13 +567,8 @@ const MedicineInventoryTab = ({ hidePrescribingColumns = false }) => {
                   >
                     Expiry Date
                   </label>
-                  <input
-                    id="fld-17"
-                    type="date"
-                    name="expiryDate"
-                    defaultValue={stockModal.data?.expiryDate || ''}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
-                  />
+                  <DateSelect value={expiryDate} onChange={setExpiryDate} />
+                  <input type="hidden" name="expiryDate" value={expiryDate} />
                 </div>
               </div>
 

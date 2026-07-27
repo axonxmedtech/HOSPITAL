@@ -1,4 +1,5 @@
 import React from 'react';
+import DateSelect from '../../../components/DateSelect';
 import escapeHtml from '../../../utils/escapeHtml';
 import { titleCase } from '../../../utils/text';
 import SurgeryFormFrame from './SurgeryFormFrame';
@@ -103,13 +104,7 @@ const PostOperativeCarePlanForm = ({ admissionId, onClose, readOnly = false }) =
             <label htmlFor="fld-197" className="block text-xs font-semibold text-gray-600 mb-1">
               Date
             </label>
-            <input
-              id="fld-197"
-              type="date"
-              value={data.date}
-              onChange={(e) => set('date', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-            />
+            <DateSelect value={data.date} onChange={(v) => set('date', v)} />
           </div>
           <div>
             <label htmlFor="fld-196" className="block text-xs font-semibold text-gray-600 mb-1">

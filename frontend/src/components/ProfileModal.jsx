@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from '../context/ToastContext';
 import authService from '../services/authService';
+import { extractApiError } from '../utils/apiError';
 import { backdropProps } from '../utils/modalA11y';
 
 /**
@@ -329,8 +330,7 @@ const ProfileModal = ({ isOpen, onClose }) => {
       fetchLatestProfile();
     } catch (err) {
       console.error('Error updating profile settings:', err);
-      const errMsg = err.response?.data || err.message || 'Failed to update profile settings.';
-      toastError(errMsg);
+      toastError(extractApiError(err, 'Failed to update profile settings.'));
     } finally {
       setSaving(false);
     }

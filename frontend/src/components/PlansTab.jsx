@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from '../context/ToastContext';
 import platformService from '../services/platformService';
+import { extractApiError } from '../utils/apiError';
 
 // NURSING is HOSPITAL-only: it lives in AVAILABLE_MODULES (used by MODULES_BY_TYPE.HOSPITAL)
 // and is deliberately absent from the CLINIC and PHARMACY module lists below.
@@ -154,7 +155,7 @@ export default function PlansTab({ hospitalType = null }) {
       setShowModal(false);
       loadPlans();
     } catch (err) {
-      setError(err.response?.data || 'Failed to save plan');
+      setError(extractApiError(err, 'Failed to save plan'));
     } finally {
       setSubmitting(false);
     }
@@ -167,7 +168,7 @@ export default function PlansTab({ hospitalType = null }) {
       success('Plan deleted');
       loadPlans();
     } catch (err) {
-      setError(err.response?.data || 'Failed to delete plan');
+      setError(extractApiError(err, 'Failed to delete plan'));
     }
   };
 
