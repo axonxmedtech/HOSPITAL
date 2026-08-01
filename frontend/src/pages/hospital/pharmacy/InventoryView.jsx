@@ -13,7 +13,6 @@ import inventoryApi from '../../../services/pharmacy/inventoryApi';
 
 const InventoryView = ({ onNavigate, refreshKey = 0 }) => {
   const currentUser = authService.getCurrentUser();
-  const barcodeEnabled = currentUser?.barcodeEnabled !== false;
   // Standalone pharmacy ERP: no category filter / no manual "Add Medicine"
   // (medicines enter via Purchase). Hospital/clinic pharmacy keeps current UI.
   const isStandalonePharmacy =
@@ -563,11 +562,6 @@ const InventoryView = ({ onNavigate, refreshKey = 0 }) => {
                 >
                   Adjust Stock (Audit)
                 </button>
-                {barcodeEnabled && (
-                  <button className="px-4 py-2 border border-gray-300 text-gray-700 hover:bg-gray-100 text-xs font-bold rounded-lg transition-all active:scale-95">
-                    Print Barcode Labels
-                  </button>
-                )}
               </div>
               <button
                 onClick={() => {

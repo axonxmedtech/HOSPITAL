@@ -1,19 +1,18 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import hospitalService from '../../../services/hospitalService';
 import inventoryApi from '../../../services/pharmacy/inventoryApi';
 import salesApi from '../../../services/pharmacy/salesApi';
+import { printBlob } from '../../../utils/printPdf';
 
 const BillingCounterView = ({ initialData }) => {
   const user = authService.getCurrentUser();
   const isStandalonePharmacy =
     user?.modules?.includes('PHARMACY') && !user?.modules?.includes('OPD');
-  const barcodeEnabled = user?.barcodeEnabled !== false;
 
   const toast = useToast();
-  const [barcodeMode, setBarcodeMode] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Patient State
@@ -117,6 +116,9 @@ const BillingCounterView = ({ initialData }) => {
   // Item Search State
   const [itemSearch, setItemSearch] = useState('');
   const [itemResults, setItemResults] = useState([]);
+  // When a suggestion is picked we set itemSearch to its name; this flag stops that programmatic
+  // change from re-triggering the search effect (which would reopen the just-closed dropdown).
+  const suppressItemSearchRef = useRef(false);
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [sellQty, setSellQty] = useState(1);
 
@@ -174,6 +176,10 @@ const BillingCounterView = ({ initialData }) => {
 
   // Item Search (FEFO Autocomplete)
   useEffect(() => {
+    if (suppressItemSearchRef.current) {
+      suppressItemSearchRef.current = false;
+      return;
+    }
     const timer = setTimeout(async () => {
       if (itemSearch.length > 1) {
         try {
@@ -248,17 +254,11 @@ const BillingCounterView = ({ initialData }) => {
 
     try {
       const blob = await salesApi.downloadPDF(idToPrint);
-      const url = window.URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `invoice_${idToPrint}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      toast.success('Invoice PDF downloaded successfully!');
+      // Print (open the print dialog) instead of downloading — same behaviour as consultation
+      // complete. printBlob renders the PDF in a hidden iframe and fires the browser print dialog.
+      await printBlob(new Blob([blob], { type: 'application/pdf' }));
     } catch (err) {
-      toast.error('Failed to print invoice PDF');
+      toast.error('Failed to print invoice');
     }
   };
 
@@ -267,16 +267,13 @@ const BillingCounterView = ({ initialData }) => {
       toast.error('Bill is empty!');
       return;
     }
-    if (!patientSearch.trim()) {
-      toast.error('Patient name is required!');
-      return;
-    }
 
     setIsSubmitting(true);
     try {
       const payload = {
         patientId: patientId,
-        patientName: patientSearch,
+        // Patient name is optional for a walk-in counter sale; label it generically when blank.
+        patientName: patientSearch.trim() || 'Walk-in Customer',
         paymentMethod: paymentMethod,
         isIpdBill: paymentMethod === 'IPD_BILL',
         ipdAdmissionId: null,
@@ -419,14 +416,11 @@ const BillingCounterView = ({ initialData }) => {
         )}
       </div>
 
-      <div
-        className="flex flex-1 flex-col lg:flex-row gap-4 overflow-y-auto"
-        style={{ minHeight: 'calc(100vh - 240px)' }}
-      >
+      <div className="flex flex-1 min-h-0 flex-col lg:flex-row gap-4">
         {/* MAIN SECTION: Unified POS Billing Grid */}
-        <div className="lg:flex-1 flex flex-col gap-4 overflow-auto">
-          {/* Unified Grid Table Card */}
-          <div className="bg-white border border-gray-200 rounded-xl flex flex-col overflow-hidden shadow-sm">
+        <div className="lg:flex-1 flex flex-col gap-4 min-h-0">
+          {/* Unified Grid Table Card — only the item list scrolls; the action bar stays visible. */}
+          <div className="bg-white border border-gray-200 rounded-xl flex flex-col flex-1 min-h-0 overflow-hidden shadow-sm">
             <div className="px-4 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
               <h3 className="font-bold text-gray-800 flex items-center gap-2">
                 <svg
@@ -445,33 +439,12 @@ const BillingCounterView = ({ initialData }) => {
                 Pharmacy Sales Billing Grid
               </h3>
               <div className="flex items-center gap-4">
-                {barcodeEnabled && (
-                  <span className="flex items-center gap-2 cursor-pointer select-none">
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      className={`w-8 h-4 rounded-full transition-colors relative ${barcodeMode ? 'bg-green-500' : 'bg-gray-300'}`}
-                      onClick={() => setBarcodeMode(!barcodeMode)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          e.currentTarget.click();
-                        }
-                      }}
-                    >
-                      <div
-                        className={`absolute top-0.5 left-0.5 bg-white w-3 h-3 rounded-full transition-transform ${barcodeMode ? 'translate-x-4' : ''}`}
-                      ></div>
-                    </div>
-                    <span className="text-xs font-bold text-gray-600">Barcode Mode</span>
-                  </span>
-                )}
                 <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold">
                   Total Items: {billItems.length}
                 </span>
               </div>
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-auto flex-1 min-h-0">
               <table className="min-w-full text-sm text-left">
                 <thead className="bg-gray-50 text-[10px] text-gray-400 font-bold uppercase tracking-widest sticky top-0 z-10 border-b">
                   <tr>
@@ -479,7 +452,7 @@ const BillingCounterView = ({ initialData }) => {
                     <th className="px-6 py-4 font-medium">Medicine Name / Search</th>
                     <th className="px-6 py-4 font-medium text-center w-24">Qty</th>
                     <th className="px-6 py-4 font-medium text-right w-36">Selling Price</th>
-                    <th className="px-6 py-4 font-medium text-right w-36">Total</th>
+                    <th className="px-6 py-4 font-medium text-right w-36">Total (incl. GST)</th>
                     <th className="px-6 py-4 text-center w-32">Actions</th>
                   </tr>
                 </thead>
@@ -491,11 +464,7 @@ const BillingCounterView = ({ initialData }) => {
                       <div className="relative">
                         <input
                           type="text"
-                          placeholder={
-                            barcodeMode
-                              ? '⚡ Scan barcode...'
-                              : 'Search medicine name or batch (FEFO ordered)...'
-                          }
+                          placeholder="Search medicine name or batch (FEFO ordered)..."
                           value={itemSearch}
                           onChange={(e) => setItemSearch(e.target.value)}
                           className="w-full pl-9 pr-3 py-2 border border-blue-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white font-medium shadow-inner"
@@ -521,6 +490,7 @@ const BillingCounterView = ({ initialData }) => {
                                 role="button"
                                 tabIndex={0}
                                 onClick={() => {
+                                  suppressItemSearchRef.current = true;
                                   setSelectedBatch(item);
                                   setItemSearch(item.medicine?.medicineName);
                                   setItemResults([]);
@@ -609,64 +579,77 @@ const BillingCounterView = ({ initialData }) => {
 
                   {/* Render Current Cart Items */}
                   {billItems.length > 0 ? (
-                    billItems.map((item, idx) => (
-                      <tr
-                        key={idx}
-                        className={`hover:bg-gray-50 transition-colors ${item.outOfStock ? 'bg-red-50/40' : ''}`}
-                      >
-                        <td className="px-6 py-4 text-gray-400 text-center font-bold">{idx + 1}</td>
-                        <td className="px-6 py-4">
-                          <div className="font-bold text-gray-900 flex items-center gap-2">
-                            {item.name}
-                            {item.outOfStock && (
-                              <span className="bg-red-100 text-red-700 border border-red-200 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider">
-                                Out of Stock
+                    billItems.map((item, idx) => {
+                      const gstAmount = (item.qty * item.price * (item.taxPercent || 0)) / 100;
+                      const lineTotalInclGst = item.total + gstAmount;
+                      return (
+                        <tr
+                          key={idx}
+                          className={`hover:bg-gray-50 transition-colors ${item.outOfStock ? 'bg-red-50/40' : ''}`}
+                        >
+                          <td className="px-6 py-4 text-gray-400 text-center font-bold">
+                            {idx + 1}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="font-bold text-gray-900 flex items-center gap-2">
+                              {item.name}
+                              {item.outOfStock && (
+                                <span className="bg-red-100 text-red-700 border border-red-200 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider">
+                                  Out of Stock
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-gray-500 mt-0.5 flex gap-2">
+                              <span className="bg-gray-100 px-1.5 rounded">
+                                Batch: {item.batch}
                               </span>
-                            )}
-                          </div>
-                          <div className="text-[10px] text-gray-500 mt-0.5 flex gap-2">
-                            <span className="bg-gray-100 px-1.5 rounded">Batch: {item.batch}</span>
-                            <span className="bg-gray-100 px-1.5 rounded text-red-500">
-                              Exp: {item.expiry}
-                            </span>
-                            {item.taxPercent > 0 && (
-                              <span className="bg-emerald-50 text-emerald-700 px-1.5 rounded font-bold">
-                                GST: {item.taxPercent}%
+                              <span className="bg-gray-100 px-1.5 rounded text-red-500">
+                                Exp: {item.expiry}
                               </span>
+                              {item.taxPercent > 0 && (
+                                <span className="bg-emerald-50 text-emerald-700 px-1.5 rounded font-bold">
+                                  GST {item.taxPercent}%: ₹{gstAmount.toFixed(2)}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <div className="font-black text-gray-900">{item.qty}</div>
+                          </td>
+                          <td className="px-6 py-4 text-right text-gray-700 font-medium">
+                            ₹{item.price.toFixed(2)}
+                          </td>
+                          <td className="px-6 py-4 text-right font-black text-gray-900">
+                            ₹{lineTotalInclGst.toFixed(2)}
+                            {gstAmount > 0 && (
+                              <div className="text-[10px] font-medium text-gray-400">
+                                ₹{item.total.toFixed(2)} + ₹{gstAmount.toFixed(2)} GST
+                              </div>
                             )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <div className="font-black text-gray-900">{item.qty}</div>
-                        </td>
-                        <td className="px-6 py-4 text-right text-gray-700 font-medium">
-                          ₹{item.price.toFixed(2)}
-                        </td>
-                        <td className="px-6 py-4 text-right font-black text-gray-900">
-                          ₹{item.total.toFixed(2)}
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <button
-                            onClick={() => removeItem(idx)}
-                            className="text-gray-300 hover:text-red-500 p-1.5 rounded-full hover:bg-red-50 transition-all active:scale-95"
-                          >
-                            <svg
-                              className="w-4 h-4"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <button
+                              onClick={() => removeItem(idx)}
+                              className="text-gray-300 hover:text-red-500 p-1.5 rounded-full hover:bg-red-50 transition-all active:scale-95"
                             >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                              />
-                            </svg>
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                              <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                />
+                              </svg>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
                   ) : (
                     <tr>
                       <td colSpan="6" className="px-6 py-16 text-center text-gray-400 italic">
@@ -698,7 +681,7 @@ const BillingCounterView = ({ initialData }) => {
           </div>
         </div>
         {/* RIGHT SECTION: Checkout / Payment */}
-        <div className="lg:w-80 space-y-4 flex flex-col">
+        <div className="lg:w-80 space-y-4 flex flex-col min-h-0 overflow-y-auto">
           {/* Summary Card */}
           <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden flex-shrink-0 shadow-sm">
             <div className="bg-gray-900 text-white p-5 text-center">
@@ -713,12 +696,12 @@ const BillingCounterView = ({ initialData }) => {
                 <span>₹{totals.subtotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-gray-500 font-medium">
-                <span>Discount</span>
-                <span className="text-green-600">-₹{totals.discount.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-gray-500 font-medium">
                 <span>Tax (GST)</span>
                 <span>+₹{totals.tax.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-gray-500 font-medium">
+                <span>Discount</span>
+                <span className="text-green-600">-₹{totals.discount.toFixed(2)}</span>
               </div>
               <div className="flex justify-between font-black text-gray-900 pt-3 border-t border-dashed border-gray-200 text-lg">
                 <span>Final Bill</span>
@@ -797,7 +780,7 @@ const BillingCounterView = ({ initialData }) => {
       </div>
 
       {/* BOTTOM ACTION BAR */}
-      <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-xl flex items-center justify-between">
+      <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-xl flex items-center justify-between flex-shrink-0">
         <div className="flex gap-3">
           <button className="px-6 py-2.5 border border-gray-200 text-gray-600 text-sm font-bold rounded-xl hover:bg-gray-50 transition-all active:scale-95">
             Hold Bill (F4)
@@ -821,24 +804,9 @@ const BillingCounterView = ({ initialData }) => {
             <p className="text-2xl font-black text-gray-900">₹{totals.net.toFixed(2)}</p>
           </div>
           <button
-            onClick={() => handlePrintInvoice()}
-            disabled={!lastSavedSaleId}
-            className={`px-6 py-3 border text-sm font-bold rounded-xl flex items-center gap-2 transition-all active:scale-95 shadow-sm ${!lastSavedSaleId ? 'border-gray-200 text-gray-400 bg-gray-50/50 cursor-not-allowed' : 'border-gray-900 text-gray-900 bg-white hover:bg-gray-50'}`}
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
-              />
-            </svg>
-            Print Invoice
-          </button>
-          <button
             onClick={handleCompleteSale}
-            disabled={isSubmitting || !patientSearch.trim() || billItems.length === 0}
-            className={`px-8 py-3 text-white text-sm font-bold rounded-xl flex items-center gap-3 transition-all active:scale-95 shadow-xl shadow-green-200 ${isSubmitting || !patientSearch.trim() || billItems.length === 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none' : 'bg-green-600 hover:bg-green-700'}`}
+            disabled={isSubmitting || billItems.length === 0}
+            className={`px-8 py-3 text-white text-sm font-bold rounded-xl flex items-center gap-3 transition-all active:scale-95 shadow-xl shadow-green-200 ${isSubmitting || billItems.length === 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none' : 'bg-green-600 hover:bg-green-700'}`}
           >
             {isSubmitting ? (
               <LoadingSpinner size="xs" color="white" />

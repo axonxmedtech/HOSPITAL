@@ -88,6 +88,8 @@ const LandingRedirect = () => {
     case 'HOSPITAL_ADMIN': {
       // Only Single Pharmacist Admin (solo) gets the dual pharmacist/admin landing.
       const isSoloPharmacistAdmin = user.modules?.includes('SINGLE_PHARMACIST_ADMIN');
+      // Pharmacy tenants use /pharmacy/* URLs; hospital/clinic keep /hospital/*.
+      const isPharmacyTenant = user.hospitalType === 'PHARMACY';
       if (user.isSingleDoctor) {
         const preference = sessionStorage.getItem('activeDashboard');
         if (preference === 'admin') {
@@ -97,18 +99,25 @@ const LandingRedirect = () => {
       } else if (isSoloPharmacistAdmin) {
         const preference = sessionStorage.getItem('activeDashboard');
         if (preference === 'admin') {
-          return <Navigate to="/hospital/admin" replace />;
+          return <Navigate to="/pharmacy/admin" replace />;
         }
-        return <Navigate to="/hospital/pharmacy" replace />;
+        return <Navigate to="/pharmacy/pharmacy" replace />;
       }
-      return <Navigate to="/hospital/admin" replace />;
+      return <Navigate to={isPharmacyTenant ? '/pharmacy/admin' : '/hospital/admin'} replace />;
     }
     case 'DOCTOR':
       return <Navigate to="/hospital/doctor" replace />;
     case 'RECEPTIONIST':
       return <Navigate to="/hospital/receptionist" replace />;
     case 'PHARMACIST':
-      return <Navigate to="/hospital/pharmacy" replace />;
+      // A pharmacy-tenant pharmacist uses /pharmacy/*; a hospital pharmacy-dept
+      // pharmacist stays on /hospital/pharmacy.
+      return (
+        <Navigate
+          to={user.hospitalType === 'PHARMACY' ? '/pharmacy/pharmacy' : '/hospital/pharmacy'}
+          replace
+        />
+      );
     case 'NURSE':
       return <Navigate to="/hospital/nurse" replace />;
     case 'NURSE_INCHARGE':
@@ -210,6 +219,31 @@ function App() {
 
             <Route
               path="/hospital/pharmacy"
+              element={
+                <ProtectedRoute allowedRoles={['PHARMACIST', 'HOSPITAL_ADMIN']}>
+                  <PageMeta title="HMS - Pharmacy">
+                    <PharmacyDashboard />
+                  </PageMeta>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* PHARMACY TENANT — same dashboards under a /pharmacy/* namespace so the
+                address bar reads "pharmacy" instead of "hospital". Hospital/clinic keep
+                their /hospital/* routes above untouched. */}
+            <Route
+              path="/pharmacy/admin"
+              element={
+                <ProtectedRoute allowedRoles={['HOSPITAL_ADMIN']}>
+                  <PageMeta title="HMS - Pharmacy Admin">
+                    <HospitalAdminDashboard />
+                  </PageMeta>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/pharmacy/pharmacy"
               element={
                 <ProtectedRoute allowedRoles={['PHARMACIST', 'HOSPITAL_ADMIN']}>
                   <PageMeta title="HMS - Pharmacy">

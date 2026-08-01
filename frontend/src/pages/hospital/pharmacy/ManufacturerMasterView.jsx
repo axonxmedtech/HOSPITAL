@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import DataTable from '../../../components/DataTable';
 import { useToast } from '../../../context/ToastContext';
 import manufacturersApi from '../../../services/pharmacy/manufacturersApi';
+import { extractApiError } from '../../../utils/apiError';
 import ManufacturerForm from './ManufacturerForm';
 
 /**
@@ -90,9 +91,9 @@ const ManufacturerMasterView = () => {
       setIsModalOpen(false);
       fetchManufacturers();
     } catch (err) {
-      console.error('Save manufacturer error:', err);
-      const message = err?.response?.data?.message || 'Failed to save manufacturer';
-      toast.error(message);
+      // Surface the actual reason (e.g. a validation message like "Phone must be exactly 10 digits")
+      // instead of a generic failure — validation 400s come back as { errors: {field: msg} }.
+      toast.error(extractApiError(err, 'Failed to save manufacturer'));
     } finally {
       setIsSubmitting(false);
     }
@@ -169,10 +170,10 @@ const ManufacturerMasterView = () => {
           <div className="flex items-center gap-2">
             <button
               onClick={() => handleEdit(m)}
-              className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-all"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold border border-gray-200 text-gray-700 bg-white hover:bg-gray-50 transition-all"
               title="Edit Manufacturer"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -180,17 +181,18 @@ const ManufacturerMasterView = () => {
                   d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
                 />
               </svg>
+              Edit
             </button>
             <button
               onClick={() => handleToggleStatus(m)}
-              className={`p-1.5 rounded-md transition-all ${
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold border transition-all ${
                 m.isActive
-                  ? 'text-amber-600 hover:text-amber-700 hover:bg-amber-50'
-                  : 'text-green-600 hover:text-green-700 hover:bg-green-50'
+                  ? 'text-amber-700 border-amber-200 bg-amber-50 hover:bg-amber-100'
+                  : 'text-green-700 border-green-200 bg-green-50 hover:bg-green-100'
               }`}
-              title={m.isActive ? 'Deactivate' : 'Activate'}
+              title={m.isActive ? 'Deactivate manufacturer' : 'Activate manufacturer'}
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -202,6 +204,7 @@ const ManufacturerMasterView = () => {
                   }
                 />
               </svg>
+              {m.isActive ? 'Deactivate' : 'Activate'}
             </button>
           </div>
         );

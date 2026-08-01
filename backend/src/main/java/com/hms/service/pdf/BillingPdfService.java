@@ -513,9 +513,10 @@ public class BillingPdfService {
             summaryTable.setTotalWidth(200f);
             summaryTable.setWidths(new float[]{1.5f, 1.5f});
 
+            // Sequence: subtotal, then GST is ADDED, then the discount is SUBTRACTED, then net.
             helper.addSummaryRow(summaryTable, "Sub Total:", sale.getSubtotal() != null ? "INR " + String.format("%.2f", sale.getSubtotal()) : "INR 0.00");
-            helper.addSummaryRow(summaryTable, "Discount:", sale.getDiscountAmount() != null ? "- INR " + String.format("%.2f", sale.getDiscountAmount()) : "INR 0.00");
             helper.addSummaryRow(summaryTable, "GST (Tax):", sale.getTaxAmount() != null ? "+ INR " + String.format("%.2f", sale.getTaxAmount()) : "INR 0.00");
+            helper.addSummaryRow(summaryTable, "Discount:", sale.getDiscountAmount() != null ? "- INR " + String.format("%.2f", sale.getDiscountAmount()) : "INR 0.00");
             helper.addSummaryRow(summaryTable, "Net Payable:", sale.getNetAmount() != null ? "INR " + String.format("%.2f", sale.getNetAmount()) : "INR 0.00");
 
             summaryTable.writeSelectedRows(0, -1, 359, 175, writer.getDirectContent());

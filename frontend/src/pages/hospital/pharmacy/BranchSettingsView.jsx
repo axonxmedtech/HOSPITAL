@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from '../../../context/ToastContext';
-import apiClient from '../../../services/apiService';
 import branchesApi from '../../../services/pharmacy/branchesApi';
 
 const BranchSettingsView = () => {
@@ -10,7 +9,6 @@ const BranchSettingsView = () => {
   const [saving, setSaving] = useState(false);
 
   const [branchForm, setBranchForm] = useState({ name: '', address: '', phone: '' });
-  const [barcodeEnabled, setBarcodeEnabled] = useState(true);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -26,10 +24,6 @@ const BranchSettingsView = () => {
             phone: currentBranch.phone || '',
           });
         }
-
-        // 2. Load barcode setting
-        const settingsRes = await apiClient.get('/hospital/settings/operations');
-        setBarcodeEnabled(settingsRes.data?.barcodeEnabled !== false);
       } catch (err) {
         console.error('Failed to load branch settings:', err);
         toastError('Failed to load settings');
@@ -61,9 +55,6 @@ const BranchSettingsView = () => {
 
       // Update sessionStorage branch name in case it changed
       sessionStorage.setItem('selectedBranchName', branchForm.name.trim());
-
-      // Update barcode setting
-      await apiClient.put('/hospital/settings/barcode', { barcodeEnabled });
 
       success('Branch settings updated successfully');
     } catch (err) {
@@ -147,37 +138,6 @@ const BranchSettingsView = () => {
               className="w-full border border-gray-355 rounded-xl px-3 py-2 text-sm outline-none focus:border-gray-900 transition-all h-20"
               placeholder="Full address of the outlet..."
             />
-          </div>
-        </div>
-
-        <hr className="border-gray-100" />
-
-        {/* Barcode settings */}
-        <div className="space-y-4">
-          <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-            Operational Toggles
-          </h4>
-
-          <div className="flex items-start gap-3 bg-gray-50 p-4 rounded-xl border border-gray-150">
-            <input
-              type="checkbox"
-              id="barcode-toggle"
-              checked={barcodeEnabled}
-              onChange={(e) => setBarcodeEnabled(e.target.checked)}
-              className="w-4.5 h-4.5 rounded border-gray-300 text-gray-900 focus:ring-gray-900 cursor-pointer mt-0.5"
-            />
-            <div>
-              <label
-                htmlFor="barcode-toggle"
-                className="block text-sm font-bold text-gray-800 cursor-pointer select-none"
-              >
-                Enable Barcode Workflows
-              </label>
-              <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
-                When enabled, the pharmacy module will support barcode scanning for quick billing
-                and permit generating barcode labels for inventory batches.
-              </p>
-            </div>
           </div>
         </div>
 
