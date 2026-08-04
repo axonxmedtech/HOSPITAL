@@ -14,7 +14,9 @@ const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggle
   // MULTI_PHARMACY manages branches instead.
   const isStandalonePharmacy =
     user?.role === 'HOSPITAL_ADMIN' && user?.modules?.includes('SINGLE_PHARMACIST_ADMIN');
-  const isPharmacyDashboard = location.pathname.includes('/hospital/pharmacy');
+  const isPharmacyDashboard =
+    location.pathname.includes('/pharmacy/pharmacy') ||
+    location.pathname.includes('/hospital/pharmacy');
 
   return (
     <header className="bg-white border-b border-gray-200 z-10 w-full sticky top-0">
@@ -104,7 +106,7 @@ const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggle
               <button
                 onClick={() => {
                   sessionStorage.setItem('activeDashboard', 'pharmacy');
-                  navigate('/hospital/pharmacy');
+                  navigate('/pharmacy/pharmacy');
                 }}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all duration-300 flex items-center gap-1.5 ${
                   isPharmacyDashboard
@@ -130,7 +132,7 @@ const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggle
               <button
                 onClick={() => {
                   sessionStorage.setItem('activeDashboard', 'admin');
-                  navigate('/hospital/admin');
+                  navigate('/pharmacy/admin');
                 }}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all duration-300 flex items-center gap-1.5 ${
                   !isPharmacyDashboard

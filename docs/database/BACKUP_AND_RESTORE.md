@@ -12,12 +12,12 @@ them trustworthy.
 
 ## Backup strategy
 
-| Trigger | How | Notes |
-|---|---|---|
-| **Scheduled** | `.github/workflows/db-backup.yml` (daily cron) | full logical backup |
-| **Pre-production-deploy** | `_deploy.yml` step (production) | **before** any schema change; **gates** the deploy |
-| **Manual** | `db-backup.yml` → *Run workflow* (choose env) | ad-hoc, e.g. before risky ops |
-| **On the box** | `scripts/db/backup.sh` | what all of the above call |
+| Trigger                   | How                                                             | Notes                                              |
+| ------------------------- | --------------------------------------------------------------- | -------------------------------------------------- |
+| **Scheduled**             | `.github/workflows/db-backup.yml` (weekly cron — Sun 00:00 IST) | full logical backup                                |
+| **Pre-production-deploy** | `_deploy.yml` step (production)                                 | **before** any schema change; **gates** the deploy |
+| **Manual**                | `db-backup.yml` → _Run workflow_ (choose env)                   | ad-hoc, e.g. before risky ops                      |
+| **On the box**            | `scripts/db/backup.sh`                                          | what all of the above call                         |
 
 `scripts/db/backup.sh` produces a **consistent** (`--single-transaction`, no locks), gzipped,
 **timestamped** dump: `‹db›-‹env›-‹UTC-timestamp›.sql.gz` in `BACKUP_DIR` (default
@@ -47,6 +47,7 @@ them trustworthy.
 ```
 
 ### Retention policy
+
 - Keep backups for **`RETENTION_DAYS`** (default **30**, via `DB_BACKUP_RETENTION_DAYS`).
 - **Never** prune below **`KEEP_MIN`** newest (default **7**) regardless of age.
 - The newest backup is never deleted. Pre-deploy backups are kept alongside scheduled ones.
@@ -73,6 +74,7 @@ data** — this is the drill that makes backups trustworthy.
 ```
 
 ### Restore procedure (drill — do this regularly)
+
 ```bash
 # On the VPS, with app env sourced:
 cd <repo> && set -a && . ./.env && set +a
@@ -82,8 +84,10 @@ bash scripts/db/restore.sh /var/backups/hms/<file>.sql.gz     # → scratch DB +
 ```
 
 ### Emergency restore (over the live DB — last resort)
+
 Restoring over live data is destructive of anything since the backup. Only when the DB is
 unrecoverable and after sign-off:
+
 1. **Take a fresh backup first** (`backup.sh`) — even of the broken state.
 2. Stop the app: `sudo systemctl stop hms-production`.
 3. `FORCE_RESTORE=yes bash scripts/db/restore.sh <backup>.sql.gz hospital_management`
@@ -94,6 +98,7 @@ unrecoverable and after sign-off:
 ---
 
 ## Recovery checklist
+
 - [ ] Backup exists and **verified** (`verify-backup.sh` passes; checksum matches sidecar).
 - [ ] Restore into scratch DB **succeeds** and validation passes (tables + core tables present).
 - [ ] Restored app boots against the scratch DB (optional deeper drill).
@@ -102,18 +107,25 @@ unrecoverable and after sign-off:
 - [ ] Offsite copy of periodic backups exists (compliance).
 
 ## Relationship to deployment rollback
+
 Phase-8 rollback restores the **application/artifact**, not the database. The **pre-deploy backup**
 is the database safety net: if a migration corrupts data, roll back the app **and** restore the DB
 from the pre-deploy backup. Because migrations are backward-compatible, the common case is
 forward-fix (a new `V(n+1)` migration) rather than a DB restore.
 
 ## Manual operational steps required
+
 - Ensure the deploy user can write `BACKUP_DIR` (`/var/backups/hms`) and run `mysqldump`/`mysql`
   with the app's DB credentials (they come from the VPS `.env`).
 - Set `DB_BACKUP_RETENTION_DAYS` (variable) if 30 days isn't right for your compliance needs.
 - Schedule the restore **drill** and periodic **offsite** copy of dumps.
-- Confirm the daily backup cron window in `db-backup.yml` matches your low-traffic hours.
+- Confirm the weekly backup cron window in `db-backup.yml` matches your low-traffic hours.
+- **Required:** set a repository-level variable `PRODUCTION_SSH_HOST` (and `STAGING_SSH_HOST`).
+  The scheduled backup job runs without an `environment:` scope on purpose — an environment with
+  required reviewers would stall every unattended backup waiting for approval — so it cannot read
+  the environment-scoped `vars.HOST` that `_deploy.yml` uses.
 
 ## Future (out of scope for this phase)
+
 Point-in-time recovery via binlog, cross-region backup replication, and automated offsite archival
 — these need infrastructure/DR work explicitly excluded here.

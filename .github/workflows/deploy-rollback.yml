@@ -38,6 +38,10 @@ jobs:
       # Pin to SHA in production: https://github.com/actions/checkout/releases
       - uses: actions/checkout@v4
 
+      # This job DOES run inside the target GitHub Environment (see `environment:` above), so
+      # environment-scoped vars are readable. The host lives there as `vars.HOST`; the
+      # PRODUCTION_/STAGING_ names are optional repository-level overrides. Resolving in that
+      # order mirrors _deploy.yml so rollback reaches the same box the deploy did.
       - name: Resolve environment settings
         id: env
         run: |
@@ -45,7 +49,7 @@ jobs:
             {
               echo "repo_path=${{ vars.PRODUCTION_DEPLOY_PATH || '/var/www/hms/production/repo_prod' }}"
               echo "service=hms-production"
-              echo "host=${{ vars.PRODUCTION_SSH_HOST }}"
+              echo "host=${{ vars.PRODUCTION_SSH_HOST || vars.HOST || vars.SSH_HOST }}"
               echo "port=${{ vars.PRODUCTION_SSH_PORT || '22' }}"
               echo "hport=${{ vars.PRODUCTION_HEALTH_PORT || '8080' }}"
             } >> "$GITHUB_OUTPUT"
@@ -53,7 +57,7 @@ jobs:
             {
               echo "repo_path=${{ vars.STAGING_DEPLOY_PATH || '/var/www/hms/staging/repo_stage' }}"
               echo "service=hms-staging"
-              echo "host=${{ vars.STAGING_SSH_HOST }}"
+              echo "host=${{ vars.STAGING_SSH_HOST || vars.HOST || vars.SSH_HOST }}"
               echo "port=${{ vars.STAGING_SSH_PORT || '22' }}"
               echo "hport=${{ vars.STAGING_HEALTH_PORT || '8080' }}"
             } >> "$GITHUB_OUTPUT"

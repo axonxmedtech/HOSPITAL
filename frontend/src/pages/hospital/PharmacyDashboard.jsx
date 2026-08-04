@@ -9,11 +9,13 @@ import authService from '../../services/authService';
 
 // Module Views
 import BillingCounterView from './pharmacy/BillingCounterView';
+import BillingHistoryView from './pharmacy/BillingHistoryView';
 import BranchAuditLogsView from './pharmacy/BranchAuditLogsView';
 import BranchSettingsView from './pharmacy/BranchSettingsView';
 import DashboardView from './pharmacy/DashboardView';
 import ExpiryView from './pharmacy/ExpiryView';
 import InventoryView from './pharmacy/InventoryView';
+import ManufacturerMasterView from './pharmacy/ManufacturerMasterView';
 import PrescriptionsView from './pharmacy/PrescriptionsView';
 import PurchaseView from './pharmacy/PurchaseView';
 import ReportsView from './pharmacy/ReportsView';
@@ -61,10 +63,12 @@ const PharmacyDashboard = () => {
   const sidebarTabs = [
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'billing', label: 'Billing Counter' },
+    { id: 'billing-history', label: 'Billing' },
     ...(!isStandalonePharmacy ? [{ id: 'prescriptions', label: 'Prescriptions' }] : []),
     { id: 'inventory', label: 'Inventory' },
     { id: 'purchase', label: 'Purchase Management' },
     { id: 'suppliers', label: 'Suppliers' },
+    { id: 'manufacturers', label: 'Manufacturers' },
     { id: 'returns', label: 'Returns & Refunds' },
     { id: 'expiry', label: 'Expiry Management' },
     { id: 'reports', label: 'Reports & Analytics' },
@@ -85,6 +89,9 @@ const PharmacyDashboard = () => {
       case 'billing':
         return <BillingCounterView initialData={navData} refreshKey={refreshKey} />;
 
+      case 'billing-history':
+        return <BillingHistoryView refreshKey={refreshKey} />;
+
       case 'prescriptions':
         return <PrescriptionsView onNavigate={handleNavigate} refreshKey={refreshKey} />;
 
@@ -96,6 +103,8 @@ const PharmacyDashboard = () => {
 
       case 'suppliers':
         return <SuppliersView refreshKey={refreshKey} />;
+      case 'manufacturers':
+        return <ManufacturerMasterView refreshKey={refreshKey} />;
 
       case 'reports':
         return <ReportsView refreshKey={refreshKey} />;
@@ -187,7 +196,7 @@ const PharmacyDashboard = () => {
                 onClick={() => {
                   sessionStorage.removeItem('selectedBranchId');
                   sessionStorage.removeItem('selectedBranchName');
-                  navigate('/hospital/admin?tab=pharmacies');
+                  navigate('/pharmacy/admin?tab=pharmacies');
                 }}
                 className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-black text-[10px] uppercase tracking-wider rounded-lg transition-all shadow cursor-pointer"
               >

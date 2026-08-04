@@ -66,14 +66,26 @@ const ManufacturerForm = ({
     if (!formData.manufacturerName.trim()) {
       newErrors.manufacturerName = 'Manufacturer name is required';
     }
+    // Phone is optional, but when given it must be exactly 10 digits (matches the backend).
+    const phone = (formData.phone || '').trim();
+    if (phone && !/^\d{10}$/.test(phone)) {
+      newErrors.phone = 'Phone must be exactly 10 digits';
+    }
+    const email = (formData.email || '').trim();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      newErrors.email = 'Enter a valid email address';
+    }
     return newErrors;
   };
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    let next = type === 'checkbox' ? checked : value;
+    // Keep phone to digits only, capped at 10 — so a +91/spaces entry can't reach the backend.
+    if (name === 'phone') next = value.replace(/\D/g, '').slice(0, 10);
     setFormData((prev) => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value,
+      [name]: next,
     }));
   };
 
@@ -170,10 +182,17 @@ const ManufacturerForm = ({
                 name="phone"
                 value={formData.phone}
                 onChange={handleChange}
-                placeholder="Phone Number (+91...)"
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-900 transition-all"
+                placeholder="Phone Number (10 digits)"
+                maxLength={10}
+                inputMode="numeric"
+                className={`w-full px-3 py-2 border rounded focus:outline-none transition-all ${
+                  errors.phone
+                    ? 'border-red-300 focus:border-red-500'
+                    : 'border-gray-300 focus:border-gray-900'
+                }`}
                 disabled={isSubmitting}
               />
+              {errors.phone && <p className="mt-1 text-xs text-red-600">{errors.phone}</p>}
             </div>
 
             {/* Email */}
@@ -184,9 +203,14 @@ const ManufacturerForm = ({
                 value={formData.email}
                 onChange={handleChange}
                 placeholder="Email Address"
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-gray-900 transition-all"
+                className={`w-full px-3 py-2 border rounded focus:outline-none transition-all ${
+                  errors.email
+                    ? 'border-red-300 focus:border-red-500'
+                    : 'border-gray-300 focus:border-gray-900'
+                }`}
                 disabled={isSubmitting}
               />
+              {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
             </div>
 
             {/* --- SECTION C: Business Details --- */}

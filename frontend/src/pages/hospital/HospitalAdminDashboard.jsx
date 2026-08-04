@@ -76,6 +76,7 @@ import OtAnalyticsCard from './OtAnalyticsCard';
 import OtPermissionsCard from './OtPermissionsCard';
 import OtPoliciesCard from './OtPoliciesCard';
 import OtRoomsCard from './OtRoomsCard';
+import BillingHistoryView from './pharmacy/BillingHistoryView';
 import SuppliersView from './pharmacy/SuppliersView';
 import PrintPaymentSettingsCard from './PrintPaymentSettingsCard';
 import TimeSlotsView from './TimeSlotsView';
@@ -4059,7 +4060,7 @@ const HospitalAdminDashboard = () => {
               {activeTab === 'pharmacy-billing' && (
                 <div className="space-y-6">
                   {renderBranchFilterBar()}
-                  <PharmacyBillingTab refreshKey={pharmacyRefreshKey} />
+                  <BillingHistoryView refreshKey={pharmacyRefreshKey} />
                 </div>
               )}
               {activeTab === 'pharmacies' && <PharmaciesTab />}
@@ -9649,7 +9650,7 @@ const PharmaciesTab = () => {
                       onClick={() => {
                         sessionStorage.setItem('selectedBranchId', b.id);
                         sessionStorage.setItem('selectedBranchName', b.name);
-                        navigate('/hospital/pharmacy');
+                        navigate('/pharmacy/pharmacy');
                       }}
                       className="inline-flex items-center gap-1 px-3 py-1 bg-green-50 hover:bg-green-100 text-green-700 hover:text-green-800 text-xs font-bold rounded-lg border border-green-200/50 transition-all cursor-pointer"
                     >
@@ -9819,147 +9820,6 @@ const PharmaciesTab = () => {
 };
 
 // Pharmacy Billing Tab — paginated list of all pharmacy sales bills (Single Pharmacy admin).
-const PharmacyBillingTab = () => {
-  const [bills, setBills] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalElements, setTotalElements] = useState(0);
-  const pageSize = 10;
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    salesApi
-      .getHistory(page, pageSize)
-      .then((data) => {
-        if (!active) return;
-        const content = data.content || data || [];
-        setBills(content);
-        setTotalPages(data.totalPages || 1);
-        setTotalElements(data.totalElements != null ? data.totalElements : content.length);
-      })
-      .catch(() => {
-        if (active) setBills([]);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [page]);
-
-  const handlePdf = async (bill) => {
-    try {
-      const blob = await salesApi.downloadPDF(bill.id);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${bill.billNumber || 'bill'}.pdf`;
-      link.click();
-      window.URL.revokeObjectURL(url);
-    } catch (e) {
-      /* ignore download errors */
-    }
-  };
-
-  return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-bold text-gray-900">Billing</h2>
-          <p className="text-xs text-gray-500 mt-0.5">All pharmacy sales bills</p>
-        </div>
-        <span className="text-xs font-medium text-gray-500">{totalElements} bills</span>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 text-[10px] uppercase tracking-widest text-gray-400 font-black border-b border-gray-100">
-            <tr>
-              <th className="px-6 py-3">Bill No.</th>
-              <th className="px-6 py-3">Date</th>
-              <th className="px-6 py-3">Customer</th>
-              <th className="px-6 py-3 text-center">Items</th>
-              <th className="px-6 py-3">Payment</th>
-              <th className="px-6 py-3 text-right">Amount</th>
-              <th className="px-6 py-3 text-right">Invoice</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {loading ? (
-              <tr>
-                <td colSpan={7} className="py-16 text-center text-gray-400">
-                  Loading bills...
-                </td>
-              </tr>
-            ) : bills.length > 0 ? (
-              bills.map((b) => (
-                <tr key={b.id} className="hover:bg-gray-50/50">
-                  <td className="px-6 py-3 font-bold text-gray-900">{b.billNumber}</td>
-                  <td className="px-6 py-3 text-gray-600">
-                    {b.createdAt ? new Date(b.createdAt).toLocaleDateString() : '-'}
-                  </td>
-                  <td className="px-6 py-3 text-gray-700">{b.patientName || 'Walk-in'}</td>
-                  <td className="px-6 py-3 text-center text-gray-600">{b.items?.length ?? '-'}</td>
-                  <td className="px-6 py-3">
-                    <span className="text-xs font-medium text-gray-600">
-                      {b.paymentMethod || '-'}
-                    </span>
-                    <span
-                      className={`ml-2 px-2 py-0.5 rounded text-[9px] font-black uppercase ${b.paymentStatus === 'PAID' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}
-                    >
-                      {b.paymentStatus || '-'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-3 text-right font-bold text-gray-900">
-                    ₹{Number(b.netAmount || 0).toLocaleString()}
-                  </td>
-                  <td className="px-6 py-3 text-right">
-                    <button
-                      onClick={() => handlePdf(b)}
-                      className="px-3 py-1 text-xs font-bold text-gray-700 border border-gray-300 rounded hover:bg-gray-50"
-                    >
-                      PDF
-                    </button>
-                  </td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={7} className="py-16 text-center text-gray-400 italic">
-                  No bills yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
-        <span className="text-xs text-gray-500">
-          Page {page + 1} of {Math.max(totalPages, 1)}
-        </span>
-        <div className="flex gap-2">
-          <button
-            disabled={page === 0}
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            className={`px-3 py-1.5 rounded border text-xs font-bold ${page === 0 ? 'text-gray-300 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
-          >
-            ← Prev
-          </button>
-          <button
-            disabled={page + 1 >= totalPages}
-            onClick={() => setPage((p) => p + 1)}
-            className={`px-3 py-1.5 rounded border text-xs font-bold ${page + 1 >= totalPages ? 'text-gray-300 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
-          >
-            Next →
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 // Pharmacists Table Component (Reusing similar structure)
 const PharmacistsTable = ({
   pharmacists,

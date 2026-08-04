@@ -48,6 +48,7 @@ const DateSelect = ({
   yearsBack = 100,
   yearsAhead = 15,
   min, // optional "YYYY-MM-DD" floor: no earlier date can be picked (e.g. appointments = today onward)
+  compact = false, // slim padding so the three dropdowns show their values inside narrow table cells
 }) => {
   // Internal state so partial selections (e.g. Year picked, Month/Day not yet) persist.
   const [parts, setParts] = useState(() => splitParts(value));
@@ -109,10 +110,14 @@ const DateSelect = ({
     onChange(next.y && next.m && next.d ? `${next.y}-${next.m}-${next.d}` : '');
   };
 
-  const selCls = `input-field cursor-pointer ${hasError ? 'border-error-300 focus:ring-error-500' : ''}`;
+  const selCls = compact
+    ? `w-full px-0.5 py-1.5 text-xs text-center border rounded-lg bg-white text-gray-800 cursor-pointer appearance-none focus:outline-none focus:ring-1 focus:ring-gray-400 ${
+        hasError ? 'border-error-300' : 'border-gray-300'
+      }`
+    : `input-field cursor-pointer ${hasError ? 'border-error-300 focus:ring-error-500' : ''}`;
 
   return (
-    <div className="grid grid-cols-3 gap-2">
+    <div className={`grid grid-cols-3 gap-1 ${compact ? 'min-w-[250px]' : ''}`}>
       <select
         aria-label="Day"
         value={parts.d}

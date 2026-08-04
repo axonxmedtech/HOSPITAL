@@ -108,20 +108,22 @@ const HospitalLogin = ({ portalType = 'HOSPITAL' }) => {
         );
       }
 
+      // Pharmacy tenants live under /pharmacy/*; hospital/clinic tenants keep /hospital/*.
+      const isPharmacyTenant = response.hospitalType === 'PHARMACY';
       if (response.role === 'HOSPITAL_ADMIN') {
         if (response.isSingleDoctor && selectedRole === 'DOCTOR') {
           navigate('/hospital/doctor');
         } else if (isStandalonePharmacy && selectedRole === 'PHARMACIST') {
-          navigate('/hospital/pharmacy');
+          navigate('/pharmacy/pharmacy');
         } else {
-          navigate('/hospital/admin');
+          navigate(isPharmacyTenant ? '/pharmacy/admin' : '/hospital/admin');
         }
       } else if (response.role === 'DOCTOR') {
         navigate('/hospital/doctor');
       } else if (response.role === 'RECEPTIONIST') {
         navigate('/hospital/receptionist');
       } else if (response.role === 'PHARMACIST') {
-        navigate('/hospital/pharmacy');
+        navigate(isPharmacyTenant ? '/pharmacy/pharmacy' : '/hospital/pharmacy');
       } else if (response.role === 'NURSE') {
         navigate('/hospital/nurse');
       } else if (response.role === 'NURSE_INCHARGE') {

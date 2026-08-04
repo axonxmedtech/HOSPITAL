@@ -1,9 +1,31 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import DateSelect from '../../../components/DateSelect';
 import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
+import manufacturersApi from '../../../services/pharmacy/manufacturersApi';
 import medicinesApi from '../../../services/pharmacy/medicinesApi';
 import suppliersApi from '../../../services/pharmacy/suppliersApi';
+
+// Common medicine forms/types for the Type dropdown (a picked medicine's own type is added on top
+// if it isn't already here, so platform-defined types still show).
+const MEDICINE_TYPE_OPTIONS = [
+  'Tablet',
+  'Capsule',
+  'Syrup',
+  'Injection',
+  'Ointment',
+  'Cream',
+  'Drops',
+  'Gel',
+  'Powder',
+  'Inhaler',
+  'Solution',
+  'Suspension',
+  'Lotion',
+  'Spray',
+  'Sachet',
+  'Other',
+];
 
 const PurchaseForm = ({ isOpen, onClose, onSave }) => {
   const toast = useToast();
@@ -288,6 +310,7 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
                 Invoice Date
               </label>
               <DateSelect
+                compact
                 value={header.invoiceDate}
                 onChange={(v) => setHeader((prev) => ({ ...prev, invoiceDate: v }))}
               />
@@ -312,7 +335,7 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
                     <th className="px-3 py-3 font-medium w-36">Manufacturer</th>
                   )}
                   <th className="px-3 py-3 font-medium w-32">Batch</th>
-                  <th className="px-3 py-3 font-medium w-56">Expiry</th>
+                  <th className="px-3 py-3 font-medium w-90">Expiry</th>
                   <th className="px-3 py-3 font-medium w-24">Qty</th>
                   <th className="px-3 py-3 font-medium w-24">Free</th>
                   <th className="px-3 py-3 font-medium w-28">P. Rate</th>
@@ -341,25 +364,28 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
                     </td>
                     {isStandalonePharmacy && (
                       <td className="px-3 py-3">
-                        <input
-                          type="text"
-                          value={item.medicineType}
+                        <select
+                          value={item.medicineType || ''}
                           onChange={(e) => handleItemChange(index, 'medicineType', e.target.value)}
-                          className="w-full border-b border-transparent group-hover:border-gray-200 focus:border-gray-900 focus:ring-0 text-sm py-1 bg-transparent outline-none"
-                          placeholder="Tablet / Syrup..."
-                        />
+                          className="w-full border-b border-transparent group-hover:border-gray-200 focus:border-gray-900 focus:ring-0 text-sm py-1 bg-transparent outline-none cursor-pointer"
+                        >
+                          <option value="">Type...</option>
+                          {(item.medicineType && !MEDICINE_TYPE_OPTIONS.includes(item.medicineType)
+                            ? [item.medicineType, ...MEDICINE_TYPE_OPTIONS]
+                            : MEDICINE_TYPE_OPTIONS
+                          ).map((t) => (
+                            <option key={t} value={t}>
+                              {t}
+                            </option>
+                          ))}
+                        </select>
                       </td>
                     )}
                     {isStandalonePharmacy && (
                       <td className="px-3 py-3">
-                        <input
-                          type="text"
+                        <ManufacturerSearch
                           value={item.manufacturerName}
-                          onChange={(e) =>
-                            handleItemChange(index, 'manufacturerName', e.target.value)
-                          }
-                          className="w-full border-b border-transparent group-hover:border-gray-200 focus:border-gray-900 focus:ring-0 text-sm py-1 bg-transparent outline-none"
-                          placeholder="Manufacturer"
+                          onChange={(v) => handleItemChange(index, 'manufacturerName', v)}
                         />
                       </td>
                     )}
@@ -374,6 +400,7 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
                     </td>
                     <td className="px-3 py-3">
                       <DateSelect
+                        compact
                         value={item.expiryDate}
                         onChange={(v) => handleItemChange(index, 'expiryDate', v)}
                       />
@@ -579,12 +606,19 @@ const MedicineSearch = ({ value, usePlatform, onPick }) => {
   const [query, setQuery] = useState(value || '');
   const [results, setResults] = useState([]);
   const [showResults, setShowResults] = useState(false);
+  // Picking a result sets the query to its name; this flag stops that from re-triggering the
+  // search effect (which would reopen the just-closed dropdown).
+  const suppressRef = useRef(false);
 
   useEffect(() => {
     setQuery(value || '');
   }, [value]);
 
   useEffect(() => {
+    if (suppressRef.current) {
+      suppressRef.current = false;
+      return;
+    }
     const timer = setTimeout(async () => {
       if (query.length > 1) {
         try {
@@ -635,6 +669,7 @@ const MedicineSearch = ({ value, usePlatform, onPick }) => {
                 }
               }}
               onClick={() => {
+                suppressRef.current = true;
                 onPick({ name: r.name, type: r.type, localId: r.localId });
                 setQuery(r.name);
                 setShowResults(false);
@@ -648,6 +683,76 @@ const MedicineSearch = ({ value, usePlatform, onPick }) => {
               </div>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Searchable, free-text manufacturer field: suggests existing manufacturers (from the manufacturer
+// master) as you type, but you can still enter a new name — it stays a plain string on the item.
+const ManufacturerSearch = ({ value, onChange }) => {
+  const [results, setResults] = useState([]);
+  const [showResults, setShowResults] = useState(false);
+
+  // Search the manufacturer master by name (server-side; the API takes (search, page, size)).
+  useEffect(() => {
+    const q = (value || '').trim();
+    if (q.length < 1) {
+      setResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await manufacturersApi.getAll(q, 0, 20);
+        setResults(res?.content || []);
+      } catch {
+        setResults([]);
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [value]);
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={value || ''}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setShowResults(true);
+        }}
+        onFocus={() => (value || '').length > 0 && setShowResults(true)}
+        onBlur={() => setTimeout(() => setShowResults(false), 150)}
+        className="w-full border-b border-transparent group-hover:border-gray-200 focus:border-gray-900 focus:ring-0 text-sm py-1 bg-transparent outline-none"
+        placeholder="Manufacturer"
+      />
+      {showResults && results.length > 0 && (
+        <div className="absolute z-[60] left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-2xl max-h-48 overflow-auto py-1">
+          {results.map((m) => {
+            const nm = m.manufacturerName || m.name;
+            return (
+              <div
+                key={m.id}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    e.currentTarget.click();
+                  }
+                }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onChange(nm);
+                  setShowResults(false);
+                }}
+                className="px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm font-medium text-gray-900"
+              >
+                {nm}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
