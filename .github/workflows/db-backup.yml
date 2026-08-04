@@ -7,7 +7,8 @@ name: Database Backup
 
 on:
   schedule:
-    - cron: '30 20 * * *' # 20:30 UTC daily (~02:00 IST). Adjust to your low-traffic window.
+    # Weekly. 18:30 UTC Saturday = 00:00 IST Sunday (the midnight that starts Sunday).
+    - cron: '30 18 * * 6'
   workflow_dispatch:
     inputs:
       environment:
@@ -32,6 +33,10 @@ jobs:
       # Pin to SHA in production: https://github.com/actions/checkout/releases
       - uses: actions/checkout@v4
 
+      # This job intentionally has NO `environment:` scope — an environment with required
+      # reviewers would make every scheduled backup sit waiting for manual approval. That
+      # means environment-scoped variables (vars.HOST in "Production") are unreadable here,
+      # so the host must come from a REPOSITORY-level variable. See the fallback chain below.
       - name: Resolve environment
         id: env
         run: |
@@ -40,15 +45,15 @@ jobs:
             {
               echo "label=staging"
               echo "repo_path=${{ vars.STAGING_DEPLOY_PATH || '/var/www/hms/staging/repo_stage' }}"
-              echo "host=${{ vars.STAGING_SSH_HOST }}"
-              echo "port=${{ vars.STAGING_SSH_PORT || '22' }}"
+              echo "host=${{ vars.STAGING_SSH_HOST || vars.HOST || vars.SSH_HOST }}"
+              echo "port=${{ vars.STAGING_SSH_PORT || vars.SSH_PORT || '22' }}"
             } >> "$GITHUB_OUTPUT"
           else
             {
               echo "label=production"
               echo "repo_path=${{ vars.PRODUCTION_DEPLOY_PATH || '/var/www/hms/production/repo_prod' }}"
-              echo "host=${{ vars.PRODUCTION_SSH_HOST }}"
-              echo "port=${{ vars.PRODUCTION_SSH_PORT || '22' }}"
+              echo "host=${{ vars.PRODUCTION_SSH_HOST || vars.HOST || vars.SSH_HOST }}"
+              echo "port=${{ vars.PRODUCTION_SSH_PORT || vars.SSH_PORT || '22' }}"
             } >> "$GITHUB_OUTPUT"
           fi
 
