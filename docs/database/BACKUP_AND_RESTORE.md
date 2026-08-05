@@ -76,12 +76,19 @@ data** — this is the drill that makes backups trustworthy.
 ### Restore procedure (drill — do this regularly)
 
 ```bash
-# On the VPS, with app env sourced:
-cd <repo> && set -a && . ./.env && set +a
+# On the VPS. Do NOT `. ./backend/.env` by hand — see the warning below; the scripts load it.
+cd <repo>
 ls -1t /var/backups/hms/*.sql.gz | head             # pick the latest
 bash scripts/db/restore.sh /var/backups/hms/<file>.sql.gz     # → scratch DB + validation
-# When satisfied:  mysql -e "DROP DATABASE \`hospital_management_restore_check\`;"
+# When satisfied:  mysql -e "DROP DATABASE \`<db>_restore_check\`;"
 ```
+
+> **Never source the app env with `.` / `source`.** `SPRING_DATASOURCE_URL` is an unquoted JDBC URL
+> containing `&`, which bash reads as the background operator: `set -a; . ./backend/.env` runs the
+> assignment in a subshell and leaves the variable **empty** in your shell. Spring parses the file
+> with its own reader, so the app is fine and the breakage is invisible. `backup.sh` and
+> `restore.sh` load it safely via `scripts/db/load-env.sh` — let them. To point at a different
+> file, set `ENV_FILE=/path/to/env`.
 
 ### Emergency restore (over the live DB — last resort)
 
