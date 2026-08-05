@@ -72,17 +72,29 @@ jobs:
           REPO: ${{ steps.env.outputs.repo_path }}
           ENV_LABEL: ${{ steps.env.outputs.label }}
         run: |
+          # pipefail: without it the pipeline's status is tee's (always 0) and a failed
+          # backup would report success. The gate must actually gate.
+          set -o pipefail
           mkdir -p backup-logs
           echo "$SSH_KEY" > /tmp/deploy_key && chmod 600 /tmp/deploy_key
           # Source the app env (SPRING_DATASOURCE_*) on the VPS so backup.sh finds DB credentials.
+          # The file lives at backend/.env (the backend is what reads it); repo-root .env is a
+          # fallback for older layouts. Missing env is a hard error — sourcing nothing would make
+          # backup.sh fall back to user=root/empty password and fail obscurely at mysqldump.
           # Only metadata is returned over SSH; the .sql.gz never leaves the server.
           ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
             -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
-            "cd '$REPO' && set -a; [ -f .env ] && . ./.env; set +a; \
+            "cd '$REPO' && set -a; \
+             if   [ -f backend/.env ]; then . ./backend/.env; \
+             elif [ -f .env ];         then . ./.env; \
+             else echo 'ERROR: no env file found (looked for backend/.env and .env) in '\"\$PWD\" >&2; exit 1; fi; \
+             set +a; \
              ENV_LABEL='$ENV_LABEL' RETENTION_DAYS='${{ vars.DB_BACKUP_RETENTION_DAYS || 30 }}' \
              bash scripts/db/backup.sh" \
             | tee backup-logs/backup.txt
+          rc=$?
           rm -f /tmp/deploy_key
+          exit $rc
 
       - name: Backup summary
         if: always()

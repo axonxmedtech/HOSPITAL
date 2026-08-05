@@ -259,11 +259,21 @@ jobs:
           SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
           REPO: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
         run: |
+          # pipefail is REQUIRED here: `rc=$?` after a pipeline reads tee's status, not ssh's, so
+          # without it a failed backup exits 0 and this "gate" waves the deploy through to run
+          # migrations against an unbacked database. That is the opposite of its purpose.
+          set -o pipefail
           echo "$SSH_KEY" > /tmp/deploy_key && chmod 600 /tmp/deploy_key
           echo "Taking pre-deploy backup (dump stays on the VPS)..."
+          # Env lives at backend/.env (the backend reads it); repo-root .env is a legacy fallback.
+          # Missing env is a hard error — otherwise backup.sh silently defaults to root/no-password.
           ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
             -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
-            "cd '$REPO' && set -a; [ -f .env ] && . ./.env; set +a; \
+            "cd '$REPO' && set -a; \
+             if   [ -f backend/.env ]; then . ./backend/.env; \
+             elif [ -f .env ];         then . ./.env; \
+             else echo 'ERROR: no env file found (looked for backend/.env and .env) in '\"\$PWD\" >&2; exit 1; fi; \
+             set +a; \
              ENV_LABEL=production RETENTION_DAYS='${{ vars.DB_BACKUP_RETENTION_DAYS || 30 }}' \
              bash scripts/db/backup.sh" \
             | tee -a "$GITHUB_STEP_SUMMARY"
