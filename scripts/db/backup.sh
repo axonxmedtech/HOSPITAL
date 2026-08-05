@@ -19,6 +19,11 @@ RETENTION_DAYS="${RETENTION_DAYS:-30}"
 KEEP_MIN="${KEEP_MIN:-7}"
 TS() { date -u '+%Y%m%dT%H%M%SZ'; }
 
+# ── Load the app env file (safe parse — never `.` it; see load-env.sh) ─────
+# shellcheck source=scripts/db/load-env.sh
+. "$(dirname "$0")/load-env.sh"
+hms_load_env || true
+
 # ── Resolve connection ─────────────────────────────────────────────────────
 if [ -z "${MYSQL_HOST:-}" ] && [ -n "${SPRING_DATASOURCE_URL:-}" ]; then
   tmp="${SPRING_DATASOURCE_URL#jdbc:mysql://}"
@@ -32,10 +37,15 @@ MYSQL_HOST="${MYSQL_HOST:-localhost}"
 MYSQL_PORT="${MYSQL_PORT:-3306}"
 MYSQL_USER="${MYSQL_USER:-${SPRING_DATASOURCE_USERNAME:-root}}"
 MYSQL_PASSWORD="${MYSQL_PASSWORD:-${SPRING_DATASOURCE_PASSWORD:-}}"
-MYSQL_DATABASE="${MYSQL_DATABASE:-hospital_management}"
+# No hardcoded database default on purpose. A default here is how a broken SPRING_DATASOURCE_URL
+# turned into "dump a database that isn't ours" instead of a visible failure.
+MYSQL_DATABASE="${MYSQL_DATABASE:-}"
 
 if [ -z "$MYSQL_DATABASE" ]; then
-  echo "ERROR: could not determine database name (set MYSQL_DATABASE or SPRING_DATASOURCE_URL)." >&2
+  echo "ERROR: could not determine the database name." >&2
+  echo "  env file loaded: ${HMS_ENV_FILE:-<none found>}" >&2
+  echo "  SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:+<set>}${SPRING_DATASOURCE_URL:-<empty>}" >&2
+  echo "  Set MYSQL_DATABASE explicitly, or point ENV_FILE at a file defining SPRING_DATASOURCE_URL." >&2
   exit 2
 fi
 

@@ -13,6 +13,12 @@ set -euo pipefail
 SRC="${1:?backup file required}"
 [ -f "$SRC" ] || { echo "ERROR: not found: $SRC" >&2; exit 2; }
 
+# Load the app env file safely — never `.` it (unquoted `&` in the JDBC URL backgrounds the
+# assignment and leaves it empty). See scripts/db/load-env.sh.
+# shellcheck source=scripts/db/load-env.sh
+. "$(dirname "$0")/load-env.sh"
+hms_load_env || true
+
 if [ -z "${MYSQL_HOST:-}" ] && [ -n "${SPRING_DATASOURCE_URL:-}" ]; then
   tmp="${SPRING_DATASOURCE_URL#jdbc:mysql://}"; hostport="${tmp%%/*}"
   MYSQL_HOST="${hostport%%:*}"; p="${hostport#*:}"; [ "$p" = "$hostport" ] && p=3306
@@ -21,7 +27,16 @@ fi
 MYSQL_HOST="${MYSQL_HOST:-localhost}"; MYSQL_PORT="${MYSQL_PORT:-3306}"
 MYSQL_USER="${MYSQL_USER:-${SPRING_DATASOURCE_USERNAME:-root}}"
 MYSQL_PASSWORD="${MYSQL_PASSWORD:-${SPRING_DATASOURCE_PASSWORD:-}}"
-LIVE_DB="${MYSQL_DATABASE:-${LIVE_DB:-hospital_management}}"
+# No hardcoded default: LIVE_DB is what the "are you about to overwrite production?" guard below
+# compares against. Guessing the wrong name there silently disarms that guard.
+LIVE_DB="${MYSQL_DATABASE:-${LIVE_DB:-}}"
+if [ -z "$LIVE_DB" ]; then
+  echo "ERROR: could not determine the live database name — refusing to continue." >&2
+  echo "  env file loaded: ${HMS_ENV_FILE:-<none found>}" >&2
+  echo "  Without it the overwrite-protection check below cannot be trusted." >&2
+  echo "  Set MYSQL_DATABASE explicitly, or point ENV_FILE at a file defining SPRING_DATASOURCE_URL." >&2
+  exit 2
+fi
 TARGET="${2:-${LIVE_DB}_restore_check}"
 
 if [ "$TARGET" = "$LIVE_DB" ] && [ "${FORCE_RESTORE:-no}" != "yes" ]; then
