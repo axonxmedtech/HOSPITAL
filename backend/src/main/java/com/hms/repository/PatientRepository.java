@@ -94,4 +94,13 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
          */
         long countByHospitalIdAndIsActiveTrueAndCreatedAtBetween(
                         Long hospitalId, java.time.LocalDateTime start, java.time.LocalDateTime end);
+
+        /**
+         * Find a patient (active or soft-deleted) by legacy ID within a hospital.
+         * Deliberately does NOT filter on isActive: when an import batch is undone,
+         * rows are soft-deleted but keep their legacy_id, which still occupies the
+         * unique (hospital_id, legacy_id) index. Matching soft-deleted rows lets a
+         * corrected re-import reactivate them instead of colliding on that index.
+         */
+        Optional<Patient> findByHospitalIdAndLegacyId(Long hospitalId, String legacyId);
 }
