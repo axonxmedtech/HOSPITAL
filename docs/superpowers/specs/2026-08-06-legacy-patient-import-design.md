@@ -156,7 +156,7 @@ patients**, otherwise every pre-existing record reads as ambiguous.
 4  Commit              Background job; live progress via WebSocket.
                        Chunked commits of 500 rows per transaction.
 
-5  Result              Downloadable errors.csv. Undo offered, subject to §5.4.
+5  Result              Downloadable errors.csv (§5.6). Undo offered, subject to §5.4.
 ```
 
 Step 3 writing nothing is the core safety property: the admin sees the real outcome against the real
@@ -201,6 +201,23 @@ import and must be covered by a test.
 Imported bills are visible on the patient record and in their billing history, but **financial reports
 exclude them by default**, behind an explicit "include imported history" toggle (R8). Importing three
 years of history must not silently move a hospital's revenue figures.
+
+### 5.6 The correction loop — errors.csv round-trips
+
+The error download is **shaped for re-upload**: the original header row, only the rows that failed,
+plus a trailing `_error` column explaining each one. The admin fixes those rows in place and uploads
+that small file as a new batch.
+
+This matters because it is the only correction path that is safe when the source file has **no MRN
+column**. Without `legacy_id`, dedupe degrades (§5.2) and re-uploading the full file after a commit
+would insert duplicates. Re-uploading only the failed rows touches nothing that already landed.
+
+The mapping step therefore **warns when no `legacy_id` is mapped**, stating that re-uploads of the
+full file will not be able to match existing records, and that corrections should be made either at
+preview (before committing) or via the errors.csv round-trip.
+
+A correction that changes the MRN itself creates a new record rather than fixing the old one —
+identity keys cannot self-correct. Undo is the clean recovery for that case.
 
 ---
 
