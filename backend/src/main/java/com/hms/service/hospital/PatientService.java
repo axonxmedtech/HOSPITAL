@@ -1,6 +1,8 @@
 package com.hms.service.hospital;
 import com.hms.util.LogSanitizer;
 
+import com.hms.dto.PatientRequest;
+import com.hms.entity.ImportSource;
 import com.hms.entity.Patient;
 import com.hms.entity.Billing;
 import com.hms.entity.BillingItem;
@@ -126,18 +128,32 @@ public class PatientService {
     }
 
     /**
-     * Add a new patient
+     * Add a new patient (manual registration)
      * Automatically sets hospital_id from the authenticated user's context
      *
-     * @param patient Patient entity to create
+     * Takes a PatientRequest rather than the entity: the strict field rules now live
+     * on the DTO so that the legacy importer, which builds Patient objects directly,
+     * can persist blank/odd values. Manual entry keeps the exact same rules.
+     *
+     * @param request Validated create payload
      * @return Created Patient entity
      */
-    public Patient addPatient(Patient patient) {
+    public Patient addPatient(PatientRequest request) {
         // Validate phone number
-        if (patient.getPhone() == null || !patient.getPhone().matches("^[0-9]{10}$")) {
+        if (request.getPhone() == null || !request.getPhone().matches("^[0-9]{10}$")) {
             throw new IllegalArgumentException("Phone number must be exactly 10 digits");
         }
-        validateDateOfBirth(patient.getDateOfBirth());
+        validateDateOfBirth(request.getDateOfBirth());
+
+        Patient patient = new Patient();
+        patient.setName(request.getName());
+        patient.setGender(request.getGender());
+        patient.setPhone(request.getPhone());
+        patient.setEmail(request.getEmail());
+        patient.setAddress(request.getAddress());
+        patient.setMedicalHistory(request.getMedicalHistory());
+        patient.setDateOfBirth(request.getDateOfBirth());
+        patient.setSource(ImportSource.MANUAL);
 
         // Get hospital_id from security context (multi-tenant isolation)
         Long hospitalId = securityHelper.getCurrentHospitalId();
@@ -187,27 +203,30 @@ public class PatientService {
      * Update an active patient's details
      * Validates hospital ownership before updating
      * 
-     * @param publicId    Patient Public ID
-     * @param updatedData New patient data
+     * @param publicId Patient Public ID
+     * @param request  Validated update payload
      * @return Updated Patient entity
      */
-    public Patient updatePatient(Long publicId, Patient updatedData) {
+    public Patient updatePatient(Long publicId, PatientRequest request) {
         // Validate phone number
-        if (updatedData.getPhone() == null || !updatedData.getPhone().matches("^[0-9]{10}$")) {
+        if (request.getPhone() == null || !request.getPhone().matches("^[0-9]{10}$")) {
             throw new IllegalArgumentException("Phone number must be exactly 10 digits");
         }
 
         // Ensure patient exists and belongs to this hospital
         Patient existingPatient = getPatientById(publicId);
 
-        validateDateOfBirth(updatedData.getDateOfBirth());
+        validateDateOfBirth(request.getDateOfBirth());
 
-        existingPatient.setName(updatedData.getName());
-        existingPatient.setDateOfBirth(updatedData.getDateOfBirth());
-        existingPatient.setGender(updatedData.getGender());
-        existingPatient.setPhone(updatedData.getPhone());
-        existingPatient.setAddress(updatedData.getAddress());
-        existingPatient.setMedicalHistory(updatedData.getMedicalHistory());
+        // Same field set this method has always copied. email is intentionally NOT
+        // copied here — it never was, and quietly making it updatable would be a
+        // behaviour change riding along with a validation refactor.
+        existingPatient.setName(request.getName());
+        existingPatient.setDateOfBirth(request.getDateOfBirth());
+        existingPatient.setGender(request.getGender());
+        existingPatient.setPhone(request.getPhone());
+        existingPatient.setAddress(request.getAddress());
+        existingPatient.setMedicalHistory(request.getMedicalHistory());
 
         Patient saved = patientRepository.save(existingPatient);
         evictStatsCache(saved.getHospitalId());

@@ -2,6 +2,7 @@ package com.hms.controller.hospital;
 
 import com.hms.exception.ResourceNotFoundException;
 
+import com.hms.dto.PatientRequest;
 import com.hms.entity.Patient;
 import com.hms.service.hospital.PatientService;
 import jakarta.validation.Valid;
@@ -31,15 +32,15 @@ public class PatientController {
 
     @PostMapping
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
-    public ResponseEntity<?> addPatient(@Valid @RequestBody Patient patient) {
-        Patient createdPatient = patientService.addPatient(patient);
+    public ResponseEntity<?> addPatient(@Valid @RequestBody PatientRequest request) {
+        Patient createdPatient = patientService.addPatient(request);
         return ResponseEntity.ok(createdPatient);
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
-    public ResponseEntity<?> updatePatient(@PathVariable Long id, @Valid @RequestBody Patient patient) {
-        Patient updatedPatient = patientService.updatePatient(id, patient);
+    public ResponseEntity<?> updatePatient(@PathVariable Long id, @Valid @RequestBody PatientRequest request) {
+        Patient updatedPatient = patientService.updatePatient(id, request);
         return ResponseEntity.ok(updatedPatient);
     }
 

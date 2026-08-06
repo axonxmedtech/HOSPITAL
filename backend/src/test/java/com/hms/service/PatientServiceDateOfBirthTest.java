@@ -1,5 +1,6 @@
 package com.hms.service;
 
+import com.hms.dto.PatientRequest;
 import com.hms.entity.Patient;
 import com.hms.repository.*;
 import com.hms.security.SecurityContextHelper;
@@ -44,6 +45,17 @@ class PatientServiceDateOfBirthTest {
 
     @InjectMocks PatientService service;
 
+    /** The create/update payload the controller binds — addPatient/updatePatient take this now. */
+    private PatientRequest newRequest(LocalDate dob) {
+        PatientRequest r = new PatientRequest();
+        r.setName("Jane Doe");
+        r.setPhone("9876543210");
+        r.setGender("FEMALE");
+        r.setDateOfBirth(dob);
+        return r;
+    }
+
+    /** The persisted entity the repository returns. */
     private Patient newPatient(LocalDate dob) {
         Patient p = new Patient();
         p.setName("Jane Doe");
@@ -56,7 +68,7 @@ class PatientServiceDateOfBirthTest {
     @Test
     void addPatient_missingDateOfBirth_throws() {
         lenient().when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
-        Patient patient = newPatient(null);
+        PatientRequest patient = newRequest(null);
 
         assertThatThrownBy(() -> service.addPatient(patient))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -66,7 +78,7 @@ class PatientServiceDateOfBirthTest {
     @Test
     void addPatient_futureDateOfBirth_throws() {
         lenient().when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
-        Patient patient = newPatient(LocalDate.now().plusDays(1));
+        PatientRequest patient = newRequest(LocalDate.now().plusDays(1));
 
         assertThatThrownBy(() -> service.addPatient(patient))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -76,7 +88,7 @@ class PatientServiceDateOfBirthTest {
     @Test
     void addPatient_dateOfBirthOver120YearsAgo_throws() {
         lenient().when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
-        Patient patient = newPatient(LocalDate.now().minusYears(121));
+        PatientRequest patient = newRequest(LocalDate.now().minusYears(121));
 
         assertThatThrownBy(() -> service.addPatient(patient))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -86,7 +98,7 @@ class PatientServiceDateOfBirthTest {
     @Test
     void addPatient_validDateOfBirth_savesPatient() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
-        Patient patient = newPatient(LocalDate.now().minusYears(30));
+        PatientRequest patient = newRequest(LocalDate.now().minusYears(30));
         Patient saved = newPatient(LocalDate.now().minusYears(30));
         saved.setId(5L);
         when(patientRepository.save(any(Patient.class))).thenReturn(saved, saved);
@@ -107,7 +119,7 @@ class PatientServiceDateOfBirthTest {
         when(patientRepository.save(any(Patient.class))).thenAnswer(inv -> inv.getArgument(0));
 
         LocalDate correctedDob = LocalDate.now().minusYears(41);
-        Patient updateData = newPatient(correctedDob);
+        PatientRequest updateData = newRequest(correctedDob);
 
         Patient result = service.updatePatient(7L, updateData);
 

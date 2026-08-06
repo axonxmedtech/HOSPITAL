@@ -69,7 +69,6 @@ public class Patient {
      * Patient's full name
      */
     @Column(nullable = false, length = 100)
-    @jakarta.validation.constraints.NotBlank(message = "Name is required")
     @jakarta.validation.constraints.Size(max = 100, message = "Name is too long")
     @com.hms.validation.NoEmoji
     private String name;
@@ -99,19 +98,23 @@ public class Patient {
     }
 
     /**
-     * Patient's gender (MALE, FEMALE, OTHER)
+     * Patient's gender (MALE, FEMALE, OTHER).
+     *
+     * Nullable, and deliberately free of Bean Validation: JPA runs validation on
+     * every persist, so a @NotBlank here would make it impossible for the legacy
+     * importer to keep a blank source value blank. The strict rules manual entry
+     * has always had now live on {@link com.hms.dto.PatientRequest}, which the
+     * create/update endpoints bind — reception staff see identical behaviour.
      */
-    @Column(nullable = false, length = 10)
-    @jakarta.validation.constraints.NotBlank(message = "Gender is required")
-    @jakarta.validation.constraints.Pattern(regexp = "^[A-Za-z \\-]{1,10}$", message = "Invalid gender")
+    @Column(length = 10)
     private String gender;
 
     /**
-     * Patient's contact phone number
+     * Patient's contact phone number. Nullable and unvalidated here for the same
+     * reason as gender — see above; PatientRequest carries the 10-digit rule for
+     * the manual path.
      */
-    @Column(nullable = false, length = 15)
-    @jakarta.validation.constraints.NotBlank(message = "Phone number is required")
-    @jakarta.validation.constraints.Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
+    @Column(length = 15)
     private String phone;
 
     /**
@@ -148,6 +151,33 @@ public class Patient {
     @jakarta.validation.constraints.Size(max = 1000, message = "Medical history is too long")
     @com.hms.validation.NoEmoji
     private String medicalHistory;
+
+    /**
+     * The hospital's own patient number from their previous system. Dedupe and
+     * join key for imports.
+     */
+    @Column(name = "legacy_id", length = 100)
+    private String legacyId;
+
+    /**
+     * How this record entered the system. MANUAL for anything reception typed in.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source", nullable = false, length = 20)
+    private ImportSource source = ImportSource.MANUAL;
+
+    /**
+     * Set only on imported rows. Lineage for undo.
+     */
+    @Column(name = "import_batch_id")
+    private Long importBatchId;
+
+    /**
+     * JSON map of columns the schema does not model, captured verbatim from the
+     * import file.
+     */
+    @Column(name = "custom_fields", columnDefinition = "text")
+    private String customFields;
 
     /**
      * Soft delete flag
