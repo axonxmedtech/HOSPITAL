@@ -111,7 +111,9 @@ In `DatabaseMigrationRunner.java`, add before the closing brace:
                         "CREATE TABLE import_row_error (" +
                         "  id BIGINT AUTO_INCREMENT PRIMARY KEY," +
                         "  batch_id BIGINT NOT NULL," +
-                        "  row_number INT NOT NULL," +
+                        // NOT row_number: reserved in MySQL 8.0+ for the window function, and an
+                        // identifier that is only legal when quoted is a trap for JPA mappings.
+                        "  row_num INT NOT NULL," +
                         "  column_name VARCHAR(120)," +
                         "  message VARCHAR(500) NOT NULL," +
                         "  raw_row_json TEXT," +
@@ -391,7 +393,8 @@ public class ImportRowError {
     @Column(name = "batch_id", nullable = false)
     private Long batchId;
 
-    @Column(name = "row_number", nullable = false)
+    /** Column is row_num, not row_number: ROW_NUMBER is reserved in MySQL 8.0+. */
+    @Column(name = "row_num", nullable = false)
     private Integer rowNumber;
 
     @Column(name = "column_name", length = 120)

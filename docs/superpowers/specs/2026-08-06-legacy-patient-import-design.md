@@ -114,7 +114,9 @@ removes write-time validation for every entity in the system to solve a problem 
 | `created_count`, `updated_count`, `skipped_count`, `failed_count` |                                                               |
 | `created_by`, `created_at`, `committed_at`, `undone_at`           | audit                                                         |
 
-**`import_row_error`** — `batch_id`, `row_number`, `column_name`, `message`, `raw_row_json`.
+**`import_row_error`** — `batch_id`, `row_num`, `column_name`, `message`, `raw_row_json`.
+(`row_num`, not `row_number`: the latter is reserved in MySQL 8.0+ for the window function, and an
+identifier that is only legal when quoted is a trap for JPA mappings. Found during implementation.)
 A table rather than a JSON blob so 8,000 errors can be paginated and streamed to CSV.
 
 ### 4.3 Columns added to `Patient` (mirrored on history entities in later phases)
