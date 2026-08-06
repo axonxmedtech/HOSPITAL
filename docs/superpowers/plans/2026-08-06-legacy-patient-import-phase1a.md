@@ -54,6 +54,8 @@
 
 **Design note:** import code lives in its own `service/import_/` package (trailing underscore — `import` is a Java keyword and cannot be a package name). This keeps 19 new classes out of the already-crowded `service/hospital/`.
 
+**Entity style — the code blocks in Task 2 predate this and are wrong.** This codebase uses Lombok on entities: 76 of 89 classes in `com.hms.entity`, including `Patient`, carry `@Data @NoArgsConstructor @AllArgsConstructor`. New entities must match, so **delete the hand-written getters and setters shown in Task 2** and annotate instead. Keep field initialisers (the tests depend on a new `ImportBatch` being `DRAFT` with zero counts) and keep custom methods like `isUndoable()`. Where a specific constructor arity is required — `ImportRowError` needs a 5-arg form that excludes `id` — declare that constructor explicitly and omit `@AllArgsConstructor`.
+
 ---
 
 ## Task 1: Schema migration
