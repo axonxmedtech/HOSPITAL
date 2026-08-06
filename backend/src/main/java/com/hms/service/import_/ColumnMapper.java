@@ -50,8 +50,16 @@ public class ColumnMapper {
         return out;
     }
 
+    /**
+     * Lowercases, replaces punctuation with a space (never deletes it, so "Mob.No" becomes
+     * "mob no" rather than "mobno"), then collapses whitespace. Registry synonyms are written
+     * in this already-normalised form so they compare equal.
+     */
     private String normalise(String header) {
         if (header == null) return "";
-        return header.trim().toLowerCase().replaceAll("\\s+", " ");
+        return header.trim().toLowerCase()
+                .replaceAll("[.\\-_/#():]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
     }
 }

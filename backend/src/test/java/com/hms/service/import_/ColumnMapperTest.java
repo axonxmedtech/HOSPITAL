@@ -40,4 +40,20 @@ class ColumnMapperTest {
         Map<String, String> m = mapper.suggest(headers, ImportEntityType.PATIENT);
         assertThat(mapper.unmapped(headers, m)).containsExactly("Referred By", "Caste");
     }
+
+    @Test
+    void matchesHeadersWithPunctuationAfterStripping() {
+        Map<String, String> m = mapper.suggest(
+                List.of("Mobile No.", "UHID", "D.O.B."), ImportEntityType.PATIENT);
+        assertThat(m).containsEntry("Mobile No.", "phone");
+        assertThat(m).containsEntry("UHID", "legacyId");
+        assertThat(m).containsEntry("D.O.B.", "dateOfBirth");
+    }
+
+    @Test
+    void punctuationStrippingDoesNotCreateFalseMatches() {
+        Map<String, String> m = mapper.suggest(
+                List.of("Ref. By", "Blood Grp.", "S/O"), ImportEntityType.PATIENT);
+        assertThat(m).isEmpty();
+    }
 }
