@@ -1811,7 +1811,7 @@ CREATE TABLE `import_batch` (
 CREATE TABLE `import_row_error` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `batch_id` bigint NOT NULL,
-  `row_number` int NOT NULL,
+  `row_num` int NOT NULL,
   `column_name` varchar(120) DEFAULT NULL,
   `message` varchar(500) NOT NULL,
   `raw_row_json` text,

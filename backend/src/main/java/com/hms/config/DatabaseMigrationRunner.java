@@ -2289,7 +2289,7 @@ public class DatabaseMigrationRunner {
                         "CREATE TABLE import_row_error (" +
                         "  id BIGINT AUTO_INCREMENT PRIMARY KEY," +
                         "  batch_id BIGINT NOT NULL," +
-                        "  `row_number` INT NOT NULL," +
+                        "  row_num INT NOT NULL," +
                         "  column_name VARCHAR(120)," +
                         "  message VARCHAR(500) NOT NULL," +
                         "  raw_row_json TEXT," +

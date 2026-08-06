@@ -42,6 +42,7 @@ export default {
         'deps',
         'docs',
         'release',
+        'import',
       ],
     ],
     'scope-case': [2, 'always', 'kebab-case'],
