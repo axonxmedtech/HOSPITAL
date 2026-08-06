@@ -23,6 +23,13 @@
     </properties>
     
     <dependencies>
+        <!-- Apache POI (workbook parsing for legacy patient import) -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.4.1</version>
+        </dependency>
+
         <!-- Spring Boot Web -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
