@@ -124,6 +124,8 @@ public class DatabaseMigrationRunner {
         backfillPrintPaymentDefaults();
         widenVitalsDecimalColumns();
         backfillStrandedOpdStatuses();
+        ensureImportTables();
+        ensurePatientImportColumns();
     }
 
     /**
@@ -2241,6 +2243,90 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped ({}.{}): {}", table, column, e.getMessage());
+        }
+    }
+
+    private void ensureImportTables() {
+        try {
+            Integer exists = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'import_batch'",
+                    Integer.class);
+            if (exists == null || exists == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE import_batch (" +
+                        "  id BIGINT AUTO_INCREMENT PRIMARY KEY," +
+                        "  public_id VARCHAR(64) NOT NULL UNIQUE," +
+                        "  hospital_id BIGINT NOT NULL," +
+                        "  entity_type VARCHAR(20) NOT NULL," +
+                        "  status VARCHAR(20) NOT NULL DEFAULT 'DRAFT'," +
+                        "  source_filename VARCHAR(255)," +
+                        "  sheet_name VARCHAR(120)," +
+                        "  mapping_json TEXT," +
+                        "  total_rows INT NOT NULL DEFAULT 0," +
+                        "  created_count INT NOT NULL DEFAULT 0," +
+                        "  updated_count INT NOT NULL DEFAULT 0," +
+                        "  skipped_count INT NOT NULL DEFAULT 0," +
+                        "  failed_count INT NOT NULL DEFAULT 0," +
+                        "  created_by VARCHAR(120)," +
+                        "  created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP," +
+                        "  committed_at TIMESTAMP NULL," +
+                        "  undone_at TIMESTAMP NULL," +
+                        "  KEY idx_import_batch_hosp (hospital_id, status)," +
+                        "  CONSTRAINT fk_import_batch_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                        ")");
+                log.info("Created import_batch table");
+            }
+        } catch (Exception e) {
+            log.warn("ensureImportTables(import_batch) failed: {}", e.getMessage());
+        }
+
+        try {
+            Integer exists = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'import_row_error'",
+                    Integer.class);
+            if (exists == null || exists == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE import_row_error (" +
+                        "  id BIGINT AUTO_INCREMENT PRIMARY KEY," +
+                        "  batch_id BIGINT NOT NULL," +
+                        "  `row_number` INT NOT NULL," +
+                        "  column_name VARCHAR(120)," +
+                        "  message VARCHAR(500) NOT NULL," +
+                        "  raw_row_json TEXT," +
+                        "  KEY idx_import_err_batch (batch_id)," +
+                        "  CONSTRAINT fk_import_err_batch FOREIGN KEY (batch_id) REFERENCES import_batch(id) ON DELETE CASCADE" +
+                        ")");
+                log.info("Created import_row_error table");
+            }
+        } catch (Exception e) {
+            log.warn("ensureImportTables(import_row_error) failed: {}", e.getMessage());
+        }
+    }
+
+    private void ensurePatientImportColumns() {
+        addColumnIfMissing("patients", "legacy_id", "VARCHAR(100) NULL");
+        addColumnIfMissing("patients", "source", "VARCHAR(20) NOT NULL DEFAULT 'MANUAL'");
+        addColumnIfMissing("patients", "import_batch_id", "BIGINT NULL");
+        addColumnIfMissing("patients", "custom_fields", "TEXT NULL");
+        // gender/phone become optional so imported records can keep blanks blank.
+        try {
+            jdbcTemplate.execute("ALTER TABLE patients MODIFY COLUMN gender VARCHAR(10) NULL");
+            jdbcTemplate.execute("ALTER TABLE patients MODIFY COLUMN phone VARCHAR(15) NULL");
+        } catch (Exception e) {
+            log.warn("relaxing patients.gender/phone failed: {}", e.getMessage());
+        }
+        // Dedupe key. Partial index is not available in MySQL, so NULLs simply never collide.
+        try {
+            Integer idx = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() " +
+                    "AND table_name = 'patients' AND index_name = 'uq_patient_legacy'",
+                    Integer.class);
+            if (idx == null || idx == 0) {
+                jdbcTemplate.execute("ALTER TABLE patients ADD UNIQUE KEY uq_patient_legacy (hospital_id, legacy_id)");
+                log.info("Created uq_patient_legacy index");
+            }
+        } catch (Exception e) {
+            log.warn("uq_patient_legacy index skipped: {}", e.getMessage());
         }
     }
 }

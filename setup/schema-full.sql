@@ -535,19 +535,24 @@ CREATE TABLE `patients` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `address` varchar(255) DEFAULT NULL,
   `created_at` datetime(6) NOT NULL,
+  `custom_fields` text,
   `custom_id` varchar(255) DEFAULT NULL,
   `date_of_birth` date DEFAULT NULL,
   `email` varchar(100) DEFAULT NULL,
-  `gender` varchar(10) NOT NULL,
+  `gender` varchar(10) DEFAULT NULL,
   `hospital_id` bigint NOT NULL,
+  `import_batch_id` bigint DEFAULT NULL,
   `is_active` bit(1) NOT NULL,
+  `legacy_id` varchar(100) DEFAULT NULL,
   `medical_history` varchar(1000) DEFAULT NULL,
   `name` varchar(100) NOT NULL,
-  `phone` varchar(15) NOT NULL,
+  `phone` varchar(15) DEFAULT NULL,
   `public_id` varchar(255) NOT NULL,
+  `source` varchar(20) NOT NULL DEFAULT 'MANUAL',
   `status` enum('REGISTERED','CONSULTING','COMPLETED') NOT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `UK_8isyrjl9ji56k5uv4cgp9p2q6` (`public_id`)
+  UNIQUE KEY `UK_8isyrjl9ji56k5uv4cgp9p2q6` (`public_id`),
+  UNIQUE KEY `uq_patient_legacy` (`hospital_id`,`legacy_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1776,4 +1781,41 @@ CREATE TABLE `ot_incharges` (
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   CONSTRAINT `FK_ot_incharges_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Legacy patient import: batches
+CREATE TABLE `import_batch` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(64) NOT NULL UNIQUE,
+  `hospital_id` bigint NOT NULL,
+  `entity_type` varchar(20) NOT NULL,
+  `status` varchar(20) NOT NULL DEFAULT 'DRAFT',
+  `source_filename` varchar(255) DEFAULT NULL,
+  `sheet_name` varchar(120) DEFAULT NULL,
+  `mapping_json` text,
+  `total_rows` int NOT NULL DEFAULT 0,
+  `created_count` int NOT NULL DEFAULT 0,
+  `updated_count` int NOT NULL DEFAULT 0,
+  `skipped_count` int NOT NULL DEFAULT 0,
+  `failed_count` int NOT NULL DEFAULT 0,
+  `created_by` varchar(120) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `committed_at` timestamp NULL DEFAULT NULL,
+  `undone_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_import_batch_hosp` (`hospital_id`,`status`),
+  CONSTRAINT `fk_import_batch_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Legacy patient import: per-row errors
+CREATE TABLE `import_row_error` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `batch_id` bigint NOT NULL,
+  `row_number` int NOT NULL,
+  `column_name` varchar(120) DEFAULT NULL,
+  `message` varchar(500) NOT NULL,
+  `raw_row_json` text,
+  PRIMARY KEY (`id`),
+  KEY `idx_import_err_batch` (`batch_id`),
+  CONSTRAINT `fk_import_err_batch` FOREIGN KEY (`batch_id`) REFERENCES `import_batch` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
