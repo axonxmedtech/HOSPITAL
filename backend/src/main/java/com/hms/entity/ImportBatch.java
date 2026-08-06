@@ -1,11 +1,18 @@
 package com.hms.entity;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
 @Table(name = "import_batch")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class ImportBatch {
 
     @Id
@@ -66,39 +73,4 @@ public class ImportBatch {
     public boolean isUndoable() {
         return status == ImportStatus.COMPLETED || status == ImportStatus.FAILED;
     }
-
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-    public String getPublicId() { return publicId; }
-    public void setPublicId(String publicId) { this.publicId = publicId; }
-    public Long getHospitalId() { return hospitalId; }
-    public void setHospitalId(Long hospitalId) { this.hospitalId = hospitalId; }
-    public ImportEntityType getEntityType() { return entityType; }
-    public void setEntityType(ImportEntityType entityType) { this.entityType = entityType; }
-    public ImportStatus getStatus() { return status; }
-    public void setStatus(ImportStatus status) { this.status = status; }
-    public String getSourceFilename() { return sourceFilename; }
-    public void setSourceFilename(String sourceFilename) { this.sourceFilename = sourceFilename; }
-    public String getSheetName() { return sheetName; }
-    public void setSheetName(String sheetName) { this.sheetName = sheetName; }
-    public String getMappingJson() { return mappingJson; }
-    public void setMappingJson(String mappingJson) { this.mappingJson = mappingJson; }
-    public Integer getTotalRows() { return totalRows; }
-    public void setTotalRows(Integer totalRows) { this.totalRows = totalRows; }
-    public Integer getCreatedCount() { return createdCount; }
-    public void setCreatedCount(Integer createdCount) { this.createdCount = createdCount; }
-    public Integer getUpdatedCount() { return updatedCount; }
-    public void setUpdatedCount(Integer updatedCount) { this.updatedCount = updatedCount; }
-    public Integer getSkippedCount() { return skippedCount; }
-    public void setSkippedCount(Integer skippedCount) { this.skippedCount = skippedCount; }
-    public Integer getFailedCount() { return failedCount; }
-    public void setFailedCount(Integer failedCount) { this.failedCount = failedCount; }
-    public String getCreatedBy() { return createdBy; }
-    public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
-    public LocalDateTime getCommittedAt() { return committedAt; }
-    public void setCommittedAt(LocalDateTime committedAt) { this.committedAt = committedAt; }
-    public LocalDateTime getUndoneAt() { return undoneAt; }
-    public void setUndoneAt(LocalDateTime undoneAt) { this.undoneAt = undoneAt; }
 }
