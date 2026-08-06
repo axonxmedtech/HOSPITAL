@@ -6,7 +6,7 @@
 
 **Architecture:** A generic `ImportEngine` owns upload → parse → map → dry-run → commit → undo. Entities plug in via a small `EntityImporter` interface; Phase 1A ships only `PatientImporter`. Every imported row carries `import_batch_id` for lineage, which is what makes undo possible. Strict field validation moves off the `Patient` entity onto a `PatientRequest` DTO so imports can keep blanks blank while manual entry stays strict.
 
-**Tech Stack:** Spring Boot 3 · JPA/Hibernate · MySQL · Apache POI (streaming SAX reader) · JUnit 5 · Mockito · AssertJ
+**Tech Stack:** Spring Boot 3 · JPA/Hibernate · MySQL · Apache POI 5.4.1 (`XSSFWorkbook`, DOM-based) · JUnit 5 · Mockito · AssertJ
 
 **Spec:** [2026-08-06-legacy-patient-import-design.md](../specs/2026-08-06-legacy-patient-import-design.md)
 
@@ -34,7 +34,7 @@
 | `dto/import_/RowOutcome.java`               | Per-row verdict: CREATE/UPDATE/SKIP/ERROR                    |
 | `service/import_/ImportFieldRegistry.java`  | Canonical target fields per entity                           |
 | `service/import_/ColumnMapper.java`         | Auto-suggest header → field                                  |
-| `service/import_/WorkbookParser.java`       | Streaming `.xlsx` + `.csv` reader                            |
+| `service/import_/WorkbookParser.java`       | `.xlsx` + `.csv` reader (DOM-based, not SAX — see note)      |
 | `service/import_/EntityImporter.java`       | Interface every entity importer implements                   |
 | `service/import_/PatientImporter.java`      | Patient field mapping, dedupe, apply                         |
 | `service/import_/ImportEngine.java`         | Orchestrates dry-run and commit                              |
