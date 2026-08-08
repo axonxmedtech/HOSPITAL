@@ -1,6 +1,8 @@
 package com.hms.service.import_;
 
+import com.hms.dto.import_.ParsedSheet;
 import com.hms.entity.ImportBatch;
+import com.hms.entity.ImportEntityType;
 import com.hms.entity.ImportStatus;
 import com.hms.entity.Patient;
 import com.hms.repository.*;
@@ -11,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class ImportBatchService {
@@ -22,6 +25,7 @@ public class ImportBatchService {
     private final BillingRepository billingRepository;
     private final SecurityContextHelper securityHelper;
     private final AuditLogService auditLogService;
+    private final ImportEngine importEngine;
 
     public ImportBatchService(ImportBatchRepository batchRepository,
                               ImportRowErrorRepository rowErrorRepository,
@@ -29,7 +33,8 @@ public class ImportBatchService {
                               OpdRepository opdRepository,
                               BillingRepository billingRepository,
                               SecurityContextHelper securityHelper,
-                              AuditLogService auditLogService) {
+                              AuditLogService auditLogService,
+                              ImportEngine importEngine) {
         this.batchRepository = batchRepository;
         this.rowErrorRepository = rowErrorRepository;
         this.patientRepository = patientRepository;
@@ -37,6 +42,7 @@ public class ImportBatchService {
         this.billingRepository = billingRepository;
         this.securityHelper = securityHelper;
         this.auditLogService = auditLogService;
+        this.importEngine = importEngine;
     }
 
     public ImportBatch requireOwnBatch(String publicId) {
@@ -92,5 +98,64 @@ public class ImportBatchService {
 
     public List<ImportBatch> listBatches() {
         return batchRepository.findByHospitalIdOrderByCreatedAtDesc(securityHelper.getCurrentHospitalId());
+    }
+
+    /**
+     * Creates a batch, applies the sheet, and records the outcome. The batch is saved before the
+     * run so that every written row has a real import_batch_id to point at — that lineage is the
+     * only thing undo has to work with.
+     */
+    @Transactional
+    public ImportBatch commit(ParsedSheet sheet, Map<String, String> mapping, String sourceFilename) {
+
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (batchRepository.existsByHospitalIdAndStatus(hospitalId, ImportStatus.RUNNING)) {
+            throw new IllegalArgumentException(
+                    "An import is already running for this hospital. Wait for it to finish before starting another.");
+        }
+
+        ImportBatch batch = new ImportBatch();
+        batch.setHospitalId(hospitalId);
+        batch.setEntityType(ImportEntityType.PATIENT);
+        batch.setSourceFilename(sourceFilename);
+        batch.setSheetName(sheet.sheetName());
+        batch.setMappingJson(mappingToJson(mapping));
+        batch.setCreatedBy(securityHelper.getCurrentUserEmail());
+        batch.setStatus(ImportStatus.RUNNING);
+        batch = batchRepository.save(batch);
+
+        try {
+            importEngine.commit(sheet, mapping, batch);
+        } catch (RuntimeException e) {
+            batch.setStatus(ImportStatus.FAILED);
+            batchRepository.save(batch);
+            throw e;
+        }
+
+        batchRepository.save(batch);
+
+        try {
+            auditLogService.logAction("IMPORT_COMMIT",
+                    "Imported " + batch.getCreatedCount() + " new and " + batch.getUpdatedCount()
+                            + " updated patient(s) from " + sourceFilename
+                            + "; " + batch.getFailedCount() + " row(s) failed",
+                    batch.getCreatedBy(), hospitalId, "ImportBatch", String.valueOf(batch.getId()), null);
+        } catch (Exception ignored) {
+            // audit logging is best-effort by convention in this codebase
+        }
+
+        return batch;
+    }
+
+    private String mappingToJson(Map<String, String> mapping) {
+        StringBuilder sb = new StringBuilder("{");
+        boolean first = true;
+        for (Map.Entry<String, String> e : mapping.entrySet()) {
+            if (!first) sb.append(",");
+            sb.append("\"").append(e.getKey().replace("\"", "\\\"")).append("\":")
+              .append("\"").append(e.getValue().replace("\"", "\\\"")).append("\"");
+            first = false;
+        }
+        return sb.append("}").toString();
     }
 }

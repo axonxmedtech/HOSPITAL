@@ -28,6 +28,7 @@ class ImportBatchServiceUndoTest {
     @Mock BillingRepository billingRepository;
     @Mock SecurityContextHelper securityHelper;
     @Mock AuditLogService auditLogService;
+    @Mock ImportEngine importEngine;
 
     @InjectMocks ImportBatchService service;
 
