@@ -160,7 +160,7 @@ public class ImportEngine {
                 }
 
                 if (pending.size() >= CHUNK_SIZE) {
-                    patientRepository.saveAll(pending);
+                    savePendingChunk(pending);
                     pending.clear();
                     totals[0] += inChunk[0];
                     totals[1] += inChunk[1];
@@ -175,7 +175,7 @@ public class ImportEngine {
             }
 
             if (!pending.isEmpty()) {
-                patientRepository.saveAll(pending);
+                savePendingChunk(pending);
                 totals[0] += inChunk[0];
                 totals[1] += inChunk[1];
                 inChunk[0] = 0;
@@ -198,6 +198,33 @@ public class ImportEngine {
             batch.setUpdatedCount(totals[1]);
             batch.setSkippedCount(totals[2]);
             batch.setFailedCount(totals[3]);
+        }
+    }
+
+    /**
+     * Persists a chunk and assigns the hospital-facing patient number to anything new.
+     *
+     * <p>{@code customId} is the {@code PAT<id>} identifier reception sees in patient lists, on case
+     * papers and in search. It derives from the auto-increment id, so it cannot be set before the
+     * insert — {@code PatientService} does the same two-step for manually created patients. The
+     * importer bypasses that service, so without this every imported patient would carry a null
+     * patient number and show as blank throughout the UI.
+     *
+     * <p>Only rows that lack one are re-saved, so re-importing an existing patient does not churn
+     * their identifier.
+     */
+    private void savePendingChunk(List<Patient> pending) {
+        List<Patient> saved = patientRepository.saveAll(pending);
+
+        List<Patient> needingCustomId = new ArrayList<>();
+        for (Patient p : saved) {
+            if (p.getCustomId() == null || p.getCustomId().isBlank()) {
+                p.setCustomId("PAT" + p.getId());
+                needingCustomId.add(p);
+            }
+        }
+        if (!needingCustomId.isEmpty()) {
+            patientRepository.saveAll(needingCustomId);
         }
     }
 

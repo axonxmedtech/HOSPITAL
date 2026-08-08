@@ -129,7 +129,14 @@ public class PatientImporter implements EntityImporter {
         }
 
         try {
-            patient.setCustomFields(buildCustomFields(row, unmappedHeaders));
+            String merged = mergeCustomFields(patient.getCustomFields(), row, unmappedHeaders);
+            // Only write when this file actually carried unmapped columns. Assigning unconditionally
+            // meant re-importing a file without the extra columns - the corrected errors.csv being
+            // the obvious case - set customFields to null and erased what an earlier import had
+            // preserved. Silent data loss in the one place the feature promises none.
+            if (merged != null) {
+                patient.setCustomFields(merged);
+            }
         } catch (Exception e) {
             return RowOutcome.error(null,
                     "Could not preserve the unmapped columns for this row: " + e.getMessage());
@@ -170,6 +177,35 @@ public class PatientImporter implements EntityImporter {
             preserved.put(header, row.getOrDefault(header, ""));
         }
         return JSON.writeValueAsString(preserved);
+    }
+
+    /**
+     * Merges this file's unmapped columns over whatever an earlier import preserved, rather than
+     * replacing it. A second import that happens not to carry a column must not delete the values
+     * a first one captured — successive partial files should accumulate, not overwrite.
+     *
+     * @return null when this file has no unmapped columns, meaning the caller should leave the
+     *         existing value untouched.
+     */
+    private String mergeCustomFields(String existingJson, Map<String, String> row,
+                                     List<String> unmappedHeaders)
+            throws com.fasterxml.jackson.core.JsonProcessingException {
+        if (unmappedHeaders == null || unmappedHeaders.isEmpty()) return null;
+
+        Map<String, String> merged = new LinkedHashMap<>();
+        if (existingJson != null && !existingJson.isBlank()) {
+            try {
+                merged.putAll(JSON.readValue(existingJson,
+                        new com.fasterxml.jackson.core.type.TypeReference<LinkedHashMap<String, String>>() { }));
+            } catch (Exception ignored) {
+                // Unreadable prior value: keep going rather than fail the row. Losing an
+                // unparseable blob is better than refusing to import the patient at all.
+            }
+        }
+        for (String header : unmappedHeaders) {
+            merged.put(header, row.getOrDefault(header, ""));
+        }
+        return JSON.writeValueAsString(merged);
     }
 
     private String blankToNull(String v) {

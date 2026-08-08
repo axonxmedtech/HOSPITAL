@@ -97,6 +97,45 @@ class PatientImporterDedupeTest {
     }
 
     /**
+     * A second import that does not carry the extra columns must not delete what an earlier one
+     * preserved. The obvious case is the corrected errors.csv, which contains only mapped columns —
+     * re-uploading it used to null out customFields for every row it touched.
+     */
+    @Test
+    void reimportWithoutTheExtraColumnsKeepsPreviouslyPreservedCustomFields() {
+        Patient existing = new Patient();
+        existing.setId(55L);
+        existing.setLegacyId("A-9");
+        existing.setCustomFields("{\"Referred By\":\"Dr. Kulkarni\"}");
+        when(patientRepository.findByHospitalIdAndLegacyId(7L, "A-9")).thenReturn(Optional.of(existing));
+
+        RowOutcome outcome = importer().evaluate(Map.of("Name", "Ramesh", "MRN", "A-9"),
+                Map.of("Name", "name", "MRN", "legacyId"), List.of(), 7L, 2);
+
+        assertThat(outcome.patient().getCustomFields()).contains("Dr. Kulkarni");
+    }
+
+    /** Successive partial files should accumulate columns rather than each replacing the last. */
+    @Test
+    void reimportWithNewExtraColumnsMergesRatherThanReplacing() throws Exception {
+        Patient existing = new Patient();
+        existing.setId(55L);
+        existing.setLegacyId("A-9");
+        existing.setCustomFields("{\"Referred By\":\"Dr. Kulkarni\"}");
+        when(patientRepository.findByHospitalIdAndLegacyId(7L, "A-9")).thenReturn(Optional.of(existing));
+
+        RowOutcome outcome = importer().evaluate(
+                Map.of("Name", "Ramesh", "MRN", "A-9", "Insurance TPA", "MediAssist"),
+                Map.of("Name", "name", "MRN", "legacyId"), List.of("Insurance TPA"), 7L, 2);
+
+        com.fasterxml.jackson.databind.JsonNode merged =
+                new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readTree(outcome.patient().getCustomFields());
+        assertThat(merged.get("Referred By").asText()).isEqualTo("Dr. Kulkarni");
+        assertThat(merged.get("Insurance TPA").asText()).isEqualTo("MediAssist");
+    }
+
+    /**
      * When an MRN column is present it is the identity key outright. The name+phone fallback must
      * not also run, or a row whose MRN is genuinely new could be attached to an unrelated existing
      * patient who happens to share a name and number.
