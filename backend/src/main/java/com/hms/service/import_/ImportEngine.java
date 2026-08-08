@@ -3,9 +3,14 @@ package com.hms.service.import_;
 import com.hms.dto.import_.ImportPreview;
 import com.hms.dto.import_.ParsedSheet;
 import com.hms.dto.import_.RowOutcome;
+import com.hms.entity.ImportBatch;
 import com.hms.entity.ImportEntityType;
+import com.hms.entity.ImportRowError;
+import com.hms.entity.ImportStatus;
+import com.hms.entity.Patient;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.*;
 
 /**
@@ -89,5 +94,95 @@ public class ImportEngine {
 
         return new ImportPreview(sheet.rows().size(), create, update, skip, error,
                 unmapped, warnings, errors, samples);
+    }
+
+    /** Rows per transaction. Bounds memory and limits how much a mid-run crash leaves half-done. */
+    private static final int CHUNK_SIZE = 500;
+
+    /**
+     * Applies the sheet for real. Row-level problems are recorded and the run continues — one bad
+     * row out of 8,000 must not cost the other 7,999. Counts land on the batch.
+     */
+    public void commit(ParsedSheet sheet, Map<String, String> mapping, ImportBatch batch) {
+
+        EntityImporter importer = importerFor(batch.getEntityType());
+        List<String> unmapped = columnMapper.unmapped(sheet.headers(), mapping);
+
+        batch.setStatus(ImportStatus.RUNNING);
+        batch.setTotalRows(sheet.rows().size());
+
+        List<Patient> pending = new ArrayList<>();
+        List<ImportRowError> rowErrors = new ArrayList<>();
+        int created = 0, updated = 0, skipped = 0, failed = 0;
+
+        int rowNumber = 1; // row 1 is the header
+        for (Map<String, String> row : sheet.rows()) {
+            rowNumber++;
+            RowOutcome outcome;
+            try {
+                outcome = importer.evaluate(row, mapping, unmapped, batch.getHospitalId(), rowNumber);
+            } catch (Exception e) {
+                outcome = RowOutcome.error(null, "Unexpected problem: " + e.getMessage());
+            }
+
+            switch (outcome.action()) {
+                case CREATE -> {
+                    Patient p = outcome.patient();
+                    p.setImportBatchId(batch.getId());
+                    p.setIsActive(true);
+                    pending.add(p);
+                    created++;
+                }
+                case UPDATE -> {
+                    Patient p = outcome.patient();
+                    p.setImportBatchId(batch.getId());
+                    p.setIsActive(true);
+                    pending.add(p);
+                    updated++;
+                }
+                case SKIP -> skipped++;
+                case ERROR -> {
+                    failed++;
+                    rowErrors.add(new ImportRowError(batch.getId(), rowNumber,
+                            outcome.columnName(), outcome.message(), toJson(row)));
+                }
+            }
+
+            if (pending.size() >= CHUNK_SIZE) {
+                patientRepository.saveAll(pending);
+                pending.clear();
+            }
+        }
+
+        if (!pending.isEmpty()) {
+            patientRepository.saveAll(pending);
+        }
+        if (!rowErrors.isEmpty()) {
+            rowErrorRepository.saveAll(rowErrors);
+        }
+
+        batch.setCreatedCount(created);
+        batch.setUpdatedCount(updated);
+        batch.setSkippedCount(skipped);
+        batch.setFailedCount(failed);
+        batch.setCommittedAt(LocalDateTime.now());
+        batch.setStatus(ImportStatus.COMPLETED);
+    }
+
+    private String toJson(Map<String, String> row) {
+        StringBuilder sb = new StringBuilder("{");
+        boolean first = true;
+        for (Map.Entry<String, String> e : row.entrySet()) {
+            if (!first) sb.append(",");
+            sb.append(quote(e.getKey())).append(":").append(quote(e.getValue()));
+            first = false;
+        }
+        return sb.append("}").toString();
+    }
+
+    private String quote(String raw) {
+        String escaped = raw == null ? "" : raw.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
+        return "\"" + escaped + "\"";
     }
 }
