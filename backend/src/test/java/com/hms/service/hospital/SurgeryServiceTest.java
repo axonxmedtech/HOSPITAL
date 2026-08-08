@@ -133,7 +133,7 @@ class SurgeryServiceTest {
         // Any doctor (not just surgeons) can be assigned as the operating surgeon.
         surgeon.setSpecialization("Cardiologist"); surgeon.setEmail("surg@x.com"); surgeon.setName("Dr Surg");
         when(doctorRepository.findByIdAndHospitalIdAndIsActiveTrue(11L, 7L)).thenReturn(Optional.of(surgeon));
-        Ward ward = new Ward(); ward.setWardId(3L); ward.setHospitalId(7L); ward.setWardName("OT");
+        Ward ward = new Ward(); ward.setWardId(3L); ward.setHospitalId(7L); ward.setWardName("OT"); ward.setWardType(com.hms.entity.WardType.OT);
         when(wardRepository.findById(3L)).thenReturn(Optional.of(ward));
         PatientNurseAssignment asg = new PatientNurseAssignment(); asg.setNurseUserId(77L);
         when(assignmentRepository.findByIpdAdmissionIdAndIsActiveTrue(1L)).thenReturn(Optional.of(asg));
@@ -161,7 +161,7 @@ class SurgeryServiceTest {
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
         when(securityHelper.getCurrentUserId()).thenReturn(40L);
         when(surgeryRepository.findByPublicId("s-pub")).thenReturn(Optional.of(s));
-        Ward ward = new Ward(); ward.setWardId(3L); ward.setHospitalId(7L); ward.setWardName("OT");
+        Ward ward = new Ward(); ward.setWardId(3L); ward.setHospitalId(7L); ward.setWardName("OT"); ward.setWardType(com.hms.entity.WardType.OT);
         when(wardRepository.findById(3L)).thenReturn(Optional.of(ward));
         when(assignmentRepository.findByIpdAdmissionIdAndIsActiveTrue(1L)).thenReturn(Optional.empty());
         org.mockito.Mockito.lenient().when(surgeryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));

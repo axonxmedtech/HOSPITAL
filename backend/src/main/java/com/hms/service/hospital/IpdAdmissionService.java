@@ -1205,6 +1205,15 @@ public class IpdAdmissionService {
     }
 
     @org.springframework.transaction.annotation.Transactional
+    /**
+     * Where an admitted patient may be moved. Mirrors {@link WardService#ADMITTABLE_TYPES}
+     * deliberately — a bed a patient can be admitted into is exactly a bed they can be moved into,
+     * and two lists of that would eventually disagree.
+     */
+    public static boolean isTransferrableTo(com.hms.entity.WardType type) {
+        return WardService.ADMITTABLE_TYPES.contains(type);
+    }
+
     public IpdAdmission changeBed(Long ipdId, Long newBedId) {
         IpdAdmission ipd = requireOwnedAdmission(ipdId);
 
@@ -1226,6 +1235,18 @@ public class IpdAdmissionService {
         Bed newBed = bedRepository.findById(newBedId).orElseThrow(() -> new ResourceNotFoundException("New bed not found"));
         if ("occupied".equalsIgnoreCase(newBed.getStatus()) && !newBedId.equals(ipd.getBedId())) {
              throw new IllegalArgumentException("Requested bed is already occupied");
+        }
+
+        // Moving into ICU and back is an ordinary bed change: the admission keeps its identity, so
+        // the stay remains one episode on one bill and the nightly charge simply follows the
+        // patient to the ICU rate. A theatre is not a destination, though — a surgery records its
+        // OT ward on the surgery itself, and pointing the admission at one would bill the theatre
+        // rate nightly and leave the patient with no ward to come back to.
+        com.hms.entity.Ward destinationWard = wardRepository.findById(newBed.getWardId()).orElse(null);
+        if (destinationWard != null && !isTransferrableTo(destinationWard.getWardType())) {
+            throw new IllegalArgumentException(
+                    "A patient cannot be moved into an operating theatre. Theatres are recorded on "
+                    + "the surgery, not as an admission. Choose a ward or an ICU bed.");
         }
 
         Long oldBedId = ipd.getBedId();

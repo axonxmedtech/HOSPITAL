@@ -80,16 +80,16 @@ public class OtRoomService {
     }
 
     /**
-     * Wards that look like theatres and have not been converted yet. Presented for an
-     * admin to confirm — "FOOT WARD".toUpperCase().contains("OT") is true, which is
-     * precisely why this is a suggestion and not a migration.
+     * OT wards that have not been converted into theatres yet.
+     *
+     * <p>Selected by ward type. This used to match any ward whose name contained "OT", which is
+     * true of "FOOT WARD" — the reason it was only ever a suggestion. An admin now says a ward is
+     * a theatre by setting its type, so the guess is gone and the list is exact.
      */
     public List<Ward> suggestFromWards() {
         Long hospitalId = requireHospitalId();
         List<Ward> out = new ArrayList<>();
-        for (Ward w : wardRepository.findByHospitalId(hospitalId)) {
-            String name = w.getWardName() == null ? "" : w.getWardName().toUpperCase();
-            if (!name.contains("OT")) continue;
+        for (Ward w : wardRepository.findByHospitalIdAndWardType(hospitalId, com.hms.entity.WardType.OT)) {
             if (roomRepository.findByHospitalIdAndSourceWardId(hospitalId, w.getWardId()).isPresent()) continue;
             out.add(w);
         }

@@ -55,6 +55,8 @@ public class SurgeryService {
     @Autowired private com.hms.service.hospital.ot.OtSchedulingService otSchedulingService;
     @Autowired private com.hms.repository.OtRoomRepository otRoomRepository;
     @Autowired private com.hms.service.hospital.ot.OtPolicyService otPolicyService;
+    @Autowired private com.hms.repository.BillingRepository billingRepository;
+    @Autowired private com.hms.repository.BillingItemRepository billingItemRepository;
     @Autowired private com.hms.service.hospital.ot.SurgeryExecutionService surgeryExecutionService;
     @Autowired private com.hms.repository.OtRoomOccupancyRepository occupancyRepository;
 
@@ -175,6 +177,13 @@ public class SurgeryService {
             if (!hospitalId.equals(ward.getHospitalId())) {
                 throw new UnauthorizedException("Access denied: ward belongs to another hospital");
             }
+            // Identified by type now, not by "OT" appearing in the name. That substring test is
+            // what OtRoomService.suggestFromWards warns about: "FOOT WARD" matches it.
+            if (ward.getWardType() != com.hms.entity.WardType.OT) {
+                throw new IllegalArgumentException("\"" + ward.getWardName()
+                        + "\" is not an operating theatre. Set its type to OT under "
+                        + "Settings → OT Wards, or choose a theatre.");
+            }
         }
 
         s.setSurgeonDoctorId(surgeon != null ? surgeon.getId() : null);
@@ -232,12 +241,95 @@ public class SurgeryService {
                 : null;
         Surgery saved = stateMachine.transition(s, com.hms.entity.SurgeryStatus.SCHEDULED, null, null, payload);
 
+        applyTheatreCharge(saved, ward);
+
         notifyNurse(saved, hospitalId, surgeonDisplayName);
         if (surgeon != null) notifySurgeon(saved, hospitalId, surgeon);
         audit(isReschedule ? "SURGERY_RESCHEDULED" : "SURGERY_SCHEDULED",
                 (isReschedule ? "Surgery rescheduled" : "Surgery scheduled") + " (operator " + surgeonDisplayName + ")",
                 hospitalId, saved.getIpdAdmissionId());
         return saved;
+    }
+
+    /**
+     * The one-off theatre fee for a surgery, taken from the OT ward's bedPrice.
+     *
+     * <p>Zero for anything that is not an OT ward, and zero when no price is set — an unpriced
+     * theatre should add nothing to the bill rather than a zero line item nobody asked for.
+     */
+    public static java.math.BigDecimal otChargeFor(Ward ward) {
+        if (ward == null
+                || ward.getWardType() != com.hms.entity.WardType.OT
+                || ward.getBedPrice() == null) {
+            return java.math.BigDecimal.ZERO;
+        }
+        return ward.getBedPrice();
+    }
+
+    /** The bill line for a surgery's theatre. Keyed on the surgery so it can be charged only once. */
+    static String theatreChargeDescription(Long surgeryId, String wardName) {
+        return "Theatre charge — " + wardName + " (Surgery #" + surgeryId + ")";
+    }
+
+    /** Identifies any theatre charge for this surgery, whichever theatre it names. */
+    private static String theatreChargeKey(Long surgeryId) {
+        return "(Surgery #" + surgeryId + ")";
+    }
+
+    /**
+     * Adds the theatre's fee to the admission's open bill, once per surgery.
+     *
+     * <p>Charged here rather than by the nightly scheduler because the patient's current ward is
+     * never the theatre — they stay admitted in a ward or an ICU throughout — so the scheduler
+     * would never see it.
+     *
+     * <p>Idempotency follows the pattern BillingSchedulerService already uses: look for an existing
+     * line rather than tracking state. The key is the surgery, not the theatre, so rescheduling a
+     * case — including into a different theatre — cannot charge for it twice. A theatre swap
+     * therefore keeps the original amount; correcting that is a bill edit, which is far less
+     * damaging than silently billing a patient for two theatres they only used one of.
+     *
+     * <p>Day-care cases have no admission and so no bill to append to; they are skipped.
+     */
+    private void applyTheatreCharge(Surgery surgery, Ward ward) {
+        java.math.BigDecimal charge = otChargeFor(ward);
+        if (charge.compareTo(java.math.BigDecimal.ZERO) <= 0 || surgery.getIpdAdmissionId() == null) {
+            return;
+        }
+
+        try {
+            java.util.List<com.hms.entity.Billing> bills =
+                    billingRepository.findByIpdAdmissionId(surgery.getIpdAdmissionId());
+            if (bills == null || bills.isEmpty()) {
+                return; // no bill open yet; nothing to append to
+            }
+            com.hms.entity.Billing bill = bills.get(0);
+
+            String key = theatreChargeKey(surgery.getId());
+            boolean alreadyCharged = billingItemRepository.findByBillingId(bill.getId()).stream()
+                    .anyMatch(item -> item.getDescription() != null
+                            && item.getDescription().startsWith("Theatre charge")
+                            && item.getDescription().contains(key));
+            if (alreadyCharged) {
+                return;
+            }
+
+            com.hms.entity.BillingItem item = new com.hms.entity.BillingItem();
+            item.setBillingId(bill.getId());
+            item.setHospitalId(bill.getHospitalId());
+            item.setDescription(theatreChargeDescription(surgery.getId(), ward.getWardName()));
+            item.setAmount(charge);
+            billingItemRepository.save(item);
+
+            java.math.BigDecimal total =
+                    bill.getAmount() == null ? java.math.BigDecimal.ZERO : bill.getAmount();
+            bill.setAmount(total.add(charge));
+            billingRepository.save(bill);
+        } catch (Exception e) {
+            // Scheduling a surgery must not fail because a bill line could not be written — the
+            // clinical record is what matters at this moment. Logged loudly so it is not lost.
+            logger.error("Could not apply the theatre charge for surgery {}", surgery.getId(), e);
+        }
     }
 
     // ---------- Reception: start / complete / cancel ----------
