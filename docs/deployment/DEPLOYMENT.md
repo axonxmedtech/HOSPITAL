@@ -114,8 +114,8 @@ stops the deploy immediately.
 1. **Liveness gate (rollback trigger, proven):** up to 15×10s polls of `/api/public/health`; a
    non-200 triggers auto-rollback where enabled.
 2. **Extended verification (`scripts/deploy/verify-deployment.sh`, report-only today):**
-   - **Readiness** — `/actuator/health` overall `UP` (Spring's aggregate reflects **DB** + **Redis**
-     - **disk** health indicators, which are enabled).
+   - **Readiness** — `/actuator/health` overall `UP` (Spring's aggregate reflects the **DB**,
+     **Redis** and **disk** health indicators, which are enabled).
    - **Frontend availability** — the app URL returns 200 (static assets served).
    - **Host resources** — disk (critical ≥98%), memory, CPU load.
 

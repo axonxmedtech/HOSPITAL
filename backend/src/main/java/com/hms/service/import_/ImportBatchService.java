@@ -121,6 +121,12 @@ public class ImportBatchService {
     public ImportBatch commit(ParsedSheet sheet, Map<String, String> mapping, String sourceFilename) {
 
         Long hospitalId = securityHelper.getCurrentHospitalId();
+        // Best-effort, not a lock. Two requests arriving together can both read "no RUNNING batch"
+        // before either inserts one, and MySQL has no partial unique index to express "at most one
+        // RUNNING row per hospital". This catches the realistic case - an admin double-clicking, or
+        // starting a second import while the first is still going - and the actual protection
+        // against duplicate patients is the unique (hospital_id, legacy_id) index, which makes a
+        // genuine race fail loudly on the second writer rather than silently duplicating records.
         if (batchRepository.existsByHospitalIdAndStatus(hospitalId, ImportStatus.RUNNING)) {
             throw new IllegalArgumentException(
                     "An import is already running for this hospital. Wait for it to finish before starting another.");
