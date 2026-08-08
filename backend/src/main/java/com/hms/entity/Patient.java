@@ -70,7 +70,6 @@ public class Patient {
      */
     @Column(nullable = false, length = 100)
     @jakarta.validation.constraints.Size(max = 100, message = "Name is too long")
-    @com.hms.validation.NoEmoji
     private String name;
 
     /**
@@ -120,9 +119,14 @@ public class Patient {
     /**
      * Patient's email address (optional)
      */
+    /**
+     * No @Email or @NoEmoji here on purpose. Bean Validation runs on every JPA persist, and legacy
+     * exports routinely carry "n/a", "-" or "none" in an email column. A violation would be thrown
+     * from inside saveAll — outside the importer's per-row error handling — and kill an entire
+     * import rather than flagging one row. Manual entry keeps these rules via PatientRequest; the
+     * importer coerces the value and preserves the original in customFields, so nothing is lost.
+     */
     @Column(length = 100)
-    @jakarta.validation.constraints.Email(message = "Invalid email format")
-    @jakarta.validation.constraints.Size(max = 100, message = "Email is too long")
     private String email;
 
     /**
@@ -130,7 +134,6 @@ public class Patient {
      */
     @Column(length = 255)
     @jakarta.validation.constraints.Size(max = 255, message = "Address is too long")
-    @com.hms.validation.NoEmoji
     private String address;
 
     /**
@@ -149,7 +152,6 @@ public class Patient {
      */
     @Column(name = "medical_history", length = 1000)
     @jakarta.validation.constraints.Size(max = 1000, message = "Medical history is too long")
-    @com.hms.validation.NoEmoji
     private String medicalHistory;
 
     /**

@@ -105,7 +105,19 @@ public class ImportBatchService {
      * run so that every written row has a real import_batch_id to point at — that lineage is the
      * only thing undo has to work with.
      */
-    @Transactional
+    /**
+     * Deliberately NOT {@code @Transactional}.
+     *
+     * <p>With a transaction around this method, a mid-import failure rethrows and rolls the whole
+     * thing back — including the {@code FAILED} status write and the batch row itself. The admin
+     * would be left with no batch record, no error report, and no way to see how far the run got,
+     * while any rows already flushed in earlier chunks stayed in the database. The engine's
+     * count-and-error-flushing {@code finally} block would be silently discarded too.
+     *
+     * <p>Letting each repository call use its own transaction means partial progress survives and
+     * is visible, which is the point of recording counts and row errors at all. Undo is what
+     * reverses a bad run, not a rollback.
+     */
     public ImportBatch commit(ParsedSheet sheet, Map<String, String> mapping, String sourceFilename) {
 
         Long hospitalId = securityHelper.getCurrentHospitalId();

@@ -108,15 +108,36 @@ public class PatientImporter implements EntityImporter {
             patient = new Patient();
         }
 
+        // Values that will not fit the column, or that the column cannot represent, are coerced
+        // here and the untouched original is kept in customFields. Letting them through instead
+        // meant a Bean Validation or data-truncation error thrown from inside saveAll - outside
+        // the per-row handler - which aborts the whole import over one bad cell.
+        Map<String, String> coerced = new LinkedHashMap<>();
+
         patient.setHospitalId(hospitalId);
-        patient.setName(name);
-        patient.setLegacyId(legacyId);
+        patient.setName(clamp(name, 100, "Name", coerced));
         patient.setSource(ImportSource.IMPORTED);
-        patient.setGender(blankToNull(byField.get("gender")));
-        patient.setPhone(blankToNull(byField.get("phone")));
-        patient.setEmail(blankToNull(byField.get("email")));
-        patient.setAddress(blankToNull(byField.get("address")));
-        patient.setMedicalHistory(blankToNull(byField.get("medicalHistory")));
+        patient.setGender(clamp(blankToNull(byField.get("gender")), 10, "Gender", coerced));
+        patient.setPhone(clamp(blankToNull(byField.get("phone")), 15, "Phone", coerced));
+        patient.setAddress(clamp(blankToNull(byField.get("address")), 255, "Address", coerced));
+        patient.setMedicalHistory(
+                clamp(blankToNull(byField.get("medicalHistory")), 1000, "Medical history", coerced));
+
+        // legacyId is the dedupe and join key. Only assign it when this file actually supplied one:
+        // on the name+phone fallback branch it is always null, and writing that would erase the
+        // legacy_id an earlier MRN import established, destroying the key future runs match on.
+        if (legacyId != null) {
+            patient.setLegacyId(clamp(legacyId, 100, "Old patient ID", coerced));
+        }
+
+        String email = blankToNull(byField.get("email"));
+        if (email != null && !PLAUSIBLE_EMAIL.matcher(email).matches()) {
+            // "n/a", "-", "none" are everywhere in legacy exports. Keep the value, just not in a
+            // column that is meant to hold a reachable address.
+            coerced.put("Email (not a valid address)", email);
+            email = null;
+        }
+        patient.setEmail(clamp(email, 100, "Email", coerced));
 
         String dob = blankToNull(byField.get("dateOfBirth"));
         if (dob != null) {
@@ -129,7 +150,7 @@ public class PatientImporter implements EntityImporter {
         }
 
         try {
-            String merged = mergeCustomFields(patient.getCustomFields(), row, unmappedHeaders);
+            String merged = mergeCustomFields(patient.getCustomFields(), row, unmappedHeaders, coerced);
             // Only write when this file actually carried unmapped columns. Assigning unconditionally
             // meant re-importing a file without the extra columns - the corrected errors.csv being
             // the obvious case - set customFields to null and erased what an earlier import had
@@ -188,9 +209,11 @@ public class PatientImporter implements EntityImporter {
      *         existing value untouched.
      */
     private String mergeCustomFields(String existingJson, Map<String, String> row,
-                                     List<String> unmappedHeaders)
+                                     List<String> unmappedHeaders, Map<String, String> coerced)
             throws com.fasterxml.jackson.core.JsonProcessingException {
-        if (unmappedHeaders == null || unmappedHeaders.isEmpty()) return null;
+        boolean nothingToAdd = (unmappedHeaders == null || unmappedHeaders.isEmpty())
+                && (coerced == null || coerced.isEmpty());
+        if (nothingToAdd) return null;
 
         Map<String, String> merged = new LinkedHashMap<>();
         if (existingJson != null && !existingJson.isBlank()) {
@@ -202,10 +225,36 @@ public class PatientImporter implements EntityImporter {
                 // unparseable blob is better than refusing to import the patient at all.
             }
         }
-        for (String header : unmappedHeaders) {
-            merged.put(header, row.getOrDefault(header, ""));
+        if (unmappedHeaders != null) {
+            for (String header : unmappedHeaders) {
+                merged.put(header, row.getOrDefault(header, ""));
+            }
+        }
+        if (coerced != null) {
+            merged.putAll(coerced);
         }
         return JSON.writeValueAsString(merged);
+    }
+
+    /**
+     * Deliberately permissive — this only decides whether a value belongs in the email column, not
+     * whether it is deliverable. Anything rejected is preserved verbatim in customFields.
+     */
+    private static final java.util.regex.Pattern PLAUSIBLE_EMAIL =
+            java.util.regex.Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+
+    /**
+     * Truncates a value to what its column can hold, recording the untouched original under
+     * {@code label} so the full value survives in customFields.
+     *
+     * <p>Truncating quietly would be data loss; refusing the row would abort an import over a long
+     * address. Keeping both the usable value and the original is the only option that loses nothing.
+     */
+    private String clamp(String value, int max, String label, Map<String, String> coerced) {
+        if (value == null) return null;
+        if (value.length() <= max) return value;
+        coerced.put(label + " (full value)", value);
+        return value.substring(0, max);
     }
 
     private String blankToNull(String v) {

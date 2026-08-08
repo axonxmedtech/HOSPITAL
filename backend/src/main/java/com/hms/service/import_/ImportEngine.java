@@ -146,8 +146,20 @@ public class ImportEngine {
                     }
                     case UPDATE -> {
                         Patient p = outcome.patient();
-                        p.setImportBatchId(batch.getId());
-                        p.setIsActive(true);
+                        // Deliberately NOT stamped with this batch's id. import_batch_id means
+                        // "this batch created this row", and undo soft-deletes everything carrying
+                        // it. Stamping updates too meant undoing a re-import would deactivate every
+                        // patient the file merely matched — including ones reception registered by
+                        // hand months earlier. Undo reverses what an import added; it does not
+                        // revert edits it made to records that already existed.
+                        //
+                        // Reactivation is likewise narrow: only rows a previous import soft-deleted
+                        // (they still carry an import_batch_id) come back. A patient an admin
+                        // deliberately deactivated is left alone rather than resurrected by a
+                        // routine re-import.
+                        if (p.getImportBatchId() != null && !Boolean.TRUE.equals(p.getIsActive())) {
+                            p.setIsActive(true);
+                        }
                         pending.add(p);
                         inChunk[1]++;
                     }

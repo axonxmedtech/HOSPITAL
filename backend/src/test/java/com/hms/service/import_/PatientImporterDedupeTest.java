@@ -136,6 +136,66 @@ class PatientImporterDedupeTest {
     }
 
     /**
+     * The fallback branch never has a legacyId. Writing it anyway would blank the legacy_id an
+     * earlier MRN-bearing import established, destroying the key every future run matches on.
+     */
+    @Test
+    void fallbackMatchDoesNotEraseAnExistingLegacyId() {
+        Patient existing = new Patient();
+        existing.setId(88L);
+        existing.setLegacyId("A-7");
+        when(patientRepository.findByHospitalIdAndNameAndPhone(7L, "Ramesh Patel", "9876543210"))
+                .thenReturn(List.of(existing));
+
+        RowOutcome outcome = importer().evaluate(
+                Map.of("Name", "Ramesh Patel", "Mob No", "9876543210"),
+                Map.of("Name", "name", "Mob No", "phone"), List.of(), 7L, 2);
+
+        assertThat(outcome.patient().getLegacyId()).isEqualTo("A-7");
+    }
+
+    /**
+     * Legacy exports routinely carry "n/a" in an email column. @Email on the entity would have
+     * thrown from inside saveAll, outside the per-row handler, aborting the whole import over one
+     * cell. The value is kept, just not in a column meant for a reachable address.
+     */
+    @Test
+    void keepsAnUnusableEmailInCustomFieldsInsteadOfFailingTheRow() throws Exception {
+        RowOutcome outcome = importer().evaluate(
+                Map.of("Name", "Ramesh", "Email", "n/a"),
+                Map.of("Name", "name", "Email", "email"), List.of(), 7L, 2);
+
+        assertThat(outcome.action()).isEqualTo(RowOutcome.Action.CREATE);
+        assertThat(outcome.patient().getEmail()).isNull();
+
+        com.fasterxml.jackson.databind.JsonNode preserved =
+                new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readTree(outcome.patient().getCustomFields());
+        assertThat(preserved.get("Email (not a valid address)").asText()).isEqualTo("n/a");
+    }
+
+    /**
+     * phone is VARCHAR(15) and "+91 98765 43210" is 16 characters. Unclamped it would fail at the
+     * database inside saveAll and take the whole chunk with it.
+     */
+    @Test
+    void clampsAnOverlongValueToTheColumnAndKeepsTheOriginal() throws Exception {
+        String longPhone = "+91 98765 43210 ext 22";
+
+        RowOutcome outcome = importer().evaluate(
+                Map.of("Name", "Ramesh", "Mob No", longPhone),
+                Map.of("Name", "name", "Mob No", "phone"), List.of(), 7L, 2);
+
+        assertThat(outcome.action()).isEqualTo(RowOutcome.Action.CREATE);
+        assertThat(outcome.patient().getPhone()).hasSize(15);
+
+        com.fasterxml.jackson.databind.JsonNode preserved =
+                new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readTree(outcome.patient().getCustomFields());
+        assertThat(preserved.get("Phone (full value)").asText()).isEqualTo(longPhone);
+    }
+
+    /**
      * When an MRN column is present it is the identity key outright. The name+phone fallback must
      * not also run, or a row whose MRN is genuinely new could be attached to an unrelated existing
      * patient who happens to share a name and number.
