@@ -200,6 +200,9 @@ const HospitalAdminDashboard = () => {
   // Which Settings box is open: null (show the grid) | 'operations' | 'vitals'
   // | 'ot-forms' | 'nursing' | 'permissions' | 'policies'.
   const [settingsView, setSettingsView] = useState(null);
+  // Which ward type the Wards tab is showing. IPD is the default because it is the only type
+  // every hospital has - ICU and OT are gated on their modules.
+  const [wardTypeView, setWardTypeView] = useState('IPD');
   // Leaving Settings resets to the box grid, so returning never lands mid-section.
   useEffect(() => {
     if (activeTab !== 'settings') setSettingsView(null);
@@ -3159,7 +3162,31 @@ const HospitalAdminDashboard = () => {
 
                   {activeTab === 'wards' && (
                     <div className="p-6">
-                      <WardsAndBeds />
+                      {/* Three separate screens over one component. A ward is a ward — beds,
+                          pricing and the incharge behave identically — so only the filter and the
+                          wording differ. ICU needs inpatients to exist; OT needs the OT module. */}
+                      <div className="mb-5 inline-flex rounded-xl border border-gray-200 bg-slate-50 p-1">
+                        {[
+                          { type: 'IPD', label: 'Wards & Beds', show: true },
+                          { type: 'ICU', label: 'ICU Wards', show: modules.includes('IPD') },
+                          { type: 'OT', label: 'OT Wards', show: modules.includes('OT') },
+                        ]
+                          .filter((t) => t.show)
+                          .map((t) => (
+                            <button
+                              key={t.type}
+                              onClick={() => setWardTypeView(t.type)}
+                              className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
+                                wardTypeView === t.type
+                                  ? 'bg-white text-sky-700 shadow-sm'
+                                  : 'text-gray-600 hover:text-gray-900'
+                              }`}
+                            >
+                              {t.label}
+                            </button>
+                          ))}
+                      </div>
+                      <WardsAndBeds wardType={wardTypeView} />
                     </div>
                   )}
                   {activeTab === 'billing' && billing.length === 0 && (

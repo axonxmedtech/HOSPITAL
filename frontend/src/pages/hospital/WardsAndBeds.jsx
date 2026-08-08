@@ -8,7 +8,26 @@ import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
 import WardService from '../../services/wardService';
 
-const WardsAndBeds = () => {
+/**
+ * Copy per ward type. The three screens share this component because a ward is a ward — beds,
+ * pricing and the incharge behave identically — and only the wording and the filter differ.
+ * Duplicating the screen three times would mean fixing every bed bug three times.
+ */
+const LABELS = {
+  IPD: {
+    empty: 'No wards found. Use "Create Ward" to add one.',
+  },
+  ICU: {
+    empty:
+      'No ICU wards yet. Create one, then move a patient here from their ward when they need intensive care.',
+  },
+  OT: {
+    empty:
+      'No operating theatres yet. Each OT ward is one theatre and holds one case at a time, so create one per theatre.',
+  },
+};
+
+const WardsAndBeds = ({ wardType = 'IPD' }) => {
   const { success, error: toastError } = useToast();
   const [wards, setWards] = useState([]);
   const [nurseIncharges, setNurseIncharges] = useState([]);
@@ -29,15 +48,18 @@ const WardsAndBeds = () => {
   // Without the module the call is rejected, so don't make it — and hide the picker.
   const nursingEnabled = (authService.getCurrentUser()?.modules || []).includes('NURSING');
 
+  // wardType is a dependency: the three screens mount the same component, so switching between
+  // them changes only this prop. Without it the list would keep showing the previous type's wards.
   useEffect(() => {
     fetchWards();
     if (nursingEnabled) fetchNurseIncharges();
-  }, [nursingEnabled]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nursingEnabled, wardType]);
 
   const fetchWards = async () => {
     setLoading(true);
     try {
-      const data = await WardService.getWards();
+      const data = await WardService.getWards(wardType);
       setWards(data);
     } catch (e) {
       console.error(e);
@@ -101,9 +123,7 @@ const WardsAndBeds = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {loading && <div>Loading wards...</div>}
         {!loading && wards.length === 0 && (
-          <div className="text-slate-500">
-            No wards found. Use &quot;Create Ward&quot; to add one.
-          </div>
+          <div className="text-slate-500">{(LABELS[wardType] || LABELS.IPD).empty}</div>
         )}
 
         {wards.map((w) => (
@@ -129,6 +149,7 @@ const WardsAndBeds = () => {
 
       <WardModal
         open={editOpen}
+        wardType={wardType}
         initial={editWard}
         onClose={() => {
           setEditOpen(false);

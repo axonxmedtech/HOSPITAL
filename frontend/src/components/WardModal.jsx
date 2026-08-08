@@ -3,7 +3,12 @@ import { useToast } from '../context/ToastContext';
 import WardService from '../services/wardService';
 import Button from './Button';
 
-const WardModal = ({ open, initial, onClose, onSaved }) => {
+/**
+ * @param {('IPD'|'ICU'|'OT')} wardType fixed by the screen the modal opened from, not chosen here.
+ *   A ward does not change purpose by accident, and the admin already said which kind they are
+ *   managing by being on that screen.
+ */
+const WardModal = ({ open, wardType = 'IPD', initial, onClose, onSaved }) => {
   const { error: toastError } = useToast();
   const [wardName, setWardName] = useState('');
   const [bedPrice, setBedPrice] = useState('');
@@ -42,6 +47,12 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
       toastError('Total beds must be 0 or more');
       return;
     }
+    // Mirrors the server rule so the admin is told before the round trip. The server still
+    // enforces it - this is a courtesy, not the guard.
+    if (wardType === 'OT' && totalBeds !== '' && Number(totalBeds) > 1) {
+      toastError('An OT ward has at most one bed — it hosts one case at a time');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -57,8 +68,10 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
       } else {
         const payload = {
           wardName,
+          wardType,
+          // A theatre is one bed by definition, so the field is hidden and the value implied.
+          totalBeds: wardType === 'OT' ? 1 : totalBeds ? Number(totalBeds) : 0,
           bedPrice: Number(bedPrice),
-          totalBeds: totalBeds ? Number(totalBeds) : 0,
           floorNumber: floorNumber ? Number(floorNumber) : null,
         };
         await WardService.createWard(payload);
@@ -99,7 +112,7 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
 
           <div>
             <label htmlFor="fld-37" className="block text-sm text-slate-600">
-              Bed Price
+              {wardType === 'OT' ? 'Theatre charge (per surgery)' : 'Bed Price (per day)'}
             </label>
             <input
               id="fld-37"
@@ -111,25 +124,34 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
             />
           </div>
 
-          <div>
-            <label htmlFor="fld-36" className="block text-sm text-slate-600">
-              Total Beds
-            </label>
-            <input
-              id="fld-36"
-              value={totalBeds}
-              onChange={(e) => setTotalBeds(e.target.value)}
-              type="number"
-              min="0"
-              className="mt-1 w-full p-2 border rounded"
-            />
-            {initial && (
-              <p className="mt-1 text-xs text-slate-500">
-                Increasing adds new beds. Decreasing removes free beds only — occupied beds are
-                never deleted.
-              </p>
-            )}
-          </div>
+          {/* A theatre is one bed by definition, so there is nothing to ask. Showing a field
+              whose only valid answer is 1 invites someone to type 2 and get an error. */}
+          {wardType === 'OT' ? (
+            <p className="text-xs text-slate-500 self-end pb-2">
+              An OT ward is a single theatre and holds one case at a time, so it has exactly one
+              bed. Add a separate OT ward for each theatre.
+            </p>
+          ) : (
+            <div>
+              <label htmlFor="fld-36" className="block text-sm text-slate-600">
+                Total Beds
+              </label>
+              <input
+                id="fld-36"
+                value={totalBeds}
+                onChange={(e) => setTotalBeds(e.target.value)}
+                type="number"
+                min="0"
+                className="mt-1 w-full p-2 border rounded"
+              />
+              {initial && (
+                <p className="mt-1 text-xs text-slate-500">
+                  Increasing adds new beds. Decreasing removes free beds only — occupied beds are
+                  never deleted.
+                </p>
+              )}
+            </div>
+          )}
 
           <div>
             <label htmlFor="fld-35" className="block text-sm text-slate-600">

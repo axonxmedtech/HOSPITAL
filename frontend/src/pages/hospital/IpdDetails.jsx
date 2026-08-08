@@ -14,6 +14,7 @@ import useWebSocket from '../../hooks/useWebSocket';
 import authService from '../../services/authService';
 import formAccessService from '../../services/formAccessService';
 import hospitalService from '../../services/hospitalService';
+import icuService from '../../services/icuService';
 import otService from '../../services/otService';
 import wardService from '../../services/wardService';
 import { printBlob } from '../../utils/printPdf';
@@ -343,6 +344,10 @@ const IpdDetails = () => {
   const [billModal, setBillModal] = useState({ isOpen: false, loading: false, bill: null });
   const [printingBill, setPrintingBill] = useState(false);
   const [payment, setPayment] = useState({ amount: '', mode: 'CASH', saving: false });
+  // ICU stints on this admission, derived server-side from the bed history. Empty for the many
+  // patients who never go to ICU, in which case the panel renders nothing at all.
+  const [icuStays, setIcuStays] = useState([]);
+
   const [bedModal, setBedModal] = useState({
     isOpen: false,
     wards: [],
@@ -353,10 +358,28 @@ const IpdDetails = () => {
   });
 
   useEffect(() => {
+    if (!id) return;
+    icuService
+      .stays(id)
+      .then(setIcuStays)
+      .catch(() => {
+        // Informational panel: a failure here must not take down the case screen.
+      });
+  }, [id, data?.admission?.ward]);
+
+  useEffect(() => {
     if (bedModal.isOpen && bedModal.wards.length === 0) {
       wardService
         .getWards()
-        .then((w) => setBedModal((p) => ({ ...p, wards: w || [] })))
+        .then((w) =>
+          setBedModal((p) => ({
+            // Theatres are filtered out: a surgery records its OT ward on the surgery, and the
+            // server refuses an admission moved into one. Offering a choice that always fails is
+            // worse than not offering it.
+            ...p,
+            wards: (w || []).filter((ward) => ward.wardType !== 'OT'),
+          }))
+        )
         .catch((e) => console.error(e));
     }
   }, [bedModal.isOpen, bedModal.wards.length]);
@@ -779,6 +802,41 @@ const IpdDetails = () => {
                               </button>
                             )}
                         </div>
+
+                        {/* Rendered only when there is something to say. A patient who never went
+                            to ICU should not see an empty panel implying they did. */}
+                        {icuStays.length > 0 && (
+                          <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50/60 p-3">
+                            <div className="text-xs font-bold uppercase tracking-wide text-rose-800 mb-1">
+                              Intensive care
+                            </div>
+                            {icuStays.map((stay) => (
+                              <div
+                                key={`${stay.wardId}-${stay.assignedAt}`}
+                                className="text-sm text-rose-900"
+                              >
+                                <strong>{stay.wardName}</strong>
+                                {stay.bedId ? '' : ''}{' '}
+                                {new Date(stay.assignedAt).toLocaleDateString()}
+                                {' → '}
+                                {stay.releasedAt
+                                  ? new Date(stay.releasedAt).toLocaleDateString()
+                                  : 'ongoing'}
+                                {' · '}
+                                {stay.nights} night{stay.nights === 1 ? '' : 's'}
+                                {stay.current && (
+                                  <span className="ml-2 px-1.5 py-0.5 rounded bg-rose-600 text-white text-[10px] font-bold uppercase">
+                                    Currently in ICU
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                            <p className="mt-1 text-[11px] text-rose-700">
+                              Part of this admission — not a separate stay, and billed on the same
+                              bill at the ICU rate for those days.
+                            </p>
+                          </div>
+                        )}
                         <div>
                           <strong>Status:</strong> {data.status || '-'}
                         </div>
@@ -1927,7 +1985,8 @@ const IpdDetails = () => {
                         <option value="">-- Choose Ward --</option>
                         {bedModal.wards.map((w) => (
                           <option key={w.wardId} value={w.wardId}>
-                            {w.wardName} (₹{w.bedPrice}/day)
+                            {w.wardName}
+                            {w.wardType === 'ICU' ? ' — ICU' : ''} (₹{w.bedPrice}/day)
                           </option>
                         ))}
                       </select>

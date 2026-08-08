@@ -1,7 +1,12 @@
 import apiClient from './apiService';
 
 const WardService = {
-  getWards: () => apiClient.get('/hospital/wards').then((r) => r.data),
+  /**
+   * @param {('IPD'|'ICU'|'OT')} [wardType] omit for every ward, which is what the callers that
+   *   predate ward types expect. The three typed screens each pass their own.
+   */
+  getWards: (wardType) =>
+    apiClient.get('/hospital/wards', { params: wardType ? { wardType } : {} }).then((r) => r.data),
   // Nursing Mgmt: wards with a Nurse Incharge AND an available bed — used only
   // by the IPD admission modal so incharge-less wards are hidden there.
   getWardsForAdmission: () => apiClient.get('/hospital/wards/for-admission').then((r) => r.data),

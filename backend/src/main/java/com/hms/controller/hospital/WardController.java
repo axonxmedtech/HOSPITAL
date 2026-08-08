@@ -32,9 +32,16 @@ public class WardController {
         return ResponseEntity.ok(wardService.bulkCreate(req));
     }
 
+    /**
+     * @param wardType optional filter, one of IPD / ICU / OT. Omitted returns every ward, which is
+     *                 what existing callers expect, so the three typed screens can share this
+     *                 endpoint without a second one.
+     */
     @GetMapping
-    public ResponseEntity<List<WardResponse>> getAll() {
-        return ResponseEntity.ok(wardService.getAllWards());
+    public ResponseEntity<List<WardResponse>> getAll(
+            @org.springframework.web.bind.annotation.RequestParam(required = false)
+            com.hms.entity.WardType wardType) {
+        return ResponseEntity.ok(wardService.getWardsByType(wardType));
     }
 
     // Nursing Mgmt: admission/bed-selection flows must only see wards that have
