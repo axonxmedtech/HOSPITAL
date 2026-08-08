@@ -44,4 +44,26 @@ class WardTypeRulesTest {
         assertThat(WardService.ADMITTABLE_TYPES).containsExactlyInAnyOrder(WardType.IPD, WardType.ICU);
         assertThat(WardService.ADMITTABLE_TYPES).doesNotContain(WardType.OT);
     }
+
+    /** No ward may have thousands of beds; the cap also guards the bed-number arithmetic. */
+    @Test
+    void noWardTypeMayExceedTheMaximumBedCount() {
+        assertThat(WardService.bedCountIsValidFor(WardType.IPD, 2000)).isTrue();
+        assertThat(WardService.bedCountIsValidFor(WardType.IPD, 2001)).isFalse();
+        assertThat(WardService.bedCountIsValidFor(WardType.ICU, 2001)).isFalse();
+    }
+
+    /**
+     * A rejection explains itself the same way wherever it comes from. Two wordings of one rule
+     * become two rules the moment somebody edits only one of them.
+     */
+    @Test
+    void eachRejectionExplainsTheActualReason() {
+        assertThat(WardService.bedCountRejectionMessage(WardType.IPD, -1))
+                .contains("cannot be negative");
+        assertThat(WardService.bedCountRejectionMessage(WardType.OT, 2))
+                .contains("at most one bed");
+        assertThat(WardService.bedCountRejectionMessage(WardType.ICU, 5000))
+                .contains("between 0 and");
+    }
 }

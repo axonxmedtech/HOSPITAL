@@ -96,7 +96,25 @@ public class WardService {
         if (bedCount < 0) {
             return false;
         }
+        if (bedCount > MAX_BEDS_PER_WARD) {
+            return false;
+        }
         return type != com.hms.entity.WardType.OT || bedCount <= 1;
+    }
+
+    /**
+     * Why a bed count was refused. Kept beside the rule so create and update explain a rejection
+     * identically — a rule with two wordings eventually becomes two rules.
+     */
+    static String bedCountRejectionMessage(com.hms.entity.WardType type, int bedCount) {
+        if (bedCount < 0) {
+            return "Bed count cannot be negative. A ward may have no beds yet, but not fewer than none.";
+        }
+        if (type == com.hms.entity.WardType.OT && bedCount > 1) {
+            return "An OT ward has at most one bed — it hosts one case at a time. "
+                    + "Create a separate OT ward for each theatre.";
+        }
+        return "Total beds must be between 0 and " + MAX_BEDS_PER_WARD;
     }
 
     @Transactional
@@ -105,16 +123,6 @@ public class WardService {
 
         com.hms.entity.WardType type =
                 req.getWardType() == null ? com.hms.entity.WardType.IPD : req.getWardType();
-        // Only the OT ceiling is checked here. Negative and oversized counts are already rejected
-        // further down by the existing MAX_BEDS_PER_WARD guard, and duplicating that check would
-        // move where the failure comes from for behaviour this feature has no business changing.
-        int requestedBeds = req.getTotalBeds() == null ? 0 : req.getTotalBeds();
-        if (type == com.hms.entity.WardType.OT && requestedBeds > 1) {
-            throw new IllegalArgumentException(
-                    "An OT ward has at most one bed — it hosts one case at a time. "
-                    + "Create a separate OT ward for each theatre.");
-        }
-
         Ward ward = new Ward();
         ward.setHospitalId(hospitalId);
         ward.setWardName(req.getWardName());
@@ -127,13 +135,13 @@ public class WardService {
 
         // auto-create beds
         int total = req.getTotalBeds() == null ? 0 : req.getTotalBeds();
-        // Bound the user-supplied count to a sane maximum. Besides being a domain rule (no real
-        // ward has thousands of beds), this stops a huge value from overflowing the bed-number
-        // arithmetic below and from creating a runaway number of rows (CodeQL: user-controlled
-        // data in arithmetic expression).
-        if (total < 0 || total > MAX_BEDS_PER_WARD) {
-            throw new IllegalArgumentException(
-                    "Total beds must be between 0 and " + MAX_BEDS_PER_WARD);
+        // One rule, shared with updateWard. Zero is fine for every type — a ward may be created
+        // empty and filled in later — but a negative count never is, and a theatre may not hold a
+        // second bed. The upper bound is both a domain rule (no real ward has thousands of beds)
+        // and an overflow guard on the bed-number arithmetic below, which takes a user-supplied
+        // count (CodeQL: user-controlled data in arithmetic expression).
+        if (!bedCountIsValidFor(type, total)) {
+            throw new IllegalArgumentException(bedCountRejectionMessage(type, total));
         }
         // ensure unique bed codes within a ward by checking existing highest index
         int startIndex = 1;
@@ -253,9 +261,8 @@ public class WardService {
             // Checked against the type the ward will have AFTER this update, so retyping a ward to
             // OT and resizing it in one request cannot slip a second bed into a theatre.
             if (!bedCountIsValidFor(w.getWardType(), req.getTotalBeds())) {
-                throw new IllegalArgumentException(w.getWardType() == com.hms.entity.WardType.OT
-                        ? "An OT ward has at most one bed - it hosts one case at a time."
-                        : "Bed count cannot be negative.");
+                throw new IllegalArgumentException(
+                        bedCountRejectionMessage(w.getWardType(), req.getTotalBeds()));
             }
             resizeBeds(w, req.getTotalBeds(), hospitalId);
         }
