@@ -35,6 +35,13 @@ import java.util.Map;
 public class ImportController {
 
     /**
+     * Request parameters that are never spreadsheet headers. Anything else in the parameter map is
+     * treated as a header→field mapping entry.
+     */
+    private static final java.util.Set<String> RESERVED_PARAMS =
+            java.util.Set.of("file", "entityType", "sheetName", "headers");
+
+    /**
      * Defaulted (not injected) so the constructor signature matches exactly across production
      * wiring and the plain {@code new ImportController(...)} calls in tests. Spring overwrites it
      * via field injection from {@code hms.import.max-file-size} after construction; tests that
@@ -101,7 +108,7 @@ public class ImportController {
 
         validateUpload(file);
         ParsedSheet sheet = readSheet(file, null);
-        return ResponseEntity.ok(ApiResponse.ok(previewSheet(sheet, mapping)));
+        return ResponseEntity.ok(ApiResponse.ok(previewSheet(sheet, toFieldMapping(mapping))));
     }
 
     /** Extracted so the tenant-isolation test can drive it without building a multipart request. */
@@ -116,10 +123,27 @@ public class ImportController {
 
         validateUpload(file);
         ParsedSheet sheet = readSheet(file, null);
-        Map<String, String> fieldMapping = new java.util.LinkedHashMap<>(mapping);
-        fieldMapping.remove("file");
-        ImportBatch batch = batchService.commit(sheet, fieldMapping, file.getOriginalFilename());
+        ImportBatch batch = batchService.commit(sheet, toFieldMapping(mapping),
+                file.getOriginalFilename());
         return ResponseEntity.ok(ApiResponse.ok("Import complete", batch));
+    }
+
+    /**
+     * Strips the request's own parameters out of the header→field mapping.
+     *
+     * <p>{@code @RequestParam Map<String,String>} collects every parameter on the request, so
+     * {@code file}, {@code entityType} and {@code sheetName} would otherwise be read as spreadsheet
+     * headers and mapped to nonsense fields.
+     *
+     * <p>Shared by preview and commit deliberately. They diverged before this existed — commit
+     * filtered and preview did not — which is the worst possible bug in this feature: the preview
+     * would have shown an outcome the commit did not reproduce, and the admin's whole reason for
+     * trusting the dry-run is that it predicts the commit exactly.
+     */
+    private Map<String, String> toFieldMapping(Map<String, String> requestParams) {
+        Map<String, String> fieldMapping = new java.util.LinkedHashMap<>(requestParams);
+        fieldMapping.keySet().removeAll(RESERVED_PARAMS);
+        return fieldMapping;
     }
 
     @GetMapping

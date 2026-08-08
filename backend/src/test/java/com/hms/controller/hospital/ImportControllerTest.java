@@ -59,4 +59,34 @@ class ImportControllerTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining(".xlsx");
     }
+
+    /**
+     * The request's own parameters are not spreadsheet headers. Left in, `file` and `entityType`
+     * would be read as columns and mapped to nonsense fields.
+     *
+     * <p>This matters most because preview and commit must derive the mapping identically. They did
+     * not before: commit filtered `file` and preview did not, so the dry-run could have reported an
+     * outcome the commit then failed to reproduce — and predicting the commit exactly is the entire
+     * reason an admin trusts the preview before writing thousands of rows.
+     */
+    @Test
+    void previewAndCommitStripTheSameReservedRequestParameters() throws Exception {
+        java.lang.reflect.Method toFieldMapping =
+                ImportController.class.getDeclaredMethod("toFieldMapping", Map.class);
+        toFieldMapping.setAccessible(true);
+
+        Map<String, String> raw = new java.util.LinkedHashMap<>();
+        raw.put("file", "patients.xlsx");
+        raw.put("entityType", "PATIENT");
+        raw.put("sheetName", "Patients");
+        raw.put("headers", "Name,MRN");
+        raw.put("Patient Name", "name");
+        raw.put("MRN", "legacyId");
+
+        @SuppressWarnings("unchecked")
+        Map<String, String> cleaned = (Map<String, String>) toFieldMapping.invoke(controller(), raw);
+
+        assertThat(cleaned).containsOnlyKeys("Patient Name", "MRN");
+        assertThat(cleaned).containsEntry("Patient Name", "name").containsEntry("MRN", "legacyId");
+    }
 }
