@@ -2311,6 +2311,10 @@ public class DatabaseMigrationRunner {
         // Marks a record a human has edited. A re-import skips these so staff corrections are not
         // silently reverted by re-running the original file.
         addColumnIfMissing("patients", "manually_edited", "TINYINT(1) NOT NULL DEFAULT 0");
+        // Every pre-existing ward becomes IPD. Deliberately not inferred from the ward name:
+        // OtRoomService.suggestFromWards already documents why that guess is unsafe -
+        // "FOOT WARD".toUpperCase().contains("OT") is true.
+        addColumnIfMissing("wards", "ward_type", "VARCHAR(10) NOT NULL DEFAULT 'IPD'");
         // gender/phone become optional so imported records can keep blanks blank.
         try {
             jdbcTemplate.execute("ALTER TABLE patients MODIFY COLUMN gender VARCHAR(10) NULL");

@@ -25,4 +25,8 @@ public class CreateWardRequest {
     private Integer totalBeds;
 
     private Integer floorNumber;
+
+    /** Fixed by the screen the ward is created from; defaults to IPD when absent. */
+    private com.hms.entity.WardType wardType;
+
 }

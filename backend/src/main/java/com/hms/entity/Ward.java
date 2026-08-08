@@ -24,6 +24,14 @@ public class Ward {
     @Column(name = "ward_name", nullable = false)
     private String wardName;
 
+    /**
+     * Defaults to IPD so existing rows, and any code path that does not set a type, produce an
+     * ordinary ward rather than silently landing in ICU or OT.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "ward_type", nullable = false, length = 10)
+    private WardType wardType = WardType.IPD;
+
     @Column(name = "bed_price", nullable = false)
     private java.math.BigDecimal bedPrice;
 

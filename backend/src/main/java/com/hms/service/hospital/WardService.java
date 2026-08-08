@@ -75,13 +75,50 @@ public class WardService {
         }
     }
 
+    /**
+     * Ward types a patient may occupy. A theatre is somewhere a case happens, not somewhere a
+     * patient is admitted, so OT is excluded and the admission and transfer pickers never offer it.
+     */
+    public static final java.util.Set<com.hms.entity.WardType> ADMITTABLE_TYPES =
+            java.util.Set.of(com.hms.entity.WardType.IPD, com.hms.entity.WardType.ICU);
+
+    /**
+     * An OT ward may never hold more than one bed, because it hosts one case at a time —
+     * SurgeryService's legacy scheduling path already assumes that, refusing a second surgery while
+     * one occupies the ward. Two beds would let two cases be scheduled into a theatre that cannot
+     * host them.
+     *
+     * <p>Zero is allowed for every type, including OT. Wards have always been creatable with no
+     * beds and filled in afterwards, and breaking that to enforce a minimum would change behaviour
+     * well outside this feature — the rule that matters is the ceiling, not the floor.
+     */
+    public static boolean bedCountIsValidFor(com.hms.entity.WardType type, int bedCount) {
+        if (bedCount < 0) {
+            return false;
+        }
+        return type != com.hms.entity.WardType.OT || bedCount <= 1;
+    }
+
     @Transactional
     public WardResponse createWard(CreateWardRequest req) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
+        com.hms.entity.WardType type =
+                req.getWardType() == null ? com.hms.entity.WardType.IPD : req.getWardType();
+        // Only the OT ceiling is checked here. Negative and oversized counts are already rejected
+        // further down by the existing MAX_BEDS_PER_WARD guard, and duplicating that check would
+        // move where the failure comes from for behaviour this feature has no business changing.
+        int requestedBeds = req.getTotalBeds() == null ? 0 : req.getTotalBeds();
+        if (type == com.hms.entity.WardType.OT && requestedBeds > 1) {
+            throw new IllegalArgumentException(
+                    "An OT ward has at most one bed — it hosts one case at a time. "
+                    + "Create a separate OT ward for each theatre.");
+        }
+
         Ward ward = new Ward();
         ward.setHospitalId(hospitalId);
         ward.setWardName(req.getWardName());
+        ward.setWardType(type);
         ward.setBedPrice(req.getBedPrice());
         ward.setTotalBeds(req.getTotalBeds());
         ward.setFloorNumber(req.getFloorNumber());
@@ -138,9 +175,19 @@ public class WardService {
     }
 
     public List<WardResponse> getAllWards() {
+        return getWardsByType(null);
+    }
+
+    /**
+     * Wards of one type, for the screen that manages that type. Null returns every ward, which is
+     * what the existing admin listing expects.
+     */
+    public List<WardResponse> getWardsByType(com.hms.entity.WardType type) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
-        return wardRepository.findByHospitalId(hospitalId)
-                .stream().map(this::toResponse).collect(Collectors.toList());
+        List<Ward> wards = (type == null)
+                ? wardRepository.findByHospitalId(hospitalId)
+                : wardRepository.findByHospitalIdAndWardType(hospitalId, type);
+        return wards.stream().map(this::toResponse).collect(Collectors.toList());
     }
 
     /**
@@ -159,7 +206,10 @@ public class WardService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         boolean nursingEnabled = hasNursingModule();
 
-        return wardRepository.findByHospitalId(hospitalId)
+        // ADMITTABLE_TYPES only: a theatre is where a case happens, not somewhere a patient is
+        // admitted. Offering one here would let the nightly bed charge follow the theatre rate and
+        // leave the patient with no ward to return to.
+        return wardRepository.findByHospitalIdAndWardTypeIn(hospitalId, ADMITTABLE_TYPES)
                 .stream()
                 .filter(w -> !nursingEnabled || w.getInchargeNurseId() != null)
                 .filter(w -> bedRepository.findByWardIdAndHospitalId(w.getWardId(), hospitalId).stream()
@@ -195,10 +245,18 @@ public class WardService {
         if (req.getWardName() != null) w.setWardName(req.getWardName());
         if (req.getBedPrice() != null) w.setBedPrice(req.getBedPrice());
         if (req.getFloorNumber() != null) w.setFloorNumber(req.getFloorNumber());
+        if (req.getWardType() != null) w.setWardType(req.getWardType());
 
         // Bed count is editable: resize the ward's bed list to match. Done after the rename
         // above so any newly created bed codes carry the ward's new name.
         if (req.getTotalBeds() != null) {
+            // Checked against the type the ward will have AFTER this update, so retyping a ward to
+            // OT and resizing it in one request cannot slip a second bed into a theatre.
+            if (!bedCountIsValidFor(w.getWardType(), req.getTotalBeds())) {
+                throw new IllegalArgumentException(w.getWardType() == com.hms.entity.WardType.OT
+                        ? "An OT ward has at most one bed - it hosts one case at a time."
+                        : "Bed count cannot be negative.");
+            }
             resizeBeds(w, req.getTotalBeds(), hospitalId);
         }
 
@@ -307,6 +365,7 @@ public class WardService {
         r.setTotalBeds(w.getTotalBeds());
         r.setFloorNumber(w.getFloorNumber());
         r.setInchargeNurseId(w.getInchargeNurseId());
+        r.setWardType(w.getWardType());
         return r;
     }
 }

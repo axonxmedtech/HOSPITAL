@@ -25,4 +25,8 @@ public class UpdateWardRequest {
      */
     @jakarta.validation.constraints.Min(value = 0, message = "Total beds cannot be negative")
     private Integer totalBeds;
+
+    /** Null leaves the existing type alone - a ward does not change purpose by accident. */
+    private com.hms.entity.WardType wardType;
+
 }
