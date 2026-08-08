@@ -70,8 +70,10 @@ import { printPdf, printBlob } from '../../utils/printPdf';
 import { validateForm } from '../../utils/validation';
 import BillingTable from './BillingTable';
 // BUG-028: single source-of-truth for base URL
+import ExportDataCard from './ExportDataCard';
 import FilesAndAccessCard from './FilesAndAccessCard';
 import HospitalCalendar from './HospitalCalendar';
+import ImportDataCard from './ImportDataCard';
 import OtAnalyticsCard from './OtAnalyticsCard';
 import OtPermissionsCard from './OtPermissionsCard';
 import OtPoliciesCard from './OtPoliciesCard';
@@ -3545,6 +3547,20 @@ const HospitalAdminDashboard = () => {
                               },
                             ]
                           : []),
+                        // Data migration. Not module-gated: any tenant may arrive with records from
+                        // a previous system, and any tenant may want their data back out.
+                        {
+                          view: 'import-data',
+                          title: 'Import Data',
+                          desc: 'Bring patient records in from your previous system. Preview before anything is saved.',
+                          iconClass: 'bg-amber-50 text-amber-600',
+                        },
+                        {
+                          view: 'export-data',
+                          title: 'Export Data',
+                          desc: 'Download this hospital’s patient records as an Excel file.',
+                          iconClass: 'bg-lime-50 text-lime-600',
+                        },
                       ].map((b) => (
                         <button
                           key={b.view}
@@ -4003,6 +4019,16 @@ const HospitalAdminDashboard = () => {
                   {!isPharmacyTenant && settingsView === 'vitals' && (
                     <div className="max-w-4xl mx-auto my-4">
                       <VitalsSettingsCard />
+                    </div>
+                  )}
+                  {!isPharmacyTenant && settingsView === 'import-data' && (
+                    <div className="max-w-4xl mx-auto my-4">
+                      <ImportDataCard />
+                    </div>
+                  )}
+                  {!isPharmacyTenant && settingsView === 'export-data' && (
+                    <div className="max-w-4xl mx-auto my-4">
+                      <ExportDataCard />
                     </div>
                   )}
                   {!isPharmacyTenant && settingsView === 'print-payment' && (
