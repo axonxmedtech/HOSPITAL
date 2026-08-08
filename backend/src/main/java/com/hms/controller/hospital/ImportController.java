@@ -47,8 +47,8 @@ public class ImportController {
      * via field injection from {@code hms.import.max-file-size} after construction; tests that
      * build the controller directly keep this literal default.
      */
-    @Value("${hms.import.max-file-size:50MB}")
-    private String maxFileSize = "50MB";
+    @Value("${hms.import.max-file-size:200MB}")
+    private String maxFileSize = "200MB";
 
     private final ImportEngine engine;
     private final WorkbookParser parser;
@@ -180,8 +180,12 @@ public class ImportController {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("No file was uploaded.");
         }
-        if (file.getSize() > DataSize.parse(maxFileSize).toBytes()) {
-            throw new IllegalArgumentException("File is too large. Maximum size is 50 MB.");
+        // Message derived from the configured value rather than restated, so an environment that
+        // overrides hms.import.max-file-size cannot end up telling admins the wrong number.
+        long maxBytes = DataSize.parse(maxFileSize).toBytes();
+        if (file.getSize() > maxBytes) {
+            throw new IllegalArgumentException("File is too large. Maximum size is "
+                    + (maxBytes / (1024 * 1024)) + " MB.");
         }
         String name = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().toLowerCase();
         if (!name.endsWith(".xlsx") && !name.endsWith(".csv")) {

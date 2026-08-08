@@ -132,8 +132,8 @@ const WardModal = ({ open, wardType = 'IPD', initial, onClose, onSaved }) => {
               whose only valid answer is 1 invites someone to type 2 and get an error. */}
           {wardType === 'OT' ? (
             <p className="text-xs text-slate-500 self-end pb-2">
-              An OT ward is a single theatre and holds one case at a time, so it has exactly one
-              bed. Add a separate OT ward for each theatre.
+              A theatre holds one case at a time, so it has exactly one bed. Add a separate theatre
+              for each one you operate in.
             </p>
           ) : (
             <div>

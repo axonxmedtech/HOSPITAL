@@ -15,15 +15,15 @@ import WardService from '../../services/wardService';
  */
 const LABELS = {
   IPD: {
-    empty: 'No wards found. Use "Create Ward" to add one.',
+    empty: 'No wards yet. Use "Add Ward" above to create one.',
   },
   ICU: {
     empty:
-      'No ICU wards yet. Create one, then move a patient here from their ward when they need intensive care.',
+      'No ICU wards yet. Use "Add ICU Ward" above to create one, then move a patient here from their ward when they need intensive care.',
   },
   OT: {
     empty:
-      'No operating theatres yet. Each OT ward is one theatre and holds one case at a time, so create one per theatre.',
+      'No operating theatres yet. Use "Add OT Theatre" above to create one — a theatre holds one case at a time, so add one per theatre you operate in.',
   },
 };
 

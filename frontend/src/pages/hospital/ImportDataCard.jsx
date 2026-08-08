@@ -162,7 +162,7 @@ const ImportDataCard = () => {
             />
           </label>
           <p className="text-xs text-gray-500 mt-4">
-            Up to 50 MB. Blank values stay blank — the importer never invents data.
+            Up to 200 MB. Blank values stay blank — the importer never invents data.
           </p>
         </div>
       )}

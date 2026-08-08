@@ -2024,11 +2024,11 @@ const HospitalAdminDashboard = () => {
       label: 'Patient Management',
       tabIds: ['patients', 'appointments', 'opd', 'ipd', 'ot', 'pathology'],
     },
-    { id: 'group-rooms', label: 'Rooms', tabIds: ['wards'] },
+    { id: 'group-rooms', label: 'Rooms', tabIds: ['wards', 'ot-theatres'] },
     {
       id: 'group-staff',
       label: 'Staff',
-      tabIds: ['doctors', 'pharmacists', 'receptionists', 'ot-incharges', 'ot-theatres'],
+      tabIds: ['doctors', 'pharmacists', 'receptionists', 'ot-incharges'],
     },
     {
       id: 'group-nursing',
@@ -2765,7 +2765,7 @@ const HospitalAdminDashboard = () => {
                       ? 'New Task'
                       : activeTab === 'fees' || activeTab === 'settings'
                         ? ''
-                        : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'nurses' ? 'Nurse' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'ot-incharges' ? 'OT Incharge' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? (wardTypeView === 'ICU' ? 'ICU Ward' : wardTypeView === 'OT' ? 'OT Ward' : 'Ward') : ''}`
+                        : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'nurses' ? 'Nurse' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'ot-incharges' ? 'OT Incharge' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? (wardTypeView === 'ICU' ? 'ICU Ward' : wardTypeView === 'OT' ? 'OT Theatre' : 'Ward') : ''}`
                 }
                 filter={
                   activeTab === 'patients' ? (

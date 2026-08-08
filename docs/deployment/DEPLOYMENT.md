@@ -265,7 +265,7 @@ manifest) for 90 days. On failure the logs indicate **what** ran, **which** step
 ## Legacy patient import uploads
 
 `ImportController` (`/hospital/imports/**`, `/clinic/imports/**`, `HOSPITAL_ADMIN` only) accepts
-workbooks up to 50 MB — well above the app's global 5 MB multipart cap
+workbooks up to 200 MB — well above the app's global 5 MB multipart cap
 (`spring.servlet.multipart.max-file-size`, backed by `MAX_UPLOAD_FILE_SIZE`).
 
 **Two ways to allow that without breaking the global cap for every other upload endpoint:**
@@ -296,15 +296,15 @@ workbooks up to 50 MB — well above the app's global 5 MB multipart cap
   backend (`PlatformInventoryItemController`/`PlatformMedicineController` bulk CSV import) is
   already `SUPER_ADMIN`-only, the same trust tier as the `HOSPITAL_ADMIN`-only import endpoint. No
   lower-privilege role (doctor, nurse, receptionist, pharmacist) gains any bigger upload surface.
-- `ImportController` also enforces its own 50 MB code-level cap
+- `ImportController` also enforces its own 200 MB code-level cap
   (`hms.import.max-file-size`, default `50MB`, override via `IMPORT_MAX_FILE_SIZE`) independent of
   the servlet property, so the two limits must both be raised for an import above 5 MB to succeed
   — a mistake in one alone fails closed, not open.
 
 **Operational steps for a hospital running a legacy import:**
 
-1. In that environment's `.env`, set `MAX_UPLOAD_FILE_SIZE=50MB` and
-   `MAX_UPLOAD_REQUEST_SIZE=51MB` (leave `IMPORT_MAX_FILE_SIZE` at its 50 MB default unless the
+1. In that environment's `.env`, set `MAX_UPLOAD_FILE_SIZE=200MB` and
+   `MAX_UPLOAD_REQUEST_SIZE=51MB` (leave `IMPORT_MAX_FILE_SIZE` at its 200 MB default unless the
    import genuinely needs more).
 2. Restart the service so the new multipart limits take effect.
 3. Once the import(s) are done, the env vars can be reverted to the 5 MB / 6 MB defaults to shrink
