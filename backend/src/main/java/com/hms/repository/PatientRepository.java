@@ -103,4 +103,10 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
          * corrected re-import reactivate them instead of colliding on that index.
          */
         Optional<Patient> findByHospitalIdAndLegacyId(Long hospitalId, String legacyId);
+
+        /**
+         * All patients written by a given import batch. Used by undo to find what to
+         * soft-delete and by the clinical-activity guard to check what must be kept.
+         */
+        List<Patient> findByImportBatchId(Long importBatchId);
 }

@@ -53,4 +53,13 @@ public interface BillingRepository extends JpaRepository<Billing, Long> {
     java.util.Optional<Billing> findByOpdId(Long opdId);
 
     java.util.List<Billing> findByHospitalIdAndCreatedAtAfter(Long hospitalId, java.time.LocalDateTime createdAt);
+
+    /**
+     * Used by the import undo clinical-activity guard: an imported patient with any bill
+     * recorded against them must not be soft-deleted, since that would delete live billing data.
+     * Billing.patientId is a plain scalar Long column (unlike Opd's @ManyToOne), so this path is
+     * a direct property reference.
+     */
+    @Query("SELECT COUNT(b) FROM Billing b WHERE b.patientId IN :patientIds")
+    long countByPatientIdIn(@org.springframework.data.repository.query.Param("patientIds") List<Long> patientIds);
 }

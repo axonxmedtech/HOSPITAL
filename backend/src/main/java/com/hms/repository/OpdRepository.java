@@ -54,8 +54,18 @@ public interface OpdRepository extends JpaRepository<Opd, Long> {
 			Pageable pageable);
 
 	boolean existsByPatientIdAndVisitTypeAndCreatedAtGreaterThanEqual(
-			Long patientId, 
-			com.hms.entity.Opd.VisitType visitType, 
+			Long patientId,
+			com.hms.entity.Opd.VisitType visitType,
 			java.time.LocalDateTime startOfDay
 	);
+
+	/**
+	 * Used by the import undo clinical-activity guard: an imported patient with any OPD visit
+	 * recorded against them must not be soft-deleted, since that would delete live clinical data.
+	 *
+	 * Opd's patient reference is a @ManyToOne (field "patient"), not a scalar patientId column
+	 * as on Billing, so the JPQL path must navigate o.patient.id rather than o.patientId.
+	 */
+	@Query("SELECT COUNT(o) FROM Opd o WHERE o.patient.id IN :patientIds")
+	long countByPatientIdIn(@Param("patientIds") java.util.List<Long> patientIds);
 }
