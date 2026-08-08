@@ -102,6 +102,14 @@ public class ImportEngine {
     /**
      * Applies the sheet for real. Row-level problems are recorded and the run continues — one bad
      * row out of 8,000 must not cost the other 7,999. Counts land on the batch.
+     *
+     * <p><b>Crash behaviour is deliberate.</b> If a chunk fails to save, the exception propagates so
+     * the caller can mark the batch FAILED, but the counts and the row errors gathered so far are
+     * flushed first. Without that, a mid-run failure left the batch showing zero rows imported and
+     * discarded every error collected up to that point — the admin would be told nothing about a
+     * run that had in fact already written thousands of records, and undo would be their only
+     * recourse with no report explaining why. Counts reflect rows actually persisted, not rows
+     * merely tallied, so an interrupted run reports the truth.
      */
     public void commit(ParsedSheet sheet, Map<String, String> mapping, ImportBatch batch) {
 
@@ -113,60 +121,84 @@ public class ImportEngine {
 
         List<Patient> pending = new ArrayList<>();
         List<ImportRowError> rowErrors = new ArrayList<>();
-        int created = 0, updated = 0, skipped = 0, failed = 0;
+        // Persisted totals, only advanced once a chunk has actually been written.
+        int[] totals = new int[]{0, 0, 0, 0}; // created, updated, skipped, failed
+        int[] inChunk = new int[]{0, 0};      // created, updated awaiting flush
 
-        int rowNumber = 1; // row 1 is the header
-        for (Map<String, String> row : sheet.rows()) {
-            rowNumber++;
-            RowOutcome outcome;
-            try {
-                outcome = importer.evaluate(row, mapping, unmapped, batch.getHospitalId(), rowNumber);
-            } catch (Exception e) {
-                outcome = RowOutcome.error(null, "Unexpected problem: " + e.getMessage());
+        try {
+            int rowNumber = 1; // row 1 is the header
+            for (Map<String, String> row : sheet.rows()) {
+                rowNumber++;
+                RowOutcome outcome;
+                try {
+                    outcome = importer.evaluate(row, mapping, unmapped, batch.getHospitalId(), rowNumber);
+                } catch (Exception e) {
+                    outcome = RowOutcome.error(null, "Unexpected problem: " + e.getMessage());
+                }
+
+                switch (outcome.action()) {
+                    case CREATE -> {
+                        Patient p = outcome.patient();
+                        p.setImportBatchId(batch.getId());
+                        p.setIsActive(true);
+                        pending.add(p);
+                        inChunk[0]++;
+                    }
+                    case UPDATE -> {
+                        Patient p = outcome.patient();
+                        p.setImportBatchId(batch.getId());
+                        p.setIsActive(true);
+                        pending.add(p);
+                        inChunk[1]++;
+                    }
+                    case SKIP -> totals[2]++;
+                    case ERROR -> {
+                        totals[3]++;
+                        rowErrors.add(new ImportRowError(batch.getId(), rowNumber,
+                                outcome.columnName(), outcome.message(), toJson(row)));
+                    }
+                }
+
+                if (pending.size() >= CHUNK_SIZE) {
+                    patientRepository.saveAll(pending);
+                    pending.clear();
+                    totals[0] += inChunk[0];
+                    totals[1] += inChunk[1];
+                    inChunk[0] = 0;
+                    inChunk[1] = 0;
+                }
+                // Flush errors on the same cadence so a later crash cannot discard them.
+                if (rowErrors.size() >= CHUNK_SIZE) {
+                    rowErrorRepository.saveAll(rowErrors);
+                    rowErrors.clear();
+                }
             }
 
-            switch (outcome.action()) {
-                case CREATE -> {
-                    Patient p = outcome.patient();
-                    p.setImportBatchId(batch.getId());
-                    p.setIsActive(true);
-                    pending.add(p);
-                    created++;
-                }
-                case UPDATE -> {
-                    Patient p = outcome.patient();
-                    p.setImportBatchId(batch.getId());
-                    p.setIsActive(true);
-                    pending.add(p);
-                    updated++;
-                }
-                case SKIP -> skipped++;
-                case ERROR -> {
-                    failed++;
-                    rowErrors.add(new ImportRowError(batch.getId(), rowNumber,
-                            outcome.columnName(), outcome.message(), toJson(row)));
-                }
-            }
-
-            if (pending.size() >= CHUNK_SIZE) {
+            if (!pending.isEmpty()) {
                 patientRepository.saveAll(pending);
-                pending.clear();
+                totals[0] += inChunk[0];
+                totals[1] += inChunk[1];
+                inChunk[0] = 0;
+                inChunk[1] = 0;
             }
-        }
 
-        if (!pending.isEmpty()) {
-            patientRepository.saveAll(pending);
+            batch.setCommittedAt(LocalDateTime.now());
+            batch.setStatus(ImportStatus.COMPLETED);
+        } finally {
+            // Runs on the happy path and on the way out of a failure, so the batch never sits at
+            // RUNNING with stale zeroes and the error report survives.
+            if (!rowErrors.isEmpty()) {
+                try {
+                    rowErrorRepository.saveAll(rowErrors);
+                } catch (Exception ignored) {
+                    // Never let error-report bookkeeping mask the original failure.
+                }
+            }
+            batch.setCreatedCount(totals[0]);
+            batch.setUpdatedCount(totals[1]);
+            batch.setSkippedCount(totals[2]);
+            batch.setFailedCount(totals[3]);
         }
-        if (!rowErrors.isEmpty()) {
-            rowErrorRepository.saveAll(rowErrors);
-        }
-
-        batch.setCreatedCount(created);
-        batch.setUpdatedCount(updated);
-        batch.setSkippedCount(skipped);
-        batch.setFailedCount(failed);
-        batch.setCommittedAt(LocalDateTime.now());
-        batch.setStatus(ImportStatus.COMPLETED);
     }
 
     private String toJson(Map<String, String> row) {

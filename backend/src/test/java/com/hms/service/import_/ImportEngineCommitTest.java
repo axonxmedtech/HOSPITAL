@@ -103,4 +103,34 @@ class ImportEngineCommitTest {
         assertThat(captor.getValue().get(0).getRowNumber())
                 .isEqualTo(preview.errors().get(0).rowNumber());
     }
+
+    /**
+     * A chunk failing to save must not swallow the run's error report or leave the batch claiming
+     * nothing happened. Before this was fixed, a crash mid-commit propagated with the batch still
+     * at RUNNING, all counts zero, and every accumulated ImportRowError discarded — so an admin
+     * whose import had already written thousands of rows would be shown no report at all and no
+     * indication of how far it got.
+     */
+    @Test
+    void aFailedChunkStillRecordsTheErrorsAndCountsGatheredSoFar() {
+        when(patientRepository.saveAll(anyList())).thenThrow(new RuntimeException("db went away"));
+
+        ImportBatch b = batch();
+
+        org.assertj.core.api.Assertions
+                .assertThatThrownBy(() -> engine().commit(sheet(), Map.of("Name", "name"), b))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("db went away");
+
+        // The row error collected before the crash survived.
+        ArgumentCaptor<List<ImportRowError>> captor = ArgumentCaptor.forClass(List.class);
+        verify(rowErrorRepository).saveAll(captor.capture());
+        assertThat(captor.getValue()).hasSize(1);
+
+        // Counts reflect what was actually persisted: nothing, because the only save threw.
+        assertThat(b.getCreatedCount()).isZero();
+        assertThat(b.getFailedCount()).isEqualTo(1);
+        // Never left claiming success.
+        assertThat(b.getStatus()).isNotEqualTo(ImportStatus.COMPLETED);
+    }
 }
