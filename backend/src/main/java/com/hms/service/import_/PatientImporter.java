@@ -74,13 +74,36 @@ public class PatientImporter implements EntityImporter {
 
         Patient patient = null;
         boolean isUpdate = false;
+
         if (legacyId != null) {
+            // Deliberately not filtered on isActive. Undo soft-deletes rows but leaves legacy_id in
+            // place, so they still occupy the unique (hospital_id, legacy_id) index. Matching them
+            // lets a corrected re-import reactivate the row instead of failing on the constraint —
+            // and "undo, fix the file, re-import" is the main recovery path.
             Optional<Patient> existing = patientRepository.findByHospitalIdAndLegacyId(hospitalId, legacyId);
             if (existing.isPresent()) {
                 patient = existing.get();
                 isUpdate = true;
             }
+        } else {
+            // No MRN column in the file. name+phone is the only fallback available, and name alone
+            // is not an identity: matching on it would merge unrelated people who happen to share a
+            // name, which is far worse than leaving a duplicate behind.
+            String phoneValue = blankToNull(byField.get("phone"));
+            if (phoneValue != null) {
+                List<Patient> candidates =
+                        patientRepository.findByHospitalIdAndNameAndPhone(hospitalId, name, phoneValue);
+                if (candidates.size() > 1) {
+                    return RowOutcome.skip("Matches more than one existing patient with the same name "
+                            + "and phone; skipped rather than merged. Resolve this one manually.");
+                }
+                if (candidates.size() == 1) {
+                    patient = candidates.get(0);
+                    isUpdate = true;
+                }
+            }
         }
+
         if (patient == null) {
             patient = new Patient();
         }

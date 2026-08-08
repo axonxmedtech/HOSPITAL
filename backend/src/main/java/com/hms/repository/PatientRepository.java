@@ -105,6 +105,14 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
         Optional<Patient> findByHospitalIdAndLegacyId(Long hospitalId, String legacyId);
 
         /**
+         * Dedupe fallback for import files with no MRN column. Returns a list rather than an
+         * Optional on purpose: more than one match means the importer must skip and report the row
+         * instead of guessing, because merging two different patients is unrecoverable in a way
+         * that leaving a duplicate is not.
+         */
+        java.util.List<Patient> findByHospitalIdAndNameAndPhone(Long hospitalId, String name, String phone);
+
+        /**
          * All patients written by a given import batch. Used by undo to find what to
          * soft-delete and by the clinical-activity guard to check what must be kept.
          */
