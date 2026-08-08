@@ -66,6 +66,7 @@ class ClinicPharmacyIsolationTest {
             "HospitalServiceController",
             "HospitalStatsController",
             "HospitalTicketController",
+            "ImportController",
             "IpdAdmissionController",
             "MedicineController",
             "OpdController",

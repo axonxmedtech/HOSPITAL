@@ -39,17 +39,17 @@ SSH and drives systemd. Nginx (unchanged) fronts the service and serves the fron
 
 ## Environment strategy
 
-| | Development | Staging | Production |
-|---|---|---|---|
-| **Purpose** | local dev | pre-prod verification / promotion gate | live hospital traffic |
-| **Trigger** | manual / local | push to `staging` | push to `main` |
-| **Approval** | none | none (auto) | **manual** (GitHub Environment reviewers) |
-| **Build source** | working tree | `staging` branch artifacts | `main` branch artifacts |
-| **Branch** | feature/* | `staging` | `main` |
-| **Secrets** | local `.env` | `SSH_PRIVATE_KEY`, `SSH_USERNAME` | same + `PRODUCTION_SLACK_WEBHOOK` |
-| **Key variables** | — | `STAGING_SSH_HOST/PORT`, `STAGING_APP_URL`, `STAGING_HEALTH_PORT` | `PRODUCTION_*` equivalents |
-| **Auto-rollback** | n/a | enabled | enabled |
-| **Deploy permission** | anyone local | merge to `staging` | merge to `main` **+** approve the deploy |
+|                       | Development    | Staging                                                           | Production                                |
+| --------------------- | -------------- | ----------------------------------------------------------------- | ----------------------------------------- |
+| **Purpose**           | local dev      | pre-prod verification / promotion gate                            | live hospital traffic                     |
+| **Trigger**           | manual / local | push to `staging`                                                 | push to `main`                            |
+| **Approval**          | none           | none (auto)                                                       | **manual** (GitHub Environment reviewers) |
+| **Build source**      | working tree   | `staging` branch artifacts                                        | `main` branch artifacts                   |
+| **Branch**            | feature/*      | `staging`                                                         | `main`                                    |
+| **Secrets**           | local `.env`   | `SSH_PRIVATE_KEY`, `SSH_USERNAME`                                 | same + `PRODUCTION_SLACK_WEBHOOK`         |
+| **Key variables**     | —              | `STAGING_SSH_HOST/PORT`, `STAGING_APP_URL`, `STAGING_HEALTH_PORT` | `PRODUCTION_*` equivalents                |
+| **Auto-rollback**     | n/a            | enabled                                                           | enabled                                   |
+| **Deploy permission** | anyone local   | merge to `staging`                                                | merge to `main` **+** approve the deploy  |
 
 ### Promotion flow
 
@@ -61,7 +61,7 @@ SSH and drives systemd. Nginx (unchanged) fronts the service and serves the fron
 
 Promotion is by **branch merge**: merge to `staging` deploys staging and runs smoke tests; when
 staging looks good, merge `staging → main`, which builds, shows a pre-deploy review, and waits for
-approval before deploying production. The *same tested commit* moves forward.
+approval before deploying production. The _same tested commit_ moves forward.
 
 ---
 
@@ -70,15 +70,15 @@ approval before deploying production. The *same tested commit* moves forward.
 `Build → Quality → Security → Artifacts → Deploy Staging → Smoke Tests → Verify → [Approval] →
 Production Deploy → Production Verify → Complete`
 
-| Stage | Where | Gate |
-|---|---|---|
-| Build / Quality / Security / Sonar | `ci.yml` | must pass (deploy `needs` them) |
-| Artifacts | build jobs | `backend-jar-<sha>`, `frontend-dist-<sha>` |
-| Deploy Staging | `deploy-staging` → `_deploy.yml` | branch `staging`, gates green |
-| Smoke Tests | `staging-smoke` | Playwright smoke vs `STAGING_APP_URL` |
-| Production Pre-Deploy Review | `production-preflight` | config present; summary + risk |
-| **Manual Approval** | Production Environment | reviewer approves |
-| Production Deploy + Verify | `deploy-production` → `_deploy.yml` | health gate + extended verify |
+| Stage                              | Where                               | Gate                                       |
+| ---------------------------------- | ----------------------------------- | ------------------------------------------ |
+| Build / Quality / Security / Sonar | `ci.yml`                            | must pass (deploy `needs` them)            |
+| Artifacts                          | build jobs                          | `backend-jar-<sha>`, `frontend-dist-<sha>` |
+| Deploy Staging                     | `deploy-staging` → `_deploy.yml`    | branch `staging`, gates green              |
+| Smoke Tests                        | `staging-smoke`                     | Playwright smoke vs `STAGING_APP_URL`      |
+| Production Pre-Deploy Review       | `production-preflight`              | config present; summary + risk             |
+| **Manual Approval**                | Production Environment              | reviewer approves                          |
+| Production Deploy + Verify         | `deploy-production` → `_deploy.yml` | health gate + extended verify              |
 
 ---
 
@@ -115,13 +115,13 @@ stops the deploy immediately.
    non-200 triggers auto-rollback where enabled.
 2. **Extended verification (`scripts/deploy/verify-deployment.sh`, report-only today):**
    - **Readiness** — `/actuator/health` overall `UP` (Spring's aggregate reflects **DB** + **Redis**
-     + **disk** health indicators, which are enabled).
+     - **disk** health indicators, which are enabled).
    - **Frontend availability** — the app URL returns 200 (static assets served).
    - **Host resources** — disk (critical ≥98%), memory, CPU load.
 
    Results are captured into the deployment manifest. It's `continue-on-error` for now so it
    augments signal without destabilising the proven flow; **promote it to a hard gate** by removing
-   `continue-on-error` on the *Extended health verification* step once validated on staging.
+   `continue-on-error` on the _Extended health verification_ step once validated on staging.
 
 ---
 
@@ -159,6 +159,7 @@ Approvals are never bypassed in code.
 - **Restores:** application code (SHA), backend JAR, frontend `dist`, and the systemd env drop-in.
 
 ### Rollback limitations (important)
+
 - **Database is NOT rolled back.** Schema/data migrations are outside this phase; a rollback that
   crosses a destructive migration can be incompatible. Treat DB changes as forward-only and
   backward-compatible, or coordinate a data restore separately.
@@ -169,6 +170,7 @@ Approvals are never bypassed in code.
 ---
 
 ## Deployment safety controls
+
 - **Locking / no concurrent deploys:** `concurrency: deploy-<env>` (cancel-in-progress: false); the
   rollback workflow shares the same group, so deploy and rollback can't race.
 - **Timeouts:** deploy job 30 min; SCP per-attempt 5 min with 3 retries; SSH command timeouts.
@@ -200,27 +202,32 @@ manifest) for 90 days. On failure the logs indicate **what** ran, **which** step
 ## Procedures
 
 ### Standard deploy (staging → production)
+
 1. Merge your PR into `staging`. CI builds, deploys staging, runs smoke tests. Verify staging.
 2. Open a `staging → main` PR; merge it.
 3. CI builds `main`, posts the **pre-deploy review**, and waits at the approval gate.
 4. Review the summary + checksums; **approve** `Deploy — Production`. Watch the health gate pass.
 
 ### Manual deploy (re-run)
+
 - Re-run the CI workflow for the target branch from the Actions tab (production still requires
   approval). Deploys are idempotent — same commit re-deploys the same artifacts.
 
 ### Emergency deploy (hotfix)
+
 1. Branch from `main`, apply the minimal fix, fast-track review, merge to `main`.
 2. Approve the production deploy. If it fails health, auto-rollback restores the previous version;
    otherwise trigger **Rollback Deployment** manually. Forward-port the fix.
 
 ### Rollback
+
 - **Fast path:** Actions ▶ **Rollback Deployment** ▶ pick environment + reason ▶ (approve for prod).
 - Confirm the rollback report shows `SUCCESS` and health `200`.
 
 ---
 
 ## Release checklist
+
 - [ ] CI green (build, tests, security, quality, sonar).
 - [ ] Staging deployed and **smoke tests passed**; key workflows spot-checked.
 - [ ] Version/notes prepared (Phase 7 release, if cutting one).
@@ -228,6 +235,7 @@ manifest) for 90 days. On failure the logs indicate **what** ran, **which** step
 - [ ] Reviewer available to approve production.
 
 ## Operational checklist (per production deploy)
+
 - [ ] Pre-deploy review summary looks correct (version, changes, risk).
 - [ ] Approved by an authorized reviewer (audit trail recorded).
 - [ ] Health gate + extended verification passed.
@@ -237,7 +245,8 @@ manifest) for 90 days. On failure the logs indicate **what** ran, **which** step
 ---
 
 ## Manual GitHub configuration required
-- **Environments** (*Settings → Environments*): create `Staging` and `Production`; add **required
+
+- **Environments** (_Settings → Environments_): create `Staging` and `Production`; add **required
   reviewers** to `Production` (the approval gate) and optionally a wait timer.
 - **Variables** (per environment or repo): `STAGING_SSH_HOST`, `STAGING_SSH_PORT`,
   `STAGING_HEALTH_PORT`, `STAGING_APP_URL`, and the `PRODUCTION_*` equivalents; optional
@@ -246,13 +255,64 @@ manifest) for 90 days. On failure the logs indicate **what** ran, **which** step
 - **Actions permissions:** allow the deploy workflows to run; keep branch protection on `main`.
 
 ## Manual VPS configuration required (already in place for current deploys)
+
 - A deploy user with an authorized SSH key and **sudo for `systemctl`** on the service.
 - systemd services `hms-staging` / `hms-production`; repo checkouts at the configured `repo_path`.
 - Nginx serving the frontend `dist` and proxying the backend; firewall allows the SSH port.
 - Writable parent dir for `../rollback_backup` and `../deployments` (deploy user owns them).
 - Java runtime present to run the JAR. (No new VPS requirements are introduced by this phase.)
 
+## Legacy patient import uploads
+
+`ImportController` (`/hospital/imports/**`, `/clinic/imports/**`, `HOSPITAL_ADMIN` only) accepts
+workbooks up to 50 MB — well above the app's global 5 MB multipart cap
+(`spring.servlet.multipart.max-file-size`, backed by `MAX_UPLOAD_FILE_SIZE`).
+
+**Two ways to allow that without breaking the global cap for every other upload endpoint:**
+
+1. Raise `spring.servlet.multipart.max-file-size` / `max-request-size` globally via
+   `MAX_UPLOAD_FILE_SIZE` / `MAX_UPLOAD_REQUEST_SIZE` env vars for the environment running the
+   import.
+2. Bind a second `MultipartConfigElement` scoped only to the import paths (e.g. a second
+   `DispatcherServlet` registration mapped just to `/hospital/imports/*` and `/clinic/imports/*`
+   with its own, larger multipart config).
+
+**Chosen: (1), the global env-var override — deliberately, not by default.** Reasoning:
+
+- Option (2) requires registering a second `DispatcherServlet`/servlet mapping to get a
+  path-scoped `MultipartConfigElement` — Spring Boot ties multipart limits to the _servlet
+  registration_ a request resolves to, not to any single Java bean, so there is no supported
+  single-bean way to raise the cap for one path only. That wiring is exercised by nothing in this
+  repo's test suite (`ApplicationContextLoadTest` runs with `@SpringBootTest` at the default
+  `MOCK` web environment, which never starts a real servlet container, so a second
+  `ServletRegistrationBean` would never actually be validated end-to-end by CI). Shipping
+  unverified container wiring into a 24×7 hospital system to save one environment variable was
+  judged the worse trade.
+- Option (1) is standard, already-scaffolded Spring Boot configuration
+  (`MAX_UPLOAD_FILE_SIZE`/`MAX_UPLOAD_REQUEST_SIZE` already existed for exactly this purpose) and
+  is fully covered by ordinary Spring Boot multipart-resolution behaviour plus this feature's own
+  tests (`ImportControllerTest`, `ImportBatchServiceCommitTest`).
+- The blast radius of raising the global cap is small: every other multipart endpoint in the
+  backend (`PlatformInventoryItemController`/`PlatformMedicineController` bulk CSV import) is
+  already `SUPER_ADMIN`-only, the same trust tier as the `HOSPITAL_ADMIN`-only import endpoint. No
+  lower-privilege role (doctor, nurse, receptionist, pharmacist) gains any bigger upload surface.
+- `ImportController` also enforces its own 50 MB code-level cap
+  (`hms.import.max-file-size`, default `50MB`, override via `IMPORT_MAX_FILE_SIZE`) independent of
+  the servlet property, so the two limits must both be raised for an import above 5 MB to succeed
+  — a mistake in one alone fails closed, not open.
+
+**Operational steps for a hospital running a legacy import:**
+
+1. In that environment's `.env`, set `MAX_UPLOAD_FILE_SIZE=50MB` and
+   `MAX_UPLOAD_REQUEST_SIZE=51MB` (leave `IMPORT_MAX_FILE_SIZE` at its 50 MB default unless the
+   import genuinely needs more).
+2. Restart the service so the new multipart limits take effect.
+3. Once the import(s) are done, the env vars can be reverted to the 5 MB / 6 MB defaults to shrink
+   the window back down — imports are infrequent (a handful of times per hospital), not a
+   steady-state need.
+
 ## Related
+
 [docs/ci/CI_ARCHITECTURE.md](../ci/CI_ARCHITECTURE.md) ·
 [docs/release/RELEASE_ENGINEERING.md](../release/RELEASE_ENGINEERING.md) ·
 [docs/governance/BRANCHING_AND_RELEASE_STRATEGY.md](../governance/BRANCHING_AND_RELEASE_STRATEGY.md)
