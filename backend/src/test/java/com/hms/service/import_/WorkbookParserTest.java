@@ -74,6 +74,46 @@ class WorkbookParserTest {
         assertThat(sheet.rows().get(0)).containsEntry("Name", "Ramesh Patel");
     }
 
+    /**
+     * A quoted field may contain newlines; multi-line addresses are common in legacy exports.
+     * Reading line-by-line split the record in two — the real patient lost its trailing columns and
+     * the continuation line became a junk patient with a fragment of an address as its name.
+     */
+    @Test
+    void keepsAQuotedMultiLineFieldAsOneRow() {
+        String csv = "Name,Address\n"
+                + "Ramesh Patel,\"12 MG Road\nAndheri East\nMumbai\"\n"
+                + "Sita Rao,\"Flat 4\"\n";
+        ParsedSheet sheet = parser.parseCsv(new ByteArrayInputStream(csv.getBytes(StandardCharsets.UTF_8)));
+
+        assertThat(sheet.rows()).hasSize(2);
+        assertThat(sheet.rows().get(0).get("Name")).isEqualTo("Ramesh Patel");
+        assertThat(sheet.rows().get(0).get("Address")).contains("Andheri East").contains("Mumbai");
+        assertThat(sheet.rows().get(1).get("Name")).isEqualTo("Sita Rao");
+    }
+
+    /**
+     * Our own error CSV prefixes a leading =, +, - or @ with an apostrophe so the value cannot
+     * execute as a formula in Excel. That file is meant to be corrected and re-uploaded, so the
+     * prefix has to come back off — otherwise the guard corrupts the path it exists to support.
+     */
+    @Test
+    void stripsTheFormulaGuardApostropheOnReupload() {
+        String csv = "Name,Mob No\nRamesh,'+919812345678\n";
+        ParsedSheet sheet = parser.parseCsv(new ByteArrayInputStream(csv.getBytes(StandardCharsets.UTF_8)));
+
+        assertThat(sheet.rows().get(0).get("Mob No")).isEqualTo("+919812345678");
+    }
+
+    /** A genuine leading apostrophe is not an escape and must survive. */
+    @Test
+    void leavesAnOrdinaryLeadingApostropheAlone() {
+        String csv = "Name,Notes\nRamesh,'twas noted\n";
+        ParsedSheet sheet = parser.parseCsv(new ByteArrayInputStream(csv.getBytes(StandardCharsets.UTF_8)));
+
+        assertThat(sheet.rows().get(0).get("Notes")).isEqualTo("'twas noted");
+    }
+
     @Test
     void rejectsAFileWithNoHeaderRow() {
         assertThatThrownBy(() -> parser.parseCsv(new ByteArrayInputStream(new byte[0])))

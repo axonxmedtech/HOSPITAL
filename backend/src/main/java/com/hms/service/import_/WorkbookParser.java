@@ -39,7 +39,8 @@ public class WorkbookParser {
                 names.add(wb.getSheetName(i));
             }
             return names;
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
+            if (e instanceof IllegalArgumentException iae) throw iae;
             throw new IllegalArgumentException("Could not read the workbook: " + e.getMessage());
         }
     }
@@ -66,21 +67,34 @@ public class WorkbookParser {
             }
 
             List<Map<String, String>> rows = new ArrayList<>();
-            while (it.hasNext() && rows.size() < MAX_ROWS) {
+            while (it.hasNext()) {
+                if (rows.size() >= MAX_ROWS) {
+                    // Silently dropping the remainder would make every reported count agree with
+                    // itself while the file was only partly imported - the admin would have no way
+                    // to learn rows were lost. Refuse instead.
+                    throw new IllegalArgumentException(
+                            "This sheet has more than " + MAX_ROWS + " rows. Importing it would "
+                            + "silently drop the rest, so it is refused. Split it and import the "
+                            + "parts separately.");
+                }
                 Row row = it.next();
                 Map<String, String> values = new LinkedHashMap<>();
                 boolean anyValue = false;
                 for (int c = 0; c < headers.size(); c++) {
                     String header = headers.get(c);
                     if (header.isEmpty()) continue;
-                    String v = fmt.formatCellValue(row.getCell(c)).trim();
+                    String v = unescapeFormulaGuard(fmt.formatCellValue(row.getCell(c)).trim());
                     values.put(header, v);
                     if (!v.isEmpty()) anyValue = true;
                 }
                 if (anyValue) rows.add(values);
             }
             return new ParsedSheet(sheet.getSheetName(), headers, rows);
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
+            // POI raises unchecked NotOfficeXmlFileException / POIXMLException for a renamed .xls
+            // or a file that trips the zip-bomb guard. Uncaught those surface as a 500; the admin
+            // needs to be told their file is unreadable, not shown a server error.
+            if (e instanceof IllegalArgumentException iae) throw iae;
             throw new IllegalArgumentException("Could not read the workbook: " + e.getMessage());
         }
     }
@@ -98,24 +112,77 @@ public class WorkbookParser {
 
             List<Map<String, String>> rows = new ArrayList<>();
             String line;
-            while ((line = reader.readLine()) != null && rows.size() < MAX_ROWS) {
+            boolean truncated = false;
+            while ((line = reader.readLine()) != null) {
+                if (rows.size() >= MAX_ROWS) {
+                    truncated = true;
+                    break;
+                }
                 if (line.isBlank()) continue;
+
+                // A quoted field may contain newlines — multi-line addresses are common in legacy
+                // exports. Reading line-by-line split those across two records: the real patient
+                // lost its trailing columns and the continuation became a junk patient. Keep
+                // pulling lines until the quotes balance.
+                while (hasUnbalancedQuotes(line)) {
+                    String continuation = reader.readLine();
+                    if (continuation == null) break;
+                    line = line + "\n" + continuation;
+                }
+
                 List<String> cells = splitCsv(line);
                 Map<String, String> values = new LinkedHashMap<>();
                 boolean anyValue = false;
                 for (int c = 0; c < headers.size(); c++) {
                     String header = headers.get(c);
                     if (header.isEmpty()) continue;
-                    String v = c < cells.size() ? cells.get(c) : "";
+                    String v = c < cells.size() ? unescapeFormulaGuard(cells.get(c)) : "";
                     values.put(header, v);
                     if (!v.isEmpty()) anyValue = true;
                 }
                 if (anyValue) rows.add(values);
             }
+            if (truncated) {
+                throw new IllegalArgumentException(
+                        "This file has more than " + MAX_ROWS + " rows. Importing it would silently "
+                        + "drop the rest, so it is refused. Split it and import the parts separately.");
+            }
             return new ParsedSheet("csv", headers, rows);
         } catch (IOException e) {
             throw new IllegalArgumentException("Could not read the file: " + e.getMessage());
         }
+    }
+
+    /**
+     * Removes the apostrophe our own error CSV adds in front of a value starting =, +, - or @.
+     *
+     * <p>That prefix stops the value executing as a formula when the file is opened in Excel, but
+     * the error CSV is explicitly meant to be corrected and re-uploaded — so without this the guard
+     * corrupted the very path it exists to support: a phone exported as +919812345678 came back as
+     * '+919812345678 and was written into the patient verbatim.
+     *
+     * <p>Only stripped when the apostrophe is immediately followed by one of those four characters,
+     * which is exactly the escape we emit, so a genuine leading apostrophe in a name survives.
+     */
+    private String unescapeFormulaGuard(String value) {
+        if (value != null && value.length() > 1 && value.startsWith("'")
+                && "=+-@".indexOf(value.charAt(1)) >= 0) {
+            return value.substring(1);
+        }
+        return value;
+    }
+
+    /**
+     * True when a line ends mid-quoted-field, meaning the record continues on the next line.
+     * Doubled quotes inside a quoted field are escapes, and toggling on each quote handles them
+     * correctly: a pair flips the state twice and leaves it unchanged.
+     */
+    private boolean hasUnbalancedQuotes(String line) {
+        boolean inQuotes = false;
+        for (int i = 0; i < line.length(); i++) {
+            if (line.charAt(i) == '"') inQuotes = !inQuotes;
+        }
+        return inQuotes;
     }
 
     /** Minimal RFC4180 splitter: handles quoted fields and doubled quotes. */

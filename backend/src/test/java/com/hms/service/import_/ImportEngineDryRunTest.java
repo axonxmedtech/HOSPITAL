@@ -67,6 +67,27 @@ class ImportEngineDryRunTest {
         assertThat(preview.unmappedHeaders()).containsExactly("Referred By");
     }
 
+    /**
+     * Two rows sharing an MRN both looked new, so both became CREATEs and the second violated the
+     * unique (hospital_id, legacy_id) index — failing the whole run, and only sometimes, depending
+     * on where the chunk boundary happened to fall. Reported as a skip now so the preview predicts
+     * the commit and the admin is told which ID is duplicated.
+     */
+    @Test
+    void reportsARepeatedMrnWithinTheSameFileInsteadOfFailingTheRun() {
+        ParsedSheet duplicated = new ParsedSheet("Patients",
+                List.of("Name", "MRN"),
+                List.of(
+                        Map.of("Name", "Ramesh", "MRN", "A-1"),
+                        Map.of("Name", "Ramesh Patel", "MRN", "A-1")));
+
+        ImportPreview preview = engine().dryRun(duplicated,
+                Map.of("Name", "name", "MRN", "legacyId"), 7L);
+
+        assertThat(preview.createCount()).isEqualTo(1);
+        assertThat(preview.skipCount()).isEqualTo(1);
+    }
+
     @Test
     void warnsWhenNoLegacyIdIsMappedBecauseReuploadCannotMatch() {
         ImportPreview preview = engine().dryRun(sheet(),

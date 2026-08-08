@@ -51,6 +51,7 @@ public class ImportEngine {
     public ImportPreview dryRun(ParsedSheet sheet, Map<String, String> mapping, Long hospitalId) {
         EntityImporter importer = importerFor(ImportEntityType.PATIENT);
         List<String> unmapped = columnMapper.unmapped(sheet.headers(), mapping);
+        Set<String> seenLegacyIds = new HashSet<>();
 
         int create = 0, update = 0, skip = 0, error = 0;
         List<ImportPreview.PreviewError> errors = new ArrayList<>();
@@ -60,6 +61,7 @@ public class ImportEngine {
         for (Map<String, String> row : sheet.rows()) {
             rowNumber++;
             RowOutcome outcome = importer.evaluate(row, mapping, unmapped, hospitalId, rowNumber);
+            outcome = rejectRepeatWithinFile(outcome, seenLegacyIds);
             switch (outcome.action()) {
                 case CREATE -> {
                     create++;
@@ -96,8 +98,42 @@ public class ImportEngine {
                 unmapped, warnings, errors, samples);
     }
 
-    /** Rows per transaction. Bounds memory and limits how much a mid-run crash leaves half-done. */
+    /**
+     * Rows written per {@code saveAll}. Bounds how much sits unflushed in memory at once and how
+     * much a mid-run failure leaves unaccounted for. Note this is a batching size, not a
+     * transaction boundary — each repository call manages its own transaction.
+     */
     private static final int CHUNK_SIZE = 500;
+
+    /**
+     * Turns a second occurrence of the same MRN within one file into a reported skip.
+     *
+     * <p>Two rows sharing an MRN both looked new (neither is in the database yet), so both became
+     * CREATEs and the second violated the unique {@code (hospital_id, legacy_id)} index — failing
+     * the whole run. Worse, whether it failed at all depended on where the chunk boundary fell,
+     * so the same file could behave differently on different days and the dry-run could not
+     * predict the commit.
+     *
+     * <p>Reporting rather than silently taking the first is deliberate: duplicate MRNs in a source
+     * file usually mean two different people were given the same number, and merging them would be
+     * unrecoverable.
+     */
+    private RowOutcome rejectRepeatWithinFile(RowOutcome outcome, Set<String> seenLegacyIds) {
+        if (outcome.action() != RowOutcome.Action.CREATE
+                && outcome.action() != RowOutcome.Action.UPDATE) {
+            return outcome;
+        }
+        String legacyId = outcome.patient() == null ? null : outcome.patient().getLegacyId();
+        if (legacyId == null) {
+            return outcome;
+        }
+        if (!seenLegacyIds.add(legacyId)) {
+            return RowOutcome.skip("The old patient ID \"" + legacyId + "\" appears more than once "
+                    + "in this file. Only the first row was used; resolve the duplicate and re-import "
+                    + "this one.");
+        }
+        return outcome;
+    }
 
     /**
      * Applies the sheet for real. Row-level problems are recorded and the run continues — one bad
@@ -121,6 +157,7 @@ public class ImportEngine {
 
         List<Patient> pending = new ArrayList<>();
         List<ImportRowError> rowErrors = new ArrayList<>();
+        Set<String> seenLegacyIds = new HashSet<>();
         // Persisted totals, only advanced once a chunk has actually been written.
         int[] totals = new int[]{0, 0, 0, 0}; // created, updated, skipped, failed
         int[] inChunk = new int[]{0, 0};      // created, updated awaiting flush
@@ -135,6 +172,7 @@ public class ImportEngine {
                 } catch (Exception e) {
                     outcome = RowOutcome.error(null, "Unexpected problem: " + e.getMessage());
                 }
+                outcome = rejectRepeatWithinFile(outcome, seenLegacyIds);
 
                 switch (outcome.action()) {
                     case CREATE -> {
@@ -167,7 +205,8 @@ public class ImportEngine {
                     case ERROR -> {
                         totals[3]++;
                         rowErrors.add(new ImportRowError(batch.getId(), rowNumber,
-                                outcome.columnName(), outcome.message(), toJson(row)));
+                                clampColumn(outcome.columnName(), 120),
+                                clampColumn(outcome.message(), 500), toJson(row)));
                     }
                 }
 
@@ -238,6 +277,16 @@ public class ImportEngine {
         if (!needingCustomId.isEmpty()) {
             patientRepository.saveAll(needingCustomId);
         }
+    }
+
+    /**
+     * Keeps a value inside its column width. message is VARCHAR(500) and is built from raw cell
+     * values and exception text, so an unusually long one would either abort the import or be
+     * swallowed by the finally block - losing the entire error report over one verbose row.
+     */
+    private String clampColumn(String value, int max) {
+        if (value == null) return null;
+        return value.length() <= max ? value : value.substring(0, max - 1) + "…";
     }
 
     private String toJson(Map<String, String> row) {
