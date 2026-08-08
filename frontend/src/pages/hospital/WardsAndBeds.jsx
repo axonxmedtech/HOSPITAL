@@ -27,7 +27,13 @@ const LABELS = {
   },
 };
 
-const WardsAndBeds = ({ wardType = 'IPD' }) => {
+/**
+ * @param {('IPD'|'ICU'|'OT')} wardType which wards this screen manages.
+ * @param {number} refreshToken bump to force a refetch. Wards can also be created from the
+ *   dashboard-level modal, which cannot reach this component's state; without a signal the list
+ *   would keep showing what it held before that save.
+ */
+const WardsAndBeds = ({ wardType = 'IPD', refreshToken = 0 }) => {
   const { success, error: toastError } = useToast();
   const [wards, setWards] = useState([]);
   const [nurseIncharges, setNurseIncharges] = useState([]);
@@ -50,11 +56,13 @@ const WardsAndBeds = ({ wardType = 'IPD' }) => {
 
   // wardType is a dependency: the three screens mount the same component, so switching between
   // them changes only this prop. Without it the list would keep showing the previous type's wards.
+  // refreshToken covers saves made from the dashboard-level ward modal, which this component
+  // cannot observe any other way.
   useEffect(() => {
     fetchWards();
     if (nursingEnabled) fetchNurseIncharges();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nursingEnabled, wardType]);
+  }, [nursingEnabled, wardType, refreshToken]);
 
   const fetchWards = async () => {
     setLoading(true);

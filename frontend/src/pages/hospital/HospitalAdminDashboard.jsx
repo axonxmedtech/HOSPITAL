@@ -203,6 +203,9 @@ const HospitalAdminDashboard = () => {
   // Which ward type the Wards tab is showing. IPD is the default because it is the only type
   // every hospital has - ICU and OT are gated on their modules.
   const [wardTypeView, setWardTypeView] = useState('IPD');
+  // Bumped whenever a ward is saved from the dashboard-level modal. WardsAndBeds fetches its own
+  // list, so it needs a signal rather than sharing the dashboard's state.
+  const [wardRefreshToken, setWardRefreshToken] = useState(0);
   // Leaving Settings resets to the box grid, so returning never lands mid-section.
   useEffect(() => {
     if (activeTab !== 'settings') setSettingsView(null);
@@ -2762,7 +2765,7 @@ const HospitalAdminDashboard = () => {
                       ? 'New Task'
                       : activeTab === 'fees' || activeTab === 'settings'
                         ? ''
-                        : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'nurses' ? 'Nurse' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'ot-incharges' ? 'OT Incharge' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`
+                        : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'nurses' ? 'Nurse' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'ot-incharges' ? 'OT Incharge' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? (wardTypeView === 'ICU' ? 'ICU Ward' : wardTypeView === 'OT' ? 'OT Ward' : 'Ward') : ''}`
                 }
                 filter={
                   activeTab === 'patients' ? (
@@ -3186,7 +3189,7 @@ const HospitalAdminDashboard = () => {
                             </button>
                           ))}
                       </div>
-                      <WardsAndBeds wardType={wardTypeView} />
+                      <WardsAndBeds wardType={wardTypeView} refreshToken={wardRefreshToken} />
                     </div>
                   )}
                   {activeTab === 'billing' && billing.length === 0 && (
@@ -6167,6 +6170,7 @@ const HospitalAdminDashboard = () => {
       {showModal && modalType === 'wards' && (
         <WardModal
           open={showModal}
+          wardType={wardTypeView}
           initial={editData}
           onClose={() => {
             setShowModal(false);
@@ -6177,6 +6181,9 @@ const HospitalAdminDashboard = () => {
             setModalType(null);
             success('Record saved successfully');
             loadData();
+            // WardsAndBeds holds its own ward list, so loadData() alone leaves the screen showing
+            // the state from before the save. Bumping this makes that component refetch.
+            setWardRefreshToken((t) => t + 1);
           }}
         />
       )}

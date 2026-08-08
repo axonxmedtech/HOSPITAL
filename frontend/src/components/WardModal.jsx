@@ -62,7 +62,11 @@ const WardModal = ({ open, wardType = 'IPD', initial, onClose, onSaved }) => {
           bedPrice: Number(bedPrice),
           floorNumber: floorNumber ? Number(floorNumber) : null,
           // Bed count is editable on edit too — the backend adds/removes beds to match.
-          totalBeds: totalBeds === '' ? null : Number(totalBeds),
+          // A theatre always resolves to exactly one bed. The field is hidden for OT, and beds
+          // cannot be added any other way, so without this an OT ward that ended up with none
+          // could never get one. Resizing to 1 is a no-op when it already has 1, so this is
+          // self-healing rather than destructive.
+          totalBeds: wardType === 'OT' ? 1 : totalBeds === '' ? null : Number(totalBeds),
         };
         await WardService.updateWard(initial.wardId, payload);
       } else {
