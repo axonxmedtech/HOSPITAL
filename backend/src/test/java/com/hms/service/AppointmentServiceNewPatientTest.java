@@ -16,6 +16,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
@@ -37,6 +38,16 @@ class AppointmentServiceNewPatientTest {
     @Mock HospitalRepository hospitalRepository;
     @Mock AppointmentRepository appointmentRepository;
     @Mock SecurityContextHelper securityHelper;
+
+    /**
+     * A real validator, not a mock. Booking auto-creates patients, and since the strict field rules
+     * moved off the Patient entity onto PatientRequest, this service is the only thing enforcing
+     * them on that path. A mock would return "valid" for anything and hide both a broken rule and a
+     * broken wiring — which is precisely the failure this spy caught when the field was first added.
+     */
+    @Spy
+    jakarta.validation.Validator patientValidator =
+            jakarta.validation.Validation.buildDefaultValidatorFactory().getValidator();
 
     @InjectMocks AppointmentService service;
 

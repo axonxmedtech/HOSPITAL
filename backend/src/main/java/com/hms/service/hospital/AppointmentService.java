@@ -67,6 +67,16 @@ public class AppointmentService {
     @Autowired
     private com.hms.service.AuditLogService auditLogService;
 
+    /**
+     * Used to validate patients auto-created during appointment booking. Strict field rules moved
+     * off the Patient entity onto PatientRequest so the legacy importer could keep blank source
+     * values blank, which means Hibernate no longer rejects a malformed phone on persist. This is
+     * the second place a patient can be created, so it has to apply those rules itself or booking
+     * would silently write records that manual registration rejects.
+     */
+    @Autowired
+    private jakarta.validation.Validator patientValidator;
+
     @Autowired
     private com.hms.security.HospitalWebSocketHandler webSocketHandler;
 
@@ -119,6 +129,11 @@ public class AppointmentService {
                 patientId = existingPatient.getId();
                 logger.info("Found existing patient with phone {}, using patient ID {}", LogSanitizer.clean(patientPhone), patientId);
             } else {
+                // Apply the same rules manual registration applies. See patientValidator above:
+                // the entity no longer enforces these, so this path must, or a phone rejected at
+                // the reception desk would be accepted through appointment booking.
+                assertValidNewPatientDetails(patientName, patientPhone, patientGender, patientEmail);
+
                 // Create new patient
                 com.hms.entity.Patient newPatient = new com.hms.entity.Patient();
                 newPatient.setName(patientName);
@@ -834,6 +849,34 @@ public class AppointmentService {
                 .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
         if (hospital.getModules() == null || !hospital.getModules().contains("OPD")) {
             throw new IllegalArgumentException("OPD module is disabled for your hospital.");
+        }
+    }
+
+    /**
+     * Applies the manual-registration rules to a patient auto-created during appointment booking.
+     *
+     * <p>Reuses {@link com.hms.dto.PatientRequest} rather than restating the constraints so there
+     * is exactly one definition of a valid manually-entered patient. Restating them here would
+     * guarantee the two copies drift.
+     *
+     * <p>Gender is defaulted to "Unknown" by the caller when absent, matching the behaviour that
+     * was there before, so only a gender that is present and malformed is rejected.
+     */
+    private void assertValidNewPatientDetails(String name, String phone, String gender, String email) {
+        com.hms.dto.PatientRequest candidate = new com.hms.dto.PatientRequest();
+        candidate.setName(name);
+        candidate.setPhone(phone);
+        candidate.setGender(gender != null ? gender : "Unknown");
+        candidate.setEmail(email != null && !email.isBlank() ? email : null);
+
+        java.util.Set<jakarta.validation.ConstraintViolation<com.hms.dto.PatientRequest>> violations =
+                patientValidator.validate(candidate);
+        if (!violations.isEmpty()) {
+            String detail = violations.stream()
+                    .map(jakarta.validation.ConstraintViolation::getMessage)
+                    .sorted()
+                    .collect(java.util.stream.Collectors.joining("; "));
+            throw new IllegalArgumentException("Cannot create patient from these details: " + detail);
         }
     }
 }
