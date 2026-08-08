@@ -34,12 +34,12 @@ Settled with the product owner before writing:
 
 **Create — backend**
 
-| File                                     | Responsibility                                                         |
-| ---------------------------------------- | ---------------------------------------------------------------------- |
-| `entity/WardType.java`                   | Enum `IPD`, `ICU`, `OT`                                                |
-| `dto/IcuStayResponse.java`               | One ICU stint on an admission: ward, bed, in/out, nights               |
-| `service/hospital/IcuStayService.java`   | Derives ICU stays for an admission from bed history                    |
-| `controller/hospital/IcuController.java` | `GET /hospital/icu/stays/{admissionId}`, `POST /hospital/icu/transfer` |
+| File                                     | Responsibility                                                                                                                      |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `entity/WardType.java`                   | Enum `IPD`, `ICU`, `OT`                                                                                                             |
+| `dto/IcuStayResponse.java`               | One ICU stint on an admission: ward, bed, in/out, nights                                                                            |
+| `service/hospital/IcuStayService.java`   | Derives ICU stays for an admission from bed history                                                                                 |
+| `controller/hospital/IcuController.java` | `GET /hospital/icu/stays/{admissionId}` only — transfers reuse the existing IPD transfer endpoint rather than getting a second path |
 
 **Modify — backend**
 
