@@ -20,7 +20,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Exports one hospital's patient data as a single .xlsx workbook.
@@ -47,6 +50,10 @@ public class HospitalExportService {
     private static final int ROW_WINDOW = 200;
 
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmm");
+
+    /** Reads the same preserved-columns JSON that PatientImporter writes. */
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
+            new com.fasterxml.jackson.databind.ObjectMapper();
 
     private final PatientRepository patientRepository;
     private final AppointmentRepository appointmentRepository;
@@ -106,12 +113,31 @@ public class HospitalExportService {
         }
     }
 
+    /** Fixed columns every export has, before the preserved ones are appended. */
+    private static final String[] PATIENT_COLUMNS = {
+            "Patient ID", "Old patient ID (MRN)", "Name", "Gender", "Phone", "Email",
+            "Date of birth", "Address", "Medical history", "Status", "Source",
+            "Edited by staff", "Registered on"
+    };
+
+    /**
+     * Ceiling on preserved columns. Excel stops at 16,384 columns, and a file that wide is a sign
+     * the source data was malformed rather than rich, so it is bounded well below that.
+     */
+    private static final int MAX_CUSTOM_COLUMNS = 200;
+
     private void writePatients(Workbook wb, CellStyle header, List<Patient> patients) {
         Sheet sheet = wb.createSheet("Patients");
-        writeHeader(sheet, header,
-                "Patient ID", "Old patient ID (MRN)", "Name", "Gender", "Phone", "Email",
-                "Date of birth", "Address", "Medical history", "Status", "Source",
-                "Edited by staff", "Registered on", "Imported information");
+
+        // Columns an import preserved get a column each, the way they arrived, rather than one cell
+        // of JSON. A hospital taking their data elsewhere should get back something shaped like
+        // what they gave us — a blob of {"Referred By":"Dr. K"} is technically lossless and
+        // practically useless, because nobody can sort or filter on it.
+        List<String> customColumns = collectCustomColumns(patients);
+
+        List<String> allColumns = new ArrayList<>(Arrays.asList(PATIENT_COLUMNS));
+        allColumns.addAll(customColumns);
+        writeHeader(sheet, header, allColumns.toArray(new String[0]));
 
         int r = 1;
         for (Patient p : patients) {
@@ -130,9 +156,52 @@ public class HospitalExportService {
             put(row, c++, p.getSource() == null ? null : p.getSource().name());
             put(row, c++, Boolean.TRUE.equals(p.getManuallyEdited()) ? "Yes" : "No");
             put(row, c++, p.getCreatedAt() == null ? null : p.getCreatedAt().toString());
-            // Columns a previous import preserved that this schema does not model. Included so a
-            // hospital taking their data elsewhere loses nothing we captured on their behalf.
-            put(row, c, p.getCustomFields());
+
+            Map<String, String> preserved = readCustomFields(p.getCustomFields());
+            for (String column : customColumns) {
+                // A patient who never had this column gets a blank, not a missing cell — the sheet
+                // stays rectangular so it can be edited and re-imported.
+                put(row, c++, preserved.get(column));
+            }
+        }
+    }
+
+    /**
+     * The union of preserved column names across these patients, in the order first encountered.
+     *
+     * <p>Ordering by first appearance rather than alphabetically keeps a hospital's own column
+     * order roughly intact, which makes the file recognisable to the people who produced it.
+     */
+    private List<String> collectCustomColumns(List<Patient> patients) {
+        java.util.LinkedHashSet<String> columns = new java.util.LinkedHashSet<>();
+        for (Patient p : patients) {
+            for (String key : readCustomFields(p.getCustomFields()).keySet()) {
+                if (columns.size() >= MAX_CUSTOM_COLUMNS) {
+                    log.warn("Export reached the {}-column limit for preserved fields; "
+                            + "later columns are omitted from this file", MAX_CUSTOM_COLUMNS);
+                    return new ArrayList<>(columns);
+                }
+                columns.add(key);
+            }
+        }
+        return new ArrayList<>(columns);
+    }
+
+    /**
+     * Reads the preserved-columns JSON. An unreadable value yields no columns rather than failing
+     * the export — one malformed record must not cost a hospital the other several thousand.
+     */
+    private Map<String, String> readCustomFields(String json) {
+        if (json == null || json.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return JSON.readValue(json,
+                    new com.fasterxml.jackson.core.type.TypeReference<
+                            java.util.LinkedHashMap<String, String>>() { });
+        } catch (Exception e) {
+            log.warn("Skipping unreadable preserved fields on export: {}", e.getMessage());
+            return Map.of();
         }
     }
 

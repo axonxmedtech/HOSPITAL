@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 // BUG-028: single source-of-truth for base URL
 import authService from '../services/authService';
 import hospitalService from '../services/hospitalService';
@@ -13,6 +13,28 @@ import PdfViewerModal from './PdfViewerModal';
  */
 const PatientDetailsModal = ({ patient, onClose, initialTab = 'info' }) => {
   const [activeTab, setActiveTab] = useState(initialTab);
+
+  /**
+   * Columns an import preserved, stored as a JSON object on the patient.
+   *
+   * Parsed defensively: this is data that came out of somebody else's software, and a record with
+   * an unreadable value should cost that one panel, not the whole details dialog. Blank values are
+   * kept rather than filtered — "we hold this field and it is empty" is different from "we never
+   * had this field", and the first is worth showing.
+   */
+  const importedFields = useMemo(() => {
+    if (!patient?.customFields) return [];
+    try {
+      const parsed = JSON.parse(patient.customFields);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return [];
+      return Object.entries(parsed).map(([key, value]) => [
+        key,
+        value === '' ? '—' : String(value),
+      ]);
+    } catch {
+      return [];
+    }
+  }, [patient?.customFields]);
 
   const [opdHistory, setOpdHistory] = useState([]);
   const [ipdHistory, setIpdHistory] = useState([]);
@@ -257,6 +279,24 @@ const PatientDetailsModal = ({ patient, onClose, initialTab = 'info' }) => {
                   <InfoField label="Emergency Contact" value={patient.emergencyContact || 'N/A'} />
                 </div>
               </div>
+
+              {/* Columns the hospital's previous system carried that this schema does not model.
+                  Read-only on purpose: they are a record of what arrived, and editing them here
+                  would create a value that matches neither the source file nor any field the rest
+                  of the app understands. Rendered only when there is something to show. */}
+              {importedFields.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1">Imported Information</h3>
+                  <p className="text-xs text-gray-500 mb-4">
+                    Brought in from this hospital&rsquo;s previous system and kept as-is. Read-only.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {importedFields.map(([label, value]) => (
+                      <InfoField key={label} label={label} value={value} />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
