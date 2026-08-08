@@ -536,6 +536,7 @@ CREATE TABLE `patients` (
   `address` varchar(255) DEFAULT NULL,
   `created_at` datetime(6) NOT NULL,
   `custom_fields` text,
+  `manually_edited` tinyint(1) NOT NULL DEFAULT 0,
   `custom_id` varchar(255) DEFAULT NULL,
   `date_of_birth` date DEFAULT NULL,
   `email` varchar(100) DEFAULT NULL,

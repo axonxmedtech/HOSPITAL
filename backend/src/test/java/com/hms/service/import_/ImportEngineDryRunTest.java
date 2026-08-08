@@ -92,7 +92,8 @@ class ImportEngineDryRunTest {
     void warnsWhenNoLegacyIdIsMappedBecauseReuploadCannotMatch() {
         ImportPreview preview = engine().dryRun(sheet(),
                 Map.of("Name", "name", "DOB", "dateOfBirth"), 7L);
-        assertThat(preview.warnings()).anyMatch(w -> w.toLowerCase().contains("re-upload"));
+        assertThat(preview.warnings())
+                .anyMatch(w -> w.contains("cannot match existing records"));
     }
 
     /**

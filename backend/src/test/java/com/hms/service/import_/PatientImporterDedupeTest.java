@@ -136,6 +136,48 @@ class PatientImporterDedupeTest {
     }
 
     /**
+     * Staff corrections outrank the legacy file. Re-running an import to pick up failed rows used
+     * to silently revert every fix reception had made since — the data just quietly regressed, with
+     * nothing to show it had happened. Once a human has edited a record, the file cannot touch it.
+     */
+    @Test
+    void leavesAPatientAloneOnceAHumanHasEditedThem() {
+        Patient edited = new Patient();
+        edited.setId(55L);
+        edited.setLegacyId("A-9");
+        edited.setCustomId("PAT55");
+        edited.setPhone("9876543210");   // reception corrected this
+        edited.setManuallyEdited(true);
+        when(patientRepository.findByHospitalIdAndLegacyId(7L, "A-9")).thenReturn(Optional.of(edited));
+
+        RowOutcome outcome = importer().evaluate(
+                Map.of("Name", "Ramesh", "MRN", "A-9", "Mob No", "0000000000"),
+                Map.of("Name", "name", "MRN", "legacyId", "Mob No", "phone"), List.of(), 7L, 2);
+
+        assertThat(outcome.action()).isEqualTo(RowOutcome.Action.SKIP);
+        assertThat(outcome.message()).contains("edited in the system");
+        // The corrected value is untouched — the file's stale 0000000000 was not applied.
+        assertThat(edited.getPhone()).isEqualTo("9876543210");
+    }
+
+    /** An untouched imported record is still updatable, or re-import would do nothing at all. */
+    @Test
+    void stillUpdatesAnImportedPatientNobodyHasEdited() {
+        Patient untouched = new Patient();
+        untouched.setId(56L);
+        untouched.setLegacyId("A-10");
+        untouched.setManuallyEdited(false);
+        when(patientRepository.findByHospitalIdAndLegacyId(7L, "A-10")).thenReturn(Optional.of(untouched));
+
+        RowOutcome outcome = importer().evaluate(
+                Map.of("Name", "Corrected Name", "MRN", "A-10"),
+                Map.of("Name", "name", "MRN", "legacyId"), List.of(), 7L, 2);
+
+        assertThat(outcome.action()).isEqualTo(RowOutcome.Action.UPDATE);
+        assertThat(outcome.patient().getName()).isEqualTo("Corrected Name");
+    }
+
+    /**
      * The fallback branch never has a legacyId. Writing it anyway would blank the legacy_id an
      * earlier MRN-bearing import established, destroying the key every future run matches on.
      */

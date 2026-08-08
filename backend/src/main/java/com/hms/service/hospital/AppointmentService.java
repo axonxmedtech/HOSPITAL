@@ -123,11 +123,20 @@ public class AppointmentService {
             List<com.hms.entity.Patient> existingPatients = patientRepository
                     .findByPhoneAndHospitalIdAndIsActiveTrue(patientPhone, hospitalId);
 
-            if (!existingPatients.isEmpty()) {
-                // Use existing patient (first one found if duplicates exist)
-                com.hms.entity.Patient existingPatient = existingPatients.get(0);
-                patientId = existingPatient.getId();
-                logger.info("Found existing patient with phone {}, using patient ID {}", LogSanitizer.clean(patientPhone), patientId);
+            // Match on name AND phone, not phone alone. A family shares one mobile number, so
+            // matching on the number by itself attached a child's appointment to their parent's
+            // record — the booking succeeded and the clinical notes landed on the wrong patient.
+            // Name is compared case- and whitespace-insensitively.
+            String bookingName = patientName.trim().replaceAll("\\s+", " ").toLowerCase();
+            com.hms.entity.Patient matched = existingPatients.stream()
+                    .filter(p -> p.getName() != null
+                            && p.getName().trim().replaceAll("\\s+", " ").toLowerCase().equals(bookingName))
+                    .findFirst()
+                    .orElse(null);
+
+            if (matched != null) {
+                patientId = matched.getId();
+                logger.info("Found existing patient with matching name and phone, using patient ID {}", patientId);
             } else {
                 // Apply the same rules manual registration applies. See patientValidator above:
                 // the entity no longer enforces these, so this path must, or a phone rejected at

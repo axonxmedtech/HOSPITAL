@@ -110,7 +110,8 @@ class MessyLegacyFileTest {
     void doesNotWarnAboutReuploadWhenAnMrnColumnIsMapped() {
         ImportPreview preview = engine().dryRun(messySheet(), mapping(), 7L);
 
-        assertThat(preview.warnings()).noneMatch(w -> w.toLowerCase().contains("re-upload"));
+        assertThat(preview.warnings())
+                .noneMatch(w -> w.contains("cannot match existing records"));
     }
 
     /** The same file with the MRN column left unmapped must warn that a re-upload cannot match. */
@@ -121,7 +122,8 @@ class MessyLegacyFileTest {
 
         ImportPreview preview = engine().dryRun(messySheet(), withoutMrn, 7L);
 
-        assertThat(preview.warnings()).anyMatch(w -> w.toLowerCase().contains("re-upload"));
+        assertThat(preview.warnings())
+                .anyMatch(w -> w.contains("cannot match existing records"));
         assertThat(preview.unmappedHeaders()).contains("MRN", "Referred By");
     }
 }

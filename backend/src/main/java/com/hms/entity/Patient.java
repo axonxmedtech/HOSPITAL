@@ -182,6 +182,16 @@ public class Patient {
     private String customFields;
 
     /**
+     * Set the moment any human edits this record through the application.
+     *
+     * <p>Once true, a re-import will not touch the row. Staff corrections outrank the legacy file:
+     * without this, re-running an import to pick up failed rows silently reverted every fix
+     * reception had made in the meantime, with nothing to show it had happened.
+     */
+    @Column(name = "manually_edited", nullable = false)
+    private Boolean manuallyEdited = false;
+
+    /**
      * Soft delete flag
      */
     @Column(nullable = false)

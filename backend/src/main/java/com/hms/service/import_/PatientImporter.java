@@ -104,6 +104,17 @@ public class PatientImporter implements EntityImporter {
             }
         }
 
+        // A record a human has corrected outranks the legacy file. Re-running an import to pick up
+        // failed rows used to silently revert every fix reception had made since, with nothing to
+        // show it had happened. Skipped and reported rather than quietly ignored, so the admin can
+        // see which rows the file could not apply and reconcile them deliberately.
+        if (isUpdate && patient != null && Boolean.TRUE.equals(patient.getManuallyEdited())) {
+            return RowOutcome.skip("This patient has been edited in the system since the last import"
+                    + (patient.getCustomId() != null ? " (" + patient.getCustomId() + ")" : "")
+                    + ", so the file was not applied to them. Staff changes take precedence — update "
+                    + "the record directly if the file is more accurate.");
+        }
+
         if (patient == null) {
             patient = new Patient();
         }
@@ -184,21 +195,6 @@ public class PatientImporter implements EntityImporter {
         return null;
     }
 
-    /**
-     * Unmapped columns are kept verbatim, blanks included, so nothing from the file is lost.
-     * Serialised with Jackson rather than hand-rolled: escaping by iterating {@code char} walks
-     * UTF-16 code units, so an unpaired surrogate from a mis-encoded export would emit invalid
-     * JSON. A LinkedHashMap keeps the column order stable and the output diffable.
-     */
-    private String buildCustomFields(Map<String, String> row, List<String> unmappedHeaders)
-            throws com.fasterxml.jackson.core.JsonProcessingException {
-        if (unmappedHeaders == null || unmappedHeaders.isEmpty()) return null;
-        Map<String, String> preserved = new LinkedHashMap<>();
-        for (String header : unmappedHeaders) {
-            preserved.put(header, row.getOrDefault(header, ""));
-        }
-        return JSON.writeValueAsString(preserved);
-    }
 
     /**
      * Merges this file's unmapped columns over whatever an earlier import preserved, rather than

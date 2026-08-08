@@ -2308,6 +2308,9 @@ public class DatabaseMigrationRunner {
         addColumnIfMissing("patients", "source", "VARCHAR(20) NOT NULL DEFAULT 'MANUAL'");
         addColumnIfMissing("patients", "import_batch_id", "BIGINT NULL");
         addColumnIfMissing("patients", "custom_fields", "TEXT NULL");
+        // Marks a record a human has edited. A re-import skips these so staff corrections are not
+        // silently reverted by re-running the original file.
+        addColumnIfMissing("patients", "manually_edited", "TINYINT(1) NOT NULL DEFAULT 0");
         // gender/phone become optional so imported records can keep blanks blank.
         try {
             jdbcTemplate.execute("ALTER TABLE patients MODIFY COLUMN gender VARCHAR(10) NULL");

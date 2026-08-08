@@ -145,6 +145,11 @@ public class PatientService {
         }
         validateDateOfBirth(request.getDateOfBirth());
 
+        Long duplicateCheckHospitalId = securityHelper.getCurrentHospitalId();
+        if (duplicateCheckHospitalId != null) {
+            assertNotADuplicate(request.getName(), request.getPhone(), duplicateCheckHospitalId, null);
+        }
+
         Patient patient = new Patient();
         patient.setName(request.getName());
         patient.setGender(request.getGender());
@@ -221,12 +226,17 @@ public class PatientService {
         // Same field set this method has always copied. email is intentionally NOT
         // copied here — it never was, and quietly making it updatable would be a
         // behaviour change riding along with a validation refactor.
+        assertNotADuplicate(request.getName(), request.getPhone(),
+                existingPatient.getHospitalId(), existingPatient.getId());
+
         existingPatient.setName(request.getName());
         existingPatient.setDateOfBirth(request.getDateOfBirth());
         existingPatient.setGender(request.getGender());
         existingPatient.setPhone(request.getPhone());
         existingPatient.setAddress(request.getAddress());
         existingPatient.setMedicalHistory(request.getMedicalHistory());
+        // A human has touched this record, so a re-import must leave it alone from here on.
+        existingPatient.setManuallyEdited(true);
 
         Patient saved = patientRepository.save(existingPatient);
         evictStatsCache(saved.getHospitalId());
@@ -1075,6 +1085,46 @@ public class PatientService {
         java.util.List<com.hms.entity.Prescription> prescriptions = prescriptionRepository.findByIpdAdmissionIdOrderByStartDate(ipdId);
         
         return pdfService.generateIpdPrescriptionPdf(hospital, patient, ipd, prescriptions);
+    }
+
+    /**
+     * Refuses a patient whose name AND phone both already exist in this hospital.
+     *
+     * <p>Both must match. Either alone is legitimate and common: two unrelated people share a name,
+     * and a family shares one mobile number. Blocking on phone alone would stop a mother
+     * registering her child; blocking on name alone would stop a second Ramesh Patel existing at
+     * all. Only the pair is a real duplicate.
+     *
+     * <p>Names are compared case- and whitespace-insensitively, because "ramesh patel" typed on a
+     * busy afternoon is the same person as "Ramesh  Patel".
+     *
+     * @param excludePatientId the record being edited, so updating a patient does not trip over
+     *                         itself; null when creating.
+     */
+    private void assertNotADuplicate(String name, String phone, Long hospitalId, Long excludePatientId) {
+        if (name == null || phone == null || hospitalId == null) {
+            return;
+        }
+        String candidate = normaliseName(name);
+        java.util.List<Patient> samePhone =
+                patientRepository.findByPhoneAndHospitalIdAndIsActiveTrue(phone, hospitalId);
+
+        for (Patient existing : samePhone) {
+            if (excludePatientId != null && excludePatientId.equals(existing.getId())) {
+                continue;
+            }
+            if (candidate.equals(normaliseName(existing.getName()))) {
+                throw new IllegalArgumentException(
+                        "A patient named \"" + existing.getName() + "\" with phone " + phone
+                        + " already exists (" + existing.getCustomId() + "). Open that record "
+                        + "instead of creating a second one. If this is a different person, their "
+                        + "name or phone number must differ.");
+            }
+        }
+    }
+
+    private String normaliseName(String name) {
+        return name == null ? "" : name.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 }
 

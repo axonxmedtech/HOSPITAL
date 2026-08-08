@@ -80,6 +80,19 @@ public class ImportEngine {
         }
 
         List<String> warnings = new ArrayList<>();
+        // Lead with the problems. Counts alone are easy to skim past, and an admin about to write
+        // thousands of patient records should be told plainly what will not go in before they are
+        // told what will.
+        if (error > 0) {
+            warnings.add(error + " row(s) have problems and will NOT be imported. Review the list "
+                    + "below, correct them in the file, and re-upload before committing — or commit "
+                    + "now and fix them afterwards using the downloadable error report.");
+        }
+        if (skip > 0) {
+            warnings.add(skip + " row(s) will be skipped — either they duplicate another row in this "
+                    + "file, they match more than one existing patient, or the patient has been "
+                    + "edited in the system since the last import and staff changes take precedence.");
+        }
         if (!mapping.containsValue("legacyId")) {
             warnings.add("No old patient ID (MRN) column is mapped. Re-uploading this file after "
                     + "committing cannot match existing records and would create duplicates. Correct "
