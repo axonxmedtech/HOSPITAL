@@ -19,6 +19,9 @@ const OtRoomsCard = () => {
   // charge, which is why it starts empty rather than at 0 - a zero would put an empty line on
   // every bill.
   const [charge, setCharge] = useState('');
+  // The theatre being edited, held as a draft so a half-finished change is never written and
+  // Cancel genuinely restores what was there.
+  const [editing, setEditing] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -62,6 +65,42 @@ const OtRoomsCard = () => {
       success('Theatre added');
     } catch (e) {
       toastError(e?.response?.data?.error || 'Failed to add theatre');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const startEdit = (room) => {
+    setEditing({
+      publicId: room.publicId,
+      name: room.name || '',
+      turnoverMinutes: String(room.turnoverMinutes ?? 15),
+      // Blank rather than 0 when unset, so saving an untouched theatre does not invent a charge.
+      chargeAmount: room.chargeAmount == null ? '' : String(room.chargeAmount),
+    });
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    if (!editing.name.trim()) {
+      toastError('Theatre name is required');
+      return;
+    }
+    setBusy(true);
+    try {
+      const updated = await otService.updateRoom(editing.publicId, {
+        name: editing.name.trim(),
+        turnoverMinutes: Number(editing.turnoverMinutes) || 0,
+        // Sent on every save so clearing the box clears the charge. Without this a fee could be
+        // set but never removed.
+        chargeAmount:
+          String(editing.chargeAmount).trim() === '' ? null : String(editing.chargeAmount).trim(),
+      });
+      setRooms((prev) => prev.map((r) => (r.publicId === updated.publicId ? updated : r)));
+      setEditing(null);
+      success('Theatre updated');
+    } catch (e) {
+      toastError(e?.response?.data?.error || 'Failed to update theatre');
     } finally {
       setBusy(false);
     }
@@ -148,30 +187,126 @@ const OtRoomsCard = () => {
 
       {rooms.length > 0 ? (
         <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
-          {rooms.map((r) => (
-            <div key={r.publicId} className="flex items-center justify-between px-4 py-2.5 text-sm">
-              <div>
-                <span className="font-semibold text-gray-800">{r.name}</span>
-                <span className="ml-2 text-xs text-gray-400">turnover {r.turnoverMinutes} min</span>
-                {r.chargeAmount != null && (
-                  <span className="ml-2 text-xs text-gray-500">₹{r.chargeAmount} per surgery</span>
-                )}
-                <span
-                  className={`ml-2 text-xs px-2 py-0.5 rounded-full ${r.status === 'AVAILABLE' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}
-                >
-                  {r.status}
-                </span>
+          {rooms.map((r) =>
+            editing?.publicId === r.publicId ? (
+              /* Edited in place rather than in a dialog: a theatre has three short fields, and a
+                 modal would hide the other theatres you are naming it against. */
+              <div key={r.publicId} className="px-4 py-3 bg-slate-50">
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="flex-1 min-w-[10rem]">
+                    <label
+                      htmlFor={`ot-edit-name-${r.publicId}`}
+                      className="block text-xs font-medium text-gray-600 mb-1"
+                    >
+                      Theatre name
+                    </label>
+                    <input
+                      id={`ot-edit-name-${r.publicId}`}
+                      value={editing.name}
+                      onChange={(e) => setEditing((p) => ({ ...p, name: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div className="w-32">
+                    <label
+                      htmlFor={`ot-edit-turnover-${r.publicId}`}
+                      className="block text-xs font-medium text-gray-600 mb-1"
+                    >
+                      Turnover (min)
+                    </label>
+                    <input
+                      id={`ot-edit-turnover-${r.publicId}`}
+                      type="number"
+                      min="0"
+                      value={editing.turnoverMinutes}
+                      onChange={(e) =>
+                        setEditing((p) => ({ ...p, turnoverMinutes: e.target.value }))
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div className="w-40">
+                    <label
+                      htmlFor={`ot-edit-charge-${r.publicId}`}
+                      className="block text-xs font-medium text-gray-600 mb-1"
+                    >
+                      Theatre charge (₹)
+                    </label>
+                    <input
+                      id={`ot-edit-charge-${r.publicId}`}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="none"
+                      value={editing.chargeAmount}
+                      onChange={(e) => setEditing((p) => ({ ...p, chargeAmount: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={saveEdit}
+                    className="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setEditing(null)}
+                    className="px-3 py-2 rounded-lg text-sm text-gray-600 hover:text-gray-900"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                <p className="mt-2 text-xs text-gray-500">
+                  Leave the charge empty for no theatre fee. Renaming does not affect surgeries
+                  already scheduled here.
+                </p>
               </div>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => remove(r)}
-                className="text-xs text-red-500 hover:text-red-700"
+            ) : (
+              <div
+                key={r.publicId}
+                className="flex items-center justify-between px-4 py-2.5 text-sm"
               >
-                Remove
-              </button>
-            </div>
-          ))}
+                <div>
+                  <span className="font-semibold text-gray-800">{r.name}</span>
+                  <span className="ml-2 text-xs text-gray-400">
+                    turnover {r.turnoverMinutes} min
+                  </span>
+                  {r.chargeAmount != null && (
+                    <span className="ml-2 text-xs text-gray-500">
+                      ₹{r.chargeAmount} per surgery
+                    </span>
+                  )}
+                  <span
+                    className={`ml-2 text-xs px-2 py-0.5 rounded-full ${r.status === 'AVAILABLE' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}
+                  >
+                    {r.status}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => startEdit(r)}
+                    className="text-xs font-semibold text-sky-600 hover:text-sky-800"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => remove(r)}
+                    className="text-xs text-red-500 hover:text-red-700"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            )
+          )}
         </div>
       ) : (
         <p className="text-sm text-gray-400">
