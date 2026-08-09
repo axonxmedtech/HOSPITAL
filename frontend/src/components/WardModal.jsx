@@ -140,13 +140,15 @@ const WardModal = ({ open, wardType = 'IPD', initial, onClose, onSaved }) => {
             >
               <option value="IPD">General ward (IPD)</option>
               <option value="ICU">ICU ward</option>
-              <option value="OT">OT ward (operating theatre)</option>
+              {/* OT is offered only for a ward that already has it, so a legacy OT ward can be
+                  retyped to something valid. Theatres themselves live under OT Theatres. */}
+              {effectiveType === 'OT' && <option value="OT">OT ward (legacy)</option>}
             </select>
             <p className="mt-1 text-xs text-slate-500">
               {effectiveType === 'ICU'
                 ? 'Patients are moved here from a general ward; they are not admitted directly.'
                 : effectiveType === 'OT'
-                  ? 'One theatre, one case at a time. Patients are never admitted to a theatre.'
+                  ? 'Legacy OT ward. Theatres are managed under OT Theatres — retype this to a general or ICU ward.'
                   : 'A normal inpatient ward. Patients are admitted here.'}
             </p>
           </div>

@@ -25,6 +25,7 @@ export const buildAllAdminTabs = (tenantWord = 'Hospital') => [
   { id: 'opd', label: 'OPD', icon: null, requiredModule: 'OPD' },
   { id: 'ipd', label: 'IPD', icon: null, requiredModule: 'IPD' },
   { id: 'wards', label: 'Wards & Beds', icon: null, requiredModule: 'IPD' },
+  { id: 'icu-wards', label: 'ICU Wards', icon: null, requiredModule: 'IPD' },
   { id: 'ot', label: 'Operation Theatre', icon: null, requiredModule: 'OT' },
   { id: 'pathology', label: 'Pathology', icon: null, requiredModule: 'PATHOLOGY' },
   // Pharmacy & inventory
@@ -79,7 +80,7 @@ export const SIDEBAR_GROUPS = [
     label: 'Patient Management',
     tabIds: ['patients', 'appointments', 'opd', 'ipd', 'ot', 'pathology'],
   },
-  { id: 'group-rooms', label: 'Rooms', tabIds: ['wards', 'ot-theatres'] },
+  { id: 'group-rooms', label: 'Rooms', tabIds: ['wards', 'icu-wards', 'ot-theatres'] },
   {
     id: 'group-staff',
     label: 'Staff',
