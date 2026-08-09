@@ -150,6 +150,10 @@ public class IpdAdmissionService {
         // getWardsForAdmission gate).
         com.hms.entity.Ward ward = wardRepository.findById(wardId)
                 .orElseThrow(() -> new IllegalArgumentException("Ward not found"));
+        if (ward.getWardType() != com.hms.entity.WardType.IPD) {
+            throw new IllegalArgumentException(
+                    "Initial admission is only allowed to an IPD ward. Transfer the patient to ICU after admission if intensive care is required.");
+        }
         if (hasNursingModule() && ward.getInchargeNurseId() == null) {
             throw new IllegalArgumentException("This ward has no Nurse Incharge assigned. Assign an incharge before admitting.");
         }
@@ -1204,14 +1208,12 @@ public class IpdAdmissionService {
         return ipd;
     }
 
-    @org.springframework.transaction.annotation.Transactional
     /**
-     * Where an admitted patient may be moved. Mirrors {@link WardService#ADMITTABLE_TYPES}
-     * deliberately — a bed a patient can be admitted into is exactly a bed they can be moved into,
-     * and two lists of that would eventually disagree.
+     * Where an admitted patient may be moved. Uses {@link WardService#TRANSFERRABLE_TYPES} —
+     * IPD and ICU are valid transfer targets, but OT is not.
      */
     public static boolean isTransferrableTo(com.hms.entity.WardType type) {
-        return WardService.ADMITTABLE_TYPES.contains(type);
+        return WardService.TRANSFERRABLE_TYPES.contains(type);
     }
 
     public IpdAdmission changeBed(Long ipdId, Long newBedId) {

@@ -34,15 +34,16 @@ class IcuTransferTest {
     }
 
     /**
-     * Admission and transfer must agree on what a patient may occupy. Two separately maintained
-     * lists would eventually let a bed be admittable but not transferrable, or the reverse.
+     * Initial admission is restricted to IPD wards only, whereas transfers allow moving into ICU as well.
      */
     @Test
-    void transferAndAdmissionAgreeOnWhatAPatientMayOccupy() {
+    void transferAllowsIcuWhereasInitialAdmissionIsIpdOnly() {
+        assertThat(WardService.INITIAL_ADMISSION_TYPES).containsExactly(WardType.IPD);
+        assertThat(WardService.TRANSFERRABLE_TYPES).containsExactlyInAnyOrder(WardType.IPD, WardType.ICU);
         for (WardType type : WardType.values()) {
             assertThat(IpdAdmissionService.isTransferrableTo(type))
-                    .as("transfer and admission disagree about %s", type)
-                    .isEqualTo(WardService.ADMITTABLE_TYPES.contains(type));
+                    .as("isTransferrableTo result for %s", type)
+                    .isEqualTo(WardService.TRANSFERRABLE_TYPES.contains(type));
         }
     }
 }

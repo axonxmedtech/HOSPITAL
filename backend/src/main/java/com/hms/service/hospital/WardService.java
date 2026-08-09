@@ -75,12 +75,17 @@ public class WardService {
         }
     }
 
-    /**
-     * Ward types a patient may occupy. A theatre is somewhere a case happens, not somewhere a
-     * patient is admitted, so OT is excluded and the admission and transfer pickers never offer it.
-     */
-    public static final java.util.Set<com.hms.entity.WardType> ADMITTABLE_TYPES =
+    /** Wards eligible for initial IPD admission. Direct admission into ICU or OT is prohibited. */
+    public static final java.util.Set<com.hms.entity.WardType> INITIAL_ADMISSION_TYPES =
+            java.util.Set.of(com.hms.entity.WardType.IPD);
+
+    /** Ward types a patient may occupy via transfer (IPD or ICU, never OT). */
+    public static final java.util.Set<com.hms.entity.WardType> TRANSFERRABLE_TYPES =
             java.util.Set.of(com.hms.entity.WardType.IPD, com.hms.entity.WardType.ICU);
+
+    /** @deprecated Use {@link #INITIAL_ADMISSION_TYPES} or {@link #TRANSFERRABLE_TYPES} for specific contexts. */
+    @Deprecated
+    public static final java.util.Set<com.hms.entity.WardType> ADMITTABLE_TYPES = INITIAL_ADMISSION_TYPES;
 
     /**
      * An OT ward may never hold more than one bed, because it hosts one case at a time —
@@ -214,10 +219,9 @@ public class WardService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         boolean nursingEnabled = hasNursingModule();
 
-        // ADMITTABLE_TYPES only: a theatre is where a case happens, not somewhere a patient is
-        // admitted. Offering one here would let the nightly bed charge follow the theatre rate and
-        // leave the patient with no ward to return to.
-        return wardRepository.findByHospitalIdAndWardTypeIn(hospitalId, ADMITTABLE_TYPES)
+        // INITIAL_ADMISSION_TYPES only: initial admission is allowed only to IPD wards.
+        // ICU wards are reserved for transfers after admission, and OT wards host surgeries.
+        return wardRepository.findByHospitalIdAndWardTypeIn(hospitalId, INITIAL_ADMISSION_TYPES)
                 .stream()
                 .filter(w -> !nursingEnabled || w.getInchargeNurseId() != null)
                 .filter(w -> bedRepository.findByWardIdAndHospitalId(w.getWardId(), hospitalId).stream()

@@ -47,9 +47,30 @@ class OtWardChargeTest {
                 .isEqualByComparingTo("0");
     }
 
+    private com.hms.entity.OtRoom theatre(String price) {
+        com.hms.entity.OtRoom r = new com.hms.entity.OtRoom();
+        r.setName("OT-2");
+        r.setChargeAmount(price == null ? null : new BigDecimal(price));
+        return r;
+    }
+
+    /** The theatre's own fee is the source of truth now that OT wards are gone. */
+    @Test
+    void chargesTheTheatresOwnFee() {
+        assertThat(SurgeryService.otChargeFor(theatre("2500.00"))).isEqualByComparingTo("2500.00");
+    }
+
+    /** An unpriced theatre adds nothing, rather than a zero line on every bill. */
+    @Test
+    void aTheatreWithNoFeeSetAddsNothing() {
+        assertThat(SurgeryService.otChargeFor(theatre(null))).isEqualByComparingTo("0");
+        assertThat(SurgeryService.otChargeFor((com.hms.entity.OtRoom) null)).isEqualByComparingTo("0");
+    }
+
     @Test
     void noWardAtAllIsNotACharge() {
-        assertThat(SurgeryService.otChargeFor(null)).isEqualByComparingTo("0");
+        // Cast required: otChargeFor is overloaded for a theatre and for a legacy OT ward.
+        assertThat(SurgeryService.otChargeFor((Ward) null)).isEqualByComparingTo("0");
     }
 
     /**

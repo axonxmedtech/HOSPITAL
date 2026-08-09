@@ -188,4 +188,27 @@ class IpdAdmissionServiceTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Prescription start date cannot be in the past");
     }
+
+    @Test
+    void admitFromOpd_withIcuWard_throwsIllegalArgumentException() {
+        Opd opd = new Opd();
+        opd.setId(1L);
+        opd.setPatient(new Patient());
+        when(opdRepository.findById(1L)).thenReturn(Optional.of(opd));
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+
+        Bed bed = new Bed();
+        bed.setBedId(2L);
+        bed.setStatus("available");
+        when(bedRepository.findById(2L)).thenReturn(Optional.of(bed));
+
+        com.hms.entity.Ward icuWard = new com.hms.entity.Ward();
+        icuWard.setWardId(3L);
+        icuWard.setWardType(com.hms.entity.WardType.ICU);
+        when(wardRepository.findById(3L)).thenReturn(Optional.of(icuWard));
+
+        assertThatThrownBy(() -> service.admitFromOpd(1L, 3L, 2L, "ELECTIVE", "Obs"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Initial admission is only allowed to an IPD ward");
+    }
 }

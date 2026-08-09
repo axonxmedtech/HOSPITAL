@@ -50,7 +50,7 @@ public class OtRoomController {
                 : Integer.valueOf(String.valueOf(body.get(TURNOVER_MINUTES)));
         Long sourceWardId = body.get("sourceWardId") == null ? null
                 : Long.valueOf(String.valueOf(body.get("sourceWardId")));
-        return ResponseEntity.ok(service.create(name, turnover, sourceWardId));
+        return ResponseEntity.ok(service.create(name, turnover, sourceWardId, charge(body)));
     }
 
     @PutMapping("/{publicId}")
@@ -60,7 +60,24 @@ public class OtRoomController {
         Integer turnover = body.get(TURNOVER_MINUTES) == null ? null
                 : Integer.valueOf(String.valueOf(body.get(TURNOVER_MINUTES)));
         String status = (String) body.get("status");
-        return ResponseEntity.ok(service.update(publicId, name, turnover, status));
+        return ResponseEntity.ok(service.update(publicId, name, turnover, status, charge(body)));
+    }
+
+    /**
+     * Reads the theatre fee off the request body.
+     *
+     * <p>An absent or blank value means no charge. Parsed via BigDecimal(String) rather than
+     * through a double, because money read through binary floating point picks up rounding error
+     * before it ever reaches the bill.
+     */
+    private java.math.BigDecimal charge(Map<String, Object> body) {
+        Object raw = body.get("chargeAmount");
+        if (raw == null || String.valueOf(raw).isBlank()) return null;
+        try {
+            return new java.math.BigDecimal(String.valueOf(raw).trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Theatre charge must be a number.");
+        }
     }
 
     /** Soft delete: historic surgeries still reference the theatre they ran in. */

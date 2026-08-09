@@ -241,7 +241,7 @@ public class SurgeryService {
                 : null;
         Surgery saved = stateMachine.transition(s, com.hms.entity.SurgeryStatus.SCHEDULED, null, null, payload);
 
-        applyTheatreCharge(saved, ward);
+        applyTheatreCharge(saved, room, ward);
 
         notifyNurse(saved, hospitalId, surgeonDisplayName);
         if (surgeon != null) notifySurgeon(saved, hospitalId, surgeon);
@@ -252,10 +252,24 @@ public class SurgeryService {
     }
 
     /**
-     * The one-off theatre fee for a surgery, taken from the OT ward's bedPrice.
+     * The one-off theatre fee, read from the theatre itself.
      *
-     * <p>Zero for anything that is not an OT ward, and zero when no price is set — an unpriced
-     * theatre should add nothing to the bill rather than a zero line item nobody asked for.
+     * <p>Null means no charge, so an unpriced theatre adds nothing to the bill rather than a zero
+     * line nobody asked for.
+     */
+    public static java.math.BigDecimal otChargeFor(com.hms.entity.OtRoom room) {
+        if (room == null || room.getChargeAmount() == null) {
+            return java.math.BigDecimal.ZERO;
+        }
+        return room.getChargeAmount();
+    }
+
+    /**
+     * The same fee for a legacy ward-backed theatre, taken from the OT ward's bedPrice.
+     *
+     * <p>Kept for hospitals whose theatres are still OT wards that were never converted to
+     * OtRooms. New theatres carry their charge on the room; this reads the old home so those
+     * hospitals keep billing correctly until they convert.
      */
     public static java.math.BigDecimal otChargeFor(Ward ward) {
         if (ward == null
@@ -267,8 +281,8 @@ public class SurgeryService {
     }
 
     /** The bill line for a surgery's theatre. Keyed on the surgery so it can be charged only once. */
-    static String theatreChargeDescription(Long surgeryId, String wardName) {
-        return "Theatre charge — " + wardName + " (Surgery #" + surgeryId + ")";
+    static String theatreChargeDescription(Long surgeryId, String theatreName) {
+        return "Theatre charge — " + theatreName + " (Surgery #" + surgeryId + ")";
     }
 
     /** Identifies any theatre charge for this surgery, whichever theatre it names. */
@@ -291,9 +305,16 @@ public class SurgeryService {
      *
      * <p>Day-care cases have no admission and so no bill to append to; they are skipped.
      */
-    private void applyTheatreCharge(Surgery surgery, Ward ward) {
-        java.math.BigDecimal charge = otChargeFor(ward);
-        if (charge.compareTo(java.math.BigDecimal.ZERO) <= 0 || surgery.getIpdAdmissionId() == null) {
+    private void applyTheatreCharge(Surgery surgery, com.hms.entity.OtRoom room, Ward ward) {
+        // The theatre's own fee wins. The ward is only consulted for a legacy OT ward that was
+        // never converted into a room, so those hospitals keep billing until they convert.
+        java.math.BigDecimal charge = otChargeFor(room);
+        String theatreName = room != null ? room.getName() : null;
+        if (charge.signum() <= 0) {
+            charge = otChargeFor(ward);
+            theatreName = ward != null ? ward.getWardName() : theatreName;
+        }
+        if (charge.signum() <= 0 || surgery.getIpdAdmissionId() == null || theatreName == null) {
             return;
         }
 
@@ -317,7 +338,7 @@ public class SurgeryService {
             com.hms.entity.BillingItem item = new com.hms.entity.BillingItem();
             item.setBillingId(bill.getId());
             item.setHospitalId(bill.getHospitalId());
-            item.setDescription(theatreChargeDescription(surgery.getId(), ward.getWardName()));
+            item.setDescription(theatreChargeDescription(surgery.getId(), theatreName));
             item.setAmount(charge);
             billingItemRepository.save(item);
 

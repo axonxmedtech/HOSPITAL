@@ -56,6 +56,17 @@ public class OtRoom {
     @Column(name = "turnover_minutes", nullable = false)
     private Integer turnoverMinutes = 15;
 
+    /**
+     * One-off charge added to the patient's bill when a surgery uses this theatre.
+     *
+     * <p>Nullable, and null means no charge rather than zero — an unpriced theatre should add
+     * nothing to a bill rather than a zero line nobody asked for. Lives here because theatres are
+     * modelled as OtRoom now; it previously sat on the OT ward's bedPrice, which had nowhere to go
+     * once OT wards stopped being a separate concept.
+     */
+    @Column(name = "charge_amount", precision = 10, scale = 2)
+    private java.math.BigDecimal chargeAmount;
+
     /** Set when a room was migrated from a ward, so the old ward-based rows still resolve. */
     @Column(name = "source_ward_id")
     private Long sourceWardId;

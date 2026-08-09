@@ -38,11 +38,18 @@ class WardTypeRulesTest {
         assertThat(WardService.bedCountIsValidFor(WardType.IPD, -1)).isFalse();
     }
 
-    /** A patient is admitted to a ward or moved to ICU. A theatre is never an admission target. */
+    /** Initial IPD admission is allowed only into IPD wards. Direct admission to ICU or OT is prohibited. */
     @Test
-    void onlyIpdAndIcuWardsCanHoldAnAdmittedPatient() {
-        assertThat(WardService.ADMITTABLE_TYPES).containsExactlyInAnyOrder(WardType.IPD, WardType.ICU);
-        assertThat(WardService.ADMITTABLE_TYPES).doesNotContain(WardType.OT);
+    void onlyIpdWardsCanReceiveInitialAdmission() {
+        assertThat(WardService.INITIAL_ADMISSION_TYPES).containsExactly(WardType.IPD);
+        assertThat(WardService.INITIAL_ADMISSION_TYPES).doesNotContain(WardType.ICU, WardType.OT);
+    }
+
+    /** Transfers can move a patient between IPD and ICU wards, but never into an OT theatre. */
+    @Test
+    void ipdAndIcuWardsAreTransferrableDestinations() {
+        assertThat(WardService.TRANSFERRABLE_TYPES).containsExactlyInAnyOrder(WardType.IPD, WardType.ICU);
+        assertThat(WardService.TRANSFERRABLE_TYPES).doesNotContain(WardType.OT);
     }
 
     /** No ward may have thousands of beds; the cap also guards the bed-number arithmetic. */

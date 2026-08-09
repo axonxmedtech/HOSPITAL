@@ -1440,6 +1440,7 @@ CREATE TABLE `ot_rooms` (
   `status` varchar(20) NOT NULL DEFAULT 'AVAILABLE',
   `current_surgery_id` bigint DEFAULT NULL,
   `turnover_minutes` int NOT NULL DEFAULT '15',
+  `charge_amount` decimal(10,2) DEFAULT NULL,
   `source_ward_id` bigint DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT '1',
   `created_at` datetime(6) NOT NULL,

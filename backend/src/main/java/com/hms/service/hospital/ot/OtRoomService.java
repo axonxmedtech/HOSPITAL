@@ -40,7 +40,8 @@ public class OtRoomService {
     }
 
     @Transactional
-    public OtRoom create(String name, Integer turnoverMinutes, Long sourceWardId) {
+    public OtRoom create(String name, Integer turnoverMinutes, Long sourceWardId,
+                         java.math.BigDecimal chargeAmount) {
         Long hospitalId = requireHospitalId();
         if (name == null || name.trim().isEmpty()) throw new IllegalArgumentException("Theatre name is required");
         String clean = name.trim();
@@ -52,21 +53,40 @@ public class OtRoomService {
         room.setName(clean);
         room.setTurnoverMinutes(turnoverMinutes == null || turnoverMinutes < 0 ? 15 : turnoverMinutes);
         room.setSourceWardId(sourceWardId);
+        room.setChargeAmount(normaliseCharge(chargeAmount));
         OtRoom saved = roomRepository.save(room);
         audit("OT_ROOM_CREATED", "Theatre created: " + clean, hospitalId);
         return saved;
     }
 
     @Transactional
-    public OtRoom update(String publicId, String name, Integer turnoverMinutes, String status) {
+    public OtRoom update(String publicId, String name, Integer turnoverMinutes, String status,
+                         java.math.BigDecimal chargeAmount) {
         Long hospitalId = requireHospitalId();
         OtRoom room = requireRoom(publicId, hospitalId);
         if (name != null && !name.trim().isEmpty()) room.setName(name.trim());
         if (turnoverMinutes != null && turnoverMinutes >= 0) room.setTurnoverMinutes(turnoverMinutes);
         if (status != null) room.setStatus(status);
+        // Sent on every save from the theatre form, so clearing the field clears the charge.
+        room.setChargeAmount(normaliseCharge(chargeAmount));
         OtRoom saved = roomRepository.save(room);
         audit("OT_ROOM_UPDATED", "Theatre updated: " + saved.getName(), hospitalId);
         return saved;
+    }
+
+    /**
+     * A theatre fee of zero or less is stored as no fee at all.
+     *
+     * <p>Keeping a literal zero would put a "Theatre charge - OT-2: 0.00" line on every bill, which
+     * reads like a mistake to whoever is handed it. A negative fee is refused rather than quietly
+     * corrected, because it can only be a typo and silently making it positive would be worse.
+     */
+    private java.math.BigDecimal normaliseCharge(java.math.BigDecimal charge) {
+        if (charge == null) return null;
+        if (charge.signum() < 0) {
+            throw new IllegalArgumentException("Theatre charge cannot be negative.");
+        }
+        return charge.signum() == 0 ? null : charge;
     }
 
     /** Soft delete: historic surgeries still reference the theatre they ran in. */

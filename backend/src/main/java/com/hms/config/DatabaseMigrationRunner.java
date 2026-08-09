@@ -2315,6 +2315,9 @@ public class DatabaseMigrationRunner {
         // OtRoomService.suggestFromWards already documents why that guess is unsafe -
         // "FOOT WARD".toUpperCase().contains("OT") is true.
         addColumnIfMissing("wards", "ward_type", "VARCHAR(10) NOT NULL DEFAULT 'IPD'");
+        // One-off theatre fee. Nullable on purpose: null means no charge, which is different from
+        // a zero charge that would put an empty line on every bill.
+        addColumnIfMissing("ot_rooms", "charge_amount", "DECIMAL(10,2) NULL");
         // gender/phone become optional so imported records can keep blanks blank.
         try {
             jdbcTemplate.execute("ALTER TABLE patients MODIFY COLUMN gender VARCHAR(10) NULL");

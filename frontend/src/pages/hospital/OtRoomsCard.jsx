@@ -15,6 +15,10 @@ const OtRoomsCard = () => {
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
   const [turnover, setTurnover] = useState('15');
+  // One-off fee added to the patient's bill when a surgery uses this theatre. Blank means no
+  // charge, which is why it starts empty rather than at 0 - a zero would put an empty line on
+  // every bill.
+  const [charge, setCharge] = useState('');
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -48,11 +52,13 @@ const OtRoomsCard = () => {
       const created = await otService.createRoom({
         name: roomName.trim(),
         turnoverMinutes: Number(turnover) || 15,
+        chargeAmount: charge.trim() === '' ? null : charge.trim(),
         sourceWardId: sourceWardId || null,
       });
       setRooms((prev) => [...prev, created]);
       setSuggestions((prev) => prev.filter((w) => w.wardId !== sourceWardId));
       setName('');
+      setCharge('');
       success('Theatre added');
     } catch (e) {
       toastError(e?.response?.data?.error || 'Failed to add theatre');
@@ -115,6 +121,21 @@ const OtRoomsCard = () => {
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
           />
         </div>
+        <div className="w-40">
+          <label htmlFor="fld-ot-charge" className="block text-xs font-medium text-gray-600 mb-1">
+            Theatre charge (₹)
+          </label>
+          <input
+            id="fld-ot-charge"
+            type="number"
+            min="0"
+            step="0.01"
+            value={charge}
+            onChange={(e) => setCharge(e.target.value)}
+            placeholder="none"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+          />
+        </div>
         <button
           type="button"
           disabled={busy}
@@ -132,6 +153,9 @@ const OtRoomsCard = () => {
               <div>
                 <span className="font-semibold text-gray-800">{r.name}</span>
                 <span className="ml-2 text-xs text-gray-400">turnover {r.turnoverMinutes} min</span>
+                {r.chargeAmount != null && (
+                  <span className="ml-2 text-xs text-gray-500">₹{r.chargeAmount} per surgery</span>
+                )}
                 <span
                   className={`ml-2 text-xs px-2 py-0.5 rounded-full ${r.status === 'AVAILABLE' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}
                 >
