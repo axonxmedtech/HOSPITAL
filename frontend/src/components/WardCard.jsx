@@ -13,7 +13,23 @@ const WardCard = ({
   return (
     <div className="bg-white rounded-xl shadow p-4 flex flex-col justify-between">
       <div>
-        <h3 className="text-lg font-semibold text-slate-800">{ward.wardName}</h3>
+        <div className="flex items-center gap-2 flex-wrap">
+          <h3 className="text-lg font-semibold text-slate-800">{ward.wardName}</h3>
+          {/* Shown on every card, including general wards. A badge that only appears for ICU and
+              OT would make a mistyped ward look like a normal one, which is the failure this is
+              here to catch. */}
+          <span
+            className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-full ${
+              ward.wardType === 'ICU'
+                ? 'bg-rose-100 text-rose-800'
+                : ward.wardType === 'OT'
+                  ? 'bg-purple-100 text-purple-800'
+                  : 'bg-slate-100 text-slate-600'
+            }`}
+          >
+            {ward.wardType === 'ICU' ? 'ICU' : ward.wardType === 'OT' ? 'OT' : 'General'}
+          </span>
+        </div>
         <p className="text-sm text-slate-500">Beds: {ward.totalBeds}</p>
         <p className="text-sm text-slate-500">Price: ₹{ward.bedPrice}</p>
         {ward.floorNumber !== null && (

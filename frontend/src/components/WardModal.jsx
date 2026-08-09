@@ -15,6 +15,10 @@ const WardModal = ({ open, wardType = 'IPD', initial, onClose, onSaved }) => {
   const [totalBeds, setTotalBeds] = useState('');
   const [floorNumber, setFloorNumber] = useState('');
   const [saving, setSaving] = useState(false);
+  // The ward's own type. Creation takes it from the screen, but an existing ward keeps whichever
+  // type it already has - and must be able to change it. Without this a ward created under the
+  // wrong tab was invisible on the screen it belonged to and impossible to correct anywhere.
+  const [effectiveType, setEffectiveType] = useState(wardType);
 
   useEffect(() => {
     if (initial) {
@@ -22,11 +26,13 @@ const WardModal = ({ open, wardType = 'IPD', initial, onClose, onSaved }) => {
       setBedPrice(initial.bedPrice ?? '');
       setTotalBeds(initial.totalBeds ?? '');
       setFloorNumber(initial.floorNumber ?? '');
+      setEffectiveType(initial.wardType || wardType);
     } else {
       setWardName('');
       setBedPrice('');
       setTotalBeds('');
       setFloorNumber('');
+      setEffectiveType(wardType);
     }
   }, [initial, open]);
 
@@ -49,7 +55,7 @@ const WardModal = ({ open, wardType = 'IPD', initial, onClose, onSaved }) => {
     }
     // Mirrors the server rule so the admin is told before the round trip. The server still
     // enforces it - this is a courtesy, not the guard.
-    if (wardType === 'OT' && totalBeds !== '' && Number(totalBeds) > 1) {
+    if (effectiveType === 'OT' && totalBeds !== '' && Number(totalBeds) > 1) {
       toastError('An OT ward has at most one bed — it hosts one case at a time');
       return;
     }
@@ -59,6 +65,10 @@ const WardModal = ({ open, wardType = 'IPD', initial, onClose, onSaved }) => {
       if (initial && initial.wardId) {
         const payload = {
           wardName,
+          // Sent on edit so a ward filed under the wrong type can be corrected. It was previously
+          // omitted, which left the backend's "only set when non-null" guard with nothing to
+          // apply - the type could be set at creation and never changed again.
+          wardType: effectiveType,
           bedPrice: Number(bedPrice),
           floorNumber: floorNumber ? Number(floorNumber) : null,
           // Bed count is editable on edit too — the backend adds/removes beds to match.
@@ -66,15 +76,15 @@ const WardModal = ({ open, wardType = 'IPD', initial, onClose, onSaved }) => {
           // cannot be added any other way, so without this an OT ward that ended up with none
           // could never get one. Resizing to 1 is a no-op when it already has 1, so this is
           // self-healing rather than destructive.
-          totalBeds: wardType === 'OT' ? 1 : totalBeds === '' ? null : Number(totalBeds),
+          totalBeds: effectiveType === 'OT' ? 1 : totalBeds === '' ? null : Number(totalBeds),
         };
         await WardService.updateWard(initial.wardId, payload);
       } else {
         const payload = {
           wardName,
-          wardType,
+          wardType: effectiveType,
           // A theatre is one bed by definition, so the field is hidden and the value implied.
-          totalBeds: wardType === 'OT' ? 1 : totalBeds ? Number(totalBeds) : 0,
+          totalBeds: effectiveType === 'OT' ? 1 : totalBeds ? Number(totalBeds) : 0,
           bedPrice: Number(bedPrice),
           floorNumber: floorNumber ? Number(floorNumber) : null,
         };
@@ -114,9 +124,36 @@ const WardModal = ({ open, wardType = 'IPD', initial, onClose, onSaved }) => {
             />
           </div>
 
+          {/* Always visible. The type decides which screen a ward appears on and where patients
+              can be admitted or moved, so creating one without seeing it — or discovering later
+              that it is wrong and having no way to change it — is how a general ward ends up
+              filed as intensive care. */}
+          <div>
+            <label htmlFor="fld-wardtype" className="block text-sm text-slate-600">
+              Ward Type
+            </label>
+            <select
+              id="fld-wardtype"
+              value={effectiveType}
+              onChange={(e) => setEffectiveType(e.target.value)}
+              className="mt-1 w-full p-2 border rounded bg-white"
+            >
+              <option value="IPD">General ward (IPD)</option>
+              <option value="ICU">ICU ward</option>
+              <option value="OT">OT ward (operating theatre)</option>
+            </select>
+            <p className="mt-1 text-xs text-slate-500">
+              {effectiveType === 'ICU'
+                ? 'Patients are moved here from a general ward; they are not admitted directly.'
+                : effectiveType === 'OT'
+                  ? 'One theatre, one case at a time. Patients are never admitted to a theatre.'
+                  : 'A normal inpatient ward. Patients are admitted here.'}
+            </p>
+          </div>
+
           <div>
             <label htmlFor="fld-37" className="block text-sm text-slate-600">
-              {wardType === 'OT' ? 'Theatre charge (per surgery)' : 'Bed Price (per day)'}
+              {effectiveType === 'OT' ? 'Theatre charge (per surgery)' : 'Bed Price (per day)'}
             </label>
             <input
               id="fld-37"
@@ -130,7 +167,7 @@ const WardModal = ({ open, wardType = 'IPD', initial, onClose, onSaved }) => {
 
           {/* A theatre is one bed by definition, so there is nothing to ask. Showing a field
               whose only valid answer is 1 invites someone to type 2 and get an error. */}
-          {wardType === 'OT' ? (
+          {effectiveType === 'OT' ? (
             <p className="text-xs text-slate-500 self-end pb-2">
               A theatre holds one case at a time, so it has exactly one bed. Add a separate theatre
               for each one you operate in.
