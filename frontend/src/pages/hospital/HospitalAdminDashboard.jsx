@@ -51,6 +51,12 @@ import {
 import StaffDetailsModal from '../../components/StaffDetailsModal';
 import StatusBadge from '../../components/StatusBadge';
 import WardModal from '../../components/WardModal';
+import {
+  buildAllAdminTabs,
+  groupOwning,
+  groupSidebarTabs,
+  usesGroupedSidebar,
+} from '../../config/adminSidebar';
 import { useToast } from '../../context/ToastContext';
 import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
 import useEnabledVitals from '../../hooks/useEnabledVitals';
@@ -1907,58 +1913,7 @@ const HospitalAdminDashboard = () => {
         `);
   };
 
-  const allTabs = [
-    { id: 'overview', label: 'Overview', icon: null, requiredModule: null },
-    // Clinical workflow
-    { id: 'patients', label: 'Patients', icon: null, requiredModule: 'OPD' },
-    { id: 'appointments', label: 'Appointments', icon: null, requiredModule: 'APPOINTMENTS' },
-    { id: 'opd', label: 'OPD', icon: null, requiredModule: 'OPD' },
-    { id: 'ipd', label: 'IPD', icon: null, requiredModule: 'IPD' },
-    { id: 'wards', label: 'Wards & Beds', icon: null, requiredModule: 'IPD' },
-    { id: 'ot', label: 'Operation Theatre', icon: null, requiredModule: 'OT' },
-    { id: 'pathology', label: 'Pathology', icon: null, requiredModule: 'PATHOLOGY' },
-    // Pharmacy & inventory
-    { id: 'pharmacy', label: 'Pharmacy', icon: null, requiredModule: 'PHARMACY' },
-    { id: 'pharmacists', label: 'Pharmacists', icon: null, requiredModule: 'PHARMACY' },
-    {
-      id: 'inventory',
-      label: 'Medicine Inventory',
-      icon: null,
-      requiredModule: 'MEDICAL_INVENTORY',
-    },
-    {
-      id: 'hospital-inventory',
-      label: `${tenantWord} Inventory`,
-      icon: null,
-      requiredModule: 'HOSPITAL_INVENTORY',
-    },
-    // Financial
-    { id: 'billing', label: 'Billing', icon: null, requiredModule: 'BILLING' },
-    { id: 'fees', label: 'Fees', icon: null, requiredModule: 'BILLING' },
-    // Staff
-    { id: 'doctors', label: 'Doctors', icon: null, requiredModule: 'OPD' },
-    { id: 'receptionists', label: 'Receptionists', icon: null, requiredModule: 'OPD' },
-    { id: 'ot-incharges', label: 'OT Incharge', icon: null, requiredModule: 'OT' },
-    { id: 'ot-theatres', label: 'OT Theatres', icon: null, requiredModule: 'OT' },
-    { id: 'ot-analytics', label: 'OT Analytics', icon: null, requiredModule: 'OT' },
-    { id: 'nurses', label: 'Nurses', icon: null, requiredModule: 'NURSING' },
-    { id: 'nurse-assignments', label: 'Nurse Assignments', icon: null, requiredModule: 'NURSING' },
-    { id: 'nurse-tasks', label: 'Nurse Tasks', icon: null, requiredModule: 'NURSING' },
-    { id: 'time-slots', label: 'Time Slots', icon: null, requiredModule: 'NURSING' },
-    { id: 'calendar', label: 'Calendar', icon: null, requiredModule: 'NURSING' },
-    // Admin & meta
-    { id: 'analytics', label: 'Reports & Analytics', icon: null, requiredModule: 'REPORTS' },
-    { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
-    { id: 'settings', label: 'Settings', icon: null, requiredModule: null },
-    { id: 'support', label: 'Support', icon: null, requiredModule: null },
-    { id: 'quick-notes', label: 'Quick Notes', icon: null, requiredModule: null },
-    { id: 'symptom-presets', label: 'Symptom Presets', icon: null, requiredModule: null },
-    { id: 'diagnosis-presets', label: 'Diagnosis Presets', icon: null, requiredModule: null },
-    { id: 'prescription-presets', label: 'Prescription Presets', icon: null, requiredModule: null },
-    // In-Clinic presets are bundles of stock medicines administered in the clinic, so they
-    // only make sense while the In-Clinic flow is on (gated below, like Medicine Inventory).
-    { id: 'in-clinic-presets', label: 'In-Clinic Presets', icon: null, requiredModule: null },
-  ];
+  const allTabs = buildAllAdminTabs(tenantWord);
 
   // In-Clinic medicine flow gates the Medicine Inventory tab. When an admin
   // turns In-Clinic off, the tab is hidden (updated live via the SETTINGS_UPDATED
@@ -2015,70 +1970,18 @@ const HospitalAdminDashboard = () => {
   // The same groups serve both tenants: a group whose tabs are all absent (a clinic with no
   // IPD/OT/Nursing on its plan) has no subItems and is dropped, so a clinic naturally shows
   // only the groups it actually has — no separate clinic group list to keep in sync.
-  // Dashboard/Overview is deliberately NOT one of these groups — it's a
-  // single item, so it stays a plain top-level link instead of a
-  // one-item dropdown (see groupedSidebarTabs below).
-  const SIDEBAR_GROUPS = [
-    {
-      id: 'group-patient-management',
-      label: 'Patient Management',
-      tabIds: ['patients', 'appointments', 'opd', 'ipd', 'ot', 'pathology'],
-    },
-    { id: 'group-rooms', label: 'Rooms', tabIds: ['wards', 'ot-theatres'] },
-    {
-      id: 'group-staff',
-      label: 'Staff',
-      tabIds: ['doctors', 'pharmacists', 'receptionists', 'ot-incharges'],
-    },
-    {
-      id: 'group-nursing',
-      label: 'Nursing',
-      tabIds: ['nurses', 'nurse-assignments', 'nurse-tasks', 'time-slots', 'calendar'],
-    },
-    { id: 'group-pharmacy', label: 'Pharmacy', tabIds: ['pharmacy'] },
-    { id: 'group-inventory', label: 'Inventory', tabIds: ['inventory', 'hospital-inventory'] },
-    { id: 'group-finance', label: 'Finance', tabIds: ['billing', 'fees'] },
-    { id: 'group-reports', label: 'Reports', tabIds: ['analytics', 'ot-analytics', 'audit-logs'] },
-    {
-      id: 'group-presets',
-      label: 'Presets',
-      tabIds: [
-        'quick-notes',
-        'symptom-presets',
-        'diagnosis-presets',
-        'prescription-presets',
-        'in-clinic-presets',
-      ],
-    },
-    { id: 'group-administration', label: 'Administration', tabIds: ['settings', 'support'] },
-  ];
+  const isGroupedSidebar = usesGroupedSidebar(user?.hospitalType);
 
-  const usesGroupedSidebar = user?.hospitalType === 'HOSPITAL' || user?.hospitalType === 'CLINIC';
-
-  const groupedSidebarTabs = usesGroupedSidebar
-    ? [
-        ...tabs.filter((t) => t.id === 'overview'),
-        ...SIDEBAR_GROUPS.map((group) => ({
-          id: group.id,
-          label: group.label,
-          subItems: group.tabIds.map((id) => tabs.find((t) => t.id === id)).filter(Boolean),
-          // Expansion is driven ONLY by state. It used to also OR in
-          // `group.tabIds.includes(activeTab)`, which force-expanded the group owning
-          // the open tab — so clicking that group's header could never close it.
-          // The active tab's group is instead auto-expanded once, when the tab changes
-          // (see the effect below), exactly like the platform sidebar.
-          isExpanded: expandedSidebarGroups.has(group.id),
-        })).filter((group) => group.subItems.length > 0),
-      ]
+  const groupedSidebarTabs = isGroupedSidebar
+    ? groupSidebarTabs(tabs, expandedSidebarGroups)
     : tabs;
 
   // Keep the group that owns the active tab visible — on first render and whenever the tab
   // changes. Because this only runs on a tab change, a manual collapse of that group sticks.
   useEffect(() => {
-    const owning = SIDEBAR_GROUPS.find((g) => g.tabIds.includes(activeTab));
+    const owning = groupOwning(activeTab);
     if (!owning) return;
     setExpandedSidebarGroups((prev) => (prev.has(owning.id) ? prev : new Set(prev).add(owning.id)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   const handleToggleSidebarGroup = (groupId) => {
@@ -2227,7 +2130,7 @@ const HospitalAdminDashboard = () => {
         tabs={groupedSidebarTabs}
         activeTab={activeTab}
         onTabChange={setActiveTab}
-        onToggleGroup={usesGroupedSidebar ? handleToggleSidebarGroup : undefined}
+        onToggleGroup={isGroupedSidebar ? handleToggleSidebarGroup : undefined}
         footerTitle={tenantWord}
         footerData={user?.hospitalName}
         variant="plain"

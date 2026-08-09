@@ -9,6 +9,7 @@ import PageHeader from '../../components/PageHeader';
 import ProfileModal from '../../components/ProfileModal';
 import Sidebar from '../../components/Sidebar';
 import { SkeletonDetailCard, SkeletonFormCard } from '../../components/Skeleton';
+import { buildAdminTabs, groupSidebarTabs, usesGroupedSidebar } from '../../config/adminSidebar';
 import { useToast } from '../../context/ToastContext';
 import useWebSocket from '../../hooks/useWebSocket';
 import authService from '../../services/authService';
@@ -133,6 +134,23 @@ const IpdDetails = () => {
   const hasInClinic = user?.inClinic !== false;
   const modules = user?.modules || [];
 
+  // Sidebar group expansion, mirroring the dashboard so the navigation behaves identically here.
+  const [expandedSidebarGroups, setExpandedSidebarGroups] = useState(
+    new Set(['group-patient-management'])
+  );
+  // The dashboard hides the OT Incharge tab unless this setting is on. Fetched here too, or the
+  // sidebar would gain or lose that one item purely by navigating into a case.
+  const [otInchargeEnabled, setOtInchargeEnabled] = useState(false);
+
+  const toggleSidebarGroup = (groupId) => {
+    setExpandedSidebarGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  };
+
   const activeDashboard = sessionStorage.getItem('activeDashboard');
   const effectiveRole =
     user?.role === 'HOSPITAL_ADMIN' && user?.isSingleDoctor && activeDashboard !== 'admin'
@@ -141,28 +159,21 @@ const IpdDetails = () => {
 
   const getSidebarTabs = () => {
     if (effectiveRole === 'HOSPITAL_ADMIN') {
-      const adminAllTabs = [
-        { id: 'overview', label: 'Overview', requiredModule: 'OPD' },
-        { id: 'patients', label: 'Patients', requiredModule: 'OPD' },
-        { id: 'opd', label: 'OPD', requiredModule: 'OPD' },
-        { id: 'wards', label: 'Wards & Beds', requiredModule: 'IPD' },
-        { id: 'doctors', label: 'Doctors', requiredModule: 'OPD' },
-        { id: 'receptionists', label: 'Receptionists', requiredModule: 'OPD' },
-        { id: 'billing', label: 'Billing', requiredModule: 'BILLING' },
-        { id: 'pharmacy', label: 'Pharmacy', requiredModule: 'PHARMACY' },
-        { id: 'pharmacists', label: 'Pharmacists', requiredModule: 'PHARMACY' },
-        { id: 'inventory', label: 'Medicine Inventory', requiredModule: 'OPD' },
-        { id: 'hospital-inventory', label: 'Hospital Inventory', requiredModule: 'OPD' },
-        { id: 'pathology', label: 'Pathology', requiredModule: 'PATHOLOGY' },
-        { id: 'ipd', label: 'IPD', requiredModule: 'IPD' },
-        { id: 'fees', label: 'Fees', requiredModule: 'OPD' },
-        { id: 'audit-logs', label: 'Audit Logs', requiredModule: null },
-        { id: 'settings', label: 'Settings', requiredModule: 'OPD' },
-      ];
-      return adminAllTabs.filter(
-        (tab) => !tab.requiredModule || modules.includes(tab.requiredModule)
-      );
-    } else if (effectiveRole === 'DOCTOR') {
+      // Built from the same module the admin dashboard uses, so the navigation does not
+      // rearrange itself when a case is opened. This screen used to keep its own hand-written
+      // copy, which had drifted: flat instead of grouped, and missing OT Theatres, nursing and
+      // the presets entirely.
+      const adminTabs = buildAdminTabs({
+        modules,
+        hasInClinic,
+        otInchargeEnabled,
+        tenantWord: user?.hospitalType === 'CLINIC' ? 'Clinic' : 'Hospital',
+      });
+      return usesGroupedSidebar(user?.hospitalType)
+        ? groupSidebarTabs(adminTabs, expandedSidebarGroups)
+        : adminTabs;
+    }
+    if (effectiveRole === 'DOCTOR') {
       return [
         { id: 'overview', label: 'Overview' },
         { id: 'appointments', label: 'My Appointments' },
@@ -356,6 +367,17 @@ const IpdDetails = () => {
     selectedBed: '',
     saving: false,
   });
+
+  useEffect(() => {
+    if (user?.role !== 'HOSPITAL_ADMIN' || !modules.includes('OT')) return;
+    hospitalService
+      .getHospitalOperationsSettings()
+      .then((data) => setOtInchargeEnabled(data?.otInchargeEnabled === true))
+      .catch(() => {
+        // A sidebar item is not worth surfacing an error for; it simply stays hidden.
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.role]);
 
   useEffect(() => {
     if (!id) return;
@@ -612,6 +634,11 @@ const IpdDetails = () => {
         tabs={getSidebarTabs()}
         activeTab="ipd"
         onTabChange={handleTabChange}
+        onToggleGroup={
+          usesGroupedSidebar(user?.hospitalType) && effectiveRole === 'HOSPITAL_ADMIN'
+            ? toggleSidebarGroup
+            : undefined
+        }
         footerTitle="Hospital"
         footerData={user?.hospitalName || 'Hospital'}
         variant="plain"
