@@ -1822,3 +1822,25 @@ CREATE TABLE `import_row_error` (
   KEY `idx_import_err_batch` (`batch_id`),
   CONSTRAINT `fk_import_err_batch` FOREIGN KEY (`batch_id`) REFERENCES `import_batch` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Outside records attached to a patient (lab reports, scans, prescriptions from elsewhere)
+CREATE TABLE IF NOT EXISTS patient_documents (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    public_id VARCHAR(64) NOT NULL UNIQUE,
+    hospital_id BIGINT NOT NULL,
+    patient_id BIGINT NOT NULL,
+    title VARCHAR(150) NOT NULL,
+    document_type VARCHAR(30) NOT NULL DEFAULT 'OTHER',
+    document_date DATE NULL,
+    original_filename VARCHAR(255),
+    stored_filename VARCHAR(120) NOT NULL,
+    content_type VARCHAR(100),
+    size_bytes BIGINT,
+    uploaded_by VARCHAR(120),
+    uploaded_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    deleted_by VARCHAR(120),
+    deleted_at TIMESTAMP NULL,
+    KEY idx_patient_docs (hospital_id, patient_id, is_active),
+    CONSTRAINT fk_patient_docs_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE
+);

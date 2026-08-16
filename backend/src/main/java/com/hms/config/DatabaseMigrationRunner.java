@@ -126,6 +126,7 @@ public class DatabaseMigrationRunner {
         backfillStrandedOpdStatuses();
         ensureImportTables();
         ensurePatientImportColumns();
+        ensurePatientDocumentsTable(); // NEW — outside records attached to a patient
     }
 
     /**
@@ -263,6 +264,40 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("ensureHospitalVitalsTable failed: {}", e.getMessage());
+        }
+    }
+
+    private void ensurePatientDocumentsTable() {
+        try {
+            Integer exists = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'patient_documents'",
+                    Integer.class);
+            if (exists == null || exists == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE patient_documents (" +
+                        "  id BIGINT AUTO_INCREMENT PRIMARY KEY," +
+                        "  public_id VARCHAR(64) NOT NULL UNIQUE," +
+                        "  hospital_id BIGINT NOT NULL," +
+                        "  patient_id BIGINT NOT NULL," +
+                        "  title VARCHAR(150) NOT NULL," +
+                        "  document_type VARCHAR(30) NOT NULL DEFAULT 'OTHER'," +
+                        "  document_date DATE NULL," +
+                        "  original_filename VARCHAR(255)," +
+                        "  stored_filename VARCHAR(120) NOT NULL," +
+                        "  content_type VARCHAR(100)," +
+                        "  size_bytes BIGINT," +
+                        "  uploaded_by VARCHAR(120)," +
+                        "  uploaded_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP," +
+                        "  is_active TINYINT(1) NOT NULL DEFAULT 1," +
+                        "  deleted_by VARCHAR(120)," +
+                        "  deleted_at TIMESTAMP NULL," +
+                        "  KEY idx_patient_docs (hospital_id, patient_id, is_active)," +
+                        "  CONSTRAINT fk_patient_docs_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
+                        ")");
+                log.info("Created patient_documents table");
+            }
+        } catch (Exception e) {
+            log.warn("ensurePatientDocumentsTable failed: {}", e.getMessage());
         }
     }
 
