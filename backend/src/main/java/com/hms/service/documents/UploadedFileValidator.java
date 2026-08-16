@@ -1,6 +1,8 @@
 package com.hms.service.documents;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.util.unit.DataSize;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -17,17 +19,27 @@ import java.util.Set;
 @Component
 public class UploadedFileValidator {
 
-    public static final long MAX_BYTES = 25L * 1024 * 1024;
-
     private static final Set<String> ALLOWED =
             Set.of("pdf", "jpg", "jpeg", "png", "webp", "heic");
+
+    /**
+     * Defaulted (not injected) so {@code new UploadedFileValidator()} in tests keeps this literal
+     * default; Spring overwrites it via field injection from {@code hms.documents.max-file-size}.
+     * A missing property must not silently mean "no limit", hence the default here too.
+     */
+    @Value("${hms.documents.max-file-size:25MB}")
+    private String maxFileSize = "25MB";
 
     public void validate(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("No file was uploaded.");
         }
-        if (file.getSize() > MAX_BYTES) {
-            throw new IllegalArgumentException("File is too large. Maximum size is 25 MB.");
+        // Message derived from the configured value rather than restated, so an environment that
+        // overrides hms.documents.max-file-size cannot end up telling people the wrong number.
+        long maxBytes = maxBytes();
+        if (file.getSize() > maxBytes) {
+            throw new IllegalArgumentException("File is too large. Maximum size is "
+                    + (maxBytes / (1024 * 1024)) + " MB.");
         }
 
         String ext = extensionOf(file.getOriginalFilename());
@@ -51,6 +63,11 @@ public class UploadedFileValidator {
                     "This file does not look like a " + ext.toUpperCase(Locale.ROOT)
                     + ". Re-save it and try again.");
         }
+    }
+
+    /** The configured cap in bytes, so the UI can state a limit before a file is even picked. */
+    public long maxBytes() {
+        return DataSize.parse(maxFileSize).toBytes();
     }
 
     /** Lowercase extension, or "bin" when there is none. Never used to build a path. */

@@ -2,6 +2,7 @@ package com.hms.service.documents;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -63,14 +64,44 @@ class UploadedFileValidatorTest {
                 .hasMessageContaining("does not look like");
     }
 
+    /**
+     * The configured value, not a constant, is what gets enforced and what gets reported. Setting
+     * it explicitly (rather than relying on the field's literal default) proves the two agree —
+     * the earlier version of this test only proved a hardcoded constant equalled itself.
+     */
     @Test
     void rejectsSomethingTooLarge() {
+        ReflectionTestUtils.setField(validator, "maxFileSize", "25MB");
         byte[] big = new byte[26 * 1024 * 1024];
         System.arraycopy(PDF, 0, big, 0, PDF.length);
         assertThatThrownBy(() ->
                 validator.validate(new MockMultipartFile("file", "big.pdf", "application/pdf", big)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("25 MB");
+    }
+
+    /**
+     * A different configured limit must produce a different message. If the cap were still a
+     * hardcoded constant, this file (11 MB) would be rejected against 25 MB with the wrong number
+     * in the error, or not rejected at all.
+     */
+    @Test
+    void aDifferentConfiguredLimitProducesADifferentMessage() {
+        ReflectionTestUtils.setField(validator, "maxFileSize", "10MB");
+        byte[] big = new byte[11 * 1024 * 1024];
+        System.arraycopy(PDF, 0, big, 0, PDF.length);
+        assertThatThrownBy(() ->
+                validator.validate(new MockMultipartFile("file", "big.pdf", "application/pdf", big)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("10 MB")
+                .hasMessageNotContaining("25 MB");
+    }
+
+    /** Exposed so the upload dialog can state the limit before the user picks an oversized file. */
+    @Test
+    void exposesTheConfiguredLimitInBytes() {
+        ReflectionTestUtils.setField(validator, "maxFileSize", "10MB");
+        assertThat(validator.maxBytes()).isEqualTo(10L * 1024 * 1024);
     }
 
     /** iPhones produce HEIC. Refusing it would reject a genuinely common upload. */
