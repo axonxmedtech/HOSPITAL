@@ -28,7 +28,12 @@ Settled with the product owner before writing:
 
 Stated so they are visible rather than buried in code:
 
-- **Accepted types:** PDF, JPEG, PNG, WEBP, HEIC. **Cap 25 MB.**
+- **Accepted types:** PDF, JPEG, PNG, WEBP, HEIC. **Cap 25 MB**, configurable via
+  `hms.documents.max-file-size`. The cap is read from configuration in one place and the
+  rejection message is derived from it, so an environment that raises the limit cannot end up
+  reporting a number its own configuration contradicts. **The limit is shown in the upload
+  dialog before a file is chosen** — discovering it after waiting through a 40 MB upload on a
+  clinic connection is the worst possible moment to learn it.
 - **HEIC is accepted but not previewable.** iPhones produce it and refusing would reject a common real upload; browsers cannot render it, so the list shows a file icon and download rather than a thumbnail.
 - **Camera shots are downscaled in the browser** to max 2000px on the long edge before upload. A modern phone photo is 4–12 MB of detail nobody needs to read a lab printout.
 - **Delete is a soft delete.** A deleted lab report is a lost clinical record; the row and the file stay, the document is hidden. Only an admin can do it, and it is audited.
@@ -1601,6 +1606,8 @@ Also required:
 - [ ] **Step 3: Build the modal**
 
 `DocumentUploadModal.jsx` opens on the two choices — **Camera** and **Browse** — then shows the metadata form once a file is chosen: Title (required), Type (the six `DocumentType` values), and Report date. It shows the chosen filename and size, allows changing the file before saving, and disables Save while uploading so a double-click cannot attach the same report twice.
+
+**State the limit up front.** Both the Browse dropzone and the chooser show `PDF or image (JPG, PNG, WEBP, HEIC), up to 25 MB`. The number comes from the API rather than being typed into the JSX, so it cannot drift from what the server actually enforces. When a chosen file is over the limit, say so immediately with its actual size — _"This file is 41 MB. The limit is 25 MB."_ — and refuse locally instead of uploading it just to be rejected, which on a clinic connection wastes a minute and looks like a fault.
 
 - [ ] **Step 4: Wire it into the Records tab**
 
