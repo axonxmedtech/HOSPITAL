@@ -51,8 +51,16 @@ public class PatientDocument {
     @Column(name = "original_filename", length = 255)
     private String originalFilename;
 
-    /** Generated name on disk. The only thing DocumentStorage ever opens. */
-    @Column(name = "stored_filename", nullable = false, length = 120)
+    /**
+     * Generated name on disk. The only thing DocumentStorage ever opens.
+     *
+     * <p>{@code unique = true} is load-bearing, not tidiness: this value is the entire guarantee
+     * that one patient's file can never be served in place of another's. If a future filename
+     * scheme (or a bug in Task 3's UUID generation) ever produces a collision, the write must fail
+     * loudly with a {@code DataIntegrityViolationException} rather than silently aliasing two
+     * patients' documents on disk.
+     */
+    @Column(name = "stored_filename", nullable = false, unique = true, length = 120)
     private String storedFilename;
 
     @Column(name = "content_type", length = 100)

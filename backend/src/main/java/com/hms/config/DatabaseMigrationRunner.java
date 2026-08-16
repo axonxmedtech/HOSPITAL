@@ -292,8 +292,9 @@ public class DatabaseMigrationRunner {
                         "  deleted_by VARCHAR(120)," +
                         "  deleted_at TIMESTAMP NULL," +
                         "  KEY idx_patient_docs (hospital_id, patient_id, is_active)," +
+                        "  UNIQUE KEY uq_patient_docs_stored_filename (stored_filename)," +
                         "  CONSTRAINT fk_patient_docs_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE" +
-                        ")");
+                        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci");
                 log.info("Created patient_documents table");
             }
         } catch (Exception e) {
