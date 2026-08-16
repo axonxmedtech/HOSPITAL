@@ -43,6 +43,7 @@ export default {
         'docs',
         'release',
         'import',
+        'patient',
       ],
     ],
     'scope-case': [2, 'always', 'kebab-case'],
