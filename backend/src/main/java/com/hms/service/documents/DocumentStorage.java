@@ -40,10 +40,28 @@ public class DocumentStorage {
             restrictPermissions(target);
             return stored;
         } catch (IOException e) {
-            throw new IllegalArgumentException("Could not save the file: " + e.getMessage());
+            // A failed copy writes straight to the final path, so a disk-full or dropped
+            // connection leaves a truncated file behind. store() throws before returning, so no
+            // document row is ever created for it — the fragment would be referenced by nothing,
+            // served by nothing, and removed by nothing, because there is no cleanup job.
+            try {
+                Files.deleteIfExists(target);
+            } catch (IOException cleanup) {
+                log.warn("Could not remove the partial file {}: {}", target, cleanup.getMessage());
+            }
+            // The raw message routinely carries the absolute on-disk path, and GlobalExceptionHandler
+            // puts it straight into the response the browser shows. Logged, never handed out.
+            log.warn("Could not save document for hospital {}: {}", hospitalId, e.getMessage());
+            throw new IllegalArgumentException("The file could not be saved. Please try again.");
         }
     }
 
+    /**
+     * Opens the stored file for streaming.
+     *
+     * <p><b>The caller owns the returned stream and must close it.</b> Today's only caller hands it
+     * to Spring's {@code InputStreamResource}, which closes it after the response is written.
+     */
     public InputStream read(Long hospitalId, String storedFilename) {
         Path path = resolve(hospitalId, storedFilename);
         if (!Files.exists(path)) {
@@ -53,7 +71,9 @@ public class DocumentStorage {
         try {
             return Files.newInputStream(path);
         } catch (IOException e) {
-            throw new IllegalArgumentException("Could not open the file: " + e.getMessage());
+            log.warn("Could not open document {} for hospital {}: {}",
+                    storedFilename, hospitalId, e.getMessage());
+            throw new IllegalArgumentException("The file could not be opened. Please try again.");
         }
     }
 
@@ -76,25 +96,47 @@ public class DocumentStorage {
     private Path resolve(Long hospitalId, String storedFilename) {
         if (storedFilename == null || storedFilename.isBlank()
                 || storedFilename.contains("/") || storedFilename.contains("\\")
-                || storedFilename.contains("..")) {
+                || storedFilename.contains("..")
+                // A NUL otherwise survives every check above and only fails inside resolve(),
+                // producing the wrong message by a different route.
+                || storedFilename.indexOf('\0') >= 0) {
             throw new IllegalArgumentException("Invalid document reference.");
         }
         Path hospitalDir = Paths.get(baseDir).toAbsolutePath().normalize()
                 .resolve(String.valueOf(hospitalId));
         Path target = hospitalDir.resolve(storedFilename).normalize();
-        if (!target.startsWith(hospitalDir)) {
+
+        // Must be a file directly INSIDE the hospital's directory, not merely somewhere under it.
+        //
+        // startsWith alone was not enough: "." is not blank and contains none of the characters
+        // rejected above, yet hospitalDir.resolve(".").normalize() reduces to hospitalDir itself
+        // and so passed. That made delete(id, ".") a call to delete the hospital's whole document
+        // directory. Comparing the parent pins the result to one level down, where a real
+        // document always lives.
+        if (!hospitalDir.equals(target.getParent())) {
             throw new IllegalArgumentException("Invalid document reference.");
         }
         return target;
     }
 
-    /** Best effort: the file is patient data, so it should not be world-readable. */
+    /**
+     * Narrows the file to the owning user. Best effort by necessity — not every filesystem honours
+     * these — but a failure is logged rather than swallowed, because the difference between
+     * "restricted" and "world-readable" on a file holding patient data is worth knowing about.
+     */
     private void restrictPermissions(Path target) {
         try {
-            target.toFile().setReadable(false, false);
-            target.toFile().setReadable(true, true);
-            target.toFile().setWritable(false, false);
-            target.toFile().setWritable(true, true);
+            java.io.File f = target.toFile();
+            // These return false on failure instead of throwing, so ignoring the result means a
+            // filesystem that refuses them leaves the file readable by anyone, silently.
+            boolean ok = f.setReadable(false, false)
+                    & f.setReadable(true, true)
+                    & f.setWritable(false, false)
+                    & f.setWritable(true, true);
+            if (!ok) {
+                log.warn("Could not fully restrict permissions on {} — the file may be readable "
+                        + "by other users on this host", target);
+            }
         } catch (SecurityException e) {
             log.warn("Could not restrict permissions on {}: {}", target, e.getMessage());
         }
