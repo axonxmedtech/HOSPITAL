@@ -50,6 +50,20 @@ public class ImportController {
     @Value("${hms.import.max-file-size:200MB}")
     private String maxFileSize = "200MB";
 
+    /**
+     * Parsed once at startup rather than per request.
+     *
+     * <p>Lazily parsing meant a typo like {@code 200MBx} passed boot and health checks cleanly and
+     * then failed every import, mid-migration, until someone connected the two. The same defect was
+     * fixed in UploadedFileValidator; this is the other half of it.
+     */
+    private long cachedMaxBytes = DataSize.parse("200MB").toBytes();
+
+    @jakarta.annotation.PostConstruct
+    void initMaxFileSize() {
+        cachedMaxBytes = DataSize.parse(maxFileSize).toBytes();
+    }
+
     private final ImportEngine engine;
     private final WorkbookParser parser;
     private final ColumnMapper columnMapper;
@@ -182,7 +196,7 @@ public class ImportController {
         }
         // Message derived from the configured value rather than restated, so an environment that
         // overrides hms.import.max-file-size cannot end up telling admins the wrong number.
-        long maxBytes = DataSize.parse(maxFileSize).toBytes();
+        long maxBytes = cachedMaxBytes;
         if (file.getSize() > maxBytes) {
             throw new IllegalArgumentException("File is too large. Maximum size is "
                     + (maxBytes / (1024 * 1024)) + " MB.");

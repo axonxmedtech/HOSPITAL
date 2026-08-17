@@ -7,8 +7,8 @@ name: Database Backup
 
 on:
   schedule:
-    # Weekly. 18:30 UTC Saturday = 00:00 IST Sunday (the midnight that starts Sunday).
-    - cron: '30 18 * * 6'
+    # Weekly. 18:30 UTC Sunday = 00:00 IST Monday (the midnight that starts the week).
+    - cron: '30 18 * * 0'
   workflow_dispatch:
     inputs:
       environment:

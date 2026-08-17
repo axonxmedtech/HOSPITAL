@@ -75,7 +75,7 @@ class IcuEpisodeBillingTest {
 
         assertThat(SurgeryService.otChargeFor(theatre)).isEqualByComparingTo("2500.00");
         // Never the admission's current ward, so the nightly scheduler never sees it.
-        assertThat(WardService.ADMITTABLE_TYPES).doesNotContain(WardType.OT);
+        assertThat(WardService.TRANSFERRABLE_TYPES).doesNotContain(WardType.OT);
         assertThat(IpdAdmissionService.isTransferrableTo(WardType.OT)).isFalse();
     }
 

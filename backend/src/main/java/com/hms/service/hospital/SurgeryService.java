@@ -303,7 +303,12 @@ public class SurgeryService {
      * therefore keeps the original amount; correcting that is a bill edit, which is far less
      * damaging than silently billing a patient for two theatres they only used one of.
      *
-     * <p>Day-care cases have no admission and so no bill to append to; they are skipped.
+     * <p><b>Two cases go uncharged, and both are logged rather than dropped silently.</b> A day-care
+     * case has no admission, and an admission may have no bill open yet. Either way the theatre was
+     * used and the hospital earns nothing for it. That is a revenue leak, not a design decision —
+     * it is left in place because routing a theatre fee to an OPD/day-care bill is billing work
+     * beyond this change, and it is logged at WARN so it surfaces as a number someone can act on
+     * instead of being discovered in an annual audit.
      */
     private void applyTheatreCharge(Surgery surgery, com.hms.entity.OtRoom room, Ward ward) {
         // The theatre's own fee wins. The ward is only consulted for a legacy OT ward that was
@@ -314,7 +319,13 @@ public class SurgeryService {
             charge = otChargeFor(ward);
             theatreName = ward != null ? ward.getWardName() : theatreName;
         }
-        if (charge.signum() <= 0 || surgery.getIpdAdmissionId() == null || theatreName == null) {
+        if (charge.signum() <= 0 || theatreName == null) {
+            return; // no fee configured for this theatre — nothing to charge, and nothing lost.
+        }
+        if (surgery.getIpdAdmissionId() == null) {
+            logger.warn("Theatre charge of {} for surgery {} ({}) was NOT billed: the case has no "
+                    + "IPD admission (day-care), so there is no bill to append to.",
+                    charge, surgery.getId(), theatreName);
             return;
         }
 
@@ -322,7 +333,10 @@ public class SurgeryService {
             java.util.List<com.hms.entity.Billing> bills =
                     billingRepository.findByIpdAdmissionId(surgery.getIpdAdmissionId());
             if (bills == null || bills.isEmpty()) {
-                return; // no bill open yet; nothing to append to
+                logger.warn("Theatre charge of {} for surgery {} ({}) was NOT billed: admission {} "
+                        + "has no bill open yet.",
+                        charge, surgery.getId(), theatreName, surgery.getIpdAdmissionId());
+                return;
             }
             com.hms.entity.Billing bill = bills.get(0);
 

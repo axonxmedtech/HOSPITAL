@@ -83,10 +83,6 @@ public class WardService {
     public static final java.util.Set<com.hms.entity.WardType> TRANSFERRABLE_TYPES =
             java.util.Set.of(com.hms.entity.WardType.IPD, com.hms.entity.WardType.ICU);
 
-    /** @deprecated Use {@link #INITIAL_ADMISSION_TYPES} or {@link #TRANSFERRABLE_TYPES} for specific contexts. */
-    @Deprecated
-    public static final java.util.Set<com.hms.entity.WardType> ADMITTABLE_TYPES = INITIAL_ADMISSION_TYPES;
-
     /**
      * An OT ward may never hold more than one bed, because it hosts one case at a time —
      * SurgeryService's legacy scheduling path already assumes that, refusing a second surgery while

@@ -14,7 +14,7 @@ them trustworthy.
 
 | Trigger                   | How                                                             | Notes                                              |
 | ------------------------- | --------------------------------------------------------------- | -------------------------------------------------- |
-| **Scheduled**             | `.github/workflows/db-backup.yml` (weekly cron — Sun 00:00 IST) | full logical backup                                |
+| **Scheduled**             | `.github/workflows/db-backup.yml` (weekly cron — Mon 00:00 IST) | full logical backup                                |
 | **Pre-production-deploy** | `_deploy.yml` step (production)                                 | **before** any schema change; **gates** the deploy |
 | **Manual**                | `db-backup.yml` → _Run workflow_ (choose env)                   | ad-hoc, e.g. before risky ops                      |
 | **On the box**            | `scripts/db/backup.sh`                                          | what all of the above call                         |
