@@ -100,6 +100,33 @@ EOF
 
 echo "[backup] OK — ${SIZE} bytes, sha256=$SHA"
 
+# ── Patient documents ──────────────────────────────────────────────────────
+# These are files on disk, so the SQL dump does not contain them. Restoring the database alone
+# would leave every patient_documents row pointing at a file that is gone, and nobody would find
+# out until someone opened a lab report. Archived beside the dump with the same timestamp so a
+# restore can pair them.
+DOCS_DIR="${DOCUMENTS_DIR:-/var/hms/patient-documents}"
+if [ -d "$DOCS_DIR" ]; then
+  DOCS_OUT="$BACKUP_DIR/patient-documents-${ENV_LABEL}-$(TS).tar.gz"
+  if tar -czf "$DOCS_OUT" -C "$(dirname "$DOCS_DIR")" "$(basename "$DOCS_DIR")"; then
+    DOCS_SIZE=$(stat -c '%s' "$DOCS_OUT" 2>/dev/null || wc -c < "$DOCS_OUT")
+    DOCS_SHA=$(sha256sum "$DOCS_OUT" | awk '{print $1}')
+    cat > "$DOCS_OUT.meta.json" <<META
+{"file":"$(basename "$DOCS_OUT")","environment":"$ENV_LABEL",
+ "createdAt":"$(date -u '+%Y-%m-%dT%H:%M:%SZ')","bytes":$DOCS_SIZE,"sha256":"$DOCS_SHA"}
+META
+    echo "[backup] documents OK — ${DOCS_SIZE} bytes, sha256=$DOCS_SHA → $DOCS_OUT"
+  else
+    # Deliberately fatal. A backup that silently covers only half the patient record is worse than
+    # one that fails loudly, because it will be trusted.
+    echo "ERROR: patient document archive failed" >&2
+    rm -f "$DOCS_OUT"
+    exit 6
+  fi
+else
+  echo "[backup] no patient-documents directory at $DOCS_DIR — nothing to archive"
+fi
+
 # ── Retention: delete backups older than RETENTION_DAYS, but never below KEEP_MIN newest ──
 mapfile -t all < <(ls -1t "$BACKUP_DIR"/${MYSQL_DATABASE}-${ENV_LABEL}-*.sql.gz 2>/dev/null)
 if [ "${#all[@]}" -gt "$KEEP_MIN" ]; then
@@ -107,6 +134,18 @@ if [ "${#all[@]}" -gt "$KEEP_MIN" ]; then
     # Skip if it is among the KEEP_MIN newest.
     keep=false
     for i in $(seq 0 $((KEEP_MIN-1))); do [ "${all[$i]:-}" = "$old" ] && keep=true; done
+    $keep || { echo "[retention] pruning $(basename "$old")"; rm -f "$old" "$old.meta.json"; }
+  done
+fi
+
+# Document archives follow the same policy. Without this they accumulate forever: the retention
+# sweep above globs only *.sql.gz, so adding a second artefact without a second sweep quietly
+# turns a bounded backup directory into an unbounded one.
+mapfile -t docs_all < <(ls -1t "$BACKUP_DIR"/patient-documents-${ENV_LABEL}-*.tar.gz 2>/dev/null)
+if [ "${#docs_all[@]}" -gt "$KEEP_MIN" ]; then
+  for old in $(find "$BACKUP_DIR" -name "patient-documents-${ENV_LABEL}-*.tar.gz" -type f -mtime "+${RETENTION_DAYS}"); do
+    keep=false
+    for i in $(seq 0 $((KEEP_MIN-1))); do [ "${docs_all[$i]:-}" = "$old" ] && keep=true; done
     $keep || { echo "[retention] pruning $(basename "$old")"; rm -f "$old" "$old.meta.json"; }
   done
 fi

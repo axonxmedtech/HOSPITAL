@@ -343,3 +343,21 @@ be reverted.
 [docs/ci/CI_ARCHITECTURE.md](../ci/CI_ARCHITECTURE.md) ·
 [docs/release/RELEASE_ENGINEERING.md](../release/RELEASE_ENGINEERING.md) ·
 [docs/governance/BRANCHING_AND_RELEASE_STRATEGY.md](../governance/BRANCHING_AND_RELEASE_STRATEGY.md)
+
+## Patient documents directory
+
+Attached records (lab reports, scans) are written to disk. The directory must exist and be owned by
+the application user **before** the feature is used:
+
+```bash
+sudo mkdir -p /var/hms/patient-documents
+sudo chown deploy:deploy /var/hms/patient-documents
+sudo chmod 750 /var/hms/patient-documents
+```
+
+`750`, not `755`: these are patient records and nothing but the app user needs to read them.
+
+Skipping this fails every upload on `mkdir` — the identical failure that left `/var/backups`
+root-owned and silently broke every scheduled database backup for weeks. It is also included in the
+nightly backup (`scripts/db/backup.sh`), so `DOCUMENTS_DIR` must match between the app and the
+backup script if either is overridden.

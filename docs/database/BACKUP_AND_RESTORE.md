@@ -104,6 +104,28 @@ unrecoverable and after sign-off:
 
 ---
 
+## A backup is now two files
+
+Patient documents (lab reports, scans) are files on disk, so `mysqldump` does not contain them. A
+complete backup is therefore a **pair** sharing a timestamp:
+
+```
+hospital_management-production-<ts>.sql.gz        the database
+patient-documents-production-<ts>.tar.gz          the attached files
+```
+
+**Restoring only the dump leaves every document row pointing at a file that no longer exists**, and
+nobody discovers it until someone opens a report. Restore both:
+
+```bash
+bash scripts/db/restore.sh /var/backups/hms/hospital_management-production-<ts>.sql.gz
+sudo tar -xzf /var/backups/hms/patient-documents-production-<ts>.tar.gz -C /var/hms/
+sudo chown -R deploy:deploy /var/hms/patient-documents
+```
+
+A failed document archive **stops the backup** (exit 6). A backup covering only half the patient
+record is worse than one that fails loudly, because it gets trusted.
+
 ## Recovery checklist
 
 - [ ] Backup exists and **verified** (`verify-backup.sh` passes; checksum matches sidecar).
