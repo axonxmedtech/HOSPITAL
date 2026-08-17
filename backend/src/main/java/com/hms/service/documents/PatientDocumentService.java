@@ -26,9 +26,11 @@ import java.util.Set;
 /**
  * Permissions, metadata and the patient-level nurse rule for records attached to a patient.
  *
- * <p>Reception, doctors and nurses attach records; only {@code HOSPITAL_ADMIN} removes one, and a
- * staff nurse may only act on a patient currently assigned to them, matching every other nursing
- * write in this codebase.
+ * <p>Reception, doctors and nurses attach records and only {@code HOSPITAL_ADMIN} removes one; and
+ * a staff nurse may only read or write records for a patient currently assigned to them — a lab
+ * report is at least as private as a set of vitals or notes, which already carry the same
+ * restriction, so listing and downloading are gated exactly like uploading, not left open as the
+ * one clinical record any nurse in the hospital could read.
  */
 @Service
 public class PatientDocumentService {
@@ -85,6 +87,9 @@ public class PatientDocumentService {
     public List<PatientDocumentResponse> list(String patientPublicId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Patient patient = requirePatient(patientPublicId, hospitalId);
+        if (isAssignmentScoped(securityHelper.getCurrentUserRole())) {
+            assertNurseIsAssignedTo(patient.getId());
+        }
         return documentRepository
                 .findByHospitalIdAndPatientIdAndIsActiveTrueOrderByUploadedAtDesc(hospitalId, patient.getId())
                 .stream().map(this::toResponse).toList();
@@ -136,10 +141,19 @@ public class PatientDocumentService {
         }
     }
 
-    /** Opens the file for streaming. The caller's hospital is re-checked here, not just at the URL. */
+    /**
+     * Opens the file for streaming. The caller's hospital is re-checked here, not just at the URL.
+     *
+     * <p>The document is loaded first so the assignment check runs against its own
+     * {@code patientId}, rather than trusting a patient id the caller might supply separately and
+     * that could disagree with which patient this document actually belongs to.
+     */
     public DownloadHandle download(String documentPublicId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         PatientDocument doc = requireDocument(documentPublicId, hospitalId);
+        if (isAssignmentScoped(securityHelper.getCurrentUserRole())) {
+            assertNurseIsAssignedTo(doc.getPatientId());
+        }
         return new DownloadHandle(doc.getOriginalFilename(), doc.getContentType(),
                 storage.read(hospitalId, doc.getStoredFilename()));
     }
@@ -164,12 +178,13 @@ public class PatientDocumentService {
     }
 
     /**
-     * The patient-level form of the nursing rule.
+     * The patient-level form of the nursing rule, shared by every read and write a staff nurse can
+     * do through this service.
      *
      * <p>NurseAccessGuard checks an admission, but a document hangs off the patient, so this asks
      * whether the nurse is assigned to any of that patient's admissions. A patient with no
-     * admission has nothing to be assigned to, which is why a nurse cannot attach records for a
-     * walk-in — reception or the doctor does that.
+     * admission has nothing to be assigned to, which is why a nurse can neither attach nor read
+     * records for a walk-in — reception or the doctor does that.
      */
     private void assertNurseIsAssignedTo(Long patientId) {
         Long nurseUserId = securityHelper.getCurrentUserId();
@@ -179,7 +194,7 @@ public class PatientDocumentService {
                         .existsByIpdAdmissionIdAndNurseUserIdAndIsActiveTrue(a.getId(), nurseUserId));
         if (!assigned) {
             throw new AccessDeniedException(
-                    "You can only attach records for patients assigned to you.");
+                    "You can only access records for patients assigned to you.");
         }
     }
 
