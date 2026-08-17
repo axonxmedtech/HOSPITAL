@@ -1,7 +1,14 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useToast } from '../context/ToastContext';
 // BUG-028: single source-of-truth for base URL
 import authService from '../services/authService';
 import hospitalService from '../services/hospitalService';
+import patientDocumentService, {
+  documentTypeLabel,
+  extractErrorMessage,
+  formatFileSize,
+} from '../services/patientDocumentService';
+import ConfirmationModal from './ConfirmationModal';
 import PdfViewerModal from './PdfViewerModal';
 
 /**
@@ -54,8 +61,62 @@ const PatientDetailsModal = ({ patient, onClose, initialTab = 'info' }) => {
   // The document to show in the inline PDF viewer: { endpointPath, title } or null.
   const [viewerDoc, setViewerDoc] = useState(null);
 
+  // Records tab — outside records (lab reports, scans) attached to the patient.
+  const [documents, setDocuments] = useState([]);
+  const [loadingDocuments, setLoadingDocuments] = useState(false);
+  const [documentsError, setDocumentsError] = useState(null);
+  const [downloadingDocId, setDownloadingDocId] = useState(null);
+  // The document pending removal, shown in the shared ConfirmationModal, or null when closed.
+  const [removeTarget, setRemoveTarget] = useState(null);
+
+  const toast = useToast();
   const user = authService.getCurrentUser();
   const inClinicEnabled = user?.inClinic !== false;
+  const isAdmin = user?.role === 'HOSPITAL_ADMIN';
+  const patientId = patient?.publicId || patient?.id;
+
+  const fetchDocuments = useCallback(async () => {
+    if (!patientId) return;
+    setLoadingDocuments(true);
+    setDocumentsError(null);
+    try {
+      const list = await patientDocumentService.list(patientId);
+      setDocuments(list);
+    } catch (err) {
+      setDocumentsError(await extractErrorMessage(err, 'Failed to load records.'));
+    } finally {
+      setLoadingDocuments(false);
+    }
+  }, [patientId]);
+
+  const handleDownloadDocument = async (doc) => {
+    setDownloadingDocId(doc.publicId);
+    try {
+      const blob = await patientDocumentService.download(patientId, doc.publicId);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = doc.originalFilename || doc.title;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(await extractErrorMessage(err, 'Failed to download this record.'));
+    } finally {
+      setDownloadingDocId(null);
+    }
+  };
+
+  const handleConfirmRemoveDocument = async () => {
+    try {
+      await patientDocumentService.remove(patientId, removeTarget.publicId);
+      toast.success('Record removed.');
+      fetchDocuments();
+    } catch (err) {
+      toast.error(await extractErrorMessage(err, 'Failed to remove this record.'));
+    }
+  };
 
   // Open the document in the inline viewer so the user can read it first, then Print/Download
   // from the viewer's toolbar (instead of firing the print dialog straight away).
@@ -116,9 +177,11 @@ const PatientDetailsModal = ({ patient, onClose, initialTab = 'info' }) => {
         fetchHistory();
       } else if (activeTab === 'bills') {
         fetchBills();
+      } else if (activeTab === 'records') {
+        fetchDocuments();
       }
     }
-  }, [activeTab, patient?.id, patient?.publicId]);
+  }, [activeTab, patient?.id, patient?.publicId, fetchDocuments]);
 
   // BUG-039: Escape key dismissal and auto-focus for accessibility
   useEffect(() => {
@@ -138,6 +201,7 @@ const PatientDetailsModal = ({ patient, onClose, initialTab = 'info' }) => {
 
   const tabs = [
     { id: 'info', label: 'Patient Info' },
+    { id: 'records', label: 'Records' },
     { id: 'medicalhistory', label: 'Medical History' },
     { id: 'bills', label: 'Bills' },
   ];
@@ -296,6 +360,101 @@ const PatientDetailsModal = ({ patient, onClose, initialTab = 'info' }) => {
                     ))}
                   </div>
                 </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'records' && (
+            <div className="space-y-4">
+              <div className="flex justify-between items-center border-b border-gray-150 pb-3">
+                <span className="text-lg font-bold text-gray-800">Attached Records</span>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-gray-900 hover:bg-gray-800 rounded-md transition"
+                >
+                  <svg
+                    className="w-3.5 h-3.5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2.5}
+                      d="M12 4v16m8-8H4"
+                    />
+                  </svg>
+                  Attach Record
+                </button>
+              </div>
+
+              {loadingDocuments ? (
+                <div className="text-center py-12 text-gray-500">
+                  <div className="animate-spin h-6 w-6 border-b-2 border-gray-900 mx-auto mb-2 rounded-full"></div>
+                  Loading records...
+                </div>
+              ) : documentsError ? (
+                <div className="text-center py-8 text-red-500 text-sm">{documentsError}</div>
+              ) : documents.length > 0 ? (
+                <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                  <table className="min-w-full text-sm text-left">
+                    <thead className="bg-gray-50 text-gray-600 font-medium border-b border-gray-200">
+                      <tr>
+                        <th className="px-4 py-3">Title</th>
+                        <th className="px-4 py-3">Type</th>
+                        <th className="px-4 py-3">Report Date</th>
+                        <th className="px-4 py-3">Size</th>
+                        <th className="px-4 py-3">Uploaded By</th>
+                        <th className="px-4 py-3">Uploaded At</th>
+                        <th className="px-4 py-3 text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 bg-white">
+                      {documents.map((doc) => (
+                        <tr key={doc.publicId} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 font-semibold text-gray-800">{doc.title}</td>
+                          <td className="px-4 py-3 text-gray-600">
+                            {documentTypeLabel(doc.documentType)}
+                          </td>
+                          <td className="px-4 py-3 text-gray-500">
+                            {doc.documentDate
+                              ? new Date(doc.documentDate).toLocaleDateString()
+                              : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-gray-500">
+                            {formatFileSize(doc.sizeBytes)}
+                          </td>
+                          <td className="px-4 py-3 text-gray-500">{doc.uploadedBy || '—'}</td>
+                          <td className="px-4 py-3 text-gray-500">
+                            {doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleString() : '—'}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex justify-center gap-2">
+                              <button
+                                onClick={() => handleDownloadDocument(doc)}
+                                disabled={downloadingDocId === doc.publicId}
+                                className="px-2.5 py-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 rounded-md transition disabled:opacity-50"
+                              >
+                                {downloadingDocId === doc.publicId ? 'Downloading...' : 'Download'}
+                              </button>
+                              {isAdmin && (
+                                <button
+                                  onClick={() => setRemoveTarget(doc)}
+                                  className="px-2.5 py-1 text-xs font-semibold text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 rounded-md transition"
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-center py-8 text-gray-400 text-sm">No records attached yet.</p>
               )}
             </div>
           )}
@@ -1004,6 +1163,18 @@ const PatientDetailsModal = ({ patient, onClose, initialTab = 'info' }) => {
           onClose={() => setViewerDoc(null)}
         />
       )}
+
+      <ConfirmationModal
+        isOpen={!!removeTarget}
+        title="Remove this record?"
+        message={
+          removeTarget
+            ? `"${removeTarget.title}" will be hidden from Records. This can only be undone by a developer.`
+            : ''
+        }
+        onConfirm={handleConfirmRemoveDocument}
+        onCancel={() => setRemoveTarget(null)}
+      />
     </div>
   );
 };
