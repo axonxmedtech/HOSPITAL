@@ -9,6 +9,7 @@ import patientDocumentService, {
   formatFileSize,
 } from '../services/patientDocumentService';
 import ConfirmationModal from './ConfirmationModal';
+import DocumentUploadModal from './documents/DocumentUploadModal';
 import PdfViewerModal from './PdfViewerModal';
 
 /**
@@ -68,6 +69,7 @@ const PatientDetailsModal = ({ patient, onClose, initialTab = 'info' }) => {
   const [downloadingDocId, setDownloadingDocId] = useState(null);
   // The document pending removal, shown in the shared ConfirmationModal, or null when closed.
   const [removeTarget, setRemoveTarget] = useState(null);
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
   const toast = useToast();
   const user = authService.getCurrentUser();
@@ -116,6 +118,11 @@ const PatientDetailsModal = ({ patient, onClose, initialTab = 'info' }) => {
     } catch (err) {
       toast.error(await extractErrorMessage(err, 'Failed to remove this record.'));
     }
+  };
+
+  const handleDocumentUploaded = () => {
+    setShowUploadModal(false);
+    fetchDocuments();
   };
 
   // Open the document in the inline viewer so the user can read it first, then Print/Download
@@ -370,6 +377,7 @@ const PatientDetailsModal = ({ patient, onClose, initialTab = 'info' }) => {
                 <span className="text-lg font-bold text-gray-800">Attached Records</span>
                 <button
                   type="button"
+                  onClick={() => setShowUploadModal(true)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-gray-900 hover:bg-gray-800 rounded-md transition"
                 >
                   <svg
@@ -1175,6 +1183,14 @@ const PatientDetailsModal = ({ patient, onClose, initialTab = 'info' }) => {
         onConfirm={handleConfirmRemoveDocument}
         onCancel={() => setRemoveTarget(null)}
       />
+
+      {showUploadModal && (
+        <DocumentUploadModal
+          patientPublicId={patientId}
+          onClose={() => setShowUploadModal(false)}
+          onUploaded={handleDocumentUploaded}
+        />
+      )}
     </div>
   );
 };
