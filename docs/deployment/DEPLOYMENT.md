@@ -311,6 +311,33 @@ workbooks up to 200 MB — well above the app's global 5 MB multipart cap
    the window back down — imports are infrequent (a handful of times per hospital), not a
    steady-state need.
 
+## Patient document uploads
+
+`PatientDocumentController` (`/hospital/patients/{id}/documents`, `/clinic/patients/{id}/documents`
+— Reception, Doctor, Nurse upload; `HOSPITAL_ADMIN` deletes) accepts lab reports and scans up to
+25 MB (`hms.documents.max-file-size`, default `25MB`, override via `DOCUMENTS_MAX_FILE_SIZE`) —
+above the app's global 5 MB multipart cap (`spring.servlet.multipart.max-file-size`, backed by
+`MAX_UPLOAD_FILE_SIZE`).
+
+That 25 MB figure is a **code-level** cap enforced by `UploadedFileValidator`, checked only after
+Spring's servlet-level multipart resolver has already accepted the request body. The servlet-level
+cap is not raised by this feature — the same reasoning as "Legacy patient import uploads" above
+applies (a path-scoped `MultipartConfigElement` needs a second servlet registration that nothing in
+this repo's test suite exercises). **This means an upload over 5 MB is rejected before it ever
+reaches the controller or the validator until an operator raises the servlet-level cap.**
+
+**Operational steps — set this once per hospital environment, not per import:** unlike the legacy
+import (infrequent, revert afterward), document upload is a steady-state feature — reception,
+doctors and nurses use it every day — so the override below should stay in place permanently, not
+be reverted.
+
+1. In that environment's `.env`, set `MAX_UPLOAD_FILE_SIZE=25MB` and `MAX_UPLOAD_REQUEST_SIZE=26MB`
+   (leave `DOCUMENTS_MAX_FILE_SIZE` at its 25 MB default unless the hospital genuinely needs a
+   different ceiling).
+2. If the same environment also runs the legacy import, use the larger of the two file-size values
+   (`200MB` covers both) — `MAX_UPLOAD_FILE_SIZE` is a single, environment-wide setting.
+3. Restart the service so the new multipart limits take effect.
+
 ## Related
 
 [docs/ci/CI_ARCHITECTURE.md](../ci/CI_ARCHITECTURE.md) ·

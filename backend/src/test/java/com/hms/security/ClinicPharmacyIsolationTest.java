@@ -72,6 +72,7 @@ class ClinicPharmacyIsolationTest {
             "MedicineController",
             "OpdController",
             "PatientController",
+            "PatientDocumentController",
             "PharmacistController",
             "PharmacyController",
             "PrescriptionPresetController",
