@@ -23,7 +23,7 @@ if [ -f "$F.meta.json" ]; then
   echo "[verify] checksum matches sidecar"
 fi
 
-zcat "$F" | grep -qi 'CREATE TABLE' || { echo "ERROR: no CREATE TABLE found — not a schema dump?" >&2; exit 6; }
-zcat "$F" | tail -5 | grep -qi 'Dump completed' || echo "WARNING: missing 'Dump completed' footer"
+zgrep -qi -m1 'CREATE TABLE' "$F" || { echo "ERROR: no CREATE TABLE found — not a schema dump?" >&2; exit 6; }
+gzip -dc "$F" | tail -5 | grep -qi 'Dump completed' || echo "WARNING: missing 'Dump completed' footer"
 
 echo "[verify] OK — ${SIZE} bytes, integrity + content checks passed"
