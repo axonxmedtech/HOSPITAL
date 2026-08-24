@@ -61,7 +61,7 @@ class PreOpSafetyServiceTest {
     @Test
     void entersPreOpThroughStateMachineAndIsTenantScoped() {
         Surgery s = surgery(SurgeryStatus.SCHEDULED.name());
-        when(surgeryRepository.findByPublicIdAndHospitalId("s-1", HOSPITAL)).thenReturn(Optional.of(s));
+        when(surgeryRepository.findByPublicIdAndHospitalIdForUpdate("s-1", HOSPITAL)).thenReturn(Optional.of(s));
         when(stateMachine.transition(s, SurgeryStatus.PRE_OP, null, null, null)).thenReturn(s);
 
         assertThat(service.enterPreOp("s-1")).isSameAs(s);
@@ -70,7 +70,7 @@ class PreOpSafetyServiceTest {
 
     @Test
     void foreignOrMissingSurgeryIsNotFoundForClinicalCommands() {
-        when(surgeryRepository.findByPublicIdAndHospitalId("foreign", HOSPITAL)).thenReturn(Optional.empty());
+        when(surgeryRepository.findByPublicIdAndHospitalIdForUpdate("foreign", HOSPITAL)).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.enterPreOp("foreign"))
                 .isInstanceOf(ResourceNotFoundException.class).hasMessage("Surgery not found");
 

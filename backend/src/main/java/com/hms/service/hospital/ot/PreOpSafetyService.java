@@ -31,7 +31,7 @@ public class PreOpSafetyService {
     @Transactional
     public Surgery enterPreOp(String publicId) {
         Long hospitalId = requireHospitalId();
-        Surgery surgery = requireSurgery(publicId, hospitalId);
+        Surgery surgery = requireSurgeryForUpdate(publicId, hospitalId);
         return stateMachine.transition(surgery, SurgeryStatus.PRE_OP, null, null, null);
     }
 
@@ -137,6 +137,11 @@ public class PreOpSafetyService {
 
     private Surgery requireSurgery(String publicId, Long hospitalId) {
         return surgeryRepository.findByPublicIdAndHospitalId(publicId, hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Surgery not found"));
+    }
+
+    private Surgery requireSurgeryForUpdate(String publicId, Long hospitalId) {
+        return surgeryRepository.findByPublicIdAndHospitalIdForUpdate(publicId, hospitalId)
                 .orElseThrow(() -> new ResourceNotFoundException("Surgery not found"));
     }
 

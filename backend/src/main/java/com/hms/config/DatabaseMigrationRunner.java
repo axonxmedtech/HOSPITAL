@@ -74,6 +74,7 @@ public class DatabaseMigrationRunner {
         ensureRolePermissionsTable(); // OT Phase 2 — authorization decoupled from role checks
         ensureSurgeryStateTransitionsTable(); // OT Phase 3 — append-only status audit
         ensureSurgeryWaitlistColumns(); // OT Phase 3 — the waiting list is a query, not a status
+        ensureSurgeryLifecycleVersionColumn(); // OT 4.6D-A — stale schedule command detection
         ensureOtRoomsTable(); // OT Phase 4 — a theatre is a resource, not a ward named "OT"
         ensureSurgeryRoomColumns(); // OT Phase 4 — interval booking
         ensureOtWorkflowPoliciesTable(); // OT Phase 5 — hospital variation is configuration
@@ -2101,6 +2102,11 @@ public class DatabaseMigrationRunner {
         } catch (Exception e) {
             // already present
         }
+    }
+
+    /** Adds the optimistic lifecycle revision used by schedule/reschedule commands. */
+    private void ensureSurgeryLifecycleVersionColumn() {
+        addColumnIfMissing("surgeries", "lifecycle_version", "BIGINT NOT NULL DEFAULT 0");
     }
 
     /**

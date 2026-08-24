@@ -5,6 +5,7 @@ import com.hms.dto.ScheduleSurgeryRequest;
 import com.hms.dto.SurgeryView;
 import com.hms.entity.*;
 import com.hms.exception.ConflictException;
+import com.hms.exception.ResourceNotFoundException;
 import com.hms.exception.UnauthorizedException;
 import com.hms.repository.*;
 import com.hms.security.SecurityContextHelper;
@@ -122,7 +123,7 @@ public class SurgeryService {
     @Transactional
     public Surgery approve(String publicId) {
         Long hospitalId = requireHospitalId();
-        Surgery s = requireSurgery(publicId, hospitalId);
+        Surgery s = requireSurgeryForUpdate(publicId, hospitalId);
         Surgery saved = stateMachine.transition(s, com.hms.entity.SurgeryStatus.APPROVED, null, null, null);
         audit("SURGERY_APPROVED", "Surgery approved", hospitalId, saved.getIpdAdmissionId());
         return saved;
@@ -133,7 +134,8 @@ public class SurgeryService {
     @Transactional
     public Surgery schedule(String publicId, ScheduleSurgeryRequest req) {
         Long hospitalId = requireHospitalId();
-        Surgery s = requireSurgery(publicId, hospitalId);
+        Surgery s = requireSurgeryForUpdate(publicId, hospitalId);
+        assertExpectedVersion(s, req == null ? null : req.getExpectedVersion());
         com.hms.entity.SurgeryStatus current = com.hms.entity.SurgeryStatus.of(s.getStatus());
         boolean isReschedule = current == com.hms.entity.SurgeryStatus.SCHEDULED;
         if (current != com.hms.entity.SurgeryStatus.REQUESTED
@@ -247,7 +249,7 @@ public class SurgeryService {
     @Transactional
     public Surgery start(String publicId) {
         Long hospitalId = requireHospitalId();
-        Surgery s = requireSurgery(publicId, hospitalId);
+        Surgery s = requireSurgeryForUpdate(publicId, hospitalId);
         preOpSafetyService.assertStartAllowed(s, hospitalId);
         // WHO checklist gate. With WHO_CHECKLIST_MODE=BLOCKING a case cannot start without a
         // signed Time-Out -- enforced HERE, server-side, not by hiding a button. Emergencies
@@ -277,7 +279,7 @@ public class SurgeryService {
     @Transactional
     public Surgery complete(String publicId) {
         Long hospitalId = requireHospitalId();
-        Surgery s = requireSurgery(publicId, hospitalId);
+        Surgery s = requireSurgeryForUpdate(publicId, hospitalId);
         if (!Surgery.IN_PROGRESS.equals(s.getStatus())) {
             throw new IllegalArgumentException("Only an in-progress surgery can be completed");
         }
@@ -298,14 +300,12 @@ public class SurgeryService {
     @Transactional
     public Surgery cancel(String publicId, String reasonCode, String reasonText) {
         Long hospitalId = requireHospitalId();
-        Surgery s = requireSurgery(publicId, hospitalId);
+        Surgery s = requireSurgeryForUpdate(publicId, hospitalId);
         if (com.hms.entity.SurgeryStatus.of(s.getStatus()).isTerminal()) {
             throw new IllegalArgumentException("Surgery is already closed");
         }
-        if (Surgery.IN_PROGRESS.equals(s.getStatus())) {
-            freeOtBed(s, "Surgery cancelled");
-            markRoom(s, com.hms.entity.OtRoom.CLEANING, null);
-        }
+        // Do not release resources before the state machine rejects an illegal IN_PROGRESS ->
+        // CANCELLED transition. The state-machine error contract remains unchanged.
         String code = resolveCancellationReason(hospitalId, s, reasonCode);
         Surgery saved = stateMachine.transition(s, com.hms.entity.SurgeryStatus.CANCELLED, code, reasonText, null);
         audit("SURGERY_CANCELLED", "Surgery cancelled (" + code + ")", hospitalId, saved.getIpdAdmissionId());
@@ -319,7 +319,7 @@ public class SurgeryService {
     @Transactional
     public Surgery postpone(String publicId, String reasonCode, String reasonText) {
         Long hospitalId = requireHospitalId();
-        Surgery s = requireSurgery(publicId, hospitalId);
+        Surgery s = requireSurgeryForUpdate(publicId, hospitalId);
         String code = resolveCancellationReason(hospitalId, s, reasonCode);
         Surgery postponed = stateMachine.transition(s, com.hms.entity.SurgeryStatus.POSTPONED, code, reasonText, null);
         postponed.setScheduledAt(null);
@@ -338,7 +338,7 @@ public class SurgeryService {
     @Transactional
     public Surgery close(String publicId) {
         Long hospitalId = requireHospitalId();
-        Surgery s = requireSurgery(publicId, hospitalId);
+        Surgery s = requireSurgeryForUpdate(publicId, hospitalId);
         Surgery saved = stateMachine.transition(s, com.hms.entity.SurgeryStatus.CLOSED, null, null, null);
         audit("SURGERY_CLOSED", "Surgery closed", hospitalId, saved.getIpdAdmissionId());
         return saved;
@@ -642,6 +642,22 @@ public class SurgeryService {
             throw new UnauthorizedException("Access denied: surgery belongs to another hospital");
         }
         return s;
+    }
+
+    /** Lifecycle commands must serialize on the tenant-scoped aggregate before taking OT resources. */
+    private Surgery requireSurgeryForUpdate(String publicId, Long hospitalId) {
+        return surgeryRepository.findByPublicIdAndHospitalIdForUpdate(publicId, hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Surgery not found"));
+    }
+
+    private void assertExpectedVersion(Surgery surgery, Long expectedVersion) {
+        if (expectedVersion == null) {
+            throw new IllegalArgumentException("Surgery version is required");
+        }
+        long currentVersion = surgery.getLifecycleVersion() == null ? 0L : surgery.getLifecycleVersion();
+        if (expectedVersion.longValue() != currentVersion) {
+            throw new ConflictException("Surgery was modified by another request. Refresh and retry.");
+        }
     }
 
     private IpdAdmission requireAdmission(Long ipdAdmissionId, Long hospitalId) {

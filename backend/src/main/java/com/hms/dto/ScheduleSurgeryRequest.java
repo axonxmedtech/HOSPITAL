@@ -5,12 +5,18 @@ import java.time.LocalDateTime;
 
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 import com.hms.validation.NoEmoji;
 
 /** Schedule payload: assign surgeon + date/time + theatre. */
 @Data
 public class ScheduleSurgeryRequest {
+    /** Revision read by the caller; stale scheduling commands must not overwrite a newer slot. */
+    @NotNull(message = "Surgery version is required")
+    @PositiveOrZero(message = "Surgery version must not be negative")
+    private Long expectedVersion;
+
     private Long surgeonDoctorId;   // a listed doctor; null when "Other" is chosen
 
     // Free-text external operator name ("Other"). Not @PersonName: reception legitimately enters

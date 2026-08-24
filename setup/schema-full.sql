@@ -1373,6 +1373,7 @@ CREATE TABLE `surgeries` (
   `requested_by_user_id` bigint DEFAULT NULL,
   `requested_at` datetime(6) NOT NULL,
   `status` varchar(20) NOT NULL,
+  `lifecycle_version` bigint NOT NULL DEFAULT '0',
   `surgeon_doctor_id` bigint DEFAULT NULL,
   `surgeon_name` varchar(255) DEFAULT NULL,
   `anaesthetist_name` varchar(255) DEFAULT NULL,

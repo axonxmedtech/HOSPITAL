@@ -29,6 +29,7 @@ public class SurgeryView {
     private String priority;
     private LocalDate preferredDate;
     private String status;
+    private Long lifecycleVersion;
     private Long surgeonDoctorId;
     private String surgeonName;
     private String anaesthetistName;
@@ -55,6 +56,7 @@ public class SurgeryView {
         v.priority = s.getPriority();
         v.preferredDate = s.getPreferredDate();
         v.status = s.getStatus();
+        v.lifecycleVersion = s.getLifecycleVersion() == null ? 0L : s.getLifecycleVersion();
         v.surgeonDoctorId = s.getSurgeonDoctorId();
         v.anaesthetistName = s.getAnaesthetistName();
         v.scheduledAt = s.getScheduledAt();

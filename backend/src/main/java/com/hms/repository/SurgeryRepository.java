@@ -1,7 +1,11 @@
 package com.hms.repository;
 
 import com.hms.entity.Surgery;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Collection;
@@ -13,6 +17,12 @@ public interface SurgeryRepository extends JpaRepository<Surgery, Long> {
     Optional<Surgery> findByPublicId(String publicId);
 
     Optional<Surgery> findByPublicIdAndHospitalId(String publicId, Long hospitalId);
+
+    /** Serializes lifecycle commands while keeping foreign IDs indistinguishable from missing ones. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM Surgery s WHERE s.publicId = :publicId AND s.hospitalId = :hospitalId")
+    Optional<Surgery> findByPublicIdAndHospitalIdForUpdate(
+            @Param("publicId") String publicId, @Param("hospitalId") Long hospitalId);
 
     List<Surgery> findByHospitalIdAndStatusOrderByRequestedAtDesc(Long hospitalId, String status);
 
