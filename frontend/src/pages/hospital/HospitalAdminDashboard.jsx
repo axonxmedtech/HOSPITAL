@@ -4555,11 +4555,8 @@ const HospitalAdminDashboard = () => {
                 </div>
               )}
               {activeTab === 'ot' && (
-                <div className="flex flex-col items-center justify-center p-12 text-center h-96">
-                  <h2 className="text-2xl font-bold text-gray-950">Operation Theatre</h2>
-                  <p className="text-gray-600 mt-2 font-medium">
-                    This feature will is in process and will be available soon
-                  </p>
+                <div className="max-w-3xl mx-auto my-4">
+                  <OtRoomsCard />
                 </div>
               )}
               {activeTab === 'time-slots' && <TimeSlotsView />}
