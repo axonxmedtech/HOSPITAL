@@ -5,7 +5,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.repository.query.Param;
+import jakarta.persistence.LockModeType;
 
 import java.util.Optional;
 
@@ -34,6 +36,13 @@ public interface OpdRepository extends JpaRepository<Opd, Long> {
 	@Query("SELECT o FROM Opd o LEFT JOIN FETCH o.patient p LEFT JOIN FETCH o.doctor "
 			+ "WHERE o.id = :id AND p.hospitalId = :hospitalId")
 	Optional<Opd> findByIdAndHospitalIdWithPatientAndDoctor(@Param("id") Long id,
+			@Param("hospitalId") Long hospitalId);
+
+	/** Locks the tenant-scoped OPD before converting it into an IPD admission. */
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("SELECT o FROM Opd o LEFT JOIN FETCH o.patient p LEFT JOIN FETCH o.doctor "
+			+ "WHERE o.id = :id AND p.hospitalId = :hospitalId")
+	Optional<Opd> findByIdAndHospitalIdWithPatientAndDoctorForUpdate(@Param("id") Long id,
 			@Param("hospitalId") Long hospitalId);
 
 	@Query(value = "SELECT DISTINCT o FROM Opd o " +

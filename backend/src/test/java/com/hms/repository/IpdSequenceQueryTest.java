@@ -37,24 +37,24 @@ class IpdSequenceQueryTest {
         repo.deleteAll();
 
         // no rows at all -> COALESCE floor
-        assertThat(repo.findMaxIpdSequence()).as("empty table").isEqualTo(0);
+        assertThat(repo.findMaxIpdSequence()).as("empty table").isEqualTo(0L);
 
         seed("IPD-7");
-        assertThat(repo.findMaxIpdSequence()).as("single row").isEqualTo(7);
+        assertThat(repo.findMaxIpdSequence()).as("single row").isEqualTo(7L);
 
         seed("IPD-42");
         seed("IPD-13");
-        assertThat(repo.findMaxIpdSequence()).as("max across multiple").isEqualTo(42);
+        assertThat(repo.findMaxIpdSequence()).as("max across multiple").isEqualTo(42L);
 
         // numeric ordering, not lexicographic: "9" must not beat "42"
         repo.deleteAll();
         seed("IPD-9"); seed("IPD-42");
-        assertThat(repo.findMaxIpdSequence()).as("numeric not lexicographic").isEqualTo(42);
+        assertThat(repo.findMaxIpdSequence()).as("numeric not lexicographic").isEqualTo(42L);
 
         // rows that do not match the IPD- prefix are excluded by the WHERE clause
         repo.deleteAll();
         seed("IPD-5"); seed("LEGACY-999");
-        assertThat(repo.findMaxIpdSequence()).as("non-IPD prefixes ignored").isEqualTo(5);
+        assertThat(repo.findMaxIpdSequence()).as("non-IPD prefixes ignored").isEqualTo(5L);
 
         repo.deleteAll();
     }

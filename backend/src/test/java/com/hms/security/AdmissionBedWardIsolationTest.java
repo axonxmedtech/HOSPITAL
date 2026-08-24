@@ -38,6 +38,7 @@ class AdmissionBedWardIsolationTest {
     @Autowired HospitalRepository hospitalRepository;
     @Autowired PatientRepository patientRepository;
     @Autowired DoctorRepository doctorRepository;
+    @Autowired UserRepository userRepository;
     @Autowired WardRepository wardRepository;
     @Autowired BedRepository bedRepository;
     @Autowired OpdRepository opdRepository;
@@ -102,7 +103,17 @@ class AdmissionBedWardIsolationTest {
         long[] b = seedJourney(hidB, "bravo", "admin@bravo.com");
         bOpdId = b[0]; bWardId = b[1]; bBedId = b[2];
 
-        tokenB = jwtUtil.generateToken(2L, "admin@bravo.com", "HOSPITAL_ADMIN", hidB, MODULES, null, "HOSPITAL", null);
+        User adminB = new User();
+        adminB.setEmail("admin@bravo-" + uniq() + ".com");
+        adminB.setPassword("test-password-hash");
+        adminB.setName("Admin bravo");
+        adminB.setRole("HOSPITAL_ADMIN");
+        adminB.setHospitalId(hidB);
+        adminB.setIsActive(true);
+        adminB.setTokenVersion(0);
+        adminB = userRepository.save(adminB);
+        tokenB = jwtUtil.generateToken(adminB.getId(), adminB.getEmail(), adminB.getRole(), hidB,
+                MODULES, null, "HOSPITAL", null, adminB.getTokenVersion());
     }
 
     private ResponseEntity<String> admit(Long opd, Long ward, Long bed) {
