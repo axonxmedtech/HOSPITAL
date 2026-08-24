@@ -141,15 +141,17 @@ class HospitalAuthServiceTest {
         req.setPassword("pw");
 
         assertThatThrownBy(() -> service.login(req))
-                .isInstanceOf(com.hms.exception.UnauthorizedException.class)
+                // Phase 2: a disabled-role login is an authorization refusal (403), not a
+                // failed authentication (401). The credentials were fine.
+                .isInstanceOf(com.hms.exception.ForbiddenException.class)
                 .hasMessageContaining("Nurse login is disabled");
-        verify(jwtUtil, never()).generateToken(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(jwtUtil, never()).generateToken(any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
     void login_staffNurse_allowedWhenSeparateNurseLoginOn() {
         primeNurseLogin(true);
-        when(jwtUtil.generateToken(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn("tok");
+        when(jwtUtil.generateToken(any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn("tok");
         com.hms.dto.LoginRequest req = new com.hms.dto.LoginRequest();
         req.setEmail("nurse@test.com");
         req.setPassword("pw");
@@ -157,8 +159,9 @@ class HospitalAuthServiceTest {
         com.hms.dto.LoginResponse resp = service.login(req);
         assertThat(resp.getToken()).isEqualTo("tok");
         // The tenant type is minted into the token; a null Hospital.type defaults to HOSPITAL.
+        // R1b: the ninth argument is the user's tokenVersion, stamped at login.
         verify(jwtUtil).generateToken(eq(50L), eq("nurse@test.com"), eq("NURSE"), eq(1L), any(), any(),
-                eq("HOSPITAL"), any());
+                eq("HOSPITAL"), any(), any());
     }
 
     @Test

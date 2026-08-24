@@ -25,6 +25,12 @@ public class HospitalWebSocketHandshakeInterceptor implements HandshakeIntercept
     @Autowired
     private JwtUtil jwtUtil;
 
+    @Autowired
+    private com.hms.repository.UserRepository userRepository;
+
+    @Autowired
+    private com.hms.repository.HospitalRepository hospitalRepository;
+
     @Override
     public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response,
                                    WebSocketHandler wsHandler, Map<String, Object> attributes) throws Exception {
@@ -43,6 +49,14 @@ public class HospitalWebSocketHandshakeInterceptor implements HandshakeIntercept
             // Validate token
             if (!jwtUtil.validateToken(token)) {
                 log.warn("Rejecting WebSocket handshake: invalid or expired token.");
+                return false;
+            }
+
+            // Same revocation rules as REST. A socket opened with a revoked token would otherwise
+            // be a bypass: it survives for the life of the connection and pushes live tenant data
+            // to someone whose access was withdrawn.
+            if (!sessionIsStillValid(token)) {
+                log.warn("Rejecting WebSocket handshake: the session behind this token is no longer valid.");
                 return false;
             }
 
@@ -84,6 +98,30 @@ public class HospitalWebSocketHandshakeInterceptor implements HandshakeIntercept
     public void afterHandshake(ServerHttpRequest request, ServerHttpResponse response,
                                WebSocketHandler wsHandler, Exception exception) {
         // No post-handshake hooks required
+    }
+
+    /**
+     * Mirrors {@link JwtAuthenticationFilter}'s check: the user must still exist and be active, the
+     * token's session generation must still match, and a tenant user's hospital must still be
+     * active. Fail-closed, for the same reasons.
+     */
+    private boolean sessionIsStillValid(String token) {
+        try {
+            Long userId = jwtUtil.extractUserId(token);
+            Integer presented = jwtUtil.extractTokenVersion(token);
+            if (userId == null || presented == null) {
+                return false;
+            }
+            java.util.Optional<Integer> current = userRepository.findActiveTokenVersion(userId);
+            if (current.isEmpty() || !current.get().equals(presented)) {
+                return false;
+            }
+            Long hospitalId = jwtUtil.extractHospitalId(token);
+            return hospitalId == null || hospitalRepository.isActiveTenant(hospitalId);
+        } catch (Exception e) {
+            log.warn("WebSocket session revalidation failed; rejecting the handshake: {}", e.getMessage());
+            return false;
+        }
     }
 
     private Long getHospitalIdFromPath(String path) {

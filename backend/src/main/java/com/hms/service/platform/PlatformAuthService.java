@@ -1,5 +1,7 @@
 package com.hms.service.platform;
 
+import com.hms.exception.ForbiddenException;
+
 import com.hms.dto.LoginRequest;
 import com.hms.dto.LoginResponse;
 import com.hms.entity.User;
@@ -68,7 +70,7 @@ public class PlatformAuthService {
         if (!"SUPER_ADMIN".equals(user.getRole())) {
             logger.warn("Login failed - non-Super Admin tried to login via platform endpoint: {} (role: {})",
                     LogSanitizer.clean(request.getEmail()), user.getRole());
-            throw new UnauthorizedException("Access denied. Super Admin only.");
+            throw new ForbiddenException("Access denied. Super Admin only.");
         }
 
         // Verify hospital_id is null (Super Admin should not belong to any hospital)
@@ -92,8 +94,11 @@ public class PlatformAuthService {
                 user.getEmail(),
                 user.getRole(),
                 null, // No hospitalId for super admin
-                null // No modules for super admin
-        );
+                null, // No modules for super admin
+                null, // no branch
+                null, // no tenant type
+                null, // no OT permissions
+                user.getTokenVersion());
 
         // Create response
         LoginResponse response = new LoginResponse();

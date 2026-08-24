@@ -129,11 +129,67 @@ public class User {
     private Boolean isActive = true;
 
     /**
+     * Monotonic session generation. Every JWT carries the value current at login; the
+     * authentication filter refuses a token whose value no longer matches, which is how a
+     * credential or authority change ends sessions that are already in flight.
+     *
+     * <p>Bumped by {@link #invalidateSessionsOnCredentialChange()} — never by hand. See that
+     * method for why.
+     */
+    @Column(name = "token_version", nullable = false)
+    private Integer tokenVersion = 0;
+
+    /**
      * Timestamp when the user was created
      */
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    // ── session invalidation choke point ──────────────────────────────────────
+    //
+    // The password is reset from ten different services and the role is changed from two more.
+    // Requiring each of them to remember to bump tokenVersion would work today and rot the first
+    // time someone adds an eleventh path — and the failure is silent: the old session simply
+    // keeps working, which is the exact thing this mechanism exists to prevent.
+    //
+    // So the bump is not a call any caller has to make. It is derived from what actually changed
+    // on the row: JPA hands us the loaded values at @PostLoad, and at @PreUpdate we compare. Any
+    // code path that changes a password hash or a role invalidates that user's sessions, whether
+    // or not its author knew this mechanism existed.
+
+    @Transient
+    private String loadedPassword;
+
+    @Transient
+    private String loadedRole;
+
+    /** True only for an instance that came from the database, so inserts are not treated as changes. */
+    @Transient
+    private boolean loadedFromDatabase;
+
+    @PostLoad
+    void captureCredentialSnapshot() {
+        this.loadedPassword = this.password;
+        this.loadedRole = this.role;
+        this.loadedFromDatabase = true;
+    }
+
+    @PreUpdate
+    void invalidateSessionsOnCredentialChange() {
+        // A row that was never loaded is being inserted, or was built detached; there are no
+        // outstanding tokens for it to invalidate and no snapshot to compare against.
+        if (!loadedFromDatabase) {
+            return;
+        }
+        boolean credentialChanged = !java.util.Objects.equals(loadedPassword, password)
+                || !java.util.Objects.equals(loadedRole, role);
+        if (credentialChanged) {
+            this.tokenVersion = (this.tokenVersion == null ? 0 : this.tokenVersion) + 1;
+            this.loadedPassword = this.password;
+            this.loadedRole = this.role;
+        }
+    }
 
     public Boolean getIsActive() {
         return isActive;

@@ -1,5 +1,7 @@
 package com.hms.controller.hospital;
 
+import com.hms.exception.UnauthorizedException;
+
 import com.hms.dto.LoginRequest;
 import com.hms.dto.LoginResponse;
 import com.hms.security.RequireModule;
@@ -45,7 +47,7 @@ public class HospitalAuthController {
     @GetMapping("/auth/me")
     public ResponseEntity<?> getProfile(java.security.Principal principal) {
         if (principal == null) {
-            return ResponseEntity.status(401).body("Unauthorized");
+            throw new UnauthorizedException("Authentication required");
         }
         LoginResponse response = authService.getProfile(principal.getName());
         return ResponseEntity.ok(response);
@@ -54,7 +56,7 @@ public class HospitalAuthController {
     @PutMapping("/auth/profile")
     public ResponseEntity<?> updateProfile(java.security.Principal principal, @RequestBody com.hms.dto.ProfileUpdateRequest request) {
         if (principal == null) {
-            return ResponseEntity.status(401).body("Unauthorized");
+            throw new UnauthorizedException("Authentication required");
         }
         LoginResponse response = authService.updateProfile(principal.getName(), request);
 
@@ -77,7 +79,7 @@ public class HospitalAuthController {
     @GetMapping({"/hospital/settings/fees", "/clinic/settings/fees", "/pharmacy/settings/fees"})
     @RequireModule("BILLING")
     public ResponseEntity<?> getHospitalFees(java.security.Principal principal) {
-        if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
+        if (principal == null) throw new UnauthorizedException("Authentication required");
         com.hms.dto.HospitalFeesDTO dto = authService.getHospitalFees(principal.getName());
         return ResponseEntity.ok(dto);
     }
@@ -85,7 +87,7 @@ public class HospitalAuthController {
     @PutMapping({"/hospital/settings/fees", "/clinic/settings/fees", "/pharmacy/settings/fees"})
     @RequireModule("BILLING")
     public ResponseEntity<?> updateHospitalFees(java.security.Principal principal, @RequestBody com.hms.dto.HospitalFeesDTO fees) {
-        if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
+        if (principal == null) throw new UnauthorizedException("Authentication required");
         com.hms.dto.HospitalFeesDTO updated = authService.updateHospitalFees(principal.getName(), fees);
         userRepository.findByEmail(principal.getName()).ifPresent(user -> {
             webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
@@ -95,13 +97,13 @@ public class HospitalAuthController {
 
     @GetMapping({"/hospital/settings/operations", "/clinic/settings/operations", "/pharmacy/settings/operations"})
     public ResponseEntity<?> getOperationsSettings(java.security.Principal principal) {
-        if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
+        if (principal == null) throw new UnauthorizedException("Authentication required");
         return ResponseEntity.ok(authService.getHospitalOperationsSettings(principal.getName()));
     }
 
     @PutMapping({"/hospital/settings/operations", "/clinic/settings/operations", "/pharmacy/settings/operations"})
     public ResponseEntity<?> updateOperationsSettings(java.security.Principal principal, @RequestBody com.hms.dto.HospitalSettingDTO dto) {
-        if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
+        if (principal == null) throw new UnauthorizedException("Authentication required");
         com.hms.dto.HospitalSettingDTO updated = authService.updateHospitalOperationsSettings(principal.getName(), dto);
         userRepository.findByEmail(principal.getName()).ifPresent(user -> {
             webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
@@ -115,34 +117,34 @@ public class HospitalAuthController {
      */
     @PutMapping({"/hospital/settings/print-payment", "/clinic/settings/print-payment"})
     public ResponseEntity<?> updatePrintAndPaymentSettings(java.security.Principal principal, @RequestBody com.hms.dto.HospitalSettingDTO dto) {
-        if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
+        if (principal == null) throw new UnauthorizedException("Authentication required");
         return ResponseEntity.ok(authService.updatePrintAndPaymentSettings(principal.getName(), dto));
     }
 
     /** Toggle the pharmacy barcode workflow. Body: { "barcodeEnabled": true|false }. */
     @PutMapping({"/hospital/settings/barcode", "/clinic/settings/barcode", "/pharmacy/settings/barcode"})
     public ResponseEntity<?> updateBarcodeSetting(java.security.Principal principal, @RequestBody java.util.Map<String, Boolean> body) {
-        if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
+        if (principal == null) throw new UnauthorizedException("Authentication required");
         Boolean enabled = body.get("barcodeEnabled");
-        if (enabled == null) return ResponseEntity.badRequest().body("barcodeEnabled is required");
+        if (enabled == null) throw new IllegalArgumentException("barcodeEnabled is required");
         return ResponseEntity.ok(authService.updateBarcodeSetting(principal.getName(), enabled));
     }
 
     /** Toggle the separate Nurse Login page. Body: { "separateNurseLogin": true|false }. */
     @PutMapping({"/hospital/settings/nurse-login", "/clinic/settings/nurse-login", "/pharmacy/settings/nurse-login"})
     public ResponseEntity<?> updateSeparateNurseLoginSetting(java.security.Principal principal, @RequestBody java.util.Map<String, Boolean> body) {
-        if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
+        if (principal == null) throw new UnauthorizedException("Authentication required");
         Boolean enabled = body.get("separateNurseLogin");
-        if (enabled == null) return ResponseEntity.badRequest().body("separateNurseLogin is required");
+        if (enabled == null) throw new IllegalArgumentException("separateNurseLogin is required");
         return ResponseEntity.ok(authService.updateSeparateNurseLoginSetting(principal.getName(), enabled));
     }
 
     /** Toggle the OT Incharge setting. Body: { "otInchargeEnabled": true|false }. */
     @PutMapping({"/hospital/settings/ot-incharge", "/clinic/settings/ot-incharge", "/pharmacy/settings/ot-incharge"})
     public ResponseEntity<?> updateOtInchargeSetting(java.security.Principal principal, @RequestBody java.util.Map<String, Boolean> body) {
-        if (principal == null) return ResponseEntity.status(401).body("Unauthorized");
+        if (principal == null) throw new UnauthorizedException("Authentication required");
         Boolean enabled = body.get("otInchargeEnabled");
-        if (enabled == null) return ResponseEntity.badRequest().body("otInchargeEnabled is required");
+        if (enabled == null) throw new IllegalArgumentException("otInchargeEnabled is required");
         return ResponseEntity.ok(authService.updateOtInchargeSetting(principal.getName(), enabled));
     }
 

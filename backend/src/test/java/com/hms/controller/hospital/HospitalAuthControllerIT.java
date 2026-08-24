@@ -35,6 +35,11 @@ class HospitalAuthControllerIT {
     @MockBean
     UserRepository userRepository;
 
+    // R1b: JwtAuthenticationFilter now revalidates the tenant on every request, so the slice needs
+    // this bean for the context to load. UserRepository above already covers the other half.
+    @MockBean
+    com.hms.repository.HospitalRepository hospitalRepository;
+
     @MockBean
     JwtUtil jwtUtil;
 
