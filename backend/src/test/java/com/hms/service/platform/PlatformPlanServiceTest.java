@@ -68,6 +68,39 @@ class PlatformPlanServiceTest {
     }
 
     @Test
+    void createPlan_rejectsInvalidModulesBeforePersistence() {
+        CreatePlanRequest req = new CreatePlanRequest();
+        req.setName("Invalid");
+        req.setType("HOSPITAL");
+        req.setMonthlyPrice(BigDecimal.ONE);
+        req.setYearlyPrice(BigDecimal.TEN);
+        req.setModules(List.of("NOT_A_REAL_MODULE"));
+
+        assertThatThrownBy(() -> service.createPlan(req))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unknown plan module");
+        verify(planRepository, never()).save(any());
+    }
+
+    @Test
+    void createPlan_addsPharmacyBaseOnlyAfterValidatingTier() {
+        CreatePlanRequest req = new CreatePlanRequest();
+        req.setName("Multi");
+        req.setType("PHARMACY");
+        req.setMonthlyPrice(BigDecimal.ONE);
+        req.setYearlyPrice(BigDecimal.TEN);
+        req.setModules(List.of("MULTI_PHARMACY"));
+        req.setMaxOutlets(3);
+        when(planRepository.save(any(Plan.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Plan result = service.createPlan(req);
+
+        assertThat(result.getModules()).containsExactly("MULTI_PHARMACY", "PHARMACY");
+        assertThat(result.getMultiOutlet()).isTrue();
+        assertThat(result.getMaxOutlets()).isEqualTo(3);
+    }
+
+    @Test
     void deletePlan_throwsWhenActiveSubscribers() {
         Plan plan = new Plan();
         plan.setId(1L);

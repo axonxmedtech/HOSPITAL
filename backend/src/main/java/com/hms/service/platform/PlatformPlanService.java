@@ -3,6 +3,7 @@ package com.hms.service.platform;
 import com.hms.dto.AssignPlanRequest;
 import com.hms.dto.CreatePlanRequest;
 import com.hms.dto.SubscriptionInfoDTO;
+import com.hms.entitlement.EntitlementRegistry;
 import com.hms.entity.*;
 import com.hms.exception.ResourceNotFoundException;
 import com.hms.repository.*;
@@ -42,7 +43,7 @@ public class PlatformPlanService {
         plan.setType(HospitalType.valueOf(req.getType()));
         plan.setMonthlyPrice(req.getMonthlyPrice());
         plan.setYearlyPrice(req.getYearlyPrice());
-        plan.setModules(req.getModules() != null ? req.getModules() : new ArrayList<>());
+        plan.setModules(EntitlementRegistry.normalizePlanModules(plan.getType(), req.getModules()));
         plan.setFeatures(req.getFeatures() != null ? req.getFeatures() : new ArrayList<>());
         plan.setInClinic(Boolean.TRUE.equals(req.getInClinic()));
         applyOutletSettings(plan, req);
@@ -60,7 +61,7 @@ public class PlatformPlanService {
      */
     private void applyOutletSettings(Plan plan, CreatePlanRequest req) {
         boolean isPharmacy = plan.getType() == HospitalType.PHARMACY;
-        boolean multiOutlet = isPharmacy && Boolean.TRUE.equals(req.getMultiOutlet());
+        boolean multiOutlet = isPharmacy && plan.getModules().contains(EntitlementRegistry.TIER_MULTI_PHARMACY);
         plan.setMultiOutlet(multiOutlet);
         plan.setMaxOutlets(multiOutlet ? req.getMaxOutlets() : null);
     }
@@ -91,7 +92,7 @@ public class PlatformPlanService {
 
         if (req.getModules() != null) {
             plan.getModules().clear();
-            plan.getModules().addAll(req.getModules());
+            plan.getModules().addAll(EntitlementRegistry.normalizePlanModules(plan.getType(), req.getModules()));
         }
         if (req.getFeatures() != null) {
             plan.getFeatures().clear();

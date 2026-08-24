@@ -3,9 +3,11 @@ package com.hms.entitlement;
 import com.hms.entity.HospitalType;
 
 import java.util.Collection;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -102,7 +104,7 @@ public final class EntitlementRegistry {
 
     private static final Map<HospitalType, Set<String>> SELLABLE = Map.of(
             HospitalType.HOSPITAL, Set.of(OPD, IPD, PHARMACY, BILLING, APPOINTMENTS,
-                    MEDICAL_INVENTORY, HOSPITAL_INVENTORY, REPORTS, OT, PATHOLOGY, NURSING),
+                    MEDICAL_INVENTORY, HOSPITAL_INVENTORY, REPORTS, OT, NURSING),
             HospitalType.CLINIC, Set.of(OPD, PHARMACY, BILLING, APPOINTMENTS,
                     MEDICAL_INVENTORY, REPORTS),
             // PHARMACY plans carry a tier plus the PHARMACY base module, which
@@ -117,15 +119,37 @@ public final class EntitlementRegistry {
     private static final Map<String, Set<String>> IMPLIED_BY = new LinkedHashMap<>();
     static {
         IMPLIED_BY.put(IPD, Set.of(WARDS, BEDS, CLINICAL_RECORDS));
-        IMPLIED_BY.put(TIER_SINGLE_PHARMACIST_ADMIN, Set.of(PHARMACY_BRANCH));
-        IMPLIED_BY.put(TIER_SINGLE_PHARMACY, Set.of(PHARMACY_BRANCH));
         IMPLIED_BY.put(TIER_MULTI_PHARMACY, Set.of(PHARMACY_BRANCH));
     }
 
     /** Every key the registry knows, sellable or implied. */
     public static final Set<String> ALL_MODULES = Set.of(
             CORE, OPD, IPD, WARDS, BEDS, CLINICAL_RECORDS, APPOINTMENTS, BILLING, PHARMACY,
-            PHARMACY_BRANCH, MEDICAL_INVENTORY, HOSPITAL_INVENTORY, REPORTS, NURSING, OT, PATHOLOGY);
+            PHARMACY_BRANCH, MEDICAL_INVENTORY, HOSPITAL_INVENTORY, REPORTS, NURSING, OT, PATHOLOGY,
+            TIER_SINGLE_PHARMACIST_ADMIN, TIER_SINGLE_PHARMACY, TIER_MULTI_PHARMACY, IN_CLINIC);
+
+    private static final Set<String> INTERNAL_KEYS = Set.of(
+            CORE, IN_CLINIC, WARDS, BEDS, CLINICAL_RECORDS, PHARMACY_BRANCH);
+
+    private static final Map<String, String> LABELS = Map.ofEntries(
+            Map.entry(OPD, "OPD"),
+            Map.entry(IPD, "IPD"),
+            Map.entry(PHARMACY, "Pharmacy"),
+            Map.entry(BILLING, "Billing"),
+            Map.entry(APPOINTMENTS, "Appointments"),
+            Map.entry(MEDICAL_INVENTORY, "Medical Inventory"),
+            Map.entry(HOSPITAL_INVENTORY, "Hospital Inventory"),
+            Map.entry(REPORTS, "Reports & Analytics"),
+            Map.entry(NURSING, "Nursing"),
+            Map.entry(OT, "Operation Theatre"),
+            Map.entry(TIER_SINGLE_PHARMACIST_ADMIN, "Single Pharmacist Admin"),
+            Map.entry(TIER_SINGLE_PHARMACY, "Single Pharmacy"),
+            Map.entry(TIER_MULTI_PHARMACY, "Multi Pharmacy"));
+
+    private static final List<String> CATALOG_ORDER = List.of(
+            OPD, IPD, PHARMACY, BILLING, APPOINTMENTS, MEDICAL_INVENTORY, HOSPITAL_INVENTORY,
+            REPORTS, OT, NURSING, TIER_SINGLE_PHARMACIST_ADMIN, TIER_SINGLE_PHARMACY,
+            TIER_MULTI_PHARMACY);
 
     // ── queries ───────────────────────────────────────────────────────────────
 
@@ -136,6 +160,25 @@ public final class EntitlementRegistry {
 
     public static Set<String> sellableFor(HospitalType type) {
         return new LinkedHashSet<>(SELLABLE.getOrDefault(type, Set.of()));
+    }
+
+    /** Entries a Super Admin may select when creating or editing a plan. */
+    public static List<Capability> catalogFor(HospitalType type) {
+        List<Capability> catalog = new ArrayList<>();
+        for (String key : CATALOG_ORDER) {
+            if (!isSellable(type, key)) {
+                continue;
+            }
+            // PHARMACY is stored automatically for pharmacy plans; operators choose a tier instead.
+            if (type == HospitalType.PHARMACY && PHARMACY.equals(key)) {
+                continue;
+            }
+            catalog.add(new Capability(key, LABELS.getOrDefault(key, key), PHARMACY_TIERS.contains(key)));
+        }
+        return catalog;
+    }
+
+    public record Capability(String key, String label, boolean pharmacyTier) {
     }
 
     /**
@@ -159,27 +202,43 @@ public final class EntitlementRegistry {
     }
 
     /**
-     * Reject a plan whose modules are meaningless for its type — a CLINIC plan selling OT, or a
-     * HOSPITAL plan carrying a pharmacy tier.
-     *
-     * <p>Deliberately permissive about two things: IN_CLINIC (a toggle, not a module) and anything
-     * a facility type is genuinely sold. Tightening beyond that would make existing plans
-     * uneditable, which is a platform regression rather than a fix.
+     * Normalize and validate modules supplied by a Super Admin. Internal and implied capabilities
+     * are never persisted from operator input.
      */
-    public static void validatePlanModules(HospitalType type, Collection<String> modules) {
-        if (type == null || modules == null) {
-            return;
+    public static List<String> normalizePlanModules(HospitalType type, Collection<String> modules) {
+        if (type == null) {
+            throw new IllegalArgumentException("Plan type is required");
         }
-        List<String> rejected = modules.stream()
-                .filter(m -> m != null && !m.isBlank())
-                .filter(m -> !IN_CLINIC.equals(m))
-                .filter(m -> !isSellable(type, m))
-                .distinct()
-                .toList();
-        if (!rejected.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "Module(s) " + String.join(", ", rejected) + " cannot be sold to a "
-                            + type + " plan");
+        if (modules == null) {
+            return new ArrayList<>();
         }
+
+        List<String> normalized = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (String raw : modules) {
+            if (raw == null || raw.isBlank()) {
+                throw new IllegalArgumentException("Plan module keys cannot be blank");
+            }
+            String key = raw.trim().toUpperCase(Locale.ROOT);
+            if (!ALL_MODULES.contains(key)) {
+                throw new IllegalArgumentException("Unknown plan module: " + key);
+            }
+            if (INTERNAL_KEYS.contains(key)) {
+                throw new IllegalArgumentException("Plan module cannot be selected directly: " + key);
+            }
+            if (!isSellable(type, key)) {
+                throw new IllegalArgumentException("Module " + key + " cannot be sold to a " + type + " plan");
+            }
+            if (!seen.add(key)) {
+                throw new IllegalArgumentException("Duplicate plan module: " + key);
+            }
+            normalized.add(key);
+        }
+
+        long pharmacyTierCount = normalized.stream().filter(PHARMACY_TIERS::contains).count();
+        if (pharmacyTierCount > 1) {
+            throw new IllegalArgumentException("A pharmacy plan may select only one pharmacy tier");
+        }
+        return normalized;
     }
 }

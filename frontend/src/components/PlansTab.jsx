@@ -3,39 +3,6 @@ import { useToast } from '../context/ToastContext';
 import platformService from '../services/platformService';
 import { extractApiError } from '../utils/apiError';
 
-// NURSING is HOSPITAL-only: it lives in AVAILABLE_MODULES (used by MODULES_BY_TYPE.HOSPITAL)
-// and is deliberately absent from the CLINIC and PHARMACY module lists below.
-const AVAILABLE_MODULES = [
-  'OPD',
-  'IPD',
-  'PHARMACY',
-  'BILLING',
-  'APPOINTMENTS',
-  'MEDICAL_INVENTORY',
-  'HOSPITAL_INVENTORY',
-  'REPORTS',
-  'OT',
-  'PATHOLOGY',
-  'NURSING',
-];
-
-// Pharmacy plans are defined by a single mutually-exclusive tier rather than the
-// generic hospital module list. These are the only options offered for PHARMACY.
-const PHARMACY_TIERS = [
-  ['SINGLE_PHARMACIST_ADMIN', 'Single Pharmacist Admin'],
-  ['SINGLE_PHARMACY', 'Single Pharmacy'],
-  ['MULTI_PHARMACY', 'Multi Pharmacy'],
-];
-const PHARMACY_TIER_KEYS = PHARMACY_TIERS.map((t) => t[0]);
-
-// Modules selectable per entity type. Pharmacy uses the tier keys above.
-const MODULES_BY_TYPE = {
-  HOSPITAL: AVAILABLE_MODULES,
-  CLINIC: ['OPD', 'PHARMACY', 'BILLING', 'APPOINTMENTS', 'MEDICAL_INVENTORY', 'REPORTS'],
-  PHARMACY: PHARMACY_TIER_KEYS,
-};
-const modulesForType = (type) => MODULES_BY_TYPE[type] || AVAILABLE_MODULES;
-
 const emptyForm = {
   name: '',
   type: 'HOSPITAL',
@@ -57,6 +24,8 @@ export default function PlansTab({ hospitalType = null }) {
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [capabilities, setCapabilities] = useState([]);
+  const [catalogError, setCatalogError] = useState('');
 
   // The tab is always opened from a tenant-type group (Hospital / Clinic /
   // Pharmacy), so the plan type comes from the tab — never from the user.
@@ -64,6 +33,7 @@ export default function PlansTab({ hospitalType = null }) {
 
   useEffect(() => {
     loadPlans();
+    loadCapabilities();
   }, [hospitalType]);
 
   const loadPlans = async () => {
@@ -77,6 +47,21 @@ export default function PlansTab({ hospitalType = null }) {
       setLoading(false);
     }
   };
+
+  const loadCapabilities = async () => {
+    setCatalogError('');
+    try {
+      setCapabilities(await platformService.getPlanCapabilities(planType));
+    } catch {
+      setCapabilities([]);
+      setCatalogError('Plan capabilities are unavailable. Refresh and try again.');
+    }
+  };
+
+  const selectableKeys = new Set(capabilities.map((capability) => capability.key));
+  const pharmacyTiers = capabilities.filter((capability) => capability.pharmacyTier);
+  const pharmacyTierKeys = pharmacyTiers.map((capability) => capability.key);
+  const standardModules = capabilities.filter((capability) => !capability.pharmacyTier);
 
   const openCreate = () => {
     setEditingPlan(null);
@@ -92,7 +77,7 @@ export default function PlansTab({ hospitalType = null }) {
       type: plan.type,
       monthlyPrice: plan.monthlyPrice,
       yearlyPrice: plan.yearlyPrice,
-      modules: plan.modules || [],
+      modules: (plan.modules || []).filter((module) => selectableKeys.has(module)),
       features: (plan.features || []).join('\n'),
       inClinic: plan.inClinic || false,
       multiOutlet: plan.multiOutlet || false,
@@ -129,7 +114,7 @@ export default function PlansTab({ hospitalType = null }) {
       type: form.type,
       monthlyPrice: parseFloat(form.monthlyPrice),
       yearlyPrice: parseFloat(form.yearlyPrice),
-      modules: form.modules,
+      modules: form.modules.filter((module) => selectableKeys.has(module)),
       features: form.features
         .split('\n')
         .map((f) => f.trim())
@@ -194,10 +179,16 @@ export default function PlansTab({ hospitalType = null }) {
           {error}
         </div>
       )}
+      {catalogError && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded">
+          {catalogError}
+        </div>
+      )}
 
       <div className="flex items-center justify-end mb-4">
         <button
           onClick={openCreate}
+          disabled={Boolean(catalogError)}
           className="px-4 py-2 bg-gray-900 text-white text-sm font-medium hover:bg-gray-700 transition-colors"
         >
           + Create Plan
@@ -334,7 +325,7 @@ export default function PlansTab({ hospitalType = null }) {
                     Pharmacy Plan Type
                   </span>
                   <div className="flex flex-col gap-2">
-                    {PHARMACY_TIERS.map(([key, label]) => (
+                    {pharmacyTiers.map(({ key, label }) => (
                       <label key={key} className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="radio"
@@ -345,7 +336,7 @@ export default function PlansTab({ hospitalType = null }) {
                               // tiers are mutually exclusive; drop any other tier, keep non-tier modules
                               ...p,
                               modules: [
-                                ...p.modules.filter((m) => !PHARMACY_TIER_KEYS.includes(m)),
+                                ...p.modules.filter((m) => !pharmacyTierKeys.includes(m)),
                                 key,
                               ],
                               maxOutlets: key === 'MULTI_PHARMACY' ? p.maxOutlets : '',
@@ -364,7 +355,7 @@ export default function PlansTab({ hospitalType = null }) {
                     Enabled Modules
                   </span>
                   <div className="flex flex-wrap gap-2">
-                    {modulesForType(form.type).map((mod) => (
+                    {standardModules.map(({ key: mod, label }) => (
                       <button
                         type="button"
                         key={mod}
@@ -375,7 +366,7 @@ export default function PlansTab({ hospitalType = null }) {
                             : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
                         }`}
                       >
-                        {mod}
+                        {label}
                       </button>
                     ))}
                   </div>
