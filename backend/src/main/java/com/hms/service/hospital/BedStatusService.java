@@ -35,6 +35,35 @@ public class BedStatusService {
     @Autowired private AuditLogService auditLogService;
     @Autowired private com.hms.service.RealtimeNotifier notifier;
 
+    /**
+     * E1 (C3) — locks one bed for the rest of the caller's transaction and returns it.
+     *
+     * <p>Claiming a bed is check-then-act: {@code admitFromOpd} and {@code changeBed} both read
+     * the status and write it later, so two callers could each see a free bed and both take it.
+     * Bed availability cannot be expressed as a unique index, so the row is locked while the
+     * caller re-checks and claims — the same reasoning, and the same mechanism, as
+     * {@code OtSchedulingService.lockRoom} uses for a theatre.
+     *
+     * <p>The caller re-checks the status itself, because "claimable" differs by path: an
+     * admission needs an AVAILABLE bed, while a transfer may move onto a bed that is merely not
+     * occupied. Both must do that re-check AFTER this call and throw
+     * {@link com.hms.exception.ConflictException} when it fails.
+     *
+     * <p>{@code MANDATORY} is deliberate: a PESSIMISTIC_WRITE lock is released as soon as its
+     * transaction ends, so calling this without one would hold the lock for a single statement
+     * and protect nothing — a lock that reviews as correct and prevents nothing. This makes that
+     * mistake impossible instead of merely documented.
+     *
+     * @throws ResourceNotFoundException if the bed does not exist, or belongs to another tenant —
+     *         indistinguishable from missing, as everywhere else (C4).
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public Bed lockForClaim(Long bedId) {
+        Long hospitalId = safeHospitalId();
+        return bedRepository.findByBedIdAndHospitalIdForUpdate(bedId, hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Bed not found"));
+    }
+
     @Transactional
     public Bed change(Long bedId, String newStatus, String remarks) {
         Long hospitalId = safeHospitalId();

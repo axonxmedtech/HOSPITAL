@@ -153,7 +153,10 @@ class IcuBoardTenancyTest {
         long bid = bedRepository.save(b).getBedId();
 
         IpdAdmission a = new IpdAdmission();
-        a.setIpdNumber("IPD-" + uniq());
+        // NOT "IPD-<nanotime>": findMaxIpdSequence() reads MAX(substring) over every row
+        // matching 'IPD-%' and returns an Integer, so a 19-digit fixture number overflows
+        // and poisons the next real admission for the whole database with a 500.
+        a.setIpdNumber("FIXT-" + uniq());
         a.setHospitalId(hid);
         a.setPatientId(pid);
         a.setDoctorId(did);

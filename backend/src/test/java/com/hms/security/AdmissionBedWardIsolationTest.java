@@ -6,7 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.*;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ActiveProfiles("test")
 class AdmissionBedWardIsolationTest {
 
-    @Autowired TestRestTemplate rest;
+    @LocalServerPort int port;
     @Autowired JwtUtil jwtUtil;
     @Autowired HospitalRepository hospitalRepository;
     @Autowired PatientRepository patientRepository;
@@ -43,6 +43,7 @@ class AdmissionBedWardIsolationTest {
     @Autowired OpdRepository opdRepository;
     @Autowired IpdAdmissionRepository ipdAdmissionRepository;
     @Autowired BillingRepository billingRepository;
+    @Autowired UserRepository userRepository;
 
     private static final List<String> MODULES = List.of("OPD", "IPD", "PHARMACY", "BILLING");
 
@@ -102,16 +103,57 @@ class AdmissionBedWardIsolationTest {
         long[] b = seedJourney(hidB, "bravo", "admin@bravo.com");
         bOpdId = b[0]; bWardId = b[1]; bBedId = b[2];
 
-        tokenB = jwtUtil.generateToken(2L, "admin@bravo.com", "HOSPITAL_ADMIN", hidB, MODULES, null, "HOSPITAL", null);
+        // A real, active User row. Since 233b66e, JwtAuthenticationFilter revalidates every
+        // request against userRepository.findActiveTokenVersion(userId): a token minted for an
+        // id that has no user row is denied with 401 before it reaches the controller, so the
+        // refusal this class exists to assert was never reached.
+        User admin = new User();
+        admin.setEmail("admin-bravo-" + uniq() + "@x.test");
+        admin.setPassword("{noop}x");
+        admin.setName("Admin bravo");
+        admin.setRole("HOSPITAL_ADMIN");
+        admin.setHospitalId(hidB);
+        admin.setIsActive(true);
+        admin = userRepository.save(admin);
+
+        tokenB = jwtUtil.generateToken(admin.getId(), admin.getEmail(), admin.getRole(), hidB,
+                MODULES, null, "HOSPITAL", null, admin.getTokenVersion());
     }
 
+    /**
+     * Transport only -- the assertions, endpoint and tenant semantics below are unchanged.
+     *
+     * <p>TestRestTemplate cannot be used here. Its SimpleClientHttpRequestFactory streams the
+     * request body, and 233b66e made the unauthenticated path answer 401 with a body
+     * (SecurityConfig -> SecurityErrorResponder). HttpURLConnection reacts to the 401 by trying
+     * to replay the request, which a streamed POST cannot do, and throws "cannot retry due to
+     * server authentication, in streaming mode" before any status is observed -- so every case
+     * in this class errored instead of asserting. Same fix, same reason, as
+     * CrossTenantIsolationTest.
+     *
+     * <p>java.net.http.HttpClient does not retry on 401, so the status is returned as sent.
+     */
     private ResponseEntity<String> admit(Long opd, Long ward, Long bed) {
-        HttpHeaders h = new HttpHeaders();
-        h.setBearerAuth(tokenB);
-        h.setContentType(MediaType.APPLICATION_JSON);
         String body = "{\"opdId\":" + opd + ",\"wardId\":" + ward + ",\"bedId\":" + bed
                 + ",\"admissionType\":\"ELECTIVE\",\"primaryDiagnosis\":\"obs\"}";
-        return rest.exchange("/hospital/ipd/admit", HttpMethod.POST, new HttpEntity<>(body, h), String.class);
+        try {
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create("http://localhost:" + port + "/hospital/ipd/admit"))
+                    .header("Authorization", "Bearer " + tokenB)
+                    .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+
+            java.net.http.HttpResponse<String> res = java.net.http.HttpClient.newHttpClient()
+                    .send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+
+            return ResponseEntity.status(res.statusCode()).body(res.body());
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("HTTP call failed: POST /hospital/ipd/admit", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted: POST /hospital/ipd/admit", e);
+        }
     }
 
     /** Snapshot of everything that must be untouched by a refused admission. */

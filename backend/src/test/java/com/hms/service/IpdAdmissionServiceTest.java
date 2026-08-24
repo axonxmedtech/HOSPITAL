@@ -60,6 +60,8 @@ class IpdAdmissionServiceTest {
     @Mock HospitalWebSocketHandler webSocketHandler;
     @Mock com.hms.service.hospital.PatientAssignmentService patientAssignmentService;
     @Mock com.hms.service.hospital.BedStatusService bedStatusService;
+    /** E1 (D-8): admitFromOpd pushes through the after-commit notifier now, not the raw socket. */
+    @Mock com.hms.service.RealtimeNotifier notifier;
 
     @InjectMocks
     IpdAdmissionService service;
@@ -77,11 +79,13 @@ class IpdAdmissionServiceTest {
         bed.setBedId(2L);
         bed.setStatus("occupied");
 
-        when(bedRepository.findByBedIdAndHospitalId(2L, 1L)).thenReturn(Optional.of(bed));
+        // E1 (C3): the bed now arrives through the locking seam, so the availability check
+        // happens while the row is held rather than several statements before the claim.
+        when(bedStatusService.lockForClaim(2L)).thenReturn(bed);
 
         assertThatThrownBy(() -> service.admitFromOpd(1L, 1L, 2L, "ELECTIVE", "Fever"))
-                .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Bed is not available");
+                .isInstanceOf(com.hms.exception.ConflictException.class)
+                .hasMessageContaining("no longer available");
     }
 
     @Test
@@ -101,7 +105,7 @@ class IpdAdmissionServiceTest {
         bed.setBedId(2L);
         bed.setStatus("available");
 
-        when(bedRepository.findByBedIdAndHospitalId(2L, 1L)).thenReturn(Optional.of(bed));
+        when(bedStatusService.lockForClaim(2L)).thenReturn(bed);
         when(ipdAdmissionRepository.findMaxIpdSequence()).thenReturn(0);
 
         Bed occupiedBed = new Bed();

@@ -1,6 +1,7 @@
 package com.hms.service.hospital;
 
 import com.hms.entity.Bed;
+import com.hms.entity.BedStatus;
 import com.hms.entity.Billing;
 import com.hms.entity.IpdAdmission;
 import com.hms.entity.Opd;
@@ -116,7 +117,9 @@ public class IpdAdmissionService {
     @Autowired
     private BedStatusService bedStatusService;
 
-    @Transactional
+    @Autowired
+    private com.hms.service.RealtimeNotifier notifier;
+
     /**
      * Whether this hospital's plan includes NURSING — read from the hospital row, not from the
      * caller's JWT. The token's module claim is frozen at login, so a plan change would not reach
@@ -130,6 +133,22 @@ public class IpdAdmissionService {
         return modules != null && modules.contains("NURSING");
     }
 
+    /**
+     * Admits an OPD case to a bed. E1 (C1): THIS is the transaction boundary.
+     *
+     * <p>The annotation used to sit above the javadoc of the private {@code hasNursingModule()}
+     * below, so it bound to that method — and Spring's proxy ignores {@code @Transactional} on a
+     * private method anyway, leaving this method with no transaction at all. Every write below
+     * therefore committed on its own: an admission row could survive a failed bed claim, and
+     * {@code BedStatusService} (REQUIRED) opened and committed a separate transaction for the
+     * claim itself.
+     *
+     * <p>Everything inside is CRITICAL DOMAIN STATE and commits together or not at all: the
+     * admission row, the IPD number it consumes, the bed claim and its back-link, the bed-history
+     * span, the OPD close, and the bill. The side effects after it — nurse assignment, audit,
+     * realtime — stay best-effort by design and can never roll back a completed admission.
+     */
+    @Transactional
     public IpdAdmission admitFromOpd(Long opdId, Long wardId, Long bedId, String admissionType, String primaryDiagnosis) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found in context");
@@ -137,11 +156,14 @@ public class IpdAdmissionService {
         Opd opd = opdRepository.findByIdAndHospitalIdWithPatientAndDoctor(opdId, hospitalId)
                 .orElseThrow(() -> new ResourceNotFoundException("OPD not found"));
 
-        // Validate bed availability
-        Bed bed = bedRepository.findByBedIdAndHospitalId(bedId, hospitalId)
-                .orElseThrow(() -> new ResourceNotFoundException("Bed not found"));
-        if (!bed.getStatus().equalsIgnoreCase("available")) {
-            throw new IllegalArgumentException("Bed is not available");
+        // E1 (C3): lock the bed, THEN check it. The old order read the status and claimed it
+        // several statements later with nothing in between, so two admissions could both see the
+        // same free bed and both take it — the second silently overwriting the first's claim.
+        // The lock is held to commit, so from here on this bed is ours or nobody's.
+        Bed bed = bedStatusService.lockForClaim(bedId);
+        if (!BedStatus.AVAILABLE.equalsIgnoreCase(bed.getStatus())) {
+            throw new com.hms.exception.ConflictException(
+                    "This bed is no longer available. Please pick another bed.");
         }
 
         // Nursing Mgmt: a ward must have a Nurse Incharge before it can receive admissions.
@@ -157,7 +179,12 @@ public class IpdAdmissionService {
 
         // Create IPD admission with sequential IPD-1, IPD-2, IPD-3...
         IpdAdmission ipd = new IpdAdmission();
-        int nextIpd = (ipdAdmissionRepository.findMaxIpdSequence() != null ? ipdAdmissionRepository.findMaxIpdSequence() : 0) + 1;
+        // E1 (C2): read the sequence ONCE. It used to be queried twice for one decision, which
+        // widened the window in which another admission could take the number. The unique index on
+        // ipd_number stays the arbiter — a lost race surfaces as a violation the entry point above
+        // retries in a fresh transaction, rather than as an opaque 500.
+        Integer maxSequence = ipdAdmissionRepository.findMaxIpdSequence();
+        int nextIpd = (maxSequence != null ? maxSequence : 0) + 1;
         ipd.setIpdNumber("IPD-" + nextIpd);
         ipd.setPatientId(opd.getPatient().getId());
         ipd.setDoctorId(opd.getDoctor() != null ? opd.getDoctor().getId() : null);
@@ -173,17 +200,15 @@ public class IpdAdmissionService {
 
         IpdAdmission saved = ipdAdmissionRepository.save(ipd);
 
-        // Record initial bed assignment in IpdBedHistory
-        try {
-            com.hms.entity.IpdBedHistory initialHist = new com.hms.entity.IpdBedHistory();
-            initialHist.setIpdAdmissionId(saved.getId());
-            initialHist.setWardId(wardId);
-            initialHist.setBedId(bedId);
-            initialHist.setAssignedAt(LocalDateTime.now());
-            ipdBedHistoryRepository.save(initialHist);
-        } catch (Exception e) {
-            logger.warn("Failed to save initial bed history", e);
-        }
+        // Record initial bed assignment in IpdBedHistory. E1 (C1/D-4): critical, not best-effort.
+        // The bed span is the record the ICU board and length-of-stay reporting read as fact, so
+        // an admission that silently lost it was an admission with no verifiable location.
+        com.hms.entity.IpdBedHistory initialHist = new com.hms.entity.IpdBedHistory();
+        initialHist.setIpdAdmissionId(saved.getId());
+        initialHist.setWardId(wardId);
+        initialHist.setBedId(bedId);
+        initialHist.setAssignedAt(LocalDateTime.now());
+        ipdBedHistoryRepository.save(initialHist);
 
         // Mark bed occupied (Nursing Mgmt Phase C2: audited bed status change)
         Bed occupiedBed = bedStatusService.change(bed.getBedId(), com.hms.entity.BedStatus.OCCUPIED, "IPD admission");
@@ -280,11 +305,11 @@ public class IpdAdmissionService {
             logger.warn("Failed to create audit log for IPD admission", e);
         }
 
-        try {
-            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
-        } catch (Exception e) {
-            logger.warn("Failed to broadcast WebSocket refresh data from admitFromOpd", e);
-        }
+        // E1 (D-8): the push now waits for the commit. Broadcasting from inside the transaction
+        // let a client re-fetch and read the pre-admission rows, caching exactly the staleness the
+        // push exists to prevent. RealtimeNotifier already defers to afterCommit and swallows its
+        // own failures, so the admission can never be rolled back by a socket problem.
+        notifier.refresh(hospitalId);
 
         return saved;
     }
@@ -1227,9 +1252,19 @@ public class IpdAdmissionService {
             throw new IllegalArgumentException("Bed change allowed only for active admissions");
         }
 
-        Bed newBed = bedRepository.findById(newBedId).orElseThrow(() -> new ResourceNotFoundException("New bed not found"));
-        if ("occupied".equalsIgnoreCase(newBed.getStatus()) && !newBedId.equals(ipd.getBedId())) {
-             throw new IllegalArgumentException("Requested bed is already occupied");
+        // E1 (C4): the target bed id comes from the client. It used to be resolved with a bare
+        // findById, so another hospital's bed was loaded and inspected: an occupied foreign bed
+        // answered "already occupied" (400) and an available one fell through to the tenant check
+        // inside BedStatusService (404) — telling the caller which foreign ids exist and what
+        // state they are in. It also meant the ward, and therefore the price used by the upgrade
+        // billing below, could be read from another tenant.
+        //
+        // E1 (C3): the same call now takes the row lock, so the bed cannot be claimed by a
+        // concurrent transfer or admission between this check and the claim a few lines down.
+        Bed newBed = bedStatusService.lockForClaim(newBedId);
+        if (BedStatus.OCCUPIED.equalsIgnoreCase(newBed.getStatus()) && !newBedId.equals(ipd.getBedId())) {
+             throw new com.hms.exception.ConflictException(
+                     "That bed has just been taken. Please pick another bed.");
         }
 
         Long oldBedId = ipd.getBedId();
