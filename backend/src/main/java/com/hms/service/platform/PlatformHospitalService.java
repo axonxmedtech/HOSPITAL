@@ -538,6 +538,8 @@ public class PlatformHospitalService {
         Long id = hospital.getId();
         String name = hospital.getName();
 
+        purgeTenantConfiguration(id);
+
         // Billing
         jdbcTemplate.update("DELETE FROM billing_payments WHERE billing_id IN (SELECT id FROM billing WHERE hospital_id = ?)", id);
         jdbcTemplate.update("DELETE FROM billing_medicines WHERE billing_id IN (SELECT id FROM billing WHERE hospital_id = ?)", id);
@@ -622,6 +624,35 @@ public class PlatformHospitalService {
         jdbcTemplate.update("DELETE FROM hospitals WHERE id = ?", id);
 
         logAction("HOSPITAL_DELETED", "Permanently deleted hospital: " + name + " (publicId: " + publicId + ")");
+    }
+
+    /**
+     * Removes the facility's configuration, presets, scheduling and permissions.
+     *
+     * <p>These tables carried a hospital_id and were never in the delete path, so every deleted
+     * facility left them behind. The statements are generated from {@link TenantTables}, in its
+     * declared child-before-parent order, rather than written out here: the registry is what the
+     * fence test checks against, and a list that lives in two places drifts.
+     *
+     * <p>Runs before anything else, because role_permissions is first in that order. If a facility
+     * id is ever reused -- the AUTO_INCREMENT counter resets on TRUNCATE, on an environment
+     * rebuild, and on restart before MySQL 8.0 -- a surviving permission matrix would be picked up
+     * by whoever inherits the id, and OtPermissionService reads "no rows" as "not configured",
+     * so it would not fall back to the safe defaults.
+     *
+     * <p>Only PURGE_SAFE tables. Clinical, financial, HR and audit history is untouched by this
+     * method; what the rest of deleteHospital does with those is unchanged.
+     *
+     * <p>Table names and predicates are compile-time constants from the registry, never request
+     * input, so string-building the statement introduces no injection surface. The hospital id is
+     * still bound as a parameter.
+     */
+    private void purgeTenantConfiguration(Long hospitalId) {
+        for (TenantTables.TenantTable table : TenantTables.purgeSafeInOrder()) {
+            Object[] args = new Object[table.binds()];
+            java.util.Arrays.fill(args, hospitalId);
+            jdbcTemplate.update("DELETE FROM " + table.table() + " WHERE " + table.where(), args);
+        }
     }
 
     /**
