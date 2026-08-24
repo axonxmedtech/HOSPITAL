@@ -67,6 +67,16 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handle an authenticated caller's explicit permission refusal without turning an expected
+     * policy decision into the catch-all 500 response.
+     */
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ApiResponse<Void>> handleForbidden(ForbiddenException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    /**
      * Handle IllegalArgumentException — 400 Bad Request
      */
     @ExceptionHandler(IllegalArgumentException.class)
