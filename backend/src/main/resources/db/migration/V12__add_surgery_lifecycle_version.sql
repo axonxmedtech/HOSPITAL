@@ -1,4 +1,3 @@
--- Optimistic revision supplied by schedule/reschedule clients to reject stale commands.
--- MySQL 8 accepts IF NOT EXISTS, which also keeps a fresh schema-full bootstrap compatible.
+-- Flyway applies this version exactly once; MySQL 8 does not support ADD COLUMN IF NOT EXISTS.
 ALTER TABLE surgeries
-    ADD COLUMN IF NOT EXISTS lifecycle_version BIGINT NOT NULL DEFAULT 0;
+    ADD COLUMN lifecycle_version BIGINT NOT NULL DEFAULT 0;
