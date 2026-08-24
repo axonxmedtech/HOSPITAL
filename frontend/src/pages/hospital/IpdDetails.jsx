@@ -251,7 +251,7 @@ const IpdDetails = () => {
     route: 'ORAL',
     dose: '',
     frequency: '',
-    durationDays: 0,
+    durationDays: '',
     startDate: todayStr(),
     saving: false,
   });
@@ -459,7 +459,7 @@ const IpdDetails = () => {
       route: 'ORAL',
       dose: '',
       frequency: '',
-      durationDays: 0,
+      durationDays: '',
       startDate: todayStr(),
       saving: false,
     });
@@ -1042,7 +1042,7 @@ const IpdDetails = () => {
                                   onChange={(e) =>
                                     setMedicineModal((prev) => ({
                                       ...prev,
-                                      durationDays: parseInt(e.target.value || '0'),
+                                      durationDays: e.target.value,
                                     }))
                                   }
                                   className="w-full border p-2 rounded text-sm"
@@ -1093,8 +1093,8 @@ const IpdDetails = () => {
                                     );
                                   }
                                   if (
-                                    !medicineModal.durationDays ||
-                                    medicineModal.durationDays <= 0
+                                    !Number(medicineModal.durationDays) ||
+                                    Number(medicineModal.durationDays) <= 0
                                   ) {
                                     return toastError('Duration must be at least 1 day');
                                   }
@@ -1108,7 +1108,7 @@ const IpdDetails = () => {
                                       route: medicineModal.route,
                                       dose: medicineModal.dose,
                                       frequency: medicineModal.frequency,
-                                      durationDays: medicineModal.durationDays,
+                                      durationDays: Number(medicineModal.durationDays),
                                       startDate: medicineModal.startDate || null,
                                     };
                                     await hospitalService.addIpdPrescription(id, payload);

@@ -7512,38 +7512,48 @@ const AddModal = ({
       `Are you sure you want to ${action.toLowerCase()} this ${entity.toLowerCase()}?`,
       async () => {
         try {
+          const requestData = {
+            ...formData,
+            ...(type === 'appointments'
+              ? {
+                  patientId: formData.patientId === '' ? null : Number(formData.patientId),
+                  doctorId: formData.doctorId === '' ? null : Number(formData.doctorId),
+                }
+              : {}),
+            ...(type === 'billing' ? { amount: Number(formData.amount) } : {}),
+          };
           if (type === 'patients') {
             if (isEdit)
-              await hospitalService.updatePatient(initialData.publicId || initialData.id, formData);
-            else await hospitalService.addPatient(formData);
+              await hospitalService.updatePatient(initialData.publicId || initialData.id, requestData);
+            else await hospitalService.addPatient(requestData);
           } else if (type === 'doctors') {
             if (isEdit)
-              await hospitalService.updateDoctor(initialData.publicId || initialData.id, formData);
-            else await hospitalService.addDoctor(formData);
+              await hospitalService.updateDoctor(initialData.publicId || initialData.id, requestData);
+            else await hospitalService.addDoctor(requestData);
           } else if (type === 'receptionists') {
             if (isEdit)
               await hospitalService.updateReceptionist(
                 initialData.publicId || initialData.id,
-                formData
+                requestData
               );
-            else await hospitalService.addReceptionist(formData);
+            else await hospitalService.addReceptionist(requestData);
           } else if (type === 'pharmacists') {
             if (isEdit)
               await hospitalService.updatePharmacist(
                 initialData.publicId || initialData.id,
-                formData
+                requestData
               );
-            else await hospitalService.addPharmacist(formData);
+            else await hospitalService.addPharmacist(requestData);
           } else if (type === 'ot-incharges') {
             if (isEdit)
               await hospitalService.updateOtIncharge(
                 initialData.publicId || initialData.id,
-                formData
+                requestData
               );
-            else await hospitalService.addOtIncharge(formData);
+            else await hospitalService.addOtIncharge(requestData);
           } else if (type === 'nurses') {
             if (isEdit) {
-              await hospitalService.updateNurse(initialData.publicId || initialData.id, formData);
+              await hospitalService.updateNurse(initialData.publicId || initialData.id, requestData);
               // Reconcile the incharge's managed wards (Ward.inchargeNurseId).
               if (formData.isIncharge && Array.isArray(formData.inchargeWardIds)) {
                 const profileId = formData.nurseProfileId;
@@ -7557,21 +7567,18 @@ const AddModal = ({
                 for (const wid of toAssign) await hospitalService.setWardIncharge(wid, profileId);
               }
             } else {
-              await hospitalService.addNurse(formData);
+              await hospitalService.addNurse(requestData);
             }
           } else if (type === 'appointments') {
             // Appointments editing not supported in this modal yet
-            await hospitalService.createAppointment(formData);
+            await hospitalService.createAppointment(requestData);
           } else if (type === 'billing') {
-            await hospitalService.createBilling(formData);
+            await hospitalService.createBilling(requestData);
           }
           onSuccess();
         } catch (err) {
-          const errorMsg =
-            err.response?.data?.message ||
-            err.response?.data?.error ||
-            (typeof err.response?.data === 'string' ? err.response.data : 'Failed to save record');
-          toastError(errorMsg); // Use toast for backend errors
+          toastError(extractApiError(err, 'Failed to save record'));
+          throw err;
         }
       }
     );
@@ -8347,7 +8354,7 @@ const AddModal = ({
                     <select
                       id="fld-65"
                       value={formData.patientId || ''}
-                      onChange={(e) => handleChange('patientId', parseInt(e.target.value))}
+                      onChange={(e) => handleChange('patientId', e.target.value)}
                       className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.patientId ? 'border-red-500' : 'border-gray-300'}`}
                     >
                       <option value="">Select Patient</option>
@@ -8374,7 +8381,7 @@ const AddModal = ({
                   ) : (
                     <select
                       value={formData.doctorId || ''}
-                      onChange={(e) => handleChange('doctorId', parseInt(e.target.value))}
+                      onChange={(e) => handleChange('doctorId', e.target.value)}
                       className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.doctorId ? 'border-red-500' : 'border-gray-300'}`}
                     >
                       <option value="">Select Doctor</option>
@@ -8426,7 +8433,7 @@ const AddModal = ({
                   <select
                     id="fld-62"
                     value={formData.patientId || ''}
-                    onChange={(e) => handleChange('patientId', parseInt(e.target.value))}
+                      onChange={(e) => handleChange('patientId', e.target.value)}
                     className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.patientId ? 'border-red-500' : 'border-gray-300'}`}
                   >
                     <option value="">Select Patient</option>
@@ -8452,7 +8459,7 @@ const AddModal = ({
                   ) : (
                     <select
                       value={formData.doctorId || ''}
-                      onChange={(e) => handleChange('doctorId', parseInt(e.target.value))}
+                      onChange={(e) => handleChange('doctorId', e.target.value)}
                       className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.doctorId ? 'border-red-500' : 'border-gray-300'}`}
                     >
                       <option value="">Select Doctor</option>
@@ -8477,7 +8484,7 @@ const AddModal = ({
                     step="0.01"
                     placeholder="0.00"
                     value={formData.amount || ''}
-                    onChange={(e) => handleChange('amount', parseFloat(e.target.value))}
+                    onChange={(e) => handleChange('amount', e.target.value)}
                     className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.amount ? 'border-red-500' : 'border-gray-300'}`}
                   />
                   {errors.amount && <p className="text-red-500 text-xs mt-1">{errors.amount}</p>}
