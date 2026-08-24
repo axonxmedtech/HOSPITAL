@@ -4,6 +4,7 @@ import com.hms.dto.CreateSurgeryRequest;
 import com.hms.dto.ScheduleSurgeryRequest;
 import com.hms.dto.SurgeryView;
 import com.hms.entity.*;
+import com.hms.exception.ConflictException;
 import com.hms.exception.UnauthorizedException;
 import com.hms.repository.*;
 import com.hms.security.SecurityContextHelper;
@@ -257,15 +258,13 @@ public class SurgeryService {
         // A theatre modelled as an OtRoom has no ward and therefore no bed to occupy. The
         // legacy ward-backed OTs still do, and their bed state must keep working.
         if (s.getOtWardId() != null) {
-            Bed bed = bedRepository.findByWardIdAndHospitalId(s.getOtWardId(), hospitalId).stream()
-                    .filter(b -> "available".equalsIgnoreCase(b.getStatus()))
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalArgumentException("OT theatre is busy or has no available bed"));
+            Bed bed = acquireOtBed(s.getOtWardId(), hospitalId);
             bedStatusService.change(bed.getBedId(), com.hms.entity.BedStatus.OCCUPIED, "Surgery started");
             bed.setCurrentIpdAdmissionId(s.getIpdAdmissionId());
             bedRepository.save(bed);
             s.setOtBedId(bed.getBedId());
         }
+        acquireOtRoom(s, hospitalId);
         markRoom(s, com.hms.entity.OtRoom.OCCUPIED, s.getId());
         s.setStartedAt(LocalDateTime.now());
         Surgery saved = stateMachine.transition(s, com.hms.entity.SurgeryStatus.IN_PROGRESS, null, null, null);
@@ -430,6 +429,17 @@ public class SurgeryService {
 
     // Nursing Mgmt Phase C2: the theatre bed is marked for cleaning (not
     // immediately available) so the next surgery cannot start until it is cleaned.
+    private Bed acquireOtBed(Long otWardId, Long hospitalId) {
+        List<Long> candidateIds = bedRepository.findAvailableBedIdsInWard(otWardId, hospitalId);
+        for (Long candidateId : candidateIds) {
+            Bed locked = bedRepository.findByBedIdAndHospitalIdForUpdate(candidateId, hospitalId).orElse(null);
+            if (locked != null && "available".equalsIgnoreCase(locked.getStatus())) {
+                return locked;
+            }
+        }
+        throw new ConflictException("OT theatre bed is busy or has no available bed");
+    }
+
     private void freeOtBed(Surgery s, String remark) {
         if (s.getOtBedId() == null) return;
         try {
@@ -452,6 +462,20 @@ public class SurgeryService {
             throw new IllegalArgumentException("A cancellation reason is required");
         }
         return "OTHER";
+    }
+
+    private void acquireOtRoom(Surgery s, Long hospitalId) {
+        if (s.getOtRoomId() == null) return;
+
+        com.hms.entity.OtRoom room = otSchedulingService.lockRoom(s.getOtRoomId());
+        if (!hospitalId.equals(room.getHospitalId())) {
+            throw new UnauthorizedException("Access denied: theatre belongs to another hospital");
+        }
+        Long holder = room.getCurrentSurgeryId();
+        if (com.hms.entity.OtRoom.OCCUPIED.equals(room.getStatus())
+                && holder != null && !holder.equals(s.getId())) {
+            throw new ConflictException("That theatre is already in use by another case");
+        }
     }
 
     /** Room state is best-effort: a failed status flip must never fail the clinical action. */

@@ -201,7 +201,8 @@ class SurgeryServiceTest {
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
         when(surgeryRepository.findByPublicId("s-pub")).thenReturn(Optional.of(s));
         Bed bed = new Bed(); bed.setBedId(50L); bed.setHospitalId(7L); bed.setWardId(3L); bed.setStatus("available");
-        when(bedRepository.findByWardIdAndHospitalId(3L, 7L)).thenReturn(List.of(bed));
+        when(bedRepository.findAvailableBedIdsInWard(3L, 7L)).thenReturn(List.of(50L));
+        when(bedRepository.findByBedIdAndHospitalIdForUpdate(50L, 7L)).thenReturn(Optional.of(bed));
         when(bedRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         org.mockito.Mockito.lenient().when(surgeryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -239,7 +240,8 @@ class SurgeryServiceTest {
         when(otPolicyService.resolve(any(), eq("WHO_CHECKLIST_MODE"), any())).thenReturn("BLOCKING");
         when(surgeryExecutionService.timeOutSigned(9L)).thenReturn(true);
         Bed bed = new Bed(); bed.setBedId(50L); bed.setHospitalId(7L); bed.setWardId(3L); bed.setStatus("available");
-        when(bedRepository.findByWardIdAndHospitalId(3L, 7L)).thenReturn(List.of(bed));
+        when(bedRepository.findAvailableBedIdsInWard(3L, 7L)).thenReturn(List.of(50L));
+        when(bedRepository.findByBedIdAndHospitalIdForUpdate(50L, 7L)).thenReturn(Optional.of(bed));
         when(bedRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         org.mockito.Mockito.lenient().when(surgeryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
