@@ -131,14 +131,15 @@ public class IpdAdmissionService {
     }
 
     public IpdAdmission admitFromOpd(Long opdId, Long wardId, Long bedId, String admissionType, String primaryDiagnosis) {
-        // Load OPD
-        Opd opd = opdRepository.findById(opdId).orElseThrow(() -> new ResourceNotFoundException("OPD not found"));
-
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found in context");
 
+        Opd opd = opdRepository.findByIdAndHospitalIdWithPatientAndDoctor(opdId, hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("OPD not found"));
+
         // Validate bed availability
-        Bed bed = bedRepository.findById(bedId).orElseThrow(() -> new ResourceNotFoundException("Bed not found"));
+        Bed bed = bedRepository.findByBedIdAndHospitalId(bedId, hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Bed not found"));
         if (!bed.getStatus().equalsIgnoreCase("available")) {
             throw new IllegalArgumentException("Bed is not available");
         }
@@ -148,8 +149,8 @@ public class IpdAdmissionService {
         // IPD but no NURSING has no nurses at all and can never assign an incharge, so applying
         // it unconditionally made every admission fail with a 400 (matches WardService's
         // getWardsForAdmission gate).
-        com.hms.entity.Ward ward = wardRepository.findById(wardId)
-                .orElseThrow(() -> new IllegalArgumentException("Ward not found"));
+        com.hms.entity.Ward ward = wardRepository.findByWardIdAndHospitalId(wardId, hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Ward not found"));
         if (hasNursingModule() && ward.getInchargeNurseId() == null) {
             throw new IllegalArgumentException("This ward has no Nurse Incharge assigned. Assign an incharge before admitting.");
         }
@@ -973,10 +974,13 @@ public class IpdAdmissionService {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can stop prescriptions");
         }
 
-        com.hms.entity.Prescription pres = prescriptionRepository.findById(prescriptionId).orElseThrow(() -> new ResourceNotFoundException("Prescription not found"));
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        com.hms.entity.Prescription pres = prescriptionRepository.findByIdAndHospitalId(prescriptionId, hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Prescription not found"));
 
         // Verify it belongs to an IPD by looking up medical record
-        com.hms.entity.MedicalRecord mr = medicalRecordRepository.findById(pres.getMedicalRecordId()).orElseThrow(() -> new ResourceNotFoundException("Related medical record not found"));
+        com.hms.entity.MedicalRecord mr = medicalRecordRepository.findByIdAndHospitalId(pres.getMedicalRecordId(), hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Related medical record not found"));
         if (mr.getIpdAdmissionId() == null) throw new IllegalArgumentException("Prescription is not linked to an IPD admission");
 
         pres.setStatus("STOPPED");

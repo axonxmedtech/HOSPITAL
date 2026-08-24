@@ -65,6 +65,6 @@ class BedStatusServiceTest {
         Bed b = bed(BedStatus.AVAILABLE); b.setHospitalId(999L);
         when(bedRepository.findById(50L)).thenReturn(Optional.of(b));
         assertThatThrownBy(() -> service.change(50L, BedStatus.MAINTENANCE, null))
-                .isInstanceOf(com.hms.exception.UnauthorizedException.class);
+                .isInstanceOf(com.hms.exception.ResourceNotFoundException.class);
     }
 }

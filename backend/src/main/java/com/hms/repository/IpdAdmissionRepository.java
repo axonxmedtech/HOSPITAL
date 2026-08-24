@@ -10,8 +10,15 @@ import java.util.Optional;
 public interface IpdAdmissionRepository extends JpaRepository<IpdAdmission, Long> {
     Optional<IpdAdmission> findByIpdNumber(String ipdNumber);
 
+    /**
+     * Portable across MySQL (production) and H2 (test profile). MySQL's CAST accepts
+     * SIGNED/UNSIGNED but not INT/BIGINT; H2 accepts INT/BIGINT but not UNSIGNED.
+     * DECIMAL(n,0) is the one integer-valued cast target both accept, and it preserves
+     * the original numeric (not lexicographic) MAX semantics. Precision 20 is far above
+     * any realistic sequence and keeps the value exact.
+     */
     @org.springframework.data.jpa.repository.Query(
-        value = "SELECT COALESCE(MAX(CAST(SUBSTRING(ipd_number, 5) AS UNSIGNED)), 0) FROM ipd_admission WHERE ipd_number LIKE 'IPD-%'",
+        value = "SELECT COALESCE(MAX(CAST(SUBSTRING(ipd_number, 5) AS DECIMAL(20,0))), 0) FROM ipd_admission WHERE ipd_number LIKE 'IPD-%'",
         nativeQuery = true)
     Integer findMaxIpdSequence();
     org.springframework.data.domain.Page<IpdAdmission> findByHospitalId(Long hospitalId, org.springframework.data.domain.Pageable pageable);

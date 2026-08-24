@@ -24,6 +24,12 @@ public interface MedicalRecordRepository extends JpaRepository<MedicalRecord, Lo
     List<MedicalRecord> findByIpdAdmissionIdOrderByCreatedAtAsc(Long ipdAdmissionId);
     List<MedicalRecord> findByIpdAdmissionIdIn(List<Long> ipdAdmissionIds);
 
+    @org.springframework.data.jpa.repository.Query("SELECT r FROM MedicalRecord r WHERE r.id = :id AND r.hospitalId = :hospitalId")
+    java.util.Optional<MedicalRecord> findByIdAndHospitalId(
+            @org.springframework.data.repository.query.Param("id") Long id,
+            @org.springframework.data.repository.query.Param("hospitalId") Long hospitalId);
+
+
     List<MedicalRecord> findByHospitalIdAndFollowUpDate(Long hospitalId, java.time.LocalDate followUpDate);
     List<MedicalRecord> findByHospitalIdAndDoctorIdAndFollowUpDate(Long hospitalId, Long doctorId, java.time.LocalDate followUpDate);
 }

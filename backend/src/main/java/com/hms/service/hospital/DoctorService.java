@@ -519,7 +519,11 @@ public class DoctorService {
         // Create OPD if it's an appointment consultation
         com.hms.entity.Opd opd = null;
         if (request.getOpdId() != null) {
-            opd = opdRepository.findById(request.getOpdId()).orElse(null);
+            // Tenant comes from the authenticated principal, never from the OPD row. A
+            // cross-tenant id must be indistinguishable from a missing one, so this throws
+            // rather than falling through to the create-a-new-OPD branch below.
+            opd = opdRepository.findByIdAndHospitalIdWithPatientAndDoctor(request.getOpdId(), hospitalId)
+                    .orElseThrow(() -> new com.hms.exception.ResourceNotFoundException("OPD not found"));
             if (opd != null && request.getIpdAdmitRecommended() != null) {
                 opd.setIpdAdmitRecommended(request.getIpdAdmitRecommended());
                 opd = opdRepository.save(opd);
@@ -639,7 +643,8 @@ public class DoctorService {
         Long opdIdToUse = request.getOpdId() != null ? request.getOpdId() : (opd != null ? opd.getId() : null);
         if (opdIdToUse != null) {
             try {
-                java.util.Optional<com.hms.entity.Opd> opdOpt = opdRepository.findById(opdIdToUse);
+                java.util.Optional<com.hms.entity.Opd> opdOpt = opdRepository
+                        .findByIdAndHospitalIdWithPatientAndDoctor(opdIdToUse, hospitalId);
                 if (opdOpt.isPresent()) {
                     com.hms.entity.Opd o = opdOpt.get();
                     o.setStatus(com.hms.entity.Opd.Status.COMPLETED);
@@ -853,4 +858,3 @@ public class DoctorService {
         return opd;
     }
 }
-

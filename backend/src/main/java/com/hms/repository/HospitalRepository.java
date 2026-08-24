@@ -33,4 +33,12 @@ public interface HospitalRepository extends JpaRepository<Hospital, Long> {
 
     @Query("SELECT DISTINCT h FROM Hospital h JOIN h.modules m WHERE m IN :moduleNames")
     List<Hospital> findByAnyModule(@Param("moduleNames") List<String> moduleNames);
+    /**
+     * Whether this hospital exists and is currently usable. A missing row and a blocked or expired
+     * tenant both answer false, so the authentication filter fails closed on either. Null isActive
+     * counts as inactive, matching the login and /auth/me checks.
+     */
+    @Query("SELECT CASE WHEN COUNT(h) > 0 THEN true ELSE false END FROM Hospital h "
+            + "WHERE h.id = :id AND h.isActive = true")
+    boolean isActiveTenant(@Param("id") Long id);
 }

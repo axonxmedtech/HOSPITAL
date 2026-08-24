@@ -28,6 +28,15 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 @Import(ConsultationNotePresetControllerTest.MethodSecurityTestConfig.class)
 class ConsultationNotePresetControllerTest {
 
+    // R1b: JwtAuthenticationFilter now revalidates the session against these repositories on
+    // every request. A @WebMvcTest slice does not start JPA, so they have to be supplied here
+    // for the context to load. Mocked, not stubbed -- these tests are about controllers, and
+    // the real revocation behaviour is covered by SessionRevocationTest.
+    @MockBean
+    private com.hms.repository.UserRepository r1bUserRepository;
+    @MockBean
+    private com.hms.repository.HospitalRepository r1bHospitalRepository;
+
     // @WebMvcTest does not load SecurityConfig (a plain @Configuration bean), so
     // @PreAuthorize on the controller is never enforced without this.
     @TestConfiguration

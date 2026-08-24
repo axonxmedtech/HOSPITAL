@@ -3,6 +3,7 @@ package com.hms.service.hospital;
 import com.hms.entity.Bed;
 import com.hms.entity.BedStatus;
 import com.hms.entity.BedStatusAudit;
+import com.hms.exception.ResourceNotFoundException;
 import com.hms.exception.UnauthorizedException;
 import com.hms.repository.BedRepository;
 import com.hms.repository.BedStatusAuditRepository;
@@ -40,7 +41,9 @@ public class BedStatusService {
         Bed bed = bedRepository.findById(bedId)
                 .orElseThrow(() -> new IllegalArgumentException("Bed not found"));
         if (hospitalId != null && !hospitalId.equals(bed.getHospitalId())) {
-            throw new UnauthorizedException("Bed belongs to another hospital");
+            // Phase 2.1: a tenant check, not a permission check -- another hospital's bed must
+            // be indistinguishable from a missing one.
+            throw new ResourceNotFoundException("Bed not found");
         }
         if (!BedStatus.isValid(newStatus)) throw new IllegalArgumentException("Unknown bed status: " + newStatus);
 
@@ -73,7 +76,9 @@ public class BedStatusService {
         Long hospitalId = safeHospitalId();
         Bed bed = bedRepository.findById(bedId).orElseThrow(() -> new IllegalArgumentException("Bed not found"));
         if (hospitalId != null && !hospitalId.equals(bed.getHospitalId())) {
-            throw new UnauthorizedException("Bed belongs to another hospital");
+            // Phase 2.1: a tenant check, not a permission check -- another hospital's bed must
+            // be indistinguishable from a missing one.
+            throw new ResourceNotFoundException("Bed not found");
         }
         return auditRepository.findByBedIdOrderByChangedAtDesc(bedId);
     }

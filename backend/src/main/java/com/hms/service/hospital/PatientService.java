@@ -893,7 +893,11 @@ public class PatientService {
         com.hms.entity.Doctor doctor = (record.getDoctorId() != null)
                 ? doctorRepository.findById(record.getDoctorId()).orElse(null)
                 : null;
-        com.hms.entity.Opd opd = opdRepository.findById(opdId).orElse(null);
+        // Scoped: the record's tenant was verified above, and the OPD is now fetched under the
+        // same tenant rather than by raw id. A foreign OPD yields null and the case number falls
+        // back exactly as it does when the OPD is absent -- no behaviour change for real data.
+        com.hms.entity.Opd opd = opdRepository
+                .findByIdAndHospitalIdWithPatientAndDoctor(opdId, hospitalId).orElse(null);
         String customNo = (opd != null) ? opd.getCaseId() : "-";
         java.time.LocalDateTime createdAt = (opd != null) ? opd.getCreatedAt() : record.getCreatedAt();
 
