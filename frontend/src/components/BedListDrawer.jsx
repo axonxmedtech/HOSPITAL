@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useToast } from '../context/ToastContext';
 import WardService from '../services/wardService';
 import Button from './Button';
+import { extractApiError } from '../utils/apiError';
 
 const BedListDrawer = ({ open, ward, onClose, onStatusChange }) => {
   const { error: toastError } = useToast();
@@ -35,7 +36,7 @@ const BedListDrawer = ({ open, ward, onClose, onStatusChange }) => {
       onStatusChange && onStatusChange();
       fetchBeds();
     } catch (e) {
-      toastError(e.response?.data || e.message || 'Failed to update bed status');
+      toastError(extractApiError(e, 'Failed to update bed status'));
     } finally {
       setUpdatingBedId(null);
     }

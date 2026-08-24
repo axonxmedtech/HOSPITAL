@@ -5,6 +5,7 @@ import { validateForm } from '../utils/validation';
 import Button from './Button';
 import CharCountInput from './CharCountInput';
 import DobPicker from './DobPicker';
+import { extractApiError } from '../utils/apiError';
 
 const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
   const [formData, setFormData] = useState({});
@@ -69,8 +70,7 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
       onClose();
     } catch (err) {
       console.error('Failed to save patient', err);
-      const msg = err.response?.data?.message || 'Operation failed';
-      toastError(msg);
+      toastError(extractApiError(err, 'Operation failed'));
     } finally {
       setIsSubmitting(false);
     }
