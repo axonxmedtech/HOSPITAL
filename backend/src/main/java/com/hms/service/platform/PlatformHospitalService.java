@@ -52,6 +52,18 @@ public class PlatformHospitalService {
 
     private static final Logger logger = LoggerFactory.getLogger(PlatformHospitalService.class);
 
+    /**
+     * Which OPD visits belong to a facility. Takes the hospital id three times.
+     *
+     * <p>opd has no hospital_id column: patient_id is the ownership rule the rest of the
+     * application uses, while doctor_id and receptionist_id are swept as well because they
+     * are foreign keys into doctors and users, which deleteHospital also removes.
+     */
+    private static final String OPD_TENANT_PREDICATE =
+            "patient_id IN (SELECT id FROM patients WHERE hospital_id = ?)"
+                    + " OR doctor_id IN (SELECT id FROM doctors WHERE hospital_id = ?)"
+                    + " OR receptionist_id IN (SELECT id FROM users WHERE hospital_id = ?)";
+
     @Autowired
     private HospitalRepository hospitalRepository;
 
@@ -503,9 +515,21 @@ public class PlatformHospitalService {
     }
 
     /**
-     * Delete a hospital and all its related data.
-     * FK checks are disabled for the session so order does not matter and no
-     * unmapped constraint can block the operation.
+     * Delete a facility (hospital, clinic or pharmacy) and all its related data.
+     *
+     * <p>Statements are ordered child-before-parent so every foreign key stays satisfied
+     * while it runs. FOREIGN_KEY_CHECKS is deliberately NOT disabled: suppressing the
+     * constraints also suppresses the ON DELETE CASCADE rules that the migration-created
+     * tenant tables declare against hospitals(id), which is what left orphaned rows behind.
+     * Leaving the checks on means the database enforces the ordering rather than trusting it,
+     * and the cascades it owns actually fire.
+     *
+     * <p>OPD carries no hospital_id. Its tenancy is the owning patient -- the same rule
+     * OpdRepository uses ("Opd has no hospital_id of its own, so tenancy is proven through
+     * the owning patient"). Deletion additionally sweeps rows reachable through this
+     * facility's doctor or receptionist: those columns are real foreign keys into doctors
+     * and users, both of which are deleted below, so a visit with a missing patient would
+     * otherwise survive and block them.
      */
     @Transactional
     public void deleteHospital(String publicId) {
@@ -514,86 +538,88 @@ public class PlatformHospitalService {
         Long id = hospital.getId();
         String name = hospital.getName();
 
-        try {
-            jdbcTemplate.execute("SET FOREIGN_KEY_CHECKS = 0");
+        // Billing
+        jdbcTemplate.update("DELETE FROM billing_payments WHERE billing_id IN (SELECT id FROM billing WHERE hospital_id = ?)", id);
+        jdbcTemplate.update("DELETE FROM billing_medicines WHERE billing_id IN (SELECT id FROM billing WHERE hospital_id = ?)", id);
+        jdbcTemplate.update("DELETE FROM billing_items WHERE billing_id IN (SELECT id FROM billing WHERE hospital_id = ?)", id);
+        jdbcTemplate.update("DELETE FROM billing WHERE hospital_id = ?", id);
 
-            // Billing
-            jdbcTemplate.update("DELETE FROM billing_payments WHERE billing_id IN (SELECT id FROM billing WHERE hospital_id = ?)", id);
-            jdbcTemplate.update("DELETE FROM billing_medicines WHERE billing_id IN (SELECT id FROM billing WHERE hospital_id = ?)", id);
-            jdbcTemplate.update("DELETE FROM billing_items WHERE billing_id IN (SELECT id FROM billing WHERE hospital_id = ?)", id);
-            jdbcTemplate.update("DELETE FROM billing WHERE hospital_id = ?", id);
+        // IPD
+        jdbcTemplate.update("DELETE FROM discharge_summary WHERE ipd_admission_id IN (SELECT id FROM ipd_admission WHERE hospital_id = ?)", id);
+        jdbcTemplate.update("DELETE FROM ipd_bed_history WHERE ipd_admission_id IN (SELECT id FROM ipd_admission WHERE hospital_id = ?)", id);
+        jdbcTemplate.update("DELETE FROM ipd_admission WHERE hospital_id = ?", id);
 
-            // IPD
-            jdbcTemplate.update("DELETE FROM discharge_summary WHERE ipd_admission_id IN (SELECT id FROM ipd_admission WHERE hospital_id = ?)", id);
-            jdbcTemplate.update("DELETE FROM ipd_bed_history WHERE ipd_admission_id IN (SELECT id FROM ipd_admission WHERE hospital_id = ?)", id);
-            jdbcTemplate.update("DELETE FROM ipd_admission WHERE hospital_id = ?", id);
+        // OPD -- scoped through patient / doctor / receptionist, since opd has no hospital_id.
+        jdbcTemplate.update(
+                "DELETE FROM queue_entry WHERE opd_id IN (SELECT id FROM opd WHERE " + OPD_TENANT_PREDICATE + ")"
+                        + " OR doctor_id IN (SELECT id FROM doctors WHERE hospital_id = ?)",
+                id, id, id, id);
+        jdbcTemplate.update("DELETE FROM opd WHERE " + OPD_TENANT_PREDICATE, id, id, id);
 
-            // OPD
-            jdbcTemplate.update("DELETE FROM queue_entry WHERE opd_id IN (SELECT id FROM opd WHERE hospital_id = ?)", id);
-            jdbcTemplate.update("DELETE FROM opd WHERE hospital_id = ?", id);
+        // Clinical records
+        jdbcTemplate.update("DELETE FROM prescriptions WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM medical_records WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM lab_orders WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM appointments WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM patients WHERE hospital_id = ?", id);
 
-            // Clinical records
-            jdbcTemplate.update("DELETE FROM prescriptions WHERE hospital_id = ?", id);
-            jdbcTemplate.update("DELETE FROM medical_records WHERE hospital_id = ?", id);
-            jdbcTemplate.update("DELETE FROM lab_orders WHERE hospital_id = ?", id);
-            jdbcTemplate.update("DELETE FROM appointments WHERE hospital_id = ?", id);
-            jdbcTemplate.update("DELETE FROM patients WHERE hospital_id = ?", id);
+        // Pharmacy
+        jdbcTemplate.update("DELETE FROM pharmacy_sale_items WHERE sale_id IN (SELECT id FROM pharmacy_sales WHERE hospital_id = ?)", id);
+        jdbcTemplate.update("DELETE FROM pharmacy_sales WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM purchase_invoice_items WHERE purchase_invoice_id IN (SELECT id FROM purchase_invoices WHERE hospital_id = ?)", id);
+        jdbcTemplate.update("DELETE FROM purchase_invoices WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM inventory_transactions WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM medicine_batches WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM medicine_master WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM suppliers WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM manufacturers WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM medicine_categories WHERE hospital_id = ?", id);
 
-            // Pharmacy
-            jdbcTemplate.update("DELETE FROM pharmacy_sale_items WHERE sale_id IN (SELECT id FROM pharmacy_sales WHERE hospital_id = ?)", id);
-            jdbcTemplate.update("DELETE FROM pharmacy_sales WHERE hospital_id = ?", id);
-            jdbcTemplate.update("DELETE FROM purchase_invoice_items WHERE purchase_invoice_id IN (SELECT id FROM purchase_invoices WHERE hospital_id = ?)", id);
-            jdbcTemplate.update("DELETE FROM purchase_invoices WHERE hospital_id = ?", id);
-            jdbcTemplate.update("DELETE FROM inventory_transactions WHERE hospital_id = ?", id);
-            jdbcTemplate.update("DELETE FROM medicine_batches WHERE hospital_id = ?", id);
-            jdbcTemplate.update("DELETE FROM medicine_master WHERE hospital_id = ?", id);
-            jdbcTemplate.update("DELETE FROM suppliers WHERE hospital_id = ?", id);
-            jdbcTemplate.update("DELETE FROM manufacturers WHERE hospital_id = ?", id);
-            jdbcTemplate.update("DELETE FROM medicine_categories WHERE hospital_id = ?", id);
+        // Hospital inventory
+        jdbcTemplate.update("DELETE FROM hospital_inventory_purchase WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM hospital_inventory WHERE hospital_id = ?", id);
 
-            // Hospital inventory
-            jdbcTemplate.update("DELETE FROM hospital_inventory_purchase WHERE hospital_id = ?", id);
-            jdbcTemplate.update("DELETE FROM hospital_inventory WHERE hospital_id = ?", id);
+        // Clinic medicines
+        jdbcTemplate.update("DELETE FROM medicine_purchase WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM medicines WHERE hospital_id = ?", id);
+        // medicine_list is NOT deleted: it is the global medicine catalogue the platform
+        // administers, discriminated by hospital_type (HOSPITAL/CLINIC/PHARMACY), not owned
+        // by a facility. Its hospital_id column was dropped by DatabaseMigrationRunner when
+        // the table became shared master data; deleting from it here would have destroyed
+        // the catalogue for every other tenant.
 
-            // Clinic medicines
-            jdbcTemplate.update("DELETE FROM medicine_purchase WHERE hospital_id = ?", id);
-            jdbcTemplate.update("DELETE FROM medicines WHERE hospital_id = ?", id);
-            jdbcTemplate.update("DELETE FROM medicine_list WHERE hospital_id = ?", id);
+        // Inventory items
+        jdbcTemplate.update("DELETE FROM inventory_items WHERE hospital_id = ?", id);
 
-            // Inventory items
-            jdbcTemplate.update("DELETE FROM inventory_items WHERE hospital_id = ?", id);
+        // Beds & wards -- beds carry their own hospital_id, so no join through wards is needed
+        // (and wards' primary key is ward_id, not id, which the previous subquery assumed).
+        jdbcTemplate.update("DELETE FROM beds WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM wards WHERE hospital_id = ?", id);
 
-            // Beds & wards
-            jdbcTemplate.update("DELETE FROM beds WHERE ward_id IN (SELECT id FROM wards WHERE hospital_id = ?)", id);
-            jdbcTemplate.update("DELETE FROM wards WHERE hospital_id = ?", id);
+        // Staff
+        jdbcTemplate.update("DELETE FROM doctors WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM receptionists WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM pharmacists WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM hospital_admins WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM clinic_admins WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM pharmacy_admins WHERE hospital_id = ?", id);
 
-            // Staff
-            jdbcTemplate.update("DELETE FROM doctors WHERE hospital_id = ?", id);
-            jdbcTemplate.update("DELETE FROM receptionists WHERE hospital_id = ?", id);
-            jdbcTemplate.update("DELETE FROM pharmacists WHERE hospital_id = ?", id);
-            jdbcTemplate.update("DELETE FROM hospital_admins WHERE hospital_id = ?", id);
-            jdbcTemplate.update("DELETE FROM clinic_admins WHERE hospital_id = ?", id);
-            jdbcTemplate.update("DELETE FROM pharmacy_admins WHERE hospital_id = ?", id);
+        // Settings & fees
+        jdbcTemplate.update("DELETE FROM hospital_fees WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM hospital_settings WHERE hospital_id = ?", id);
 
-            // Settings & fees
-            jdbcTemplate.update("DELETE FROM hospital_fees WHERE hospital_id = ?", id);
-            jdbcTemplate.update("DELETE FROM hospital_settings WHERE hospital_id = ?", id);
+        // Subscriptions & modules
+        jdbcTemplate.update("DELETE FROM hospital_plan_subscriptions WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM hospital_modules WHERE hospital_id = ?", id);
 
-            // Subscriptions & modules
-            jdbcTemplate.update("DELETE FROM hospital_plan_subscriptions WHERE hospital_id = ?", id);
-            jdbcTemplate.update("DELETE FROM hospital_modules WHERE hospital_id = ?", id);
+        // Users & audit data
+        jdbcTemplate.update("DELETE FROM users WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM audit_logs WHERE hospital_id = ?", id);
+        jdbcTemplate.update("DELETE FROM support_tickets WHERE hospital_id = ?", id);
 
-            // Users & audit data
-            jdbcTemplate.update("DELETE FROM users WHERE hospital_id = ?", id);
-            jdbcTemplate.update("DELETE FROM audit_logs WHERE hospital_id = ?", id);
-            jdbcTemplate.update("DELETE FROM support_tickets WHERE hospital_id = ?", id);
-
-            // Hospital itself (use JDBC directly to avoid Hibernate FK issues)
-            jdbcTemplate.update("DELETE FROM hospitals WHERE id = ?", id);
-
-        } finally {
-            jdbcTemplate.execute("SET FOREIGN_KEY_CHECKS = 1");
-        }
+        // The facility row last: tenant tables created by the migration runner declare
+        // ON DELETE CASCADE against it, so this is what collects them.
+        jdbcTemplate.update("DELETE FROM hospitals WHERE id = ?", id);
 
         logAction("HOSPITAL_DELETED", "Permanently deleted hospital: " + name + " (publicId: " + publicId + ")");
     }
