@@ -39,6 +39,7 @@ class CrossTenantIsolationTest {
     @Autowired JwtUtil jwtUtil;
 
     @Autowired HospitalRepository hospitalRepository;
+    @Autowired UserRepository userRepository;
     @Autowired PatientRepository patientRepository;
     @Autowired DoctorRepository doctorRepository;
     @Autowired WardRepository wardRepository;
@@ -54,12 +55,44 @@ class CrossTenantIsolationTest {
             "APPOINTMENTS", "REPORTS", "HOSPITAL_INVENTORY", "MEDICAL_INVENTORY");
 
     private String tokenA, tokenB;
-    private Long aIpdId, aBillId, aOpdId, aBedId, aDoctorId, aPharmacySaleId;
+    private Long aIpdId, aBillId, aOpdId, aBedId, aDoctorId, aPharmacySaleId, aWardId;
     private String aPatientPublicId;
+    // Phase 1 · G-01b / G-03 — tenant B needs its own ward, bed, patient and doctor so
+    // the attack fails for the TENANT reason, not for "no bed" or "doctor not found".
+    private Long bWardId, bBedId;
+    private Long aOpdIdNoRecord, bOpdId;
+    private String bPatientPublicId;
 
     private String uniq() { return Long.toString(System.nanoTime()); }
 
+    /** Small, unique IPD suffixes. nanoTime() overflows the Integer that
+     *  findMaxIpdSequence() returns; real ipd_number suffixes are small sequentials. */
+    private static final java.util.concurrent.atomic.AtomicInteger IPD_SEQ =
+            new java.util.concurrent.atomic.AtomicInteger(1000);
+    private String nextIpdNumber() {
+        // Step by 1000: admitFromOpd derives its number from MAX+1 globally, so adjacent
+        // fixture values would collide with numbers the application itself generates.
+        return "IPD-" + IPD_SEQ.addAndGet(1000);
+    }
+
     /** Seed one hospital and return its id. If withJourney, also create a patient/OPD/IPD/bill. */
+    /** An active user of the given tenant. Its id and tokenVersion are what the token carries. */
+    private User seedUser(long hospitalId, String slug) {
+        User u = new User();
+        u.setEmail("admin-" + slug + "-" + uniq() + "@x.com");
+        u.setPassword("{noop}x");
+        u.setName("Admin " + slug);
+        u.setRole("HOSPITAL_ADMIN");
+        u.setHospitalId(hospitalId);
+        u.setIsActive(true);
+        return userRepository.save(u);
+    }
+
+    private String tokenFor(User u, long hospitalId) {
+        return jwtUtil.generateToken(u.getId(), u.getEmail(), u.getRole(), hospitalId,
+                MODULES, null, "HOSPITAL", null, u.getTokenVersion());
+    }
+
     private long seedHospital(String slug, boolean withJourney) {
         Hospital h = new Hospital();
         h.setName("H-" + slug);
@@ -89,6 +122,7 @@ class CrossTenantIsolationTest {
         Ward w = new Ward();
         w.setWardName("W"); w.setHospitalId(hid); w.setBedPrice(new BigDecimal("1000")); w.setTotalBeds(1);
         long wid = wardRepository.save(w).getWardId();
+        aWardId = wid;
 
         Bed bed = new Bed();
         bed.setHospitalId(hid); bed.setWardId(wid); bed.setBedCode("B1"); bed.setStatus("occupied");
@@ -99,13 +133,18 @@ class CrossTenantIsolationTest {
         opd.setPatient(p);
         aOpdId = opdRepository.save(opd).getId();
 
+        Opd opd2 = new Opd();
+        opd2.setCaseId("OPD-" + uniq()); opd2.setIpdAdmitRecommended(false);
+        opd2.setPatient(p); opd2.setDoctor(doc);
+        aOpdIdNoRecord = opdRepository.save(opd2).getId();
+
         MedicalRecord mr = new MedicalRecord();
         mr.setPublicId("mrpub-" + uniq()); mr.setHospitalId(hid); mr.setPatientId(pid);
         mr.setDoctorId(aDoctorId); mr.setVisitType("OPD"); mr.setOpdId(aOpdId);
         medicalRecordRepository.save(mr);
 
         IpdAdmission ipd = new IpdAdmission();
-        ipd.setIpdNumber("IPD-" + uniq()); ipd.setPatientId(pid); ipd.setDoctorId(aDoctorId);
+        ipd.setIpdNumber(nextIpdNumber()); ipd.setPatientId(pid); ipd.setDoctorId(aDoctorId);
         ipd.setHospitalId(hid); ipd.setAdmissionType("ELECTIVE"); ipd.setStatus("ADMITTED");
         ipd.setAdmissionDatetime(LocalDateTime.now()); ipd.setWardId(wid); ipd.setBedId(aBedId);
         ipd.setAdmissionConfirmed(true);
@@ -128,8 +167,17 @@ class CrossTenantIsolationTest {
     void setUp() {
         long hidA = seedHospital("alpha", true);
         long hidB = seedHospital("bravo", false);
-        tokenA = jwtUtil.generateToken(1L, "admin@alpha.com", "HOSPITAL_ADMIN", hidA, MODULES, null, "HOSPITAL", null);
-        tokenB = jwtUtil.generateToken(2L, "admin@bravo.com", "HOSPITAL_ADMIN", hidB, MODULES, null, "HOSPITAL", null);
+        // Real User rows, and tokens minted from them. JwtAuthenticationFilter revalidates every
+        // request against userRepository.findActiveTokenVersion(userId), so a token for an id
+        // that was never persisted is refused at the filter -- the request arrives
+        // unauthenticated and every tenant assertion below reads 401 instead of the 404 it is
+        // testing for. Hardcoded ids happened to work only while the shared in-memory database
+        // held a User(id=1) left by another test class; that is ordering luck, not a fixture.
+        User userA = seedUser(hidA, "alpha");
+        User userB = seedUser(hidB, "bravo");
+        tokenA = tokenFor(userA, hidA);
+        tokenB = tokenFor(userB, hidB);
+        seedBravoJourney(hidB);
     }
 
     /**
@@ -168,6 +216,7 @@ class CrossTenantIsolationTest {
         }
     }
 
+
     private void assertRefused(HttpMethod m, String path, String body) {
         HttpStatusCode s = call(m, path, tokenB, body).getStatusCode();
         assertThat(s.value())
@@ -201,6 +250,35 @@ class CrossTenantIsolationTest {
         assertRefused(HttpMethod.POST, "/hospital/beds/" + aBedId + "/available", "{}");
     }
 
+    /**
+     * Phase 2.1 — these four sites compared hospital ids but threw a generic "Access denied",
+     * so the Phase 2 message-driven sweep classified them as role failures and they returned
+     * 403. A 403 confirms the record exists in another hospital, and `assertRefused` above
+     * accepts 401/403/404 so it could never have caught the difference. These assert the
+     * exact status, and pair each with the missing-id case to prove the two are identical.
+     */
+    @Test
+    void g0x_crossTenantTenantChecksWithGenericMessages_are404_not403() {
+        int missingWard = call(HttpMethod.DELETE, "/hospital/wards/99999999", tokenB, null)
+                .getStatusCode().value();
+        int foreignWardDelete = call(HttpMethod.DELETE, "/hospital/wards/" + aWardId, tokenB, null)
+                .getStatusCode().value();
+        int foreignWardUpdate = call(HttpMethod.PUT, "/hospital/wards/" + aWardId, tokenB,
+                "{\"wardName\":\"x\",\"totalBeds\":1,\"bedPrice\":100}").getStatusCode().value();
+        int missingBed = call(HttpMethod.PUT, "/hospital/beds/99999999", tokenB,
+                "{\"status\":\"maintenance\"}").getStatusCode().value();
+        int foreignBed = call(HttpMethod.PUT, "/hospital/beds/" + aBedId, tokenB,
+                "{\"status\":\"maintenance\"}").getStatusCode().value();
+
+        assertThat(foreignWardDelete).as("WardService#deleteWard: tenant check must be 404").isEqualTo(404);
+        assertThat(foreignWardUpdate).as("WardService#updateWard: tenant check must be 404").isEqualTo(404);
+        assertThat(foreignBed).as("BedService#updateStatus: tenant check must be 404").isEqualTo(404);
+        assertThat(foreignWardDelete).as("a foreign ward is answered exactly like a missing one")
+                .isEqualTo(missingWard);
+        assertThat(foreignBed).as("a foreign bed is answered exactly like a missing one")
+                .isEqualTo(missingBed);
+    }
+
     @Test
     void crossTenant_deletes_areRefused() {
         // Patient delete is by public id and uses a tenant-scoped finder; a foreign tenant
@@ -213,5 +291,124 @@ class CrossTenantIsolationTest {
         // Positive control: the owner is not locked out by the tenant checks above.
         HttpStatusCode s = call(HttpMethod.GET, "/hospital/ipd/" + aIpdId, tokenA, null).getStatusCode();
         assertThat(s.value()).as("owner reading its own IPD").isEqualTo(200);
+    }
+
+    // ── Phase 1 · G-01 / G-02 ────────────────────────────────────────────────
+    // Cross-tenant OPD read and both OPD PDF paths. These assert 404 exactly
+    // (not isIn(401,403,404)): a cross-tenant id must be indistinguishable from
+    // a non-existent one, per HMS_SYSTEM_DESIGN §2 / principle 7.
+
+    private int statusOf(String path) {
+        return call(HttpMethod.GET, path, tokenB, null).getStatusCode().value();
+    }
+
+    @Test
+    void g01_crossTenantOpdRead_is404() {
+        assertThat(statusOf("/hospital/opd/" + aOpdId))
+                .as("G-01: tenant B reading tenant A's OPD by id").isEqualTo(404);
+    }
+
+    @Test
+    void g02_crossTenantOpdCasePaperPdf_is404() {
+        assertThat(statusOf("/hospital/opd/" + aOpdId + "/pdf"))
+                .as("G-02: tenant B fetching tenant A's case-paper PDF").isEqualTo(404);
+    }
+
+    @Test
+    void g02_crossTenantOpdDocumentsPdf_is404() {
+        assertThat(statusOf("/hospital/opd/" + aOpdId + "/documents/pdf"))
+                .as("G-02: tenant B fetching tenant A's combined documents PDF").isEqualTo(404);
+    }
+
+    @Test
+    void g01_sameTenantOpdRead_stillWorks() {
+        assertThat(call(HttpMethod.GET, "/hospital/opd/" + aOpdId, tokenA, null)
+                .getStatusCode().value())
+                .as("positive control: owner can still read its own OPD").isEqualTo(200);
+    }
+
+    /** Minimal own-tenant assets for B: available bed to admit into, patient, and a
+     *  Doctor whose email matches tokenB so DoctorService can resolve it. */
+    private void seedBravoJourney(long hidB) {
+        Doctor d = new Doctor();
+        d.setName("Dr bravo"); d.setHospitalId(hidB); d.setIsActive(true);
+        d.setEmail("admin@bravo.com"); d.setPublicId("dpub-" + uniq());
+        d.setPhone("9800000002"); d.setSpecialization("Gen");
+        doctorRepository.save(d);
+
+        Patient p = new Patient();
+        bPatientPublicId = "ppub-" + uniq();
+        p.setName("Pat bravo"); p.setHospitalId(hidB); p.setPublicId(bPatientPublicId);
+        p.setGender("MALE"); p.setPhone("9900000002"); p.setIsActive(true);
+        p.setDateOfBirth(LocalDate.of(1985, 1, 1));
+        patientRepository.save(p);
+
+        Ward w = new Ward();
+        w.setWardName("WB"); w.setHospitalId(hidB);
+        w.setBedPrice(new BigDecimal("1000")); w.setTotalBeds(1);
+        w.setInchargeNurseId(9999L); // NURSING gate: incharge-less wards 400 before the OPD is used
+        bWardId = wardRepository.save(w).getWardId();
+
+        Opd bOpd = new Opd();
+        bOpd.setCaseId("OPD-" + uniq()); bOpd.setIpdAdmitRecommended(false);
+        bOpd.setPatient(p); bOpd.setDoctor(d);
+        bOpdId = opdRepository.save(bOpd).getId();
+
+        Bed b = new Bed();
+        b.setHospitalId(hidB); b.setWardId(bWardId); b.setBedCode("BB1"); b.setStatus("available");
+        bBedId = bedRepository.save(b).getBedId();
+    }
+
+    // ── G-01b · cross-tenant IPD admission via a client-supplied OPD id ──────────
+
+    @Test
+    void g01b_crossTenantAdmitFromOpd_is404_andMutatesNothing() {
+        long admissionsBefore = ipdAdmissionRepository.count();
+        long billsBefore      = billingRepository.count();
+        String bedBefore      = bedRepository.findById(bBedId).orElseThrow().getStatus();
+        boolean opdFlagBefore = opdRepository.findById(aOpdIdNoRecord).orElseThrow().getIpdAdmitRecommended();
+
+        String body = "{\"opdId\":" + aOpdIdNoRecord + ",\"wardId\":" + bWardId + ",\"bedId\":" + bBedId
+                    + ",\"admissionType\":\"ELECTIVE\",\"primaryDiagnosis\":\"x\"}";
+        int status = call(HttpMethod.POST, "/hospital/ipd/admit", tokenB, body).getStatusCode().value();
+
+        assertThat(status).as("G-01b: tenant B admitting using tenant A's OPD id").isEqualTo(404);
+        assertThat(ipdAdmissionRepository.count()).as("no admission created").isEqualTo(admissionsBefore);
+        assertThat(billingRepository.count()).as("no bill created").isEqualTo(billsBefore);
+        assertThat(bedRepository.findById(bBedId).orElseThrow().getStatus())
+                .as("tenant B's bed not occupied").isEqualTo(bedBefore);
+        assertThat(opdRepository.findById(aOpdIdNoRecord).orElseThrow().getIpdAdmitRecommended())
+                .as("tenant A's OPD untouched").isEqualTo(opdFlagBefore);
+    }
+
+    // ── G-03 · cross-tenant consultation write ───────────────────────────────────
+
+    @Test
+    void g03_crossTenantConsultationWrite_is404_andMutatesNothing() {
+        long recordsBefore = medicalRecordRepository.count();
+        boolean opdFlagBefore = opdRepository.findById(aOpdId).orElseThrow().getIpdAdmitRecommended();
+        String opdStatusBefore = String.valueOf(opdRepository.findById(aOpdIdNoRecord).orElseThrow().getStatus());
+
+        String body = "{\"patientId\":\"" + bPatientPublicId + "\",\"opdId\":" + aOpdIdNoRecord
+                    + ",\"ipdAdmitRecommended\":true,\"diagnosis\":\"d\",\"symptoms\":\"s\"}";
+        int status = call(HttpMethod.POST, "/hospital/doctors/consultation", tokenB, body)
+                .getStatusCode().value();
+
+        assertThat(status).as("G-03: tenant B writing a consultation against tenant A's OPD")
+                .isEqualTo(404);
+        assertThat(opdRepository.findById(aOpdIdNoRecord).orElseThrow().getIpdAdmitRecommended())
+                .as("tenant A's OPD admit-flag untouched").isEqualTo(opdFlagBefore);
+        assertThat(String.valueOf(opdRepository.findById(aOpdIdNoRecord).orElseThrow().getStatus()))
+                .as("tenant A's OPD status untouched").isEqualTo(opdStatusBefore);
+        assertThat(medicalRecordRepository.count())
+                .as("no medical record written into tenant A's OPD").isEqualTo(recordsBefore);
+    }
+
+    @Test
+    void g01b_sameTenantAdmitFromOwnOpd_stillWorks() {
+        String body = "{\"opdId\":" + bOpdId + ",\"wardId\":" + bWardId + ",\"bedId\":" + bBedId
+                    + ",\"admissionType\":\"ELECTIVE\",\"primaryDiagnosis\":\"x\"}";
+        assertThat(call(HttpMethod.POST, "/hospital/ipd/admit", tokenB, body).getStatusCode().value())
+                .as("positive control: tenant B admits from its OWN OPD").isEqualTo(200);
     }
 }

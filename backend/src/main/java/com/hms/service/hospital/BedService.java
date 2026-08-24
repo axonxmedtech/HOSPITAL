@@ -40,7 +40,9 @@ public class BedService {
     public BedResponse updateStatus(Long bedId, String status, boolean systemInitiated) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Bed b = bedRepository.findById(bedId).orElseThrow(() -> new ResourceNotFoundException("Bed not found"));
-        if (b.getHospitalId() == null || !b.getHospitalId().equals(hospitalId)) throw new UnauthorizedException("Access denied");
+        // Phase 2.1: a tenant check, not a permission check -- another hospital's bed must be
+        // indistinguishable from the missing bed reported one line above.
+        if (b.getHospitalId() == null || !b.getHospitalId().equals(hospitalId)) throw new ResourceNotFoundException("Bed not found");
         if (!isValidStatus(status)) throw new IllegalArgumentException("Invalid status");
 
         String current = b.getStatus();

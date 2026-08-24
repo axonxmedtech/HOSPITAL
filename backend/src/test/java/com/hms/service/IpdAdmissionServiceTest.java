@@ -70,14 +70,14 @@ class IpdAdmissionServiceTest {
         opd.setId(1L);
         opd.setPatient(new Patient());
 
-        when(opdRepository.findById(1L)).thenReturn(Optional.of(opd));
+        when(opdRepository.findByIdAndHospitalIdWithPatientAndDoctor(1L, 1L)).thenReturn(Optional.of(opd));
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
 
         Bed bed = new Bed();
         bed.setBedId(2L);
         bed.setStatus("occupied");
 
-        when(bedRepository.findById(2L)).thenReturn(Optional.of(bed));
+        when(bedRepository.findByBedIdAndHospitalId(2L, 1L)).thenReturn(Optional.of(bed));
 
         assertThatThrownBy(() -> service.admitFromOpd(1L, 1L, 2L, "ELECTIVE", "Fever"))
                 .isInstanceOf(RuntimeException.class)
@@ -93,7 +93,7 @@ class IpdAdmissionServiceTest {
         opd.setId(1L);
         opd.setPatient(patient);
 
-        when(opdRepository.findById(1L)).thenReturn(Optional.of(opd));
+        when(opdRepository.findByIdAndHospitalIdWithPatientAndDoctor(1L, 1L)).thenReturn(Optional.of(opd));
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
         when(securityHelper.getCurrentUserEmail()).thenReturn("admin@test.com");
 
@@ -101,7 +101,7 @@ class IpdAdmissionServiceTest {
         bed.setBedId(2L);
         bed.setStatus("available");
 
-        when(bedRepository.findById(2L)).thenReturn(Optional.of(bed));
+        when(bedRepository.findByBedIdAndHospitalId(2L, 1L)).thenReturn(Optional.of(bed));
         when(ipdAdmissionRepository.findMaxIpdSequence()).thenReturn(0);
 
         Bed occupiedBed = new Bed();
@@ -126,6 +126,7 @@ class IpdAdmissionServiceTest {
         com.hms.entity.Ward ward = new com.hms.entity.Ward();
         ward.setWardId(1L);
         ward.setInchargeNurseId(99L);
+        when(wardRepository.findByWardIdAndHospitalId(1L, 1L)).thenReturn(Optional.of(ward));
         when(wardRepository.findById(1L)).thenReturn(Optional.of(ward));
         when(appointmentRepository.findByPatientIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(any(), any()))
                 .thenReturn(List.of());

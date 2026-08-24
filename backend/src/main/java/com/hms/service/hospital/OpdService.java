@@ -256,7 +256,11 @@ public class OpdService {
     }
 
     public Opd getOpdById(Long id) {
-        return opdRepository.findByIdWithPatientAndDoctor(id).orElse(null);
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            return null;
+        }
+        return opdRepository.findByIdAndHospitalIdWithPatientAndDoctor(id, hospitalId).orElse(null);
     }
 
     public org.springframework.data.domain.Page<Opd> getOpds(String search, String dateStr, com.hms.entity.Opd.Status status, org.springframework.data.domain.Pageable pageable) {

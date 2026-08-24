@@ -235,7 +235,11 @@ public class DoctorController {
         try {
             Long hospitalId = securityHelper.getCurrentHospitalId();
 
-            com.hms.entity.Opd opd = opdRepository.findById(opdId)
+            // Scoped at the lookup. The OPD is loaded by raw id no longer: a foreign id simply is
+            // not found, which is the same 404 this already returned after the medical-record
+            // check below -- so the contract is unchanged and the guarantee moves earlier.
+            com.hms.entity.Opd opd = opdRepository
+                .findByIdAndHospitalIdWithPatientAndDoctor(opdId, hospitalId)
                 .orElseThrow(() -> new ResourceNotFoundException("OPD not found"));
 
             com.hms.entity.MedicalRecord record = medicalRecordRepository.findByOpdId(opd.getId())

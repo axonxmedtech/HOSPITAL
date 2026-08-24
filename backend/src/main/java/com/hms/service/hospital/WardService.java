@@ -52,7 +52,10 @@ public class WardService {
         Ward ward = wardRepository.findById(wardId)
                 .orElseThrow(() -> new IllegalArgumentException("Ward not found"));
         if (!hospitalId.equals(ward.getHospitalId())) {
-            throw new UnauthorizedException("Ward belongs to another hospital");
+            // Phase 2.1: a tenant check, not a permission check -- another hospital's ward must
+            // be indistinguishable from a missing one. A 401 would confirm the row exists
+            // elsewhere and log the caller out of a session that is perfectly valid.
+            throw new ResourceNotFoundException("Ward not found");
         }
         Long previous = ward.getInchargeNurseId();
         if (inchargeNurseProfileId != null) {
@@ -190,7 +193,9 @@ public class WardService {
     public WardResponse updateWard(Long wardId, UpdateWardRequest req) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Ward w = wardRepository.findById(wardId).orElseThrow(() -> new ResourceNotFoundException("Ward not found"));
-        if (!w.getHospitalId().equals(hospitalId)) throw new UnauthorizedException("Access denied");
+        // Phase 2.1: a tenant check, not a permission check -- another hospital's ward must be
+        // indistinguishable from the missing ward reported one line above.
+        if (!w.getHospitalId().equals(hospitalId)) throw new ResourceNotFoundException("Ward not found");
 
         if (req.getWardName() != null) w.setWardName(req.getWardName());
         if (req.getBedPrice() != null) w.setBedPrice(req.getBedPrice());
@@ -218,7 +223,9 @@ public class WardService {
     public void deleteWard(Long wardId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Ward w = wardRepository.findById(wardId).orElseThrow(() -> new ResourceNotFoundException("Ward not found"));
-        if (!w.getHospitalId().equals(hospitalId)) throw new UnauthorizedException("Access denied");
+        // Phase 2.1: a tenant check, not a permission check -- another hospital's ward must be
+        // indistinguishable from the missing ward reported one line above.
+        if (!w.getHospitalId().equals(hospitalId)) throw new ResourceNotFoundException("Ward not found");
 
         List<Bed> beds = bedRepository.findByWardIdAndHospitalId(wardId, hospitalId);
         boolean hasOccupied = beds.stream().anyMatch(b -> !"available".equalsIgnoreCase(b.getStatus()));

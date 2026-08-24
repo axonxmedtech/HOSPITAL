@@ -109,7 +109,13 @@ public class ClinicalPdfService {
             String customNo = "-";
             if (medicalRecord != null && medicalRecord.getOpdId() != null) {
                 try {
-                    com.hms.entity.Opd opd = opdRepository.findById(medicalRecord.getOpdId()).orElse(null);
+                    // Scoped by the record's own hospital rather than the security context: this
+                    // is a rendering service with no principal of its own, and the record being
+                    // printed is the authority on which tenant the document belongs to.
+                    com.hms.entity.Opd opd = opdRepository
+                            .findByIdAndHospitalIdWithPatientAndDoctor(
+                                    medicalRecord.getOpdId(), medicalRecord.getHospitalId())
+                            .orElse(null);
                     if (opd != null) {
                         customNo = opd.getCaseId();
                     }
