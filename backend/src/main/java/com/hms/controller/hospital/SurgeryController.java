@@ -4,6 +4,8 @@ import jakarta.validation.Valid;
 
 import com.hms.dto.CreateSurgeryRequest;
 import com.hms.dto.ScheduleSurgeryRequest;
+import com.hms.dto.RecordAnaesthesiaClearanceRequest;
+import com.hms.dto.RecordEmergencyOverrideRequest;
 import com.hms.entity.HospitalType;
 import com.hms.security.RequireModule;
 import com.hms.security.TenantType;
@@ -28,6 +30,8 @@ public class SurgeryController {
 
     @Autowired
     private SurgeryService service;
+    @Autowired
+    private com.hms.service.hospital.ot.PreOpSafetyService preOpSafetyService;
 
     @PostMapping
     @PreAuthorize("hasAuthority('OT_CREATE')")
@@ -76,6 +80,26 @@ public class SurgeryController {
     @PreAuthorize("hasAuthority('OT_SCHEDULE')")
     public ResponseEntity<?> schedule(@PathVariable String publicId, @Valid @RequestBody ScheduleSurgeryRequest req) {
         return ResponseEntity.ok(service.schedule(publicId, req));
+    }
+
+    @PostMapping("/{publicId}/pre-op")
+    @PreAuthorize("hasAuthority('OT_PRE_OP')")
+    public ResponseEntity<?> enterPreOp(@PathVariable String publicId) {
+        return ResponseEntity.ok(preOpSafetyService.enterPreOp(publicId));
+    }
+
+    @PostMapping("/{publicId}/anaesthesia-clearance")
+    @PreAuthorize("hasAuthority('OT_ANAESTHESIA_CLEARANCE')")
+    public ResponseEntity<?> recordAnaesthesiaClearance(@PathVariable String publicId,
+            @RequestBody RecordAnaesthesiaClearanceRequest request) {
+        return ResponseEntity.ok(preOpSafetyService.recordClearance(publicId, request));
+    }
+
+    @PostMapping("/{publicId}/emergency-override")
+    @PreAuthorize("hasAuthority('OT_EMERGENCY_OVERRIDE')")
+    public ResponseEntity<?> recordEmergencyOverride(@PathVariable String publicId,
+            @RequestBody RecordEmergencyOverrideRequest request) {
+        return ResponseEntity.ok(preOpSafetyService.recordEmergencyOverride(publicId, request));
     }
 
     @PostMapping("/{publicId}/start")

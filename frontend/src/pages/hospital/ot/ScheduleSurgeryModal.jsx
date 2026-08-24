@@ -70,6 +70,7 @@ const ScheduleSurgeryModal = ({ surgery, onClose, onScheduled }) => {
         surgeonName: isOther ? form.surgeonName.trim() : null,
         anaesthetistName: form.anaesthetistName.trim() || null,
         scheduledAt: form.scheduledAt,
+        expectedVersion: surgery.lifecycleVersion,
         // A real theatre sends otRoomId; the legacy fallback sends otWardId.
         ...(usingRooms ? { otRoomId: Number(form.theatre) } : { otWardId: Number(form.theatre) }),
         estimatedDurationMinutes: form.estimatedDurationMinutes
@@ -80,7 +81,11 @@ const ScheduleSurgeryModal = ({ surgery, onClose, onScheduled }) => {
       onScheduled && onScheduled();
       onClose();
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to schedule surgery');
+      if (e?.response?.status === 409) {
+        toastError('Surgery was modified by another request. Refresh and retry.');
+      } else {
+        toastError(e?.response?.data?.error || 'Failed to schedule surgery');
+      }
     } finally {
       setSaving(false);
     }

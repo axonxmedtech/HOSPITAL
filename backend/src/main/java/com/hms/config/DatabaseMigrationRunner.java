@@ -74,11 +74,13 @@ public class DatabaseMigrationRunner {
         ensureRolePermissionsTable(); // OT Phase 2 — authorization decoupled from role checks
         ensureSurgeryStateTransitionsTable(); // OT Phase 3 — append-only status audit
         ensureSurgeryWaitlistColumns(); // OT Phase 3 — the waiting list is a query, not a status
+        ensureSurgeryLifecycleVersionColumn(); // OT 4.6D-A — stale schedule command detection
         ensureOtRoomsTable(); // OT Phase 4 — a theatre is a resource, not a ward named "OT"
         ensureSurgeryRoomColumns(); // OT Phase 4 — interval booking
         ensureOtWorkflowPoliciesTable(); // OT Phase 5 — hospital variation is configuration
         ensureSurgeryTeamTables(); // OT Phase 6 — who was in the room
         ensureSurgeryExecutionTables(); // OT Phase 7 — WHO checklist, milestones, operative note
+        ensureSurgeryPreOpSafetyTables(); // OT 4.6A — anaesthesia decisions and emergency bypasses
         ensureRecoveryTables(); // OT Phase 8 — PACU recovery (never a case state)
         ensureOtRoomOccupancyTable(); // OT Phase 9 — utilisation & turnover from real spans
         backfillSupportTicketHospitalType(); // tickets created before hospital_type was set
@@ -1837,6 +1839,38 @@ public class DatabaseMigrationRunner {
      * OT Phase 7 — WHO checklist (phases as signed columns, so compliance is a query),
      * clinical milestones (append-only facts, never states), and the operative note.
      */
+    /**
+     * OT 4.6A — immutable clinician clearance decisions and explicit emergency bypasses.
+     * Mirrors setup/schema-full.sql and remains safe on an already populated database.
+     */
+    private void ensureSurgeryPreOpSafetyTables() {
+        try {
+            Integer clearances = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'surgery_anaesthesia_clearances'",
+                    Integer.class);
+            if (clearances != null && clearances == 0) {
+                jdbcTemplate.execute("CREATE TABLE surgery_anaesthesia_clearances ("
+                        + "id BIGINT NOT NULL AUTO_INCREMENT, surgery_id BIGINT NOT NULL, hospital_id BIGINT NOT NULL, "
+                        + "outcome VARCHAR(40) NOT NULL, conditions_comments TEXT NULL, recorded_by_user_id BIGINT NOT NULL, "
+                        + "recorded_at DATETIME(6) NOT NULL, PRIMARY KEY (id), "
+                        + "KEY idx_sac_hospital_surgery_time (hospital_id,surgery_id,recorded_at), "
+                        + "KEY idx_sac_surgery (surgery_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            }
+            Integer overrides = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'surgery_emergency_overrides'",
+                    Integer.class);
+            if (overrides != null && overrides == 0) {
+                jdbcTemplate.execute("CREATE TABLE surgery_emergency_overrides ("
+                        + "id BIGINT NOT NULL AUTO_INCREMENT, surgery_id BIGINT NOT NULL, hospital_id BIGINT NOT NULL, "
+                        + "reason TEXT NOT NULL, bypassed_gates VARCHAR(100) NOT NULL, recorded_by_user_id BIGINT NOT NULL, "
+                        + "recorded_at DATETIME(6) NOT NULL, PRIMARY KEY (id), "
+                        + "KEY idx_seo_hospital_surgery_time (hospital_id,surgery_id,recorded_at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (OT pre-op safety): {}", e.getMessage());
+        }
+    }
+
     private void ensureSurgeryExecutionTables() {
         try {
             Integer who = jdbcTemplate.queryForObject(
@@ -2068,6 +2102,11 @@ public class DatabaseMigrationRunner {
         } catch (Exception e) {
             // already present
         }
+    }
+
+    /** Adds the optimistic lifecycle revision used by schedule/reschedule commands. */
+    private void ensureSurgeryLifecycleVersionColumn() {
+        addColumnIfMissing("surgeries", "lifecycle_version", "BIGINT NOT NULL DEFAULT 0");
     }
 
     /**

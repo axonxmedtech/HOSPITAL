@@ -43,6 +43,7 @@ class SurgeryServiceTest {
     @Mock com.hms.repository.OtRoomRepository otRoomRepository;
     @Mock com.hms.service.hospital.ot.OtPolicyService otPolicyService;
     @Mock com.hms.service.hospital.ot.SurgeryExecutionService surgeryExecutionService;
+    @Mock com.hms.service.hospital.ot.PreOpSafetyService preOpSafetyService;
     @Mock com.hms.repository.OtRoomOccupancyRepository occupancyRepository;
 
     @Mock com.hms.service.RealtimeNotifier notifier;
@@ -128,7 +129,7 @@ class SurgeryServiceTest {
         s.setId(9L); s.setHospitalId(7L); s.setIpdAdmissionId(1L); s.setStatus(Surgery.REQUESTED);
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
         when(securityHelper.getCurrentUserId()).thenReturn(40L);
-        when(surgeryRepository.findByPublicId("s-pub")).thenReturn(Optional.of(s));
+        when(surgeryRepository.findByPublicIdAndHospitalIdForUpdate("s-pub", 7L)).thenReturn(Optional.of(s));
         Doctor surgeon = new Doctor(); surgeon.setId(11L); surgeon.setHospitalId(7L);
         // Any doctor (not just surgeons) can be assigned as the operating surgeon.
         surgeon.setSpecialization("Cardiologist"); surgeon.setEmail("surg@x.com"); surgeon.setName("Dr Surg");
@@ -143,6 +144,7 @@ class SurgeryServiceTest {
         org.mockito.Mockito.lenient().when(surgeryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ScheduleSurgeryRequest req = new ScheduleSurgeryRequest();
+        req.setExpectedVersion(0L);
         req.setSurgeonDoctorId(11L);
         req.setScheduledAt(LocalDateTime.now().plusDays(1));
         req.setOtWardId(3L);
@@ -160,13 +162,14 @@ class SurgeryServiceTest {
         s.setId(9L); s.setHospitalId(7L); s.setIpdAdmissionId(1L); s.setStatus(Surgery.REQUESTED);
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
         when(securityHelper.getCurrentUserId()).thenReturn(40L);
-        when(surgeryRepository.findByPublicId("s-pub")).thenReturn(Optional.of(s));
+        when(surgeryRepository.findByPublicIdAndHospitalIdForUpdate("s-pub", 7L)).thenReturn(Optional.of(s));
         Ward ward = new Ward(); ward.setWardId(3L); ward.setHospitalId(7L); ward.setWardName("OT");
         when(wardRepository.findById(3L)).thenReturn(Optional.of(ward));
         when(assignmentRepository.findByIpdAdmissionIdAndIsActiveTrue(1L)).thenReturn(Optional.empty());
         org.mockito.Mockito.lenient().when(surgeryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ScheduleSurgeryRequest req = new ScheduleSurgeryRequest();
+        req.setExpectedVersion(0L);
         req.setSurgeonName("Dr. Visiting Anaesthetist");   // no surgeonDoctorId → "Other"
         req.setScheduledAt(LocalDateTime.now().plusDays(1));
         req.setOtWardId(3L);
@@ -183,9 +186,10 @@ class SurgeryServiceTest {
         Surgery s = new Surgery();
         s.setId(9L); s.setHospitalId(7L); s.setIpdAdmissionId(1L); s.setStatus(Surgery.REQUESTED);
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
-        when(surgeryRepository.findByPublicId("s-pub")).thenReturn(Optional.of(s));
+        when(surgeryRepository.findByPublicIdAndHospitalIdForUpdate("s-pub", 7L)).thenReturn(Optional.of(s));
 
         ScheduleSurgeryRequest req = new ScheduleSurgeryRequest();  // no doctor id, no name
+        req.setExpectedVersion(0L);
         req.setScheduledAt(LocalDateTime.now().plusDays(1));
         req.setOtWardId(3L);
 
@@ -199,9 +203,10 @@ class SurgeryServiceTest {
         Surgery s = new Surgery();
         s.setId(9L); s.setHospitalId(7L); s.setIpdAdmissionId(1L); s.setStatus(Surgery.SCHEDULED); s.setOtWardId(3L);
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
-        when(surgeryRepository.findByPublicId("s-pub")).thenReturn(Optional.of(s));
+        when(surgeryRepository.findByPublicIdAndHospitalIdForUpdate("s-pub", 7L)).thenReturn(Optional.of(s));
         Bed bed = new Bed(); bed.setBedId(50L); bed.setHospitalId(7L); bed.setWardId(3L); bed.setStatus("available");
-        when(bedRepository.findByWardIdAndHospitalId(3L, 7L)).thenReturn(List.of(bed));
+        when(bedRepository.findAvailableBedIdsInWard(3L, 7L)).thenReturn(List.of(50L));
+        when(bedRepository.findByBedIdAndHospitalIdForUpdate(50L, 7L)).thenReturn(Optional.of(bed));
         when(bedRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         org.mockito.Mockito.lenient().when(surgeryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -221,7 +226,7 @@ class SurgeryServiceTest {
         Surgery s = new Surgery();
         s.setId(9L); s.setHospitalId(7L); s.setStatus(Surgery.SCHEDULED); s.setOtWardId(3L);
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
-        when(surgeryRepository.findByPublicId("s-pub")).thenReturn(Optional.of(s));
+        when(surgeryRepository.findByPublicIdAndHospitalIdForUpdate("s-pub", 7L)).thenReturn(Optional.of(s));
         when(otPolicyService.resolve(any(), eq("WHO_CHECKLIST_MODE"), any())).thenReturn("BLOCKING");
         when(surgeryExecutionService.timeOutSigned(9L)).thenReturn(false);
 
@@ -235,11 +240,12 @@ class SurgeryServiceTest {
         Surgery s = new Surgery();
         s.setId(9L); s.setHospitalId(7L); s.setStatus(Surgery.SCHEDULED); s.setOtWardId(3L);
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
-        when(surgeryRepository.findByPublicId("s-pub")).thenReturn(Optional.of(s));
+        when(surgeryRepository.findByPublicIdAndHospitalIdForUpdate("s-pub", 7L)).thenReturn(Optional.of(s));
         when(otPolicyService.resolve(any(), eq("WHO_CHECKLIST_MODE"), any())).thenReturn("BLOCKING");
         when(surgeryExecutionService.timeOutSigned(9L)).thenReturn(true);
         Bed bed = new Bed(); bed.setBedId(50L); bed.setHospitalId(7L); bed.setWardId(3L); bed.setStatus("available");
-        when(bedRepository.findByWardIdAndHospitalId(3L, 7L)).thenReturn(List.of(bed));
+        when(bedRepository.findAvailableBedIdsInWard(3L, 7L)).thenReturn(List.of(50L));
+        when(bedRepository.findByBedIdAndHospitalIdForUpdate(50L, 7L)).thenReturn(Optional.of(bed));
         when(bedRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         org.mockito.Mockito.lenient().when(surgeryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -250,28 +256,127 @@ class SurgeryServiceTest {
     void complete_marksOtBedForCleaning() {
         Surgery s = new Surgery();
         s.setId(9L); s.setHospitalId(7L); s.setIpdAdmissionId(1L); s.setStatus(Surgery.IN_PROGRESS);
-        s.setOtWardId(3L); s.setOtBedId(50L);
+        s.setOtWardId(3L); s.setOtBedId(50L); s.setOtRoomId(8L);
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
-        when(surgeryRepository.findByPublicId("s-pub")).thenReturn(Optional.of(s));
+        when(surgeryRepository.findByPublicIdAndHospitalIdForUpdate("s-pub", 7L)).thenReturn(Optional.of(s));
+        Bed otBed = new Bed(); otBed.setBedId(50L); otBed.setHospitalId(7L); otBed.setStatus(BedStatus.OCCUPIED);
+        when(bedRepository.findByBedIdAndHospitalIdForUpdate(50L, 7L)).thenReturn(Optional.of(otBed));
+        OtRoom room = new OtRoom(); room.setId(8L); room.setHospitalId(7L); room.setStatus(OtRoom.OCCUPIED); room.setCurrentSurgeryId(9L);
+        when(otSchedulingService.lockRoom(8L)).thenReturn(room);
+        OtRoomOccupancy occupancy = new OtRoomOccupancy(); occupancy.setSurgeryId(9L);
+        when(occupancyRepository.findOpenBySurgeryIdForUpdate(9L)).thenReturn(Optional.of(occupancy));
         org.mockito.Mockito.lenient().when(surgeryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         Surgery out = service.complete("s-pub");
 
         assertThat(out.getStatus()).isEqualTo(Surgery.COMPLETED);
         assertThat(out.getCompletedAt()).isNotNull();
-        verify(bedStatusService).change(eq(50L), eq(com.hms.entity.BedStatus.CLEANING), any());
+        verify(bedStatusService).changeLocked(otBed, BedStatus.CLEANING, "Surgery completed");
+        verify(otRoomRepository).save(room);
+        verify(occupancyRepository).save(occupancy);
+        verify(stateMachine).transition(s, SurgeryStatus.COMPLETED, null, null, null);
+        verifyNoInteractions(ipdAdmissionRepository);
+        org.mockito.InOrder locks = inOrder(bedRepository, otSchedulingService);
+        locks.verify(bedRepository).findByBedIdAndHospitalIdForUpdate(50L, 7L);
+        locks.verify(otSchedulingService).lockRoom(8L);
     }
 
     @Test
-    void schedule_crossTenant_denied() {
-        Surgery s = new Surgery(); s.setHospitalId(999L); s.setStatus(Surgery.REQUESTED);
+    void complete_doesNotTransitionWhenOtBedReleaseFails() {
+        Surgery s = inProgressSurgeryWithResources();
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
-        when(surgeryRepository.findByPublicId("s-pub")).thenReturn(Optional.of(s));
+        when(surgeryRepository.findByPublicIdAndHospitalIdForUpdate("s-pub", 7L)).thenReturn(Optional.of(s));
+        when(bedRepository.findByBedIdAndHospitalIdForUpdate(50L, 7L)).thenReturn(Optional.empty());
 
+        assertThatThrownBy(() -> service.complete("s-pub")).hasMessageContaining("OT bed");
+
+        assertThat(s.getStatus()).isEqualTo(Surgery.IN_PROGRESS);
+        verifyNoInteractions(otSchedulingService, stateMachine);
+    }
+
+    @Test
+    void complete_doesNotTransitionWhenOtRoomReleaseFails() {
+        Surgery s = inProgressSurgeryWithResources();
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(surgeryRepository.findByPublicIdAndHospitalIdForUpdate("s-pub", 7L)).thenReturn(Optional.of(s));
+        Bed otBed = new Bed(); otBed.setBedId(50L); otBed.setHospitalId(7L); otBed.setStatus(BedStatus.OCCUPIED);
+        when(bedRepository.findByBedIdAndHospitalIdForUpdate(50L, 7L)).thenReturn(Optional.of(otBed));
+        doThrow(new IllegalStateException("room release failed")).when(otSchedulingService).lockRoom(8L);
+
+        assertThatThrownBy(() -> service.complete("s-pub")).hasMessageContaining("room release failed");
+
+        verify(bedStatusService).changeLocked(otBed, BedStatus.CLEANING, "Surgery completed");
+        verify(stateMachine, never()).transition(any(), eq(SurgeryStatus.COMPLETED), any(), any(), any());
+        assertThat(s.getStatus()).isEqualTo(Surgery.IN_PROGRESS);
+    }
+
+    @Test
+    void complete_doesNotTransitionWhenOccupancyClosureFails() {
+        Surgery s = inProgressSurgeryWithResources();
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(surgeryRepository.findByPublicIdAndHospitalIdForUpdate("s-pub", 7L)).thenReturn(Optional.of(s));
+        Bed otBed = new Bed(); otBed.setBedId(50L); otBed.setHospitalId(7L); otBed.setStatus(BedStatus.OCCUPIED);
+        when(bedRepository.findByBedIdAndHospitalIdForUpdate(50L, 7L)).thenReturn(Optional.of(otBed));
+        OtRoom room = new OtRoom(); room.setId(8L); room.setHospitalId(7L); room.setStatus(OtRoom.OCCUPIED); room.setCurrentSurgeryId(9L);
+        when(otSchedulingService.lockRoom(8L)).thenReturn(room);
+        OtRoomOccupancy occupancy = new OtRoomOccupancy(); occupancy.setSurgeryId(9L);
+        when(occupancyRepository.findOpenBySurgeryIdForUpdate(9L)).thenReturn(Optional.of(occupancy));
+        doThrow(new IllegalStateException("occupancy close failed")).when(occupancyRepository).save(occupancy);
+
+        assertThatThrownBy(() -> service.complete("s-pub")).hasMessageContaining("occupancy close failed");
+
+        verify(stateMachine, never()).transition(any(), eq(SurgeryStatus.COMPLETED), any(), any(), any());
+        assertThat(s.getStatus()).isEqualTo(Surgery.IN_PROGRESS);
+    }
+
+    @Test
+    void schedule_rejectsAStaleExpectedVersionBeforeMutatingTheSlot() {
+        Surgery s = new Surgery();
+        s.setId(9L); s.setHospitalId(7L); s.setStatus(Surgery.SCHEDULED); s.setLifecycleVersion(4L);
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(surgeryRepository.findByPublicIdAndHospitalIdForUpdate("s-pub", 7L)).thenReturn(Optional.of(s));
         ScheduleSurgeryRequest req = new ScheduleSurgeryRequest();
-        req.setSurgeonDoctorId(11L); req.setScheduledAt(LocalDateTime.now()); req.setOtWardId(3L);
+        req.setExpectedVersion(3L); req.setScheduledAt(LocalDateTime.now().plusDays(1)); req.setOtWardId(3L);
 
         assertThatThrownBy(() -> service.schedule("s-pub", req))
-                .isInstanceOf(com.hms.exception.UnauthorizedException.class);
+                .isInstanceOf(com.hms.exception.ConflictException.class)
+                .hasMessage("Surgery was modified by another request. Refresh and retry.");
+
+        verifyNoInteractions(wardRepository, otSchedulingService, stateMachine);
+    }
+
+    @Test
+    void cancel_inProgressSurgeryDoesNotAttemptTentativeResourceCleanup() {
+        Surgery s = inProgressSurgeryWithResources();
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(surgeryRepository.findByPublicIdAndHospitalIdForUpdate("s-pub", 7L)).thenReturn(Optional.of(s));
+        doThrow(new IllegalArgumentException("A in progress surgery cannot move to cancelled"))
+                .when(stateMachine).transition(s, com.hms.entity.SurgeryStatus.CANCELLED, "OTHER", null, null);
+
+        assertThatThrownBy(() -> service.cancel("s-pub", null, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("A in progress surgery cannot move to cancelled");
+
+        assertThat(s.getStatus()).isEqualTo(Surgery.IN_PROGRESS);
+        verifyNoInteractions(bedStatusService, otRoomRepository, occupancyRepository);
+    }
+
+    private Surgery inProgressSurgeryWithResources() {
+        Surgery s = new Surgery();
+        s.setId(9L); s.setHospitalId(7L); s.setIpdAdmissionId(1L); s.setStatus(Surgery.IN_PROGRESS);
+        s.setOtWardId(3L); s.setOtBedId(50L); s.setOtRoomId(8L);
+        return s;
+    }
+
+    @Test
+    void schedule_crossTenant_isNotFound() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(surgeryRepository.findByPublicIdAndHospitalIdForUpdate("s-pub", 7L)).thenReturn(Optional.empty());
+
+        ScheduleSurgeryRequest req = new ScheduleSurgeryRequest();
+        req.setExpectedVersion(0L); req.setSurgeonDoctorId(11L); req.setScheduledAt(LocalDateTime.now()); req.setOtWardId(3L);
+
+        assertThatThrownBy(() -> service.schedule("s-pub", req))
+                .isInstanceOf(com.hms.exception.ResourceNotFoundException.class);
     }
 }

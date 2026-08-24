@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface SurgeryStateTransitionRepository extends JpaRepository<SurgeryStateTransition, Long> {
@@ -13,6 +14,8 @@ public interface SurgeryStateTransitionRepository extends JpaRepository<SurgeryS
     List<SurgeryStateTransition> findBySurgeryIdOrderByCreatedAtAsc(Long surgeryId);
 
     long countBySurgeryId(Long surgeryId);
+
+    Optional<SurgeryStateTransition> findTopBySurgeryIdAndToStatusOrderByCreatedAtDescIdDesc(Long surgeryId, String toStatus);
 
     /** Cancellations in a window, grouped by reason -- the NABH cancellation-rate indicator. */
     @org.springframework.data.jpa.repository.Query(value =

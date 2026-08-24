@@ -195,6 +195,11 @@ const platformService = {
     return response.data;
   },
 
+  getPlanCapabilities: async (type) => {
+    const response = await apiClient.get('/platform/plans/capabilities', { params: { type } });
+    return response.data;
+  },
+
   createPlan: async (planData) => {
     const response = await apiClient.post('/platform/plans', planData);
     return response.data;
