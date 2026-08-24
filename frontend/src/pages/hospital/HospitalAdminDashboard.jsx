@@ -72,6 +72,8 @@ import BillingTable from './BillingTable';
 // BUG-028: single source-of-truth for base URL
 import FilesAndAccessCard from './FilesAndAccessCard';
 import HospitalCalendar from './HospitalCalendar';
+import IcuBedBoard from './icu/IcuBedBoard';
+import IcuDashboard from './icu/IcuDashboard';
 import OtAnalyticsCard from './OtAnalyticsCard';
 import OtPermissionsCard from './OtPermissionsCard';
 import OtPoliciesCard from './OtPoliciesCard';
@@ -147,6 +149,8 @@ const HospitalAdminDashboard = () => {
   const [filterBranches, setFilterBranches] = useState([]);
   const [selectedFilterBranchId, setSelectedFilterBranchId] = useState('ALL');
   const [pharmacyRefreshKey, setPharmacyRefreshKey] = useState(0);
+  // ICU views own their fetch, so they re-read on the tenant's existing REFRESH_DATA push.
+  const [icuRefreshKey, setIcuRefreshKey] = useState(0);
 
   // Pharmacy Admin Overview Dashboard States
   const [pharmacyRecentBills, setPharmacyRecentBills] = useState([]);
@@ -356,6 +360,7 @@ const HospitalAdminDashboard = () => {
 
   // Real-time WebSocket sync
   useWebSocket(user, setUser, (silent) => {
+    setIcuRefreshKey((k) => k + 1);
     if (
       activeTab !== 'fees' &&
       activeTab !== 'settings' &&
@@ -1907,6 +1912,8 @@ const HospitalAdminDashboard = () => {
     { id: 'opd', label: 'OPD', icon: null, requiredModule: 'OPD' },
     { id: 'ipd', label: 'IPD', icon: null, requiredModule: 'IPD' },
     { id: 'wards', label: 'Wards & Beds', icon: null, requiredModule: 'IPD' },
+    { id: 'icu-dashboard', label: 'ICU Dashboard', icon: null, requiredModule: 'ICU' },
+    { id: 'icu-beds', label: 'ICU Bed Board', icon: null, requiredModule: 'ICU' },
     { id: 'ot', label: 'Operation Theatre', icon: null, requiredModule: 'OT' },
     { id: 'pathology', label: 'Pathology', icon: null, requiredModule: 'PATHOLOGY' },
     // Pharmacy & inventory
@@ -2017,6 +2024,11 @@ const HospitalAdminDashboard = () => {
       tabIds: ['patients', 'appointments', 'opd', 'ipd', 'ot', 'pathology'],
     },
     { id: 'group-rooms', label: 'Rooms', tabIds: ['wards'] },
+    {
+      id: 'group-critical-care',
+      label: 'Critical Care',
+      tabIds: ['icu-dashboard', 'icu-beds'],
+    },
     {
       id: 'group-staff',
       label: 'Staff',
@@ -2953,6 +2965,8 @@ const HospitalAdminDashboard = () => {
                 activeTab === 'nurse-assignments' ||
                 activeTab === 'nurse-tasks' ||
                 activeTab === 'wards' ||
+                activeTab === 'icu-dashboard' ||
+                activeTab === 'icu-beds' ||
                 activeTab === 'billing' ||
                 activeTab === 'fees' ||
                 activeTab === 'opd' ||
@@ -3158,6 +3172,19 @@ const HospitalAdminDashboard = () => {
                   {activeTab === 'wards' && (
                     <div className="p-6">
                       <WardsAndBeds />
+                    </div>
+                  )}
+                  {activeTab === 'icu-dashboard' && (
+                    <div className="p-6">
+                      <IcuDashboard
+                        refreshKey={icuRefreshKey}
+                        onOpenBedBoard={() => setActiveTab('icu-beds')}
+                      />
+                    </div>
+                  )}
+                  {activeTab === 'icu-beds' && (
+                    <div className="p-6">
+                      <IcuBedBoard refreshKey={icuRefreshKey} />
                     </div>
                   )}
                   {activeTab === 'billing' && billing.length === 0 && (

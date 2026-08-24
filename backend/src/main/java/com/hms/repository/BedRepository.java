@@ -16,4 +16,11 @@ public interface BedRepository extends JpaRepository<Bed, Long> {
      * with a foreign ward it was not refused at all.
      */
     java.util.Optional<Bed> findByBedIdAndHospitalId(Long bedId, Long hospitalId);
+
+    /**
+     * ICU Phase 2 — every bed of a set of wards, in one tenant-scoped query. The existing code
+     * fetches ward by ward (or fetches the hospital's whole bed list and filters in Java); the
+     * ICU board reads N units per request, so it asks once.
+     */
+    List<Bed> findByHospitalIdAndWardIdIn(Long hospitalId, java.util.Collection<Long> wardIds);
 }

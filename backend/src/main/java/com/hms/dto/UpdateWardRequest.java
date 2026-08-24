@@ -25,4 +25,12 @@ public class UpdateWardRequest {
      */
     @jakarta.validation.constraints.Min(value = 0, message = "Total beds cannot be negative")
     private Integer totalBeds;
+
+    /**
+     * CareUnitRegistry key (ICU Phase 2). Null leaves the classification untouched (partial
+     * update). Re-typing a ward that has an occupied bed is rejected — see
+     * {@code WardService.updateWard}.
+     */
+    @Size(max = 20)
+    private String unitType;
 }

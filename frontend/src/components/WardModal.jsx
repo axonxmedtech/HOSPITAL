@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useToast } from '../context/ToastContext';
+import authService from '../services/authService';
+import icuService from '../services/icuService';
 import WardService from '../services/wardService';
 import Button from './Button';
 
@@ -9,7 +11,21 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
   const [bedPrice, setBedPrice] = useState('');
   const [totalBeds, setTotalBeds] = useState('');
   const [floorNumber, setFloorNumber] = useState('');
+  const [unitType, setUnitType] = useState('GENERAL');
+  const [unitTypes, setUnitTypes] = useState([]);
   const [saving, setSaving] = useState(false);
+
+  // Classification is only meaningful for a tenant on the ICU plan; without it the ward keeps
+  // its GENERAL default and the field is simply absent.
+  const hasIcu = (authService.getCurrentUser()?.modules || []).includes('ICU');
+
+  useEffect(() => {
+    if (!open || !hasIcu || unitTypes.length > 0) return;
+    icuService
+      .getUnitTypes()
+      .then(setUnitTypes)
+      .catch(() => setUnitTypes([]));
+  }, [open, hasIcu, unitTypes.length]);
 
   useEffect(() => {
     if (initial) {
@@ -17,11 +33,13 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
       setBedPrice(initial.bedPrice ?? '');
       setTotalBeds(initial.totalBeds ?? '');
       setFloorNumber(initial.floorNumber ?? '');
+      setUnitType(initial.unitType || 'GENERAL');
     } else {
       setWardName('');
       setBedPrice('');
       setTotalBeds('');
       setFloorNumber('');
+      setUnitType('GENERAL');
     }
   }, [initial, open]);
 
@@ -52,6 +70,7 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
           floorNumber: floorNumber ? Number(floorNumber) : null,
           // Bed count is editable on edit too — the backend adds/removes beds to match.
           totalBeds: totalBeds === '' ? null : Number(totalBeds),
+          ...(hasIcu ? { unitType } : {}),
         };
         await WardService.updateWard(initial.wardId, payload);
       } else {
@@ -60,6 +79,7 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
           bedPrice: Number(bedPrice),
           totalBeds: totalBeds ? Number(totalBeds) : 0,
           floorNumber: floorNumber ? Number(floorNumber) : null,
+          ...(hasIcu ? { unitType } : {}),
         };
         await WardService.createWard(payload);
       }
@@ -143,6 +163,30 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
               className="mt-1 w-full p-2 border rounded"
             />
           </div>
+
+          {hasIcu && unitTypes.length > 0 && (
+            <div>
+              <label htmlFor="fld-ward-unit-type" className="block text-sm text-slate-600">
+                Unit Type
+              </label>
+              <select
+                id="fld-ward-unit-type"
+                value={unitType}
+                onChange={(e) => setUnitType(e.target.value)}
+                className="mt-1 w-full p-2 border rounded"
+              >
+                {unitTypes.map((t) => (
+                  <option key={t.key} value={t.key}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-slate-500">
+                Critical care units appear on the ICU dashboard and bed board. A ward with an
+                occupied bed cannot be reclassified — move or discharge its patients first.
+              </p>
+            </div>
+          )}
 
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" onClick={onClose} type="button">

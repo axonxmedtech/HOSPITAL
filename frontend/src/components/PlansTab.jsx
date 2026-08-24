@@ -17,6 +17,7 @@ const AVAILABLE_MODULES = [
   'OT',
   'PATHOLOGY',
   'NURSING',
+  'ICU',
 ];
 
 // Pharmacy plans are defined by a single mutually-exclusive tier rather than the

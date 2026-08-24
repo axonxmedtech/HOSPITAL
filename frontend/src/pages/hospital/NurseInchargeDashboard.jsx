@@ -11,6 +11,7 @@ import useWebSocket from '../../hooks/useWebSocket';
 import authService from '../../services/authService';
 import nurseService from '../../services/nurseService';
 import HospitalCalendar from './HospitalCalendar';
+import IcuBedBoard from './icu/IcuBedBoard';
 import AttendanceView from './nurse-incharge/AttendanceView';
 import CoverageView from './nurse-incharge/CoverageView';
 import InchargeOverview from './nurse-incharge/InchargeOverview';
@@ -48,6 +49,7 @@ const NurseInchargeDashboard = () => {
     { id: 'schedule', label: 'Schedule' },
     { id: 'attendance', label: 'Attendance' },
     { id: 'beds', label: 'Beds' },
+    ...(user?.modules?.includes('ICU') ? [{ id: 'icu-beds', label: 'ICU Beds' }] : []),
     { id: 'coverage', label: 'Coverage' },
     { id: 'calendar', label: 'Calendar' },
   ];
@@ -58,6 +60,7 @@ const NurseInchargeDashboard = () => {
     if (activeTab === 'schedule') return 'Schedule';
     if (activeTab === 'attendance') return 'Attendance';
     if (activeTab === 'beds') return 'Beds';
+    if (activeTab === 'icu-beds') return 'ICU Beds';
     if (activeTab === 'coverage') return 'Coverage';
     if (activeTab === 'calendar') return 'Calendar';
     return 'My Nurses';
@@ -75,6 +78,8 @@ const NurseInchargeDashboard = () => {
         return <AttendanceView />;
       case 'beds':
         return <WardBedsView />;
+      case 'icu-beds':
+        return <IcuBedBoard refreshKey={refreshKey} />;
       case 'coverage':
         return <CoverageView />;
       case 'calendar':

@@ -145,6 +145,8 @@ const IpdDetails = () => {
         { id: 'patients', label: 'Patients', requiredModule: 'OPD' },
         { id: 'opd', label: 'OPD', requiredModule: 'OPD' },
         { id: 'wards', label: 'Wards & Beds', requiredModule: 'IPD' },
+        { id: 'icu-dashboard', label: 'ICU Dashboard', requiredModule: 'ICU' },
+        { id: 'icu-beds', label: 'ICU Bed Board', requiredModule: 'ICU' },
         { id: 'doctors', label: 'Doctors', requiredModule: 'OPD' },
         { id: 'receptionists', label: 'Receptionists', requiredModule: 'OPD' },
         { id: 'billing', label: 'Billing', requiredModule: 'BILLING' },

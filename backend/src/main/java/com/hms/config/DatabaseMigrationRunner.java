@@ -124,6 +124,10 @@ public class DatabaseMigrationRunner {
         backfillPrintPaymentDefaults();
         widenVitalsDecimalColumns();
         backfillStrandedOpdStatuses();
+
+        // ICU Phase 2 — ward classification (CareUnitRegistry). GENERAL by default, so every
+        // existing ward keeps behaving exactly as before and no backfill is needed.
+        addColumnIfMissing("wards", "unit_type", "VARCHAR(20) NOT NULL DEFAULT 'GENERAL'");
     }
 
     /**

@@ -856,6 +856,7 @@ CREATE TABLE `wards` (
   `hospital_id` bigint NOT NULL,
   `total_beds` int NOT NULL,
   `ward_name` varchar(255) NOT NULL,
+  `unit_type` varchar(20) NOT NULL DEFAULT 'GENERAL',
   PRIMARY KEY (`ward_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
