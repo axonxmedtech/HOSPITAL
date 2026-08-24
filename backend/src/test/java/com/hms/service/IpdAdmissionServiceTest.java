@@ -68,20 +68,25 @@ class IpdAdmissionServiceTest {
     void admitFromOpd_withOccupiedBed_throwsRuntimeException() {
         Opd opd = new Opd();
         opd.setId(1L);
-        opd.setPatient(new Patient());
+        Patient patient = new Patient();
+        patient.setId(5L);
+        opd.setPatient(patient);
 
-        when(opdRepository.findByIdAndHospitalIdWithPatientAndDoctor(1L, 1L)).thenReturn(Optional.of(opd));
+        when(opdRepository.findByIdAndHospitalIdWithPatientAndDoctorForUpdate(1L, 1L)).thenReturn(Optional.of(opd));
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        when(patientRepository.findByIdAndHospitalIdForUpdate(5L, 1L)).thenReturn(Optional.of(patient));
+        when(hospitalRepository.findGlobalIpdNumberLock()).thenReturn(Optional.of(new com.hms.entity.Hospital()));
 
         Bed bed = new Bed();
         bed.setBedId(2L);
+        bed.setWardId(1L);
         bed.setStatus("occupied");
 
-        when(bedRepository.findByBedIdAndHospitalId(2L, 1L)).thenReturn(Optional.of(bed));
+        when(bedRepository.findByBedIdAndHospitalIdForUpdate(2L, 1L)).thenReturn(Optional.of(bed));
 
         assertThatThrownBy(() -> service.admitFromOpd(1L, 1L, 2L, "ELECTIVE", "Fever"))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Bed is not available");
+                .hasMessageContaining("Bed is no longer available");
     }
 
     @Test
@@ -93,21 +98,23 @@ class IpdAdmissionServiceTest {
         opd.setId(1L);
         opd.setPatient(patient);
 
-        when(opdRepository.findByIdAndHospitalIdWithPatientAndDoctor(1L, 1L)).thenReturn(Optional.of(opd));
+        when(opdRepository.findByIdAndHospitalIdWithPatientAndDoctorForUpdate(1L, 1L)).thenReturn(Optional.of(opd));
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
         when(securityHelper.getCurrentUserEmail()).thenReturn("admin@test.com");
+        when(patientRepository.findByIdAndHospitalIdForUpdate(5L, 1L)).thenReturn(Optional.of(patient));
 
         Bed bed = new Bed();
         bed.setBedId(2L);
+        bed.setWardId(1L);
         bed.setStatus("available");
 
-        when(bedRepository.findByBedIdAndHospitalId(2L, 1L)).thenReturn(Optional.of(bed));
-        when(ipdAdmissionRepository.findMaxIpdSequence()).thenReturn(0);
+        when(bedRepository.findByBedIdAndHospitalIdForUpdate(2L, 1L)).thenReturn(Optional.of(bed));
+        when(ipdAdmissionRepository.findMaxIpdSequence()).thenReturn(0L);
 
         Bed occupiedBed = new Bed();
         occupiedBed.setBedId(2L);
         occupiedBed.setStatus("occupied");
-        when(bedStatusService.change(eq(2L), eq(com.hms.entity.BedStatus.OCCUPIED), any()))
+        when(bedStatusService.changeLocked(eq(bed), eq(com.hms.entity.BedStatus.OCCUPIED), any()))
                 .thenReturn(occupiedBed);
 
         IpdAdmission savedIpd = new IpdAdmission();
@@ -118,16 +125,16 @@ class IpdAdmissionServiceTest {
 
         com.hms.entity.Hospital hospital = new com.hms.entity.Hospital();
         hospital.setId(1L);
-        hospital.setModules(java.util.List.of("BILLING"));
+        hospital.setModules(java.util.List.of("BILLING", "NURSING"));
         when(hospitalRepository.findById(1L)).thenReturn(Optional.of(hospital));
+        when(hospitalRepository.findGlobalIpdNumberLock()).thenReturn(Optional.of(hospital));
         when(ipdAdmissionRepository.save(any(IpdAdmission.class))).thenReturn(savedIpd);
         when(billingRepository.save(any(Billing.class))).thenAnswer(i -> i.getArguments()[0]);
         when(ipdBedHistoryRepository.save(any(com.hms.entity.IpdBedHistory.class))).thenAnswer(i -> i.getArguments()[0]);
         com.hms.entity.Ward ward = new com.hms.entity.Ward();
         ward.setWardId(1L);
-        ward.setInchargeNurseId(99L);
+        ward.setInchargeNurseId(null);
         when(wardRepository.findByWardIdAndHospitalId(1L, 1L)).thenReturn(Optional.of(ward));
-        when(wardRepository.findById(1L)).thenReturn(Optional.of(ward));
         when(appointmentRepository.findByPatientIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(any(), any()))
                 .thenReturn(List.of());
 
@@ -158,7 +165,7 @@ class IpdAdmissionServiceTest {
         ipd.setHospitalId(1L); // must belong to the caller's hospital to reach the status check
         ipd.setStatus("DISCHARGED");
 
-        when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(ipd));
+        when(ipdAdmissionRepository.findByIdAndHospitalIdForUpdate(1L, 1L)).thenReturn(Optional.of(ipd));
 
         assertThatThrownBy(() -> service.planDischarge(1L, new PlanDischargeRequest()))
                 .isInstanceOf(RuntimeException.class)
@@ -173,7 +180,7 @@ class IpdAdmissionServiceTest {
         ipd.setId(1L);
         ipd.setHospitalId(1L); // must belong to the caller's hospital to reach validation
         ipd.setStatus("ADMITTED");
-        when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(ipd));
+        when(ipdAdmissionRepository.findByIdAndHospitalIdForUpdate(1L, 1L)).thenReturn(Optional.of(ipd));
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
         
         com.hms.dto.AddIpdPrescriptionRequest req = new com.hms.dto.AddIpdPrescriptionRequest();

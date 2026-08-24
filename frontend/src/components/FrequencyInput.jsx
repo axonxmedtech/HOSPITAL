@@ -50,9 +50,17 @@ const FrequencyInput = ({ value, onChange, disabled = false, className = '' }) =
   const s = parse(value);
 
   const onBox = (key, raw) => {
-    const digit = (String(raw).match(/\d/g) || []).join('').slice(-1); // keep one digit
+    const digits = (String(raw).match(/\d/g) || []).join('');
+    // Without a browser-level maxLength, a click-and-type edit reaches this controlled input.
+    // Keep one dose: replace an existing digit with the newly entered one, while a paste into an
+    // empty box deterministically keeps its first digit.
+    const digit = digits
+      ? (s[key] && digits.length > 1 ? digits.at(-1) : digits[0])
+      : '';
     onChange(compose({ ...s, [key]: digit, sos: false }));
   };
+
+  const selectDose = (event) => event.currentTarget.select();
 
   const toggleSos = (checked) => onChange(checked ? AS_PER_REQUIRED : '');
 
@@ -65,12 +73,13 @@ const FrequencyInput = ({ value, onChange, disabled = false, className = '' }) =
         <input
           type="text"
           inputMode="numeric"
-          maxLength={1}
           title="Morning"
           aria-label="Morning dose"
           placeholder="0"
           value={s.m}
           disabled={disabled || s.sos}
+          onFocus={selectDose}
+          onClick={selectDose}
           onChange={(e) => onBox('m', e.target.value)}
           className={boxCls}
         />
@@ -78,12 +87,13 @@ const FrequencyInput = ({ value, onChange, disabled = false, className = '' }) =
         <input
           type="text"
           inputMode="numeric"
-          maxLength={1}
           title="Afternoon"
           aria-label="Afternoon dose"
           placeholder="0"
           value={s.a}
           disabled={disabled || s.sos}
+          onFocus={selectDose}
+          onClick={selectDose}
           onChange={(e) => onBox('a', e.target.value)}
           className={boxCls}
         />
@@ -91,12 +101,13 @@ const FrequencyInput = ({ value, onChange, disabled = false, className = '' }) =
         <input
           type="text"
           inputMode="numeric"
-          maxLength={1}
           title="Night"
           aria-label="Night dose"
           placeholder="0"
           value={s.n}
           disabled={disabled || s.sos}
+          onFocus={selectDose}
+          onClick={selectDose}
           onChange={(e) => onBox('n', e.target.value)}
           className={boxCls}
         />

@@ -5,6 +5,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 
 @Repository
 public interface IpdAdmissionRepository extends JpaRepository<IpdAdmission, Long> {
@@ -20,7 +22,17 @@ public interface IpdAdmissionRepository extends JpaRepository<IpdAdmission, Long
     @org.springframework.data.jpa.repository.Query(
         value = "SELECT COALESCE(MAX(CAST(SUBSTRING(ipd_number, 5) AS DECIMAL(20,0))), 0) FROM ipd_admission WHERE ipd_number LIKE 'IPD-%'",
         nativeQuery = true)
-    Integer findMaxIpdSequence();
+    Long findMaxIpdSequence();
+    boolean existsByHospitalIdAndPatientIdAndStatusIn(Long hospitalId, Long patientId,
+            java.util.Collection<String> statuses);
+
+    Optional<IpdAdmission> findByIdAndHospitalId(Long id, Long hospitalId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("SELECT i FROM IpdAdmission i WHERE i.id = :id AND i.hospitalId = :hospitalId")
+    Optional<IpdAdmission> findByIdAndHospitalIdForUpdate(
+            @org.springframework.data.repository.query.Param("id") Long id,
+            @org.springframework.data.repository.query.Param("hospitalId") Long hospitalId);
     org.springframework.data.domain.Page<IpdAdmission> findByHospitalId(Long hospitalId, org.springframework.data.domain.Pageable pageable);
     org.springframework.data.domain.Page<IpdAdmission> findByHospitalIdAndDoctorId(Long hospitalId, Long doctorId, org.springframework.data.domain.Pageable pageable);
     java.util.List<IpdAdmission> findByHospitalIdAndStatus(Long hospitalId, String status);

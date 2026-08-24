@@ -3,6 +3,10 @@ package com.hms.repository;
 import com.hms.entity.Patient;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import jakarta.persistence.LockModeType;
 
 import java.util.List;
 import java.util.Optional;
@@ -55,6 +59,12 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
          *         hospital
          */
         Optional<Patient> findByIdAndHospitalIdAndIsActiveTrue(Long id, Long hospitalId);
+
+        /** Serializes admission decisions for one tenant-scoped patient. */
+        @Lock(LockModeType.PESSIMISTIC_WRITE)
+        @Query("SELECT p FROM Patient p WHERE p.id = :id AND p.hospitalId = :hospitalId")
+        Optional<Patient> findByIdAndHospitalIdForUpdate(@Param("id") Long id,
+                        @Param("hospitalId") Long hospitalId);
 
         Optional<Patient> findByPublicIdAndHospitalIdAndIsActiveTrue(String publicId, Long hospitalId);
 

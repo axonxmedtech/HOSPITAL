@@ -28,6 +28,16 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void forbiddenExceptionMapsTo403InsteadOfTheGeneric500() {
+        ResponseEntity<?> res = handler.handleForbidden(
+                new ForbiddenException("Nurse login is disabled for this hospital"));
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(((com.hms.dto.ApiResponse<?>) res.getBody()).error())
+                .contains("Nurse login is disabled");
+    }
+
+    @Test
     void aBareRuntimeExceptionIsStillA500() {
         // The catch-all must keep reporting genuine faults as 500 — the fix narrowed what
         // reaches it, it did not turn real server errors into 404s.
