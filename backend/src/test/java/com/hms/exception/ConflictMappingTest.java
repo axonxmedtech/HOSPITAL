@@ -64,14 +64,15 @@ class ConflictMappingTest {
     }
 
     /**
-     * The deliberate, temporary inconsistency: only the 409 has moved to the canonical body.
-     * If a later change converts 404 as a side effect, this test says so.
+     * The remaining inconsistency, still deliberate: 409 and 404 answer in the canonical body,
+     * everything else does not. 400 is the witness. If a later change converts it as a side
+     * effect rather than as a decision, this test says so.
      */
     @Test
-    void theOtherHandlersStillAnswerInTheHeadShape() {
-        ResponseEntity<?> notFound = handler.handleNotFound(new ResourceNotFoundException("Patient not found"));
+    void theUnconvertedHandlersStillAnswerInTheHeadShape() {
+        ResponseEntity<?> badRequest = handler.handleIllegalArgument(new IllegalArgumentException("bad"));
 
-        assertThat(notFound.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-        assertThat(notFound.getBody()).isNotInstanceOf(ApiErrorResponse.class);
+        assertThat(badRequest.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(badRequest.getBody()).isNotInstanceOf(ApiErrorResponse.class);
     }
 }
