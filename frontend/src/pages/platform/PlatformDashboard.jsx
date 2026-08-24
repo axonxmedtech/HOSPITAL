@@ -17,6 +17,7 @@ import { useToast } from '../../context/ToastContext';
 import { API_BASE_URL } from '../../services/apiService';
 import authService from '../../services/authService';
 import platformService from '../../services/platformService';
+import statsCache from '../../services/platformStatsCache';
 import { extractApiError } from '../../utils/apiError';
 import { backdropProps } from '../../utils/modalA11y';
 import { validateForm } from '../../utils/validation';
@@ -34,25 +35,6 @@ import { validateForm } from '../../utils/validation';
  */
 // BUG-015: Named constant – single source of truth for platform list page size
 const PLATFORM_PAGE_SIZE = 10;
-
-// BUG-027: Lightweight in-memory stats cache with a 60-second TTL.
-// Prevents redundant API calls every time the user returns to the dashboard tab.
-const statsCache = {
-  data: null,
-  fetchedAt: 0,
-  TTL_MS: 60_000,
-  isValid() {
-    return this.data !== null && Date.now() - this.fetchedAt < this.TTL_MS;
-  },
-  set(data) {
-    this.data = data;
-    this.fetchedAt = Date.now();
-  },
-  clear() {
-    this.data = null;
-    this.fetchedAt = 0;
-  },
-};
 
 // Compact single-card summary (Total/Active/Inactive) for one business type
 // (Hospitals, Clinics, or Pharmacies). One component instead of three
@@ -406,7 +388,11 @@ const PlatformDashboard = () => {
     // Reload the tenant list the Super Admin is actually looking at — same page, same type —
     // so a live refresh never yanks them back to page 1 of a different group.
     reloadTenantsRef.current = () => {
+      // Whatever changed elsewhere may have moved the counts too, so drop the cached
+      // overview as well as reloading the list.
+      statsCache.clear();
       loadHospitals(hospitalPage.number, hospitalPage.size, getEntityType(activeTab));
+      if (activeTab === 'dashboard') loadHospitalStats();
     };
   });
 
@@ -567,6 +553,7 @@ const PlatformDashboard = () => {
       async () => {
         try {
           await platformService.createHospital(formData);
+          statsCache.clear();
           setShowCreateModal(false);
           setFormData({
             hospitalName: '',
@@ -594,6 +581,8 @@ const PlatformDashboard = () => {
       async (reason) => {
         try {
           await platformService.updateHospitalStatus(id, !currentStatus, reason);
+          // The active/inactive split on the overview just changed.
+          statsCache.clear();
           // BUG-015: use PLATFORM_PAGE_SIZE constant
           loadHospitals(0, PLATFORM_PAGE_SIZE, getEntityType(activeTab));
         } catch (err) {
@@ -627,6 +616,7 @@ const PlatformDashboard = () => {
         );
       }
 
+      statsCache.clear();
       success('Updated successfully');
       setEditHospitalModal((prev) => ({ ...prev, isOpen: false }));
       loadHospitals(hospitalPage.number, hospitalPage.size, getEntityType(activeTab));

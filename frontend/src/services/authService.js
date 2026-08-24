@@ -1,4 +1,5 @@
 import apiClient from './apiService';
+import statsCache from './platformStatsCache';
 
 /**
  * Auth Service - Authentication and authorization utilities
@@ -94,6 +95,9 @@ const authService = {
   logout: () => {
     sessionStorage.removeItem('token');
     sessionStorage.removeItem('user');
+    // Platform stats are cached in a module-level object that outlives the session.
+    // Dropping it here keeps one admin's counts from surfacing for the next.
+    statsCache.clear();
   },
 
   /**
