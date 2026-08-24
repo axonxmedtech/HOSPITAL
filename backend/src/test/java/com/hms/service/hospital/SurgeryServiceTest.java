@@ -253,16 +253,84 @@ class SurgeryServiceTest {
     void complete_marksOtBedForCleaning() {
         Surgery s = new Surgery();
         s.setId(9L); s.setHospitalId(7L); s.setIpdAdmissionId(1L); s.setStatus(Surgery.IN_PROGRESS);
-        s.setOtWardId(3L); s.setOtBedId(50L);
+        s.setOtWardId(3L); s.setOtBedId(50L); s.setOtRoomId(8L);
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
         when(surgeryRepository.findByPublicId("s-pub")).thenReturn(Optional.of(s));
+        Bed otBed = new Bed(); otBed.setBedId(50L); otBed.setHospitalId(7L); otBed.setStatus(BedStatus.OCCUPIED);
+        when(bedRepository.findByBedIdAndHospitalIdForUpdate(50L, 7L)).thenReturn(Optional.of(otBed));
+        OtRoom room = new OtRoom(); room.setId(8L); room.setHospitalId(7L); room.setStatus(OtRoom.OCCUPIED); room.setCurrentSurgeryId(9L);
+        when(otSchedulingService.lockRoom(8L)).thenReturn(room);
+        OtRoomOccupancy occupancy = new OtRoomOccupancy(); occupancy.setSurgeryId(9L);
+        when(occupancyRepository.findOpenBySurgeryIdForUpdate(9L)).thenReturn(Optional.of(occupancy));
         org.mockito.Mockito.lenient().when(surgeryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         Surgery out = service.complete("s-pub");
 
         assertThat(out.getStatus()).isEqualTo(Surgery.COMPLETED);
         assertThat(out.getCompletedAt()).isNotNull();
-        verify(bedStatusService).change(eq(50L), eq(com.hms.entity.BedStatus.CLEANING), any());
+        verify(bedStatusService).changeLocked(otBed, BedStatus.CLEANING, "Surgery completed");
+        verify(otRoomRepository).save(room);
+        verify(occupancyRepository).save(occupancy);
+        verify(stateMachine).transition(s, SurgeryStatus.COMPLETED, null, null, null);
+        verifyNoInteractions(ipdAdmissionRepository);
+        org.mockito.InOrder locks = inOrder(bedRepository, otSchedulingService);
+        locks.verify(bedRepository).findByBedIdAndHospitalIdForUpdate(50L, 7L);
+        locks.verify(otSchedulingService).lockRoom(8L);
+    }
+
+    @Test
+    void complete_doesNotTransitionWhenOtBedReleaseFails() {
+        Surgery s = inProgressSurgeryWithResources();
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(surgeryRepository.findByPublicId("s-pub")).thenReturn(Optional.of(s));
+        when(bedRepository.findByBedIdAndHospitalIdForUpdate(50L, 7L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.complete("s-pub")).hasMessageContaining("OT bed");
+
+        assertThat(s.getStatus()).isEqualTo(Surgery.IN_PROGRESS);
+        verifyNoInteractions(otSchedulingService, stateMachine);
+    }
+
+    @Test
+    void complete_doesNotTransitionWhenOtRoomReleaseFails() {
+        Surgery s = inProgressSurgeryWithResources();
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(surgeryRepository.findByPublicId("s-pub")).thenReturn(Optional.of(s));
+        Bed otBed = new Bed(); otBed.setBedId(50L); otBed.setHospitalId(7L); otBed.setStatus(BedStatus.OCCUPIED);
+        when(bedRepository.findByBedIdAndHospitalIdForUpdate(50L, 7L)).thenReturn(Optional.of(otBed));
+        doThrow(new IllegalStateException("room release failed")).when(otSchedulingService).lockRoom(8L);
+
+        assertThatThrownBy(() -> service.complete("s-pub")).hasMessageContaining("room release failed");
+
+        verify(bedStatusService).changeLocked(otBed, BedStatus.CLEANING, "Surgery completed");
+        verify(stateMachine, never()).transition(any(), eq(SurgeryStatus.COMPLETED), any(), any(), any());
+        assertThat(s.getStatus()).isEqualTo(Surgery.IN_PROGRESS);
+    }
+
+    @Test
+    void complete_doesNotTransitionWhenOccupancyClosureFails() {
+        Surgery s = inProgressSurgeryWithResources();
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(surgeryRepository.findByPublicId("s-pub")).thenReturn(Optional.of(s));
+        Bed otBed = new Bed(); otBed.setBedId(50L); otBed.setHospitalId(7L); otBed.setStatus(BedStatus.OCCUPIED);
+        when(bedRepository.findByBedIdAndHospitalIdForUpdate(50L, 7L)).thenReturn(Optional.of(otBed));
+        OtRoom room = new OtRoom(); room.setId(8L); room.setHospitalId(7L); room.setStatus(OtRoom.OCCUPIED); room.setCurrentSurgeryId(9L);
+        when(otSchedulingService.lockRoom(8L)).thenReturn(room);
+        OtRoomOccupancy occupancy = new OtRoomOccupancy(); occupancy.setSurgeryId(9L);
+        when(occupancyRepository.findOpenBySurgeryIdForUpdate(9L)).thenReturn(Optional.of(occupancy));
+        doThrow(new IllegalStateException("occupancy close failed")).when(occupancyRepository).save(occupancy);
+
+        assertThatThrownBy(() -> service.complete("s-pub")).hasMessageContaining("occupancy close failed");
+
+        verify(stateMachine, never()).transition(any(), eq(SurgeryStatus.COMPLETED), any(), any(), any());
+        assertThat(s.getStatus()).isEqualTo(Surgery.IN_PROGRESS);
+    }
+
+    private Surgery inProgressSurgeryWithResources() {
+        Surgery s = new Surgery();
+        s.setId(9L); s.setHospitalId(7L); s.setIpdAdmissionId(1L); s.setStatus(Surgery.IN_PROGRESS);
+        s.setOtWardId(3L); s.setOtBedId(50L); s.setOtRoomId(8L);
+        return s;
     }
 
     @Test

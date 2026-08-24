@@ -45,6 +45,24 @@ public class BedStatusService {
             // be indistinguishable from a missing one.
             throw new ResourceNotFoundException("Bed not found");
         }
+        return applyChange(bed, newStatus, remarks);
+    }
+
+    /**
+     * Completes a transition using a row the caller has already locked. This preserves the
+     * central status/audit behavior without replacing the caller's pessimistic lock.
+     */
+    @Transactional
+    public Bed changeLocked(Bed bed, String newStatus, String remarks) {
+        if (bed == null) throw new IllegalArgumentException("Bed not found");
+        Long hospitalId = safeHospitalId();
+        if (hospitalId != null && !hospitalId.equals(bed.getHospitalId())) {
+            throw new ResourceNotFoundException("Bed not found");
+        }
+        return applyChange(bed, newStatus, remarks);
+    }
+
+    private Bed applyChange(Bed bed, String newStatus, String remarks) {
         if (!BedStatus.isValid(newStatus)) throw new IllegalArgumentException("Unknown bed status: " + newStatus);
 
         String previous = bed.getStatus();
@@ -64,7 +82,7 @@ public class BedStatusService {
 
         try {
             auditLogService.logAction("BED_STATUS_CHANGED", previous + " -> " + newStatus,
-                    securityHelper.getCurrentUserEmail(), bed.getHospitalId(), "BED", String.valueOf(bedId), remarks);
+                    securityHelper.getCurrentUserEmail(), bed.getHospitalId(), "BED", String.valueOf(bed.getBedId()), remarks);
         } catch (Exception e) { logger.warn("Bed status audit log failed: {}", e.getMessage()); }
         // Bed occupancy is shared state: reception admits against it, nursing cleans it, OT frees
         // it. Every bed board in the tenant must move at once or two people book the same bed.

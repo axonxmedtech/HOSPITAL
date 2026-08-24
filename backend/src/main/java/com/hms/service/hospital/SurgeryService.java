@@ -278,10 +278,10 @@ public class SurgeryService {
     public Surgery complete(String publicId) {
         Long hospitalId = requireHospitalId();
         Surgery s = requireSurgery(publicId, hospitalId);
-        freeOtBed(s, "Surgery completed");
-        // The theatre is released the moment the procedure ends, and goes to cleaning --
-        // never held until the patient reaches a ward.
-        markRoom(s, com.hms.entity.OtRoom.CLEANING, null);
+        if (!Surgery.IN_PROGRESS.equals(s.getStatus())) {
+            throw new IllegalArgumentException("Only an in-progress surgery can be completed");
+        }
+        releaseResourcesForCompletion(s, hospitalId);
         s.setCompletedAt(LocalDateTime.now());
         // The theatre is released the moment the procedure ends -- not when the patient
         // finally reaches a ward. Recovery is a milestone, never a case state.
@@ -449,6 +449,45 @@ public class SurgeryService {
         } catch (Exception e) {
             logger.warn("Failed to mark OT bed for cleaning: {}", e.getMessage());
         }
+    }
+
+    /**
+     * Completion is all-or-nothing: unlike cancellation's legacy best-effort cleanup, every
+     * resource mutation below is required before the surgery may become COMPLETED.
+     */
+    private void releaseResourcesForCompletion(Surgery surgery, Long hospitalId) {
+        releaseOtBedForCompletion(surgery, hospitalId);
+        releaseOtRoomForCompletion(surgery, hospitalId);
+    }
+
+    private void releaseOtBedForCompletion(Surgery surgery, Long hospitalId) {
+        if (surgery.getOtBedId() == null) return;
+        Bed bed = bedRepository.findByBedIdAndHospitalIdForUpdate(surgery.getOtBedId(), hospitalId)
+                .orElseThrow(() -> new IllegalStateException("Assigned OT bed is no longer available"));
+        if (!com.hms.entity.BedStatus.OCCUPIED.equalsIgnoreCase(bed.getStatus())) {
+            throw new IllegalStateException("Assigned OT bed is not occupied by the surgery");
+        }
+        bedStatusService.changeLocked(bed, com.hms.entity.BedStatus.CLEANING, "Surgery completed");
+    }
+
+    private void releaseOtRoomForCompletion(Surgery surgery, Long hospitalId) {
+        if (surgery.getOtRoomId() == null) return;
+        // Keep e435b8b's global OT resource order: bed first, then theatre, then occupancy.
+        com.hms.entity.OtRoom room = otSchedulingService.lockRoom(surgery.getOtRoomId());
+        if (!hospitalId.equals(room.getHospitalId())) {
+            throw new IllegalStateException("Assigned theatre belongs to another hospital");
+        }
+        if (!com.hms.entity.OtRoom.OCCUPIED.equals(room.getStatus())
+                || !Objects.equals(surgery.getId(), room.getCurrentSurgeryId())) {
+            throw new IllegalStateException("Assigned theatre is not occupied by the surgery");
+        }
+        room.setStatus(com.hms.entity.OtRoom.CLEANING);
+        room.setCurrentSurgeryId(null);
+        otRoomRepository.save(room);
+        occupancyRepository.findOpenBySurgeryIdForUpdate(surgery.getId()).ifPresent(occupancy -> {
+            occupancy.setOccupiedTo(LocalDateTime.now());
+            occupancyRepository.save(occupancy);
+        });
     }
 
     /**
