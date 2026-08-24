@@ -112,6 +112,21 @@ class WardServiceTest {
     }
 
     @Test
+    void getWardsForAdmission_includesAvailableWardWithoutNurseIncharge() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        Ward ward = savedWard(3L, "General", 1);
+        ward.setInchargeNurseId(null);
+        Bed available = new Bed();
+        available.setStatus("available");
+        when(wardRepository.findByHospitalId(7L)).thenReturn(List.of(ward));
+        when(bedRepository.findByWardIdAndHospitalId(3L, 7L)).thenReturn(List.of(available));
+
+        List<WardResponse> wards = service.getWardsForAdmission();
+
+        assertThat(wards).extracting(WardResponse::getWardId).containsExactly(3L);
+    }
+
+    @Test
     void createWard_rejectsCountAboveMax_andCreatesNoBeds() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
         when(wardRepository.save(any())).thenReturn(savedWard(3L, "ICU", 2001));
