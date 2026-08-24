@@ -1424,6 +1424,32 @@ CREATE TABLE `surgery_state_transitions` (
   CONSTRAINT `FK_sst_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- OT 4.6A — immutable anaesthesia-clearance decisions and explicit emergency bypasses.
+CREATE TABLE `surgery_anaesthesia_clearances` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `surgery_id` bigint NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `outcome` varchar(40) NOT NULL,
+  `conditions_comments` text,
+  `recorded_by_user_id` bigint NOT NULL,
+  `recorded_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_sac_hospital_surgery_time` (`hospital_id`,`surgery_id`,`recorded_at`),
+  KEY `idx_sac_surgery` (`surgery_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `surgery_emergency_overrides` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `surgery_id` bigint NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `reason` text NOT NULL,
+  `bypassed_gates` varchar(100) NOT NULL,
+  `recorded_by_user_id` bigint NOT NULL,
+  `recorded_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_seo_hospital_surgery_time` (`hospital_id`,`surgery_id`,`recorded_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 -- OT Phase 4 — an operation theatre as a first-class resource (not a ward named "OT").
 CREATE TABLE `ot_rooms` (
   `id` bigint NOT NULL AUTO_INCREMENT,

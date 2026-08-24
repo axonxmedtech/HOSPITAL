@@ -34,6 +34,8 @@ public final class OtPermissions {
     public static final String OT_ASSIGN_ROOM = "OT_ASSIGN_ROOM";
     public static final String OT_ASSIGN_TEAM = "OT_ASSIGN_TEAM";
     public static final String OT_PRE_OP = "OT_PRE_OP";
+    public static final String OT_ANAESTHESIA_CLEARANCE = "OT_ANAESTHESIA_CLEARANCE";
+    public static final String OT_EMERGENCY_OVERRIDE = "OT_EMERGENCY_OVERRIDE";
     public static final String OT_TIME_OUT = "OT_TIME_OUT";
     public static final String OT_START = "OT_START";
     public static final String OT_COMPLETE = "OT_COMPLETE";
@@ -53,7 +55,8 @@ public final class OtPermissions {
     /** Every code, in display order, for the admin matrix. */
     public static final List<String> ALL = List.of(
             OT_VIEW, OT_CREATE, OT_APPROVE, OT_SCHEDULE, OT_RESCHEDULE, OT_CANCEL,
-            OT_ASSIGN_ROOM, OT_ASSIGN_TEAM, OT_PRE_OP, OT_TIME_OUT, OT_START, OT_COMPLETE,
+            OT_ASSIGN_ROOM, OT_ASSIGN_TEAM, OT_PRE_OP, OT_ANAESTHESIA_CLEARANCE, OT_EMERGENCY_OVERRIDE,
+            OT_TIME_OUT, OT_START, OT_COMPLETE,
             OT_RECOVERY, OT_TRANSFER, OT_CLOSE, OT_SETTINGS, OT_FORM_VIEW, OT_FORM_EDIT);
 
     private static final Map<String, String> DESCRIPTIONS = new LinkedHashMap<>();
@@ -67,6 +70,8 @@ public final class OtPermissions {
         DESCRIPTIONS.put(OT_ASSIGN_ROOM, "Assign the operation theatre");
         DESCRIPTIONS.put(OT_ASSIGN_TEAM, "Assign the surgical team");
         DESCRIPTIONS.put(OT_PRE_OP, "Complete pre-operative preparation");
+        DESCRIPTIONS.put(OT_ANAESTHESIA_CLEARANCE, "Record anaesthesia clearance");
+        DESCRIPTIONS.put(OT_EMERGENCY_OVERRIDE, "Override required pre-operative gates for an emergency");
         DESCRIPTIONS.put(OT_TIME_OUT, "Sign the WHO surgical safety checklist");
         DESCRIPTIONS.put(OT_START, "Start a surgery");
         DESCRIPTIONS.put(OT_COMPLETE, "Complete a surgery");
@@ -87,7 +92,7 @@ public final class OtPermissions {
      * NURSE_INCHARGE and OT_INCHARGE authorised no OT endpoint, so they start with none.
      */
     private static final Map<String, Set<String>> DEFAULTS = Map.of(
-            "DOCTOR", Set.of(OT_VIEW, OT_CREATE, OT_FORM_VIEW),
+            "DOCTOR", Set.of(OT_VIEW, OT_CREATE, OT_FORM_VIEW, OT_ANAESTHESIA_CLEARANCE, OT_EMERGENCY_OVERRIDE),
             "RECEPTIONIST", Set.of(OT_VIEW, OT_APPROVE, OT_SCHEDULE, OT_RESCHEDULE, OT_CANCEL,
                     OT_ASSIGN_ROOM, OT_START, OT_COMPLETE, OT_CLOSE),
             "NURSE", Set.of(OT_VIEW, OT_PRE_OP, OT_TIME_OUT, OT_FORM_VIEW, OT_FORM_EDIT),

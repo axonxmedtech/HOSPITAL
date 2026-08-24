@@ -43,6 +43,7 @@ class SurgeryServiceTest {
     @Mock com.hms.repository.OtRoomRepository otRoomRepository;
     @Mock com.hms.service.hospital.ot.OtPolicyService otPolicyService;
     @Mock com.hms.service.hospital.ot.SurgeryExecutionService surgeryExecutionService;
+    @Mock com.hms.service.hospital.ot.PreOpSafetyService preOpSafetyService;
     @Mock com.hms.repository.OtRoomOccupancyRepository occupancyRepository;
 
     @Mock com.hms.service.RealtimeNotifier notifier;

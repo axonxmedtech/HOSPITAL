@@ -57,6 +57,7 @@ public class SurgeryService {
     @Autowired private com.hms.repository.OtRoomRepository otRoomRepository;
     @Autowired private com.hms.service.hospital.ot.OtPolicyService otPolicyService;
     @Autowired private com.hms.service.hospital.ot.SurgeryExecutionService surgeryExecutionService;
+    @Autowired private com.hms.service.hospital.ot.PreOpSafetyService preOpSafetyService;
     @Autowired private com.hms.repository.OtRoomOccupancyRepository occupancyRepository;
 
     // ---------- Doctor: create request ----------
@@ -247,6 +248,7 @@ public class SurgeryService {
     public Surgery start(String publicId) {
         Long hospitalId = requireHospitalId();
         Surgery s = requireSurgery(publicId, hospitalId);
+        preOpSafetyService.assertStartAllowed(s, hospitalId);
         // WHO checklist gate. With WHO_CHECKLIST_MODE=BLOCKING a case cannot start without a
         // signed Time-Out -- enforced HERE, server-side, not by hiding a button. Emergencies
         // resolve to ADVISORY through the priority scope, so this never blocks a crash case.

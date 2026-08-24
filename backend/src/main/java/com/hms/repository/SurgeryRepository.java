@@ -12,6 +12,8 @@ import java.util.Optional;
 public interface SurgeryRepository extends JpaRepository<Surgery, Long> {
     Optional<Surgery> findByPublicId(String publicId);
 
+    Optional<Surgery> findByPublicIdAndHospitalId(String publicId, Long hospitalId);
+
     List<Surgery> findByHospitalIdAndStatusOrderByRequestedAtDesc(Long hospitalId, String status);
 
     List<Surgery> findByHospitalIdAndStatusInOrderByScheduledAtAsc(Long hospitalId, Collection<String> statuses);
