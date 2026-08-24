@@ -28,6 +28,7 @@ import com.hms.security.JwtUtil;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -89,7 +90,7 @@ class SurgeryLifecycleConcurrencyTest {
     void concurrentScheduleWithTheSameVersionCommitsExactlyOneThenFreshRescheduleWorks() throws Exception {
         Fixture fixture = fixture(SurgeryStatus.APPROVED, false, false);
         Ward alternate = wardRepository.save(ward(hospitalId, "OT-ALT-" + IDS.incrementAndGet()));
-        LocalDateTime firstSlot = LocalDateTime.now().plusDays(1);
+        LocalDateTime firstSlot = LocalDateTime.now().plusDays(1).truncatedTo(ChronoUnit.MICROS);
         LocalDateTime secondSlot = firstSlot.plusHours(2);
         LocalDateTime freshSlot = secondSlot.plusHours(2);
 
