@@ -6,7 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.*;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -35,7 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ActiveProfiles("test")
 class CrossTenantIsolationTest {
 
-    @Autowired TestRestTemplate rest;
+    @LocalServerPort int port;
     @Autowired JwtUtil jwtUtil;
 
     @Autowired HospitalRepository hospitalRepository;
@@ -132,11 +132,40 @@ class CrossTenantIsolationTest {
         tokenB = jwtUtil.generateToken(2L, "admin@bravo.com", "HOSPITAL_ADMIN", hidB, MODULES, null, "HOSPITAL", null);
     }
 
+    /**
+     * Transport only -- the assertions, endpoints and tenant semantics below are unchanged.
+     *
+     * <p>TestRestTemplate cannot be used here any more. Its SimpleClientHttpRequestFactory
+     * streams the request body, and 233b66e made the unauthenticated path answer 401 with a
+     * body (SecurityConfig -> SecurityErrorResponder). HttpURLConnection reacts to the 401 by
+     * trying to replay the request, which a streamed PUT/DELETE cannot do, and throws
+     * "cannot retry due to server authentication, in streaming mode" before any status is
+     * observed -- so the refusal this class exists to assert became unobservable.
+     *
+     * <p>java.net.http.HttpClient does not retry on 401, so the status is returned as sent.
+     */
     private ResponseEntity<String> call(HttpMethod method, String path, String token, String body) {
-        HttpHeaders h = new HttpHeaders();
-        h.setBearerAuth(token);
-        if (body != null) h.setContentType(MediaType.APPLICATION_JSON);
-        return rest.exchange(path, method, new HttpEntity<>(body, h), String.class);
+        try {
+            java.net.http.HttpRequest.BodyPublisher publisher = body == null
+                    ? java.net.http.HttpRequest.BodyPublishers.noBody()
+                    : java.net.http.HttpRequest.BodyPublishers.ofString(body);
+
+            java.net.http.HttpRequest.Builder req = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create("http://localhost:" + port + path))
+                    .header("Authorization", "Bearer " + token)
+                    .method(method.name(), publisher);
+            if (body != null) req.header("Content-Type", MediaType.APPLICATION_JSON_VALUE);
+
+            java.net.http.HttpResponse<String> res = java.net.http.HttpClient.newHttpClient()
+                    .send(req.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+
+            return ResponseEntity.status(res.statusCode()).body(res.body());
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("HTTP call failed: " + method + " " + path, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted: " + method + " " + path, e);
+        }
     }
 
     private void assertRefused(HttpMethod m, String path, String body) {
