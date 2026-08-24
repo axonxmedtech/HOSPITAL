@@ -3,6 +3,7 @@ package com.hms.exception;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -80,5 +81,16 @@ class GlobalExceptionHandlerTest {
         ResponseEntity<?> res = handler.handleUnreadableBody();
 
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void databaseConstraintViolationsMapToSafeConflictWithoutLeakingDatabaseDetails() {
+        ResponseEntity<?> res = handler.handleDataIntegrityViolation(
+                new DataIntegrityViolationException("Duplicate entry 'secret-bed-code' for key 'uk_bed'"));
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        var body = (com.hms.dto.ApiErrorResponse) res.getBody();
+        assertThat(body.code()).isEqualTo(ErrorCode.CONFLICT);
+        assertThat(body.error()).doesNotContain("secret-bed-code").doesNotContain("uk_bed");
     }
 }
