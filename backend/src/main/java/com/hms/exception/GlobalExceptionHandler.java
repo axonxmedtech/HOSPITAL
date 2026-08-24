@@ -1,6 +1,8 @@
 package com.hms.exception;
 
+import com.hms.dto.ApiErrorResponse;
 import com.hms.dto.ApiResponse;
+import com.hms.filter.CorrelationIdFilter;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,6 +35,19 @@ import java.util.stream.Collectors;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    /**
+     * The canonical error body, for handlers that have been moved onto it.
+     *
+     * <p>Only the 409 below uses this today. The remaining handlers still answer in the older
+     * ApiResponse shape; converting them is the wider error-contract change and lands
+     * separately. ApiErrorResponse is a superset of that shape -- success and error keep their
+     * exact previous meaning -- so a client reading data.error cannot tell the two apart.
+     */
+    private static ResponseEntity<ApiErrorResponse> respond(ErrorCode code, String message) {
+        return ResponseEntity.status(code.status())
+                .body(ApiErrorResponse.of(code, message, CorrelationIdFilter.currentId()));
+    }
 
     /**
      * Handle ResourceNotFoundException — 404 Not Found
@@ -182,4 +197,18 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiResponse.error("An unexpected error occurred. Please contact support."));
     }
+    // -- 409 ---------------------------------------------------------------------
+
+    /**
+     * A business precondition that has changed under the caller: the bed was taken, the
+     * theatre is already running another case. The message is ours, so it is shown as-is.
+     *
+     * <p>Without this the exception fell through to the catch-all as a 500, telling the caller
+     * a server fault when the truth is that someone else got there first.
+     */
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<ApiErrorResponse> handleConflict(ConflictException ex) {
+        return respond(ErrorCode.CONFLICT, ex.getMessage());
+    }
+
 }
