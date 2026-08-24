@@ -264,11 +264,25 @@ jobs:
   staging-smoke:
     name: Staging — Smoke Tests
     needs: [deploy-staging]
-    if: needs.deploy-staging.result == 'success' && vars.STAGING_APP_URL != ''
+    if: needs.deploy-staging.result == 'success'
     runs-on: ubuntu-latest
+    environment: Staging
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Validate live smoke configuration
+        env:
+          STAGING_APP_URL: ${{ vars.STAGING_APP_URL }}
+          STAGING_API_URL: ${{ vars.STAGING_API_URL }}
+        run: |
+          missing=0
+          for name in STAGING_APP_URL STAGING_API_URL; do
+            if [ -z "${!name//[[:space:]]/}" ]; then
+              echo "::error::$name must be configured as a Staging environment variable."
+              missing=1
+            fi
+          done
+          exit "$missing"
       - name: Setup Node.js
         uses: ./.github/actions/setup-node
         with:
@@ -283,6 +297,7 @@ jobs:
       - name: Smoke test the deployed staging site
         env:
           E2E_BASE_URL: ${{ vars.STAGING_APP_URL }}
+          E2E_API_BASE_URL: ${{ vars.STAGING_API_URL }}
         run: npx playwright test --config e2e/playwright.config.js smoke.spec.js
       - name: Upload smoke report
         if: always()

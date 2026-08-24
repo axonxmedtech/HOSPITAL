@@ -6,6 +6,15 @@ import { trackConsoleErrors } from './helpers.js';
  * without credentials. Kept intentionally tiny so it can gate a deploy.
  */
 test.describe('Smoke', () => {
+  test('public API health endpoint returns the expected response', async ({ request }) => {
+    const apiBaseUrl = process.env.E2E_API_BASE_URL;
+    expect(apiBaseUrl, 'E2E_API_BASE_URL must be configured for live smoke tests').toBeTruthy();
+
+    const response = await request.get(new URL('/api/public/health', apiBaseUrl).toString());
+    expect(response.status()).toBe(200);
+    expect(await response.text()).toBe('HMS Backend Running');
+  });
+
   test('login page renders with the login form and no console errors', async ({ page }) => {
     const console_ = trackConsoleErrors(page);
     await page.goto('/login', { waitUntil: 'networkidle' });
