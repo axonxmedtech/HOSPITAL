@@ -14,6 +14,10 @@ const IcuService = {
   /** Totals and per-unit counts without the bed grid — the dashboard's lighter refresh. */
   getUnits: () => apiClient.get('/hospital/icu/board/units').then((r) => r.data),
 
+  /** ICU-4: every ICU stay for an admission, newest first. Empty when the patient has none. */
+  getStaysForAdmission: (ipdId) =>
+    apiClient.get(`/hospital/icu/admissions/${ipdId}/stays`).then((r) => r.data),
+
   /** Ward unit-type catalogue for the ward form's classification selector. */
   getUnitTypes: () => apiClient.get('/hospital/icu/unit-types').then((r) => r.data),
 };

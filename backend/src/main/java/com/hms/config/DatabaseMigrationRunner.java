@@ -129,6 +129,7 @@ public class DatabaseMigrationRunner {
         // existing ward keeps behaving exactly as before and no backfill is needed.
         addColumnIfMissing("wards", "unit_type", "VARCHAR(20) NOT NULL DEFAULT 'GENERAL'");
         backfillWardUnitType();
+        ensureVitalsIcuColumns();      // ICU Phase 4
         ensureIcuStayTable();          // ICU Phase 3
         backfillIcuStaysForCurrentOccupants();
     }
@@ -2260,6 +2261,25 @@ public class DatabaseMigrationRunner {
         } catch (Exception e) {
             log.warn("backfillWardUnitType skipped: {}", e.getMessage());
         }
+    }
+
+    /**
+     * ICU Phase 4 — critical-care observations plus the append-only correction link.
+     *
+     * <p>Every column is NULLABLE, which is the backward-compatibility guarantee: existing rows
+     * and every ward reading are untouched and no backfill is required. (ICU-2 learned the hard
+     * way that a NOT NULL column with only a Java default is added by ddl-auto BEFORE this
+     * runner, with no DB default — none of these take that path.)
+     */
+    private void ensureVitalsIcuColumns() {
+        addColumnIfMissing("vitals_records", "map_mmhg", "INT NULL");
+        addColumnIfMissing("vitals_records", "cvp_cmh2o", "INT NULL");
+        addColumnIfMissing("vitals_records", "urine_output_ml", "INT NULL");
+        addColumnIfMissing("vitals_records", "gcs_eye", "INT NULL");
+        addColumnIfMissing("vitals_records", "gcs_verbal", "INT NULL");
+        addColumnIfMissing("vitals_records", "gcs_motor", "INT NULL");
+        addColumnIfMissing("vitals_records", "gcs_total", "INT NULL");
+        addColumnIfMissing("vitals_records", "supersedes_vitals_id", "BIGINT NULL");
     }
 
     /** ICU Phase 3 — the ICU stay record. See IcuStay for why active_marker exists. */

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
+import icuService from '../../../services/icuService';
 import nurseService from '../../../services/nurseService';
 import escapeHtml from '../../../utils/escapeHtml';
 import { titleCase } from '../../../utils/text';
@@ -111,8 +112,24 @@ const Metric = ({ label, value, unit }) => {
   );
 };
 
+// ICU-4. Only rendered while the patient is in critical care; a ward form never shows them.
+const ICU_INPUTS = [
+  ['mapMmhg', 'MAP (mmHg)'],
+  ['cvpCmh2o', 'CVP (cmH₂O)'],
+  ['urineOutputMl', 'Urine (mL)'],
+  ['gcsEye', 'GCS Eye'],
+  ['gcsVerbal', 'GCS Verbal'],
+  ['gcsMotor', 'GCS Motor'],
+];
+
 const emptyForm = {
   temperature: '',
+  mapMmhg: '',
+  cvpCmh2o: '',
+  urineOutputMl: '',
+  gcsEye: '',
+  gcsVerbal: '',
+  gcsMotor: '',
   pulse: '',
   bpSystolic: '',
   bpDiastolic: '',
@@ -130,6 +147,9 @@ const VitalsPanel = ({ admissionId, readOnly = false }) => {
   const [f, setF] = useState({}); // patient header data for the I/O chart print
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
+  // ICU-4: true while this admission has an OPEN ICU stay. A failed or forbidden lookup leaves
+  // it false, which simply renders the ordinary ward form — the safe direction.
+  const [inIcu, setInIcu] = useState(false);
   const user = authService.getCurrentUser();
   const currentRole = user?.role;
   const isNurse = currentRole === 'NURSE' || currentRole === 'NURSE_INCHARGE';
@@ -150,6 +170,20 @@ const VitalsPanel = ({ admissionId, readOnly = false }) => {
       .catch(() => toastError('Failed to load vitals'))
       .finally(() => setLoading(false));
   }, [admissionId, toastError]);
+
+  useEffect(() => {
+    // ICU-4. Absent module or a refused/failed lookup both mean "render the ward form", which is
+    // correct here: an ICU field on a ward patient would be wrong, not merely unexplained.
+    if (!admissionId || !(user?.modules || []).includes('ICU')) {
+      setInIcu(false);
+      return;
+    }
+    icuService
+      .getStaysForAdmission(admissionId)
+      .then((stays) => setInIcu((stays || []).some((s) => s.status === 'ACTIVE')))
+      .catch(() => setInIcu(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [admissionId]);
 
   useEffect(() => {
     load();
@@ -205,6 +239,17 @@ const VitalsPanel = ({ admissionId, readOnly = false }) => {
       weight: num(form.weight),
       painScore: num(form.painScore),
       remarks: form.remarks || null,
+      // ICU-4: sent only while in critical care, so a ward reading stores nulls exactly as before.
+      ...(inIcu
+        ? {
+            mapMmhg: num(form.mapMmhg),
+            cvpCmh2o: num(form.cvpCmh2o),
+            urineOutputMl: num(form.urineOutputMl),
+            gcsEye: num(form.gcsEye),
+            gcsVerbal: num(form.gcsVerbal),
+            gcsMotor: num(form.gcsMotor),
+          }
+        : {}),
     };
     const hasAny = [
       'temperature',
@@ -258,6 +303,12 @@ const VitalsPanel = ({ admissionId, readOnly = false }) => {
         })
       : '—';
 
+  // ICU-4: ids that a later correction replaced. Derived from the rows already loaded, so the
+  // history needs no extra request.
+  const supersededIds = new Set(
+    (rows || []).map((r) => r.supersedesVitalsId).filter((id) => id != null)
+  );
+
   const inputs = [
     ['temperature', 'Temp (°F)', 0.1],
     ['pulse', 'Pulse (bpm)', 1],
@@ -281,19 +332,21 @@ const VitalsPanel = ({ admissionId, readOnly = false }) => {
           <div className="bg-white border border-gray-200 rounded-xl p-5">
             <h3 className="font-bold text-gray-800 text-sm mb-4">Record Vitals</h3>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {inputs.map(([key, label, step]) => (
-                <div key={key}>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
-                  <input
-                    type="number"
-                    step={step}
-                    min="0"
-                    value={form[key]}
-                    onChange={(e) => setField(key, e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                  />
-                </div>
-              ))}
+              {[...inputs, ...(inIcu ? ICU_INPUTS.map(([k, l]) => [k, l, 1]) : [])].map(
+                ([key, label, step]) => (
+                  <div key={key}>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+                    <input
+                      type="number"
+                      step={step}
+                      min="0"
+                      value={form[key]}
+                      onChange={(e) => setField(key, e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    />
+                  </div>
+                )
+              )}
             </div>
             {isNurse && separateLogin === false && (
               <div className="mt-3">
@@ -351,9 +404,24 @@ const VitalsPanel = ({ admissionId, readOnly = false }) => {
           ) : (
             <ul className="divide-y divide-gray-100">
               {rows.map((v) => (
-                <li key={v.publicId || v.id} className="px-5 py-3">
+                <li
+                  key={v.publicId || v.id}
+                  // ICU-4: a superseded observation stays visible, struck through. Hiding it would
+                  // recreate exactly the loss the correction path exists to prevent.
+                  className={`px-5 py-3 ${supersededIds.has(v.id) ? 'opacity-60 line-through' : ''}`}
+                >
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold text-gray-500">{fmt(v.recordedAt)}</span>
+                    {v.supersedesVitalsId && (
+                      <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-0.5">
+                        Correction
+                      </span>
+                    )}
+                    {supersededIds.has(v.id) && (
+                      <span className="text-[11px] font-semibold text-gray-500 bg-gray-100 border border-gray-200 rounded px-2 py-0.5">
+                        Superseded
+                      </span>
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Metric label="Temp" value={v.temperature} unit="°F" />
@@ -367,6 +435,10 @@ const VitalsPanel = ({ admissionId, readOnly = false }) => {
                     <Metric label="SpO₂" value={v.spo2} unit="%" />
                     <Metric label="Weight" value={v.weight} unit="kg" />
                     <Metric label="Pain" value={v.painScore} unit="" />
+                    <Metric label="MAP" value={v.mapMmhg} unit="mmHg" />
+                    <Metric label="CVP" value={v.cvpCmh2o} unit="cmH₂O" />
+                    <Metric label="Urine" value={v.urineOutputMl} unit="mL" />
+                    <Metric label="GCS" value={v.gcsTotal} unit="" />
                   </div>
                   {v.remarks && <p className="text-xs text-gray-500 mt-2">{v.remarks}</p>}
                 </li>

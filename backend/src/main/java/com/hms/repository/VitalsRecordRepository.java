@@ -10,6 +10,9 @@ import java.util.Optional;
 @Repository
 public interface VitalsRecordRepository extends JpaRepository<VitalsRecord, Long> {
     Optional<VitalsRecord> findByPublicId(String publicId);
+
+    /** ICU Phase 4 — tenant-scoped resolve, so a foreign record is simply missing. */
+    Optional<VitalsRecord> findByPublicIdAndHospitalId(String publicId, Long hospitalId);
     List<VitalsRecord> findByIpdAdmissionIdAndIsActiveTrueOrderByRecordedAtDesc(Long ipdAdmissionId);
 
     /**

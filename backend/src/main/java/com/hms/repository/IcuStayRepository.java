@@ -23,4 +23,19 @@ public interface IcuStayRepository extends JpaRepository<IcuStay, Long> {
             Long hospitalId, String status, Collection<Long> ipdAdmissionIds);
 
     boolean existsByIpdAdmissionIdAndStatus(Long ipdAdmissionId, String status);
+
+    /**
+     * ICU Phase 4 — was this instant inside an ICU stay for this admission?
+     *
+     * <p>A closed stay is bounded by discharged_at; the active one is open-ended. Read-only:
+     * ICU-4 records observations and never touches the stay lifecycle.
+     */
+    @org.springframework.data.jpa.repository.Query(
+        "SELECT COUNT(s) > 0 FROM IcuStay s WHERE s.ipdAdmissionId = :admissionId "
+      + "AND s.hospitalId = :hospitalId AND s.admittedAt <= :at "
+      + "AND (s.dischargedAt IS NULL OR s.dischargedAt >= :at)")
+    boolean existsCoveringInstant(
+            @org.springframework.data.repository.query.Param("admissionId") Long admissionId,
+            @org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
+            @org.springframework.data.repository.query.Param("at") java.time.LocalDateTime at);
 }
