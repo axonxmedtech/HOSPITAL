@@ -19,6 +19,14 @@ public interface RecoveryEpisodeRepository extends JpaRepository<RecoveryEpisode
      */
     List<RecoveryEpisode> findByHospitalIdAndDischargedAtIsNullOrderByArrivedAtAsc(Long hospitalId);
 
+    /**
+     * Every episode (active or discharged) at this hospital -- used to keep a surgery off the
+     * "awaiting recovery" board section once it has EVER been admitted, not merely while it is
+     * currently occupying a bay. A discharged patient has left the recovery domain; showing them
+     * back on "awaiting" would read as still needing admission.
+     */
+    List<RecoveryEpisode> findByHospitalId(Long hospitalId);
+
     /** Whether a bay is currently occupied: does an active episode reference it. */
     Optional<RecoveryEpisode> findByRecoveryBayIdAndDischargedAtIsNull(Long recoveryBayId);
 

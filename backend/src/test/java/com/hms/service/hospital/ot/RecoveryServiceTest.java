@@ -36,6 +36,7 @@ class RecoveryServiceTest {
 
     private static final Long HOSPITAL = 7L;
     private static final Long BAY_ID = 30L;
+    private static final String BAY_PUBLIC_ID = "bay-public-30";
 
     @Mock RecoveryEpisodeRepository episodeRepository;
     @Mock RecoveryObservationRepository observationRepository;
@@ -66,9 +67,11 @@ class RecoveryServiceTest {
         lenient().when(observationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         bay.setId(BAY_ID);
+        bay.setPublicId(BAY_PUBLIC_ID);
         bay.setHospitalId(HOSPITAL);
         bay.setName("Bay 1");
         bay.setIsActive(true);
+        lenient().when(bayRepository.findByPublicIdAndHospitalId(BAY_PUBLIC_ID, HOSPITAL)).thenReturn(Optional.of(bay));
         lenient().when(bayRepository.findByIdAndHospitalIdForUpdate(BAY_ID, HOSPITAL)).thenReturn(Optional.of(bay));
         lenient().when(episodeRepository.existsActiveByRecoveryBayId(BAY_ID)).thenReturn(false);
     }
@@ -85,7 +88,7 @@ class RecoveryServiceTest {
         when(otPolicyService.resolve(HOSPITAL, OtPolicies.RECOVERY_TRACKING, null)).thenReturn("PACU_EPISODE");
         when(episodeRepository.findBySurgeryId(1L)).thenReturn(Optional.empty());
 
-        RecoveryEpisode e = service.admit(1L, BAY_ID);
+        RecoveryEpisode e = service.admit(1L, BAY_PUBLIC_ID);
 
         assertThat(e.getArrivedAt()).isNotNull();
         assertThat(e.getRecoveryBayId()).isEqualTo(BAY_ID);
@@ -99,7 +102,7 @@ class RecoveryServiceTest {
     void admittingWhenRecoveryTrackingIsNone_isRejected() {
         when(otPolicyService.resolve(HOSPITAL, OtPolicies.RECOVERY_TRACKING, null)).thenReturn("NONE");
 
-        assertThatThrownBy(() -> service.admit(1L, BAY_ID))
+        assertThatThrownBy(() -> service.admit(1L, BAY_PUBLIC_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("does not track recovery");
     }
@@ -109,7 +112,7 @@ class RecoveryServiceTest {
         when(otPolicyService.resolve(HOSPITAL, OtPolicies.RECOVERY_TRACKING, null)).thenReturn("PACU_EPISODE");
         when(episodeRepository.findBySurgeryId(1L)).thenReturn(Optional.of(new RecoveryEpisode()));
 
-        assertThatThrownBy(() -> service.admit(1L, BAY_ID))
+        assertThatThrownBy(() -> service.admit(1L, BAY_PUBLIC_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("already in recovery");
     }
@@ -120,7 +123,7 @@ class RecoveryServiceTest {
         surgery.setStatus(SurgeryStatus.IN_PROGRESS.name());
         when(otPolicyService.resolve(HOSPITAL, OtPolicies.RECOVERY_TRACKING, null)).thenReturn("PACU_EPISODE");
 
-        assertThatThrownBy(() -> service.admit(1L, BAY_ID))
+        assertThatThrownBy(() -> service.admit(1L, BAY_PUBLIC_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("completed");
     }
@@ -147,7 +150,7 @@ class RecoveryServiceTest {
         when(episodeRepository.findBySurgeryId(1L)).thenReturn(Optional.empty());
         when(episodeRepository.existsActiveByRecoveryBayId(BAY_ID)).thenReturn(true);
 
-        assertThatThrownBy(() -> service.admit(1L, BAY_ID))
+        assertThatThrownBy(() -> service.admit(1L, BAY_PUBLIC_ID))
                 .isInstanceOf(ConflictException.class)
                 .hasMessageContaining("occupied");
         assertThat(surgery.getStatus()).isEqualTo(SurgeryStatus.COMPLETED.name());
@@ -159,7 +162,7 @@ class RecoveryServiceTest {
         when(otPolicyService.resolve(HOSPITAL, OtPolicies.RECOVERY_TRACKING, null)).thenReturn("PACU_EPISODE");
         when(episodeRepository.findBySurgeryId(1L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.admit(1L, BAY_ID))
+        assertThatThrownBy(() -> service.admit(1L, BAY_PUBLIC_ID))
                 .isInstanceOf(ConflictException.class)
                 .hasMessageContaining("not in service");
     }
@@ -215,6 +218,36 @@ class RecoveryServiceTest {
                 (List<java.util.Map<String, Object>>) board.get("inRecovery");
 
         assertThat(inRecovery).hasSize(1);
+        assertThat(awaiting).isEmpty();
+    }
+
+    /**
+     * OT-3, found via live MySQL rehearsal: a patient discharged from recovery (to a ward, home,
+     * ...) must not reappear in "awaiting recovery" -- that read as "still needs to be admitted",
+     * exactly backwards for someone already dispositioned. Only a surgery with NO episode at all
+     * belongs in that section; a discharged episode still counts as "already handled".
+     */
+    @Test
+    void theBoardDoesNotShowADischargedPatientAsAwaitingRecoveryAgain() {
+        RecoveryEpisode discharged = episode();
+        discharged.setRecoveryBayId(BAY_ID);
+        discharged.setDischargedAt(java.time.LocalDateTime.now());
+        when(episodeRepository.findByHospitalIdAndDischargedAtIsNullOrderByArrivedAtAsc(HOSPITAL))
+                .thenReturn(List.of()); // no longer active
+        when(episodeRepository.findByHospitalId(HOSPITAL)).thenReturn(List.of(discharged));
+        when(surgeryRepository.findByHospitalIdAndStatusOrderByRequestedAtDesc(HOSPITAL, "COMPLETED"))
+                .thenReturn(List.of(surgery));
+
+        var board = service.board();
+
+        @SuppressWarnings("unchecked")
+        List<java.util.Map<String, Object>> awaiting =
+                (List<java.util.Map<String, Object>>) board.get("awaitingRecovery");
+        @SuppressWarnings("unchecked")
+        List<java.util.Map<String, Object>> inRecovery =
+                (List<java.util.Map<String, Object>>) board.get("inRecovery");
+
+        assertThat(inRecovery).isEmpty();
         assertThat(awaiting).isEmpty();
     }
 

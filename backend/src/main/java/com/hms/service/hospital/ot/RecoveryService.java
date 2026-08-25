@@ -67,7 +67,7 @@ public class RecoveryService {
      * discharge()+close(), never by a failed admit here.
      */
     @Transactional
-    public RecoveryEpisode admit(Long surgeryId, Long recoveryBayId) {
+    public RecoveryEpisode admit(Long surgeryId, String recoveryBayPublicId) {
         Long hospitalId = requireHospitalId();
         Surgery surgery = requireSurgery(surgeryId, hospitalId);
         assertTracked(hospitalId, surgery);
@@ -77,12 +77,16 @@ public class RecoveryService {
         if (episodeRepository.findBySurgeryId(surgeryId).isPresent()) {
             throw new IllegalArgumentException("This patient is already in recovery");
         }
-        if (recoveryBayId == null) {
+        if (recoveryBayPublicId == null || recoveryBayPublicId.isBlank()) {
             throw new IllegalArgumentException("A recovery bay must be selected");
         }
-        // Lock the bay row before checking occupancy: two concurrent admits targeting the same
-        // bay must not both succeed. The bay itself is tenant-scoped by the lookup below, so a
-        // raw id from another hospital resolves to "not found", never another tenant's bay.
+        // Resolve the externally-addressed publicId (tenant-scoped: a foreign hospital's bay
+        // resolves to "not found", never leaks) to its internal id, then lock THAT row before
+        // checking occupancy -- two concurrent admits targeting the same bay must not both
+        // succeed. The publicId lookup itself needs no lock: its identity cannot change.
+        Long recoveryBayId = bayRepository.findByPublicIdAndHospitalId(recoveryBayPublicId, hospitalId)
+                .map(RecoveryBay::getId)
+                .orElseThrow(() -> new IllegalArgumentException("Recovery bay not found"));
         RecoveryBay bay = bayRepository.findByIdAndHospitalIdForUpdate(recoveryBayId, hospitalId)
                 .orElseThrow(() -> new IllegalArgumentException("Recovery bay not found"));
         if (!Boolean.TRUE.equals(bay.getIsActive())) {
@@ -165,10 +169,19 @@ public class RecoveryService {
             inRecovery.add(row);
         }
 
+        // A surgery that has EVER had an episode -- active or already discharged -- has left the
+        // "awaiting" bucket for good. Only the active set decides IN_RECOVERY membership above;
+        // a discharged episode must still keep the surgery off "awaiting", or a patient properly
+        // discharged to a ward reappears looking like they still need admission.
+        Set<Long> everHadEpisodeSurgeryIds = new java.util.HashSet<>(inRecoverySurgeryIds);
+        for (RecoveryEpisode e : episodeRepository.findByHospitalId(hospitalId)) {
+            everHadEpisodeSurgeryIds.add(e.getSurgeryId());
+        }
+
         List<Map<String, Object>> awaitingRecovery = new ArrayList<>();
         for (Surgery s : surgeryRepository.findByHospitalIdAndStatusOrderByRequestedAtDesc(
                 hospitalId, SurgeryStatus.COMPLETED.name())) {
-            if (inRecoverySurgeryIds.contains(s.getId())) continue; // already has a bay
+            if (everHadEpisodeSurgeryIds.contains(s.getId())) continue; // already admitted at some point
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("surgeryId", s.getId());
             row.put("patientId", s.getPatientId());
