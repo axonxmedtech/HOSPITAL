@@ -4,7 +4,6 @@ import com.hms.entity.Bed;
 import com.hms.entity.BedStatus;
 import com.hms.entity.Doctor;
 import com.hms.entity.Hospital;
-import com.hms.entity.IpdAdmission;
 import com.hms.entity.Opd;
 import com.hms.entity.Patient;
 import com.hms.entity.Ward;
@@ -15,12 +14,19 @@ import com.hms.repository.IpdAdmissionRepository;
 import com.hms.repository.OpdRepository;
 import com.hms.repository.PatientRepository;
 import com.hms.repository.WardRepository;
+import com.hms.controller.hospital.IpdAdmissionController;
+import com.hms.dto.CreateIpdAdmissionRequest;
+import com.hms.entity.IpdAdmission;
 import com.hms.security.SecurityContextHelper;
 import com.hms.service.hospital.IpdAdmissionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -41,15 +47,48 @@ import static org.mockito.Mockito.when;
  *
  * <p>These cannot run on H2. The defects are InnoDB row-lock and unique-index behaviour under
  * genuine parallelism; an in-memory database will happily let both threads through and report
- * green, which is worse than no test at all. Hence {@code AbstractMySqlIT} (Testcontainers) —
- * and a skip because Docker is absent is <b>not</b> a pass.
+ * green, which is worse than no test at all. A skip is <b>not</b> a pass.
+ *
+ * <p>Unlike the other {@code *IT} classes this one does not extend {@code AbstractMySqlIT}.
+ * Testcontainers' bundled docker-java (3.3.6) cannot complete the npipe handshake with Docker
+ * Desktop 29.x on Windows — it receives a stub 400 from the Desktop proxy — and upgrading that
+ * dependency is outside E1's scope. What matters for these tests is <em>real InnoDB</em>, not
+ * where it runs, so the datasource is supplied explicitly and the class is skipped unless it is:
+ *
+ * <pre>
+ * mvn verify -Dit.test=IpdConcurrencyIT  *   -Dhms.it.mysql.url="jdbc:mysql://localhost:3306/hms_concurrency_it?createDatabaseIfNotExist=true&amp;useSSL=false&amp;allowPublicKeyRetrieval=true"  *   -Dhms.it.mysql.username=root -Dhms.it.mysql.password=****
+ * </pre>
+ *
+ * <p>Point it at a THROWAWAY schema: the context runs {@code ddl-auto=create-drop}.
  *
  * <p>Before E1 the same scenarios produced: two admissions holding one bed (C3), and a
  * duplicate-key 500 for a perfectly legitimate second admission (C2).
  */
-class IpdConcurrencyIT extends AbstractMySqlIT {
+@SpringBootTest
+@EnabledIfSystemProperty(named = "hms.it.mysql.url", matches = ".+")
+class IpdConcurrencyIT {
+
+    @DynamicPropertySource
+    static void datasourceProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", () -> System.getProperty("hms.it.mysql.url"));
+        registry.add("spring.datasource.username", () -> System.getProperty("hms.it.mysql.username", "root"));
+        registry.add("spring.datasource.password", () -> System.getProperty("hms.it.mysql.password", ""));
+        registry.add("spring.datasource.driver-class-name", () -> "com.mysql.cj.jdbc.Driver");
+        registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
+        registry.add("hms.migrations.enabled", () -> "false");
+        registry.add("spring.cache.type", () -> "simple");
+    }
 
     @Autowired IpdAdmissionService service;
+
+    /**
+     * The C2 retry lives on the controller, because each attempt has to be a FRESH transaction
+     * and {@code admitFromOpd} IS the transaction — catching the violation inside it would leave
+     * a rollback-only transaction that can write nothing. So the admission race must be driven
+     * through the controller, which is the real production entry point; calling the service
+     * directly exercises a path that deliberately has no retry.
+     */
+    @Autowired IpdAdmissionController controller;
     @Autowired HospitalRepository hospitalRepository;
     @Autowired PatientRepository patientRepository;
     @Autowired DoctorRepository doctorRepository;
@@ -85,6 +124,7 @@ class IpdConcurrencyIT extends AbstractMySqlIT {
         wardId = wardRepository.save(w).getWardId();
 
         when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalId);
+        // Default: no rendezvous. twoSimultaneousAdmissionsToTheSameBed installs one.
         when(securityHelper.getCurrentUserId()).thenReturn(1L);
         when(securityHelper.getCurrentUserEmail()).thenReturn("admin@e1.test");
         when(securityHelper.getCurrentUserRole()).thenReturn("HOSPITAL_ADMIN");
@@ -128,6 +168,31 @@ class IpdConcurrencyIT extends AbstractMySqlIT {
         return opdRepository.save(o).getId();
     }
 
+    /**
+     * The controller is @PreAuthorize'd and SecurityContext is thread-local, so each racing
+     * thread needs its own Authentication. The tenant itself still comes from the mocked
+     * SecurityContextHelper; this only satisfies the role check.
+     */
+    private void authenticateCurrentThread() {
+        org.springframework.security.core.context.SecurityContextHolder.getContext()
+                .setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                        "admin@e1.test", "n/a",
+                        List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority(
+                                "ROLE_HOSPITAL_ADMIN"))));
+    }
+
+    /** Admits the way production does: through the controller, so the C2 retry applies. */
+    private IpdAdmission admitViaController(Long opdId, Long bedId, String reason) {
+        authenticateCurrentThread();
+        CreateIpdAdmissionRequest req = new CreateIpdAdmissionRequest();
+        req.setOpdId(opdId);
+        req.setWardId(wardId);
+        req.setBedId(bedId);
+        req.setAdmissionType("ELECTIVE");
+        req.setPrimaryDiagnosis(reason);
+        return (IpdAdmission) controller.admitToIpd(req).getBody();
+    }
+
     /** Result of one racing call: the admission, or the exception it failed with. */
     private record Outcome(IpdAdmission admission, Throwable error) {
         boolean succeeded() { return admission != null; }
@@ -159,6 +224,16 @@ class IpdConcurrencyIT extends AbstractMySqlIT {
     }
 
     // ── T4: two admissions, one bed ──────────────────────────────────────────
+    //
+    // NOTE ON WHAT THIS TEST PROVES. Measured, not assumed: with the bed lock removed from
+    // admitFromOpd this test still passes, because the two racing admissions also collide on the
+    // IPD number, and the unique index plus the C2 retry serialise them by accident -- the loser
+    // re-attempts and then correctly finds the bed occupied. So the ADMISSION path has two
+    // overlapping protections and this case cannot separate them.
+    //
+    // twoSimultaneousBedChangesOntoTheSameTarget is the case that isolates C3: a transfer
+    // allocates no IPD number, so the bed lock is the only thing standing between two claims.
+    // Verified by removing the lock from changeBed alone -- that test fails, this one does not.
 
     @Test
     void twoSimultaneousAdmissionsToTheSameBed_exactlyOneWins() throws Exception {
@@ -166,9 +241,33 @@ class IpdConcurrencyIT extends AbstractMySqlIT {
         Long opdA = newOpdCase();
         Long opdB = newOpdCase();
 
+        // Releasing two threads at the same instant is NOT enough to reproduce C3: the window
+        // between reading the bed and claiming it is a handful of statements, and both threads
+        // reliably passed even with the lock removed -- a green test proving nothing.
+        //
+        // So the window is held open deliberately. getCurrentUserId() is called after the bed
+        // has been resolved and before it is claimed, which is exactly the racing window, so it
+        // becomes a rendezvous: each thread waits there for the other.
+        //
+        // Without the lock both threads read AVAILABLE, both meet at the barrier, and both go on
+        // to claim the same bed -- the defect, reproduced. With the lock the second thread never
+        // reaches the barrier because it is blocked on the row, the first times out after 3s and
+        // commits, and the second then sees OCCUPIED and is refused. The timeout is what lets the
+        // fixed code finish; it is not a race of its own.
+        java.util.concurrent.CyclicBarrier rendezvous = new java.util.concurrent.CyclicBarrier(2);
+        when(securityHelper.getCurrentUserId()).thenAnswer(inv -> {
+            try {
+                rendezvous.await(3, TimeUnit.SECONDS);
+            } catch (Exception ignored) {
+                // Timed out or broken: the other thread is blocked on the bed lock, which is the
+                // behaviour under test. Carry on.
+            }
+            return 1L;
+        });
+
         List<Outcome> results = race(List.of(
-                () -> service.admitFromOpd(opdA, wardId, bedId, "ELECTIVE", "race A"),
-                () -> service.admitFromOpd(opdB, wardId, bedId, "ELECTIVE", "race B")));
+                () -> admitViaController(opdA, bedId, "race A"),
+                () -> admitViaController(opdB, bedId, "race B")));
 
         long wins = results.stream().filter(Outcome::succeeded).count();
         assertThat(wins).as("exactly one admission may take the bed").isEqualTo(1);
@@ -199,8 +298,8 @@ class IpdConcurrencyIT extends AbstractMySqlIT {
         Long opdB = newOpdCase();
 
         List<Outcome> results = race(List.of(
-                () -> service.admitFromOpd(opdA, wardId, bedA, "ELECTIVE", "seq A"),
-                () -> service.admitFromOpd(opdB, wardId, bedB, "ELECTIVE", "seq B")));
+                () -> admitViaController(opdA, bedA, "seq A"),
+                () -> admitViaController(opdB, bedB, "seq B")));
 
         assertThat(results).allSatisfy(o ->
                 assertThat(o.succeeded())
@@ -223,8 +322,8 @@ class IpdConcurrencyIT extends AbstractMySqlIT {
         Long bedB = newBed();
         Long target = newBed();
 
-        IpdAdmission a = service.admitFromOpd(newOpdCase(), wardId, bedA, "ELECTIVE", "A");
-        IpdAdmission b = service.admitFromOpd(newOpdCase(), wardId, bedB, "ELECTIVE", "B");
+        IpdAdmission a = admitViaController(newOpdCase(), bedA, "A");
+        IpdAdmission b = admitViaController(newOpdCase(), bedB, "B");
 
         List<Outcome> results = race(List.of(
                 () -> service.changeBed(a.getId(), target),
