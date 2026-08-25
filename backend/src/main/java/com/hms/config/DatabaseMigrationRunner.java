@@ -126,6 +126,9 @@ public class DatabaseMigrationRunner {
         backfillPrintPaymentDefaults();
         widenVitalsDecimalColumns();
         backfillStrandedOpdStatuses();
+        reconcileOtPermissionOrphanDefaults(); // OT-P0A — v2 defaults for already-configured hospitals
+        ensureRecoveryBaysTable(); // OT-P0B — recovery admission needs a tenant-owned location
+        addColumnIfMissing("ot_recovery_episodes", "recovery_bay_id", "BIGINT NULL");
     }
 
     /**
@@ -2265,6 +2268,102 @@ public class DatabaseMigrationRunner {
             log.info("DB migration applied: dropped index {}.{}", table, indexName);
         } catch (Exception e) {
             log.warn("DB migration skipped (drop index {}.{}): {}", table, indexName, e.getMessage());
+        }
+    }
+
+    /**
+     * OT-P0A reconciliation. OtPermissionService freezes a hospital's role_permissions rows the
+     * moment it saves its first customisation: from then on, effectiveFor() reads only those
+     * rows and never OtPermissions.defaultsFor(role) again. A hospital that customised before
+     * this fix therefore cannot see OT_ASSIGN_TEAM / OT_RECOVERY / OT_TRANSFER acquire owners --
+     * every role stays permanently at whatever it had the day the matrix was first saved.
+     *
+     * These three codes are not new: OtPermissions.ALL and the admin matrix catalogue always
+     * listed them, so a hospital that already granted one of them to some role has an explicit,
+     * intentional row for it. Touching that hospital's rows for that code -- even to add a
+     * second role -- would either double a decision it already made or overwrite one it didn't.
+     * The only population this can safely help is a hospital with ZERO rows for a given code,
+     * across every role: nothing was ever decided about it, so the v2 default is a genuinely new
+     * default arriving, not a correction being forced onto a customised choice.
+     *
+     * Residual, accepted gap: role_permissions has no history, so a hospital that once granted a
+     * code and later revoked it from every role is indistinguishable from one that never
+     * considered it -- both read as zero rows. Building a permission audit trail to close that
+     * gap is disproportionate for three codes nobody could reach before this release (they had
+     * no default owner, so reaching them required an admin to open the full catalogue and grant
+     * one deliberately); flagged here rather than silently assumed away.
+     */
+    private void reconcileOtPermissionOrphanDefaults() {
+        try {
+            java.util.List<Long> configuredHospitalIds = jdbcTemplate.queryForList(
+                    "SELECT DISTINCT hospital_id FROM role_permissions", Long.class);
+            if (configuredHospitalIds.isEmpty()) return;
+
+            java.util.List<String> orphanCodes = java.util.List.of(
+                    com.hms.security.OtPermissions.OT_ASSIGN_TEAM,
+                    com.hms.security.OtPermissions.OT_RECOVERY,
+                    com.hms.security.OtPermissions.OT_TRANSFER);
+
+            int inserted = 0;
+            for (Long hospitalId : configuredHospitalIds) {
+                for (String code : orphanCodes) {
+                    Integer existing = jdbcTemplate.queryForObject(
+                            "SELECT COUNT(*) FROM role_permissions WHERE hospital_id = ? AND permission_code = ?",
+                            Integer.class, hospitalId, code);
+                    if (existing != null && existing > 0) continue; // this hospital has engaged with this code
+
+                    for (String role : com.hms.security.OtPermissions.ROLES) {
+                        if (!com.hms.security.OtPermissions.defaultsFor(role).contains(code)) continue;
+                        jdbcTemplate.update(
+                                "INSERT IGNORE INTO role_permissions (hospital_id, role, permission_code) "
+                                        + "VALUES (?, ?, ?)",
+                                hospitalId, role, code);
+                        inserted++;
+                    }
+                }
+            }
+            if (inserted > 0) {
+                log.info("DB migration applied: backfilled {} OT permission grant(s) for {} previously "
+                        + "configured hospital(s) (OT_ASSIGN_TEAM/OT_RECOVERY/OT_TRANSFER)",
+                        inserted, configuredHospitalIds.size());
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (OT permission reconciliation): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * OT-P0B — a recovery bay is the smallest additive representation of "where" a recovering
+     * patient is. Deliberately not an ot_room (theatres are turned over and freed the moment a
+     * case COMPLETEs; recovery is a separate resource so occupancy in one is never read as
+     * occupancy in the other) and not a Ward/Bed (recovery has its own tiny lifecycle -- a bay is
+     * simply named and active/inactive, occupancy is derived from whether an undischarged
+     * ot_recovery_episodes row currently references it).
+     */
+    private void ensureRecoveryBaysTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES "
+                    + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'recovery_bays'", Integer.class);
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE recovery_bays ("
+                        + "  id BIGINT NOT NULL AUTO_INCREMENT,"
+                        + "  public_id VARCHAR(36) NOT NULL,"
+                        + "  hospital_id BIGINT NOT NULL,"
+                        + "  name VARCHAR(100) NOT NULL,"
+                        + "  is_active TINYINT(1) NOT NULL DEFAULT 1,"
+                        + "  created_at DATETIME(6) NOT NULL,"
+                        + "  PRIMARY KEY (id),"
+                        + "  UNIQUE KEY uk_recovery_bay_public_id (public_id),"
+                        + "  UNIQUE KEY uk_recovery_bay_name (hospital_id, name),"
+                        + "  CONSTRAINT FK_recovery_bay_hospital FOREIGN KEY (hospital_id) "
+                        + "    REFERENCES hospitals (id) ON DELETE CASCADE"
+                        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created recovery_bays table");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (recovery_bays): {}", e.getMessage());
         }
     }
 

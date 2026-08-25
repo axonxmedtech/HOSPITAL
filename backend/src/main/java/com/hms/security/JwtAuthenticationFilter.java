@@ -37,6 +37,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Autowired
     private com.hms.repository.UserRepository userRepository;
+    // required=false: this filter is constructed in every @WebMvcTest slice (it is part of
+    // the security filter chain, not something those tests mock), and none of them load the
+    // service layer. Those tests use @WithMockUser and never send a real token, so
+    // resolvePermissions() -- the only caller -- never runs in that context anyway.
+    @Autowired(required = false)
+    private com.hms.service.hospital.ot.OtPermissionService otPermissionService;
 
     @Autowired
     private com.hms.repository.HospitalRepository hospitalRepository;
@@ -147,7 +153,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     java.util.List<org.springframework.security.core.GrantedAuthority> authorities =
                             new java.util.ArrayList<>();
                     authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
-                    for (String permission : resolvePermissions(token, role)) {
+                    for (String permission : resolvePermissions(token, role, hospitalId)) {
                         authorities.add(new SimpleGrantedAuthority(permission));
                     }
 
@@ -188,14 +194,25 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     /**
-     * Permissions are minted into the token at login. A token issued before the claim
-     * existed carries none, and revoking a live session's access mid-token would be a
-     * regression, so fall back to the role's defaults for one release. An explicitly
-     * empty list means the hospital granted this role nothing -- honour it.
+     * Permissions are minted into the token at login (HospitalAuthService reads the hospital's
+     * persisted matrix at that moment). A token issued before the claim existed carries none;
+     * falling straight to OtPermissions.defaultsFor(role) for that legacy population would
+     * ignore any matrix the hospital has since saved -- authorization would silently regress to
+     * the built-in defaults for exactly the hospitals that customised them. Ask the
+     * persisted-aware resolver instead, which itself falls back to the defaults when the
+     * hospital has never customised (identical result for the common case, correct result for
+     * the customised one). An explicitly empty claim on a current-format token means the
+     * hospital granted this role nothing -- honour it as-is, no fallback.
+     *
+     * This does not make every request re-fetch a live session: current-format tokens (the
+     * normal case after login or re-login) always carry a claim and never reach this fallback.
      */
-    private java.util.List<String> resolvePermissions(String token, String role) {
+    private java.util.List<String> resolvePermissions(String token, String role, Long hospitalId) {
         java.util.List<String> claim = jwtUtil.extractPermissions(token);
         if (claim != null) return claim;
-        return new java.util.ArrayList<>(OtPermissions.defaultsFor(role));
+        if (hospitalId == null || otPermissionService == null) {
+            return new java.util.ArrayList<>(OtPermissions.defaultsFor(role));
+        }
+        return new java.util.ArrayList<>(otPermissionService.effectiveFor(hospitalId, role));
     }
 }
