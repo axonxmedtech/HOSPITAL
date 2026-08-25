@@ -1,6 +1,8 @@
 package com.hms.security;
 
 import com.hms.repository.PatientNurseAssignmentRepository;
+import com.hms.repository.IpdAdmissionRepository;
+import com.hms.entity.IpdAdmission;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
@@ -16,6 +18,8 @@ public class NurseAccessGuard {
 
     @Autowired
     private PatientNurseAssignmentRepository assignmentRepository;
+    @Autowired private IpdAdmissionRepository ipdAdmissionRepository;
+    @Autowired private NurseInchargeGuard nurseInchargeGuard;
 
     @Autowired
     private SecurityContextHelper securityHelper;
@@ -39,6 +43,9 @@ public class NurseAccessGuard {
         // non-nursing hospital — the per-form Files & Access check (assertCanEdit) already ran
         // before this, so reaching here means reception is an allowed editor of this form.
         if ("DOCTOR".equals(role) || "HOSPITAL_ADMIN".equals(role) || "RECEPTIONIST".equals(role)) return;
+        IpdAdmission admission = ipdAdmissionRepository.findByIdAndHospitalId(ipdAdmissionId, securityHelper.getCurrentHospitalId())
+                .orElseThrow(() -> new AccessDeniedException("IPD admission not found"));
+        if (admission.getWardId() != null && nurseInchargeGuard.myWardIds().contains(admission.getWardId())) return;
         Long nurseId = securityHelper.getCurrentUserId();
         boolean assigned = assignmentRepository
                 .existsByIpdAdmissionIdAndNurseUserIdAndIsActiveTrue(ipdAdmissionId, nurseId);

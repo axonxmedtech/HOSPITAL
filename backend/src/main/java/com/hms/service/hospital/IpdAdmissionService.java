@@ -192,12 +192,9 @@ public class IpdAdmissionService {
         occupiedBed.setCurrentIpdAdmissionId(saved.getId());
         bedRepository.save(occupiedBed);
 
-        // Nursing Mgmt Phase A: incharge-mediated assignment. Best-effort.
-        try {
-            patientAssignmentService.onAdmission(saved);
-        } catch (Exception e) {
-            logger.warn("Failed to run patient assignment for admission {}", saved.getId(), e);
-        }
+        // Primary assignment is optional, but an attempted persisted assignment must not be
+        // silently lost. With zero or multiple eligible nurses this is a no-op.
+        patientAssignmentService.onAdmission(saved);
 
         // Mark OPD as completed/closed
         // OPD status is stored as a string in many places; set to string to avoid enum mismatch
@@ -1284,6 +1281,16 @@ public class IpdAdmissionService {
         ipd.setWardId(newBed.getWardId());
         
         IpdAdmission saved = ipdAdmissionRepository.save(ipd);
+
+        // A cross-ward transfer ends primary ownership; destination visibility is derived
+        // from the admission's new ward and therefore needs no manufactured row.
+        if (!java.util.Objects.equals(oldWard.getWardId(), newWardEntity.getWardId())) {
+            patientNurseAssignmentRepository.findByIpdAdmissionIdAndIsActiveTrue(ipd.getId()).ifPresent(assignment -> {
+                assignment.setIsActive(false);
+                assignment.setUnassignedAt(LocalDateTime.now());
+                patientNurseAssignmentRepository.save(assignment);
+            });
+        }
 
         // Transfer history is required for a defensible inpatient bed record.
         java.util.Optional<com.hms.entity.IpdBedHistory> activeHistOpt = ipdBedHistoryRepository

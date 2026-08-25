@@ -1,9 +1,7 @@
 package com.hms.service.hospital;
 
-import com.hms.entity.HospitalSetting;
 import com.hms.entity.IpdAdmission;
 import com.hms.entity.NurseProfile;
-import com.hms.repository.HospitalSettingRepository;
 import com.hms.repository.NurseProfileRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,7 +18,6 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class PatientAssignmentServiceTest {
 
-    @Mock HospitalSettingRepository hospitalSettingRepository;
     @Mock NurseProfileRepository nurseProfileRepository;
     @Mock NurseAssignmentService nurseAssignmentService;
     @Mock NurseCoverageService coverageService;
@@ -38,21 +35,8 @@ class PatientAssignmentServiceTest {
         p.setIsIncharge(incharge); p.setIsActive(true);
         return p;
     }
-    private void loginMode(boolean on) {
-        HospitalSetting s = new HospitalSetting(); s.setSeparateNurseLogin(on);
-        when(hospitalSettingRepository.findByHospital_Id(7L)).thenReturn(Optional.of(s));
-    }
-
     @Test
-    void loginOff_noAssignment() {
-        loginMode(false);
-        service.onAdmission(admission());
-        verify(nurseAssignmentService, never()).assignNurse(anyLong(), anyLong(), any());
-    }
-
-    @Test
-    void loginOn_oneStaffNurse_autoAssigns() {
-        loginMode(true);
+    void oneStaffNurse_autoAssignsRegardlessOfLoginPolicy() {
         when(coverageService.effectiveWardNurses(eq(3L), any()))
                 .thenReturn(List.of(nurse(11L, 20L, false)));
         service.onAdmission(admission());
@@ -60,8 +44,7 @@ class PatientAssignmentServiceTest {
     }
 
     @Test
-    void loginOn_multipleStaffNurses_noAutoAssign() {
-        loginMode(true);
+    void multipleStaffNurses_leaveAdmissionUnassigned() {
         when(coverageService.effectiveWardNurses(eq(3L), any()))
                 .thenReturn(List.of(nurse(11L, 20L, false), nurse(12L, 21L, false)));
         service.onAdmission(admission());
@@ -69,8 +52,7 @@ class PatientAssignmentServiceTest {
     }
 
     @Test
-    void loginOn_zeroStaffNurses_noAutoAssign() {
-        loginMode(true);
+    void zeroStaffNurses_leaveAdmissionUnassigned() {
         when(coverageService.effectiveWardNurses(eq(3L), any())).thenReturn(List.of());
         service.onAdmission(admission());
         verify(nurseAssignmentService, never()).assignNurse(anyLong(), anyLong(), any());

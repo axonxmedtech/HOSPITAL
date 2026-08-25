@@ -234,6 +234,10 @@ const nurseService = {
   /** Active admissions across the incharge's wards (or all wards for admin). */
   getWardPatients: async () => (await apiClient.get('/hospital/nurse-incharge/patients')).data,
 
+  /** Ward-visible active admissions with no primary nursing owner. */
+  getUnassignedPatients: async () =>
+    (await apiClient.get('/hospital/nurse-incharge/unassigned-patients')).data,
+
   /** Active, non-incharge staff nurses in a ward (candidates for assignment). */
   getWardStaffNurses: async (wardId) =>
     (await apiClient.get(`/hospital/nurse-incharge/wards/${wardId}/nurses`)).data,

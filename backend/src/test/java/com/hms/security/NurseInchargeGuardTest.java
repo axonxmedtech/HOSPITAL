@@ -5,6 +5,7 @@ import com.hms.entity.Ward;
 import com.hms.repository.IpdAdmissionRepository;
 import com.hms.repository.NurseProfileRepository;
 import com.hms.repository.WardRepository;
+import com.hms.repository.NurseWardAssignmentRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -25,6 +26,7 @@ class NurseInchargeGuardTest {
     @Mock NurseProfileRepository nurseProfileRepository;
     @Mock WardRepository wardRepository;
     @Mock IpdAdmissionRepository ipdAdmissionRepository;
+    @Mock NurseWardAssignmentRepository wardAssignmentRepository;
     @Mock SecurityContextHelper securityHelper;
 
     @InjectMocks NurseInchargeGuard guard;
@@ -39,6 +41,7 @@ class NurseInchargeGuardTest {
         when(securityHelper.getCurrentUserRole()).thenReturn("HOSPITAL_ADMIN");
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
         when(wardRepository.findById(3L)).thenReturn(Optional.of(ward(3L, 7L, 99L)));
+        when(wardRepository.findByHospitalId(7L)).thenReturn(java.util.List.of(ward(3L, 7L, 99L)));
         assertThatCode(() -> guard.assertWardAccess(3L)).doesNotThrowAnyException();
     }
 
@@ -61,6 +64,7 @@ class NurseInchargeGuardTest {
         NurseProfile me = new NurseProfile(); me.setId(11L); me.setHospitalId(7L); me.setIsIncharge(true);
         when(nurseProfileRepository.findByUserId(20L)).thenReturn(Optional.of(me));
         when(wardRepository.findById(3L)).thenReturn(Optional.of(ward(3L, 7L, 11L)));
+        when(wardRepository.findByHospitalIdAndInchargeNurseId(7L, 11L)).thenReturn(java.util.List.of(ward(3L, 7L, 11L)));
         assertThatCode(() -> guard.assertWardAccess(3L)).doesNotThrowAnyException();
     }
 
@@ -72,6 +76,7 @@ class NurseInchargeGuardTest {
         NurseProfile me = new NurseProfile(); me.setId(11L); me.setHospitalId(7L); me.setIsIncharge(true);
         lenient().when(nurseProfileRepository.findByUserId(20L)).thenReturn(Optional.of(me));
         when(wardRepository.findById(3L)).thenReturn(Optional.of(ward(3L, 7L, 99L)));
+        when(wardRepository.findByHospitalIdAndInchargeNurseId(7L, 11L)).thenReturn(java.util.List.of());
         assertThatThrownBy(() -> guard.assertWardAccess(3L)).isInstanceOf(AccessDeniedException.class);
     }
 }

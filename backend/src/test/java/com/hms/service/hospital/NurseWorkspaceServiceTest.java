@@ -107,8 +107,8 @@ class NurseWorkspaceServiceTest {
         when(securityHelper.getCurrentUserId()).thenReturn(20L);
         when(assignmentRepository.findByNurseUserIdAndIsActiveTrue(20L))
                 .thenReturn(List.of(assignment(1L, 7L), assignment(2L, 7L)));
-        when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission(1L, 7L, "ADMITTED")));
-        when(ipdAdmissionRepository.findById(2L)).thenReturn(Optional.of(admission(2L, 7L, "DISCHARGED")));
+        when(ipdAdmissionRepository.findByIdAndHospitalId(1L, 7L)).thenReturn(Optional.of(admission(1L, 7L, "ADMITTED")));
+        when(ipdAdmissionRepository.findByIdAndHospitalId(2L, 7L)).thenReturn(Optional.of(admission(2L, 7L, "DISCHARGED")));
         when(patientRepository.findById(anyLong())).thenReturn(Optional.empty());
         when(doctorRepository.findById(anyLong())).thenReturn(Optional.empty());
 
@@ -128,7 +128,7 @@ class NurseWorkspaceServiceTest {
         List<MyPatientDTO> result = service.getMyPatients();
 
         assertThat(result).isEmpty();
-        verify(ipdAdmissionRepository, never()).findById(9L);
+        verify(ipdAdmissionRepository, never()).findByIdAndHospitalId(9L, 7L);
     }
 
     @Test

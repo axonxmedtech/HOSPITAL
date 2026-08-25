@@ -3899,9 +3899,9 @@ const HospitalAdminDashboard = () => {
                                       Separate Nurse Login
                                     </h3>
                                     <p className="text-sm text-gray-600 leading-relaxed mb-6">
-                                      When enabled, nurses and nurse incharges sign in through a
-                                      dedicated nurse login page instead of the shared hospital
-                                      login.
+                                      ON: individual nurses and nurse incharges may sign in through
+                                      the dedicated nurse login page. OFF: individual nurse login is
+                                      disabled; this does not change ward or patient access rules.
                                     </p>
                                   </div>
                                   <div className="flex items-center justify-between border-t border-gray-100 pt-4">
