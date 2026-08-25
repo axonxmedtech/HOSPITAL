@@ -35,6 +35,10 @@ public interface SurgeryRepository extends JpaRepository<Surgery, Long> {
     /** Patient-scoped: the only "already has an active surgery" check that works for day-care. */
     List<Surgery> findByPatientIdAndStatusIn(Long patientId, Collection<String> statuses);
 
+    /** CLIN-P1: every surgery for one patient at this hospital, across every status -- the
+     *  clinical timeline needs the whole history, not just the currently active case. */
+    List<Surgery> findByPatientIdAndHospitalId(Long patientId, Long hospitalId);
+
     List<Surgery> findByOtWardIdAndStatus(Long otWardId, String status);
 
     /**

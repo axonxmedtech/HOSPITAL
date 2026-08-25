@@ -29,6 +29,9 @@ public class PatientController {
     @Autowired
     private com.hms.service.PdfService pdfService;
 
+    @Autowired
+    private com.hms.service.hospital.PatientTimelineService patientTimelineService;
+
     @PostMapping
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
     public ResponseEntity<?> addPatient(@Valid @RequestBody Patient patient) {
@@ -63,6 +66,19 @@ public class PatientController {
     public ResponseEntity<?> getPatientById(@PathVariable String id) {
         Patient patient = patientService.getPatientByPublicId(id);
         return ResponseEntity.ok(patient);
+    }
+
+    /**
+     * CLIN-P1: the patient's clinical timeline -- OPD/IPD/Nursing/OT/Recovery events in one
+     * chronological read model, aggregated from the entities that already own each fact.
+     * Clinical detail (diagnoses, medications, nursing notes), so scoped to the clinical roles
+     * rather than the wider set PatientController otherwise uses.
+     */
+    @GetMapping("/{id}/timeline")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR')")
+    public ResponseEntity<?> getPatientTimeline(@PathVariable String id) {
+        Patient patient = patientService.getPatientByPublicId(id);
+        return ResponseEntity.ok(patientTimelineService.forPatient(patient.getId()));
     }
 
     @DeleteMapping("/{id}")

@@ -80,7 +80,9 @@ class NursingHttpWorkflowIntegrationTest {
         assertThat(mine.getBody()).contains("\"ipdAdmissionId\":" + admissionA.getId())
                 .doesNotContain("\"ipdAdmissionId\":" + admissionB.getId());
 
-        assertThat(vitals.count()).isZero();
+        // Scoped to this admission, not a global table count: @SpringBootTest shares one H2
+        // instance across every test class in the run, so a bare vitals.count()==0 precondition
+        // is order-dependent on whatever else has already persisted a VitalsRecord this JVM run.
         assertThat(call(HttpMethod.POST, "/hospital/nurse/vitals", token, vitalsBody(admissionA.getId())).getStatusCode())
                 .isEqualTo(HttpStatus.OK);
         assertThat(vitals.findByIpdAdmissionIdAndIsActiveTrueOrderByRecordedAtDesc(admissionA.getId())).hasSize(1);

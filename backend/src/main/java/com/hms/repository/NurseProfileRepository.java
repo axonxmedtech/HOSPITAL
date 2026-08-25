@@ -12,6 +12,7 @@ public interface NurseProfileRepository extends JpaRepository<NurseProfile, Long
     Optional<NurseProfile> findByEmailAndHospitalId(String email, Long hospitalId);
     Optional<NurseProfile> findByUserId(Long userId);
     Optional<NurseProfile> findByPublicId(String publicId);
+    Optional<NurseProfile> findByIdAndHospitalId(Long id, Long hospitalId);
 
     /** Count active nurses currently assigned to a ward (blocks ward deletion). */
     long countByWardIdAndIsActiveTrue(Long wardId);

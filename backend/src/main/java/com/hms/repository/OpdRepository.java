@@ -108,4 +108,13 @@ public interface OpdRepository extends JpaRepository<Opd, Long> {
 			com.hms.entity.Opd.VisitType visitType, 
 			java.time.LocalDateTime startOfDay
 	);
+
+	/**
+	 * CLIN-P1: every OPD encounter for one patient, tenant-proven through the patient join —
+	 * same reasoning as findByIdAndHospitalIdWithPatientAndDoctor above.
+	 */
+	@Query("SELECT o FROM Opd o WHERE o.patient.id = :patientId AND o.patient.hospitalId = :hospitalId "
+			+ "ORDER BY o.createdAt ASC")
+	java.util.List<Opd> findByPatientAndHospitalIdOrderByCreatedAtAsc(
+			@Param("patientId") Long patientId, @Param("hospitalId") Long hospitalId);
 }

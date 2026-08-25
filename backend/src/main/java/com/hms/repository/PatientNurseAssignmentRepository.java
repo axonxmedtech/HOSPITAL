@@ -15,6 +15,9 @@ public interface PatientNurseAssignmentRepository extends JpaRepository<PatientN
     /** The single active assignment for an admission, if any. */
     Optional<PatientNurseAssignment> findByIpdAdmissionIdAndIsActiveTrue(Long ipdAdmissionId);
 
+    /** CLIN-P1: every assignment (active or historical) across a patient's admissions, for the timeline. */
+    List<PatientNurseAssignment> findByIpdAdmissionIdInOrderByAssignedAtAsc(List<Long> ipdAdmissionIds);
+
     /** All active assignments for a nurse (drives "my patients"). */
     List<PatientNurseAssignment> findByNurseUserIdAndIsActiveTrue(Long nurseUserId);
 
