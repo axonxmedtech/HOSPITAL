@@ -74,6 +74,35 @@ public interface OpdRepository extends JpaRepository<Opd, Long> {
 			@Param("status") com.hms.entity.Opd.Status status,
 			Pageable pageable);
 
+	/**
+	 * Admissions the doctor recommended that reception has not yet acted on.
+	 *
+	 * <p>Tenancy is proven through the owning patient, exactly as the single-OPD finder above --
+	 * Opd carries no hospital_id, so the join is the only place the tenant can be established.
+	 * An OPD already converted to an inpatient stay (IN_IPD) is no longer a pending request.
+	 */
+	@Query("SELECT COUNT(o) FROM Opd o JOIN o.patient p "
+			+ "WHERE p.hospitalId = :hospitalId "
+			+ "AND o.ipdAdmitRecommended = TRUE "
+			+ "AND o.status <> :excludedStatus")
+	long countPendingIpdRequests(@Param("hospitalId") Long hospitalId,
+			@Param("excludedStatus") com.hms.entity.Opd.Status excludedStatus);
+
+	/** The paged list behind the count above; same tenant and filter rules. */
+	@Query(value = "SELECT o FROM Opd o "
+			+ "INNER JOIN FETCH o.patient p "
+			+ "LEFT JOIN FETCH o.doctor "
+			+ "WHERE p.hospitalId = :hospitalId "
+			+ "AND o.ipdAdmitRecommended = TRUE "
+			+ "AND o.status <> :excludedStatus",
+		countQuery = "SELECT COUNT(o) FROM Opd o JOIN o.patient p "
+			+ "WHERE p.hospitalId = :hospitalId "
+			+ "AND o.ipdAdmitRecommended = TRUE "
+			+ "AND o.status <> :excludedStatus")
+	Page<Opd> findPendingIpdRequests(@Param("hospitalId") Long hospitalId,
+			@Param("excludedStatus") com.hms.entity.Opd.Status excludedStatus,
+			Pageable pageable);
+
 	boolean existsByPatientIdAndVisitTypeAndCreatedAtGreaterThanEqual(
 			Long patientId, 
 			com.hms.entity.Opd.VisitType visitType, 

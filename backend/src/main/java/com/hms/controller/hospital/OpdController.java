@@ -223,6 +223,28 @@ public class OpdController {
         return ResponseEntity.ok(result);
     }
 
+    /**
+     * Pending IPD requests -- doctor recommended admission, reception has not admitted yet.
+     * Reception acts on these, so the filtering belongs here and not in the browser: the
+     * dashboard previously paged 1000 OPDs and filtered client-side, which silently lost any
+     * request beyond that page.
+     */
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
+    @GetMapping("/ipd-requests/count")
+    public ResponseEntity<?> getPendingIpdRequestCount() {
+        return ResponseEntity.ok(java.util.Map.of("count", opdService.getPendingIpdRequestCount()));
+    }
+
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
+    @GetMapping("/ipd-requests")
+    public ResponseEntity<?> getPendingIpdRequests(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        org.springframework.data.domain.Pageable pageable =
+                org.springframework.data.domain.PageRequest.of(page, size);
+        return ResponseEntity.ok(opdService.getPendingIpdRequests(pageable));
+    }
+
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     @GetMapping("/queue/doctor/{doctorId}")
     public ResponseEntity<java.util.List<?>> getDoctorQueue(@PathVariable Long doctorId) {
