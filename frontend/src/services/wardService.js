@@ -10,8 +10,8 @@ const WardService = {
   getBeds: (wardId) => apiClient.get(`/hospital/wards/${wardId}/beds`).then((r) => r.data),
   updateWard: (wardId, payload) =>
     apiClient.put(`/hospital/wards/${wardId}`, payload).then((r) => r.data),
-  updateBedStatus: (bedId, status) =>
-    apiClient.put(`/hospital/beds/${bedId}`, { status }).then((r) => r.data),
+  updateBedStatus: (bedId, remarks = 'Back to available') =>
+    apiClient.post(`/hospital/beds/${bedId}/available`, { remarks }).then((r) => r.data),
   getAvailableBeds: (wardId) =>
     apiClient.get('/hospital/beds/available', { params: { ward_id: wardId } }).then((r) => r.data),
   deleteWard: (wardId) => apiClient.delete(`/hospital/wards/${wardId}`).then((r) => r.data),
