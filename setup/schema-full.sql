@@ -847,6 +847,35 @@ CREATE TABLE `pharmacy_branch` (
 DROP TABLE IF EXISTS `wards`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
+--
+-- Table structure for table `icu_stay`  (ICU Phase 3)
+--
+CREATE TABLE `icu_stay` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ipd_admission_id` bigint NOT NULL,
+  `patient_id` bigint NOT NULL,
+  `ward_id` bigint NOT NULL,
+  `status` varchar(10) NOT NULL DEFAULT 'ACTIVE',
+  `source` varchar(20) NOT NULL,
+  `source_ref_id` bigint DEFAULT NULL,
+  `admitted_at` datetime(6) NOT NULL,
+  `admission_reason` varchar(255) DEFAULT NULL,
+  `intensivist_doctor_id` bigint DEFAULT NULL,
+  `admitted_by_user_id` bigint DEFAULT NULL,
+  `disposition` varchar(20) DEFAULT NULL,
+  `discharged_at` datetime(6) DEFAULT NULL,
+  `discharged_by_user_id` bigint DEFAULT NULL,
+  `active_marker` bigint DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_icu_stay_public_id` (`public_id`),
+  UNIQUE KEY `uk_icu_stay_active` (`hospital_id`,`active_marker`),
+  KEY `idx_icu_stay_admission` (`ipd_admission_id`),
+  KEY `idx_icu_stay_hospital` (`hospital_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE `wards` (
   `ward_id` bigint NOT NULL AUTO_INCREMENT,
   `bed_price` decimal(38,2) NOT NULL,

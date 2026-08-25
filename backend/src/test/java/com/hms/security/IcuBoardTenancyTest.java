@@ -60,6 +60,7 @@ class IcuBoardTenancyTest {
     @Autowired BedRepository bedRepository;
     @Autowired IpdAdmissionRepository ipdAdmissionRepository;
     @Autowired UserRepository userRepository;
+    @Autowired com.hms.repository.IcuStayRepository icuStayRepository;
 
     private static final List<String> MODULES = List.of("OPD", "IPD", "BILLING", "ICU");
     private static final List<String> NO_ICU = List.of("OPD", "IPD", "BILLING");
@@ -172,6 +173,20 @@ class IcuBoardTenancyTest {
         b.setCurrentIpdAdmissionId(a.getId());
         bedRepository.save(b);
 
+        // ICU Phase 3: the stay that the board must now surface -- and must never surface to
+        // the other tenant.
+        com.hms.entity.IcuStay stay = new com.hms.entity.IcuStay();
+        stay.setHospitalId(hid);
+        stay.setIpdAdmissionId(a.getId());
+        stay.setPatientId(pid);
+        stay.setWardId(wid);
+        stay.setStatus(com.hms.entity.IcuStay.ACTIVE);
+        stay.setSource(com.hms.entity.IcuStay.SRC_WARD);
+        stay.setAdmittedAt(LocalDateTime.now());
+        stay.setAdmissionReason("Reason-" + slug);
+        stay.setActiveMarker(a.getId());
+        icuStayRepository.save(stay);
+
         return new long[] { wid, bid };
     }
 
@@ -223,6 +238,15 @@ class IcuBoardTenancyTest {
                 .contains("\"totalBeds\":1").contains("\"occupied\":1");
         assertThat(get("/hospital/icu/board", tokenB).getBody())
                 .contains("\"totalBeds\":1").contains("\"occupied\":1");
+    }
+
+    @Test
+    void theBoardCarriesTheIcuStay_andNeverTheOtherTenantsStay() {
+        String body = get("/hospital/icu/board", tokenB).getBody();
+
+        assertThat(body).as("the stay slot is populated, not null").contains("\"icuStay\":{");
+        assertThat(body).contains("Reason-bravo");
+        assertThat(body).doesNotContain("Reason-alpha");
     }
 
     @Test

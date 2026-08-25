@@ -62,6 +62,8 @@ class IpdAdmissionServiceTest {
     @Mock com.hms.service.hospital.BedStatusService bedStatusService;
     /** E1 (D-8): admitFromOpd pushes through the after-commit notifier now, not the raw socket. */
     @Mock com.hms.service.RealtimeNotifier notifier;
+    /** ICU-3: admitFromOpd opens an ICU stay when the target ward is critical care. */
+    @Mock com.hms.service.hospital.icu.IcuStayService icuStayService;
 
     @InjectMocks
     IpdAdmissionService service;

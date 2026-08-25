@@ -64,7 +64,7 @@ public final class ControllerModules {
                 "OtPolicyController", "OtPermissionController", "OtInchargeController");
 
         // Critical care. Hospital-only and never aliased to /clinic or /pharmacy.
-        put(EntitlementRegistry.ICU, "IcuDashboardController");
+        put(EntitlementRegistry.ICU, "IcuDashboardController", "IcuStayController");
 
         put(EntitlementRegistry.BILLING,
                 "BillingController", "HospitalFeeController", "HospitalServiceController");

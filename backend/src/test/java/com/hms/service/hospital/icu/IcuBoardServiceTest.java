@@ -68,6 +68,8 @@ class IcuBoardServiceTest {
     @Mock NurseProfileRepository nurseProfileRepository;
     @Mock PatientNurseAssignmentRepository patientNurseAssignmentRepository;
     @Mock NurseInchargeGuard nurseInchargeGuard;
+    /** ICU-3: the board now resolves the stay slot through this. */
+    @Mock IcuStayService icuStayService;
     @Mock SecurityContextHelper securityHelper;
     @InjectMocks IcuBoardService service;
 
@@ -91,6 +93,7 @@ class IcuBoardServiceTest {
         when(ipdAdmissionRepository.findByHospitalIdAndStatusInAndWardIdIn(anyLong(), any(), any()))
                 .thenReturn(List.of());
         when(wardRepository.findByHospitalIdAndUnitTypeIn(anyLong(), any())).thenReturn(List.of());
+        when(icuStayService.activeStaysFor(anyLong(), any())).thenReturn(List.of());
     }
 
     // ── fixtures ──────────────────────────────────────────────────────────────

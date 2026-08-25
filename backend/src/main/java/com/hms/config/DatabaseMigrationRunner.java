@@ -129,6 +129,8 @@ public class DatabaseMigrationRunner {
         // existing ward keeps behaving exactly as before and no backfill is needed.
         addColumnIfMissing("wards", "unit_type", "VARCHAR(20) NOT NULL DEFAULT 'GENERAL'");
         backfillWardUnitType();
+        ensureIcuStayTable();          // ICU Phase 3
+        backfillIcuStaysForCurrentOccupants();
     }
 
     /**
@@ -2257,6 +2259,88 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("backfillWardUnitType skipped: {}", e.getMessage());
+        }
+    }
+
+    /** ICU Phase 3 — the ICU stay record. See IcuStay for why active_marker exists. */
+    private void ensureIcuStayTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'icu_stay'", Integer.class);
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE icu_stay (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  public_id VARCHAR(255) NOT NULL," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  ipd_admission_id BIGINT NOT NULL," +
+                    "  patient_id BIGINT NOT NULL," +
+                    "  ward_id BIGINT NOT NULL," +
+                    "  status VARCHAR(10) NOT NULL DEFAULT 'ACTIVE'," +
+                    "  source VARCHAR(20) NOT NULL," +
+                    "  source_ref_id BIGINT DEFAULT NULL," +
+                    "  admitted_at DATETIME(6) NOT NULL," +
+                    "  admission_reason VARCHAR(255) DEFAULT NULL," +
+                    "  intensivist_doctor_id BIGINT DEFAULT NULL," +
+                    "  admitted_by_user_id BIGINT DEFAULT NULL," +
+                    "  disposition VARCHAR(20) DEFAULT NULL," +
+                    "  discharged_at DATETIME(6) DEFAULT NULL," +
+                    "  discharged_by_user_id BIGINT DEFAULT NULL," +
+                    "  active_marker BIGINT DEFAULT NULL," +
+                    "  created_at DATETIME(6) NOT NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  UNIQUE KEY uk_icu_stay_public_id (public_id)," +
+                    "  UNIQUE KEY uk_icu_stay_active (hospital_id, active_marker)," +
+                    "  KEY idx_icu_stay_admission (ipd_admission_id)," +
+                    "  KEY idx_icu_stay_hospital (hospital_id)" +
+                    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created icu_stay");
+            }
+        } catch (Exception e) {
+            log.warn("ensureIcuStayTable skipped: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * ICU Phase 3 — gives every patient ALREADY lying in a critical-care bed an ACTIVE stay.
+     *
+     * <p>Without this the ICU board contradicts itself from the first minute: the bed is occupied
+     * and the admission is active, but no stay exists, so the biconditional the module rests on
+     * (ACTIVE stay ⟺ patient occupies a critical-care bed) is violated for every existing patient.
+     *
+     * <p>Deliberately honest about what it does NOT know. The moment critical care actually began
+     * was never recorded, so {@code admitted_at} reuses the admission's own timestamp rather than
+     * inventing one, the source is EXTERNAL_REFERRAL (the "arrived already in this state" value),
+     * and the reason says plainly that the row was backfilled. No clinical history is fabricated.
+     *
+     * <p>Idempotent: the WHERE clause excludes admissions that already have an ACTIVE stay, so
+     * running it on every startup is a no-op after the first.
+     */
+    private void backfillIcuStaysForCurrentOccupants() {
+        try {
+            String criticalCare = com.hms.service.hospital.icu.CareUnitRegistry.criticalCareKeys()
+                    .stream().map(k -> "'" + k + "'").reduce((a, b) -> a + "," + b).orElse("''");
+            int created = jdbcTemplate.update(
+                "INSERT INTO icu_stay (public_id, hospital_id, ipd_admission_id, patient_id, ward_id," +
+                "  status, source, admitted_at, admission_reason, admitted_by_user_id," +
+                "  active_marker, created_at) " +
+                "SELECT UUID(), a.hospital_id, a.id, a.patient_id, a.ward_id," +
+                "  'ACTIVE', 'EXTERNAL_REFERRAL', a.admission_datetime," +
+                "  'Backfilled at ICU-3: this patient already occupied a critical-care bed. " +
+                     "The actual time critical care began was not recorded.', NULL," +
+                "  a.id, NOW(6) " +
+                "FROM ipd_admission a " +
+                "JOIN wards w ON w.ward_id = a.ward_id AND w.hospital_id = a.hospital_id " +
+                "WHERE a.status IN ('ADMITTED','DISCHARGE_PLANNED') " +
+                "  AND w.unit_type IN (" + criticalCare + ") " +
+                "  AND NOT EXISTS (SELECT 1 FROM icu_stay s " +
+                "                  WHERE s.ipd_admission_id = a.id AND s.status = 'ACTIVE')");
+            if (created > 0) {
+                log.info("DB migration applied: backfilled {} ACTIVE ICU stay(s) for current occupants", created);
+            }
+        } catch (Exception e) {
+            log.warn("backfillIcuStaysForCurrentOccupants skipped: {}", e.getMessage());
         }
     }
 

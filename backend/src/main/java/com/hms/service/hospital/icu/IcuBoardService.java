@@ -67,6 +67,7 @@ public class IcuBoardService {
     @Autowired private NurseProfileRepository nurseProfileRepository;
     @Autowired private PatientNurseAssignmentRepository patientNurseAssignmentRepository;
     @Autowired private NurseInchargeGuard nurseInchargeGuard;
+    @Autowired private IcuStayService icuStayService;
     @Autowired private SecurityContextHelper securityHelper;
 
     /** Units and their counts, without the bed grid. Backs the dashboard's lighter poll. */
@@ -128,6 +129,9 @@ public class IcuBoardService {
         Map<Long, Patient> patients = includeBeds ? loadPatients(hospitalId, admissions) : Map.of();
         Map<Long, Doctor> doctors = includeBeds ? loadDoctors(hospitalId, admissions) : Map.of();
         Map<Long, VitalsRecord> vitals = includeBeds ? loadLatestVitals(admissions) : Map.of();
+        // ICU Phase 3: the stay slot that has been present-but-null since ICU-2.
+        Map<Long, com.hms.dto.icu.IcuStayDTO> stays = includeBeds
+                ? loadActiveStays(hospitalId, admissions) : Map.of();
 
         DetailScope scope = resolveDetailScope(hospitalId);
         LocalDate today = LocalDate.now();
@@ -153,7 +157,7 @@ public class IcuBoardService {
 
                 if (includeBeds) {
                     dto.getBeds().add(toRow(ward, unitType, bed, admission, mismatch,
-                            patients, doctors, vitals, scope));
+                            patients, doctors, vitals, stays, scope));
                 }
             }
 
@@ -214,9 +218,22 @@ public class IcuBoardService {
         return null;
     }
 
+    private Map<Long, com.hms.dto.icu.IcuStayDTO> loadActiveStays(
+            Long hospitalId, List<IpdAdmission> admissions) {
+        Set<Long> ids = new HashSet<>();
+        for (IpdAdmission a : admissions) ids.add(a.getId());
+        if (ids.isEmpty()) return Map.of();
+        Map<Long, com.hms.dto.icu.IcuStayDTO> out = new HashMap<>();
+        for (com.hms.entity.IcuStay s : icuStayService.activeStaysFor(hospitalId, ids)) {
+            out.putIfAbsent(s.getIpdAdmissionId(), icuStayService.toDto(s));
+        }
+        return out;
+    }
+
     private IcuBedRowDTO toRow(Ward ward, String unitType, Bed bed, IpdAdmission admission,
                                String mismatch, Map<Long, Patient> patients,
                                Map<Long, Doctor> doctors, Map<Long, VitalsRecord> vitals,
+                               Map<Long, com.hms.dto.icu.IcuStayDTO> stays,
                                DetailScope scope) {
         IcuBedRowDTO row = new IcuBedRowDTO();
         row.setBedId(bed.getBedId());
@@ -241,6 +258,7 @@ public class IcuBoardService {
 
         if (!maySeeIdentity) return row;
 
+        row.setIcuStay(stays.get(admission.getId()));
         row.setIpdNumber(admission.getIpdNumber());
         row.setAdmittedAt(admission.getAdmissionDatetime());
         Patient p = patients.get(admission.getPatientId());

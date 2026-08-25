@@ -56,6 +56,13 @@ public class IcuBedRowDTO {
     private LocalDateTime vitalsRecordedAt;
 
     /**
+     * The patient's ICU stay, when one is open. Null until ICU-3 populated it, and still null
+     * for a bed with no active admission — the field itself has existed since ICU-2 so that
+     * filling it needed no DTO or frontend change.
+     */
+    private IcuStayDTO icuStay;
+
+    /**
      * False when the bed's own status and the admission records disagree — an occupied bed with
      * no active admission, or an active admission on a bed not marked occupied.
      *
