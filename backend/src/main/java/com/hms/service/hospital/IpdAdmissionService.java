@@ -629,7 +629,11 @@ public class IpdAdmissionService {
                     throw new IllegalArgumentException("Administered item quantity must be positive");
                 }
                 if (item.getMedicineId() != null) {
-                    com.hms.entity.Medicine med = medicineRepository.findById(item.getMedicineId())
+                    // Tenant-scoped: medicineId arrives from the request body, so an unscoped
+                    // findById let a caller in one hospital decrement another hospital's stock.
+                    // DoctorService's copy of this block always carried the check; these two did not.
+                    com.hms.entity.Medicine med = medicineRepository
+                            .findByIdAndHospitalId(item.getMedicineId(), hospitalId)
                             .orElseThrow(() -> new ResourceNotFoundException("Medicine not found in active inventory: ID " + item.getMedicineId()));
 
                     if (med.getStockQuantity() < item.getQuantity()) {
@@ -721,7 +725,11 @@ public class IpdAdmissionService {
                     throw new IllegalArgumentException("Administered item quantity must be positive");
                 }
                 if (item.getMedicineId() != null) {
-                    com.hms.entity.Medicine med = medicineRepository.findById(item.getMedicineId())
+                    // Tenant-scoped: medicineId arrives from the request body, so an unscoped
+                    // findById let a caller in one hospital decrement another hospital's stock.
+                    // DoctorService's copy of this block always carried the check; these two did not.
+                    com.hms.entity.Medicine med = medicineRepository
+                            .findByIdAndHospitalId(item.getMedicineId(), hospitalId)
                             .orElseThrow(() -> new ResourceNotFoundException("Medicine not found in active inventory: ID " + item.getMedicineId()));
 
                     if (med.getStockQuantity() < item.getQuantity()) {
