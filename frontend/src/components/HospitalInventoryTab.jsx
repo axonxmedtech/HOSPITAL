@@ -14,6 +14,7 @@ const HospitalInventoryTab = () => {
   const [servicesList, setServicesList] = useState([]);
   const [globalMasterItems, setGlobalMasterItems] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
   // Modal states
   const [stockModal, setStockModal] = useState({ isOpen: false, isEdit: false, data: null });
@@ -84,44 +85,41 @@ const HospitalInventoryTab = () => {
   }, [serviceModal.isOpen, serviceModal.isEdit, serviceModal.data]);
 
   // Fetch master items & services
+  // Deliberately does NOT swallow: a failed load must reach loadData so the UI can show an
+  // error instead of an empty table. Catching here made loadData's own catch unreachable,
+  // so an API failure rendered as "no inventory" -- indistinguishable from real empty stock.
   const fetchGlobalMasterItems = async () => {
-    try {
-      const res = await hospitalService.getGlobalMasterItems();
-      setGlobalMasterItems(res || []);
-    } catch (err) {
-      console.error(err);
-    }
+    const res = await hospitalService.getGlobalMasterItems();
+    setGlobalMasterItems(res || []);
   };
 
+  // Deliberately does NOT swallow: a failed load must reach loadData so the UI can show an
+  // error instead of an empty table. Catching here made loadData's own catch unreachable,
+  // so an API failure rendered as "no inventory" -- indistinguishable from real empty stock.
   const fetchServices = async () => {
-    try {
-      const res = await hospitalService.getHospitalServices();
-      setServicesList(res || []);
-    } catch (err) {
-      console.error(err);
-    }
+    const res = await hospitalService.getHospitalServices();
+    setServicesList(res || []);
   };
 
+  // Deliberately does NOT swallow: a failed load must reach loadData so the UI can show an
+  // error instead of an empty table. Catching here made loadData's own catch unreachable,
+  // so an API failure rendered as "no inventory" -- indistinguishable from real empty stock.
   const fetchInventory = async () => {
-    try {
-      const res = await hospitalService.getHospitalInventory();
-      setInventoryList(res || []);
-    } catch (err) {
-      console.error(err);
-    }
+    const res = await hospitalService.getHospitalInventory();
+    setInventoryList(res || []);
   };
 
+  // Deliberately does NOT swallow: a failed load must reach loadData so the UI can show an
+  // error instead of an empty table. Catching here made loadData's own catch unreachable,
+  // so an API failure rendered as "no inventory" -- indistinguishable from real empty stock.
   const fetchPurchases = async () => {
-    try {
-      const res = await hospitalService.getHospitalInventoryPurchases();
-      setPurchaseList(res || []);
-    } catch (err) {
-      console.error(err);
-    }
+    const res = await hospitalService.getHospitalInventoryPurchases();
+    setPurchaseList(res || []);
   };
 
   const loadData = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       if (subTab === 'inventory') {
         await fetchInventory();
@@ -133,7 +131,9 @@ const HospitalInventoryTab = () => {
         await Promise.all([fetchServices(), fetchGlobalMasterItems()]);
       }
     } catch (err) {
-      toastError('Failed to load hospital inventory data.');
+      // ERROR is its own state. Never let a failed request render as "0 items".
+      setLoadError(extractApiError(err, 'Failed to load hospital inventory data.'));
+      toastError(extractApiError(err, 'Failed to load hospital inventory data.'));
     } finally {
       setLoading(false);
     }
@@ -309,7 +309,22 @@ const HospitalInventoryTab = () => {
       </div>
 
       {/* Main Tables */}
-      {loading &&
+      {loadError ? (
+        <div
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 px-4 py-5 text-center"
+        >
+          <p className="text-sm font-semibold text-red-800">Couldn&apos;t load inventory</p>
+          <p className="mt-1 text-sm text-red-700">{loadError}</p>
+          <button
+            type="button"
+            onClick={loadData}
+            className="mt-3 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+          >
+            Retry
+          </button>
+        </div>
+      ) : loading &&
       inventoryList.length === 0 &&
       purchaseList.length === 0 &&
       servicesList.length === 0 ? (
