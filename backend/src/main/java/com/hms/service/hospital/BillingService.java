@@ -169,8 +169,16 @@ public class BillingService {
     }
 
     /**
-     * Update payment status
+     * Update payment status.
+     *
+     * <p>Transactional and taken under a row lock on the bill, because marking a bill PAID also
+     * back-fills the outstanding remainder into the payment ledger. Reading what has been
+     * collected and writing the remainder has to be one serialised step: unlocked, two "Mark as
+     * Paid" clicks -- a double-click, or two staff on the same bill -- both read the same
+     * collected figure, both computed the same remainder, and both inserted it. The bill then
+     * showed twice its own total as collected.
      */
+    @Transactional
     public Billing updateStatus(Long id, String status, String paymentMethod, String paymentReference) {
         if (!"PENDING".equalsIgnoreCase(status) && 
             !"PARTIAL".equalsIgnoreCase(status) && 
@@ -182,8 +190,7 @@ public class BillingService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         validateBillingAccess(hospitalId);
 
-        Billing bill = billingRepository.findById(id)
-                .filter(b -> b.getHospitalId().equals(hospitalId))
+        Billing bill = billingRepository.findByIdAndHospitalIdForUpdate(id, hospitalId)
                 .orElseThrow(() -> new ResourceNotFoundException("Bill not found"));
 
         bill.setPaymentStatus(status);

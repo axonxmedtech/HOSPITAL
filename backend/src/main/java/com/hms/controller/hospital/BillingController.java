@@ -58,15 +58,19 @@ public class BillingController {
             throw new org.springframework.security.access.AccessDeniedException("Invalid hospital context");
         }
 
-        // Fetch settings
+        // Read the hospital's settings, falling back to an unsaved defaults object.
+        //
+        // This used to INSERT the missing row here, on what is otherwise a read. hospital_settings
+        // is unique on hospital_id, so a hospital that had never opened Settings -- a freshly
+        // onboarded one -- failed as soon as two billing requests arrived together: the first
+        // inserted, the rest hit the unique index and the whole request was rejected with a
+        // constraint error. Two people opening the billing screen at once was enough.
+        //
+        // Nothing is lost by not writing: every field on HospitalSetting carries its default as a
+        // field initialiser, so a transient instance answers exactly what the persisted row would
+        // have. The row is created for real when someone saves Settings.
         com.hms.entity.HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(hospitalId)
-                .orElseGet(() -> {
-                    Hospital hospital = hospitalRepository.findById(hospitalId)
-                            .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
-                    com.hms.entity.HospitalSetting newSettings = new com.hms.entity.HospitalSetting();
-                    newSettings.setHospital(hospital);
-                    return hospitalSettingRepository.save(newSettings);
-                });
+                .orElseGet(com.hms.entity.HospitalSetting::new);
 
         // Enforce settings
         if ("ROLE_DOCTOR".equalsIgnoreCase(role) || DOCTOR_ROLE.equalsIgnoreCase(role)) {
@@ -232,13 +236,22 @@ public class BillingController {
         return ResponseEntity.ok(updated);
     }
 
+    /**
+     * Replace a bill's line items.
+     *
+     * <p>Transactional and lock-taking. This method empties the bill and rebuilds it: without a
+     * transaction, a failure part-way through -- a rejected value, a dropped connection -- left
+     * the bill stripped of the items it had and never rebuilt, so charges simply vanished. The
+     * lock additionally serialises editing against taking payment, so a payment can never be
+     * accepted against a total that is mid-rewrite.
+     */
+    @org.springframework.transaction.annotation.Transactional
     @PutMapping("/{id}/items")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> updateBillItems(@PathVariable Long id, @RequestBody java.util.List<com.hms.dto.HospitalFeeDTO> items) {
         validateBillingAccess();
         Long hospitalId = securityHelper.getCurrentHospitalId();
-        Billing billing = billingRepository.findById(id)
-                .filter(b -> b.getHospitalId().equals(hospitalId))
+        Billing billing = billingRepository.findByIdAndHospitalIdForUpdate(id, hospitalId)
                 .orElseThrow(() -> new ResourceNotFoundException("Bill not found"));
 
         if ("PAID".equalsIgnoreCase(billing.getPaymentStatus()) || "CLOSED".equalsIgnoreCase(billing.getPaymentStatus())) {
@@ -447,6 +460,16 @@ public class BillingController {
         public String reference;
     }
 
+    /**
+     * Record a payment against a bill.
+     *
+     * <p>Transactional and taken under a row lock on the bill. Reading what has already been
+     * collected and inserting the new payment must be one serialised step: previously they were
+     * not, so two concurrent calls -- a double-clicked "Paid" button, or a retry after a timeout
+     * -- both read the same collected figure, both found the amount fitted inside the outstanding
+     * balance, and both inserted. The patient was charged twice with no error shown.
+     */
+    @org.springframework.transaction.annotation.Transactional
     @PostMapping("/{billingId}/pay")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> payBilling(@PathVariable Long billingId, @Valid @RequestBody PayRequest req) {
@@ -460,8 +483,7 @@ public class BillingController {
         // settle another hospital's bill by guessing its (sequential) numeric id — a
         // cross-tenant financial write. The sibling endpoints above already filter this way.
         Long payHospitalId = securityHelper.getCurrentHospitalId();
-        Billing bill = billingRepository.findById(billingId)
-                .filter(b -> b.getHospitalId() != null && b.getHospitalId().equals(payHospitalId))
+        Billing bill = billingRepository.findByIdAndHospitalIdForUpdate(billingId, payHospitalId)
                 .orElse(null);
         if (bill == null) return ResponseEntity.notFound().build();
 
@@ -493,8 +515,13 @@ public class BillingController {
             for (BillingPayment p : paymentsVal) if (p.getAmount() != null) paidVal = paidVal.add(p.getAmount());
 
             BigDecimal balanceVal = totalVal.subtract(paidVal);
+            // A state conflict, not a malformed request: the amount was valid, the bill simply
+            // does not owe it any more. Raised as ConflictException so it returns the canonical
+            // 409 body rather than a bare string, and so a duplicate submission that slips past
+            // the lock is reported honestly instead of silently posting.
             if (req.amount.compareTo(balanceVal) > 0) {
-                return ResponseEntity.badRequest().body("The remaining bill is less than the payment amount");
+                throw new com.hms.exception.ConflictException(
+                        "The remaining balance is " + balanceVal + "; cannot accept a payment of " + req.amount + ".");
             }
         }
 

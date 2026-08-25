@@ -2077,9 +2077,11 @@ const IpdDetails = () => {
                                   setLoading(false);
                                 }
                               }}
-                              className="px-3 py-1 bg-green-600 text-white rounded"
+                              disabled={payment.saving}
+                              title={payment.saving ? 'Recording payment…' : undefined}
+                              className="px-3 py-1 bg-green-600 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              Paid
+                              {payment.saving ? 'Recording…' : 'Paid'}
                             </button>
                           </div>
                         </div>
