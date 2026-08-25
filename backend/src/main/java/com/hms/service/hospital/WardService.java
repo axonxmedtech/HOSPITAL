@@ -354,7 +354,7 @@ public class WardService {
         r.setTotalBeds(w.getTotalBeds());
         r.setFloorNumber(w.getFloorNumber());
         r.setInchargeNurseId(w.getInchargeNurseId());
-        String unitType = w.getUnitType() == null
+        String unitType = (w.getUnitType() == null || w.getUnitType().isBlank())
                 ? com.hms.service.hospital.icu.CareUnitRegistry.GENERAL
                 : w.getUnitType();
         r.setUnitType(unitType);

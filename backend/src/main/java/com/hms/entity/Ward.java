@@ -42,7 +42,8 @@ public class Ward {
      * behaving exactly as before. The ward's NAME stays free text; this is what the ICU board
      * filters on, so a unit is never identified by a substring of its name.
      */
-    @Column(name = "unit_type", nullable = false, length = 20)
+    @Column(name = "unit_type", nullable = false, length = 20,
+            columnDefinition = "VARCHAR(20) NOT NULL DEFAULT 'GENERAL'")
     private String unitType = "GENERAL";
 
     @Column(name = "created_at", updatable = false)

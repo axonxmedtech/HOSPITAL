@@ -283,6 +283,21 @@ class WardServiceTest {
     }
 
     @Test
+    void toResponse_treatsABlankUnitTypeAsGeneral() {
+        // A ward migrated by ddl-auto before the column had a DB default was back-filled with ''
+        // rather than 'GENERAL'. Blank is not a registry key and must never surface as one.
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        Ward blank = savedWard(3L, "Migrated", 1);
+        blank.setUnitType("");
+        when(wardRepository.findByHospitalId(7L)).thenReturn(List.of(blank));
+
+        WardResponse resp = service.getAllWards().get(0);
+
+        assertThat(resp.getUnitType()).isEqualTo("GENERAL");
+        assertThat(resp.getUnitTypeLabel()).isEqualTo("General Ward");
+    }
+
+    @Test
     void toResponse_treatsANullUnitTypeAsGeneral() {
         // A ward row written before the migration has no value; it must never read as ICU.
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);

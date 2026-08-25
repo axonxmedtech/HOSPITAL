@@ -128,6 +128,7 @@ public class DatabaseMigrationRunner {
         // ICU Phase 2 — ward classification (CareUnitRegistry). GENERAL by default, so every
         // existing ward keeps behaving exactly as before and no backfill is needed.
         addColumnIfMissing("wards", "unit_type", "VARCHAR(20) NOT NULL DEFAULT 'GENERAL'");
+        backfillWardUnitType();
     }
 
     /**
@@ -2230,6 +2231,32 @@ public class DatabaseMigrationRunner {
             log.info("DB migration applied: dropped index {}.{}", table, indexName);
         } catch (Exception e) {
             log.warn("DB migration skipped (drop index {}.{}): {}", table, indexName, e.getMessage());
+        }
+    }
+
+    /**
+     * Repairs wards whose unit_type is blank.
+     *
+     * <p>ICU Phase 2 declared the column NOT NULL with a Java-side default only. Hibernate's
+     * ddl-auto=update therefore emitted an ALTER with no DB default, and MySQL back-filled the
+     * existing rows with '' rather than 'GENERAL' — this migration runs at ApplicationReadyEvent,
+     * which is AFTER Hibernate, so its own DEFAULT arrived too late for a database that already
+     * had wards. The entity now carries an explicit columnDefinition so new deployments never
+     * take that path; this repairs the ones that already did.
+     *
+     * <p>Harmless while it lasted — CareUnitRegistry.isCriticalCare("") is false, so a blank ward
+     * correctly stayed off the ICU board — but a blank is not a valid registry key and must not
+     * be allowed to persist.
+     */
+    private void backfillWardUnitType() {
+        try {
+            int fixed = jdbcTemplate.update(
+                    "UPDATE wards SET unit_type = 'GENERAL' WHERE unit_type IS NULL OR TRIM(unit_type) = ''");
+            if (fixed > 0) {
+                log.info("DB migration applied: defaulted unit_type on {} ward(s)", fixed);
+            }
+        } catch (Exception e) {
+            log.warn("backfillWardUnitType skipped: {}", e.getMessage());
         }
     }
 
