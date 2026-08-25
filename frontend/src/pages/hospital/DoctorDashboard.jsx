@@ -35,6 +35,8 @@ import hospitalService from '../../services/hospitalService';
 import otService from '../../services/otService';
 import { extractApiError } from '../../utils/apiError';
 import BillingTable from './BillingTable';
+import IcuBedBoard from './icu/IcuBedBoard';
+import IcuDashboard from './icu/IcuDashboard';
 import OtBoard from './ot/OtBoard';
 
 /**
@@ -54,6 +56,9 @@ const DoctorDashboard = () => {
   const hasIPD = modules.includes('IPD');
   const hasAppointments = modules.includes('APPOINTMENTS');
   const hasOT = modules.includes('OT');
+  // Gates the tab only. Who may see which ICU row is decided server-side by IcuBoardService
+  // (ICU-1 D6) — this never re-implements that rule.
+  const hasICU = modules.includes('ICU');
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') || 'overview';
   const viewFilter = searchParams.get('appointmentFilter') || 'today';
@@ -845,6 +850,8 @@ const DoctorDashboard = () => {
     ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
     ...(isSolo || hasBilling ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
     ...(hasOT ? [{ id: 'ot', label: 'Operation Theatre', icon: null }] : []),
+    ...(hasICU ? [{ id: 'icu-dashboard', label: 'ICU Dashboard', icon: null }] : []),
+    ...(hasICU ? [{ id: 'icu-beds', label: 'ICU Bed Board', icon: null }] : []),
     ...(isSolo && hasInClinic && hasMedicalInventory
       ? [{ id: 'inventory', label: 'Medicine Inventory', icon: null }]
       : []),
@@ -1868,6 +1875,11 @@ const DoctorDashboard = () => {
                 ) : (
                   <OtBoard rows={otRows} mode="doctor" />
                 ))}
+
+              {activeTab === 'icu-dashboard' && (
+                <IcuDashboard onOpenBedBoard={() => setActiveTab('icu-beds')} />
+              )}
+              {activeTab === 'icu-beds' && <IcuBedBoard />}
             </div>
           )}
         </main>

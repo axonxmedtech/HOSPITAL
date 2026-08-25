@@ -225,6 +225,16 @@ backend/src/main/java/com/hms/config/DatabaseMigrationRunner.java    + ensureWar
 setup/schema-full.sql                                                 mirror the DDL
 ```
 
+> **Implemented differently — recorded 2026-08-25 (gap G6).** The ICU cross-tenant cases were
+> **not** added to `CrossTenantIsolationTest`. They live in a dedicated
+> `security/IcuBoardTenancyTest` (7 cases) instead, built on the same real-database two-tenant
+> harness. Two reasons: `TenantScopingArchTest`'s obligation to extend
+> `CrossTenantIsolationTest` triggers only when a repository lookup-by-id is added, and
+> `IcuBoardService` deliberately uses none; and that class's fixture has no ICU-typed ward, so
+> covering ICU there would have meant reshaping a frozen shared security test for a feature it
+> does not otherwise touch. `CrossTenantIsolationTest` is therefore **unchanged**, and ICU
+> tenancy is covered at equal strength in its own file. No test architecture was rewritten.
+
 **Backend tests — modified (3)**
 
 ```
@@ -234,6 +244,7 @@ backend/src/test/java/com/hms/service/hospital/WardServiceTest.java   + unit_typ
 ```
 
 `ClinicPharmacyIsolationTest` — **unchanged, deliberately** (S3).
+`CrossTenantIsolationTest` — **unchanged**; see the G6 note above.
 
 **Frontend — new (5)**
 

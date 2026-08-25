@@ -39,6 +39,8 @@ import { extractApiError } from '../../utils/apiError';
 import { formatDateTime, formatTime } from '../../utils/date';
 import { printPdf } from '../../utils/printPdf';
 import BillingTable from './BillingTable';
+import IcuBedBoard from './icu/IcuBedBoard';
+import IcuDashboard from './icu/IcuDashboard';
 import DayCareSurgeryModal from './ot/DayCareSurgeryModal';
 import OtAnalyticsStrip from './ot/OtAnalyticsStrip';
 import OtBoard from './ot/OtBoard';
@@ -59,6 +61,9 @@ const ReceptionistDashboard = () => {
   const hasMedicalInventory = modules.includes('MEDICAL_INVENTORY');
   const hasHospitalInventory = modules.includes('HOSPITAL_INVENTORY');
   const hasOT = modules.includes('OT');
+  // Reception admits and moves patients, so it needs live ICU capacity. IcuBoardService
+  // withholds diagnosis and vitals for this role (ICU-1 D6); the tab flag does not.
+  const hasICU = modules.includes('ICU');
   // Tenant-aware label: clinic logins say "Clinic" wherever we'd otherwise say "Hospital".
   const tenantWord = user?.hospitalType === 'CLINIC' ? 'Clinic' : 'Hospital';
   const [searchParams, setSearchParams] = useSearchParams();
@@ -902,6 +907,8 @@ const ReceptionistDashboard = () => {
       ? [{ id: 'hospital-inventory', label: `${tenantWord} Inventory`, icon: null }]
       : []),
     ...(hasOT ? [{ id: 'ot', label: 'Operation Theatre', icon: null }] : []),
+    ...(hasICU ? [{ id: 'icu-dashboard', label: 'ICU Dashboard', icon: null }] : []),
+    ...(hasICU ? [{ id: 'icu-beds', label: 'ICU Bed Board', icon: null }] : []),
   ].filter((tab) => tab.id !== 'billing' || user?.billingHandler !== 'DOCTOR');
 
   // Fallback if the URL parameter tab is not currently valid/visible
@@ -1870,6 +1877,10 @@ const ReceptionistDashboard = () => {
               )}
               {activeTab === 'inventory' && <MedicineInventoryTab hidePrescribingColumns />}
               {activeTab === 'hospital-inventory' && <HospitalInventoryTab />}
+              {activeTab === 'icu-dashboard' && (
+                <IcuDashboard onOpenBedBoard={() => setActiveTab('icu-beds')} />
+              )}
+              {activeTab === 'icu-beds' && <IcuBedBoard />}
               {activeTab === 'ot' && (
                 <div>
                   <div className="flex items-center justify-between mb-4">
