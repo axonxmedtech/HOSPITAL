@@ -278,7 +278,7 @@ const WardPatientsView = ({ refreshKey }) => {
   );
 };
 
-const UnassignedPatientsView = ({ refreshKey }) => {
+export const UnassignedPatientsView = ({ refreshKey }) => {
   const { success: toastSuccess, error: toastError } = useToast();
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);

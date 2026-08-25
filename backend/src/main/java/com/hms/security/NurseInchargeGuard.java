@@ -73,7 +73,11 @@ public class NurseInchargeGuard {
         LocalDate today = LocalDate.now();
         LinkedHashSet<Long> wards = new LinkedHashSet<>();
         wardAssignmentRepository.findByNurseProfileIdAndFromDateLessThanEqualAndToDateGreaterThanEqual(profile.getId(), today, today)
-                .stream().map(a -> a.getTempWardId()).forEach(wards::add);
+                .stream()
+                .filter(a -> hospitalId.equals(a.getHospitalId()))
+                .map(a -> a.getTempWardId())
+                .filter(wardId -> wardRepository.findByWardIdAndHospitalId(wardId, hospitalId).isPresent())
+                .forEach(wards::add);
         if ("NURSE".equals(securityHelper.getCurrentUserRole())) {
             if (wards.isEmpty() && profile.getWardId() != null) wards.add(profile.getWardId());
         } else {

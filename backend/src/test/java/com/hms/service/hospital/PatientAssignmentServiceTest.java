@@ -57,4 +57,15 @@ class PatientAssignmentServiceTest {
         service.onAdmission(admission());
         verify(nurseAssignmentService, never()).assignNurse(anyLong(), anyLong(), any());
     }
+
+    @Test
+    void failedOptionalAutoAssignmentDoesNotEscapeToTheAdmissionTransaction() {
+        when(coverageService.effectiveWardNurses(eq(3L), any()))
+                .thenReturn(List.of(nurse(11L, 20L, false)));
+        doThrow(new RuntimeException("assignment store unavailable"))
+                .when(nurseAssignmentService).assignNurse(eq(1L), eq(20L), any());
+
+        org.assertj.core.api.Assertions.assertThatCode(() -> service.onAdmission(admission()))
+                .doesNotThrowAnyException();
+    }
 }

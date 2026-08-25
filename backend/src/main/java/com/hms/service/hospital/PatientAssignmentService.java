@@ -38,6 +38,10 @@ public class PatientAssignmentService {
                         "Auto-assigned (sole staff nurse in ward)");
             }
             // 0 or >1 -> incharge assigns manually (no auto-assignment)
-        } catch (Exception e) { throw new IllegalStateException("Could not create the primary nurse assignment", e); }
+        } catch (Exception e) {
+            // A primary nurse is worklist ownership, not a prerequisite for clinical admission.
+            // The admission remains ward-visible and is surfaced in the derived unassigned queue.
+            logger.error("Automatic primary-nurse assignment failed for admission {}", admission.getId(), e);
+        }
     }
 }

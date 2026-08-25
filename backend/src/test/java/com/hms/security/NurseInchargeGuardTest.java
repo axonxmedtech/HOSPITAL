@@ -2,6 +2,7 @@ package com.hms.security;
 
 import com.hms.entity.NurseProfile;
 import com.hms.entity.Ward;
+import com.hms.entity.NurseWardAssignment;
 import com.hms.repository.IpdAdmissionRepository;
 import com.hms.repository.NurseProfileRepository;
 import com.hms.repository.WardRepository;
@@ -19,6 +20,8 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 
 @ExtendWith(MockitoExtension.class)
 class NurseInchargeGuardTest {
@@ -78,5 +81,21 @@ class NurseInchargeGuardTest {
         when(wardRepository.findById(3L)).thenReturn(Optional.of(ward(3L, 7L, 99L)));
         when(wardRepository.findByHospitalIdAndInchargeNurseId(7L, 11L)).thenReturn(java.util.List.of());
         assertThatThrownBy(() -> guard.assertWardAccess(3L)).isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void corruptForeignTemporaryWardRowDoesNotExpandNurseScope() {
+        when(securityHelper.getCurrentUserRole()).thenReturn("NURSE");
+        when(securityHelper.getCurrentUserId()).thenReturn(20L);
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        NurseProfile nurse = new NurseProfile();
+        nurse.setId(11L); nurse.setHospitalId(7L); nurse.setWardId(3L); nurse.setIsIncharge(false);
+        when(nurseProfileRepository.findByUserId(20L)).thenReturn(Optional.of(nurse));
+        NurseWardAssignment poisoned = new NurseWardAssignment();
+        poisoned.setHospitalId(8L); poisoned.setTempWardId(99L);
+        when(wardAssignmentRepository.findByNurseProfileIdAndFromDateLessThanEqualAndToDateGreaterThanEqual(eq(11L), any(), any()))
+                .thenReturn(java.util.List.of(poisoned));
+
+        org.assertj.core.api.Assertions.assertThat(guard.myWardIds()).containsExactly(3L);
     }
 }
