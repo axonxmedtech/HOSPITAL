@@ -319,15 +319,13 @@ const ReceptionistDashboard = () => {
       const statsData = await hospitalService.getAppointmentStats();
       if (requestId !== activeRequestRef.current) return;
 
-      let ipdRequestsCount = 0;
+      let ipdRequestsCount = null;
       if (hasIPD) {
         try {
-          const opdsDataForCount = await hospitalService.getOpds('', 0, 1000, '', '');
-          const arrayForCount = opdsDataForCount.content || opdsDataForCount || [];
-          ipdRequestsCount = arrayForCount.filter(
-            (o) => o.ipdAdmitRecommended && o.status !== 'IN_IPD'
-          ).length;
+          ipdRequestsCount = await hospitalService.getPendingIpdRequestCount();
         } catch (e) {
+          // Leave the count null so the tile can say it failed. Showing 0 here would be
+          // indistinguishable from having no pending admissions.
           console.error('Failed to load IPD request count for stats', e);
         }
       }
@@ -1038,9 +1036,15 @@ const ReceptionistDashboard = () => {
                   <div className="bg-white rounded-lg border border-gray-200 p-6 flex flex-col justify-between">
                     <div>
                       <p className="text-gray-600 text-sm font-medium">IPD Requests</p>
-                      <h3 className="text-3xl font-bold text-gray-900 mt-1">
-                        {stats.ipdRequests || 0}
-                      </h3>
+                      {stats.ipdRequests === null || stats.ipdRequests === undefined ? (
+                        <h3 className="text-base font-semibold text-red-600 mt-1" role="status">
+                          Couldn&apos;t load
+                        </h3>
+                      ) : (
+                        <h3 className="text-3xl font-bold text-gray-900 mt-1">
+                          {stats.ipdRequests}
+                        </h3>
+                      )}
                     </div>
                     <div className="mt-2">
                       <button

@@ -293,6 +293,31 @@ public class OpdService {
         return opdRepository.searchByHospitalAndDateRange(hospitalId, searchVal, startDate, endDate, status, pageable);
     }
 
+    /**
+     * Pending IPD requests for the caller's hospital: the doctor recommended admission and
+     * reception has not yet converted the OPD (status still != IN_IPD).
+     *
+     * <p>Unlike {@link #getOpds}, a missing hospital is an error rather than an empty result.
+     * These feed a count badge, and silently reporting zero pending admissions is indistinguishable
+     * from genuinely having none -- the failure has to reach the caller.
+     */
+    public long getPendingIpdRequestCount() {
+        return opdRepository.countPendingIpdRequests(requireHospitalId(), com.hms.entity.Opd.Status.IN_IPD);
+    }
+
+    public org.springframework.data.domain.Page<Opd> getPendingIpdRequests(
+            org.springframework.data.domain.Pageable pageable) {
+        return opdRepository.findPendingIpdRequests(requireHospitalId(), com.hms.entity.Opd.Status.IN_IPD, pageable);
+    }
+
+    private Long requireHospitalId() {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new com.hms.exception.UnauthorizedException("Hospital ID not found in context");
+        }
+        return hospitalId;
+    }
+
     public org.springframework.data.domain.Page<Opd> getOpds(String search, String dateStr, org.springframework.data.domain.Pageable pageable) {
         return getOpds(search, dateStr, null, pageable);
     }

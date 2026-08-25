@@ -619,6 +619,18 @@ const hospitalService = {
   /**
    * Get paginated OPD / cases (Receptionist view)
    */
+  // Pending IPD requests are counted by the server. The dashboard used to page 1000 OPDs and
+  // filter them in the browser, which lost every request past that page.
+  getPendingIpdRequestCount: async () => {
+    const response = await apiClient.get('/hospital/opd/ipd-requests/count');
+    return response.data?.count ?? 0;
+  },
+
+  getPendingIpdRequests: async (page = 0, size = 10) => {
+    const response = await apiClient.get(`/hospital/opd/ipd-requests?page=${page}&size=${size}`);
+    return response.data;
+  },
+
   getOpds: async (search = '', page = 0, size = 10, date = '', status = '') => {
     let url = `/hospital/opd?page=${page}&size=${size}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
