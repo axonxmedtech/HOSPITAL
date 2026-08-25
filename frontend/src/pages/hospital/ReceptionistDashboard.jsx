@@ -433,14 +433,27 @@ const ReceptionistDashboard = () => {
             setTotalPages(1);
             setTotalElements((arr && arr.length) || 0);
           } else {
-            // Requested patients: fetch OPD entries recommended for IPD
-            const opdsData = await hospitalService.getOpds(searchTerm, page, pageSize, '', '');
+            // Requested patients: pending IPD requests, resolved server-side. The predicate
+            // (ipdAdmitRecommended AND status != IN_IPD) used to be a client-side filter over one
+            // 1000-row page of ALL OPDs -- a request past that page was invisible, and admitting a
+            // patient only disappeared from the list once that same page happened to be refetched
+            // with the now-updated status. The server now derives "pending" the same way on every
+            // read, so a refetch after admit always excludes it, at any tenant size.
+            const pending = await hospitalService.getPendingIpdRequests(page, pageSize);
             if (requestId !== activeRequestRef.current) return;
-            const opdsArray = opdsData.content || opdsData || [];
-            const arr = opdsArray.filter((o) => o.ipdAdmitRecommended && o.status !== 'IN_IPD');
+            let arr = pending.content || pending || [];
+            if (searchTerm && searchTerm.trim()) {
+              const q = searchTerm.trim().toLowerCase();
+              arr = arr.filter((o) => {
+                const patient = (o.patient?.name || o.patientName || '').toString().toLowerCase();
+                const doctor = (o.doctor?.name || o.doctorName || '').toString().toLowerCase();
+                const caseId = (o.caseId || '').toString().toLowerCase();
+                return patient.includes(q) || doctor.includes(q) || caseId.includes(q);
+              });
+            }
             setOpds(arr);
-            setTotalPages(opdsData.totalPages || 1);
-            setTotalElements(opdsData.totalElements || arr.length);
+            setTotalPages(pending.totalPages || 1);
+            setTotalElements(pending.totalElements || arr.length);
           }
         }
 
