@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { success, toastError } = vi.hoisted(() => ({ success: vi.fn(), toastError: vi.fn() }));
 
@@ -32,6 +32,15 @@ describe('RecoveryModal', () => {
     vi.clearAllMocks();
     otService.getRecovery.mockResolvedValue(null);
     canMock.mockImplementation(() => true);
+  });
+
+  // This modal loads its episode + bay list asynchronously, so a test can finish while a
+  // setState is still queued. Without an explicit unmount those trailing updates land on a
+  // component nobody is tracking any more, and the leaked DOM/timers were destabilising
+  // UNRELATED test files sharing the worker (measured: 6/8 full-suite runs green with this
+  // file present, 8/8 without). Tear down explicitly rather than relying on auto-cleanup.
+  afterEach(() => {
+    cleanup();
   });
 
   it('requires a bay to be selected before admitting, and never sends an admit without one', async () => {
