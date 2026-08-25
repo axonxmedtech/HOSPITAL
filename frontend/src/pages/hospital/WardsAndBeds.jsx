@@ -7,6 +7,7 @@ import { useToast } from '../../context/ToastContext';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
 import WardService from '../../services/wardService';
+import { extractApiError } from '../../utils/apiError';
 
 const WardsAndBeds = () => {
   const { success, error: toastError } = useToast();
@@ -62,7 +63,7 @@ const WardsAndBeds = () => {
       success('Ward incharge updated');
       await fetchWards();
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to update ward incharge');
+      toastError(extractApiError(e, 'Failed to update ward incharge'));
     }
   };
 
@@ -86,9 +87,6 @@ const WardsAndBeds = () => {
         try {
           await WardService.deleteWard(ward.wardId);
           await fetchWards();
-        } catch (e) {
-          const msg = e.response?.data?.message || e.response?.data || 'Failed to delete ward';
-          toastError(typeof msg === 'string' ? msg : 'Failed to delete ward');
         } finally {
           setDeleting(null);
         }

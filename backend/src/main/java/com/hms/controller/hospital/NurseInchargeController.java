@@ -31,6 +31,12 @@ public class NurseInchargeController {
         return ResponseEntity.ok(workspaceService.getWardPatients());
     }
 
+    @GetMapping("/unassigned-patients")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','NURSE_INCHARGE')")
+    public ResponseEntity<?> unassignedPatients() {
+        return ResponseEntity.ok(workspaceService.getUnassignedPatients());
+    }
+
     @GetMapping("/wards/{wardId}/nurses")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','NURSE_INCHARGE')")
     public ResponseEntity<?> wardStaffNurses(@PathVariable Long wardId) {

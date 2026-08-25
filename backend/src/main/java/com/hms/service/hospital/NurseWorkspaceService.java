@@ -77,7 +77,17 @@ public class NurseWorkspaceService {
 
         java.util.Map<Long, MyPatientDTO> byAdmission = new java.util.LinkedHashMap<>();
 
-        // The nurse's own active assignments.
+        // Ward visibility is the authorization boundary; primary assignment only adds ownership context.
+        List<Long> wardIds = nurseInchargeGuard.myWardIds();
+        if (!wardIds.isEmpty()) {
+            for (IpdAdmission ipd : ipdAdmissionRepository.findByHospitalIdAndWardIdInAndStatusIn(
+                    hospitalId, wardIds, List.of("ADMITTED", "DISCHARGE_PLANNED"))) {
+                MyPatientDTO dto = buildMyPatient(ipd.getId(), null);
+                if (dto != null) byAdmission.putIfAbsent(dto.getIpdAdmissionId(), dto);
+            }
+        }
+
+        // Preserve historical assignment/substitution visibility as a defensive fallback.
         for (PatientNurseAssignment a : assignmentRepository.findByNurseUserIdAndIsActiveTrue(nurseId)) {
             if (!hospitalId.equals(a.getHospitalId())) continue; // defensive scope
             MyPatientDTO dto = buildMyPatient(a.getIpdAdmissionId(), null);
@@ -100,8 +110,8 @@ public class NurseWorkspaceService {
 
     /** Build the display DTO for an admission, or null if missing/discharged. */
     private MyPatientDTO buildMyPatient(Long admissionId, String coveredFor) {
-        IpdAdmission ipd = ipdAdmissionRepository.findById(admissionId).orElse(null);
-        if (ipd == null || "DISCHARGED".equalsIgnoreCase(ipd.getStatus())) return null;
+        IpdAdmission ipd = ipdAdmissionRepository.findByIdAndHospitalId(admissionId, requireHospitalId()).orElse(null);
+        if (ipd == null || !("ADMITTED".equalsIgnoreCase(ipd.getStatus()) || "DISCHARGE_PLANNED".equalsIgnoreCase(ipd.getStatus()))) return null;
 
         MyPatientDTO dto = new MyPatientDTO();
         dto.setIpdAdmissionId(ipd.getId());
@@ -231,22 +241,36 @@ public class NurseWorkspaceService {
         List<Long> wardIds = nurseInchargeGuard.myWardIds();
         List<MyPatientDTO> out = new ArrayList<>();
         if (wardIds.isEmpty()) return out;
-        for (IpdAdmission ipd :
-                ipdAdmissionRepository.findByHospitalIdAndStatus(securityHelper.getCurrentHospitalId(), "ADMITTED")) {
+        for (IpdAdmission ipd : ipdAdmissionRepository.findByHospitalIdAndWardIdInAndStatusIn(
+                securityHelper.getCurrentHospitalId(), wardIds, List.of("ADMITTED", "DISCHARGE_PLANNED"))) {
             if (!wardIds.contains(ipd.getWardId())) continue;
             MyPatientDTO dto = new MyPatientDTO();
             dto.setIpdAdmissionId(ipd.getId());
             dto.setIpdNumber(ipd.getIpdNumber());
             dto.setStatus(ipd.getStatus());
             dto.setWardId(ipd.getWardId());
+            dto.setAdmissionDateTime(ipd.getAdmissionDatetime());
             patientRepository.findById(ipd.getPatientId()).ifPresent(p -> {
                 dto.setPatientName(p.getName()); dto.setAge(p.getAge()); dto.setGender(p.getGender());
             });
             if (ipd.getWardId() != null)
                 wardRepository.findById(ipd.getWardId()).ifPresent(w -> dto.setWardName(w.getWardName()));
+            if (ipd.getBedId() != null)
+                bedRepository.findById(ipd.getBedId()).ifPresent(b -> dto.setBedCode(b.getBedCode()));
             out.add(dto);
         }
         return out;
+    }
+
+    /** Active ward-visible admissions without a primary worklist owner. */
+    public List<MyPatientDTO> getUnassignedPatients() {
+        List<MyPatientDTO> unassigned = new ArrayList<>();
+        for (MyPatientDTO patient : getWardPatients()) {
+            if (assignmentRepository.findByIpdAdmissionIdAndIsActiveTrue(patient.getIpdAdmissionId()).isEmpty()) {
+                unassigned.add(patient);
+            }
+        }
+        return unassigned;
     }
 
     @org.springframework.transaction.annotation.Transactional

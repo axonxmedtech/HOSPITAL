@@ -204,6 +204,11 @@ public class PlatformHospitalService {
         // the In-Clinic *capability* (module), but assignPlan() may have enabled the
         // operational toggle — force it off so the admin explicitly opts in later.
         settings.setInClinic(false);
+        // This is the new-tenant onboarding path. Existing settings retain their explicit
+        // value; a new tenant that purchased NURSING starts with a usable nurse login flow.
+        if (hospital.getModules() != null && hospital.getModules().contains("NURSING")) {
+            settings.setSeparateNurseLogin(true);
+        }
         hospitalSettingRepository.save(settings);
 
         logAction("HOSPITAL_CREATED",

@@ -45,6 +45,7 @@ const NurseInchargeDashboard = () => {
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'my-nurses', label: 'My Nurses' },
     { id: 'my-ward-patients', label: 'My Ward Patients' },
+    { id: 'unassigned-patients', label: 'Unassigned Patients' },
     { id: 'schedule', label: 'Schedule' },
     { id: 'attendance', label: 'Attendance' },
     { id: 'beds', label: 'Beds' },
@@ -55,6 +56,7 @@ const NurseInchargeDashboard = () => {
   const titleFor = () => {
     if (activeTab === 'dashboard') return 'Dashboard';
     if (activeTab === 'my-ward-patients') return 'My Ward Patients';
+    if (activeTab === 'unassigned-patients') return 'Unassigned Patients';
     if (activeTab === 'schedule') return 'Schedule';
     if (activeTab === 'attendance') return 'Attendance';
     if (activeTab === 'beds') return 'Beds';
@@ -69,6 +71,8 @@ const NurseInchargeDashboard = () => {
         return <InchargeOverview onNavigate={setActiveTab} refreshKey={refreshKey} />;
       case 'my-ward-patients':
         return <WardPatientsView refreshKey={refreshKey} />;
+      case 'unassigned-patients':
+        return <UnassignedPatientsView refreshKey={refreshKey} />;
       case 'schedule':
         return <ShiftScheduleView />;
       case 'attendance':
@@ -270,6 +274,63 @@ const WardPatientsView = ({ refreshKey }) => {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+};
+
+export const UnassignedPatientsView = ({ refreshKey }) => {
+  const { success: toastSuccess, error: toastError } = useToast();
+  const [patients, setPatients] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(null);
+  const [nurses, setNurses] = useState([]);
+  const [nurseProfileId, setNurseProfileId] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [refresh, setRefresh] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    nurseService.getUnassignedPatients().then((data) => {
+      if (active) setPatients(Array.isArray(data) ? data : []);
+    }).catch((error) => {
+      if (active) toastError(error?.response?.data?.error || 'Failed to load unassigned patients');
+    }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [refreshKey, refresh, toastError]);
+
+  const openAssign = async (patient) => {
+    setSelected(patient);
+    setNurseProfileId('');
+    try {
+      const data = await nurseService.getWardStaffNurses(patient.wardId);
+      setNurses(Array.isArray(data) ? data : []);
+    } catch (error) {
+      toastError(error?.response?.data?.error || 'Failed to load nurses for this ward');
+    }
+  };
+
+  const assign = async () => {
+    if (!selected || !nurseProfileId) return;
+    setSaving(true);
+    try {
+      await nurseService.assignPatientNurse(selected.ipdAdmissionId, Number(nurseProfileId));
+      toastSuccess('Primary nurse assigned');
+      setSelected(null);
+      setRefresh((value) => value + 1);
+    } catch (error) {
+      // Preserve the dialog and selection so an operator can correct/retry the action.
+      toastError(error?.response?.data?.error || 'Failed to assign nurse');
+    } finally { setSaving(false); }
+  };
+
+  if (loading) return <LoadingSpinner />;
+  if (!patients.length) return <EmptyState icon={null} title="No unassigned patients" message="All active patients in your wards have a primary nurse." />;
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">These patients are visible to ward staff but need a primary nurse for worklist ownership.</p>
+      <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto"><table className="min-w-full text-sm"><thead><tr className="text-left text-xs font-semibold text-gray-500 border-b border-gray-200"><th className="px-4 py-3">PATIENT</th><th className="px-4 py-3">IPD NO.</th><th className="px-4 py-3">WARD / BED</th><th className="px-4 py-3">ADMITTED</th><th className="px-4 py-3 text-right">ACTION</th></tr></thead><tbody>{patients.map((patient) => <tr key={patient.ipdAdmissionId} className="border-b border-gray-100"><td className="px-4 py-3 font-medium">{patient.patientName || '—'}</td><td className="px-4 py-3">{patient.ipdNumber || '—'}</td><td className="px-4 py-3">{patient.wardName || '—'} {patient.bedCode ? ` / ${patient.bedCode}` : ''}</td><td className="px-4 py-3">{patient.admissionDateTime ? new Date(patient.admissionDateTime).toLocaleString('en-IN') : '—'}</td><td className="px-4 py-3 text-right"><button onClick={() => openAssign(patient)} className="px-3 py-1 text-xs font-semibold rounded-lg bg-gray-900 text-white">Assign nurse</button></td></tr>)}</tbody></table></div>
+      {selected && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"><div className="bg-white rounded-xl p-5 w-full max-w-md space-y-4"><h3 className="font-bold">Assign primary nurse</h3><p className="text-sm text-gray-600">{selected.patientName || selected.ipdNumber}</p><select aria-label="Primary nurse" value={nurseProfileId} onChange={(event) => setNurseProfileId(event.target.value)} className="w-full border rounded-lg p-2"><option value="">Select nurse</option>{nurses.map((nurse) => <option key={nurse.id} value={nurse.id}>{nurse.name}</option>)}</select><div className="flex justify-end gap-2"><button onClick={() => setSelected(null)} disabled={saving} className="px-3 py-2 text-sm">Cancel</button><button onClick={assign} disabled={!nurseProfileId || saving} className="px-3 py-2 text-sm rounded-lg bg-gray-900 text-white">{saving ? 'Assigning…' : 'Assign'}</button></div></div></div>}
     </div>
   );
 };

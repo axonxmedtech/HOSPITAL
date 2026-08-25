@@ -4,6 +4,7 @@ import com.hms.dto.ApiErrorResponse;
 import com.hms.dto.ApiResponse;
 import com.hms.filter.CorrelationIdFilter;
 import jakarta.validation.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -218,6 +219,17 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ConflictException.class)
     public ResponseEntity<ApiErrorResponse> handleConflict(ConflictException ex) {
         return respond(ErrorCode.CONFLICT, ex.getMessage());
+    }
+
+    /**
+     * A database constraint rejected an otherwise well-formed request. Constraint names and SQL
+     * fragments are deployment details, so keep them out of the public response while preserving
+     * the retryable conflict semantics callers already use for business preconditions.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        log.warn("Database constraint rejected request: {}", ex.getMostSpecificCause().getClass().getSimpleName());
+        return respond(ErrorCode.CONFLICT, "The requested change conflicts with existing data");
     }
 
 }

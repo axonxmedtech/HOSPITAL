@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../../context/ToastContext';
 import otService from '../../services/otService';
+import { extractApiError } from '../../utils/apiError';
 
 /**
  * OtRoomsCard - manage operation theatres.
@@ -15,6 +16,7 @@ const OtRoomsCard = () => {
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
   const [turnover, setTurnover] = useState('15');
+  const [editing, setEditing] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -27,7 +29,7 @@ const OtRoomsCard = () => {
       setRooms(Array.isArray(r) ? r : []);
       setSuggestions(Array.isArray(s) ? s : []);
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to load theatres');
+      toastError(extractApiError(e, 'Failed to load theatres'));
     } finally {
       setLoading(false);
     }
@@ -55,7 +57,7 @@ const OtRoomsCard = () => {
       setName('');
       success('Theatre added');
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to add theatre');
+      toastError(extractApiError(e, 'Failed to add theatre'));
     } finally {
       setBusy(false);
     }
@@ -68,7 +70,28 @@ const OtRoomsCard = () => {
       setRooms((prev) => prev.filter((r) => r.publicId !== room.publicId));
       success('Theatre removed');
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to remove theatre');
+      toastError(extractApiError(e, 'Failed to deactivate theatre'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveEdit = async () => {
+    if (!editing.name.trim()) {
+      toastError('Theatre name is required');
+      return;
+    }
+    setBusy(true);
+    try {
+      const updated = await otService.updateRoom(editing.publicId, {
+        name: editing.name.trim(),
+        turnoverMinutes: Number(editing.turnover) || 15,
+      });
+      setRooms((prev) => prev.map((room) => (room.publicId === updated.publicId ? updated : room)));
+      setEditing(null);
+      success('Theatre updated');
+    } catch (e) {
+      toastError(extractApiError(e, 'Failed to update theatre'));
     } finally {
       setBusy(false);
     }
@@ -128,7 +151,37 @@ const OtRoomsCard = () => {
       {rooms.length > 0 ? (
         <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
           {rooms.map((r) => (
-            <div key={r.publicId} className="flex items-center justify-between px-4 py-2.5 text-sm">
+            <div key={r.publicId} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+              {editing?.publicId === r.publicId ? (
+                <div className="flex flex-1 flex-wrap items-end gap-2">
+                  <label className="flex-1 min-w-[160px] text-xs font-medium text-gray-600">
+                    Theatre name
+                    <input
+                      aria-label="Edit theatre name"
+                      value={editing.name}
+                      onChange={(e) => setEditing((prev) => ({ ...prev, name: e.target.value }))}
+                      className="mt-1 w-full px-2 py-1 border border-gray-300 rounded"
+                    />
+                  </label>
+                  <label className="w-28 text-xs font-medium text-gray-600">
+                    Turnover (min)
+                    <input
+                      aria-label="Edit theatre turnover"
+                      type="number"
+                      min="0"
+                      value={editing.turnover}
+                      onChange={(e) => setEditing((prev) => ({ ...prev, turnover: e.target.value }))}
+                      className="mt-1 w-full px-2 py-1 border border-gray-300 rounded"
+                    />
+                  </label>
+                  <button type="button" disabled={busy} onClick={saveEdit} className="text-xs text-primary-700 hover:text-primary-900">
+                    Save
+                  </button>
+                  <button type="button" disabled={busy} onClick={() => setEditing(null)} className="text-xs text-gray-500 hover:text-gray-700">
+                    Cancel
+                  </button>
+                </div>
+              ) : (
               <div>
                 <span className="font-semibold text-gray-800">{r.name}</span>
                 <span className="ml-2 text-xs text-gray-400">turnover {r.turnoverMinutes} min</span>
@@ -138,14 +191,25 @@ const OtRoomsCard = () => {
                   {r.status}
                 </span>
               </div>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => remove(r)}
-                className="text-xs text-red-500 hover:text-red-700"
-              >
-                Remove
-              </button>
+              )}
+              {editing?.publicId !== r.publicId && <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setEditing({ publicId: r.publicId, name: r.name, turnover: String(r.turnoverMinutes) })}
+                  className="text-xs text-primary-600 hover:text-primary-800"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => remove(r)}
+                  className="text-xs text-red-500 hover:text-red-700"
+                >
+                  Deactivate
+                </button>
+              </div>}
             </div>
           ))}
         </div>

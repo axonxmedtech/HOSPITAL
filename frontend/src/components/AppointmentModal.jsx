@@ -206,7 +206,10 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
 
     setSubmitting(true);
     try {
-      await hospitalService.createAppointment(formData);
+      await hospitalService.createAppointment({
+        ...formData,
+        doctorId: Number(formData.doctorId),
+      });
       success('Appointment scheduled successfully');
       onSuccess();
       onClose();
@@ -473,7 +476,7 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
               <select
                 id="doctor-select"
                 value={formData.doctorId || ''}
-                onChange={(e) => handleChange('doctorId', parseInt(e.target.value))}
+                onChange={(e) => handleChange('doctorId', e.target.value)}
                 className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.doctorId ? 'border-red-500' : 'border-gray-300'}`}
               >
                 <option value="">Select Doctor</option>
