@@ -136,6 +136,10 @@ public final class TenantTables {
         purge(10, "ot_rooms", BY_HOSPITAL);
         purge(11, "ot_incharges", BY_HOSPITAL);
         purge(12, "ot_workflow_policies", BY_HOSPITAL);
+        // Recovery-location configuration (OT-P0B) -- a named bay, not a clinical record; the
+        // episodes/observations that happened in it are ot_recovery_episodes/observations below,
+        // already classified retain().
+        purge(21, "recovery_bays", BY_HOSPITAL);
 
         // Per-facility settings and presets.
         purge(13, "hospital_form_access", BY_HOSPITAL);

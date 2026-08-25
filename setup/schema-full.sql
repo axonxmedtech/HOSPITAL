@@ -1549,9 +1549,26 @@ CREATE TABLE `ot_recovery_episodes` (
   `transfer_destination` varchar(20) DEFAULT NULL,
   `arrived_by_user_id` bigint DEFAULT NULL,
   `discharged_by_user_id` bigint DEFAULT NULL,
+  `recovery_bay_id` bigint DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_recovery_surgery` (`surgery_id`),
   CONSTRAINT `FK_recovery_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- OT-P0B — a recovery bay is the smallest additive location representation: occupancy is
+-- derived from whether an undischarged ot_recovery_episodes row currently references it, never
+-- an ot_rooms row (a theatre is freed the moment its case COMPLETEs; recovery is separate).
+CREATE TABLE `recovery_bays` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(36) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_recovery_bay_public_id` (`public_id`),
+  UNIQUE KEY `uk_recovery_bay_name` (`hospital_id`,`name`),
+  CONSTRAINT `FK_recovery_bay_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `ot_recovery_observations` (

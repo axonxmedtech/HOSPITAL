@@ -32,8 +32,10 @@ public class RecoveryController {
 
     @PostMapping("/admit")
     @PreAuthorize("hasAuthority('OT_RECOVERY')")
-    public ResponseEntity<?> admit(@PathVariable Long surgeryId) {
-        return ResponseEntity.ok(service.admit(surgeryId));
+    public ResponseEntity<?> admit(@PathVariable Long surgeryId, @RequestBody Map<String, Object> body) {
+        Long recoveryBayId = body.get("recoveryBayId") == null ? null
+                : Long.valueOf(String.valueOf(body.get("recoveryBayId")));
+        return ResponseEntity.ok(service.admit(surgeryId, recoveryBayId));
     }
 
     @PostMapping("/observe")

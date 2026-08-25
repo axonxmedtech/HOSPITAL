@@ -23,12 +23,22 @@ const otService = {
   cancel: async (publicId, payload) =>
     (await apiClient.post(`/hospital/surgeries/${publicId}/cancel`, payload || {})).data,
 
-  // --- OT recovery / PACU (Phase 8) ---
+  // --- OT recovery / PACU (Phase 8, OT-P0B) ---
   close: async (publicId) => (await apiClient.post(`/hospital/surgeries/${publicId}/close`)).data,
   getRecovery: async (surgeryId) =>
     (await apiClient.get(`/hospital/ot/surgeries/${surgeryId}/recovery`)).data,
-  admitRecovery: async (surgeryId) =>
-    (await apiClient.post(`/hospital/ot/surgeries/${surgeryId}/recovery/admit`)).data,
+  // Every active RecoveryEpisode, plus every COMPLETED surgery with no active one yet -- the
+  // patient can never fall out of both lists, whatever went wrong at admit time.
+  getRecoveryBoard: async () => (await apiClient.get('/hospital/ot/recovery/board')).data,
+  // Recovery bays, each with an `occupied` flag. Admission requires one selected; a bay that is
+  // already occupied or inactive is filtered out client-side, and the server refuses it either way.
+  getRecoveryBays: async () => (await apiClient.get('/hospital/ot/recovery-bays')).data,
+  admitRecovery: async (surgeryId, recoveryBayId) =>
+    (
+      await apiClient.post(`/hospital/ot/surgeries/${surgeryId}/recovery/admit`, {
+        recoveryBayId,
+      })
+    ).data,
   observeRecovery: async (surgeryId, payload) =>
     (await apiClient.post(`/hospital/ot/surgeries/${surgeryId}/recovery/observe`, payload)).data,
   dischargeRecovery: async (surgeryId, destination) =>

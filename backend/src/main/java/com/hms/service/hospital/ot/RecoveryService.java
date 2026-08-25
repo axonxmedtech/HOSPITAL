@@ -1,9 +1,14 @@
 package com.hms.service.hospital.ot;
 
+import com.hms.entity.RecoveryBay;
 import com.hms.entity.RecoveryEpisode;
 import com.hms.entity.RecoveryObservation;
 import com.hms.entity.Surgery;
+import com.hms.entity.SurgeryStatus;
+import com.hms.exception.ConflictException;
 import com.hms.exception.UnauthorizedException;
+import com.hms.repository.PatientRepository;
+import com.hms.repository.RecoveryBayRepository;
 import com.hms.repository.RecoveryEpisodeRepository;
 import com.hms.repository.RecoveryObservationRepository;
 import com.hms.repository.SurgeryRepository;
@@ -14,7 +19,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -24,15 +32,20 @@ import java.util.Set;
  * NONE: the hospital records nothing (a 10-bed nursing home). MILESTONE: arrival and
  * departure are milestones only. PACU_EPISODE: a full episode with an Aldrete series.
  * The theatre is never held for any of this -- recovery is a record, not a case state.
+ *
+ * OT-P0B: a patient must never be COMPLETED with no discoverable location. admit() now
+ * requires a tenant-owned RecoveryBay and enforces the surgery is actually COMPLETED before
+ * transferring ownership to recovery; board() is the single place both "in recovery" and
+ * "completed but not yet admitted" patients are guaranteed to surface.
  */
 @Service
 public class RecoveryService {
-
     private static final Set<String> DESTINATIONS = Set.of("WARD", "ICU", "HDU", "HOME", "MORTUARY");
-
     @Autowired private RecoveryEpisodeRepository episodeRepository;
     @Autowired private RecoveryObservationRepository observationRepository;
+    @Autowired private RecoveryBayRepository bayRepository;
     @Autowired private SurgeryRepository surgeryRepository;
+    @Autowired private PatientRepository patientRepository;
     @Autowired private OtPolicyService otPolicyService;
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private PerformingNurseResolver performingNurseResolver;
@@ -47,14 +60,36 @@ public class RecoveryService {
         return observationRepository.findByEpisodeIdOrderByObservedAtAsc(episodeId);
     }
 
-    /** Admit a patient to recovery. Rejected when the hospital tracks no recovery. */
+    /**
+     * Admit a patient to recovery. Requires an active, unoccupied, tenant-owned bay: without one
+     * the transition must fail with a controlled 409/400, not create a patient with nowhere to
+     * be found. The surgery stays COMPLETED either way -- it is only ever moved on by
+     * discharge()+close(), never by a failed admit here.
+     */
     @Transactional
-    public RecoveryEpisode admit(Long surgeryId) {
+    public RecoveryEpisode admit(Long surgeryId, Long recoveryBayId) {
         Long hospitalId = requireHospitalId();
         Surgery surgery = requireSurgery(surgeryId, hospitalId);
         assertTracked(hospitalId, surgery);
+        if (SurgeryStatus.of(surgery.getStatus()) != SurgeryStatus.COMPLETED) {
+            throw new IllegalArgumentException("Only a completed surgery may be admitted to recovery");
+        }
         if (episodeRepository.findBySurgeryId(surgeryId).isPresent()) {
             throw new IllegalArgumentException("This patient is already in recovery");
+        }
+        if (recoveryBayId == null) {
+            throw new IllegalArgumentException("A recovery bay must be selected");
+        }
+        // Lock the bay row before checking occupancy: two concurrent admits targeting the same
+        // bay must not both succeed. The bay itself is tenant-scoped by the lookup below, so a
+        // raw id from another hospital resolves to "not found", never another tenant's bay.
+        RecoveryBay bay = bayRepository.findByIdAndHospitalIdForUpdate(recoveryBayId, hospitalId)
+                .orElseThrow(() -> new IllegalArgumentException("Recovery bay not found"));
+        if (!Boolean.TRUE.equals(bay.getIsActive())) {
+            throw new ConflictException("This recovery bay is not in service");
+        }
+        if (episodeRepository.existsActiveByRecoveryBayId(bay.getId())) {
+            throw new ConflictException("This recovery bay is occupied. Choose another bay.");
         }
         RecoveryEpisode e = new RecoveryEpisode();
         e.setHospitalId(hospitalId);
@@ -62,6 +97,7 @@ public class RecoveryService {
         e.setPatientId(surgery.getPatientId());
         e.setArrivedAt(LocalDateTime.now());
         e.setArrivedByUserId(securityHelper.getCurrentUserId());
+        e.setRecoveryBayId(bay.getId());
         return episodeRepository.save(e);
     }
 
@@ -100,6 +136,58 @@ public class RecoveryService {
         e.setDischargedByUserId(securityHelper.getCurrentUserId());
         e.setTransferDestination(destination);
         return episodeRepository.save(e);
+    }
+
+    /**
+     * The hospital-wide recovery board: every patient who is either actively in recovery, or
+     * COMPLETED and waiting to be admitted. This is the enforcement of "every active patient has
+     * exactly one discoverable operational location" -- a patient a failed/omitted admit left
+     * without a bay still appears here, in the awaiting section, not nowhere.
+     */
+    public Map<String, Object> board() {
+        Long hospitalId = requireHospitalId();
+        List<RecoveryEpisode> active =
+                episodeRepository.findByHospitalIdAndDischargedAtIsNullOrderByArrivedAtAsc(hospitalId);
+        Set<Long> inRecoverySurgeryIds = new java.util.HashSet<>();
+        List<Map<String, Object>> inRecovery = new ArrayList<>();
+        for (RecoveryEpisode e : active) {
+            inRecoverySurgeryIds.add(e.getSurgeryId());
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("surgeryId", e.getSurgeryId());
+            row.put("patientId", e.getPatientId());
+            row.put("patientName", patientName(e.getPatientId(), hospitalId));
+            row.put("arrivedAt", e.getArrivedAt());
+            row.put("bayId", e.getRecoveryBayId());
+            row.put("bayName", e.getRecoveryBayId() == null ? null
+                    : bayRepository.findByIdAndHospitalId(e.getRecoveryBayId(), hospitalId)
+                            .map(RecoveryBay::getName).orElse(null));
+            row.put("status", "IN_RECOVERY");
+            inRecovery.add(row);
+        }
+
+        List<Map<String, Object>> awaitingRecovery = new ArrayList<>();
+        for (Surgery s : surgeryRepository.findByHospitalIdAndStatusOrderByRequestedAtDesc(
+                hospitalId, SurgeryStatus.COMPLETED.name())) {
+            if (inRecoverySurgeryIds.contains(s.getId())) continue; // already has a bay
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("surgeryId", s.getId());
+            row.put("patientId", s.getPatientId());
+            row.put("patientName", patientName(s.getPatientId(), hospitalId));
+            row.put("procedureName", s.getProcedureName());
+            row.put("completedAt", s.getCompletedAt());
+            row.put("status", "AWAITING_RECOVERY");
+            awaitingRecovery.add(row);
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("inRecovery", inRecovery);
+        out.put("awaitingRecovery", awaitingRecovery);
+        return out;
+    }
+
+    private String patientName(Long patientId, Long hospitalId) {
+        return patientRepository.findByIdAndHospitalIdAndIsActiveTrue(patientId, hospitalId)
+                .map(com.hms.entity.Patient::getName).orElse(null);
     }
 
     private void assertTracked(Long hospitalId, Surgery surgery) {
