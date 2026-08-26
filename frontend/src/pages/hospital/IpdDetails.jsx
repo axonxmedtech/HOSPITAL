@@ -24,6 +24,7 @@ import IoChartPanel from './nurse/IoChartPanel';
 import MedicationPanel from './nurse/MedicationPanel';
 import NotesPanel from './nurse/NotesPanel';
 import SugarChartPanel from './nurse/SugarChartPanel';
+import VentilatorPanel from './nurse/VentilatorPanel';
 import VitalsPanel from './nurse/VitalsPanel';
 import VulnerabilityAssessmentPanel from './nurse/VulnerabilityAssessmentPanel';
 import SurgeryRequestModal from './ot/SurgeryRequestModal';
@@ -68,6 +69,7 @@ const IpdDetails = () => {
     vulnerability: 'VULNERABILITY_ASSESSMENT',
     sugar: 'SUGAR_CHART',
     io: 'IO_CHART',
+    ventilator: 'VENTILATOR',
   };
   const verdictFor = (tabId) => formVerdicts[FORM_KEY_BY_TAB[tabId]] || 'EDITABLE';
   const admissionId = Number(id);
@@ -85,6 +87,7 @@ const IpdDetails = () => {
       : []),
     ...(verdictFor('sugar') !== 'HIDDEN' ? [{ id: 'sugar', label: 'Sugar Chart' }] : []),
     ...(verdictFor('io') !== 'HIDDEN' ? [{ id: 'io', label: 'Intake / Output' }] : []),
+    ...(verdictFor('ventilator') !== 'HIDDEN' ? [{ id: 'ventilator', label: 'Ventilator' }] : []),
     ...(hasOT && otSurgery ? [{ id: 'consent', label: 'Consent Forms' }] : []),
   ];
   // If the active tab got hidden by a Files & Access change, fall back to Overview.
@@ -705,6 +708,16 @@ const IpdDetails = () => {
                   <IoChartPanel
                     admissionId={admissionId}
                     readOnly={verdictFor('io') === 'READ_ONLY'}
+                  />
+                </div>
+              )}
+              {tab === 'ventilator' && (
+                <div className="mt-4">
+                  {/* Writable here, gated by Files & Access like every other panel on this page:
+                      the IPD case is the only ventilator surface an admin or doctor can reach. */}
+                  <VentilatorPanel
+                    admissionId={admissionId}
+                    readOnly={verdictFor('ventilator') === 'READ_ONLY'}
                   />
                 </div>
               )}

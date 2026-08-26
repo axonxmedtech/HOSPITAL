@@ -38,4 +38,21 @@ public interface IcuStayRepository extends JpaRepository<IcuStay, Long> {
             @org.springframework.data.repository.query.Param("admissionId") Long admissionId,
             @org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
             @org.springframework.data.repository.query.Param("at") java.time.LocalDateTime at);
+
+    /**
+     * ICU Phase 7 — WHICH stay covered this instant, for the provenance stamp (D-2).
+     *
+     * <p>Same predicate as {@link #existsCoveringInstant}, returning the row instead of a boolean.
+     * Read-only: ICU-7 stamps the id and never touches the stay lifecycle. Newest first, so
+     * overlapping historical rows resolve to the most recent.
+     */
+    @org.springframework.data.jpa.repository.Query(
+        "SELECT s FROM IcuStay s WHERE s.ipdAdmissionId = :admissionId "
+      + "AND s.hospitalId = :hospitalId AND s.admittedAt <= :at "
+      + "AND (s.dischargedAt IS NULL OR s.dischargedAt >= :at) "
+      + "ORDER BY s.admittedAt DESC, s.id DESC")
+    List<IcuStay> findCoveringInstant(
+            @org.springframework.data.repository.query.Param("admissionId") Long admissionId,
+            @org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
+            @org.springframework.data.repository.query.Param("at") java.time.LocalDateTime at);
 }

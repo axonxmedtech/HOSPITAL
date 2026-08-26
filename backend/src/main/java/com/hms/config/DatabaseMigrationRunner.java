@@ -129,6 +129,7 @@ public class DatabaseMigrationRunner {
         // existing ward keeps behaving exactly as before and no backfill is needed.
         addColumnIfMissing("wards", "unit_type", "VARCHAR(20) NOT NULL DEFAULT 'GENERAL'");
         backfillWardUnitType();
+        ensureIcuVentilatorTables();   // ICU Phase 7
         ensureIcuInfusionTables();     // ICU Phase 6
         ensureIcuIoEntryTable();       // ICU Phase 5
         ensureVitalsIcuColumns();      // ICU Phase 4
@@ -2310,6 +2311,62 @@ public class DatabaseMigrationRunner {
                     + " UNIQUE KEY uk_icu_inf_rate_public_id (public_id),"
                     + " KEY idx_icu_inf_rate_infusion (icu_infusion_id),"
                     + " KEY idx_icu_inf_rate_effective (icu_infusion_id, effective_from)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+
+    /**
+     * ICU Phase 7 - the ventilator parameter catalogue and the timed snapshots that use it.
+     *
+     * <p>Two tables because they answer different questions. The parameter table answers "what may
+     * be charted?" and holds overrides only - a built-in with no row is enabled, so nothing is
+     * seeded here. The setting table answers "what was recorded at 04:00?" and stores values in
+     * values_json keyed by param_key, NOT one column per parameter: the catalogue is configurable,
+     * and a column per parameter would mean a migration every time a hospital wanted one of its
+     * own.
+     *
+     * <p>ventilation_status stays a typed NOT NULL column - it distinguishes a ventilated row from
+     * an extubation row and must be queryable without parsing JSON.
+     */
+    private void ensureIcuVentilatorTables() {
+        createTableIfMissing("icu_ventilator_parameter",
+                "CREATE TABLE icu_ventilator_parameter ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " param_key VARCHAR(60) NOT NULL,"
+                    + " display_name VARCHAR(60) NOT NULL,"
+                    + " unit VARCHAR(20) NULL,"
+                    + " category VARCHAR(20) NOT NULL DEFAULT 'SETTING',"
+                    + " value_type VARCHAR(20) NOT NULL DEFAULT 'NUMBER',"
+                    + " enabled TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " is_custom TINYINT(1) NOT NULL DEFAULT 0,"
+                    + " sort_order INT NULL,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_vent_param_public_id (public_id),"
+                    + " UNIQUE KEY uk_icu_vent_param_key (hospital_id, param_key)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        createTableIfMissing("icu_ventilator_setting",
+                "CREATE TABLE icu_ventilator_setting ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " ipd_admission_id BIGINT NOT NULL,"
+                    + " patient_id BIGINT NOT NULL,"
+                    + " icu_stay_id BIGINT NULL,"
+                    + " ventilation_status VARCHAR(20) NOT NULL,"
+                    + " values_json TEXT NULL,"
+                    + " observed_at DATETIME(6) NOT NULL,"
+                    + " recorded_by_user_id BIGINT NULL,"
+                    + " performed_by_nurse_id BIGINT NULL,"
+                    + " supersedes_setting_id BIGINT NULL,"
+                    + " note VARCHAR(255) NULL,"
+                    + " is_active TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_vent_public_id (public_id),"
+                    + " KEY idx_icu_vent_admission (ipd_admission_id, observed_at),"
+                    + " KEY idx_icu_vent_hospital (hospital_id)"
                     + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     }
 

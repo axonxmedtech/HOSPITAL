@@ -82,6 +82,7 @@ import BillingHistoryView from './pharmacy/BillingHistoryView';
 import SuppliersView from './pharmacy/SuppliersView';
 import PrintPaymentSettingsCard from './PrintPaymentSettingsCard';
 import TimeSlotsView from './TimeSlotsView';
+import VentilatorSettingsCard from './VentilatorSettingsCard';
 import VitalsSettingsCard from './VitalsSettingsCard';
 import WardsAndBeds from './WardsAndBeds';
 /**
@@ -199,7 +200,7 @@ const HospitalAdminDashboard = () => {
   const [origOperationsSettings, setOrigOperationsSettings] = useState(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsEditing, setSettingsEditing] = useState(false);
-  // Which Settings box is open: null (show the grid) | 'operations' | 'vitals'
+  // Which Settings box is open: null (show the grid) | 'operations' | 'vitals' | 'ventilator'
   // | 'ot-forms' | 'nursing' | 'permissions' | 'policies'.
   const [settingsView, setSettingsView] = useState(null);
   // Leaving Settings resets to the box grid, so returning never lands mid-section.
@@ -3521,6 +3522,16 @@ const HospitalAdminDashboard = () => {
                           desc: 'Which vitals are captured at OPD entry; add your own.',
                           iconClass: 'bg-rose-50 text-rose-600',
                         },
+                        ...(modules.includes('ICU')
+                          ? [
+                              {
+                                view: 'ventilator',
+                                title: 'Ventilator Parameters',
+                                desc: 'Which ventilator settings and measurements the ICU chart captures; add your own.',
+                                iconClass: 'bg-teal-50 text-teal-600',
+                              },
+                            ]
+                          : []),
                         {
                           view: 'print-payment',
                           title: 'Print & Payment',
@@ -4030,6 +4041,11 @@ const HospitalAdminDashboard = () => {
                   {!isPharmacyTenant && settingsView === 'vitals' && (
                     <div className="max-w-4xl mx-auto my-4">
                       <VitalsSettingsCard />
+                    </div>
+                  )}
+                  {!isPharmacyTenant && settingsView === 'ventilator' && (
+                    <div className="max-w-4xl mx-auto my-4">
+                      <VentilatorSettingsCard />
                     </div>
                   )}
                   {!isPharmacyTenant && settingsView === 'print-payment' && (

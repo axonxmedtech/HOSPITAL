@@ -35,7 +35,7 @@ class FormAccessServiceTest {
 
         List<Map<String, Object>> list = service.list();
 
-        assertThat(list).hasSize(21); // 6 nursing/IPD forms (incl. Medication) + 15 OT
+        assertThat(list).hasSize(22); // 7 nursing/IPD forms (incl. Medication, Ventilator) + 15 OT
         Map<String, Object> vitals = list.stream()
                 .filter(m -> "VITALS".equals(m.get("key"))).findFirst().orElseThrow();
         assertThat(vitals.get("enabled")).isEqualTo(true);

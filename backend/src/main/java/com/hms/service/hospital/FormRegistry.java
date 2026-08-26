@@ -16,6 +16,7 @@ public final class FormRegistry {
         new Form("INITIAL_ASSESSMENT", "Initial Assessment", "NURSING"),
         new Form("VULNERABILITY_ASSESSMENT", "Vulnerability Assessment", "NURSING"),
         new Form("SUGAR_CHART", "Sugar Chart", "NURSING"),
+        new Form("VENTILATOR", "Ventilator Chart", "NURSING"),
         new Form("BLOOD_CONSENT", "Blood Consent Form", "OT"),
         new Form("IO_CHART", "Input & Output Chart", "OT"),
         new Form("GA_CONSENT", "Consent Form for General Anaesthesia", "OT"),

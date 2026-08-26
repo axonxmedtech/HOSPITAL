@@ -1165,6 +1165,49 @@ CREATE TABLE `patient_nurse_assignments` (
   CONSTRAINT `FK_pna_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- ICU (Phase 7): the ventilator parameter catalogue (configuration) and the timed
+-- snapshots that reference it by stable param_key (clinical record). Kept apart on purpose:
+-- disabling or renaming a parameter must never rewrite a recorded value.
+CREATE TABLE `icu_ventilator_parameter` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `param_key` varchar(60) NOT NULL,
+  `display_name` varchar(60) NOT NULL,
+  `unit` varchar(20) DEFAULT NULL,
+  `category` varchar(20) NOT NULL DEFAULT 'SETTING',
+  `value_type` varchar(20) NOT NULL DEFAULT 'NUMBER',
+  `enabled` tinyint(1) NOT NULL DEFAULT '1',
+  `is_custom` tinyint(1) NOT NULL DEFAULT '0',
+  `sort_order` int DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_icu_vent_param_public_id` (`public_id`),
+  UNIQUE KEY `uk_icu_vent_param_key` (`hospital_id`,`param_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `icu_ventilator_setting` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ipd_admission_id` bigint NOT NULL,
+  `patient_id` bigint NOT NULL,
+  `icu_stay_id` bigint DEFAULT NULL,
+  `ventilation_status` varchar(20) NOT NULL,
+  `values_json` text,
+  `observed_at` datetime(6) NOT NULL,
+  `recorded_by_user_id` bigint DEFAULT NULL,
+  `performed_by_nurse_id` bigint DEFAULT NULL,
+  `supersedes_setting_id` bigint DEFAULT NULL,
+  `note` varchar(255) DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_icu_vent_public_id` (`public_id`),
+  KEY `idx_icu_vent_admission` (`ipd_admission_id`,`observed_at`),
+  KEY `idx_icu_vent_hospital` (`hospital_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 -- ICU (Phase 6): continuous infusions and their append-only rate history.
 CREATE TABLE `icu_infusion` (
   `id` bigint NOT NULL AUTO_INCREMENT,

@@ -91,6 +91,7 @@ class TenantScopingArchTest {
             "IcuInfusionService#requireAdmission",
             "IcuInfusionService#resolvePrescription",
             "IcuIoService#requireAdmission",
+            "IcuVentilatorService#requireAdmission",
             "InitialAssessmentService#requireAdmission",
             "InventoryService#deductStock",
             "InventoryService#updateStock",

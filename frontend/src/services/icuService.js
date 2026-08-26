@@ -65,6 +65,44 @@ const IcuService = {
   getInfusionRateUnits: () =>
     apiClient.get('/hospital/nurse/infusions/rate-units').then((r) => r.data),
 
+  /**
+   * ICU-7: the whole ventilator chart in one call — every entry with its parsed values, the
+   * label map for every parameter key any entry holds, and the superseded ids.
+   *
+   * One call on purpose: a disabled or renamed parameter must never be rendered from a stale
+   * catalogue, so labels arrive with the values they caption.
+   */
+  getVentilatorChart: (ipdId) =>
+    apiClient.get(`/hospital/nurse/ventilator/admission/${ipdId}`).then((r) => r.data),
+
+  recordVentilatorSetting: (payload) =>
+    apiClient.post('/hospital/nurse/ventilator', payload).then((r) => r.data),
+
+  /** Append-only: the original snapshot stays readable, struck through. */
+  correctVentilatorSetting: (publicId, payload) =>
+    apiClient
+      .post(`/hospital/nurse/ventilator/${publicId}/correction`, payload)
+      .then((r) => r.data),
+
+  /** ICU-7 config: what may be charted now. Read by every clinical role. */
+  getEnabledVentilatorParams: () =>
+    apiClient.get('/hospital/icu/ventilator-parameters/enabled').then((r) => r.data),
+
+  /** ICU-7 config, admin: every parameter with its effective enabled flag. */
+  getVentilatorParams: () =>
+    apiClient.get('/hospital/icu/ventilator-parameters').then((r) => r.data),
+
+  /** Toggle and/or edit display name, unit and category. The key is never rewritten. */
+  updateVentilatorParam: (paramKey, payload) =>
+    apiClient.put(`/hospital/icu/ventilator-parameters/${paramKey}`, payload).then((r) => r.data),
+
+  addVentilatorParam: (payload) =>
+    apiClient.post('/hospital/icu/ventilator-parameters/custom', payload).then((r) => r.data),
+
+  /** Controlled mode values. Parameter names are configurable; mode values are not. */
+  getVentilatorModes: () =>
+    apiClient.get('/hospital/icu/ventilator-parameters/modes').then((r) => r.data),
+
   /** Ward unit-type catalogue for the ward form's classification selector. */
   getUnitTypes: () => apiClient.get('/hospital/icu/unit-types').then((r) => r.data),
 };
