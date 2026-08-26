@@ -129,6 +129,10 @@ public class DatabaseMigrationRunner {
         reconcileOtPermissionOrphanDefaults(); // OT-P0A — v2 defaults for already-configured hospitals
         ensureRecoveryBaysTable(); // OT-P0B — recovery admission needs a tenant-owned location
         addColumnIfMissing("ot_recovery_episodes", "recovery_bay_id", "BIGINT NULL");
+        // Food timing as its own column. No Flyway version is claimed for it on purpose: an
+        // inventory branch is in flight holding V14, and taking a number here would decide the
+        // order those two land in. Hibernate ddl-auto creates it; this is the safety net.
+        addColumnIfMissing("prescriptions", "food_timing", "VARCHAR(20) NULL");
     }
 
     /**

@@ -89,6 +89,22 @@ const otService = {
         params: { ...(from ? { from } : {}), ...(to ? { to } : {}) },
       })
     ).data,
+  /** Move a scheduled case into pre-operative preparation. */
+  preOp: async (publicId) =>
+    (await apiClient.post(`/hospital/surgeries/${publicId}/pre-op`)).data,
+
+  /**
+   * Record the anaesthetist's decision. The outcome is theirs; the HMS never infers fitness, so
+   * there is no default and the caller must state one of the domain's four outcomes.
+   */
+  recordAnaesthesiaClearance: async (publicId, { outcome, conditionsComments } = {}) =>
+    (
+      await apiClient.post(`/hospital/surgeries/${publicId}/anaesthesia-clearance`, {
+        outcome,
+        conditionsComments,
+      })
+    ).data,
+
   approve: async (publicId) =>
     (await apiClient.post(`/hospital/surgeries/${publicId}/approve`)).data,
 
@@ -102,15 +118,21 @@ const otService = {
     (await apiClient.delete(`/hospital/ot/rooms/${publicId}`)).data,
 
   // Reads that back the board, list, waiting list and case timeline.
+  //
+  // These five sat under /hospital/ot/surgeries/... and the surgery endpoints are served from
+  // /hospital/surgeries -- only theatre EXECUTION and RECOVERY live under /hospital/ot/surgeries.
+  // Today's OT List and the printable list therefore called an address that does not serve them,
+  // which is a screen that cannot work at all rather than one that works badly. The other three
+  // had no caller yet and would have failed the moment one was added.
   getOtList: async (date) =>
-    (await apiClient.get('/hospital/ot/surgeries/list', { params: date ? { date } : {} })).data,
-  getWaitingList: async () => (await apiClient.get('/hospital/ot/surgeries/waiting-list')).data,
+    (await apiClient.get('/hospital/surgeries/list', { params: date ? { date } : {} })).data,
+  getWaitingList: async () => (await apiClient.get('/hospital/surgeries/waiting-list')).data,
   getTimeline: async (publicId) =>
-    (await apiClient.get(`/hospital/ot/surgeries/${publicId}/timeline`)).data,
+    (await apiClient.get(`/hospital/surgeries/${publicId}/timeline`)).data,
   getCancellationReasons: async () =>
-    (await apiClient.get('/hospital/ot/surgeries/cancellation-reasons')).data,
+    (await apiClient.get('/hospital/surgeries/cancellation-reasons')).data,
   postpone: async (publicId, payload) =>
-    (await apiClient.post(`/hospital/ot/surgeries/${publicId}/postpone`, payload || {})).data,
+    (await apiClient.post(`/hospital/surgeries/${publicId}/postpone`, payload || {})).data,
 
   // --- OT permissions (Phase 2) ---
   // The caller's own effective permissions. The UI renders by capability, never by role.

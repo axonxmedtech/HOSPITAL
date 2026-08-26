@@ -28,7 +28,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class OtPermissionsParityTest {
 
-    private static final Pattern AUTHORITY = Pattern.compile("hasAuthority\\('([A-Z_]+)'\\)");
+    /**
+     * Matches both forms an OT endpoint may use: a single required permission, or a set of
+     * alternatives. hasAnyAuthority is legitimate -- recording a milestone is open to anyone with
+     * a hand in the case -- so the parity check reads the union rather than rejecting it.
+     */
+    private static final Pattern AUTHORITY = Pattern.compile("'([A-Z_]+)'");
 
     /** Roles that should reach each OT endpoint, under the v2 (OT-P0A) defaults. */
     private static final Map<String, Set<String>> EXPECTED_ACCESS = new LinkedHashMap<>();
@@ -54,31 +59,65 @@ class OtPermissionsParityTest {
                 Set.of("NURSE", "DOCTOR", "NURSE_INCHARGE", "OT_INCHARGE", "HOSPITAL_ADMIN"));
         EXPECTED_ACCESS.put("SurgeryFormController#listSaved",
                 Set.of("NURSE", "DOCTOR", "NURSE_INCHARGE", "OT_INCHARGE", "HOSPITAL_ADMIN"));
+        // SurgeryExecutionController -- the theatre floor. This controller was outside the parity
+        // baseline, which is how a real mismatch survived: the WHO checklist is signed under
+        // OT_TIME_OUT, which reception does not hold, while the only screen that offers the
+        // signature is mounted on reception's dashboard. Signing SIGN_IN returned Access Denied on
+        // staging. The permissions below are the clinically correct ones and are now pinned, so a
+        // future edit to either the endpoint or the defaults has to be deliberate.
+        EXPECTED_ACCESS.put("SurgeryExecutionController#milestones",
+                Set.of("DOCTOR", "RECEPTIONIST", "NURSE", "NURSE_INCHARGE", "OT_INCHARGE", "HOSPITAL_ADMIN"));
+        EXPECTED_ACCESS.put("SurgeryExecutionController#checklist",
+                Set.of("DOCTOR", "RECEPTIONIST", "NURSE", "NURSE_INCHARGE", "OT_INCHARGE", "HOSPITAL_ADMIN"));
+        EXPECTED_ACCESS.put("SurgeryExecutionController#recordMilestone",
+                Set.of("RECEPTIONIST", "NURSE", "OT_INCHARGE"));
+        EXPECTED_ACCESS.put("SurgeryExecutionController#signPhase", Set.of("NURSE", "OT_INCHARGE"));
+        EXPECTED_ACCESS.put("SurgeryExecutionController#operativeNote",
+                Set.of("RECEPTIONIST", "OT_INCHARGE"));
+        // SurgeryTeamController / RecoveryController -- assignment and PACU.
+        EXPECTED_ACCESS.put("SurgeryTeamController#team",
+                Set.of("DOCTOR", "RECEPTIONIST", "NURSE", "NURSE_INCHARGE", "OT_INCHARGE", "HOSPITAL_ADMIN"));
+        // NURSE_INCHARGE is absent here on purpose: it does not hold OT_ASSIGN_TEAM in DEFAULTS.
+        // The OtPermissions javadoc claimed otherwise and has been corrected to match the code --
+        // the fix is to the sentence, not to the grant.
+        EXPECTED_ACCESS.put("SurgeryTeamController#assign", Set.of("DOCTOR", "OT_INCHARGE"));
+        EXPECTED_ACCESS.put("SurgeryTeamController#remove", Set.of("DOCTOR", "OT_INCHARGE"));
+        EXPECTED_ACCESS.put("RecoveryController#admit", Set.of("NURSE", "NURSE_INCHARGE", "OT_INCHARGE"));
+        EXPECTED_ACCESS.put("RecoveryController#observe", Set.of("NURSE", "NURSE_INCHARGE", "OT_INCHARGE"));
+        EXPECTED_ACCESS.put("RecoveryController#discharge",
+                Set.of("RECEPTIONIST", "NURSE_INCHARGE", "OT_INCHARGE"));
     }
 
-    /** Endpoint -> the permission its @PreAuthorize now demands. */
-    private Map<String, String> currentPermissions() throws Exception {
-        Map<String, String> out = new LinkedHashMap<>();
-        for (String simpleName : Set.of("SurgeryController", "SurgeryFormController")) {
+    /** Endpoint -> the permission(s) its @PreAuthorize now demands. */
+    private Map<String, Set<String>> currentPermissions() throws Exception {
+        Map<String, Set<String>> out = new LinkedHashMap<>();
+        for (String simpleName : Set.of("SurgeryController", "SurgeryFormController",
+                "SurgeryExecutionController", "SurgeryTeamController", "RecoveryController")) {
             Class<?> type = Class.forName("com.hms.controller.hospital." + simpleName);
             for (Method m : type.getDeclaredMethods()) {
                 PreAuthorize pa = AnnotatedElementUtils.findMergedAnnotation(m, PreAuthorize.class);
                 if (pa == null) continue;
+                assertThat(pa.value())
+                        .as("%s#%s still authorizes on a role, not a permission", simpleName, m.getName())
+                        .doesNotContain("hasRole").doesNotContain("hasAnyRole");
                 Matcher matcher = AUTHORITY.matcher(pa.value());
-                assertThat(matcher.find())
-                        .as("%s#%s still authorizes on a role, not a permission: %s",
-                                simpleName, m.getName(), pa.value())
-                        .isTrue();
-                out.put(simpleName + "#" + m.getName(), matcher.group(1));
+                Set<String> required = new TreeSet<>();
+                while (matcher.find()) required.add(matcher.group(1));
+                assertThat(required)
+                        .as("%s#%s declares no OT permission: %s", simpleName, m.getName(), pa.value())
+                        .isNotEmpty();
+                out.put(simpleName + "#" + m.getName(), required);
             }
         }
         return out;
     }
 
-    private Set<String> rolesHolding(String permission) {
+    /** Roles that hold ANY of the required permissions -- the union hasAnyAuthority expresses. */
+    private Set<String> rolesHolding(Set<String> permissions) {
         Set<String> roles = new TreeSet<>();
         for (String role : OtPermissions.ROLES) {
-            if (OtPermissions.defaultsFor(role).contains(permission)) roles.add(role);
+            Set<String> held = OtPermissions.defaultsFor(role);
+            if (permissions.stream().anyMatch(held::contains)) roles.add(role);
         }
         return roles;
     }
@@ -90,12 +129,12 @@ class OtPermissionsParityTest {
 
     @Test
     void currentAccess_matchesTheReviewedV2Baseline() throws Exception {
-        Map<String, String> permissions = currentPermissions();
+        Map<String, Set<String>> permissions = currentPermissions();
         Map<String, Set<String>> mismatches = new LinkedHashMap<>();
 
         for (Map.Entry<String, Set<String>> expected : EXPECTED_ACCESS.entrySet()) {
             String endpoint = expected.getKey();
-            String permission = permissions.get(endpoint);
+            Set<String> permission = permissions.get(endpoint);
             assertThat(permission).as("no @PreAuthorize found for %s", endpoint).isNotNull();
 
             Set<String> now = rolesHolding(permission);

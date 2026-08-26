@@ -4,6 +4,7 @@ import { useToast } from '../../../context/ToastContext';
 import hospitalService from '../../../services/hospitalService';
 import otService from '../../../services/otService';
 import { backdropProps } from '../../../utils/modalA11y';
+import useOtPermissions from '../../../hooks/useOtPermissions';
 
 /**
  * DayCareSurgeryModal - request a procedure for a patient who is NOT admitted.
@@ -15,6 +16,11 @@ import { backdropProps } from '../../../utils/modalA11y';
  */
 const DayCareSurgeryModal = ({ isOpen, onClose, onSuccess }) => {
   const { success, error: toastError } = useToast();
+  // Requesting a surgery is OT_CREATE. Stated here as well as at the call site so the rule holds
+  // wherever this modal is mounted, rather than depending on each dashboard to remember it.
+  const { can } = useOtPermissions();
+  const canRequest = can('OT_CREATE');
+
   const [search, setSearch] = useState('');
   const [patients, setPatients] = useState([]);
   const [patient, setPatient] = useState(null);
@@ -219,7 +225,8 @@ const DayCareSurgeryModal = ({ isOpen, onClose, onSuccess }) => {
           </button>
           <button
             onClick={handleSubmit}
-            disabled={!canSubmit}
+            disabled={!canSubmit || !canRequest}
+            title={canRequest ? undefined : 'Surgery requests are raised by the surgeon or theatre incharge'}
             className={`px-4 py-2 rounded-lg font-semibold text-white ${canSubmit ? 'bg-gray-900 hover:bg-gray-800' : 'bg-gray-300 cursor-not-allowed'}`}
           >
             {submitting ? 'Requesting…' : 'Request Surgery'}

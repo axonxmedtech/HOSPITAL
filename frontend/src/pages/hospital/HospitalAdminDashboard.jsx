@@ -64,6 +64,7 @@ import salesApi from '../../services/pharmacy/salesApi';
 import timeSlotService from '../../services/timeSlotService';
 import wardService from '../../services/wardService';
 import { extractApiError } from '../../utils/apiError';
+import { describeShift, isOnShiftNow } from '../../utils/nurseShift';
 import { backdropProps } from '../../utils/modalA11y';
 import { printHtml } from '../../utils/printHtml';
 import { printPdf, printBlob } from '../../utils/printPdf';
@@ -8817,6 +8818,25 @@ const NursesTable = ({
     }),
     columnHelper.accessor('email', {
       header: 'EMAIL',
+    }),
+    columnHelper.display({
+      id: 'shift',
+      header: 'SHIFT',
+      cell: (info) => {
+        const row = info.row.original;
+        return (
+          <div className="leading-tight">
+            <span className={row.shiftName || row.shiftStartTime ? 'text-gray-800' : 'text-gray-400'}>
+              {describeShift(row)}
+            </span>
+            {isOnShiftNow(row) && (
+              <span className="ml-2 px-2 py-0.5 text-[10px] font-bold rounded-full bg-green-100 text-green-700">
+                ON SHIFT
+              </span>
+            )}
+          </div>
+        );
+      },
     }),
     columnHelper.accessor('wardName', {
       header: 'WARD',

@@ -160,8 +160,33 @@ public class AppointmentController {
         String status = payload.get("status");
         String notes = payload.get("notes");
 
-        Appointment updatedAppointment = appointmentService.updateDetails(id, status, notes);
+        // Date and time used to be read off this payload by nobody at all: a reschedule was
+        // accepted with 200 and quietly discarded. They are parsed here in the wire format the
+        // entity itself declares (yyyy-MM-dd and HH:mm), so a value the UI can produce is a value
+        // this endpoint accepts, and anything else is reported instead of ignored.
+        java.time.LocalDate newDate = parseDate(payload.get("appointmentDate"));
+        java.time.LocalTime newTime = parseTime(payload.get("appointmentTime"));
+
+        Appointment updatedAppointment = appointmentService.updateDetails(id, status, notes, newDate, newTime);
         return ResponseEntity.ok(updatedAppointment);
+    }
+
+    private java.time.LocalDate parseDate(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            return java.time.LocalDate.parse(raw.trim());
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new IllegalArgumentException("Appointment date must be in yyyy-MM-dd format");
+        }
+    }
+
+    private java.time.LocalTime parseTime(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            return java.time.LocalTime.parse(raw.trim());
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new IllegalArgumentException("Appointment time must be in HH:mm format");
+        }
     }
 
     /**

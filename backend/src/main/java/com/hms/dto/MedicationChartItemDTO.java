@@ -21,6 +21,9 @@ public class MedicationChartItemDTO {
     private String type;
     private String instructions;
 
+    /** BEFORE_FOOD / AFTER_FOOD / WITH_FOOD / NOT_SPECIFIED, or null on an order predating it. */
+    private String foodTiming;
+
     private String status;          // ACTIVE / STOPPED / COMPLETED
     private LocalDate startDate;
     private Integer durationDays;

@@ -185,6 +185,21 @@ public class NurseService {
             m.put("wardId", p.getWardId());
             m.put("nurseProfileId", p.getId());
             m.put("isIncharge", Boolean.TRUE.equals(p.getIsIncharge()));
+            // The admin's nurse list carried no shift information at all, while the incharge's
+            // roster showed a live one, so the two screens disagreed about the same nurse. Both
+            // now read the single resolver; a null here means genuinely nothing rostered today,
+            // which the UI states as "No shift assigned" rather than leaving blank.
+            try {
+                NurseShiftScheduleService.EffectiveShift shift =
+                        nurseShiftScheduleService.effectiveShiftToday(p.getId());
+                m.put("shiftName", shift == null ? null : shift.shiftName());
+                m.put("shiftStartTime", shift == null ? null : String.valueOf(shift.startTime()));
+                m.put("shiftEndTime", shift == null ? null : String.valueOf(shift.endTime()));
+                m.put("onShiftNow", shift != null && shift.onShiftNow());
+            } catch (Exception e) {
+                // Best-effort decoration: a roster problem must not blank the staff list.
+                logger.warn("Could not resolve today's shift for nurse {}: {}", p.getId(), e.getMessage());
+            }
             if (p.getWardId() != null) {
                 wardRepository.findById(p.getWardId())
                         .ifPresent(w -> m.put("wardName", w.getWardName()));

@@ -46,6 +46,7 @@ import OtDayBoard from './ot/OtDayBoard';
 import OtListPrint from './ot/OtListPrint';
 import RecoveryModal from './ot/RecoveryModal';
 import ScheduleSurgeryModal from './ot/ScheduleSurgeryModal';
+import AnaesthesiaClearanceModal from './ot/AnaesthesiaClearanceModal';
 import SurgeryExecutionModal from './ot/SurgeryExecutionModal';
 import SurgeryTeamModal from './ot/SurgeryTeamModal';
 
@@ -251,6 +252,7 @@ const ReceptionistDashboard = () => {
   const [otRows, setOtRows] = useState([]);
   const [otLoading, setOtLoading] = useState(false);
   const [otScheduleTarget, setOtScheduleTarget] = useState(null);
+  const [otAnaesthesiaTarget, setOtAnaesthesiaTarget] = useState(null);
 
   const { success, error: toastError, info } = useToast();
   const navigate = useNavigate();
@@ -1938,45 +1940,115 @@ const ReceptionistDashboard = () => {
                   ) : otLoading ? (
                     <div className="text-center text-gray-400 py-16">Loading…</div>
                   ) : (
+                    /* Each handler is supplied only when this user holds the permission its
+                       endpoint requires, so the board never draws a button that would 403. */
                     <OtBoard
                       rows={otRows}
                       mode={otFilter}
-                      onSchedule={(r) => setOtScheduleTarget(r)}
-                      onCancel={async (r) => {
-                        try {
-                          await otService.cancel(r.publicId);
-                          loadOt();
-                        } catch (e) {
-                          toastError(e?.response?.data?.error || 'Failed to cancel');
-                        }
-                      }}
-                      onStart={async (r) => {
-                        try {
-                          await otService.start(r.publicId);
-                          loadOt();
-                        } catch (e) {
-                          toastError(e?.response?.data?.error || 'Failed to start');
-                        }
-                      }}
-                      onComplete={async (r) => {
-                        try {
-                          await otService.complete(r.publicId);
-                          loadOt();
-                        } catch (e) {
-                          toastError(e?.response?.data?.error || 'Failed to complete');
-                        }
-                      }}
-                      onTeam={(r) => setOtTeamTarget(r)}
-                      onExecute={(r) => setOtExecTarget(r)}
-                      onRecovery={(r) => setOtRecoveryTarget(r)}
-                      onClose={async (r) => {
-                        try {
-                          await otService.close(r.publicId);
-                          loadOt();
-                        } catch (e) {
-                          toastError(e?.response?.data?.error || 'Failed to close');
-                        }
-                      }}
+                      onSchedule={canOt('OT_SCHEDULE') ? (r) => setOtScheduleTarget(r) : undefined}
+                      onCancel={
+                        canOt('OT_CANCEL')
+                          ? async (r) => {
+                              try {
+                                await otService.cancel(r.publicId);
+                                loadOt();
+                              } catch (e) {
+                                toastError(e?.response?.data?.error || 'Failed to cancel');
+                              }
+                            }
+                          : undefined
+                      }
+                      onStart={
+                        canOt('OT_START')
+                          ? async (r) => {
+                              try {
+                                await otService.start(r.publicId);
+                                loadOt();
+                              } catch (e) {
+                                toastError(e?.response?.data?.error || 'Failed to start');
+                              }
+                            }
+                          : undefined
+                      }
+                      onComplete={
+                        canOt('OT_COMPLETE')
+                          ? async (r) => {
+                              try {
+                                await otService.complete(r.publicId);
+                                loadOt();
+                              } catch (e) {
+                                toastError(e?.response?.data?.error || 'Failed to complete');
+                              }
+                            }
+                          : undefined
+                      }
+                      onTeam={canOt('OT_ASSIGN_TEAM') ? (r) => setOtTeamTarget(r) : undefined}
+                      onExecute={canOt('OT_VIEW') ? (r) => setOtExecTarget(r) : undefined}
+                      onRecovery={
+                        canOt('OT_RECOVERY') || canOt('OT_TRANSFER')
+                          ? (r) => setOtRecoveryTarget(r)
+                          : undefined
+                      }
+                      onClose={
+                        canOt('OT_CLOSE')
+                          ? async (r) => {
+                              try {
+                                await otService.close(r.publicId);
+                                loadOt();
+                              } catch (e) {
+                                toastError(e?.response?.data?.error || 'Failed to close');
+                              }
+                            }
+                          : undefined
+                      }
+                      onApprove={
+                        canOt('OT_APPROVE')
+                          ? async (r) => {
+                              try {
+                                await otService.approve(r.publicId);
+                                loadOt();
+                              } catch (e) {
+                                toastError(e?.response?.data?.error || 'Failed to approve');
+                              }
+                            }
+                          : undefined
+                      }
+                      onPreOp={
+                        canOt('OT_PRE_OP')
+                          ? async (r) => {
+                              try {
+                                await otService.preOp(r.publicId);
+                                loadOt();
+                              } catch (e) {
+                                toastError(e?.response?.data?.error || 'Failed to enter pre-op');
+                              }
+                            }
+                          : undefined
+                      }
+                      onAnaesthesia={
+                        canOt('OT_ANAESTHESIA_CLEARANCE')
+                          ? (r) => setOtAnaesthesiaTarget(r)
+                          : undefined
+                      }
+                      onPostpone={
+                        canOt('OT_RESCHEDULE')
+                          ? async (r) => {
+                              try {
+                                await otService.postpone(r.publicId);
+                                loadOt();
+                              } catch (e) {
+                                toastError(e?.response?.data?.error || 'Failed to postpone');
+                              }
+                            }
+                          : undefined
+                      }
+                    />
+                  )}
+                  {otAnaesthesiaTarget && (
+                    <AnaesthesiaClearanceModal
+                      surgery={otAnaesthesiaTarget}
+                      onClose={() => setOtAnaesthesiaTarget(null)}
+                      onRecorded={loadOt}
                     />
                   )}
                   {otTeamTarget && (

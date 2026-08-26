@@ -25,6 +25,7 @@ import SugarChartPanel from './nurse/SugarChartPanel';
 import VitalsPanel from './nurse/VitalsPanel';
 import VulnerabilityAssessmentPanel from './nurse/VulnerabilityAssessmentPanel';
 import SurgeryRequestModal from './ot/SurgeryRequestModal';
+import { FOOD_TIMING_OPTIONS } from '../../utils/foodTiming';
 
 const IpdDetails = () => {
   const { id } = useParams();
@@ -252,6 +253,7 @@ const IpdDetails = () => {
     dose: '',
     frequency: '',
     durationDays: '',
+    foodTiming: '',
     startDate: todayStr(),
     saving: false,
   });
@@ -460,6 +462,7 @@ const IpdDetails = () => {
       dose: '',
       frequency: '',
       durationDays: '',
+    foodTiming: '',
       startDate: todayStr(),
       saving: false,
     });
@@ -1049,6 +1052,29 @@ const IpdDetails = () => {
                                 />
                               </div>
                               <div>
+                                <label htmlFor="fld-food-timing" className="block text-sm font-medium mb-1">
+                                  Food Timing
+                                </label>
+                                <select
+                                  id="fld-food-timing"
+                                  value={medicineModal.foodTiming || ''}
+                                  onChange={(e) =>
+                                    setMedicineModal((prev) => ({
+                                      ...prev,
+                                      foodTiming: e.target.value,
+                                    }))
+                                  }
+                                  className="w-full border p-2 rounded text-sm"
+                                >
+                                  <option value="">Not stated</option>
+                                  {FOOD_TIMING_OPTIONS.map(([value, label]) => (
+                                    <option key={value} value={value}>
+                                      {label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
                                 <label htmlFor="fld-124" className="block text-sm font-medium mb-1">
                                   Start Date
                                 </label>
@@ -1110,6 +1136,7 @@ const IpdDetails = () => {
                                       frequency: medicineModal.frequency,
                                       durationDays: Number(medicineModal.durationDays),
                                       startDate: medicineModal.startDate || null,
+                                      foodTiming: medicineModal.foodTiming || null,
                                     };
                                     await hospitalService.addIpdPrescription(id, payload);
                                     success('Medicine prescribed successfully');
