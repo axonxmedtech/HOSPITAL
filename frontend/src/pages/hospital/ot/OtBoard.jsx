@@ -5,6 +5,15 @@ import React from 'react';
  * Scheduled/Live, with actions) and by the surgeon board (read-only).
  * `mode` = 'requests' | 'board' | 'doctor'. Action handlers are optional.
  */
+/**
+ * The board renders an action only when its handler is supplied.
+ *
+ * That was already true of Team, Checklist, Recovery and Close, and is now true of Schedule,
+ * Cancel, Start and Complete too. It is what lets a caller gate by permission in one place: a
+ * dashboard passes the handlers for the actions the current user actually holds, and the board
+ * shows exactly those. Rendering a button whose endpoint will refuse the caller is the bug this
+ * closes -- the action was offered, pressed, and answered with Access Denied.
+ */
 const statusPill = (status) => {
   const map = {
     REQUESTED: 'bg-amber-50 text-amber-700',
@@ -89,18 +98,22 @@ const OtBoard = ({
                 <td className="px-4 py-3 text-right whitespace-nowrap">
                   {mode === 'requests' && (
                     <>
+                      {onSchedule && (
                       <button
                         onClick={() => onSchedule(r)}
                         className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-gray-900 hover:bg-gray-800 mr-2"
                       >
                         Schedule
                       </button>
+                      )}
+                      {onCancel && (
                       <button
                         onClick={() => onCancel(r)}
                         className="px-3 py-1.5 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50"
                       >
                         Cancel
                       </button>
+                      )}
                     </>
                   )}
                   {mode === 'board' && onTeam && (
@@ -121,7 +134,7 @@ const OtBoard = ({
                         Checklist
                       </button>
                     )}
-                  {mode === 'board' && r.status === 'SCHEDULED' && (
+                  {mode === 'board' && onStart && r.status === 'SCHEDULED' && (
                     <button
                       onClick={() => onStart(r)}
                       className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-green-600 hover:bg-green-700"
@@ -129,7 +142,7 @@ const OtBoard = ({
                       Start
                     </button>
                   )}
-                  {mode === 'board' && r.status === 'IN_PROGRESS' && (
+                  {mode === 'board' && onComplete && r.status === 'IN_PROGRESS' && (
                     <button
                       onClick={() => onComplete(r)}
                       className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-gray-900 hover:bg-gray-800"

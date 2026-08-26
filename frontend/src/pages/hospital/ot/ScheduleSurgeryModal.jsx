@@ -3,6 +3,7 @@ import { useToast } from '../../../context/ToastContext';
 import otService from '../../../services/otService';
 import wardService from '../../../services/wardService';
 import { backdropProps } from '../../../utils/modalA11y';
+import useOtPermissions from '../../../hooks/useOtPermissions';
 
 /**
  * ScheduleSurgeryModal - assign a surgeon + date/time + theatre to a surgery.
@@ -24,6 +25,11 @@ const ScheduleSurgeryModal = ({ surgery, onClose, onScheduled }) => {
     theatre: '',
     estimatedDurationMinutes: '',
   });
+  // Scheduling is OT_SCHEDULE. The board only offers this modal to a caller who holds it, and
+  // the submit repeats the check so the rule survives any other route into this component.
+  const { can } = useOtPermissions();
+  const canSchedule = can('OT_SCHEDULE');
+
   const [saving, setSaving] = useState(false);
   const isOther = form.surgeonDoctorId === '__OTHER__';
 
@@ -218,7 +224,8 @@ const ScheduleSurgeryModal = ({ surgery, onClose, onScheduled }) => {
           </button>
           <button
             onClick={submit}
-            disabled={saving}
+            disabled={saving || !canSchedule}
+            title={canSchedule ? undefined : 'Scheduling is done by reception or the theatre incharge'}
             className={`px-4 py-2 rounded-lg font-semibold text-white ${saving ? 'bg-gray-400' : 'bg-gray-900 hover:bg-gray-800'}`}
           >
             {saving ? 'Scheduling…' : 'Schedule'}

@@ -12,10 +12,15 @@ vi.mock('../../../services/otService', () => ({
     getSurgeons: vi.fn(),
     getRooms: vi.fn(),
     schedule: vi.fn(),
+    getMyOtPermissions: vi.fn(),
   },
 }));
 
 vi.mock('../../../services/wardService', () => ({ default: { getWards: vi.fn() } }));
+
+vi.mock('../../../services/authService', () => ({
+  default: { getCurrentUser: () => ({ modules: ['OT'] }) },
+}));
 
 import otService from '../../../services/otService';
 import ScheduleSurgeryModal from './ScheduleSurgeryModal';
@@ -25,6 +30,8 @@ describe('ScheduleSurgeryModal', () => {
     vi.clearAllMocks();
     otService.getSurgeons.mockResolvedValue([{ doctorId: 9, name: 'Dr Test', specialization: 'General' }]);
     otService.getRooms.mockResolvedValue([{ id: 4, publicId: 'room-4', name: 'OT 1' }]);
+    // Scheduling requires OT_SCHEDULE; the submit is disabled without it.
+    otService.getMyOtPermissions.mockResolvedValue(['OT_VIEW', 'OT_SCHEDULE']);
   });
 
   it('sends the displayed lifecycle revision and tells the user to refresh on a stale conflict', async () => {
