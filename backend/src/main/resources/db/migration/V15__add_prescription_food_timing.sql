@@ -5,7 +5,7 @@
 -- dropdown there would have removed the ability to record any of it.
 --
 -- V15, not part of V14: V14 is the inventory wave and has already been rehearsed against real
--- data. Editing an applied migration to slip an unrelated column into it would change its
+-- data. Editing an applied migration to slip an unrelated column into it would invalidate its
 -- checksum for every environment that has already run it, which is exactly the failure mode this
 -- project has been through once.
 --
