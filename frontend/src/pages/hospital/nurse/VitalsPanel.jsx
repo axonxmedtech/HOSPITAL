@@ -258,6 +258,18 @@ const VitalsPanel = ({ admissionId, readOnly = false }) => {
         })
       : '—';
 
+  // Derived, never a second source of truth: the score is what is stored and sent.
+  //   null -> not assessed        0 -> assessed, no pain        >0 -> assessed, in pain
+  const painPresent =
+    form.painScore === '' || form.painScore === null || form.painScore === undefined
+      ? null
+      : Number(form.painScore) > 0;
+
+  const setPain = (present) => {
+    if (present === false) setField('painScore', '0');
+    else setField('painScore', Number(form.painScore) > 0 ? form.painScore : '1');
+  };
+
   const inputs = [
     ['temperature', 'Temp (°F)', 0.1],
     ['pulse', 'Pulse (bpm)', 1],
@@ -266,7 +278,6 @@ const VitalsPanel = ({ admissionId, readOnly = false }) => {
     ['respiratoryRate', 'Resp (rpm)', 1],
     ['spo2', 'SpO₂ (%)', 1],
     ['weight', 'Weight (kg)', 0.1],
-    ['painScore', 'Pain', 1],
   ];
 
   return (
@@ -294,6 +305,54 @@ const VitalsPanel = ({ admissionId, readOnly = false }) => {
                   />
                 </div>
               ))}
+            </div>
+
+            {/* Pain.
+
+                It was one more unlabelled number box in the grid above, which asked the nurse to
+                know both that a scale existed and what its range was. It is the SAME stored field
+                -- vitals_records.pain_score, 0-10 -- asked as the question a nurse actually
+                answers first. "No" records 0, which is that scale's own value for no pain, not an
+                invented one; "Yes" asks for the score. Leaving it untouched still records nothing,
+                so "not assessed" stays distinct from "assessed as none". */}
+            <div className="mt-3">
+              <span className="block text-xs font-medium text-gray-600 mb-1">Pain</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  aria-pressed={painPresent === false}
+                  onClick={() => setPain(false)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${painPresent === false ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-300'}`}
+                >
+                  No
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={painPresent === true}
+                  onClick={() => setPain(true)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${painPresent === true ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-300'}`}
+                >
+                  Yes
+                </button>
+                {painPresent === true && (
+                  <label className="flex items-center gap-2 text-xs text-gray-600">
+                    Score (0–10)
+                    <input
+                      type="number"
+                      min="0"
+                      max="10"
+                      step="1"
+                      aria-label="Pain score"
+                      value={form.painScore}
+                      onChange={(e) => setField('painScore', e.target.value)}
+                      className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </label>
+                )}
+                {painPresent === null && (
+                  <span className="text-xs text-gray-400">Not assessed</span>
+                )}
+              </div>
             </div>
             {isNurse && separateLogin === false && (
               <div className="mt-3">
@@ -366,7 +425,7 @@ const VitalsPanel = ({ admissionId, readOnly = false }) => {
                     <Metric label="Resp" value={v.respiratoryRate} unit="" />
                     <Metric label="SpO₂" value={v.spo2} unit="%" />
                     <Metric label="Weight" value={v.weight} unit="kg" />
-                    <Metric label="Pain" value={v.painScore} unit="" />
+                    <Metric label="Pain" value={v.painScore === 0 ? 'None' : v.painScore} unit="" />
                   </div>
                   {v.remarks && <p className="text-xs text-gray-500 mt-2">{v.remarks}</p>}
                 </li>

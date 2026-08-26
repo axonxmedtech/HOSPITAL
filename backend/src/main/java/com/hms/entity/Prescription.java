@@ -54,7 +54,24 @@ public class Prescription {
     private LocalDate startDate;
 
     @Column(length = 200)
-    private String instructions; // e.g., "After food"
+    private String instructions; // free text: anything not covered by the fields below
+
+    /**
+     * When the dose is taken relative to food: BEFORE_FOOD, AFTER_FOOD, WITH_FOOD, NOT_SPECIFIED.
+     *
+     * <p>Its own column, deliberately, rather than a controlled vocabulary squeezed into
+     * {@link #instructions}. That field is general -- "take with plenty of water", "crush before
+     * giving" -- and turning it into a four-value dropdown would have removed the ability to
+     * record any of that. Food timing was only ever a convention inside it, prompted by a
+     * placeholder, so it was never reliably readable.
+     *
+     * <p>Nullable, and no backfill: an existing order's food timing is unknown, and inferring it
+     * by reading old free text would be guessing at a medication instruction. Historical rows keep
+     * showing whatever their instructions say, and the value is stored as a plain string so an
+     * unrecognised legacy value renders instead of breaking deserialisation.
+     */
+    @Column(name = "food_timing", length = 20)
+    private String foodTiming;
 
     @Column(nullable = false)
     private String status = "ACTIVE"; // ACTIVE / STOPPED / COMPLETED

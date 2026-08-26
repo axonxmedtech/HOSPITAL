@@ -3,6 +3,7 @@ import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import nurseService from '../../../services/nurseService';
+import { describeFoodTiming } from '../../../utils/foodTiming';
 
 /**
  * MedicationPanel - the nurse's medication chart + administration recording.
@@ -349,6 +350,11 @@ const MedicationPanel = ({ admissionId, readOnly = false }) => {
                         >
                           {c.medicineName}
                         </div>
+                        {describeFoodTiming(c.foodTiming) && (
+                          <div className="text-[11px] text-gray-500">
+                            {describeFoodTiming(c.foodTiming)}
+                          </div>
+                        )}
                         {c.instructions && (
                           <div className="text-[11px] text-gray-400 italic">{c.instructions}</div>
                         )}

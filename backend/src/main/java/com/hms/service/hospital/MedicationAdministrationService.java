@@ -83,6 +83,7 @@ public class MedicationAdministrationService {
             d.setRoute(p.getRoute());
             d.setType(p.getType());
             d.setInstructions(p.getInstructions());
+            d.setFoodTiming(p.getFoodTiming());
             d.setStatus(p.getStatus());
             d.setStartDate(p.getStartDate());
             d.setDurationDays(p.getDurationDays());

@@ -330,10 +330,18 @@ public class NurseWorkspaceService {
                 m.put("wardId", wardId);
                 m.put("wardName", wardName);
                 m.put("hasLogin", p.getUserId() != null);
-                boolean onShift = false;
-                try { onShift = nurseShiftScheduleService.isOnShiftNow(p.getId()); }
-                catch (Exception ignored) { /* on-shift status is best-effort */ }
-                m.put("onShiftNow", onShift);
+                // Same resolver the admin's nurse list uses, so the two screens cannot disagree
+                // about one nurse's shift. Best-effort: a roster problem must not blank the ward.
+                try {
+                    NurseShiftScheduleService.EffectiveShift shift =
+                            nurseShiftScheduleService.effectiveShiftToday(p.getId());
+                    m.put("shiftName", shift == null ? null : shift.shiftName());
+                    m.put("shiftStartTime", shift == null ? null : String.valueOf(shift.startTime()));
+                    m.put("shiftEndTime", shift == null ? null : String.valueOf(shift.endTime()));
+                    m.put("onShiftNow", shift != null && shift.onShiftNow());
+                } catch (Exception ignored) {
+                    m.put("onShiftNow", false);
+                }
                 out.add(m);
             }
         }

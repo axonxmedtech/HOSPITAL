@@ -934,6 +934,7 @@ public class IpdAdmissionService {
         p.setMedicineName(medicineName);
         p.setType(req.getType() != null ? req.getType() : "TABLET");
         p.setRoute(req.getRoute() != null ? req.getRoute() : "ORAL");
+        p.setFoodTiming(com.hms.entity.FoodTiming.normalize(req.getFoodTiming()));
         p.setDosage(req.getDose());
         p.setFrequency(req.getFrequency());
         p.setDurationDays(req.getDurationDays());

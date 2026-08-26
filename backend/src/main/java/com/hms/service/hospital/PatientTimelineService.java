@@ -178,8 +178,15 @@ public class PatientTimelineService {
             // Vitals.
             for (VitalsRecord v :
                     vitalsRecordRepository.findByIpdAdmissionIdInAndIsActiveTrueOrderByRecordedAtAsc(admissionIds)) {
+                // Pain is already part of the vitals record; naming it on the timeline entry is
+                // what makes it findable longitudinally instead of only inside one form. Absent
+                // and zero are different clinical statements and are worded differently.
+                String summary = "Vitals recorded";
+                if (v.getPainScore() != null) {
+                    summary += v.getPainScore() == 0 ? " · no pain" : " · pain " + v.getPainScore() + "/10";
+                }
                 events.add(event(v.getRecordedAt(), "VITALS", "IPD", v.getIpdAdmissionId(),
-                        "Vitals recorded", "VitalsRecord", v.getId(),
+                        summary, "VitalsRecord", v.getId(),
                         performerUserId(v.getRecordedByUserId(), v.getPerformedByNurseId()), userIds));
             }
             // Nursing notes (also carries the Re-Assessment / Initial Assessment / Vulnerability
