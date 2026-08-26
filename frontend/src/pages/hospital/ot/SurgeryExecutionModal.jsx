@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useToast } from '../../../context/ToastContext';
+import useOtPermissions from '../../../hooks/useOtPermissions';
 import otService from '../../../services/otService';
 import { backdropProps } from '../../../utils/modalA11y';
 
@@ -8,8 +9,15 @@ import { backdropProps } from '../../../utils/modalA11y';
  * and the operative note.
  *
  * The three WHO phases are one-way, ordered signatures. With a blocking policy the server
- * refuses to start a case whose Time-Out is unsigned; this screen just makes the signing
- * easy — it does not decide access.
+ * refuses to start a case whose Time-Out is unsigned.
+ *
+ * This screen used to say it "does not decide access" and render every control enabled for
+ * whoever could open it. Reception can open it — it is mounted on the reception dashboard — but
+ * reception does not hold OT_TIME_OUT, which is a theatre-team permission. So the Sign buttons
+ * looked available, were pressed, and returned Access Denied: the screen offered an action the
+ * caller was never allowed to take. Each control is now gated on the permission its own endpoint
+ * requires, and where a permission is missing the control is replaced by a line saying who does
+ * hold it, rather than by a failure after the fact.
  */
 const MILESTONES = [
   ['PATIENT_ENTERED_OT', 'Patient entered OT'],
@@ -51,6 +59,12 @@ const SurgeryExecutionModal = ({ surgery, onClose }) => {
   useEffect(() => {
     load();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const { can, loaded: permsLoaded } = useOtPermissions();
+  // Each control mirrors exactly what its endpoint asks for; see SurgeryExecutionController.
+  const canSign = can('OT_TIME_OUT');
+  const canRecordMilestone = can('OT_START') || can('OT_COMPLETE') || can('OT_PRE_OP');
+  const canWriteNote = can('OT_COMPLETE');
 
   const signPhase = async (phase, payload) => {
     setBusy(true);
@@ -95,6 +109,8 @@ const SurgeryExecutionModal = ({ surgery, onClose }) => {
       <span className="text-sm font-medium text-gray-800">{label}</span>
       {at ? (
         <span className="text-xs text-emerald-700">Signed {fmt(at)}</span>
+      ) : !canSign ? (
+        <span className="text-xs text-gray-500">Signed by the theatre team</span>
       ) : (
         <button
           disabled={busy || !enabled}
@@ -128,7 +144,7 @@ const SurgeryExecutionModal = ({ surgery, onClose }) => {
           </button>
         </div>
 
-        {loading ? (
+        {loading || !permsLoaded ? (
           <div className="px-6 py-8 text-center text-gray-400">Loading…</div>
         ) : (
           <div className="px-6 py-4 space-y-5">
@@ -158,13 +174,19 @@ const SurgeryExecutionModal = ({ surgery, onClose }) => {
 
             <div className="border border-gray-200 rounded-lg p-3">
               <h3 className="text-sm font-semibold text-gray-900 mb-2">Milestones</h3>
+              {!canRecordMilestone && (
+                <p className="text-xs text-gray-500 mb-2">
+                  Recorded by the theatre team. You can see them here as they happen.
+                </p>
+              )}
               <div className="flex flex-wrap gap-2">
                 {MILESTONES.map(([code, label]) => {
                   const d = done(code);
                   return (
                     <button
                       key={code}
-                      disabled={busy || !!d}
+                      disabled={busy || !!d || !canRecordMilestone}
+                      title={canRecordMilestone ? undefined : 'Recorded by the theatre team'}
                       onClick={() => record(code)}
                       className={`px-3 py-1 rounded-full text-xs font-medium border ${d ? 'bg-gray-100 text-gray-500 border-gray-200' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
                     >
@@ -181,9 +203,15 @@ const SurgeryExecutionModal = ({ surgery, onClose }) => {
                 rows={4}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="Findings, procedure performed, closure, blood loss…"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                readOnly={!canWriteNote}
+                placeholder={
+                  canWriteNote
+                    ? 'Findings, procedure performed, closure, blood loss…'
+                    : 'Written by the operating surgeon.'
+                }
+                className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm ${canWriteNote ? '' : 'bg-gray-50 text-gray-600'}`}
               />
+              {canWriteNote && (
               <div className="flex justify-end mt-2">
                 <button
                   disabled={busy || !note.trim()}
@@ -193,6 +221,7 @@ const SurgeryExecutionModal = ({ surgery, onClose }) => {
                   Save note
                 </button>
               </div>
+              )}
             </div>
           </div>
         )}

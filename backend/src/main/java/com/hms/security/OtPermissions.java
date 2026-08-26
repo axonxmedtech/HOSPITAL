@@ -94,8 +94,9 @@ public final class OtPermissions {
      *                 closes, and transfers a recovered patient onward.
      *  NURSE          fills the OT/NABH forms, runs the WHO checklist bedside, and records
      *                 post-anaesthesia recovery observations.
-     *  NURSE_INCHARGE owns ward-side recovery and the onward transfer out of PACU; unlike NURSE
-     *                 it also assigns team and covers OT_INCHARGE's duties when unstaffed.
+     *  NURSE_INCHARGE owns ward-side recovery and the onward transfer out of PACU. (An earlier
+     *                 draft of this note claimed it also assigns the surgical team; it never has
+     *                 in DEFAULTS below, and the sentence was wrong rather than the grant.)
      *  OT_INCHARGE    the theatre-owning role: the full clinical set except HOSPITAL_ADMIN's
      *                 configuration authority. Previously granted nothing at all.
      *  HOSPITAL_ADMIN configuration and read access only -- OT_SETTINGS plus OT_VIEW/OT_FORM_VIEW.

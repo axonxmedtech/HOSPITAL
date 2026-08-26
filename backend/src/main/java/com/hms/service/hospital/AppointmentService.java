@@ -233,6 +233,55 @@ public class AppointmentService {
     }
 
     /**
+     * Move an appointment to a new date and/or time.
+     *
+     * <p>Rescheduling was simply absent: the update endpoint read only status and notes, so a
+     * request carrying a new time was accepted with 200 and the appointment stayed exactly where
+     * it was. Reception had no way to move a booking and no indication that the change had not
+     * happened.
+     *
+     * <p>The same slot rule that guards booking guards the move -- a reschedule that lands on
+     * another patient's slot is refused rather than double-booking the doctor. The appointment's
+     * own slot is excluded from that check so re-saving it unchanged is not a clash with itself.
+     */
+    private void reschedule(Appointment appointment, java.time.LocalDate newDate,
+            java.time.LocalTime newTime, Long hospitalId) {
+        if (newDate == null && newTime == null) {
+            return;
+        }
+        java.time.LocalDate date = newDate != null ? newDate : appointment.getAppointmentDate();
+        java.time.LocalTime time = newTime != null ? newTime : appointment.getAppointmentTime();
+        if (date.equals(appointment.getAppointmentDate()) && time.equals(appointment.getAppointmentTime())) {
+            return;
+        }
+
+        for (Appointment existing : appointmentRepository
+                .findByDoctorIdAndAppointmentDateAndIsActiveTrue(appointment.getDoctorId(), date)) {
+            if (existing.getId().equals(appointment.getId())) continue;
+            if (STATUS_CANCELLED.equals(existing.getStatus())) continue;
+            if (time.equals(existing.getAppointmentTime())) {
+                throw new IllegalArgumentException("Slot " + time + " is already booked.");
+            }
+        }
+
+        appointment.setAppointmentDate(date);
+        appointment.setAppointmentTime(time);
+
+        try {
+            auditLogService.logAction(
+                    "APPOINTMENT_RESCHEDULED",
+                    "Appointment moved to " + date + " " + time + ".",
+                    securityHelper.getCurrentUserEmail(),
+                    hospitalId,
+                    "APPOINTMENT",
+                    appointment.getPublicId(),
+                    null);
+        } catch (Exception e) {
+            logger.warn("Failed to create audit log for appointment reschedule", e);
+        }
+    }
+
+    /**
      * Helper method to populate transient name fields (Patient Name, Doctor Name)
      * Avoids N+1 problem by fetching in bulk
      */
@@ -317,7 +366,7 @@ public class AppointmentService {
                                 .searchAppointmentsByDateAfter(hospitalId, search, today, pageable);
                     } else {
                         page = appointmentRepository
-                                .findByHospitalIdAndAppointmentDateAfterAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
+                                .findByHospitalIdAndAppointmentDateGreaterThanEqualAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
                                         hospitalId, today, pageable);
                     }
                     break;
@@ -390,7 +439,7 @@ public class AppointmentService {
                     break;
                 case "upcoming":
                     appointments = appointmentRepository
-                            .findByDoctorIdAndAppointmentDateAfterAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
+                            .findByDoctorIdAndAppointmentDateGreaterThanEqualAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
                                     doctorId, today);
                     break;
                 case "history":
@@ -638,7 +687,8 @@ public class AppointmentService {
      * @param notes  New Notes
      * @return Updated Appointment
      */
-    public Appointment updateDetails(String publicId, String status, String notes) {
+    public Appointment updateDetails(String publicId, String status, String notes,
+            java.time.LocalDate newDate, java.time.LocalTime newTime) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null)
             throw new UnauthorizedException("Hospital ID not found");
@@ -669,6 +719,8 @@ public class AppointmentService {
         if (notes != null) {
             appointment.setNotes(notes);
         }
+
+        reschedule(appointment, newDate, newTime, hospitalId);
 
         Appointment saved = appointmentRepository.save(appointment);
         if (saved == null) {
@@ -795,7 +847,7 @@ public class AppointmentService {
                                 .searchAppointmentsByDoctorAndDateAfter(doctorId, hospitalId, search, today, pageable);
                     } else {
                         page = appointmentRepository
-                                .findByDoctorIdAndAppointmentDateAfterAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
+                                .findByDoctorIdAndAppointmentDateGreaterThanEqualAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
                                         doctorId, today, pageable);
                     }
                     break;

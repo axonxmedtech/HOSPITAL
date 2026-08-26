@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from '../context/ToastContext';
 import hospitalService from '../services/hospitalService';
+import { availableSlotsFor } from '../utils/appointmentSlots';
 import { validateForm } from '../utils/validation';
 import DateSelect from './DateSelect';
 import DobPicker from './DobPicker';
@@ -24,25 +25,6 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
   const [bookedSlots, setBookedSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
 
-  const TIME_SLOTS = [
-    '09:00',
-    '09:30',
-    '10:00',
-    '10:30',
-    '11:00',
-    '11:30',
-    '12:00',
-    '12:30',
-    '13:00',
-    '13:30',
-    '14:00',
-    '14:30',
-    '15:00',
-    '15:30',
-    '16:00',
-    '16:30',
-    '17:00',
-  ];
 
   // Get today's date and current time. Use LOCAL date parts (not toISOString, which is UTC and
   // can be a day off) so "today" matches the clinic's calendar day for slot filtering + the
@@ -54,20 +36,8 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
     ':' +
     today.getMinutes().toString().padStart(2, '0'); // HH:mm format
 
-  // Filter available time slots based on selected date
-  const getAvailableSlots = () => {
-    if (!formData.appointmentDate) return TIME_SLOTS;
-
-    // If selected date is today, filter out past times
-    if (formData.appointmentDate === todayString) {
-      return TIME_SLOTS.filter((slot) => slot > currentTime);
-    }
-
-    // If selected date is in future, show all slots
-    return TIME_SLOTS;
-  };
-
-  const availableSlots = getAvailableSlots();
+  // The bookable day, and the past-time filter, both live in utils/appointmentSlots.
+  const availableSlots = availableSlotsFor(formData.appointmentDate, todayString, currentTime);
 
   // Reset when modal opens
   useEffect(() => {
