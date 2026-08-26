@@ -50,6 +50,7 @@ public final class ControllerModules {
         put(EntitlementRegistry.CLINICAL_RECORDS,
                 "VitalsController", "IcuIoController", "IcuInfusionController",
                 "IcuVentilatorController", "IcuVentilatorParameterController",
+                "IcuSeverityScoreController", "IcuScoreTypeSettingController",
                 "NursingNoteController", "SugarChartController",
                 "InitialAssessmentController", "VulnerabilityAssessmentController",
                 "MedicationAdminController", "AdmissionFormController", "FormAccessController");

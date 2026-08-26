@@ -1165,6 +1165,44 @@ CREATE TABLE `patient_nurse_assignments` (
   CONSTRAINT `FK_pna_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- ICU (Phase 8): severity scores, and the small setting saying which a hospital uses.
+-- Components are a fixed Java registry (SeverityScoreRegistry), NOT a configurable catalogue:
+-- a renamed SOFA component is no longer comparable to anyone else's SOFA.
+CREATE TABLE `icu_score_type_setting` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `score_type` varchar(20) NOT NULL,
+  `enabled` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_icu_score_type_public_id` (`public_id`),
+  UNIQUE KEY `uk_icu_score_type` (`hospital_id`,`score_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `icu_severity_score` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ipd_admission_id` bigint NOT NULL,
+  `patient_id` bigint NOT NULL,
+  `icu_stay_id` bigint DEFAULT NULL,
+  `score_type` varchar(20) NOT NULL,
+  `components_json` text,
+  `total_score` int DEFAULT NULL,
+  `scored_at` datetime(6) NOT NULL,
+  `recorded_by_user_id` bigint DEFAULT NULL,
+  `performed_by_nurse_id` bigint DEFAULT NULL,
+  `supersedes_score_id` bigint DEFAULT NULL,
+  `note` varchar(255) DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_icu_score_public_id` (`public_id`),
+  KEY `idx_icu_score_admission` (`ipd_admission_id`,`score_type`,`scored_at`),
+  KEY `idx_icu_score_hospital` (`hospital_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 -- ICU (Phase 7): the ventilator parameter catalogue (configuration) and the timed
 -- snapshots that reference it by stable param_key (clinical record). Kept apart on purpose:
 -- disabling or renaming a parameter must never rewrite a recorded value.

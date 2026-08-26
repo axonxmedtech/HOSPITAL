@@ -129,6 +129,7 @@ public class DatabaseMigrationRunner {
         // existing ward keeps behaving exactly as before and no backfill is needed.
         addColumnIfMissing("wards", "unit_type", "VARCHAR(20) NOT NULL DEFAULT 'GENERAL'");
         backfillWardUnitType();
+        ensureIcuSeverityScoreTables();// ICU Phase 8
         ensureIcuVentilatorTables();   // ICU Phase 7
         ensureIcuInfusionTables();     // ICU Phase 6
         ensureIcuIoEntryTable();       // ICU Phase 5
@@ -2311,6 +2312,55 @@ public class DatabaseMigrationRunner {
                     + " UNIQUE KEY uk_icu_inf_rate_public_id (public_id),"
                     + " KEY idx_icu_inf_rate_infusion (icu_infusion_id),"
                     + " KEY idx_icu_inf_rate_effective (icu_infusion_id, effective_from)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+
+    /**
+     * ICU Phase 8 - severity scores and the small setting that says which ones a hospital uses.
+     *
+     * <p>The setting table is deliberately thinner than ICU-7's parameter catalogue: no display
+     * name, no unit, no custom rows. A hospital chooses whether it runs SOFA, not what SOFA is -
+     * a renamed component would no longer be comparable to anyone else's score.
+     *
+     * <p>Components live in components_json keyed by component key, and total_score is stored
+     * rather than recomputed: a total is part of what was charted at that moment, not a derived
+     * view of it.
+     */
+    private void ensureIcuSeverityScoreTables() {
+        createTableIfMissing("icu_score_type_setting",
+                "CREATE TABLE icu_score_type_setting ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " score_type VARCHAR(20) NOT NULL,"
+                    + " enabled TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_score_type_public_id (public_id),"
+                    + " UNIQUE KEY uk_icu_score_type (hospital_id, score_type)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        createTableIfMissing("icu_severity_score",
+                "CREATE TABLE icu_severity_score ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " ipd_admission_id BIGINT NOT NULL,"
+                    + " patient_id BIGINT NOT NULL,"
+                    + " icu_stay_id BIGINT NULL,"
+                    + " score_type VARCHAR(20) NOT NULL,"
+                    + " components_json TEXT NULL,"
+                    + " total_score INT NULL,"
+                    + " scored_at DATETIME(6) NOT NULL,"
+                    + " recorded_by_user_id BIGINT NULL,"
+                    + " performed_by_nurse_id BIGINT NULL,"
+                    + " supersedes_score_id BIGINT NULL,"
+                    + " note VARCHAR(255) NULL,"
+                    + " is_active TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_score_public_id (public_id),"
+                    + " KEY idx_icu_score_admission (ipd_admission_id, score_type, scored_at),"
+                    + " KEY idx_icu_score_hospital (hospital_id)"
                     + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     }
 

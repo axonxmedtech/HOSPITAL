@@ -81,6 +81,7 @@ import OtRoomsCard from './OtRoomsCard';
 import BillingHistoryView from './pharmacy/BillingHistoryView';
 import SuppliersView from './pharmacy/SuppliersView';
 import PrintPaymentSettingsCard from './PrintPaymentSettingsCard';
+import ScoreSettingsCard from './ScoreSettingsCard';
 import TimeSlotsView from './TimeSlotsView';
 import VentilatorSettingsCard from './VentilatorSettingsCard';
 import VitalsSettingsCard from './VitalsSettingsCard';
@@ -3530,6 +3531,12 @@ const HospitalAdminDashboard = () => {
                                 desc: 'Which ventilator settings and measurements the ICU chart captures; add your own.',
                                 iconClass: 'bg-teal-50 text-teal-600',
                               },
+                              {
+                                view: 'scores',
+                                title: 'Severity Scores',
+                                desc: 'Which severity scores the ICU chart records. GCS is part of Vitals.',
+                                iconClass: 'bg-indigo-50 text-indigo-600',
+                              },
                             ]
                           : []),
                         {
@@ -4046,6 +4053,11 @@ const HospitalAdminDashboard = () => {
                   {!isPharmacyTenant && settingsView === 'ventilator' && (
                     <div className="max-w-4xl mx-auto my-4">
                       <VentilatorSettingsCard refreshKey={icuRefreshKey} />
+                    </div>
+                  )}
+                  {!isPharmacyTenant && settingsView === 'scores' && (
+                    <div className="max-w-4xl mx-auto my-4">
+                      <ScoreSettingsCard refreshKey={icuRefreshKey} />
                     </div>
                   )}
                   {!isPharmacyTenant && settingsView === 'print-payment' && (

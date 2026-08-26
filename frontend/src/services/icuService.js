@@ -103,6 +103,33 @@ const IcuService = {
   getVentilatorModes: () =>
     apiClient.get('/hospital/icu/ventilator-parameters/modes').then((r) => r.data),
 
+  /**
+   * ICU-8: the whole severity-score chart in one call — every scoring with its parsed components,
+   * the score-type registry as it stands, the latest per type, and the superseded ids.
+   */
+  getScoreChart: (ipdId) =>
+    apiClient.get(`/hospital/nurse/severity-scores/admission/${ipdId}`).then((r) => r.data),
+
+  recordScore: (payload) =>
+    apiClient.post('/hospital/nurse/severity-scores', payload).then((r) => r.data),
+
+  /** Append-only: the original scoring stays readable, struck through. */
+  correctScore: (publicId, payload) =>
+    apiClient
+      .post(`/hospital/nurse/severity-scores/${publicId}/correction`, payload)
+      .then((r) => r.data),
+
+  /** The enabled score types with their components and ranges, for the entry form. */
+  getEnabledScoreTypes: () =>
+    apiClient.get('/hospital/nurse/severity-scores/types').then((r) => r.data),
+
+  /** ICU-8 config, admin: every score type with its effective enabled flag. */
+  getScoreTypes: () => apiClient.get('/hospital/icu/score-types').then((r) => r.data),
+
+  /** The only thing configurable: whether this hospital uses the score. */
+  toggleScoreType: (scoreType, payload) =>
+    apiClient.put(`/hospital/icu/score-types/${scoreType}`, payload).then((r) => r.data),
+
   /** Ward unit-type catalogue for the ward form's classification selector. */
   getUnitTypes: () => apiClient.get('/hospital/icu/unit-types').then((r) => r.data),
 };
