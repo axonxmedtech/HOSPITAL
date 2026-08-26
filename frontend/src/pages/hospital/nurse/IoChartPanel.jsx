@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import EmptyState from '../../../components/EmptyState';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
+import authService from '../../../services/authService';
 import icuService from '../../../services/icuService';
 
 /**
@@ -72,6 +73,10 @@ const IoChartPanel = ({ admissionId, readOnly = false, refreshKey = 0 }) => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  // publicId of the entry being corrected, plus the replacement volume/note.
+  const [correcting, setCorrecting] = useState(null);
+  const [correction, setCorrection] = useState({ volumeMl: '', notes: '' });
+  const currentUserId = authService.getCurrentUser()?.id;
 
   const load = useCallback(() => {
     setLoading(true);
@@ -128,6 +133,41 @@ const IoChartPanel = ({ admissionId, readOnly = false, refreshKey = 0 }) => {
       setSubmitting(false);
     }
   };
+
+  const submitCorrection = async (entry) => {
+    const volume = Number(correction.volumeMl);
+    if (!Number.isFinite(volume) || volume <= 0) {
+      toastError('Enter a corrected volume greater than zero');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await icuService.correctIoEntry(entry.publicId, {
+        direction: entry.direction,
+        route: entry.route,
+        volumeMl: volume,
+        notes: correction.notes || entry.notes || null,
+      });
+      success('Correction recorded — the original entry is preserved');
+      setCorrecting(null);
+      setCorrection({ volumeMl: '', notes: '' });
+      load();
+    } catch (err) {
+      toastError(err?.response?.data?.error || 'Failed to record the correction');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  /**
+   * A correction is offered only for an entry this user recorded and that nothing has already
+   * superseded — the same rule the server enforces, so the button is not an invitation to a
+   * request that will be refused.
+   */
+  const canCorrect = (e) =>
+    !readOnly &&
+    !supersededIds.has(e.id) &&
+    (currentUserId == null || e.recordedByUserId === currentUserId);
 
   if (loading && entries.length === 0) return <LoadingSpinner />;
 
@@ -268,6 +308,61 @@ const IoChartPanel = ({ admissionId, readOnly = false, refreshKey = 0 }) => {
                     </span>
                   </div>
                   {e.notes && <p className="text-xs text-gray-500 mt-1">{e.notes}</p>}
+
+                  {canCorrect(e) && correcting !== e.publicId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCorrecting(e.publicId);
+                        setCorrection({ volumeMl: String(e.volumeMl ?? ''), notes: e.notes || '' });
+                      }}
+                      className="mt-2 text-xs font-semibold text-primary-700 hover:underline"
+                    >
+                      Correct
+                    </button>
+                  )}
+
+                  {correcting === e.publicId && (
+                    <div className="mt-2 flex flex-wrap items-end gap-2 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                      <div>
+                        <label
+                          htmlFor={`io-correct-${e.publicId}`}
+                          className="block text-xs font-medium text-gray-600 mb-1"
+                        >
+                          Corrected volume (mL)
+                        </label>
+                        <input
+                          id={`io-correct-${e.publicId}`}
+                          type="number"
+                          min="1"
+                          value={correction.volumeMl}
+                          onChange={(ev) =>
+                            setCorrection((c) => ({ ...c, volumeMl: ev.target.value }))
+                          }
+                          className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-36"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => submitCorrection(e)}
+                        disabled={submitting}
+                        className="px-4 py-2 rounded-lg text-sm font-semibold bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+                      >
+                        {submitting ? 'Saving…' : 'Save correction'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCorrecting(null)}
+                        className="px-3 py-2 rounded-lg text-sm text-gray-600 hover:underline"
+                      >
+                        Cancel
+                      </button>
+                      <p className="w-full text-[11px] text-gray-500">
+                        The original entry stays on the chart, struck through. Only this corrected
+                        value counts towards the balance.
+                      </p>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>

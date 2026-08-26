@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import IoChartPanel from './IoChartPanel';
 import { bucketIoEntries } from './VitalsPanel';
@@ -14,6 +14,9 @@ vi.mock('../../../services/icuService', () => ({
 vi.mock('../../../context/ToastContext', () => ({
   useToast: () => ({ success: vi.fn(), error: vi.fn() }),
 }));
+vi.mock('../../../services/authService', () => ({
+  default: { getCurrentUser: vi.fn(() => ({ id: 42 })) },
+}));
 
 import icuService from '../../../services/icuService';
 
@@ -25,6 +28,7 @@ const entry = (o = {}) => ({
   volumeMl: 400,
   occurredAt: '2026-08-26T10:00:00',
   supersedesIoEntryId: null,
+  recordedByUserId: 42,
   ...o,
 });
 
@@ -83,6 +87,73 @@ describe('IoChartPanel — ICU I/O (ICU-5)', () => {
     // Both remain readable — the original value is not erased.
     expect(screen.getByText('Urine Output: 400 mL')).toBeInTheDocument();
     expect(screen.getByText('Urine Output: 350 mL')).toBeInTheDocument();
+  });
+
+  it('corrects an entry: original preserved, only the new value counts', async () => {
+    // Record 400, correct to 350 -> the chart shows BOTH, and the balance uses 350, not 750.
+    icuService.getIoEntries.mockResolvedValueOnce([
+      entry({ id: 1, publicId: 'io-1', volumeMl: 400 }),
+    ]);
+    icuService.getIoBalance.mockResolvedValueOnce({
+      totalIntakeMl: 0,
+      totalOutputMl: 400,
+      netBalanceMl: -400,
+      entryCount: 1,
+    });
+    icuService.correctIoEntry.mockResolvedValue({});
+    // After the correction the server returns both rows and the corrected balance.
+    icuService.getIoEntries.mockResolvedValue([
+      entry({ id: 2, publicId: 'io-2', volumeMl: 350, supersedesIoEntryId: 1 }),
+      entry({ id: 1, publicId: 'io-1', volumeMl: 400 }),
+    ]);
+    icuService.getIoBalance.mockResolvedValue({
+      totalIntakeMl: 0,
+      totalOutputMl: 350,
+      netBalanceMl: -350,
+      entryCount: 1,
+    });
+
+    render(<IoChartPanel admissionId={7} />);
+
+    fireEvent.click(await screen.findByText('Correct'));
+    fireEvent.change(screen.getByLabelText('Corrected volume (mL)'), { target: { value: '350' } });
+    fireEvent.click(screen.getByText('Save correction'));
+
+    await waitFor(() => expect(icuService.correctIoEntry).toHaveBeenCalled());
+    expect(icuService.correctIoEntry.mock.calls[0][0]).toBe('io-1');
+    expect(icuService.correctIoEntry.mock.calls[0][1]).toMatchObject({
+      volumeMl: 350,
+      route: 'URINE',
+    });
+
+    // Original still on the chart, corrected value alongside it, balance uses 350 only.
+    await waitFor(() => expect(screen.getByText('Urine Output: 350 mL')).toBeInTheDocument());
+    expect(screen.getByText('Urine Output: 400 mL')).toBeInTheDocument();
+    expect(screen.getByText('Superseded')).toBeInTheDocument();
+    expect(screen.getByText('350')).toBeInTheDocument();
+    expect(screen.queryByText('750')).not.toBeInTheDocument();
+  });
+
+  it('offers no correction for an entry someone else recorded', async () => {
+    icuService.getIoEntries.mockResolvedValue([entry({ recordedByUserId: 99 })]);
+
+    render(<IoChartPanel admissionId={7} />);
+
+    await waitFor(() => expect(screen.getByText('Urine Output: 400 mL')).toBeInTheDocument());
+    expect(screen.queryByText('Correct')).not.toBeInTheDocument();
+  });
+
+  it('offers no correction for an already superseded entry', async () => {
+    icuService.getIoEntries.mockResolvedValue([
+      entry({ id: 2, publicId: 'io-2', volumeMl: 350, supersedesIoEntryId: 1 }),
+      entry({ id: 1, publicId: 'io-1', volumeMl: 400 }),
+    ]);
+
+    render(<IoChartPanel admissionId={7} />);
+
+    await waitFor(() => expect(screen.getByText('Superseded')).toBeInTheDocument());
+    // Only the current row may be corrected, never the one already replaced.
+    expect(screen.getAllByText('Correct')).toHaveLength(1);
   });
 
   it('shows an empty state and hides the form when read-only', async () => {
