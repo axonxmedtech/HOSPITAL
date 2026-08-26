@@ -1759,10 +1759,15 @@ const IpdDetails = () => {
                       </h3>
                       <MedicationPanel admissionId={admissionId} readOnly />
 
-                      {/* Continuous infusions sit with the MAR, read-only for the doctor for the
-                          same reason: nurses record administration. */}
+                      {/* Continuous infusions sit with the MAR. Unlike the MAR above — which is
+                          read-only here because nurses record administration — infusions follow
+                          Files & Access like every other panel on this page, so whoever the
+                          server lets edit MEDICATION can start and titrate one from the case. */}
                       <hr className="my-4" />
-                      <InfusionPanel admissionId={admissionId} readOnly />
+                      <InfusionPanel
+                        admissionId={admissionId}
+                        readOnly={verdictFor('medication') === 'READ_ONLY'}
+                      />
                     </>
                   )}
                 </div>
