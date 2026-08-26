@@ -260,6 +260,8 @@ const VitalsPanel = ({ admissionId, readOnly = false }) => {
       'spo2',
       'weight',
       'painScore',
+      // ICU-4: an ICU reading may legitimately be MAP/CVP/urine/GCS alone.
+      ...(inIcu ? ['mapMmhg', 'cvpCmh2o', 'urineOutputMl', 'gcsEye', 'gcsVerbal', 'gcsMotor'] : []),
     ].some((k) => payload[k] != null);
     if (!hasAny) {
       toastError('Enter at least one measurement');

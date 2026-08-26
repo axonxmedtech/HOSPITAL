@@ -190,6 +190,39 @@ class IcuVitalsCorrectionTest {
         assertThat(saved.getSupersedesVitalsId()).isNull();
     }
 
+    @Test
+    void anIcuObservationOfOnlyIcuValuesIsAccepted() {
+        // Regression: "at least one measurement" originally counted only the eight ward vitals,
+        // so a reading of MAP, CVP, urine output or GCS alone -- exactly what ICU-4 exists to
+        // capture -- was rejected as empty with a 400.
+        VitalsRequest onlyMap = req(null);
+        onlyMap.setIpdAdmissionId(icuAdmissionId);
+        onlyMap.setMapMmhg(72);
+        assertThat(vitalsService.create(onlyMap).getMapMmhg()).isEqualTo(72);
+
+        VitalsRequest onlyGcs = req(null);
+        onlyGcs.setIpdAdmissionId(icuAdmissionId);
+        onlyGcs.setGcsEye(3);
+        onlyGcs.setGcsVerbal(4);
+        onlyGcs.setGcsMotor(5);
+        assertThat(vitalsService.create(onlyGcs).getGcsTotal()).isEqualTo(12);
+
+        VitalsRequest onlyUrine = req(null);
+        onlyUrine.setIpdAdmissionId(icuAdmissionId);
+        onlyUrine.setUrineOutputMl(50);
+        assertThat(vitalsService.create(onlyUrine).getUrineOutputMl()).isEqualTo(50);
+    }
+
+    @Test
+    void anEmptyObservationIsStillRejected() {
+        VitalsRequest empty = req(null);
+        empty.setIpdAdmissionId(icuAdmissionId);
+
+        assertThatThrownBy(() -> vitalsService.create(empty))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("At least one vital measurement");
+    }
+
     // ── ward behaviour unchanged ─────────────────────────────────────────────
 
     @Test

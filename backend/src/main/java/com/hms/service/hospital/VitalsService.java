@@ -229,9 +229,14 @@ public class VitalsService {
     }
 
     private void validate(VitalsRequest req) {
+        // ICU-4: the ICU observations count as measurements too. Omitting them here meant an ICU
+        // reading of only MAP, CVP, urine output or GCS was rejected as "empty" -- the exact
+        // values this phase was added to capture.
         boolean any = req.getTemperature() != null || req.getPulse() != null || req.getBpSystolic() != null
                 || req.getBpDiastolic() != null || req.getRespiratoryRate() != null || req.getSpo2() != null
-                || req.getWeight() != null || req.getPainScore() != null;
+                || req.getWeight() != null || req.getPainScore() != null
+                || req.getMapMmhg() != null || req.getCvpCmh2o() != null || req.getUrineOutputMl() != null
+                || req.getGcsEye() != null || req.getGcsVerbal() != null || req.getGcsMotor() != null;
         if (!any) {
             throw new IllegalArgumentException("At least one vital measurement is required");
         }
