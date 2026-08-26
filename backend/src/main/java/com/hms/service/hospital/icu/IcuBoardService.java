@@ -67,6 +67,7 @@ public class IcuBoardService {
     @Autowired private NurseProfileRepository nurseProfileRepository;
     @Autowired private PatientNurseAssignmentRepository patientNurseAssignmentRepository;
     @Autowired private NurseInchargeGuard nurseInchargeGuard;
+    @Autowired private com.hms.service.hospital.NurseCoverageService coverageService;
     @Autowired private IcuStayService icuStayService;
     @Autowired private SecurityContextHelper securityHelper;
 
@@ -367,13 +368,13 @@ public class IcuBoardService {
             Long doctorId = doctorRepository
                     .findByEmailAndHospitalId(securityHelper.getCurrentUserEmail(), hospitalId)
                     .map(Doctor::getId).orElse(null);
-            return new DetailScope(role, doctorId, null, patientNurseAssignmentRepository);
+            return new DetailScope(role, doctorId, null, patientNurseAssignmentRepository, coverageService);
         }
         if ("NURSE".equals(role)) {
             return new DetailScope(role, null, securityHelper.getCurrentUserId(),
-                    patientNurseAssignmentRepository);
+                    patientNurseAssignmentRepository, coverageService);
         }
-        return new DetailScope(role, null, null, patientNurseAssignmentRepository);
+        return new DetailScope(role, null, null, patientNurseAssignmentRepository, coverageService);
     }
 
     /**
@@ -387,7 +388,8 @@ public class IcuBoardService {
      * non-throwing predicate because a board filters rows rather than rejecting a request.
      */
     private record DetailScope(String role, Long doctorId, Long nurseUserId,
-                               PatientNurseAssignmentRepository assignments) {
+                               PatientNurseAssignmentRepository assignments,
+                               com.hms.service.hospital.NurseCoverageService coverage) {
 
         boolean maySeeIdentity(IpdAdmission admission) {
             if ("NURSE".equals(role)) return isAssigned(admission);
@@ -403,9 +405,22 @@ public class IcuBoardService {
             };
         }
 
+        /**
+         * The staff-nurse rule, matching {@link com.hms.security.NurseAccessGuard} exactly:
+         * a direct active assignment OR currently covering the nurse who holds one.
+         *
+         * <p>The coverage branch was missing when this board was first written, so a nurse
+         * standing in for a colleague could open the patient from their dashboard yet saw
+         * "not in your scope" for the same patient's bed here. Re-implementing the rule instead
+         * of deferring to the guard is what allowed the two to drift.
+         */
         private boolean isAssigned(IpdAdmission admission) {
-            return nurseUserId != null && assignments
-                    .existsByIpdAdmissionIdAndNurseUserIdAndIsActiveTrue(admission.getId(), nurseUserId);
+            if (nurseUserId == null) return false;
+            if (assignments.existsByIpdAdmissionIdAndNurseUserIdAndIsActiveTrue(
+                    admission.getId(), nurseUserId)) {
+                return true;
+            }
+            return coverage.coversAdmission(nurseUserId, admission.getId(), java.time.LocalDate.now());
         }
     }
 

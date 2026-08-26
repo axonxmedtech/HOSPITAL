@@ -68,6 +68,7 @@ class IcuBoardServiceTest {
     @Mock NurseProfileRepository nurseProfileRepository;
     @Mock PatientNurseAssignmentRepository patientNurseAssignmentRepository;
     @Mock NurseInchargeGuard nurseInchargeGuard;
+    @Mock com.hms.service.hospital.NurseCoverageService coverageService;
     /** ICU-3: the board now resolves the stay slot through this. */
     @Mock IcuStayService icuStayService;
     @Mock SecurityContextHelper securityHelper;
@@ -510,6 +511,30 @@ class IcuBoardServiceTest {
         verify(ipdAdmissionRepository, never()).findById(any());
         verify(patientRepository, never()).findById(any());
         verify(doctorRepository, never()).findById(any());
+    }
+
+    @Test
+    void aCoveringNurseSeesTheirColleaguesPatient() {
+        // Regression: the board re-implemented "own patients" as a direct assignment only, while
+        // NurseAccessGuard also honours coverage. A nurse standing in for a colleague could open
+        // the patient from their dashboard but saw "not in your scope" for the same bed here.
+        when(securityHelper.getCurrentUserRole()).thenReturn("NURSE");
+        NurseProfile profile = new NurseProfile();
+        profile.setUserId(99L);
+        profile.setWardId(10L);
+        when(nurseProfileRepository.findByUserId(99L)).thenReturn(Optional.of(profile));
+
+        givenUnits(List.of(icu), List.of(bed(1L, 10L, "ICU-1-B1", BedStatus.OCCUPIED)),
+                List.of(admission(100L, 10L, 1L, 500L, 900L)));
+        when(patientRepository.findByHospitalIdAndIdIn(eq(HOSPITAL), any()))
+                .thenReturn(List.of(patient(500L, "Asha")));
+        // Not directly assigned...
+        when(patientNurseAssignmentRepository
+                .existsByIpdAdmissionIdAndNurseUserIdAndIsActiveTrue(100L, 99L)).thenReturn(false);
+        // ...but covering the nurse who is.
+        when(coverageService.coversAdmission(eq(99L), eq(100L), any())).thenReturn(true);
+
+        assertThat(row(service.getBoard(), 1L).getPatientName()).isEqualTo("Asha");
     }
 
     private IcuBedRowDTO row(IcuDashboardDTO dto, Long bedId) {

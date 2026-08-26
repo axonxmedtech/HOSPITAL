@@ -247,4 +247,46 @@ class NurseServiceTest {
         assertThat(p.getIsIncharge()).isTrue();
         assertThat(u.getRole()).isEqualTo("NURSE_INCHARGE");
     }
+
+    // ── an incharge is a nurse, and an admin must be able to manage one ──────
+
+    @Test
+    void updateNurse_acceptsANurseInchargeAccount() {
+        // Regression: requireNurse() accepted only role "NURSE", so every admin action on an
+        // incharge -- edit, rename, password reset, remove -- answered "Target user is not a
+        // nurse". An incharge IS a nurse; their login just carries NURSE_INCHARGE.
+        User incharge = new User();
+        incharge.setId(5L);
+        incharge.setPublicId("pub-incharge");
+        incharge.setEmail("incharge@h.test");
+        incharge.setName("Nurse One");
+        incharge.setRole("NURSE_INCHARGE");
+        incharge.setHospitalId(7L);
+        incharge.setIsActive(true);
+
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(userRepository.findByPublicId("pub-incharge")).thenReturn(Optional.of(incharge));
+        when(userRepository.save(any(User.class))).thenAnswer(i -> i.getArgument(0));
+        when(nurseProfileRepository.findByUserId(5L)).thenReturn(Optional.empty());
+
+        User saved = nurseService.updateNurse("pub-incharge", "Nurse One Renamed", null, null);
+
+        assertThat(saved.getName()).isEqualTo("Nurse One Renamed");
+    }
+
+    @Test
+    void updateNurse_stillRejectsANonNurseAccount() {
+        User doctor = new User();
+        doctor.setId(9L);
+        doctor.setPublicId("pub-doctor");
+        doctor.setRole("DOCTOR");
+        doctor.setHospitalId(7L);
+
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(userRepository.findByPublicId("pub-doctor")).thenReturn(Optional.of(doctor));
+
+        assertThatThrownBy(() -> nurseService.updateNurse("pub-doctor", "Nope", null, null))
+                .isInstanceOf(com.hms.exception.UnauthorizedException.class)
+                .hasMessageContaining("not a nurse");
+    }
 }
