@@ -32,4 +32,31 @@ public class MedicationChartItemDTO {
 
     private LocalDateTime lastAdministeredAt;
     private String lastAdministeredStatus;
+
+    // --- Inventory reconciliation -------------------------------------------------------------
+    //
+    // Advisory only. The chart is a clinical record and every prescription appears on it whatever
+    // these say; the nurse administers from the order, not from the stock figure. What these
+    // answer is the separate question of whether the facility can also account for the stock.
+
+    /** The linked facility medicine, or null when the order was written as free text. */
+    private Long medicineId;
+
+    /**
+     * UNLINKED         - no inventory row was chosen; stock is unknown, not zero.
+     * LINKED_AVAILABLE - linked, and usable in-date stock exists.
+     * LINKED_NO_STOCK  - linked, and every batch is empty, expired or withdrawn.
+     *
+     * <p>There is deliberately no "insufficient" state here. Insufficiency is a comparison
+     * against a quantity, and a prescription carries a dosage as free text ("500mg", "1-0-1") --
+     * nothing this code can turn into a number of units without inventing the conversion. It is
+     * decided where a real quantity exists, at dispense, and reported there.
+     */
+    private String inventoryStatus;
+
+    /** Usable units across in-date, active batches. Null when UNLINKED — absent, not zero. */
+    private Integer availableQuantity;
+
+    /** Expiry of the batch that would be dispensed first (FEFO). Null when nothing is usable. */
+    private LocalDate earliestExpiry;
 }

@@ -196,6 +196,46 @@ const MedicationPanel = ({ admissionId, readOnly = false }) => {
     );
   };
 
+  /**
+   * What inventory knows about this order — advisory, never a reason to hide the medication.
+   *
+   * <p>"Not linked" and "no stock" are deliberately different answers. An order written as free
+   * text has no inventory row attached to it, so the facility's stock level for it is unknown,
+   * not zero. Showing those two states the same way told nurses a drug was unavailable when in
+   * fact nobody had reconciled the order — a stock-keeping gap dressed up as a clinical one.
+   */
+  const stockBadge = (c) => {
+    const status = c.inventoryStatus;
+    if (status === 'LINKED_AVAILABLE') {
+      return (
+        <span
+          className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-green-100 text-green-700"
+          title={c.earliestExpiry ? `Earliest expiry ${c.earliestExpiry}` : undefined}
+        >
+          IN STOCK{typeof c.availableQuantity === 'number' ? ` · ${c.availableQuantity}` : ''}
+        </span>
+      );
+    }
+    if (status === 'LINKED_NO_STOCK') {
+      return (
+        <span
+          className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-red-100 text-red-700"
+          title="Every batch is empty, expired or withdrawn"
+        >
+          NO USABLE STOCK
+        </span>
+      );
+    }
+    return (
+      <span
+        className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-gray-100 text-gray-600"
+        title="No inventory item selected for this order — stock is unknown, not zero"
+      >
+        NOT LINKED
+      </span>
+    );
+  };
+
   const courseText = (c) => {
     if (c.dayOfCourse == null) return c.duration || '—';
     if (c.durationDays) {
@@ -335,6 +375,7 @@ const MedicationPanel = ({ admissionId, readOnly = false }) => {
                   <th className="px-5 py-3">ROUTE</th>
                   <th className="px-5 py-3">COURSE</th>
                   <th className="px-5 py-3">STATUS</th>
+                  <th className="px-5 py-3">STOCK</th>
                   <th className="px-5 py-3">TODAY</th>
                 </tr>
               </thead>
@@ -362,6 +403,7 @@ const MedicationPanel = ({ admissionId, readOnly = false }) => {
                       </td>
                       <td className="px-5 py-3 text-gray-600">{courseText(c)}</td>
                       <td className="px-5 py-3">{orderBadge(c)}</td>
+                      <td className="px-5 py-3">{stockBadge(c)}</td>
                       <td className="px-5 py-3">
                         {c.pending ? (
                           <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-700">

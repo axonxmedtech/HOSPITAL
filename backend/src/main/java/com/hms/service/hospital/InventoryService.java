@@ -92,19 +92,12 @@ public class InventoryService {
         return hospitalId;
     }
 
-    // Helper for Pharmacy Controller dispensing
-    @Transactional
-    public void dispenseMedicine(String medicineName, Integer quantity) {
-        Long hospitalId = securityHelper.getCurrentHospitalId();
-        // Find medicine by name in this hospital
-        // Optimistic: Assuming unique names or taking first match
-        List<Medicine> meds = medicineRepository.searchByName(medicineName, hospitalId);
-        if (meds.isEmpty()) {
-            throw new ResourceNotFoundException("Medicine not found in inventory: " + medicineName);
-        }
-        Medicine med = meds.get(0);
-
-        deductStock(med.getId(), quantity);
-    }
+    // Dispensing by medicine NAME used to live here. It searched the facility's inventory for a
+    // free-text prescription name and took meds.get(0) -- whichever row the query happened to
+    // return first -- then decremented it. Two rows for the same drug (different strengths, a
+    // duplicate entry, a typo) meant stock came off an arbitrary one, and a name with no match
+    // failed a dispense that had physically already happened. Stock now moves only through
+    // MedicineStockService against a medicine someone actually chose; see
+    // PharmacyController#dispenseMedicine.
 }
 

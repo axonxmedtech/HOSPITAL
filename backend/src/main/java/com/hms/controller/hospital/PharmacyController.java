@@ -9,6 +9,7 @@ import com.hms.service.hospital.InventoryService;
 import com.hms.security.SecurityContextHelper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,6 +23,9 @@ public class PharmacyController {
 
     @Autowired
     private InventoryService inventoryService;
+
+    @Autowired
+    private com.hms.service.hospital.MedicineStockService medicineStockService;
 
     @Autowired
     private PrescriptionRepository prescriptionRepository;
@@ -156,9 +160,26 @@ public class PharmacyController {
         return ResponseEntity.ok(response);
     }
 
+    /**
+     * Dispense against a prescription: the one event that takes medicine stock off the shelf.
+     *
+     * <p>Ordering does not decrement and administering does not decrement again -- a prescription
+     * is an instruction, a MAR entry is a clinical record, and only this hands out physical
+     * stock. Keeping the decrement here is what stops one course of treatment being deducted
+     * twice.
+     *
+     * <p>The quantity and the medicine both come from the request, because neither can be
+     * derived. This used to call {@code dispenseMedicine(p.getMedicineName(), 1)}: it took the
+     * prescription's free-text name, searched inventory for it, took whichever row sorted first,
+     * and removed exactly one unit regardless of what was handed over. A five-day course left the
+     * shelf and the system recorded a single unit -- against a medicine nobody had confirmed was
+     * the right one. There is no rule that turns "1-0-1" and "5 Days" into a unit count, so the
+     * pharmacist states what they dispensed.
+     */
     @PostMapping("/dispense/{prescriptionId}")
-    @PreAuthorize("hasRole('PHARMACIST')")
-    public ResponseEntity<?> dispenseMedicine(@PathVariable Long prescriptionId) {
+    @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> dispenseMedicine(@PathVariable Long prescriptionId,
+            @Valid @RequestBody DispenseRequest req) {
         // Scope to the caller's hospital: an unscoped findById let a pharmacist dispense
         // another hospital's prescription (and deduct stock against it) by guessing the id.
         Long dispenseHospitalId = securityHelper.getCurrentHospitalId();
@@ -166,25 +187,63 @@ public class PharmacyController {
                 .filter(x -> x.getHospitalId() != null && x.getHospitalId().equals(dispenseHospitalId))
                 .orElseThrow(() -> new ResourceNotFoundException("Prescription not found"));
 
-        if (!p.getStatus().equals("PENDING")) {
-            return ResponseEntity.badRequest().body("Prescription already dispensed");
+        // Deliberately no "already dispensed" check, and deliberately no write to the
+        // prescription's status below.
+        //
+        // Prescription.status is the CLINICAL state of the order -- ACTIVE, STOPPED, COMPLETED --
+        // and it is what puts the medicine on the nurse's chart. Stamping it DISPENSED took a
+        // live order off that chart the moment pharmacy handed the drugs to the ward, so the
+        // nurse could no longer record having given it: a stock event silently ended a course of
+        // treatment. Handing stock out and finishing a course are different facts.
+        //
+        // It also assumed a course is dispensed exactly once. Issuing three days now and the rest
+        // on Thursday is ordinary; what must not happen is the SAME issue being posted twice, and
+        // that is what the idempotency key below is for.
+        // Which medicine leaves the shelf: the one already linked to the order, or the one the
+        // pharmacist selects now for an order written as free text. Reconciling an unlinked order
+        // is a decision a person makes; it is recorded on the order so it is not made twice.
+        Long medicineId = p.getMedicineId() != null ? p.getMedicineId() : req.getMedicineId();
+        if (medicineId == null) {
+            throw new IllegalArgumentException(
+                    "This prescription is not linked to an inventory medicine. "
+                    + "Select the medicine being dispensed.");
         }
 
-        // Deduct Stock
-        // Parse quantity from duration? Or just deduct 1 unit/strip for now?
-        // "5 Days" x "1-0-1" (2) = 10 tablets.
-        // Parsing this text is hard.
-        // V1 Simplification: Deduct 10 units fixed or pass quantity from UI.
-        // For this iteration, let's deduct 10 units by default or 0 if we can't parse.
-        // BETTER: The Pharmacist should confirm the QTY dispensed.
+        java.util.List<com.hms.service.hospital.MedicineStockService.BatchAllocation> taken = medicineStockService.consumeFefo(
+                medicineId, req.getQuantity(), com.hms.entity.StockMovement.DISPENSE,
+                "PRESCRIPTION", p.getId(), req.getIdempotencyKey(), req.getRemarks());
 
-        // For this API V1, we will just mark as dispensed and optionally deduct if
-        // stock exists.
-        inventoryService.dispenseMedicine(p.getMedicineName(), 1); // Deducting 1 unit for now
+        if (p.getMedicineId() == null) {
+            p.setMedicineId(medicineId);
+            prescriptionRepository.save(p);
+        }
 
-        p.setStatus("DISPENSED");
-        prescriptionRepository.save(p);
+        java.util.Map<String, Object> body = new java.util.HashMap<>();
+        body.put("prescriptionId", p.getId());
+        body.put("medicineId", medicineId);
+        body.put("quantityDispensed", req.getQuantity());
+        body.put("batches", taken);
+        return ResponseEntity.ok(body);
+    }
 
-        return ResponseEntity.ok("Medicine dispensed successfully");
+    /** What the pharmacist actually handed over. */
+    @lombok.Data
+    public static class DispenseRequest {
+        @jakarta.validation.constraints.NotNull(message = "Dispensed quantity is required")
+        @jakarta.validation.constraints.Min(value = 1, message = "Dispensed quantity must be at least 1")
+        private Integer quantity;
+
+        /** Required only when the prescription carries no inventory link of its own. */
+        private Long medicineId;
+
+        /**
+         * Makes a retried or double-submitted dispense post stock once. The client sends the same
+         * key for what it considers one act of dispensing.
+         */
+        @jakarta.validation.constraints.Size(max = 100)
+        private String idempotencyKey;
+
+        @jakarta.validation.constraints.Size(max = 255)
+        private String remarks;
     }
 }

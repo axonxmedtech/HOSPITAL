@@ -477,10 +477,27 @@ const hospitalService = {
   },
 
   /**
-   * Dispense medicine for a prescription
+   * Dispense medicine against a prescription — the event that takes stock off the shelf.
+   *
+   * `quantity` is required and is what the pharmacist actually handed over. The server used to
+   * decide this itself and always removed exactly one unit, so a five-day course left the shelf
+   * and the system recorded a single unit; there is no rule that turns a free-text dosage into a
+   * unit count, so the caller states it.
+   *
+   * `medicineId` is required only for an order written as free text, which carries no inventory
+   * link of its own — the pharmacist names the medicine being handed over rather than the server
+   * guessing from the prescription's text.
+   *
+   * `idempotencyKey` should stay the same across retries of one act of dispensing, so a resent
+   * request posts stock once.
    */
-  dispenseMedicine: async (prescriptionId) => {
-    const response = await apiClient.post(`/hospital/pharmacy/dispense/${prescriptionId}`);
+  dispenseMedicine: async (prescriptionId, { quantity, medicineId, idempotencyKey, remarks } = {}) => {
+    const response = await apiClient.post(`/hospital/pharmacy/dispense/${prescriptionId}`, {
+      quantity,
+      medicineId,
+      idempotencyKey,
+      remarks,
+    });
     return response.data;
   },
 
