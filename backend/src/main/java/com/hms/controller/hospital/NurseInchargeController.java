@@ -31,6 +31,19 @@ public class NurseInchargeController {
         return ResponseEntity.ok(workspaceService.getWardPatients());
     }
 
+    /**
+     * One ward patient's bedside view, so the incharge can open a chart from their ward list.
+     *
+     * <p>Ward-scoped, not assignment-scoped: an incharge supervises a ward rather than being
+     * assigned to patients. The staff-nurse endpoint at {@code /hospital/nurse/patients/...} is
+     * untouched.
+     */
+    @GetMapping("/patients/{admissionId}")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','NURSE_INCHARGE')")
+    public ResponseEntity<?> wardPatientDetail(@PathVariable Long admissionId) {
+        return ResponseEntity.ok(workspaceService.getWardPatientDetail(admissionId));
+    }
+
     @GetMapping("/wards/{wardId}/nurses")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','NURSE_INCHARGE')")
     public ResponseEntity<?> wardStaffNurses(@PathVariable Long wardId) {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
+import authService from '../../../services/authService';
 import formAccessService from '../../../services/formAccessService';
 import nurseService from '../../../services/nurseService';
 import OtNotesSection from '../ot/OtNotesSection';
@@ -72,8 +73,16 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
       })
       .catch((err) => {
         if (!active) return;
-        if (err.response?.status === 403) toastError('You are not assigned to this patient');
-        else toastError('Failed to load patient');
+        // The two scopes fail for different reasons, so they say different things: a staff nurse
+        // is not assigned to the patient, an incharge does not run the patient's ward.
+        if (err.response?.status === 403) {
+          const role = authService.getCurrentUser()?.role;
+          toastError(
+            role === 'NURSE_INCHARGE' || role === 'HOSPITAL_ADMIN'
+              ? 'This patient is not in one of your wards'
+              : 'You are not assigned to this patient'
+          );
+        } else toastError('Failed to load patient');
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -118,6 +127,10 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
   };
   const verdictFor = (tabId) => formVerdicts[NURSING_FORM_KEY[tabId]] || 'EDITABLE';
 
+  // A staff nurse came from "My Patients"; an incharge came from their ward list.
+  const backLabel =
+    authService.getCurrentUser()?.role === 'NURSE_INCHARGE' ? 'My Ward Patients' : 'My Patients';
+
   const tabs = [
     { id: 'overview', label: 'Overview' },
     ...(verdictFor('vitals') !== 'HIDDEN' ? [{ id: 'vitals', label: 'Vitals' }] : []),
@@ -156,7 +169,7 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
           onClick={onBack}
           className="text-sm font-semibold text-gray-600 hover:text-gray-900"
         >
-          ← My Patients
+          ← {backLabel}
         </button>
         <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-700">
           {d.status}

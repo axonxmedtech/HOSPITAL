@@ -140,7 +140,7 @@ class TenantScopingArchTest {
             "NurseWorkspaceService#buildMyPatient",
             "NurseWorkspaceService#getMyNurses",
             "NurseWorkspaceService#getMyWards",
-            "NurseWorkspaceService#getPatientDetail",
+            "NurseWorkspaceService#buildPatientDetail",
             "NurseWorkspaceService#getWardPatients",
             "NursingNoteService#requireAdmission",
             "OpdController#downloadOpdReportPdf",

@@ -134,7 +134,28 @@ public class NurseWorkspaceService {
     public NursePatientDetailDTO getPatientDetail(Long ipdAdmissionId) {
         Long hospitalId = requireHospitalId();
         nurseAccessGuard.assertAssigned(ipdAdmissionId);
+        return buildPatientDetail(ipdAdmissionId, hospitalId);
+    }
 
+    /**
+     * The same bedside view for a Nurse Incharge, scoped to the wards they run.
+     *
+     * <p>A separate entry point rather than a widened {@link #getPatientDetail}: the staff-nurse
+     * rule is "only your own patients", and an incharge is never assigned to a patient — they
+     * supervise a ward. Relaxing the staff-nurse guard to let the incharge through would have
+     * loosened it for staff nurses too, so the two rules stay separate and only the DTO builder
+     * is shared.
+     *
+     * <p>{@code assertAdmissionInMyWard} is the same ward check {@link NurseWriteAccess} already
+     * applies when an incharge records care, so read and write scope cannot drift apart.
+     */
+    public NursePatientDetailDTO getWardPatientDetail(Long ipdAdmissionId) {
+        Long hospitalId = requireHospitalId();
+        nurseInchargeGuard.assertAdmissionInMyWard(ipdAdmissionId);
+        return buildPatientDetail(ipdAdmissionId, hospitalId);
+    }
+
+    private NursePatientDetailDTO buildPatientDetail(Long ipdAdmissionId, Long hospitalId) {
         IpdAdmission ipd = ipdAdmissionRepository.findById(ipdAdmissionId)
                 .orElseThrow(() -> new IllegalArgumentException("IPD admission not found"));
         if (!hospitalId.equals(ipd.getHospitalId())) {

@@ -12,6 +12,7 @@ import authService from '../../services/authService';
 import nurseService from '../../services/nurseService';
 import HospitalCalendar from './HospitalCalendar';
 import IcuBedBoard from './icu/IcuBedBoard';
+import NursePatientDetail from './nurse/NursePatientDetail';
 import AttendanceView from './nurse-incharge/AttendanceView';
 import CoverageView from './nurse-incharge/CoverageView';
 import InchargeOverview from './nurse-incharge/InchargeOverview';
@@ -31,6 +32,9 @@ const NurseInchargeDashboard = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
+  // The chart the incharge has open, if any. Ward-scoped: the list they opened it from
+  // only contains their wards, and the server re-checks on every read and write.
+  const [selectedAdmissionId, setSelectedAdmissionId] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const handleRefresh = useCallback(() => setRefreshKey((k) => k + 1), []);
@@ -55,6 +59,7 @@ const NurseInchargeDashboard = () => {
   ];
 
   const titleFor = () => {
+    if (activeTab === 'patient-detail') return 'Patient Chart';
     if (activeTab === 'dashboard') return 'Dashboard';
     if (activeTab === 'my-ward-patients') return 'My Ward Patients';
     if (activeTab === 'schedule') return 'Schedule';
@@ -67,11 +72,31 @@ const NurseInchargeDashboard = () => {
   };
 
   const renderContent = () => {
+    if (activeTab === 'patient-detail' && selectedAdmissionId) {
+      return (
+        <NursePatientDetail
+          admissionId={selectedAdmissionId}
+          onBack={() => {
+            setSelectedAdmissionId(null);
+            setActiveTab('my-ward-patients');
+          }}
+          refreshKey={refreshKey}
+        />
+      );
+    }
     switch (activeTab) {
       case 'dashboard':
         return <InchargeOverview onNavigate={setActiveTab} refreshKey={refreshKey} />;
       case 'my-ward-patients':
-        return <WardPatientsView refreshKey={refreshKey} />;
+        return (
+          <WardPatientsView
+            refreshKey={refreshKey}
+            onOpenPatient={(id) => {
+              setSelectedAdmissionId(id);
+              setActiveTab('patient-detail');
+            }}
+          />
+        );
       case 'schedule':
         return <ShiftScheduleView />;
       case 'attendance':
@@ -138,7 +163,7 @@ const NurseInchargeDashboard = () => {
  * WardPatientsView - active admissions across the incharge's wards, with an
  * inline "Assign Nurse" action per row (staff nurses from that patient's ward).
  */
-const WardPatientsView = ({ refreshKey }) => {
+const WardPatientsView = ({ refreshKey, onOpenPatient }) => {
   const { success: toastSuccess, error: toastError } = useToast();
   const [loading, setLoading] = useState(true);
   const [patients, setPatients] = useState([]);
@@ -263,12 +288,20 @@ const WardPatientsView = ({ refreshKey }) => {
                     </button>
                   </div>
                 ) : (
-                  <button
-                    onClick={() => openAssign(p)}
-                    className="px-3 py-1 text-xs font-semibold rounded-lg bg-gray-900 text-white hover:bg-gray-800"
-                  >
-                    Assign Nurse
-                  </button>
+                  <div className="inline-flex items-center gap-2">
+                    <button
+                      onClick={() => onOpenPatient(p.ipdAdmissionId)}
+                      className="px-3 py-1 text-xs font-semibold rounded-lg bg-primary-600 text-white hover:bg-primary-700"
+                    >
+                      Open Chart
+                    </button>
+                    <button
+                      onClick={() => openAssign(p)}
+                      className="px-3 py-1 text-xs font-semibold rounded-lg bg-gray-900 text-white hover:bg-gray-800"
+                    >
+                      Assign Nurse
+                    </button>
+                  </div>
                 )}
               </td>
             </tr>
