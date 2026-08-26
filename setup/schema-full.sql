@@ -1165,6 +1165,47 @@ CREATE TABLE `patient_nurse_assignments` (
   CONSTRAINT `FK_pna_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- ICU (Phase 6): continuous infusions and their append-only rate history.
+CREATE TABLE `icu_infusion` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ipd_admission_id` bigint NOT NULL,
+  `patient_id` bigint NOT NULL,
+  `prescription_id` bigint DEFAULT NULL,
+  `medicine_name` varchar(255) NOT NULL,
+  `started_at` datetime(6) NOT NULL,
+  `stopped_at` datetime(6) DEFAULT NULL,
+  `stop_reason` varchar(255) DEFAULT NULL,
+  `started_by_user_id` bigint DEFAULT NULL,
+  `performed_by_nurse_id` bigint DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_icu_inf_public_id` (`public_id`),
+  KEY `idx_icu_inf_admission` (`ipd_admission_id`),
+  KEY `idx_icu_inf_hospital` (`hospital_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `icu_infusion_rate` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `icu_infusion_id` bigint NOT NULL,
+  `rate_value` decimal(12,3) NOT NULL,
+  `rate_unit` varchar(20) NOT NULL,
+  `effective_from` datetime(6) NOT NULL,
+  `recorded_by_user_id` bigint DEFAULT NULL,
+  `performed_by_nurse_id` bigint DEFAULT NULL,
+  `supersedes_rate_id` bigint DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_icu_inf_rate_public_id` (`public_id`),
+  KEY `idx_icu_inf_rate_infusion` (`icu_infusion_id`),
+  KEY `idx_icu_inf_rate_effective` (`icu_infusion_id`,`effective_from`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 -- Nurse module (Phase 1): time-series IPD vitals recorded by nurses.
 CREATE TABLE `icu_io_entry` (
   `id` bigint NOT NULL AUTO_INCREMENT,

@@ -32,6 +32,39 @@ const IcuService = {
   correctIoEntry: (publicId, payload) =>
     apiClient.post(`/hospital/nurse/io/${publicId}/correction`, payload).then((r) => r.data),
 
+  /**
+   * ICU-6: every infusion for an admission, running and stopped, newest first.
+   *
+   * Infusions are drug delivery. They are deliberately NOT part of the I/O balance (D-1) —
+   * nothing here reaches `getIoBalance`, and nothing there reaches this.
+   */
+  getInfusions: (ipdId) =>
+    apiClient.get(`/hospital/nurse/infusions/admission/${ipdId}`).then((r) => r.data),
+
+  /** The full rate history of one infusion, newest first, including superseded rows. */
+  getInfusionRates: (publicId) =>
+    apiClient.get(`/hospital/nurse/infusions/${publicId}/rates`).then((r) => r.data),
+
+  startInfusion: (payload) =>
+    apiClient.post('/hospital/nurse/infusions', payload).then((r) => r.data),
+
+  /** Titrating APPENDS a rate; the previous one stays in the history. */
+  titrateInfusion: (publicId, payload) =>
+    apiClient.post(`/hospital/nurse/infusions/${publicId}/rate`, payload).then((r) => r.data),
+
+  stopInfusion: (publicId, payload) =>
+    apiClient.post(`/hospital/nurse/infusions/${publicId}/stop`, payload).then((r) => r.data),
+
+  /** Append-only: the mistaken rate stays readable, struck through. */
+  correctInfusionRate: (ratePublicId, payload) =>
+    apiClient
+      .post(`/hospital/nurse/infusions/rate/${ratePublicId}/correction`, payload)
+      .then((r) => r.data),
+
+  /** The rate-unit catalogue. Rates are stored as entered and never converted. */
+  getInfusionRateUnits: () =>
+    apiClient.get('/hospital/nurse/infusions/rate-units').then((r) => r.data),
+
   /** Ward unit-type catalogue for the ward form's classification selector. */
   getUnitTypes: () => apiClient.get('/hospital/icu/unit-types').then((r) => r.data),
 };

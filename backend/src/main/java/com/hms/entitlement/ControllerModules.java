@@ -48,7 +48,8 @@ public final class ControllerModules {
 
         // Admission-scoped clinical records. Granted by IPD, authored under NURSING.
         put(EntitlementRegistry.CLINICAL_RECORDS,
-                "VitalsController", "IcuIoController", "NursingNoteController", "SugarChartController",
+                "VitalsController", "IcuIoController", "IcuInfusionController",
+                "NursingNoteController", "SugarChartController",
                 "InitialAssessmentController", "VulnerabilityAssessmentController",
                 "MedicationAdminController", "AdmissionFormController", "FormAccessController");
 

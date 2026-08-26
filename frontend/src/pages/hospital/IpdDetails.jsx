@@ -18,6 +18,7 @@ import otService from '../../services/otService';
 import wardService from '../../services/wardService';
 import { printBlob } from '../../utils/printPdf';
 import ConsentFormsPanel from './nurse/ConsentFormsPanel';
+import InfusionPanel from './nurse/InfusionPanel';
 import InitialAssessmentPanel from './nurse/InitialAssessmentPanel';
 import IoChartPanel from './nurse/IoChartPanel';
 import MedicationPanel from './nurse/MedicationPanel';
@@ -1757,6 +1758,11 @@ const IpdDetails = () => {
                         Medication Administration History (MAR)
                       </h3>
                       <MedicationPanel admissionId={admissionId} readOnly />
+
+                      {/* Continuous infusions sit with the MAR, read-only for the doctor for the
+                          same reason: nurses record administration. */}
+                      <hr className="my-4" />
+                      <InfusionPanel admissionId={admissionId} readOnly />
                     </>
                   )}
                 </div>

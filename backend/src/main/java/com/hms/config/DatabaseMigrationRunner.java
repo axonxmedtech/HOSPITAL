@@ -129,6 +129,7 @@ public class DatabaseMigrationRunner {
         // existing ward keeps behaving exactly as before and no backfill is needed.
         addColumnIfMissing("wards", "unit_type", "VARCHAR(20) NOT NULL DEFAULT 'GENERAL'");
         backfillWardUnitType();
+        ensureIcuInfusionTables();     // ICU Phase 6
         ensureIcuIoEntryTable();       // ICU Phase 5
         ensureVitalsIcuColumns();      // ICU Phase 4
         ensureIcuStayTable();          // ICU Phase 3
@@ -2261,6 +2262,69 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("backfillWardUnitType skipped: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * ICU Phase 6 - continuous infusions and their rate history.
+     *
+     * <p>Two tables on purpose: the span is one row, but the rate changes repeatedly and every
+     * change must survive, so the current rate is NOT a column on the span. Separate from
+     * icu_io_entry by decision (D-1) - an infusion is drug delivery, not a fluid-balance event.
+     */
+    private void ensureIcuInfusionTables() {
+        createTableIfMissing("icu_infusion", "CREATE TABLE icu_infusion ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " ipd_admission_id BIGINT NOT NULL,"
+                    + " patient_id BIGINT NOT NULL,"
+                    + " prescription_id BIGINT NULL,"
+                    + " medicine_name VARCHAR(255) NOT NULL,"
+                    + " started_at DATETIME(6) NOT NULL,"
+                    + " stopped_at DATETIME(6) NULL,"
+                    + " stop_reason VARCHAR(255) NULL,"
+                    + " started_by_user_id BIGINT NULL,"
+                    + " performed_by_nurse_id BIGINT NULL,"
+                    + " is_active TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_inf_public_id (public_id),"
+                    + " KEY idx_icu_inf_admission (ipd_admission_id),"
+                    + " KEY idx_icu_inf_hospital (hospital_id)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        createTableIfMissing("icu_infusion_rate", "CREATE TABLE icu_infusion_rate ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " icu_infusion_id BIGINT NOT NULL,"
+                    + " rate_value DECIMAL(12,3) NOT NULL,"
+                    + " rate_unit VARCHAR(20) NOT NULL,"
+                    + " effective_from DATETIME(6) NOT NULL,"
+                    + " recorded_by_user_id BIGINT NULL,"
+                    + " performed_by_nurse_id BIGINT NULL,"
+                    + " supersedes_rate_id BIGINT NULL,"
+                    + " is_active TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_inf_rate_public_id (public_id),"
+                    + " KEY idx_icu_inf_rate_infusion (icu_infusion_id),"
+                    + " KEY idx_icu_inf_rate_effective (icu_infusion_id, effective_from)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+
+    /** CREATE TABLE when absent, matching the ensureXxx idiom used throughout this runner. */
+    private void createTableIfMissing(String table, String ddl) {
+        try {
+            Integer exists = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES "
+              + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?", Integer.class, table);
+            if (exists != null && exists == 0) {
+                jdbcTemplate.execute(ddl);
+                log.info("DB migration applied: created {}", table);
+            }
+        } catch (Exception e) {
+            log.warn("createTableIfMissing skipped ({}): {}", table, e.getMessage());
         }
     }
 

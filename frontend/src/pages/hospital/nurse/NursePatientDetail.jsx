@@ -5,6 +5,7 @@ import formAccessService from '../../../services/formAccessService';
 import nurseService from '../../../services/nurseService';
 import OtNotesSection from '../ot/OtNotesSection';
 import ConsentFormsPanel from './ConsentFormsPanel';
+import InfusionPanel from './InfusionPanel';
 import InitialAssessmentPanel from './InitialAssessmentPanel';
 import IoChartPanel from './IoChartPanel';
 import MedicationPanel from './MedicationPanel';
@@ -109,6 +110,7 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
     vulnerability: 'VULNERABILITY_ASSESSMENT',
     sugar: 'SUGAR_CHART',
     io: 'IO_CHART',
+    medication: 'MEDICATION',
   };
   const verdictFor = (tabId) => formVerdicts[NURSING_FORM_KEY[tabId]] || 'EDITABLE';
 
@@ -193,7 +195,19 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
         />
       )}
 
-      {tab === 'medication' && <MedicationPanel admissionId={admissionId} />}
+      {tab === 'medication' && (
+        <div className="space-y-6">
+          <MedicationPanel admissionId={admissionId} />
+          {/* Infusions live in the medication workspace, not a page of their own: an infusion is
+              medication being given, and the nurse should not look in two places for one
+              patient's drugs. */}
+          <InfusionPanel
+            admissionId={admissionId}
+            readOnly={verdictFor('medication') === 'READ_ONLY'}
+            refreshKey={refreshKey}
+          />
+        </div>
+      )}
 
       {tab === 'notes' && (
         <NotesPanel admissionId={admissionId} readOnly={verdictFor('notes') === 'READ_ONLY'} />
