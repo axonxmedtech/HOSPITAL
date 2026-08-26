@@ -28,6 +28,9 @@ public class PharmacyController {
     private com.hms.service.hospital.MedicineStockService medicineStockService;
 
     @Autowired
+    private com.hms.repository.StockMovementRepository stockMovementRepository;
+
+    @Autowired
     private PrescriptionRepository prescriptionRepository;
 
     @Autowired
@@ -111,7 +114,14 @@ public class PharmacyController {
                 doctorRepository.findAllById(doctorIds).stream()
                 .collect(Collectors.toMap(com.hms.entity.Doctor::getId, d -> d, (d1, d2) -> d1));
 
-        // 4. Rapid memory correlation mapping
+        // 4. One query for everything already issued against these orders, rather than one per row.
+        java.util.List<Long> prescriptionIds = active.stream().map(Prescription::getId).toList();
+        java.util.Map<Long, Integer> dispensedByPrescription = new java.util.HashMap<>();
+        for (Object[] pair : stockMovementRepository.dispensedForPrescriptions(hospitalId, prescriptionIds)) {
+            dispensedByPrescription.put(((Number) pair[0]).longValue(), ((Number) pair[1]).intValue());
+        }
+
+        // 5. Rapid memory correlation mapping
         List<Map<String, Object>> response = active.stream().map(p -> {
             Map<String, Object> map = new java.util.HashMap<>();
             map.put("id", p.getId());
@@ -123,6 +133,26 @@ public class PharmacyController {
             map.put("instructions", p.getInstructions());
             map.put("createdAt", p.getCreatedAt());
             map.put("status", p.getStatus());
+
+            // What inventory can say about this order. UNLINKED means nobody has chosen a stock
+            // row for it: unknown, not zero, and the order is still perfectly dispensable once
+            // someone picks the medicine.
+            map.put("medicineId", p.getMedicineId());
+            map.put("quantityDispensed", dispensedByPrescription.getOrDefault(p.getId(), 0));
+            if (p.getMedicineId() == null) {
+                map.put("inventoryStatus", "UNLINKED");
+            } else {
+                try {
+                    int available = medicineStockService.availableQuantityFor(p.getMedicineId(), hospitalId);
+                    map.put("availableQuantity", available);
+                    map.put("earliestExpiry",
+                            medicineStockService.earliestUsableExpiry(p.getMedicineId(), hospitalId));
+                    map.put("inventoryStatus", available <= 0 ? "LINKED_NO_STOCK" : "LINKED_AVAILABLE");
+                } catch (RuntimeException e) {
+                    // The linked medicine has since been removed from inventory.
+                    map.put("inventoryStatus", "UNLINKED");
+                }
+            }
 
             com.hms.entity.MedicalRecord record = recordMap.get(p.getMedicalRecordId());
             if (record != null) {
@@ -158,6 +188,19 @@ public class PharmacyController {
         }).collect(Collectors.toList());
 
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * The facility's medicines with their usable stock, for choosing what to hand over.
+     *
+     * <p>Exists so an order written as free text can be reconciled to a real inventory row by a
+     * person. Deliberately returns candidates rather than a single answer: the old dispense path
+     * searched by the prescription's text and silently took whichever row came back first.
+     */
+    @GetMapping("/dispense/medicines")
+    @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> dispensableMedicines(@RequestParam(required = false) String query) {
+        return ResponseEntity.ok(medicineStockService.dispensableOptions(query));
     }
 
     /**

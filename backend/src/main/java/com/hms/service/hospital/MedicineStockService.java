@@ -81,6 +81,44 @@ public class MedicineStockService {
         return usable.isEmpty() ? null : usable.get(0).getExpiryDate();
     }
 
+    /**
+     * One medicine as a dispensing user needs to see it: what it is, how much is usable, and the
+     * expiry of the lot that would go out first.
+     */
+    public record StockOption(Long medicineId, String name, String type, Integer availableQuantity,
+            LocalDate earliestExpiry) {}
+
+    /**
+     * The facility's medicines, for choosing what to hand over against an order.
+     *
+     * <p>Scoped to the caller's facility in the query, and drawn from {@code medicines} only --
+     * general hospital inventory (gloves, syringes, linen) lives in its own table and is not a
+     * dispensable medicine, so it can never appear here.
+     *
+     * <p>Ordered by name, and never narrowed to a single automatic answer: the caller sees the
+     * candidates and picks. Two rows can share a name -- different strengths, a duplicate entry, a
+     * typo -- and choosing between them is a person's job.
+     */
+    public List<StockOption> dispensableOptions(String query) {
+        Long hospitalId = requireHospitalId();
+        LocalDate today = LocalDate.now();
+        String needle = query == null ? "" : query.trim().toLowerCase();
+
+        List<StockOption> out = new ArrayList<>();
+        for (Medicine m : medicineRepository.findByHospitalIdAndIsActiveTrue(hospitalId)) {
+            if (!needle.isEmpty()
+                    && (m.getName() == null || !m.getName().toLowerCase().contains(needle))) {
+                continue;
+            }
+            List<MedicineStockBatch> usable = batchRepository.findDispensableFefo(hospitalId, m.getId(), today);
+            int available = batchRepository.availableQuantity(hospitalId, m.getId(), today);
+            out.add(new StockOption(m.getId(), m.getName(), m.getType(), available,
+                    usable.isEmpty() ? null : usable.get(0).getExpiryDate()));
+        }
+        out.sort(java.util.Comparator.comparing(o -> o.name() == null ? "" : o.name().toLowerCase()));
+        return out;
+    }
+
     /** All batches for a medicine, newest expiry last -- includes expired/empty for the UI to show. */
     public List<MedicineStockBatch> batchesFor(Long medicineId) {
         Long hospitalId = requireHospitalId();

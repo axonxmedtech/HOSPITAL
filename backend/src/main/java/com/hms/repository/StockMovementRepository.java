@@ -45,4 +45,24 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, Lo
             + "AND m.inventoryDomain = :domain AND m.itemId = :itemId")
     int reconciledItemQuantity(@Param("hospitalId") Long hospitalId,
             @Param("domain") String domain, @Param("itemId") Long itemId);
+
+    /**
+     * How much has already gone out against one prescription.
+     *
+     * <p>Read from the ledger rather than stored on the order, because the ledger is where the
+     * fact lives: a course can be issued in parts, and each part is a movement. Counting only OUT
+     * movements means a returned issue nets off correctly once returns post their own rows.
+     */
+    @Query("SELECT COALESCE(SUM(m.quantity), 0) FROM StockMovement m "
+            + "WHERE m.hospitalId = :hospitalId AND m.referenceType = 'PRESCRIPTION' "
+            + "AND m.referenceId = :prescriptionId AND m.direction = 'OUT'")
+    int dispensedForPrescription(@Param("hospitalId") Long hospitalId,
+            @Param("prescriptionId") Long prescriptionId);
+
+    /** Same, for a batch of prescriptions, so a queue does not issue one query per row. */
+    @Query("SELECT m.referenceId, COALESCE(SUM(m.quantity), 0) FROM StockMovement m "
+            + "WHERE m.hospitalId = :hospitalId AND m.referenceType = 'PRESCRIPTION' "
+            + "AND m.referenceId IN :prescriptionIds AND m.direction = 'OUT' GROUP BY m.referenceId")
+    List<Object[]> dispensedForPrescriptions(@Param("hospitalId") Long hospitalId,
+            @Param("prescriptionIds") List<Long> prescriptionIds);
 }

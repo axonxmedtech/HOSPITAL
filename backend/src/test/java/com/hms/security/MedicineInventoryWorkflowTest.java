@@ -83,6 +83,8 @@ class MedicineInventoryWorkflowTest {
     @Autowired StockMovementRepository movements;
     @Autowired MedicationAdministrationRepository mars;
     @Autowired com.hms.repository.HospitalSettingRepository hospitalSettings;
+    @Autowired com.hms.repository.HospitalInventoryRepository hospitalInventory;
+    @Autowired com.hms.repository.MedicalRecordRepository medicalRecords;
 
     private Hospital hospitalA;
     private String adminA, nurseTokenA, doctorTokenA, adminB;
@@ -640,5 +642,264 @@ class MedicineInventoryWorkflowTest {
                 "{\"quantity\":3,\"medicineId\":" + medicineId + "}").getStatusCode().value()).isEqualTo(200);
         assertThat(usableStock(medicineId)).isEqualTo(7);
         assertThat(prescriptions.findById(prescriptionId).orElseThrow().getMedicineId()).isEqualTo(medicineId);
+    }
+
+    // ---------------------------------------------------- INV-6: the dispensing workflow
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> pendingQueue(String token) {
+        ResponseEntity<List> res = rest.exchange("/hospital/pharmacy/prescriptions/pending",
+                HttpMethod.GET, new HttpEntity<>(headers(token)), List.class);
+        assertThat(res.getStatusCode().value()).isEqualTo(200);
+        return res.getBody();
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> dispensableMedicines(String token, String prefix, String query) {
+        ResponseEntity<List> res = rest.exchange(
+                prefix + "/pharmacy/dispense/medicines" + (query == null ? "" : "?query=" + query),
+                HttpMethod.GET, new HttpEntity<>(headers(token)), List.class);
+        assertThat(res.getStatusCode().value()).isEqualTo(200);
+        return res.getBody();
+    }
+
+    private Map<String, Object> queueRow(List<Map<String, Object>> queue, String medicineName) {
+        return queue.stream().filter(r -> medicineName.equals(r.get("medicineName")))
+                .findFirst().orElseThrow(() -> new AssertionError(
+                        medicineName + " is missing from the dispensing queue: " + queue));
+    }
+
+    /**
+     * The whole reported journey, end to end and persisted: admin receives a batch, doctor
+     * prescribes for an IPD patient, the order reaches both the nurse's chart and the dispensing
+     * queue, the dispensing user reconciles it and issues five units, stock falls by exactly five,
+     * the ledger explains it, and the nurse then administers without stock moving again.
+     */
+    @Test
+    void theFullDispensingJourney_movesStockExactlyOnce() {
+        String name = "Cefixime " + uniq();
+        LocalDate expiry = LocalDate.now().plusMonths(8);
+        assertThat(post("/hospital/medicines/purchases", adminA, purchaseBody(name, 40, expiry, "BATCH-A"))
+                .getStatusCode().value()).isEqualTo(200);
+        Long medicineId = medicineIdByName(name);
+
+        // The doctor writes the order as free text -- no inventory row attached.
+        assertThat(post("/hospital/ipd/" + admissionA.getId() + "/prescriptions", doctorTokenA,
+                "{\"medicineName\":\"" + name + "\",\"dose\":\"200mg\",\"frequency\":\"1-0-1\","
+                        + "\"durationDays\":5,\"startDate\":\"" + LocalDate.now() + "\","
+                        + "\"type\":\"TABLET\",\"route\":\"ORAL\"}")
+                .getStatusCode().value()).isEqualTo(200);
+        Long prescriptionId = prescriptions.findByIpdAdmissionIdAndStatus(admissionA.getId(), "ACTIVE")
+                .stream().filter(p -> name.equals(p.getMedicineName()))
+                .findFirst().orElseThrow().getId();
+
+        // It is on the nurse's chart, and on the dispensing queue, as UNLINKED in both.
+        assertThat(row(chart(nurseTokenA, admissionA.getId()), name).get("inventoryStatus"))
+                .isEqualTo("UNLINKED");
+        Map<String, Object> queued = queueRow(pendingQueue(adminA), name);
+        assertThat(queued.get("inventoryStatus")).isEqualTo("UNLINKED");
+        assertThat(queued.get("medicineId")).isNull();
+        assertThat(((Number) queued.get("quantityDispensed")).intValue()).isZero();
+
+        // The dispensing user picks the medicine from this facility's own list and issues five.
+        List<Map<String, Object>> options = dispensableMedicines(adminA, "/hospital", null);
+        Map<String, Object> option = options.stream()
+                .filter(o -> name.equals(o.get("name"))).findFirst().orElseThrow();
+        assertThat(((Number) option.get("availableQuantity")).intValue()).isEqualTo(40);
+        assertThat(option.get("earliestExpiry")).isEqualTo(expiry.toString());
+
+        assertThat(post("/hospital/pharmacy/dispense/" + prescriptionId, adminA,
+                "{\"quantity\":5,\"medicineId\":" + option.get("medicineId")
+                        + ",\"idempotencyKey\":\"j-" + uniq() + "\"}")
+                .getStatusCode().value()).isEqualTo(200);
+
+        assertThat(usableStock(medicineId)).as("exactly five units left the shelf").isEqualTo(35);
+        assertThat(movements.dispensedForPrescription(hospitalA.getId(), prescriptionId)).isEqualTo(5);
+
+        // The ledger reconciles to what is physically there.
+        MedicineStockBatch lot = batches
+                .findByHospitalIdAndMedicineIdOrderByExpiryDateAsc(hospitalA.getId(), medicineId).get(0);
+        assertThat(movements.reconciledBatchQuantity(hospitalA.getId(), lot.getId()))
+                .isEqualTo(lot.getCurrentQuantity());
+
+        // Reconciling stuck: the queue and the chart now both read LINKED, with the issue visible.
+        Map<String, Object> afterIssue = queueRow(pendingQueue(adminA), name);
+        assertThat(afterIssue.get("inventoryStatus")).isEqualTo("LINKED_AVAILABLE");
+        assertThat(((Number) afterIssue.get("availableQuantity")).intValue()).isEqualTo(35);
+        assertThat(((Number) afterIssue.get("quantityDispensed")).intValue()).isEqualTo(5);
+
+        Map<String, Object> chartRow = row(chart(nurseTokenA, admissionA.getId()), name);
+        assertThat(chartRow.get("inventoryStatus")).isEqualTo("LINKED_AVAILABLE");
+        assertThat(((Number) chartRow.get("quantityDispensed")).intValue()).isEqualTo(5);
+
+        // The nurse gives the dose. Nothing moves.
+        assertThat(post("/hospital/nurse/medication", nurseTokenA,
+                "{\"ipdAdmissionId\":" + admissionA.getId() + ",\"prescriptionId\":" + prescriptionId
+                        + ",\"status\":\"GIVEN\",\"administeredTime\":\"" + LocalDateTime.now() + "\"}")
+                .getStatusCode().value()).isEqualTo(200);
+        assertThat(usableStock(medicineId)).as("administering is not a second withdrawal").isEqualTo(35);
+        assertThat(movements.dispensedForPrescription(hospitalA.getId(), prescriptionId)).isEqualTo(5);
+    }
+
+    /** Stock that has only expired lots is offered as zero, and cannot be issued. */
+    @Test
+    void expiredOnlyStockIsOfferedAsUnavailableAndCannotBeDispensed() {
+        String name = "Expired drug " + uniq();
+        post("/hospital/medicines/purchases", adminA, purchaseBody(name, 10, LocalDate.now().plusMonths(2), "E1"));
+        Long medicineId = medicineIdByName(name);
+
+        // Age the lot past its expiry, as time would.
+        MedicineStockBatch lot = batches
+                .findByHospitalIdAndMedicineIdOrderByExpiryDateAsc(hospitalA.getId(), medicineId).get(0);
+        lot.setExpiryDate(LocalDate.now().minusDays(1));
+        batches.save(lot);
+
+        Map<String, Object> option = dispensableMedicines(adminA, "/hospital", null).stream()
+                .filter(o -> name.equals(o.get("name"))).findFirst().orElseThrow();
+        assertThat(((Number) option.get("availableQuantity")).intValue())
+                .as("expired units are not stock").isZero();
+        assertThat(option.get("earliestExpiry")).isNull();
+
+        post("/hospital/ipd/" + admissionA.getId() + "/prescriptions", doctorTokenA,
+                "{\"medicineId\":" + medicineId + ",\"dose\":\"1\",\"frequency\":\"1-0-0\","
+                        + "\"durationDays\":1,\"startDate\":\"" + LocalDate.now() + "\","
+                        + "\"type\":\"TABLET\",\"route\":\"ORAL\"}");
+        Long prescriptionId = prescriptions.findByIpdAdmissionIdAndStatus(admissionA.getId(), "ACTIVE")
+                .stream().filter(p -> medicineId.equals(p.getMedicineId()))
+                .findFirst().orElseThrow().getId();
+
+        assertThat(post("/hospital/pharmacy/dispense/" + prescriptionId, adminA, "{\"quantity\":1}")
+                .getStatusCode().value()).isEqualTo(409);
+        assertThat(batches.findById(lot.getId()).orElseThrow().getCurrentQuantity())
+                .as("the expired lot is not touched").isEqualTo(10);
+    }
+
+    /** The picker shows this facility's medicines and nobody else's. */
+    @Test
+    void theMedicinePickerIsScopedToTheCallersFacility() {
+        String mine = "Mine " + uniq();
+        post("/hospital/medicines/purchases", adminA, purchaseBody(mine, 5, LocalDate.now().plusMonths(3), "M1"));
+
+        Hospital other = tenant("Picker", "HOSPITAL");
+        String otherAdmin = tokenFor(other, "HOSPITAL_ADMIN", "HOSPITAL");
+        String theirs = "Theirs " + uniq();
+        post("/hospital/medicines/purchases", otherAdmin,
+                purchaseBody(theirs, 5, LocalDate.now().plusMonths(3), "T1"));
+
+        assertThat(dispensableMedicines(adminA, "/hospital", null))
+                .extracting(o -> String.valueOf(o.get("name")))
+                .contains(mine)
+                .doesNotContain(theirs);
+    }
+
+    /**
+     * General hospital inventory -- gloves, syringes, linen -- is not a dispensable medicine and
+     * must never appear in the picker. It lives in its own table, and this pins that.
+     */
+    @Test
+    void generalHospitalInventoryItemsNeverAppearInTheMedicinePicker() {
+        com.hms.entity.HospitalInventory item = new com.hms.entity.HospitalInventory();
+        item.setHospitalId(hospitalA.getId());
+        item.setName("Surgical gloves " + uniq());
+        item.setStockQuantity(500);
+        item.setUnitPrice(2.0);
+        item.setIsActive(true);
+        hospitalInventory.save(item);
+
+        assertThat(dispensableMedicines(adminA, "/hospital", null))
+                .extracting(o -> String.valueOf(o.get("name")))
+                .doesNotContain(item.getName());
+    }
+
+    /** Search narrows the picker; it never narrows it to one automatic answer. */
+    @Test
+    void searchingThePickerNarrowsButNeverAutoSelects() {
+        String hit = "Searchable " + uniq();
+        String miss = "Unrelated " + uniq();
+        post("/hospital/medicines/purchases", adminA, purchaseBody(hit, 5, LocalDate.now().plusMonths(3), "S1"));
+        post("/hospital/medicines/purchases", adminA, purchaseBody(miss, 5, LocalDate.now().plusMonths(3), "S2"));
+
+        List<Map<String, Object>> found = dispensableMedicines(adminA, "/hospital", "Searchable");
+        assertThat(found).extracting(o -> String.valueOf(o.get("name")))
+                .contains(hit).doesNotContain(miss);
+    }
+
+    /** A doctor can read a prescription but must not be able to move stock with it. */
+    @Test
+    void aDoctorCannotDispense() {
+        String name = "Doctor drug " + uniq();
+        post("/hospital/medicines/purchases", adminA, purchaseBody(name, 20, LocalDate.now().plusMonths(4), "D9"));
+        Long medicineId = medicineIdByName(name);
+        post("/hospital/ipd/" + admissionA.getId() + "/prescriptions", doctorTokenA,
+                "{\"medicineId\":" + medicineId + ",\"dose\":\"1\",\"frequency\":\"1-0-0\","
+                        + "\"durationDays\":2,\"startDate\":\"" + LocalDate.now() + "\","
+                        + "\"type\":\"TABLET\",\"route\":\"ORAL\"}");
+        Long prescriptionId = prescriptions.findByIpdAdmissionIdAndStatus(admissionA.getId(), "ACTIVE")
+                .stream().filter(p -> medicineId.equals(p.getMedicineId()))
+                .findFirst().orElseThrow().getId();
+
+        assertThat(post("/hospital/pharmacy/dispense/" + prescriptionId, doctorTokenA,
+                "{\"quantity\":2}").getStatusCode().is2xxSuccessful())
+                .as("viewing an order is not authority to move stock").isFalse();
+        assertThat(rest.exchange("/hospital/pharmacy/dispense/medicines", HttpMethod.GET,
+                        new HttpEntity<>(headers(doctorTokenA)), String.class)
+                .getStatusCode().is2xxSuccessful())
+                .as("nor to browse what could be moved").isFalse();
+        assertThat(usableStock(medicineId)).isEqualTo(20);
+    }
+
+    /** The same dispensing workflow, on the clinic aliases, for a clinic tenant. */
+    @Test
+    void aClinicDispensesThroughTheSameWorkflow() {
+        Hospital clinic = tenant("ClinicDisp", "CLINIC");
+        String clinicAdmin = tokenFor(clinic, "HOSPITAL_ADMIN", "CLINIC");
+        String name = "Clinic cefixime " + uniq();
+        LocalDate expiry = LocalDate.now().plusMonths(5);
+
+        assertThat(post("/clinic/medicines/purchases", clinicAdmin, purchaseBody(name, 30, expiry, "CB1"))
+                .getStatusCode().value()).isEqualTo(200);
+        Long medicineId = medicines.findByHospitalId(clinic.getId()).stream()
+                .filter(m -> name.equalsIgnoreCase(m.getName())).findFirst().orElseThrow().getId();
+
+        Map<String, Object> option = dispensableMedicines(clinicAdmin, "/clinic", null).stream()
+                .filter(o -> name.equals(o.get("name"))).findFirst().orElseThrow();
+        assertThat(((Number) option.get("availableQuantity")).intValue()).isEqualTo(30);
+        assertThat(option.get("earliestExpiry")).isEqualTo(expiry.toString());
+
+        // An OPD-style order for this clinic, then a dispense against it.
+        Doctor clinicDoctor = new Doctor();
+        clinicDoctor.setHospitalId(clinic.getId());
+        clinicDoctor.setName("Dr clinic");
+        clinicDoctor.setEmail("clinicdoc." + uniq() + "@inv.test");
+        clinicDoctor.setPublicId("cdpub-" + uniq());
+        clinicDoctor.setPhone("9800000003");
+        clinicDoctor.setSpecialization("Gen");
+        clinicDoctor.setIsActive(true);
+        clinicDoctor = doctors.save(clinicDoctor);
+
+        com.hms.entity.MedicalRecord record = new com.hms.entity.MedicalRecord();
+        record.setHospitalId(clinic.getId());
+        record.setPatientId(1L);
+        record.setDoctorId(clinicDoctor.getId());
+        record.setVisitType("OPD");
+        record = medicalRecords.save(record);
+
+        com.hms.entity.Prescription order = new com.hms.entity.Prescription();
+        order.setHospitalId(clinic.getId());
+        order.setMedicalRecordId(record.getId());
+        order.setMedicineName(name);
+        order.setStatus("ACTIVE");
+        order.setType("TABLET");
+        order.setRoute("ORAL");
+        order = prescriptions.save(order);
+
+        assertThat(post("/clinic/pharmacy/dispense/" + order.getId(), clinicAdmin,
+                "{\"quantity\":7,\"medicineId\":" + medicineId + "}")
+                .getStatusCode().value()).isEqualTo(200);
+
+        assertThat(batches.availableQuantity(clinic.getId(), medicineId, LocalDate.now())).isEqualTo(23);
+        assertThat(movements.dispensedForPrescription(clinic.getId(), order.getId())).isEqualTo(7);
+        assertThat(prescriptions.findById(order.getId()).orElseThrow().getMedicineId())
+                .as("the reconciliation is remembered").isEqualTo(medicineId);
     }
 }

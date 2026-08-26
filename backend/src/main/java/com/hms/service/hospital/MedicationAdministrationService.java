@@ -51,6 +51,7 @@ public class MedicationAdministrationService {
     @Autowired private AuditLogService auditLogService;
     @Autowired private com.hms.service.RealtimeNotifier notifier;
     @Autowired private MedicineStockService medicineStockService;
+    @Autowired private com.hms.repository.StockMovementRepository stockMovementRepository;
 
     /**
      * ACTIVE prescriptions for an admission — the medicine list the nurse
@@ -141,6 +142,11 @@ public class MedicationAdministrationService {
      */
     private void annotateInventory(com.hms.dto.MedicationChartItemDTO d, Prescription p, Long hospitalId) {
         d.setMedicineId(p.getMedicineId());
+        try {
+            d.setQuantityDispensed(stockMovementRepository.dispensedForPrescription(hospitalId, p.getId()));
+        } catch (Exception e) {
+            logger.warn("Could not read dispensing history for prescription {}: {}", p.getId(), e.getMessage());
+        }
         if (p.getMedicineId() == null) {
             d.setInventoryStatus("UNLINKED");
             return;

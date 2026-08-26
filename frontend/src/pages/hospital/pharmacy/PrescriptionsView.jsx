@@ -5,6 +5,7 @@ import useWebSocket from '../../../hooks/useWebSocket';
 import authService from '../../../services/authService';
 import hospitalService from '../../../services/hospitalService';
 import { printHtml } from '../../../utils/printHtml';
+import DispenseModal from './DispenseModal';
 
 const PrescriptionsView = ({ onNavigate }) => {
   const user = authService.getCurrentUser();
@@ -14,6 +15,58 @@ const PrescriptionsView = ({ onNavigate }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [sourceFilter, setSourceFilter] = useState('ALL');
+  const [dispensing, setDispensing] = useState(null);
+  const canDispense = user?.role === 'PHARMACIST' || user?.role === 'HOSPITAL_ADMIN';
+
+  /**
+   * What inventory knows about one ordered medicine.
+   *
+   * "Not linked" and "no usable stock" are shown differently on purpose. An order written as free
+   * text has no inventory row attached, so the facility's stock for it is unknown — rendering that
+   * as a zero tells the pharmacist a drug is unavailable when nothing of the sort is known.
+   */
+  const stockCell = (med) => {
+    if (med.inventoryStatus === 'LINKED_AVAILABLE') {
+      return (
+        <div className="leading-tight">
+          <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-green-100 text-green-700">
+            {med.availableQuantity} usable
+          </span>
+          {med.earliestExpiry && (
+            <div className="text-[10px] text-gray-500 mt-1">exp {med.earliestExpiry}</div>
+          )}
+          {med.quantityDispensed > 0 && (
+            <div className="text-[10px] text-gray-500">issued {med.quantityDispensed}</div>
+          )}
+        </div>
+      );
+    }
+    if (med.inventoryStatus === 'LINKED_NO_STOCK') {
+      return (
+        <div className="leading-tight">
+          <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-red-100 text-red-700">
+            NO USABLE STOCK
+          </span>
+          {med.quantityDispensed > 0 && (
+            <div className="text-[10px] text-gray-500 mt-1">issued {med.quantityDispensed}</div>
+          )}
+        </div>
+      );
+    }
+    return (
+      <div className="leading-tight">
+        <span
+          className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-gray-100 text-gray-600"
+          title="No inventory item selected for this order — stock is unknown, not zero"
+        >
+          NOT LINKED
+        </span>
+        {med.quantityDispensed > 0 && (
+          <div className="text-[10px] text-gray-500 mt-1">issued {med.quantityDispensed}</div>
+        )}
+      </div>
+    );
+  };
 
   const handlePrintPrescription = (rx) => {
     if (!rx) return;
@@ -129,6 +182,12 @@ const PrescriptionsView = ({ onNavigate }) => {
         frequency: item.frequency || '-',
         duration: item.duration || '-',
         instructions: item.instructions || '',
+        // Inventory reconciliation travels with the individual order, not the visit.
+        medicineId: item.medicineId ?? null,
+        inventoryStatus: item.inventoryStatus || 'UNLINKED',
+        availableQuantity: item.availableQuantity,
+        earliestExpiry: item.earliestExpiry,
+        quantityDispensed: item.quantityDispensed ?? 0,
       });
     });
 
@@ -302,6 +361,19 @@ const PrescriptionsView = ({ onNavigate }) => {
         </div>
       </div>
 
+      {dispensing && (
+        <DispenseModal
+          prescription={dispensing}
+          onClose={() => setDispensing(null)}
+          onDispensed={async () => {
+            // Refetch before the modal closes, so the report the user returns to already shows the
+            // new stock rather than the figure they just changed.
+            await fetchData(false);
+            setSelectedPrescription(null);
+          }}
+        />
+      )}
+
       {/* Prescription View Modal (Report overlay) */}
       {selectedPrescription && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-hidden">
@@ -426,6 +498,8 @@ const PrescriptionsView = ({ onNavigate }) => {
                         <th className="py-2 text-left w-1/2">Item Particulars</th>
                         <th className="py-2 text-center">Frequency</th>
                         <th className="py-2 text-right">Duration</th>
+                        <th className="py-2 text-right">Stock</th>
+                        {canDispense && <th className="py-2 text-right">Action</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -452,6 +526,18 @@ const PrescriptionsView = ({ onNavigate }) => {
                           <td className="py-3 text-right align-top font-medium text-gray-700">
                             {med.duration}
                           </td>
+                          <td className="py-3 text-right align-top">{stockCell(med)}</td>
+                          {canDispense && (
+                            <td className="py-3 text-right align-top">
+                              <button
+                                type="button"
+                                onClick={() => setDispensing(med)}
+                                className="px-3 py-1 text-[11px] font-bold rounded border border-gray-300 text-gray-700 hover:bg-gray-900 hover:text-white transition-colors"
+                              >
+                                Dispense
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>

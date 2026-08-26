@@ -491,6 +491,19 @@ const hospitalService = {
    * `idempotencyKey` should stay the same across retries of one act of dispensing, so a resent
    * request posts stock once.
    */
+  /**
+   * The facility's own medicines with usable stock, for reconciling a free-text order.
+   *
+   * Tenant-scoped on the server. Returns candidates, never a single automatic answer — two rows
+   * can share a name and choosing between them is the dispensing user's call.
+   */
+  getDispensableMedicines: async (query = '') => {
+    const response = await apiClient.get(
+      `/hospital/pharmacy/dispense/medicines${query ? `?query=${encodeURIComponent(query)}` : ''}`
+    );
+    return response.data;
+  },
+
   dispenseMedicine: async (prescriptionId, { quantity, medicineId, idempotencyKey, remarks } = {}) => {
     const response = await apiClient.post(`/hospital/pharmacy/dispense/${prescriptionId}`, {
       quantity,

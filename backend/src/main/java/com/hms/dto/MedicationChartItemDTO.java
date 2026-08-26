@@ -59,4 +59,13 @@ public class MedicationChartItemDTO {
 
     /** Expiry of the batch that would be dispensed first (FEFO). Null when nothing is usable. */
     private LocalDate earliestExpiry;
+
+    /**
+     * Units already issued from the pharmacy against this order.
+     *
+     * <p>Shown so the nurse can see whether the drug has actually reached the ward, which is a
+     * different question from whether it has been given. Zero here does not block administering:
+     * plenty of facilities issue ward stock without a per-order dispense record.
+     */
+    private Integer quantityDispensed;
 }
