@@ -301,7 +301,10 @@ class OtRoleJourneyTest {
 
         // Admin: configures, and deliberately does not run cases.
         allowed(get("/hospital/ot/permissions", adminToken), "read the permission matrix", "HOSPITAL_ADMIN");
-        allowed(get("/hospital/ot/surgeries/waiting-list", adminToken), "read the waiting list", "HOSPITAL_ADMIN");
+        // Asserting the status, not merely "not 403": this URL was previously wrong in the
+        // frontend service, and a 404 would satisfy a not-403 check for entirely the wrong reason.
+        assertThat(get("/hospital/surgeries/waiting-list", adminToken).getStatusCode().value())
+                .as("the admin's read-only view of the theatre must actually serve").isEqualTo(200);
         // /surgeries/board is the SCHEDULING worklist and asks for OT_SCHEDULE, which the admin
         // default deliberately withholds; the read-only views above are its way in.
         refused(get("/hospital/surgeries/board", adminToken), "the scheduling worklist", "HOSPITAL_ADMIN");

@@ -49,6 +49,10 @@ const OtBoard = ({
   onExecute,
   onRecovery,
   onClose,
+  onApprove,
+  onPreOp,
+  onAnaesthesia,
+  onPostpone,
 }) => {
   if (!rows || rows.length === 0) {
     return <div className="text-center text-gray-400 py-16">No surgeries to show.</div>;
@@ -98,6 +102,14 @@ const OtBoard = ({
                 <td className="px-4 py-3 text-right whitespace-nowrap">
                   {mode === 'requests' && (
                     <>
+                      {onApprove && r.status === 'REQUESTED' && (
+                        <button
+                          onClick={() => onApprove(r)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 mr-2"
+                        >
+                          Approve
+                        </button>
+                      )}
                       {onSchedule && (
                       <button
                         onClick={() => onSchedule(r)}
@@ -126,7 +138,7 @@ const OtBoard = ({
                   )}
                   {mode === 'board' &&
                     onExecute &&
-                    (r.status === 'SCHEDULED' || r.status === 'IN_PROGRESS') && (
+                    (r.status === 'SCHEDULED' || r.status === 'PRE_OP' || r.status === 'IN_PROGRESS') && (
                       <button
                         onClick={() => onExecute(r)}
                         className="px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 border border-indigo-200 hover:bg-indigo-50 mr-2"
@@ -134,7 +146,35 @@ const OtBoard = ({
                         Checklist
                       </button>
                     )}
-                  {mode === 'board' && onStart && r.status === 'SCHEDULED' && (
+                  {mode === 'board' && onPreOp && r.status === 'SCHEDULED' && (
+                    <button
+                      onClick={() => onPreOp(r)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-300 hover:bg-gray-50 mr-2"
+                    >
+                      Pre-op
+                    </button>
+                  )}
+                  {mode === 'board' &&
+                    onAnaesthesia &&
+                    (r.status === 'SCHEDULED' || r.status === 'PRE_OP') && (
+                      <button
+                        onClick={() => onAnaesthesia(r)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-300 hover:bg-gray-50 mr-2"
+                      >
+                        Anaesthesia
+                      </button>
+                    )}
+                  {mode === 'board' &&
+                    onPostpone &&
+                    (r.status === 'SCHEDULED' || r.status === 'PRE_OP') && (
+                      <button
+                        onClick={() => onPostpone(r)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold text-amber-700 border border-amber-200 hover:bg-amber-50 mr-2"
+                      >
+                        Postpone
+                      </button>
+                    )}
+                  {mode === 'board' && onStart && (r.status === 'SCHEDULED' || r.status === 'PRE_OP') && (
                     <button
                       onClick={() => onStart(r)}
                       className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-green-600 hover:bg-green-700"

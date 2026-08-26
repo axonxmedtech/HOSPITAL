@@ -12,6 +12,7 @@ import { extractApiError } from '../../utils/apiError';
 import OtAnalyticsStrip from './ot/OtAnalyticsStrip';
 import OtBoard from './ot/OtBoard';
 import OtDayBoard from './ot/OtDayBoard';
+import AnaesthesiaClearanceModal from './ot/AnaesthesiaClearanceModal';
 import RecoveryModal from './ot/RecoveryModal';
 import ScheduleSurgeryModal from './ot/ScheduleSurgeryModal';
 import SurgeryExecutionModal from './ot/SurgeryExecutionModal';
@@ -54,6 +55,7 @@ const OtInchargeDashboard = () => {
   const [execTarget, setExecTarget] = useState(null);
   const [recoveryTarget, setRecoveryTarget] = useState(null);
   const [scheduleTarget, setScheduleTarget] = useState(null);
+  const [anaesthesiaTarget, setAnaesthesiaTarget] = useState(null);
 
   const today = new Date();
   const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -173,6 +175,12 @@ const OtInchargeDashboard = () => {
                 can('OT_RECOVERY') || can('OT_TRANSFER') ? (r) => setRecoveryTarget(r) : undefined
               }
               onClose={can('OT_CLOSE') ? act('closed', otService.close) : undefined}
+              onApprove={can('OT_APPROVE') ? act('approved', otService.approve) : undefined}
+              onPreOp={can('OT_PRE_OP') ? act('moved to pre-op', otService.preOp) : undefined}
+              onAnaesthesia={
+                can('OT_ANAESTHESIA_CLEARANCE') ? (r) => setAnaesthesiaTarget(r) : undefined
+              }
+              onPostpone={can('OT_RESCHEDULE') ? act('postponed', otService.postpone) : undefined}
             />
           )}
         </main>
@@ -197,6 +205,13 @@ const OtInchargeDashboard = () => {
             setRecoveryTarget(null);
             load();
           }}
+        />
+      )}
+      {anaesthesiaTarget && (
+        <AnaesthesiaClearanceModal
+          surgery={anaesthesiaTarget}
+          onClose={() => setAnaesthesiaTarget(null)}
+          onRecorded={load}
         />
       )}
       {scheduleTarget && (

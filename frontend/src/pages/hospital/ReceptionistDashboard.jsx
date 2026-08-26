@@ -46,6 +46,7 @@ import OtDayBoard from './ot/OtDayBoard';
 import OtListPrint from './ot/OtListPrint';
 import RecoveryModal from './ot/RecoveryModal';
 import ScheduleSurgeryModal from './ot/ScheduleSurgeryModal';
+import AnaesthesiaClearanceModal from './ot/AnaesthesiaClearanceModal';
 import SurgeryExecutionModal from './ot/SurgeryExecutionModal';
 import SurgeryTeamModal from './ot/SurgeryTeamModal';
 
@@ -251,6 +252,7 @@ const ReceptionistDashboard = () => {
   const [otRows, setOtRows] = useState([]);
   const [otLoading, setOtLoading] = useState(false);
   const [otScheduleTarget, setOtScheduleTarget] = useState(null);
+  const [otAnaesthesiaTarget, setOtAnaesthesiaTarget] = useState(null);
 
   const { success, error: toastError, info } = useToast();
   const navigate = useNavigate();
@@ -1999,6 +2001,54 @@ const ReceptionistDashboard = () => {
                             }
                           : undefined
                       }
+                      onApprove={
+                        canOt('OT_APPROVE')
+                          ? async (r) => {
+                              try {
+                                await otService.approve(r.publicId);
+                                loadOt();
+                              } catch (e) {
+                                toastError(e?.response?.data?.error || 'Failed to approve');
+                              }
+                            }
+                          : undefined
+                      }
+                      onPreOp={
+                        canOt('OT_PRE_OP')
+                          ? async (r) => {
+                              try {
+                                await otService.preOp(r.publicId);
+                                loadOt();
+                              } catch (e) {
+                                toastError(e?.response?.data?.error || 'Failed to enter pre-op');
+                              }
+                            }
+                          : undefined
+                      }
+                      onAnaesthesia={
+                        canOt('OT_ANAESTHESIA_CLEARANCE')
+                          ? (r) => setOtAnaesthesiaTarget(r)
+                          : undefined
+                      }
+                      onPostpone={
+                        canOt('OT_RESCHEDULE')
+                          ? async (r) => {
+                              try {
+                                await otService.postpone(r.publicId);
+                                loadOt();
+                              } catch (e) {
+                                toastError(e?.response?.data?.error || 'Failed to postpone');
+                              }
+                            }
+                          : undefined
+                      }
+                    />
+                  )}
+                  {otAnaesthesiaTarget && (
+                    <AnaesthesiaClearanceModal
+                      surgery={otAnaesthesiaTarget}
+                      onClose={() => setOtAnaesthesiaTarget(null)}
+                      onRecorded={loadOt}
                     />
                   )}
                   {otTeamTarget && (
