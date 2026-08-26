@@ -34,6 +34,13 @@ public class MedicationAdministrationService {
     private static final Set<String> STATUSES = Set.of("GIVEN", "SKIPPED", "DELAYED", "REFUSED", "NOT_AVAILABLE");
     private static final Set<String> TIME_REQUIRED = Set.of("GIVEN", "DELAYED");
 
+    /**
+     * How close together two identical entries have to be to count as one double-submitted act
+     * rather than two real ones. Wide enough to absorb a double click and a client retry, far
+     * short of any real dosing interval.
+     */
+    private static final int DUPLICATE_WINDOW_SECONDS = 60;
+
     @Autowired private MedicationAdministrationRepository marRepository;
     @Autowired private PrescriptionRepository prescriptionRepository;
     @Autowired private IpdAdmissionRepository ipdAdmissionRepository;
@@ -43,6 +50,8 @@ public class MedicationAdministrationService {
     @Autowired private com.hms.security.PerformingNurseResolver performingNurseResolver;
     @Autowired private AuditLogService auditLogService;
     @Autowired private com.hms.service.RealtimeNotifier notifier;
+    @Autowired private MedicineStockService medicineStockService;
+    @Autowired private com.hms.repository.StockMovementRepository stockMovementRepository;
 
     /**
      * ACTIVE prescriptions for an admission — the medicine list the nurse
@@ -114,9 +123,45 @@ public class MedicationAdministrationService {
                 d.setLastAdministeredAt(last.getAdministeredTime());
                 d.setLastAdministeredStatus(last.getStatus());
             }
+            annotateInventory(d, p, hospitalId);
             result.add(d);
         }
         return result;
+    }
+
+    /**
+     * Say what is known about this order's stock, without ever hiding the order.
+     *
+     * <p>The bug this replaces: an order the inventory could not account for was shown as though
+     * the facility held none of it. A nurse reading "0 in stock" against a live prescription
+     * concludes the drug is unavailable, when in truth nobody had linked the order to a stock row
+     * -- a data-entry gap reported as a clinical one. Absent and empty are different answers and
+     * are now given different names.
+     *
+     * <p>Failures here are swallowed on purpose. This is advisory decoration on a clinical
+     * record; an inventory problem must not be able to blank the medication chart.
+     */
+    private void annotateInventory(com.hms.dto.MedicationChartItemDTO d, Prescription p, Long hospitalId) {
+        d.setMedicineId(p.getMedicineId());
+        try {
+            d.setQuantityDispensed(stockMovementRepository.dispensedForPrescription(hospitalId, p.getId()));
+        } catch (Exception e) {
+            logger.warn("Could not read dispensing history for prescription {}: {}", p.getId(), e.getMessage());
+        }
+        if (p.getMedicineId() == null) {
+            d.setInventoryStatus("UNLINKED");
+            return;
+        }
+        try {
+            int available = medicineStockService.availableQuantityFor(p.getMedicineId(), hospitalId);
+            d.setAvailableQuantity(available);
+            d.setEarliestExpiry(medicineStockService.earliestUsableExpiry(p.getMedicineId(), hospitalId));
+            d.setInventoryStatus(available <= 0 ? "LINKED_NO_STOCK" : "LINKED_AVAILABLE");
+        } catch (Exception e) {
+            // Including the case where the linked medicine has since been removed from inventory.
+            logger.warn("Could not read stock for prescription {}: {}", p.getId(), e.getMessage());
+            d.setInventoryStatus("UNLINKED");
+        }
     }
 
     @Transactional
@@ -149,6 +194,23 @@ public class MedicationAdministrationService {
         }
         if (administeredTime != null && administeredTime.isAfter(LocalDateTime.now().plusMinutes(1))) {
             throw new IllegalArgumentException("Administered time cannot be in the future");
+        }
+
+        // A double-clicked "Given" is not two doses.
+        //
+        // Nothing stopped the same administration being written twice: the second click created a
+        // second row, and the chart then showed a patient having received two doses when they had
+        // received one. It is not fixed with a unique key -- giving the same drug again later in
+        // the day is normal and must stay recordable -- so what is refused is specifically a
+        // repeat of the same order, with the same outcome, moments after the first.
+        LocalDateTime repeatCutoff = LocalDateTime.now().minusSeconds(DUPLICATE_WINDOW_SECONDS);
+        List<MedicationAdministration> recent = marRepository
+                .findByPrescriptionIdAndStatusAndIsActiveTrueAndCreatedAtAfter(
+                        prescription.getId(), status, repeatCutoff);
+        if (!recent.isEmpty()) {
+            throw new com.hms.exception.ConflictException(
+                    prescription.getMedicineName() + " was already recorded as " + status
+                    + " a moment ago. Refresh the chart before recording it again.");
         }
 
         MedicationAdministration mar = new MedicationAdministration();

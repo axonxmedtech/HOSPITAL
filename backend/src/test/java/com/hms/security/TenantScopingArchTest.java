@@ -88,13 +88,15 @@ class TenantScopingArchTest {
             "HospitalStatsController#downloadPatientActivityPdf",
             "HospitalTicketController#createTicket",
             "InitialAssessmentService#requireAdmission",
-            "InventoryService#deductStock",
-            "InventoryService#updateStock",
             "InventoryTransactionService#getTransactionHistory",
             "IpdAdmissionService#addIpdFollowup",
             "IpdAdmissionService#addIpdPrescription",
-            "IpdAdmissionService#administerHospitalItems",
+            // Remaining by-id load here is hospitalRepository.findById(hospitalId) where the id
+            // comes from the authenticated token, not the request. The request-controlled
+            // medicine lookup that used to make this entry false-safe is now
+            // findByIdAndHospitalId (see IpdMedicineTenantIsolationTest).
             "IpdAdmissionService#administerItems",
+            "IpdAdmissionService#administerHospitalItems",
             "IpdAdmissionService#admitFromOpd",
             "IpdAdmissionService#changeBed",
             "IpdAdmissionService#confirmDischarge",

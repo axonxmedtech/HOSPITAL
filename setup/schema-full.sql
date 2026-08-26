@@ -647,6 +647,7 @@ CREATE TABLE `prescriptions` (
   `frequency` varchar(50) DEFAULT NULL,
   `hospital_id` bigint NOT NULL,
   `instructions` varchar(200) DEFAULT NULL,
+  `food_timing` varchar(20) DEFAULT NULL,
   `medical_record_id` bigint NOT NULL,
   `medicine_name` varchar(255) NOT NULL,
   `route` varchar(255) NOT NULL,
@@ -1558,6 +1559,57 @@ CREATE TABLE `ot_recovery_episodes` (
 -- OT-P0B — a recovery bay is the smallest additive location representation: occupancy is
 -- derived from whether an undischarged ot_recovery_episodes row currently references it, never
 -- an ot_rooms row (a theatre is freed the moment its case COMPLETEs; recovery is separate).
+-- INV-2/INV-3 — batch-aware Hospital/Clinic medicine stock. Different batch numbers / expiries
+-- stay distinct rows; availability is SUM(current_quantity) over active, unexpired batches.
+CREATE TABLE `medicine_stock_batches` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(36) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `medicine_id` bigint NOT NULL,
+  `batch_number` varchar(100) NOT NULL,
+  `expiry_date` date NOT NULL,
+  `received_quantity` int NOT NULL DEFAULT '0',
+  `current_quantity` int NOT NULL DEFAULT '0',
+  `unit_price` double DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `received_at` datetime(6) NOT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_medicine_stock_batch_public_id` (`public_id`),
+  UNIQUE KEY `uk_medicine_batch` (`hospital_id`,`medicine_id`,`batch_number`),
+  KEY `idx_medicine_batch_fefo` (`hospital_id`,`medicine_id`,`expiry_date`),
+  CONSTRAINT `FK_medicine_batch_medicine` FOREIGN KEY (`medicine_id`) REFERENCES `medicines` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `ck_medicine_batch_qty_non_negative` CHECK ((`current_quantity` >= 0))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Append-only ledger for every Hospital/Clinic stock change. Never updated, never deleted --
+-- corrections are compensating movements.
+CREATE TABLE `stock_movements` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(36) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `inventory_domain` varchar(20) NOT NULL,
+  `item_id` bigint NOT NULL,
+  `batch_id` bigint DEFAULT NULL,
+  `movement_type` varchar(30) NOT NULL,
+  `direction` varchar(3) NOT NULL,
+  `quantity` int NOT NULL,
+  `balance_after` int DEFAULT NULL,
+  `reference_type` varchar(40) DEFAULT NULL,
+  `reference_id` bigint DEFAULT NULL,
+  `idempotency_key` varchar(100) DEFAULT NULL,
+  `performed_by_user_id` bigint DEFAULT NULL,
+  `remarks` varchar(255) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_stock_movement_public_id` (`public_id`),
+  UNIQUE KEY `uk_stock_movement_idempotency` (`hospital_id`,`idempotency_key`,`batch_id`),
+  KEY `idx_stock_movement_item` (`hospital_id`,`inventory_domain`,`item_id`,`id`),
+  KEY `idx_stock_movement_batch` (`hospital_id`,`batch_id`,`id`),
+  CONSTRAINT `ck_stock_movement_qty_positive` CHECK ((`quantity` > 0)),
+  CONSTRAINT `ck_stock_movement_direction` CHECK ((`direction` in (_utf8mb4'IN',_utf8mb4'OUT')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE `recovery_bays` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `public_id` varchar(36) NOT NULL,

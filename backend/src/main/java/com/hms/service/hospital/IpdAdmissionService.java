@@ -629,7 +629,11 @@ public class IpdAdmissionService {
                     throw new IllegalArgumentException("Administered item quantity must be positive");
                 }
                 if (item.getMedicineId() != null) {
-                    com.hms.entity.Medicine med = medicineRepository.findById(item.getMedicineId())
+                    // Tenant-scoped: medicineId arrives from the request body, so an unscoped
+                    // findById let a caller in one hospital decrement another hospital's stock.
+                    // DoctorService's copy of this block always carried the check; these two did not.
+                    com.hms.entity.Medicine med = medicineRepository
+                            .findByIdAndHospitalId(item.getMedicineId(), hospitalId)
                             .orElseThrow(() -> new ResourceNotFoundException("Medicine not found in active inventory: ID " + item.getMedicineId()));
 
                     if (med.getStockQuantity() < item.getQuantity()) {
@@ -721,7 +725,11 @@ public class IpdAdmissionService {
                     throw new IllegalArgumentException("Administered item quantity must be positive");
                 }
                 if (item.getMedicineId() != null) {
-                    com.hms.entity.Medicine med = medicineRepository.findById(item.getMedicineId())
+                    // Tenant-scoped: medicineId arrives from the request body, so an unscoped
+                    // findById let a caller in one hospital decrement another hospital's stock.
+                    // DoctorService's copy of this block always carried the check; these two did not.
+                    com.hms.entity.Medicine med = medicineRepository
+                            .findByIdAndHospitalId(item.getMedicineId(), hospitalId)
                             .orElseThrow(() -> new ResourceNotFoundException("Medicine not found in active inventory: ID " + item.getMedicineId()));
 
                     if (med.getStockQuantity() < item.getQuantity()) {
@@ -890,18 +898,9 @@ public class IpdAdmissionService {
             latest = mrs.get(0);
         }
 
-        // Resolve medicine name:
-        // Priority 1: explicit name from request (doctor typed it manually)
-        // Priority 2: look up from inventory by medicineId
-        // Priority 3: fallback label using medicineId
         String medicineName = req.getMedicineName() != null && !req.getMedicineName().trim().isEmpty()
                 ? req.getMedicineName().trim()
                 : null;
-        if (medicineName == null && req.getMedicineId() != null) {
-            medicineName = medicineRepository.findById(req.getMedicineId())
-                    .map(m -> m.getName())
-                    .orElse(null);
-        }
         if ((req.getMedicineName() == null || req.getMedicineName().trim().isEmpty()) && req.getMedicineId() == null) {
             throw new IllegalArgumentException("Either Medicine Name or Medicine ID is required");
         }
@@ -924,14 +923,31 @@ public class IpdAdmissionService {
             throw new IllegalArgumentException("Prescription duration must be at least 1 day");
         }
 
+        // Resolve the medicine, and with it the optional link to stock. After validation, so a
+        // badly-formed order is reported as badly formed rather than as a lookup failure.
+        //
+        // A medicineId means the prescriber picked a row out of this facility's inventory, and
+        // keeping that link is what later lets the nurse's chart show real stock instead of
+        // guessing. It is scoped to the caller's facility because the id arrives in the request
+        // body: unscoped, it read another hospital's medicine and copied its name onto this order.
+        //
+        // No medicineId means the doctor typed a name. That is a valid order and is stored as
+        // typed; nothing here goes looking for an inventory row that might match the text.
+        com.hms.entity.Medicine linkedMedicine = null;
+        if (req.getMedicineId() != null) {
+            linkedMedicine = medicineRepository.findByIdAndHospitalId(req.getMedicineId(), hospitalId)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Medicine not found in this facility's inventory: ID " + req.getMedicineId()));
+        }
         if (medicineName == null) {
-            medicineName = req.getMedicineId() != null ? "MED-" + req.getMedicineId() : "Unknown Medicine";
+            medicineName = linkedMedicine.getName();
         }
 
         com.hms.entity.Prescription p = new com.hms.entity.Prescription();
         p.setHospitalId(hospitalId);
         p.setMedicalRecordId(latest.getId());
         p.setMedicineName(medicineName);
+        p.setMedicineId(linkedMedicine == null ? null : linkedMedicine.getId());
         p.setType(req.getType() != null ? req.getType() : "TABLET");
         p.setRoute(req.getRoute() != null ? req.getRoute() : "ORAL");
         p.setFoodTiming(com.hms.entity.FoodTiming.normalize(req.getFoodTiming()));

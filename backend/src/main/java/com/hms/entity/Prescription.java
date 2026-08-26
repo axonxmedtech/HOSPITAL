@@ -38,6 +38,22 @@ public class Prescription {
     @Column(nullable = false)
     private String medicineName;
 
+    /**
+     * The facility medicine this order refers to, when the prescriber picked one from stock.
+     *
+     * <p>Deliberately nullable, and deliberately never inferred. A doctor must be able to
+     * prescribe something the facility does not stock -- that is ordinary practice, not an error
+     * -- so the order stands on {@link #medicineName} alone and this stays null. Filling it in by
+     * matching the name against the inventory would attach a clinical order to whichever row
+     * happened to sort first, which is a worse answer than admitting the link is not there.
+     *
+     * <p>Set, it means someone chose that row: stock and expiry can be shown against the order,
+     * and a dispense can be posted for it. Null means UNLINKED, and the medication still appears
+     * on the chart and is still administered -- what is unknown is the stock, not the medicine.
+     */
+    @Column(name = "medicine_id")
+    private Long medicineId;
+
     @Column(length = 50)
     private String dosage; // e.g., "500mg"
 

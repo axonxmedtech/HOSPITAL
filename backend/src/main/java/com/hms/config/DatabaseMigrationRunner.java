@@ -129,10 +129,10 @@ public class DatabaseMigrationRunner {
         reconcileOtPermissionOrphanDefaults(); // OT-P0A — v2 defaults for already-configured hospitals
         ensureRecoveryBaysTable(); // OT-P0B — recovery admission needs a tenant-owned location
         addColumnIfMissing("ot_recovery_episodes", "recovery_bay_id", "BIGINT NULL");
-        // Food timing as its own column. No Flyway version is claimed for it on purpose: an
-        // inventory branch is in flight holding V14, and taking a number here would decide the
-        // order those two land in. Hibernate ddl-auto creates it; this is the safety net.
-        addColumnIfMissing("prescriptions", "food_timing", "VARCHAR(20) NULL");
+        ensureMedicineStockTables(); // INV-2/3 — batch-aware medicine stock + append-only ledger
+        addColumnIfMissing("prescriptions", "medicine_id", "BIGINT NULL");
+        addColumnIfMissing("medicine_purchases", "batch_number", "VARCHAR(100) NULL");
+        addColumnIfMissing("prescriptions", "food_timing", "VARCHAR(20) NULL"); // V15
     }
 
     /**
@@ -2368,6 +2368,78 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped (recovery_bays): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * INV-2/INV-3 safety net for the batch + ledger tables (Flyway V14 is the authority).
+     * Creation only -- the legacy medicines.stock_quantity -> opening-batch conversion lives in
+     * V14 alone, because a data backfill that ran on every boot could double-post stock.
+     */
+    private void ensureMedicineStockTables() {
+        try {
+            Integer batches = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES "
+                    + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'medicine_stock_batches'", Integer.class);
+            if (batches != null && batches == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE medicine_stock_batches ("
+                        + "  id BIGINT NOT NULL AUTO_INCREMENT,"
+                        + "  public_id VARCHAR(36) NOT NULL,"
+                        + "  hospital_id BIGINT NOT NULL,"
+                        + "  medicine_id BIGINT NOT NULL,"
+                        + "  batch_number VARCHAR(100) NOT NULL,"
+                        + "  expiry_date DATE NOT NULL,"
+                        + "  received_quantity INT NOT NULL DEFAULT 0,"
+                        + "  current_quantity INT NOT NULL DEFAULT 0,"
+                        + "  unit_price DOUBLE NULL,"
+                        + "  is_active TINYINT(1) NOT NULL DEFAULT 1,"
+                        + "  received_at DATETIME(6) NOT NULL,"
+                        + "  created_at DATETIME(6) NOT NULL,"
+                        + "  PRIMARY KEY (id),"
+                        + "  UNIQUE KEY uk_medicine_stock_batch_public_id (public_id),"
+                        + "  UNIQUE KEY uk_medicine_batch (hospital_id, medicine_id, batch_number),"
+                        + "  KEY idx_medicine_batch_fefo (hospital_id, medicine_id, expiry_date),"
+                        + "  CONSTRAINT FK_medicine_batch_medicine FOREIGN KEY (medicine_id) "
+                        + "    REFERENCES medicines (id) ON DELETE CASCADE,"
+                        + "  CONSTRAINT ck_medicine_batch_qty_non_negative CHECK (current_quantity >= 0)"
+                        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created medicine_stock_batches table");
+            }
+            Integer movements = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES "
+                    + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_movements'", Integer.class);
+            if (movements != null && movements == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE stock_movements ("
+                        + "  id BIGINT NOT NULL AUTO_INCREMENT,"
+                        + "  public_id VARCHAR(36) NOT NULL,"
+                        + "  hospital_id BIGINT NOT NULL,"
+                        + "  inventory_domain VARCHAR(20) NOT NULL,"
+                        + "  item_id BIGINT NOT NULL,"
+                        + "  batch_id BIGINT NULL,"
+                        + "  movement_type VARCHAR(30) NOT NULL,"
+                        + "  direction VARCHAR(3) NOT NULL,"
+                        + "  quantity INT NOT NULL,"
+                        + "  balance_after INT NULL,"
+                        + "  reference_type VARCHAR(40) NULL,"
+                        + "  reference_id BIGINT NULL,"
+                        + "  idempotency_key VARCHAR(100) NULL,"
+                        + "  performed_by_user_id BIGINT NULL,"
+                        + "  remarks VARCHAR(255) NULL,"
+                        + "  created_at DATETIME(6) NOT NULL,"
+                        + "  PRIMARY KEY (id),"
+                        + "  UNIQUE KEY uk_stock_movement_public_id (public_id),"
+                        + "  UNIQUE KEY uk_stock_movement_idempotency (hospital_id, idempotency_key, batch_id),"
+                        + "  KEY idx_stock_movement_item (hospital_id, inventory_domain, item_id, id),"
+                        + "  KEY idx_stock_movement_batch (hospital_id, batch_id, id),"
+                        + "  CONSTRAINT ck_stock_movement_qty_positive CHECK (quantity > 0),"
+                        + "  CONSTRAINT ck_stock_movement_direction CHECK (direction IN ('IN','OUT'))"
+                        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created stock_movements table");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (medicine stock tables): {}", e.getMessage());
         }
     }
 

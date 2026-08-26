@@ -187,6 +187,10 @@ public final class TenantTables {
         retain("surgery_team_members", Ownership.DIRECT);
         retain("who_checklists", Ownership.DIRECT);
         retain("case_roles", Ownership.DIRECT);
+        // INV-2/INV-3: clinical + financial stock records. Retained, never purge-safe --
+        // a medicine batch and its movement ledger are dispensing history.
+        retain("medicine_stock_batches", Ownership.DIRECT);
+        retain("stock_movements", Ownership.DIRECT);
         retain("ot_recovery_episodes", Ownership.DIRECT);
         retain("ot_recovery_observations", Ownership.DIRECT);
         retain("ot_room_occupancy", Ownership.DIRECT);
