@@ -12,7 +12,44 @@ const esch = escapeHtml;
 // Prints vitals as the NABH "INPUT & OUTPUT CHART". Vital columns are filled
 // from our data; input/output columns are blank for offline entry. Flows to
 // extra pages with repeating headers.
-export const buildIoChartHtml = (rows, f, hospital) => {
+/**
+ * ICU-5: bucket I/O entries into the five NABH columns, keyed by the reading they sit closest to.
+ *
+ * <p>Fed from `icu_io_entry` ONLY. `VitalsRecord.urine_output_ml` is a separate point-in-time
+ * observation (D-2) and is deliberately NOT read here — the printed URINE O/P column reports
+ * recorded fluid output, not the observation, and the two must never be conflated.
+ *
+ * <p>An entry is attributed to the latest reading at or before it, so the printed row shows the
+ * fluids that occurred up to that observation. Entries superseded by a correction are excluded,
+ * so a corrected volume replaces its original rather than being printed twice.
+ */
+export const bucketIoEntries = (ordered, ioEntries) => {
+  const superseded = new Set(
+    (ioEntries || []).map((e) => e.supersedesIoEntryId).filter((id) => id != null)
+  );
+  const live = (ioEntries || []).filter((e) => !superseded.has(e.id));
+  const buckets = ordered.map(() => ({
+    IV_FLUIDS: 0,
+    ORAL: 0,
+    RYLES_ASPIRATION: 0,
+    URINE: 0,
+    VOMIT: 0,
+  }));
+  if (buckets.length === 0) return buckets;
+
+  live.forEach((e) => {
+    const at = new Date(e.occurredAt).getTime();
+    let idx = 0;
+    for (let i = 0; i < ordered.length; i++) {
+      if (new Date(ordered[i].recordedAt).getTime() <= at) idx = i;
+      else break;
+    }
+    if (buckets[idx][e.route] != null) buckets[idx][e.route] += Number(e.volumeMl) || 0;
+  });
+  return buckets;
+};
+
+export const buildIoChartHtml = (rows, f, hospital, ioEntries) => {
   const hname = esch(titleCase(hospital.name)) || 'Hospital';
   const patientName = [f.patientSurname, f.patientFirstName, f.husbandFatherName]
     .filter(Boolean)
@@ -30,10 +67,16 @@ export const buildIoChartHtml = (rows, f, hospital) => {
     v.bpSystolic != null || v.bpDiastolic != null
       ? `${v.bpSystolic ?? ''}/${v.bpDiastolic ?? ''}`
       : '';
+  // ICU-5: the five I/O columns come from icu_io_entry. With no entries they stay blank, exactly
+  // as they printed before, so a hospital that records nothing sees no change.
+  const io = bucketIoEntries(ordered, ioEntries);
+  const cell = (n) => (n ? esch(n) : '');
   const dataRows = ordered
     .map(
-      (v) =>
-        `<tr><td>${esch(tm(v.recordedAt))}</td><td>${esch(v.temperature)}</td><td>${esch(v.pulse)}</td><td>${esch(v.respiratoryRate)}</td><td>${esch(bp(v))}</td><td></td><td></td><td></td><td></td><td></td></tr>`
+      (v, i) =>
+        `<tr><td>${esch(tm(v.recordedAt))}</td><td>${esch(v.temperature)}</td><td>${esch(v.pulse)}</td><td>${esch(v.respiratoryRate)}</td><td>${esch(bp(v))}</td>` +
+        `<td>${cell(io[i]?.IV_FLUIDS)}</td><td>${cell(io[i]?.ORAL)}</td>` +
+        `<td>${cell(io[i]?.RYLES_ASPIRATION)}</td><td>${cell(io[i]?.URINE)}</td><td>${cell(io[i]?.VOMIT)}</td></tr>`
     )
     .join('');
   const blanks = Math.max(4, 26 - ordered.length);

@@ -129,6 +129,7 @@ public class DatabaseMigrationRunner {
         // existing ward keeps behaving exactly as before and no backfill is needed.
         addColumnIfMissing("wards", "unit_type", "VARCHAR(20) NOT NULL DEFAULT 'GENERAL'");
         backfillWardUnitType();
+        ensureIcuIoEntryTable();       // ICU Phase 5
         ensureVitalsIcuColumns();      // ICU Phase 4
         ensureIcuStayTable();          // ICU Phase 3
         backfillIcuStaysForCurrentOccupants();
@@ -2260,6 +2261,49 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("backfillWardUnitType skipped: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * ICU Phase 5 - the fluid intake/output event stream.
+     *
+     * <p>Authoritative for ICU fluid balance and the NABH I/O chart (D-2).
+     * {@code vitals_records.urine_output_ml} is a separate point-in-time observation and is
+     * never copied in here.
+     */
+    private void ensureIcuIoEntryTable() {
+        try {
+            Integer exists = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES "
+              + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'icu_io_entry'", Integer.class);
+            if (exists != null && exists == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE icu_io_entry ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " ipd_admission_id BIGINT NOT NULL,"
+                    + " patient_id BIGINT NOT NULL,"
+                    + " direction VARCHAR(6) NOT NULL,"
+                    + " route VARCHAR(30) NOT NULL,"
+                    + " volume_ml INT NOT NULL,"
+                    + " occurred_at DATETIME(6) NOT NULL,"
+                    + " notes VARCHAR(255) NULL,"
+                    + " recorded_by_user_id BIGINT NULL,"
+                    + " performed_by_nurse_id BIGINT NULL,"
+                    + " supersedes_io_entry_id BIGINT NULL,"
+                    + " is_active TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_io_public_id (public_id),"
+                    + " KEY idx_icu_io_admission (ipd_admission_id),"
+                    + " KEY idx_icu_io_hospital (hospital_id),"
+                    + " KEY idx_icu_io_occurred (ipd_admission_id, occurred_at)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created icu_io_entry");
+            }
+        } catch (Exception e) {
+            log.warn("ensureIcuIoEntryTable failed: {}", e.getMessage());
         }
     }
 

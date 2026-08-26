@@ -1166,6 +1166,29 @@ CREATE TABLE `patient_nurse_assignments` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- Nurse module (Phase 1): time-series IPD vitals recorded by nurses.
+CREATE TABLE `icu_io_entry` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ipd_admission_id` bigint NOT NULL,
+  `patient_id` bigint NOT NULL,
+  `direction` varchar(6) NOT NULL,
+  `route` varchar(30) NOT NULL,
+  `volume_ml` int NOT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `notes` varchar(255) DEFAULT NULL,
+  `recorded_by_user_id` bigint DEFAULT NULL,
+  `performed_by_nurse_id` bigint DEFAULT NULL,
+  `supersedes_io_entry_id` bigint DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_icu_io_public_id` (`public_id`),
+  KEY `idx_icu_io_admission` (`ipd_admission_id`),
+  KEY `idx_icu_io_hospital` (`hospital_id`),
+  KEY `idx_icu_io_occurred` (`ipd_admission_id`,`occurred_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE `vitals_records` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `public_id` varchar(255) NOT NULL,

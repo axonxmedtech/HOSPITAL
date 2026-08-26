@@ -820,7 +820,41 @@ columns must not leak into the OPD case-paper VITAL SIGNS table** built by
 
 ### 12.2 PREREQUISITE — `IO_CHART` reconciliation
 
-**The problem.** `FormRegistry` already contains **`IO_CHART` — "Input & Output Chart"**,
+> ## ⚠ CORRECTION — recorded 2026-08-26 during the ICU-5 audit
+>
+> **The current-state description written below in ICU-1 was wrong.** It was written from the
+> `FormRegistry` entry and the `surgery_forms` store without opening `IoChartForm`. Inspecting
+> the implementation during the ICU-5 audit established the following:
+>
+> | ICU-1 assumption (below)                                      | Verified reality                                          | Evidence                                                                                                             |
+> | ------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+> | Surgery-keyed; an ICU patient with no surgery cannot have one | **False** — it is admission-keyed                         | `IoChartForm({ admissionId })`; `SurgeryForm.surgeryId` is **nullable** and the entity also carries `ipdAdmissionId` |
+> | Stores opaque JSON in `surgery_forms`                         | **False — it stores nothing at all**                      | `IoChartForm` javadoc: _"derived from the patient's recorded vitals (no fill/save step), so it simply prints"_       |
+> | A document, not a time series                                 | **False** — it _renders_ the `vitals_records` time series | `buildIoChartHtml(rows, …)` exported from `VitalsPanel`, fed by `nurseService.getVitals(admissionId)`                |
+>
+> **Consequence for the decision.** The duplicate-model risk this section was written to guard
+> against — a nurse entering the same fluid in two places — **did not exist**, because there was
+> no second store. What actually exists is a printed NABH sheet whose five INPUT/OUTPUT columns
+> are emitted **blank** for manual completion:
+>
+> ```
+> TIME | TEMP | PULSE | RESP. | B.P. || INPUT: I.V. FLUIDS | ORAL
+>                                    || OUTPUT: RYLES TUBE ASPIRATION | URINE O/P | VOMITING MONITION
+> ```
+>
+> Option **(c)** below — "new ICU table as system of record; `IO_CHART` renders from it" — remains
+> the chosen strategy, but for a **different reason** than the one argued below: not to reconcile
+> two competing stores, but because a running balance is `SUM(volume_ml)` grouped by direction,
+> which no JSON blob can aggregate. The five column names above are the field list, taken from the
+> hospital's own NABH sheet.
+>
+> **The original text is preserved unedited below**, because the reasoning that followed from it
+> still shaped ICU-1 through ICU-4 and the record of how the decision was reached matters.
+> See [ICU_PHASE5_PLAN.md](ICU_PHASE5_PLAN.md) §3.1 for the full audit, and its D-2 for how this
+> interacts with `vitals_records.urine_output_ml`, which ICU-4 added after this section was
+> written.
+
+**The problem** _(as assessed in ICU-1 — see the correction above)_**.** `FormRegistry` already contains **`IO_CHART` — "Input & Output Chart"**,
 category `OT`, backed by the generic `surgery_forms` JSON store and rendered through
 `SurgeryFormFrame` (fill → save → print). ICU needs a running intake/output balance. If ICU
 adds a structured I/O table without reconciling, a nurse can enter the same fluid in two

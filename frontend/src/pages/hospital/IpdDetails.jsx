@@ -19,6 +19,7 @@ import wardService from '../../services/wardService';
 import { printBlob } from '../../utils/printPdf';
 import ConsentFormsPanel from './nurse/ConsentFormsPanel';
 import InitialAssessmentPanel from './nurse/InitialAssessmentPanel';
+import IoChartPanel from './nurse/IoChartPanel';
 import MedicationPanel from './nurse/MedicationPanel';
 import NotesPanel from './nurse/NotesPanel';
 import SugarChartPanel from './nurse/SugarChartPanel';
@@ -65,6 +66,7 @@ const IpdDetails = () => {
     assessment: 'INITIAL_ASSESSMENT',
     vulnerability: 'VULNERABILITY_ASSESSMENT',
     sugar: 'SUGAR_CHART',
+    io: 'IO_CHART',
   };
   const verdictFor = (tabId) => formVerdicts[FORM_KEY_BY_TAB[tabId]] || 'EDITABLE';
   const admissionId = Number(id);
@@ -81,6 +83,7 @@ const IpdDetails = () => {
       ? [{ id: 'vulnerability', label: 'Vulnerability Assessment' }]
       : []),
     ...(verdictFor('sugar') !== 'HIDDEN' ? [{ id: 'sugar', label: 'Sugar Chart' }] : []),
+    ...(verdictFor('io') !== 'HIDDEN' ? [{ id: 'io', label: 'Intake / Output' }] : []),
     ...(hasOT && otSurgery ? [{ id: 'consent', label: 'Consent Forms' }] : []),
   ];
   // If the active tab got hidden by a Files & Access change, fall back to Overview.
@@ -693,6 +696,14 @@ const IpdDetails = () => {
                   <VitalsPanel
                     admissionId={admissionId}
                     readOnly={verdictFor('vitals') === 'READ_ONLY'}
+                  />
+                </div>
+              )}
+              {tab === 'io' && (
+                <div className="mt-4">
+                  <IoChartPanel
+                    admissionId={admissionId}
+                    readOnly={verdictFor('io') === 'READ_ONLY'}
                   />
                 </div>
               )}

@@ -6,6 +6,7 @@ import nurseService from '../../../services/nurseService';
 import OtNotesSection from '../ot/OtNotesSection';
 import ConsentFormsPanel from './ConsentFormsPanel';
 import InitialAssessmentPanel from './InitialAssessmentPanel';
+import IoChartPanel from './IoChartPanel';
 import MedicationPanel from './MedicationPanel';
 import NotesPanel from './NotesPanel';
 import SugarChartPanel from './SugarChartPanel';
@@ -107,6 +108,7 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
     assessment: 'INITIAL_ASSESSMENT',
     vulnerability: 'VULNERABILITY_ASSESSMENT',
     sugar: 'SUGAR_CHART',
+    io: 'IO_CHART',
   };
   const verdictFor = (tabId) => formVerdicts[NURSING_FORM_KEY[tabId]] || 'EDITABLE';
 
@@ -122,6 +124,7 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
       ? [{ id: 'vulnerability', label: 'Vulnerability Assessment' }]
       : []),
     ...(verdictFor('sugar') !== 'HIDDEN' ? [{ id: 'sugar', label: 'Sugar Chart' }] : []),
+    ...(verdictFor('io') !== 'HIDDEN' ? [{ id: 'io', label: 'Intake / Output' }] : []),
     ...(hasSurgery ? [{ id: 'consent', label: 'Consent Forms' }] : []),
   ];
 
@@ -181,6 +184,13 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
 
       {tab === 'vitals' && (
         <VitalsPanel admissionId={admissionId} readOnly={verdictFor('vitals') === 'READ_ONLY'} />
+      )}
+      {tab === 'io' && (
+        <IoChartPanel
+          admissionId={admissionId}
+          readOnly={verdictFor('io') === 'READ_ONLY'}
+          refreshKey={refreshKey}
+        />
       )}
 
       {tab === 'medication' && <MedicationPanel admissionId={admissionId} />}

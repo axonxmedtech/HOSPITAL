@@ -18,6 +18,20 @@ const IcuService = {
   getStaysForAdmission: (ipdId) =>
     apiClient.get(`/hospital/icu/admissions/${ipdId}/stays`).then((r) => r.data),
 
+  /** ICU-5: fluid I/O entries for an admission, newest first, including superseded ones. */
+  getIoEntries: (ipdId) =>
+    apiClient.get(`/hospital/nurse/io/admission/${ipdId}`).then((r) => r.data),
+
+  /** ICU-5: intake/output totals and net. Computed server-side from the entries, never stored. */
+  getIoBalance: (ipdId) =>
+    apiClient.get(`/hospital/nurse/io/admission/${ipdId}/balance`).then((r) => r.data),
+
+  recordIoEntry: (payload) => apiClient.post('/hospital/nurse/io', payload).then((r) => r.data),
+
+  /** Append-only: writes a new entry superseding the original, which stays readable. */
+  correctIoEntry: (publicId, payload) =>
+    apiClient.post(`/hospital/nurse/io/${publicId}/correction`, payload).then((r) => r.data),
+
   /** Ward unit-type catalogue for the ward form's classification selector. */
   getUnitTypes: () => apiClient.get('/hospital/icu/unit-types').then((r) => r.data),
 };

@@ -87,6 +87,7 @@ class TenantScopingArchTest {
             "HospitalServiceService#getItemNamesForService",
             "HospitalStatsController#downloadPatientActivityPdf",
             "HospitalTicketController#createTicket",
+            "IcuIoService#requireAdmission",
             "InitialAssessmentService#requireAdmission",
             "InventoryService#deductStock",
             "InventoryService#updateStock",
