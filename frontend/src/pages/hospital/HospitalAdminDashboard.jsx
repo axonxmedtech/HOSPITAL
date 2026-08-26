@@ -4045,7 +4045,7 @@ const HospitalAdminDashboard = () => {
                   )}
                   {!isPharmacyTenant && settingsView === 'ventilator' && (
                     <div className="max-w-4xl mx-auto my-4">
-                      <VentilatorSettingsCard />
+                      <VentilatorSettingsCard refreshKey={icuRefreshKey} />
                     </div>
                   )}
                   {!isPharmacyTenant && settingsView === 'print-payment' && (

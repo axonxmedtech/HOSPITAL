@@ -188,7 +188,11 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
       </div>
 
       {tab === 'vitals' && (
-        <VitalsPanel admissionId={admissionId} readOnly={verdictFor('vitals') === 'READ_ONLY'} />
+        <VitalsPanel
+          admissionId={admissionId}
+          readOnly={verdictFor('vitals') === 'READ_ONLY'}
+          refreshKey={refreshKey}
+        />
       )}
       {tab === 'io' && (
         <IoChartPanel

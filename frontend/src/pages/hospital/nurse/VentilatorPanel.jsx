@@ -53,7 +53,7 @@ const showValue = (raw) => {
 
 const VentilatorPanel = ({ admissionId, readOnly = false, refreshKey = 0 }) => {
   const { success, error: toastError } = useToast();
-  const { settings, observations, modes, loaded } = useEnabledVentilatorParams();
+  const { settings, observations, modes, loaded } = useEnabledVentilatorParams(refreshKey);
   const [chart, setChart] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);

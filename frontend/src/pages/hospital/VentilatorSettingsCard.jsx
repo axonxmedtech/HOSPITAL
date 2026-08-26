@@ -19,7 +19,7 @@ const CATEGORIES = [
   ['OBSERVATION', 'Ventilator Observations / Measurements'],
 ];
 
-const VentilatorSettingsCard = () => {
+const VentilatorSettingsCard = ({ refreshKey = 0 }) => {
   const { success, error: toastError } = useToast();
   const [params, setParams] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -41,8 +41,11 @@ const VentilatorSettingsCard = () => {
   }, [toastError]);
 
   useEffect(() => {
+    // refreshKey rises on a realtime REFRESH_DATA, so an admin in a second tab (or another
+    // admin) toggling a parameter shows up here instead of two screens disagreeing about what
+    // the ventilator chart captures.
     load();
-  }, [load]);
+  }, [load, refreshKey]);
 
   const toggle = async (p) => {
     const next = !p.enabled;

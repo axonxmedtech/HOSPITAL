@@ -52,6 +52,7 @@ public class IcuStayService {
     @Autowired private IcuStayRepository icuStayRepository;
     @Autowired private WardRepository wardRepository;
     @Autowired private DoctorRepository doctorRepository;
+    @Autowired private com.hms.service.RealtimeNotifier notifier;
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private AuditLogService auditLogService;
 
@@ -192,6 +193,11 @@ public class IcuStayService {
         IcuStay saved = icuStayRepository.save(stay);
         audit("ICU_INTENSIVIST_ASSIGNED", "Intensivist set to " + doctorId,
                 stay.getHospitalId(), stay.getId());
+        // The bed board prints the intensivist, so another tab holding the board is now stale.
+        // Only the narrow mutations push: the MANDATORY lifecycle methods run inside the IPD
+        // movement transaction, whose caller already refreshes, and pushing twice for one
+        // movement would be noise.
+        notifier.refresh(stay.getHospitalId());
         return saved;
     }
 
@@ -202,6 +208,7 @@ public class IcuStayService {
         IcuStay saved = icuStayRepository.save(stay);
         audit("ICU_REASON_UPDATED", "ICU admission reason updated",
                 stay.getHospitalId(), stay.getId());
+        notifier.refresh(stay.getHospitalId());
         return saved;
     }
 

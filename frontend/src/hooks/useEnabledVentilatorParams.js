@@ -13,7 +13,7 @@ import icuService from '../services/icuService';
  * flicker, and showing an input for a parameter the hospital has disabled would invite an entry
  * the server is going to drop.
  */
-export default function useEnabledVentilatorParams() {
+export default function useEnabledVentilatorParams(refreshKey = 0) {
   const [params, setParams] = useState(null); // null = not loaded yet
   const [modes, setModes] = useState([]);
 
@@ -30,7 +30,9 @@ export default function useEnabledVentilatorParams() {
     return () => {
       active = false;
     };
-  }, []);
+    // Re-read on a realtime REFRESH_DATA: an administrator can disable a parameter while a nurse
+    // has this chart open, and an input the server is going to drop is worse than no input.
+  }, [refreshKey]);
 
   const loaded = params !== null;
 

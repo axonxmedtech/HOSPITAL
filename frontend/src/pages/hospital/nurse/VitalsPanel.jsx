@@ -183,7 +183,7 @@ const emptyForm = {
   remarks: '',
 };
 
-const VitalsPanel = ({ admissionId, readOnly = false }) => {
+const VitalsPanel = ({ admissionId, readOnly = false, refreshKey = 0 }) => {
   const { success, error: toastError } = useToast();
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
@@ -229,8 +229,10 @@ const VitalsPanel = ({ admissionId, readOnly = false }) => {
   }, [admissionId]);
 
   useEffect(() => {
+    // refreshKey rises when a WebSocket REFRESH_DATA arrives, so a reading another nurse just
+    // charted appears here without anyone pressing reload.
     load();
-  }, [load]);
+  }, [load, refreshKey]);
   useEffect(() => {
     let active = true;
     nurseService

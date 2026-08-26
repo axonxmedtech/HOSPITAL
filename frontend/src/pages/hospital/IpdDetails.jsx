@@ -45,6 +45,10 @@ const IpdDetails = () => {
 
   // Files & Access: which clinical forms this role may see / edit here.
   const [tab, setTab] = useState('overview');
+  // Bumped on every realtime REFRESH_DATA. `load()` refetches the case header only;
+  // the clinical sub-tab panels fetch their own data and need their own signal, or a
+  // reading a nurse charts stays invisible in an open case until someone reloads.
+  const [panelRefreshKey, setPanelRefreshKey] = useState(0);
   const [formVerdicts, setFormVerdicts] = useState({});
   useEffect(() => {
     let active = true;
@@ -418,6 +422,9 @@ const IpdDetails = () => {
   }, [id]);
 
   useWebSocket(user, setUser, (silent) => {
+    // The panels refresh even while a modal is open: they are read-only surfaces that no modal
+    // is editing, so nothing the user is typing can be thrown away by reloading them.
+    setPanelRefreshKey((k) => k + 1);
     if (
       !followupModal.isOpen &&
       !dischargeModal.isOpen &&
@@ -700,6 +707,7 @@ const IpdDetails = () => {
                   <VitalsPanel
                     admissionId={admissionId}
                     readOnly={verdictFor('vitals') === 'READ_ONLY'}
+                    refreshKey={panelRefreshKey}
                   />
                 </div>
               )}
@@ -708,6 +716,7 @@ const IpdDetails = () => {
                   <IoChartPanel
                     admissionId={admissionId}
                     readOnly={verdictFor('io') === 'READ_ONLY'}
+                    refreshKey={panelRefreshKey}
                   />
                 </div>
               )}
@@ -718,6 +727,7 @@ const IpdDetails = () => {
                   <VentilatorPanel
                     admissionId={admissionId}
                     readOnly={verdictFor('ventilator') === 'READ_ONLY'}
+                    refreshKey={panelRefreshKey}
                   />
                 </div>
               )}
@@ -1780,6 +1790,7 @@ const IpdDetails = () => {
                       <InfusionPanel
                         admissionId={admissionId}
                         readOnly={verdictFor('medication') === 'READ_ONLY'}
+                        refreshKey={panelRefreshKey}
                       />
                     </>
                   )}

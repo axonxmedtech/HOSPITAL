@@ -277,6 +277,38 @@ describe('VentilatorPanel — ICU ventilator chart (ICU-7)', () => {
     expect(await screen.findByText(/No ventilator parameters are switched on/)).toBeInTheDocument();
   });
 
+  it('re-reads the chart when a realtime refresh arrives', async () => {
+    icuService.getVentilatorChart.mockResolvedValue(chart([entry()], PARAMS_MAP));
+
+    const { rerender } = render(<VentilatorPanel admissionId={7} refreshKey={0} />);
+    await screen.findByText('History');
+    expect(icuService.getVentilatorChart).toHaveBeenCalledTimes(1);
+
+    icuService.getVentilatorChart.mockResolvedValue(
+      chart([entry({ id: 2, publicId: 'vent-2', values: { fio2: 35 } }), entry()], PARAMS_MAP)
+    );
+    rerender(<VentilatorPanel admissionId={7} refreshKey={1} />);
+
+    // A reading another nurse charted appears without anyone pressing reload.
+    await waitFor(() => expect(screen.getAllByText('35').length).toBeGreaterThan(0));
+  });
+
+  it('drops an input for a parameter an administrator disables mid-shift', async () => {
+    const { rerender } = render(<VentilatorPanel admissionId={7} refreshKey={0} />);
+    await screen.findByText('Record Ventilator Entry');
+    await waitFor(() => expect(screen.getByLabelText('FiO₂ (%)')).toBeInTheDocument());
+
+    // An administrator switches FiO₂ off while this chart is open. Without the catalogue
+    // re-reading, the nurse keeps an input whose value the server would silently drop.
+    icuService.getEnabledVentilatorParams.mockResolvedValue(
+      ENABLED.filter((p) => p.key !== 'fio2')
+    );
+    rerender(<VentilatorPanel admissionId={7} refreshKey={1} />);
+
+    await waitFor(() => expect(screen.queryByLabelText('FiO₂ (%)')).not.toBeInTheDocument());
+    expect(screen.getByLabelText('PEEP (cmH₂O)')).toBeInTheDocument();
+  });
+
   it('shows no derived or computed figure anywhere', async () => {
     icuService.getVentilatorChart.mockResolvedValue(
       chart([entry({ values: { fio2: 60, peak_pressure: 28 } })], {
