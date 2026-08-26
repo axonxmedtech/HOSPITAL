@@ -293,34 +293,38 @@ const IoChartPanel = ({ admissionId, readOnly = false, refreshKey = 0 }) => {
                       )}
                     </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
-                        e.direction === 'INTAKE'
-                          ? 'bg-blue-100 text-blue-700'
-                          : 'bg-amber-100 text-amber-700'
-                      }`}
-                    >
-                      {e.direction === 'INTAKE' ? 'Intake' : 'Output'}
-                    </span>
-                    <span className="text-sm text-gray-900">
-                      {ROUTE_LABEL[e.route] || e.route}: {e.volumeMl} mL
-                    </span>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2 min-w-0">
+                      <span
+                        className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
+                          e.direction === 'INTAKE'
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-amber-100 text-amber-700'
+                        }`}
+                      >
+                        {e.direction === 'INTAKE' ? 'Intake' : 'Output'}
+                      </span>
+                      <span className="text-sm text-gray-900">
+                        {ROUTE_LABEL[e.route] || e.route}: {e.volumeMl} mL
+                      </span>
+                    </div>
+                    {canCorrect(e) && correcting !== e.publicId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCorrecting(e.publicId);
+                          setCorrection({
+                            volumeMl: String(e.volumeMl ?? ''),
+                            notes: e.notes || '',
+                          });
+                        }}
+                        className="shrink-0 text-xs font-semibold text-primary-700 hover:underline"
+                      >
+                        Correct
+                      </button>
+                    )}
                   </div>
                   {e.notes && <p className="text-xs text-gray-500 mt-1">{e.notes}</p>}
-
-                  {canCorrect(e) && correcting !== e.publicId && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCorrecting(e.publicId);
-                        setCorrection({ volumeMl: String(e.volumeMl ?? ''), notes: e.notes || '' });
-                      }}
-                      className="mt-2 text-xs font-semibold text-primary-700 hover:underline"
-                    >
-                      Correct
-                    </button>
-                  )}
 
                   {correcting === e.publicId && (
                     <div className="mt-2 flex flex-wrap items-end gap-2 bg-gray-50 border border-gray-200 rounded-lg p-3">
