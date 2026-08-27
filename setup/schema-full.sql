@@ -638,6 +638,18 @@ CREATE TABLE `pharmacy_sales` (
 DROP TABLE IF EXISTS `prescriptions`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
+DROP TABLE IF EXISTS `opd_idempotency`;
+CREATE TABLE `opd_idempotency` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `idempotency_key` varchar(100) NOT NULL,
+  `opd_id` bigint DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_opd_idempotency` (`hospital_id`,`idempotency_key`),
+  KEY `idx_opd_idempotency_opd` (`opd_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE `prescriptions` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `created_at` datetime(6) NOT NULL,

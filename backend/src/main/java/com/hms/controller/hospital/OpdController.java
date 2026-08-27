@@ -31,6 +31,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 public class OpdController {
 
     @Autowired
+    private com.hms.service.hospital.OpdIdempotencyService opdIdempotencyService;
+
+    @Autowired
+    private com.hms.repository.OpdRepository opdRepository;
+
+    @Autowired
     private com.hms.service.PdfService pdfService;
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -70,11 +76,49 @@ public class OpdController {
         this.labOrderRepository = labOrderRepository;
     }
 
+    /**
+     * Register an OPD visit — once per logical submission.
+     *
+     * <p>Registering inserts the OPD, a queue entry and, under "bill before OPD", a PAID bill.
+     * None of that is repeatable, so a double-clicked button or a retried request charged the
+     * patient twice and queued them twice with nothing able to detect it afterwards.
+     *
+     * <p>The key is claimed here rather than inside OpdService on purpose. Idempotency is a fact
+     * about the REQUEST, not about the clinical work, and the claim needs its own transaction —
+     * a unique-key violation marks the surrounding transaction rollback-only, so claiming inside
+     * the service's transaction would poison the very work being protected. Doing it at this
+     * layer also keeps the service's own transaction boundary exactly as it was.
+     *
+     * <p>A caller that sends no key behaves exactly as before, so no existing client breaks.
+     */
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     @PostMapping
     public ResponseEntity<Opd> createOpd(@Valid @RequestBody CreateOpdRequest req) {
-        Opd opd = opdService.createOpd(req);
-        return ResponseEntity.ok(opd);
+        String key = req.getIdempotencyKey() == null ? null : req.getIdempotencyKey().trim();
+        if (key == null || key.isEmpty()) {
+            return ResponseEntity.ok(opdService.createOpd(req));
+        }
+
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new com.hms.exception.UnauthorizedException("Hospital ID not found in context");
+        }
+
+        com.hms.service.hospital.OpdIdempotencyService.Claim claim = opdIdempotencyService.claim(hospitalId, key);
+        if (claim.isReplay()) {
+            // The same submission arriving again: hand back what it already produced.
+            return ResponseEntity.ok(opdRepository.findById(claim.existingOpdId())
+                    .orElseThrow(() -> new com.hms.exception.ResourceNotFoundException("OPD not found")));
+        }
+        try {
+            Opd created = opdService.createOpd(req);
+            opdIdempotencyService.complete(claim.claimId(), created.getId());
+            return ResponseEntity.ok(created);
+        } catch (RuntimeException failed) {
+            // Release the key so a corrected retry is not told forever that it is a duplicate.
+            opdIdempotencyService.release(claim.claimId());
+            throw failed;
+        }
     }
 
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")

@@ -133,6 +133,7 @@ public class DatabaseMigrationRunner {
         addColumnIfMissing("prescriptions", "medicine_id", "BIGINT NULL");
         addColumnIfMissing("medicine_purchases", "batch_number", "VARCHAR(100) NULL");
         addColumnIfMissing("prescriptions", "food_timing", "VARCHAR(20) NULL"); // V15
+        ensureOpdIdempotencyTable(); // V16 — one OPD registration per logical submission
     }
 
     /**
@@ -2440,6 +2441,34 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped (medicine stock tables): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * V16 safety net. Creation only: the table holds request bookkeeping, never clinical data, so
+     * there is nothing to backfill and an empty table is the correct starting state.
+     */
+    private void ensureOpdIdempotencyTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES "
+                    + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'opd_idempotency'", Integer.class);
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE opd_idempotency ("
+                        + "  id BIGINT NOT NULL AUTO_INCREMENT,"
+                        + "  hospital_id BIGINT NOT NULL,"
+                        + "  idempotency_key VARCHAR(100) NOT NULL,"
+                        + "  opd_id BIGINT NULL,"
+                        + "  created_at DATETIME(6) NOT NULL,"
+                        + "  PRIMARY KEY (id),"
+                        + "  UNIQUE KEY uk_opd_idempotency (hospital_id, idempotency_key),"
+                        + "  KEY idx_opd_idempotency_opd (opd_id)"
+                        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created opd_idempotency table");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (opd_idempotency): {}", e.getMessage());
         }
     }
 
