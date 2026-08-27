@@ -40,6 +40,8 @@ class NurseWorkspaceServiceTest {
     @Mock com.hms.repository.NurseProfileRepository nurseProfileRepository;
     @Mock com.hms.repository.NurseAttendanceRepository nurseAttendanceRepository;
     @Mock NurseCoverageService coverageService;
+    @Mock com.hms.service.RealtimeNotifier notifier;
+    @Mock NurseAssignmentService nurseAssignmentService;
 
     @InjectMocks NurseWorkspaceService service;
 
@@ -223,5 +225,23 @@ class NurseWorkspaceServiceTest {
         assertThatThrownBy(() -> service.getPatientDetail(11L))
                 .isInstanceOf(AccessDeniedException.class);
         verifyNoInteractions(nurseInchargeGuard);
+    }
+
+    @org.junit.jupiter.api.Test
+    void assigningANursePushesARefreshSoBothScreensCatchUp() {
+        // The incharge's ward list and the assigned nurse's "My Patients" both change.
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        com.hms.entity.NurseProfile p = new com.hms.entity.NurseProfile();
+        p.setId(4L);
+        p.setHospitalId(7L);
+        p.setIsActive(true);
+        p.setIsIncharge(false);
+        p.setUserId(9L);
+        p.setWardId(3L);
+        when(nurseProfileRepository.findById(4L)).thenReturn(Optional.of(p));
+
+        service.assignPatientNurse(11L, 4L);
+
+        verify(notifier).refresh(7L);
     }
 }

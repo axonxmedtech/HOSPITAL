@@ -40,6 +40,7 @@ public class NurseWorkspaceService {
     @Autowired private com.hms.repository.NurseProfileRepository nurseProfileRepository;
     @Autowired private SurgeryRepository surgeryRepository;
     @Autowired private com.hms.security.NurseInchargeGuard nurseInchargeGuard;
+    @Autowired private com.hms.service.RealtimeNotifier notifier;
     @Autowired private NurseAssignmentService nurseAssignmentService;
     @Autowired private NurseShiftScheduleService nurseShiftScheduleService;
     @Autowired private com.hms.repository.NurseAttendanceRepository nurseAttendanceRepository;
@@ -286,6 +287,11 @@ public class NurseWorkspaceService {
         // NurseAssignmentService.assignNurse already closes any prior active
         // assignment for this admission before opening the new one.
         nurseAssignmentService.assignNurse(ipdAdmissionId, p.getUserId(), "Assigned by incharge");
+
+        // An assignment changes two screens at once: the incharge's ward list, and the assigned
+        // nurse's "My Patients". Without a push the nurse learns she has a new patient only when
+        // she happens to reload.
+        notifier.refresh(hospitalId);
     }
 
     /** Active, non-incharge staff nurses in a ward the caller may access (for the assign dropdown). */
