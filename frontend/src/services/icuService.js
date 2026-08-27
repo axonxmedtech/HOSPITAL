@@ -14,6 +14,17 @@ const IcuService = {
   /** Totals and per-unit counts without the bed grid — the dashboard's lighter refresh. */
   getUnits: () => apiClient.get('/hospital/icu/board/units').then((r) => r.data),
 
+  /**
+   * ICU-10: set or clear the stay's intensivist. Null leaves the admitting doctor responsible.
+   *
+   * The endpoint shipped in ICU-3 with its tenant-checked doctor lookup; until now nothing
+   * called it.
+   */
+  setIntensivist: (stayPublicId, doctorId) =>
+    apiClient
+      .put(`/hospital/icu/stays/${stayPublicId}/intensivist`, { doctorId })
+      .then((r) => r.data),
+
   /** ICU-4: every ICU stay for an admission, newest first. Empty when the patient has none. */
   getStaysForAdmission: (ipdId) =>
     apiClient.get(`/hospital/icu/admissions/${ipdId}/stays`).then((r) => r.data),

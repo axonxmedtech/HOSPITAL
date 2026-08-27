@@ -17,6 +17,7 @@ import hospitalService from '../../services/hospitalService';
 import otService from '../../services/otService';
 import wardService from '../../services/wardService';
 import { printBlob } from '../../utils/printPdf';
+import IcuStayCard from './icu/IcuStayCard';
 import ConsentFormsPanel from './nurse/ConsentFormsPanel';
 import InfusionPanel from './nurse/InfusionPanel';
 import InitialAssessmentPanel from './nurse/InitialAssessmentPanel';
@@ -1810,6 +1811,8 @@ const IpdDetails = () => {
 
                 <aside className="bg-white border rounded p-4">
                   {/* Discharge + Create Surgery Request now live in the case header (top right). */}
+                  {/* ICU-10: renders nothing unless this admission has an ICU stay. */}
+                  <IcuStayCard admissionId={admissionId} refreshKey={panelRefreshKey} />
                   {hasOT && otSurgery && (
                     <>
                       <h3 className="font-semibold mb-2">Operation Theatre</h3>

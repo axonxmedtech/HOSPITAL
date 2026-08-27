@@ -331,6 +331,20 @@ class IcuStayLifecycleTest {
     }
 
     @Test
+    void settingAnIntensivistNeverMovesTheCaseOffTheAdmittingDoctor() {
+        // D4/I21: IpdAdmission.doctorId feeds billing and the doctor's IPD list, so repointing it
+        // at the intensivist would silently take the case off the admitting doctor's dashboard.
+        IpdAdmission a = admitTo(icuWardId, "ELECTIVE");
+        Long admittingDoctorId = a.getDoctorId();
+        String publicId = activeOf(a.getId()).getPublicId();
+
+        icuStayService.setIntensivist(publicId, doctorId);
+
+        assertThat(ipdAdmissionRepository.findById(a.getId()).orElseThrow().getDoctorId())
+                .as("the admitting doctor keeps the case").isEqualTo(admittingDoctorId);
+    }
+
+    @Test
     void aForeignIntensivistIsRefusedAsIfMissing() {
         Hospital other = new Hospital();
         other.setName("Other-" + uniq());
