@@ -52,6 +52,14 @@ class OpdControllerIpdRequestsTest {
     @MockBean private com.hms.repository.LabOrderRepository labOrderRepository;
     @MockBean private com.hms.repository.BillingRepository billingRepository;
     @MockBean private com.hms.repository.PrescriptionRepository prescriptionRepository;
+
+    // OpdController now claims an idempotency key before registering, so this slice needs the
+    // collaborators that claim depends on.
+    @MockBean
+    private com.hms.service.hospital.OpdIdempotencyService opdIdempotencyService;
+
+    @MockBean
+    private com.hms.repository.OpdRepository opdIdempotencyOpdRepository;
     @MockBean private com.hms.repository.UserRepository userRepository;
     @MockBean private com.hms.service.hospital.PatientService patientService;
 

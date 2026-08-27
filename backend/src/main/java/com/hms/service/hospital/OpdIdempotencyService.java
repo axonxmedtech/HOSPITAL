@@ -58,11 +58,11 @@ public class OpdIdempotencyService {
         return new Claim(true, claim.getOpdId(), claim.getId());
     }
 
-    public void complete(Long claimId, Long opdId) {
-        store.attachOpd(claimId, opdId);
+    public void complete(Long hospitalId, String idempotencyKey, Long opdId) {
+        store.attachOpd(hospitalId, idempotencyKey, opdId);
     }
 
-    public void release(Long claimId) {
-        store.deleteIfUnused(claimId);
+    public void release(Long hospitalId, String idempotencyKey) {
+        store.deleteIfUnused(hospitalId, idempotencyKey);
     }
 }

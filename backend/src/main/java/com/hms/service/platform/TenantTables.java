@@ -189,6 +189,9 @@ public final class TenantTables {
         retain("case_roles", Ownership.DIRECT);
         // INV-2/INV-3: clinical + financial stock records. Retained, never purge-safe --
         // a medicine batch and its movement ledger are dispensing history.
+        // Request bookkeeping: which OPD registration keys a facility has already claimed. No
+        // clinical or financial content, and meaningless once the facility is gone.
+        purge(22, "opd_idempotency", BY_HOSPITAL);
         retain("medicine_stock_batches", Ownership.DIRECT);
         retain("stock_movements", Ownership.DIRECT);
         retain("ot_recovery_episodes", Ownership.DIRECT);

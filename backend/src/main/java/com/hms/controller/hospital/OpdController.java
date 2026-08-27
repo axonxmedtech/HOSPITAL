@@ -34,7 +34,7 @@ public class OpdController {
     private com.hms.service.hospital.OpdIdempotencyService opdIdempotencyService;
 
     @Autowired
-    private com.hms.repository.OpdRepository opdRepository;
+    private com.hms.repository.OpdRepository opdIdempotencyOpdRepository;
 
     @Autowired
     private com.hms.service.PdfService pdfService;
@@ -107,16 +107,19 @@ public class OpdController {
         com.hms.service.hospital.OpdIdempotencyService.Claim claim = opdIdempotencyService.claim(hospitalId, key);
         if (claim.isReplay()) {
             // The same submission arriving again: hand back what it already produced.
-            return ResponseEntity.ok(opdRepository.findById(claim.existingOpdId())
-                    .orElseThrow(() -> new com.hms.exception.ResourceNotFoundException("OPD not found")));
+            // Tenant-scoped, like every other read: the claim was matched on hospital_id, and the
+            // OPD it points at must belong to the same facility before it is handed back.
+            return ResponseEntity.ok(
+                    opdIdempotencyOpdRepository.findByIdAndHospitalIdWithPatientAndDoctor(claim.existingOpdId(), hospitalId)
+                            .orElseThrow(() -> new com.hms.exception.ResourceNotFoundException("OPD not found")));
         }
         try {
             Opd created = opdService.createOpd(req);
-            opdIdempotencyService.complete(claim.claimId(), created.getId());
+            opdIdempotencyService.complete(hospitalId, key, created.getId());
             return ResponseEntity.ok(created);
         } catch (RuntimeException failed) {
             // Release the key so a corrected retry is not told forever that it is a duplicate.
-            opdIdempotencyService.release(claim.claimId());
+            opdIdempotencyService.release(hospitalId, key);
             throw failed;
         }
     }

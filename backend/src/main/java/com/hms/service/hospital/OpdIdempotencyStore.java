@@ -47,8 +47,8 @@ public class OpdIdempotencyStore {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void attachOpd(Long claimId, Long opdId) {
-        repository.findById(claimId).ifPresent(c -> {
+    public void attachOpd(Long hospitalId, String idempotencyKey, Long opdId) {
+        repository.findByHospitalIdAndIdempotencyKey(hospitalId, idempotencyKey).ifPresent(c -> {
             c.setOpdId(opdId);
             repository.save(c);
         });
@@ -56,8 +56,8 @@ public class OpdIdempotencyStore {
 
     /** Drop a claim whose registration failed, so a corrected retry may reuse the key. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void deleteIfUnused(Long claimId) {
-        repository.findById(claimId).ifPresent(c -> {
+    public void deleteIfUnused(Long hospitalId, String idempotencyKey) {
+        repository.findByHospitalIdAndIdempotencyKey(hospitalId, idempotencyKey).ifPresent(c -> {
             if (c.getOpdId() == null) repository.delete(c);
         });
     }
