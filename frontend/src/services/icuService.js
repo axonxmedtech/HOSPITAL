@@ -130,6 +130,13 @@ const IcuService = {
   toggleScoreType: (scoreType, payload) =>
     apiClient.put(`/hospital/icu/score-types/${scoreType}`, payload).then((r) => r.data),
 
+  /** ICU-9 config, admin: every alertable vitals metric with its configured bounds. */
+  getAlertThresholds: () => apiClient.get('/hospital/icu/alert-thresholds').then((r) => r.data),
+
+  /** Set or clear the bounds for one metric, or turn it off. */
+  saveAlertThreshold: (metricKey, payload) =>
+    apiClient.put(`/hospital/icu/alert-thresholds/${metricKey}`, payload).then((r) => r.data),
+
   /** Ward unit-type catalogue for the ward form's classification selector. */
   getUnitTypes: () => apiClient.get('/hospital/icu/unit-types').then((r) => r.data),
 };

@@ -68,6 +68,7 @@ import { backdropProps } from '../../utils/modalA11y';
 import { printHtml } from '../../utils/printHtml';
 import { printPdf, printBlob } from '../../utils/printPdf';
 import { validateForm } from '../../utils/validation';
+import AlertThresholdsCard from './AlertThresholdsCard';
 import BillingTable from './BillingTable';
 // BUG-028: single source-of-truth for base URL
 import FilesAndAccessCard from './FilesAndAccessCard';
@@ -3537,6 +3538,12 @@ const HospitalAdminDashboard = () => {
                                 desc: 'Which severity scores the ICU chart records. GCS is part of Vitals.',
                                 iconClass: 'bg-indigo-50 text-indigo-600',
                               },
+                              {
+                                view: 'alerts',
+                                title: 'ICU Alert Thresholds',
+                                desc: 'Notify the nurse and ward incharge when an ICU vitals observation falls outside your range.',
+                                iconClass: 'bg-amber-50 text-amber-600',
+                              },
                             ]
                           : []),
                         {
@@ -4058,6 +4065,11 @@ const HospitalAdminDashboard = () => {
                   {!isPharmacyTenant && settingsView === 'scores' && (
                     <div className="max-w-4xl mx-auto my-4">
                       <ScoreSettingsCard refreshKey={icuRefreshKey} />
+                    </div>
+                  )}
+                  {!isPharmacyTenant && settingsView === 'alerts' && (
+                    <div className="max-w-4xl mx-auto my-4">
+                      <AlertThresholdsCard refreshKey={icuRefreshKey} />
                     </div>
                   )}
                   {!isPharmacyTenant && settingsView === 'print-payment' && (

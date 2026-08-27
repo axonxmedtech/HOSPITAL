@@ -51,6 +51,7 @@ public final class ControllerModules {
                 "VitalsController", "IcuIoController", "IcuInfusionController",
                 "IcuVentilatorController", "IcuVentilatorParameterController",
                 "IcuSeverityScoreController", "IcuScoreTypeSettingController",
+                "IcuAlertThresholdController",
                 "NursingNoteController", "SugarChartController",
                 "InitialAssessmentController", "VulnerabilityAssessmentController",
                 "MedicationAdminController", "AdmissionFormController", "FormAccessController");

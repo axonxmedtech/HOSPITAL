@@ -1165,6 +1165,26 @@ CREATE TABLE `patient_nurse_assignments` (
   CONSTRAINT `FK_pna_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- ICU (Phase 9): alert thresholds. Ships EMPTY - no row means no alert, because a default
+-- threshold would be the system deciding what a normal value is. No alert-event table by
+-- decision: this phase stores thresholds only.
+CREATE TABLE `icu_alert_threshold` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `source` varchar(20) NOT NULL,
+  `metric_key` varchar(60) NOT NULL,
+  `min_value` decimal(12,3) DEFAULT NULL,
+  `max_value` decimal(12,3) DEFAULT NULL,
+  `enabled` tinyint(1) NOT NULL DEFAULT '1',
+  `updated_by_user_id` bigint DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_icu_alert_public_id` (`public_id`),
+  UNIQUE KEY `uk_icu_alert_metric` (`hospital_id`,`source`,`metric_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 -- ICU (Phase 8): severity scores, and the small setting saying which a hospital uses.
 -- Components are a fixed Java registry (SeverityScoreRegistry), NOT a configurable catalogue:
 -- a renamed SOFA component is no longer comparable to anyone else's SOFA.

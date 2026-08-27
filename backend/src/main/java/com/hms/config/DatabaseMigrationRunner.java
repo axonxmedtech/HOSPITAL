@@ -129,6 +129,7 @@ public class DatabaseMigrationRunner {
         // existing ward keeps behaving exactly as before and no backfill is needed.
         addColumnIfMissing("wards", "unit_type", "VARCHAR(20) NOT NULL DEFAULT 'GENERAL'");
         backfillWardUnitType();
+        ensureIcuAlertThresholdTable();// ICU Phase 9
         ensureIcuSeverityScoreTables();// ICU Phase 8
         ensureIcuVentilatorTables();   // ICU Phase 7
         ensureIcuInfusionTables();     // ICU Phase 6
@@ -2312,6 +2313,36 @@ public class DatabaseMigrationRunner {
                     + " UNIQUE KEY uk_icu_inf_rate_public_id (public_id),"
                     + " KEY idx_icu_inf_rate_infusion (icu_infusion_id),"
                     + " KEY idx_icu_inf_rate_effective (icu_infusion_id, effective_from)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+
+    /**
+     * ICU Phase 9 - alert thresholds.
+     *
+     * <p>One table, and it ships EMPTY: unlike the other ICU config tables there is no lazy
+     * default, because "no row" means no alert rather than a sensible one. A default threshold
+     * would be the system deciding what a normal MAP is.
+     *
+     * <p>Per hospital only. There is deliberately no alert-event table (D-4): the roadmap scopes
+     * this phase to threshold storage, so nothing records what fired and nothing de-duplicates.
+     */
+    private void ensureIcuAlertThresholdTable() {
+        createTableIfMissing("icu_alert_threshold",
+                "CREATE TABLE icu_alert_threshold ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " source VARCHAR(20) NOT NULL,"
+                    + " metric_key VARCHAR(60) NOT NULL,"
+                    + " min_value DECIMAL(12,3) NULL,"
+                    + " max_value DECIMAL(12,3) NULL,"
+                    + " enabled TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " updated_by_user_id BIGINT NULL,"
+                    + " is_active TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_alert_public_id (public_id),"
+                    + " UNIQUE KEY uk_icu_alert_metric (hospital_id, source, metric_key)"
                     + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     }
 

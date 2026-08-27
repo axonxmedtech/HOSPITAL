@@ -47,6 +47,8 @@ public class VitalsService {
     /** ICU Phase 4: read-only. ICU-4 records observations; it never touches the stay lifecycle. */
     @Autowired private com.hms.repository.IcuStayRepository icuStayRepository;
 
+    @Autowired private com.hms.service.hospital.icu.IcuAlertEvaluator alertEvaluator;
+
     @Transactional
     public VitalsRecord create(VitalsRequest req) {
         Long hospitalId = requireHospitalId();
@@ -71,6 +73,9 @@ public class VitalsService {
 
         audit("VITALS_RECORDED", "Recorded vitals for IPD admission " + admission.getIpdNumber(),
                 hospitalId, admission.getId());
+        // ICU-9: compare against this hospital's configured thresholds. Fail-safe inside, and
+        // the ICU-stay check is a supplier so it only runs when a threshold actually exists.
+        alertEvaluator.evaluateVitals(saved, admission, () -> fallsInsideIcuStay(saved));
         // The doctor may have this same IPD case open while the nurse records these — push it so
         // the vitals appear on their screen instead of waiting for a manual refresh.
         notifier.refresh(hospitalId);
@@ -168,6 +173,10 @@ public class VitalsService {
         audit("VITALS_CORRECTED",
                 "Corrected vitals record " + original.getPublicId() + " with " + saved.getPublicId(),
                 hospitalId, original.getIpdAdmissionId());
+        // A correction states what the value actually was, so it is evaluated like any other
+        // observation. correct() already refused anything outside an ICU stay.
+        alertEvaluator.evaluateVitals(saved,
+                requireAdmission(saved.getIpdAdmissionId(), hospitalId), () -> true);
         notifier.refresh(hospitalId);
         return saved;
     }
