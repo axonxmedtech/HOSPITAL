@@ -359,9 +359,7 @@ public class PatientService {
             return getAllPatients();
         }
 
-        List<Patient> patients = patientRepository
-                .findByHospitalIdAndIsActiveTrueAndNameContainingIgnoreCaseOrHospitalIdAndIsActiveTrueAndPhoneContaining(
-                        hospitalId, query, hospitalId, query);
+        List<Patient> patients = patientRepository.searchActiveByNameOrPhone(hospitalId, query.trim());
 
         // Populate latest bill
         populateLatestBills(patients);

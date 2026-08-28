@@ -163,7 +163,11 @@ class CrossRoleGoldenJourneyTest {
         String patientPublicId = patient.getPublicId();
 
         // Re-fetched, not trusted from the create response: this is what the search screen does.
-        ok(get("/hospital/patients?page=0&size=20", receptionToken), "reception lists patients");
+        ResponseEntity<String> found = get("/hospital/patients?search=" + patientPhone, receptionToken);
+        ok(found, "reception searches for the patient by phone");
+        assertThat(found.getBody())
+                .as("the search box must find the patient reception just registered")
+                .contains("Journey Patient");
 
         // ---------------------------------------------------------- RECEPTION: appointment
         LocalDate today = LocalDate.now();

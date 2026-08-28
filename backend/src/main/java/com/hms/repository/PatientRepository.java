@@ -71,13 +71,20 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
         /**
          * Search active patients by name or phone
          * 
+         * <p>Written out rather than derived from a method name: the derived form emitted a LIKE
+         * ESCAPE clause that H2 rejects outright, so every search answered 409. Spelling the
+         * predicate out also keeps the tenant filter in one place instead of relying on the reader
+         * to work out AND/OR precedence across a 100-character method name.
+         *
          * @param hospitalId Hospital ID
-         * @param name       Name search term
-         * @param phone      Phone search term
+         * @param term       Name or phone search term
          * @return List of matching patients
          */
-        List<Patient> findByHospitalIdAndIsActiveTrueAndNameContainingIgnoreCaseOrHospitalIdAndIsActiveTrueAndPhoneContaining(
-                        Long hospitalId, String name, Long hospitalId2, String phone);
+        @Query("SELECT p FROM Patient p WHERE p.hospitalId = :hospitalId AND p.isActive = true "
+                        + "AND (LOWER(p.name) LIKE LOWER(CONCAT('%', :term, '%')) "
+                        + "OR p.phone LIKE CONCAT('%', :term, '%')) ORDER BY p.createdAt DESC")
+        List<Patient> searchActiveByNameOrPhone(@Param("hospitalId") Long hospitalId,
+                        @Param("term") String term);
 
         /**
          * Find patient by phone number and hospital ID

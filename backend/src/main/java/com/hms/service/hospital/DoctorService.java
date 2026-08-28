@@ -181,8 +181,7 @@ public class DoctorService {
         }
 
         return doctorRepository
-                .findByHospitalIdAndIsActiveTrueAndNameContainingIgnoreCaseOrHospitalIdAndIsActiveTrueAndSpecializationContainingIgnoreCase(
-                        hospitalId, query, hospitalId, query);
+                .searchActiveByNameOrSpecialization(hospitalId, query.trim());
     }
 
     /**
