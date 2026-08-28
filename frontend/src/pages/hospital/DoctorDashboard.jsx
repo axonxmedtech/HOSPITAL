@@ -74,6 +74,28 @@ const DoctorDashboard = () => {
   const [todaysFollowUps, setTodaysFollowUps] = useState([]);
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(false);
+  // A failed load is its own state. Blanking the list on failure told the doctor "no patients
+  // waiting", which is indistinguishable from a quiet clinic and is the worst possible way for
+  // this screen to fail. Previously loaded rows are kept so a transient blip does not wipe the
+  // board the doctor is reading.
+  const [loadError, setLoadError] = useState(null);
+
+  /**
+   * A message safe to show a clinician.
+   *
+   * extractApiError falls back to err.message, which for a network or runtime failure is a raw
+   * technical string — a Java exception line reached this banner in testing. The server's own
+   * structured message is meaningful to a user; anything else is not, so it is replaced rather
+   * than displayed.
+   */
+  const safeLoadMessage = (err, fallback) => {
+    const data = err?.response?.data;
+    const fromServer =
+      (typeof data?.error === 'string' && data.error) ||
+      (typeof data?.message === 'string' && data.message) ||
+      (typeof data === 'string' && data.trim() ? data : null);
+    return fromServer || fallback;
+  };
   // Scoped loading indicator for just the Appointments card/table, so switching
   // the Today/Upcoming/History filter doesn't blow away the whole dashboard's
   // full-page skeleton (that's reserved for actual tab switches).
@@ -413,6 +435,8 @@ const DoctorDashboard = () => {
 
   const loadData = async (showSpinner = true) => {
     if (showSpinner) setLoading(true);
+    // Cleared up front so a successful retry removes the banner without extra bookkeeping.
+    setLoadError(null);
     try {
       if (activeTab === 'appointments') {
         setAppointmentsLoading(true);
@@ -501,8 +525,7 @@ const DoctorDashboard = () => {
             setNextPatient(null);
           }
         } catch (err) {
-          console.error('Failed to load doctor queue', err);
-          setQueueEntries([]);
+          setLoadError(safeLoadMessage(err, 'Could not load your patient queue.'));
         }
       }
 
@@ -534,8 +557,7 @@ const DoctorDashboard = () => {
           setTotalElements(opdsData.totalElements || opdsArray.length);
           setTotalPages(opdsData.totalPages || 1);
         } catch (err) {
-          console.error('Failed to load OPDs', err);
-          setOpds([]);
+          setLoadError(safeLoadMessage(err, 'Could not load the OPD list.'));
         }
       }
 
@@ -579,8 +601,7 @@ const DoctorDashboard = () => {
           setTotalElements(arr.length);
           setTotalPages(1);
         } catch (err) {
-          console.error('Failed to load IPD admissions for doctor', err);
-          setOpds([]);
+          setLoadError(safeLoadMessage(err, 'Could not load your admitted patients.'));
         }
       }
     } catch (err) {
@@ -1081,6 +1102,30 @@ const DoctorDashboard = () => {
 
         {/* Main Content Area */}
         <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
+          {/* A failed load says so. It must never be shown as an empty clinic: "no patients
+              waiting" and "we could not reach the server" call for opposite responses from a
+              doctor, and only one of them is true. */}
+          {loadError && (
+            <div
+              role="alert"
+              className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-4 flex items-start justify-between gap-4"
+            >
+              <div>
+                <p className="text-sm font-semibold text-red-800">Couldn&apos;t load your patients</p>
+                <p className="mt-1 text-sm text-red-700">{loadError}</p>
+                <p className="mt-1 text-xs text-red-600">
+                  Anything shown below may be out of date.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => loadData()}
+                className="shrink-0 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+              >
+                Retry
+              </button>
+            </div>
+          )}
           {/* Overview Tab */}
           {activeTab === 'overview' && !loading && (
             <div className="space-y-6">
