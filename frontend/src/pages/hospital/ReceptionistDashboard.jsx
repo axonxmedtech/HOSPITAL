@@ -1,4 +1,5 @@
 import { createColumnHelper } from '@tanstack/react-table';
+import FollowUpPanel from '../../components/FollowUpPanel';
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import ActionMenu from '../../components/ActionMenu';
@@ -908,6 +909,7 @@ const ReceptionistDashboard = () => {
     ...(hasOPD ? [{ id: 'patients', label: 'Patients', icon: null }] : []),
     ...(hasAppointments ? [{ id: 'appointments', label: 'Appointments', icon: null }] : []),
     ...(hasOPD ? [{ id: 'opd', label: 'OPD', icon: null }] : []),
+    ...(hasOPD ? [{ id: 'follow-ups', label: 'Follow-ups', icon: null }] : []),
     ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
     ...(hasBilling ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
     ...(hasMedicalInventory && user?.inClinic !== false
@@ -1626,6 +1628,7 @@ const ReceptionistDashboard = () => {
                     onAction={() => setIsAddModalOpen(true)}
                   />
                 ))}
+              {activeTab === 'follow-ups' && <FollowUpPanel role="RECEPTIONIST" />}
               {activeTab === 'opd' &&
                 (opds.length > 0 ? (
                   <div className="p-4 overflow-x-auto">

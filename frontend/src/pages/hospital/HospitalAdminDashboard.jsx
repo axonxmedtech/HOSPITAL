@@ -1,4 +1,5 @@
 import { createColumnHelper } from '@tanstack/react-table';
+import FollowUpPanel from '../../components/FollowUpPanel';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -1936,6 +1937,7 @@ const HospitalAdminDashboard = () => {
     { id: 'patients', label: 'Patients', icon: null, requiredModule: 'OPD' },
     { id: 'appointments', label: 'Appointments', icon: null, requiredModule: 'APPOINTMENTS' },
     { id: 'opd', label: 'OPD', icon: null, requiredModule: 'OPD' },
+    { id: 'follow-ups', label: 'Follow-ups', icon: null, requiredModule: 'OPD' },
     { id: 'ipd', label: 'IPD', icon: null, requiredModule: 'IPD' },
     { id: 'wards', label: 'Wards & Beds', icon: null, requiredModule: 'IPD' },
     { id: 'icu-dashboard', label: 'ICU Dashboard', icon: null, requiredModule: 'ICU' },
@@ -3437,6 +3439,8 @@ const HospitalAdminDashboard = () => {
                       )}
                     </div>
                   )}
+
+                  {activeTab === 'follow-ups' && <FollowUpPanel role="HOSPITAL_ADMIN" />}
 
                   {activeTab === 'opd' &&
                     (loadError ? (

@@ -1,4 +1,5 @@
 import { createColumnHelper } from '@tanstack/react-table';
+import FollowUpPanel from '../../components/FollowUpPanel';
 import { safeLoadMessage } from '../../utils/apiError';
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -862,6 +863,7 @@ const DoctorDashboard = () => {
     { id: 'patients', label: 'Patients', icon: null },
     ...(hasAppointments ? [{ id: 'appointments', label: 'Appointments', icon: null }] : []),
     { id: 'opd', label: 'OPD', icon: null },
+    { id: 'follow-ups', label: 'Follow-ups', icon: null },
     ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
     ...(isSolo || hasBilling ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
     ...(hasOT ? [{ id: 'ot', label: 'Operation Theatre', icon: null }] : []),
@@ -1723,6 +1725,8 @@ const DoctorDashboard = () => {
                     message="No appointments found for the selected filter."
                   />
                 ))}
+
+              {activeTab === 'follow-ups' && <FollowUpPanel role="DOCTOR" mine />}
 
               {activeTab === 'opd' &&
                 (opds.length > 0 ? (

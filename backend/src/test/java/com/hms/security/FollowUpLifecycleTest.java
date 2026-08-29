@@ -549,4 +549,51 @@ class FollowUpLifecycleTest {
 
         assertThat(records.findById(m.getId()).orElseThrow().getFollowUpDate()).isEqualTo(moved);
     }
+
+    /**
+     * The whole feature, through the endpoints the dashboard actually calls.
+     *
+     * <p>Starts where a follow-up really starts — a doctor finishing a consultation — and ends
+     * with the returning patient in the OPD queue, re-reading from the authoritative endpoints at
+     * each boundary rather than trusting the response that caused the change.
+     */
+    @Test
+    void aConsultationBecomesADueFollowUpAndThenAVisit() {
+        // ── the doctor books the follow-up as part of the consultation
+        Opd firstVisit = new Opd();
+        firstVisit.setPatient(patient);
+        firstVisit.setDoctor(doctor);
+        firstVisit.setCaseId("OPD-" + uniq());
+        Long opdId = opds.save(firstVisit).getId();
+
+        assertThat(post("/hospital/doctors/consultation", doctorToken,
+                "{\"opdId\":" + opdId + ",\"patientId\":" + patient.getId()
+                        + ",\"diagnosis\":\"Hypertension\""
+                        + ",\"followUpDate\":\"" + LocalDate.now() + "\""
+                        + ",\"followUpInstructions\":\"Bring the BP diary\"}")
+                .getStatusCode().value()).isEqualTo(200);
+
+        // ── reception sees it on the due list, with the doctor's instruction
+        String due = get("/hospital/follow-ups?timing=DUE_TODAY", receptionToken).getBody();
+        assertThat(due).contains("Lifecycle Patient").contains("Bring the BP diary");
+
+        MedicalRecord created = records.findAll().stream()
+                .filter(m -> hospital.getId().equals(m.getHospitalId()))
+                .filter(m -> m.getFollowUpDate() != null && m.getOpdId() != null)
+                .findFirst().orElseThrow();
+
+        // ── the patient turns up and reception says so
+        assertThat(arrive(created.getId(), receptionToken).getStatusCode().value()).isEqualTo(200);
+
+        // ── cold re-reads: gone from the worklist, present in the queue
+        assertThat(get("/hospital/follow-ups", receptionToken).getBody())
+                .as("a patient who has been seen is no longer outstanding")
+                .doesNotContain("Bring the BP diary");
+        assertThat(get("/hospital/opd/queue", receptionToken).getBody())
+                .as("and is waiting to be seen").contains("Lifecycle Patient");
+
+        assertThat(records.findById(created.getId()).orElseThrow().getActionedOpdId())
+                .as("the new visit is linked back to the consultation that asked for it")
+                .isNotNull();
+    }
 }

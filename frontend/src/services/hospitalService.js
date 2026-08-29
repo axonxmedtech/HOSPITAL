@@ -759,19 +759,57 @@ const hospitalService = {
   },
 
   /**
-   * Today's outstanding follow-ups.
+   * Outstanding follow-ups.
    *
-   * Reads /hospital/follow-ups, which only reads. The endpoint this used to call created an OPD
-   * and a queue entry for every due follow-up as a side effect of the GET, so simply opening a
-   * dashboard booked patients in who had not arrived — and two dashboards open at once booked
-   * them in twice.
+   * Reads /hospital/follow-ups, which only reads. The endpoint this replaced created an OPD and
+   * a queue entry for every due follow-up as a side effect of the GET, so simply opening a
+   * dashboard booked patients in who had not arrived.
    *
-   * @param {{ mine?: boolean }} [options] mine: a doctor asking only for their own patients.
+   * @param {{ timing?: 'DUE_TODAY'|'OVERDUE'|'UPCOMING', mine?: boolean, overdueDays?: number }} [options]
    */
-  getTodaysFollowUps: async (options = {}) => {
-    const params = new URLSearchParams({ timing: 'DUE_TODAY' });
+  getFollowUps: async (options = {}) => {
+    const params = new URLSearchParams();
+    if (options.timing) params.set('timing', options.timing);
     if (options.mine) params.set('mine', 'true');
-    const response = await apiClient.get(`/hospital/follow-ups?${params.toString()}`);
+    if (options.overdueDays != null) params.set('overdueDays', String(options.overdueDays));
+    const query = params.toString();
+    const response = await apiClient.get(`/hospital/follow-ups${query ? `?${query}` : ''}`);
+    return response.data;
+  },
+
+  /** Today's follow-ups only — the dashboard overview strip. */
+  getTodaysFollowUps: async (options = {}) =>
+    hospitalService.getFollowUps({ ...options, timing: 'DUE_TODAY' }),
+
+  /**
+   * The patient turned up: creates the follow-up OPD, queues them and bills as usual.
+   * Deliberately not optimistic — callers re-fetch rather than guess the new state.
+   */
+  arriveFollowUp: async (medicalRecordId, problem) => {
+    const response = await apiClient.post(
+      `/hospital/follow-ups/${medicalRecordId}/arrive`, { problem: problem || null });
+    return response.data;
+  },
+
+  /** Moves the follow-up. It stays outstanding; only the date changes. */
+  rescheduleFollowUp: async (medicalRecordId, { newFollowUpDate, instructions, reason }) => {
+    const response = await apiClient.post(
+      `/hospital/follow-ups/${medicalRecordId}/reschedule`,
+      { newFollowUpDate, instructions: instructions || null, reason: reason || null });
+    return response.data;
+  },
+
+  /** Closes the follow-up without creating a visit. Doctor/admin only, server-enforced. */
+  completeFollowUp: async (medicalRecordId, reason) => {
+    const response = await apiClient.post(
+      `/hospital/follow-ups/${medicalRecordId}/complete`, { reason: reason || null });
+    return response.data;
+  },
+
+  /** Calls the follow-up off. The reason is required by the server. */
+  cancelFollowUp: async (medicalRecordId, reason) => {
+    const response = await apiClient.post(
+      `/hospital/follow-ups/${medicalRecordId}/cancel`, { reason });
     return response.data;
   },
 
