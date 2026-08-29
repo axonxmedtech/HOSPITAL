@@ -9,6 +9,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -67,5 +70,30 @@ public class FollowUpController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }
+    }
+
+    /**
+     * The patient turned up. Creates the follow-up visit and closes the follow-up.
+     *
+     * <p>Same authority as creating any other OPD — this is that action, reached from the due
+     * list instead of the registration form, so it would be odd for the two to differ.
+     *
+     * <p>The body carries only the presenting complaint. Everything else — facility, patient,
+     * doctor, the original consultation — is read from the tenant-scoped record, because a
+     * client that could supply them could action one facility's follow-up into another's queue.
+     */
+    @PostMapping("/{medicalRecordId}/arrive")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','DOCTOR','RECEPTIONIST')")
+    public ResponseEntity<?> recordArrival(@PathVariable Long medicalRecordId,
+                                           @RequestBody(required = false) ArrivalRequest body) {
+        return ResponseEntity.ok(
+                followUpService.recordArrival(medicalRecordId, body == null ? null : body.getProblem()));
+    }
+
+    /** Deliberately just the one field; see recordArrival. */
+    public static class ArrivalRequest {
+        private String problem;
+        public String getProblem() { return problem; }
+        public void setProblem(String problem) { this.problem = problem; }
     }
 }

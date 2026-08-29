@@ -2,7 +2,15 @@ package com.hms.service.hospital;
 
 import com.hms.dto.FollowUpDTO;
 import com.hms.exception.UnauthorizedException;
+import com.hms.dto.CreateOpdRequest;
+import com.hms.entity.MedicalRecord;
+import com.hms.entity.Opd;
+import com.hms.entity.Patient;
+import com.hms.exception.ConflictException;
+import com.hms.exception.ResourceNotFoundException;
+import com.hms.repository.DoctorRepository;
 import com.hms.repository.MedicalRecordRepository;
+import com.hms.repository.PatientRepository;
 import com.hms.security.SecurityContextHelper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -49,6 +57,10 @@ public class FollowUpService {
     @Autowired private MedicalRecordRepository medicalRecordRepository;
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private BusinessClock clock;
+    @Autowired private OpdService opdService;
+    @Autowired private PatientRepository patientRepository;
+    @Autowired private DoctorRepository doctorRepository;
+    @Autowired private com.hms.service.AuditLogService auditLogService;
 
     private Long requireHospitalId() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
@@ -100,5 +112,103 @@ public class FollowUpService {
         if (followUpDate.isBefore(today)) return OVERDUE;
         if (followUpDate.isEqual(today)) return DUE_TODAY;
         return UPCOMING;
+    }
+
+    // ── the patient came back ────────────────────────────────────────────────
+
+    /**
+     * Records that a patient returned for a follow-up, and turns it into a real visit.
+     *
+     * <p>One transaction. The OPD is created through the ordinary {@link OpdService#createOpd}
+     * path, so it inherits that path's tenant checks, patient and doctor validation, queue entry,
+     * billing and audit rather than a second implementation of them. The follow-up is then
+     * claimed with a conditional UPDATE; if that claim loses — another receptionist got there
+     * first, or a double-click — the whole thing rolls back and the OPD, its queue entry and its
+     * bill go with it. There is no state in which the follow-up is actioned but the visit is
+     * missing, or the visit exists while the follow-up still looks outstanding.
+     *
+     * @param medicalRecordId the follow-up being actioned
+     * @param problem         optional presenting complaint; the original diagnosis when omitted
+     */
+    @Transactional
+    public Opd recordArrival(Long medicalRecordId, String problem) {
+        Long hospitalId = requireHospitalId();
+
+        // Another facility's follow-up is indistinguishable from one that does not exist.
+        MedicalRecord record = medicalRecordRepository
+                .findByIdAndHospitalId(medicalRecordId, hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Follow-up not found"));
+
+        assertActionable(record);
+
+        Patient patient = patientRepository
+                .findByIdAndHospitalIdAndIsActiveTrue(record.getPatientId(), hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
+
+        CreateOpdRequest req = new CreateOpdRequest();
+        req.setPatientId(String.valueOf(patient.getId()));
+        req.setVisitType(Opd.VisitType.FOLLOWUP.name());
+        req.setProblem(problem != null && !problem.isBlank()
+                ? problem.trim()
+                : (record.getDiagnosis() != null ? "Follow-up: " + record.getDiagnosis() : "Follow-up"));
+
+        // The doctor who asked for the follow-up sees the patient again. Left unset if that
+        // doctor has since left, so createOpd applies whatever it does for an unassigned visit
+        // rather than this code inventing a rule of its own.
+        if (record.getDoctorId() != null) {
+            doctorRepository.findByIdAndHospitalIdAndIsActiveTrue(record.getDoctorId(), hospitalId)
+                    .ifPresent(d -> req.setDoctorId(String.valueOf(d.getId())));
+        }
+
+        Opd opd = opdService.createOpd(req);
+
+        int claimed = medicalRecordRepository.claimForArrival(
+                record.getId(), hospitalId, opd.getId(),
+                securityHelper.getCurrentUserId(), java.time.LocalDateTime.now());
+        if (claimed != 1) {
+            // Lost the race, or the follow-up was closed between the check above and here.
+            // Throwing rolls back the OPD created moments ago along with everything it caused.
+            throw new ConflictException(
+                    "This follow-up has already been actioned. Refresh to see the current visit.");
+        }
+
+        try {
+            auditLogService.logAction(
+                    "FOLLOW_UP_ACTIONED",
+                    "Patient arrived for follow-up; OPD " + opd.getCaseId()
+                            + " created from consultation " + record.getPublicId(),
+                    securityHelper.getCurrentUserEmail(), hospitalId,
+                    "MEDICAL_RECORD", String.valueOf(record.getId()), null);
+        } catch (Exception e) {
+            // Best-effort, as everywhere else: a missing audit line must not undo a real visit.
+        }
+
+        return opd;
+    }
+
+    /** Why a follow-up may not be actioned, said plainly enough to show a receptionist. */
+    private void assertActionable(MedicalRecord record) {
+        if (record.getFollowUpDate() == null) {
+            throw new IllegalArgumentException("This consultation has no follow-up scheduled.");
+        }
+        String status = record.getFollowUpStatus();
+        if (record.getActionedOpdId() != null
+                || MedicalRecord.FOLLOW_UP_ACTIONED.equals(status)) {
+            throw new ConflictException(
+                    "This follow-up has already been actioned. Refresh to see the current visit.");
+        }
+        if (MedicalRecord.FOLLOW_UP_COMPLETED.equals(status)) {
+            throw new ConflictException("This follow-up is already completed.");
+        }
+        if (MedicalRecord.FOLLOW_UP_CANCELLED.equals(status)) {
+            throw new ConflictException("This follow-up was cancelled.");
+        }
+        // Early arrivals are refused rather than quietly allowed: booking a visit against a
+        // future follow-up would take it off the due list before its date, and nothing else
+        // would ever bring it back.
+        if (record.getFollowUpDate().isAfter(clock.today())) {
+            throw new IllegalArgumentException(
+                    "This follow-up is not due until " + record.getFollowUpDate() + ".");
+        }
     }
 }

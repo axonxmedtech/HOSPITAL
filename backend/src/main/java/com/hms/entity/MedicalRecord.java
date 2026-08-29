@@ -92,6 +92,24 @@ public class MedicalRecord {
     @Column(name = "follow_up_status", length = 20)
     private String followUpStatus;
 
+    /**
+     * The OPD created when the patient actually returned for this follow-up.
+     *
+     * <p>This column IS the invariant. A follow-up is one row, so it can hold one actioned OPD
+     * and no more; the claim is taken with a conditional UPDATE that only succeeds while this is
+     * still NULL, so two receptionists pressing "Patient Arrived" together cannot both win. A
+     * unique index closes the other direction — one OPD cannot be claimed by two follow-ups.
+     */
+    @Column(name = "actioned_opd_id")
+    private Long actionedOpdId;
+
+    /** Who said the patient had arrived, and when. The follow-up date itself is never rewritten. */
+    @Column(name = "actioned_by_user_id")
+    private Long actionedByUserId;
+
+    @Column(name = "actioned_at")
+    private LocalDateTime actionedAt;
+
     /** Open, whether that is recorded explicitly or by the absence of any later decision. */
     public static final String FOLLOW_UP_OPEN = "OPEN";
     /** The patient returned and an encounter was created from this follow-up. */

@@ -370,6 +370,9 @@ CREATE TABLE `medical_records` (
   `visit_type` varchar(255) NOT NULL,
   `follow_up_instructions` varchar(1000) DEFAULT NULL,
   `follow_up_status` varchar(20) DEFAULT NULL,
+  `actioned_opd_id` bigint DEFAULT NULL,
+  `actioned_by_user_id` bigint DEFAULT NULL,
+  `actioned_at` datetime(6) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_4elkgkxl6vd0j1p95r174acix` (`public_id`),
   UNIQUE KEY `UK_2nyonrbplqq716buy7u4ghmt8` (`appointment_id`),
@@ -942,6 +945,9 @@ CREATE INDEX idx_doctors_hospital ON doctors(hospital_id);
 CREATE INDEX idx_ipd_admission_hospital_status ON ipd_admission(hospital_id, status);
 -- Follow-up due/overdue list: one facility across a date window (V17).
 CREATE INDEX idx_medical_records_followup ON medical_records(hospital_id, follow_up_date);
+-- One follow-up becomes at most one visit (V18). NULLs do not collide, so unactioned
+-- follow-ups are unconstrained.
+CREATE UNIQUE INDEX uk_medical_records_actioned_opd ON medical_records(actioned_opd_id);
 
 -- Deliberately NOT indexed here:
 --   opd(hospital_id, ...) — `opd` has no hospital_id column and never has. Its tenancy is

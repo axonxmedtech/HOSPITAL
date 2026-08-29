@@ -142,6 +142,14 @@ public class DatabaseMigrationRunner {
         addCompositeIndexIfMissing("medical_records", "idx_medical_records_followup",
                 "`hospital_id`, `follow_up_date`");
 
+        // V18 — the arrival link. The unique index is the invariant that stops one follow-up
+        // becoming two visits; NULLs do not collide, so unactioned follow-ups are unaffected.
+        addColumnIfMissing("medical_records", "actioned_opd_id", "BIGINT NULL");
+        addColumnIfMissing("medical_records", "actioned_by_user_id", "BIGINT NULL");
+        addColumnIfMissing("medical_records", "actioned_at", "DATETIME(6) NULL");
+        addUniqueIndexIfMissing("medical_records", "uk_medical_records_actioned_opd",
+                "`actioned_opd_id`");
+
         // ICU Phase 2 — ward classification (CareUnitRegistry). GENERAL by default, so every
         // existing ward keeps behaving exactly as before and no backfill is needed.
         addColumnIfMissing("wards", "unit_type", "VARCHAR(20) NOT NULL DEFAULT 'GENERAL'");
@@ -1421,6 +1429,25 @@ public class DatabaseMigrationRunner {
      * Composite sibling of {@link #addIndexIfMissing}, which quotes a single column and so cannot
      * express one. {@code columns} is inserted as written, already quoted by the caller.
      */
+    /** As {@link #addCompositeIndexIfMissing}, but the index enforces uniqueness. */
+    private void addUniqueIndexIfMissing(String table, String indexName, String columns) {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.STATISTICS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?",
+                Integer.class, table, indexName
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "ALTER TABLE `" + table + "` ADD UNIQUE INDEX `" + indexName + "` (" + columns + ")"
+                );
+                log.info("DB migration applied: unique index {} added on {} ({})", indexName, table, columns);
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (unique index {} on {}): {}", indexName, table, e.getMessage());
+        }
+    }
+
     private void addCompositeIndexIfMissing(String table, String indexName, String columns) {
         try {
             Integer count = jdbcTemplate.queryForObject(

@@ -46,7 +46,30 @@ public interface MedicalRecordRepository extends JpaRepository<MedicalRecord, Lo
      * hospital_id — and again on the patient, so a record pointing at another facility's patient
      * cannot drag that patient's name into this list.
      */
-    @Query("SELECT new com.hms.dto.FollowUpDTO("
+/**
+     * Claims a follow-up for exactly one arrival, atomically.
+     *
+     * <p>Returns 1 to the caller that won and 0 to every other. The WHERE clause is the whole
+     * mechanism: the database serialises these updates, so unlike a read-then-write check there
+     * is no window between deciding the follow-up is unclaimed and claiming it. Same shape as
+     * MedicineStockBatchRepository.deductAtomically, for the same reason.
+     *
+     * <p>Only an open, unclaimed follow-up in the caller's own facility can be taken — a
+     * terminal or already-actioned one matches nothing and the caller is told it lost.
+     */
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE MedicalRecord m SET m.followUpStatus = 'ACTIONED', m.actionedOpdId = :opdId, "
+         + "m.actionedByUserId = :userId, m.actionedAt = :at "
+         + "WHERE m.id = :id AND m.hospitalId = :hospitalId "
+         + "AND m.actionedOpdId IS NULL "
+         + "AND (m.followUpStatus IS NULL OR m.followUpStatus = 'OPEN')")
+    int claimForArrival(@org.springframework.data.repository.query.Param("id") Long id,
+                        @org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
+                        @org.springframework.data.repository.query.Param("opdId") Long opdId,
+                        @org.springframework.data.repository.query.Param("userId") Long userId,
+                        @org.springframework.data.repository.query.Param("at") java.time.LocalDateTime at);
+
+        @Query("SELECT new com.hms.dto.FollowUpDTO("
          + "  m.id, m.opdId, p.id, p.publicId, p.customId, p.name, p.phone,"
          + "  d.id, d.name, m.followUpDate, m.followUpInstructions, m.diagnosis, m.followUpStatus) "
          + "FROM MedicalRecord m "
