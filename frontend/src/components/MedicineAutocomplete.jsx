@@ -1,4 +1,5 @@
 import { Combobox } from '@headlessui/react';
+import { safeLoadMessage } from '../utils/apiError';
 import { CheckIcon, ChevronUpDownIcon } from '@heroicons/react/20/solid';
 import React, { useState, useEffect } from 'react';
 import hospitalService from '../services/hospitalService';
@@ -8,6 +9,10 @@ export default function MedicineAutocomplete({ value, onChange, onSelect }) {
   const [selectedMedicine, setSelectedMedicine] = useState(null);
   const [medicines, setMedicines] = useState([]);
   const [loading, setLoading] = useState(false);
+  // "No medicines found" and "the lookup failed" must not look the same here: the first tells a
+  // prescriber the drug is not in the catalogue, and acting on that when the search merely broke
+  // is a clinical decision made on a false premise.
+  const [searchError, setSearchError] = useState(null);
 
   useEffect(() => {
     const timeoutId = setTimeout(async () => {
@@ -16,9 +21,11 @@ export default function MedicineAutocomplete({ value, onChange, onSelect }) {
         try {
           const results = await hospitalService.searchMedicines(query);
           setMedicines(results);
+          setSearchError(null);
         } catch (error) {
           console.error('Failed to search medicines', error);
           setMedicines([]);
+          setSearchError(safeLoadMessage(error, "Couldn't search the medicine catalogue."));
         } finally {
           setLoading(false);
         }
@@ -80,7 +87,15 @@ export default function MedicineAutocomplete({ value, onChange, onSelect }) {
           </Combobox.Button>
         </div>
         <Combobox.Options className="absolute mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black/5 focus:outline-none sm:text-sm z-50">
-          {loading ? (
+          {searchError ? (
+            <div className="px-4 py-3 text-sm" role="alert">
+              <p className="font-bold text-gray-900">Catalogue search failed</p>
+              <p className="text-gray-600">{searchError}</p>
+              <p className="mt-1 text-xs text-gray-500">
+                This does not mean the medicine is missing. Try again before adding it.
+              </p>
+            </div>
+          ) : loading ? (
             <div className="relative cursor-default select-none px-4 py-2 text-gray-500 text-sm">
               Searching...
             </div>

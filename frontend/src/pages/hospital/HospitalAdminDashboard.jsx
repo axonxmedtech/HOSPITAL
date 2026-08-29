@@ -95,6 +95,28 @@ import WardsAndBeds from './WardsAndBeds';
  * @author HMS Team
  * @version Phase-1
  */
+/**
+ * Shown when a list failed to load, in place of the empty state.
+ *
+ * <p>An empty table and a failed request look identical to the person reading the screen, and the
+ * difference matters: one means there are no patients, the other means we do not know. Only text
+ * the API deliberately returned is displayed -- never a transport or exception string.
+ */
+const LoadFailureNotice = ({ message, onRetry }) => (
+  <div className="p-8 text-center" role="alert">
+    <p className="text-sm font-bold text-gray-900">Couldn't load this list</p>
+    <p className="mt-1 text-sm text-gray-600">{message}</p>
+    <p className="mt-1 text-xs text-gray-500">This is not the same as having no records.</p>
+    <button
+      type="button"
+      onClick={onRetry}
+      className="mt-4 px-4 py-2 text-xs font-black uppercase tracking-widest bg-gray-900 text-white rounded"
+    >
+      Retry
+    </button>
+  </div>
+);
+
 const HospitalAdminDashboard = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [user, setUser] = useState(authService.getCurrentUser());
@@ -139,6 +161,9 @@ const HospitalAdminDashboard = () => {
   const [auditLogs, setAuditLogs] = useState([]);
   const [stats, setStats] = useState({ today: 0, pending: 0, total: 0 });
   const [loading, setLoading] = useState(false);
+  // A failed load is not an empty ward. Kept separate from `loading` so the three outcomes --
+  // still loading, genuinely empty, failed to load -- stay distinguishable in the render.
+  const [loadError, setLoadError] = useState(null);
   const [pharmacyStats, setPharmacyStats] = useState(null);
   const [pharmacyStatsLoading, setPharmacyStatsLoading] = useState(false);
   const [analyticsData, setAnalyticsData] = useState(null);
@@ -1010,6 +1035,7 @@ const HospitalAdminDashboard = () => {
 
   const loadData = async (pageNum = page, sizeNum = pageSize, showSpinner = true) => {
     if (showSpinner) setLoading(true);
+    setLoadError(null);
     try {
       if (activeTab === 'overview') {
         if (isPharmacyTenant) {
@@ -1206,9 +1232,7 @@ const HospitalAdminDashboard = () => {
             setTotalElements(filtered.length);
           } catch (err) {
             console.error('Failed to load IPD admissions', err);
-            setIpds([]);
-            setTotalPages(1);
-            setTotalElements(0);
+            setLoadError(safeLoadMessage(err, "Couldn't load admitted patients."));
           }
         } else if (activeTab === 'opd') {
           try {
@@ -1241,9 +1265,7 @@ const HospitalAdminDashboard = () => {
             setPatients(patData.content || (Array.isArray(patData) ? patData : []));
           } catch (err) {
             console.error('Failed to load OPD cases', err);
-            setOpds([]);
-            setTotalPages(1);
-            setTotalElements(0);
+            setLoadError(safeLoadMessage(err, "Couldn't load OPD cases."));
           }
         } else if (activeTab === 'audit-logs') {
           const data = isPharmacyTenant
@@ -3387,7 +3409,9 @@ const HospitalAdminDashboard = () => {
                   )}
 
                   {activeTab === 'opd' &&
-                    (opds.length > 0 ? (
+                    (loadError ? (
+                      <LoadFailureNotice message={loadError} onRetry={() => loadData()} />
+                    ) : opds.length > 0 ? (
                       <AdminOpdTable
                         opds={opds}
                         onPrintOpd={handlePrintOpd}
@@ -5073,7 +5097,9 @@ const HospitalAdminDashboard = () => {
                 </div>
               )}
               {activeTab === 'ipd' &&
-                (ipds.length > 0 ? (
+                (loadError ? (
+                  <LoadFailureNotice message={loadError} onRetry={() => loadData()} />
+                ) : ipds.length > 0 ? (
                   <div className="p-4 overflow-x-auto">
                     <table className="w-full text-sm text-left">
                       <thead>
@@ -9523,6 +9549,7 @@ const PharmaciesTab = () => {
   const { success, error: toastError } = useToast();
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [branchesError, setBranchesError] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null); // branch being edited, or null for create
   const [form, setForm] = useState({ name: '', address: '', phone: '', email: '', password: '' });
@@ -9530,11 +9557,13 @@ const PharmaciesTab = () => {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setBranchesError(null);
     try {
       const data = await branchesApi.getAll();
       setBranches(Array.isArray(data) ? data : []);
     } catch (e) {
-      setBranches([]);
+      // Whatever was already listed stays on screen; a failed refresh is not a closed branch.
+      setBranchesError(safeLoadMessage(e, "Couldn't load branches."));
     } finally {
       setLoading(false);
     }
@@ -9654,6 +9683,20 @@ const PharmaciesTab = () => {
               <tr>
                 <td colSpan={6} className="py-16 text-center text-gray-400">
                   Loading branches...
+                </td>
+              </tr>
+            ) : branchesError ? (
+              <tr>
+                <td colSpan={6} className="py-16 text-center" role="alert">
+                  <p className="text-sm font-bold text-gray-900">Couldn't load branches</p>
+                  <p className="mt-1 text-sm text-gray-600">{branchesError}</p>
+                  <button
+                    type="button"
+                    onClick={load}
+                    className="mt-4 px-4 py-2 text-xs font-black uppercase tracking-widest bg-gray-900 text-white rounded"
+                  >
+                    Retry
+                  </button>
                 </td>
               </tr>
             ) : branches.length > 0 ? (

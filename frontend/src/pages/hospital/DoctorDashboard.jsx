@@ -1,4 +1,5 @@
 import { createColumnHelper } from '@tanstack/react-table';
+import { safeLoadMessage } from '../../utils/apiError';
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import ActionMenu from '../../components/ActionMenu';
@@ -88,14 +89,6 @@ const DoctorDashboard = () => {
    * structured message is meaningful to a user; anything else is not, so it is replaced rather
    * than displayed.
    */
-  const safeLoadMessage = (err, fallback) => {
-    const data = err?.response?.data;
-    const fromServer =
-      (typeof data?.error === 'string' && data.error) ||
-      (typeof data?.message === 'string' && data.message) ||
-      (typeof data === 'string' && data.trim() ? data : null);
-    return fromServer || fallback;
-  };
   // Scoped loading indicator for just the Appointments card/table, so switching
   // the Today/Upcoming/History filter doesn't blow away the whole dashboard's
   // full-page skeleton (that's reserved for actual tab switches).
