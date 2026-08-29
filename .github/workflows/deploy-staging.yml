@@ -98,6 +98,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      - name: Test the migration validator
+        run: bash scripts/db/test-validate-migrations.sh
       - name: Validate Flyway migrations
         run: bash scripts/db/validate-migrations.sh
       - name: Validate schema bootstrap
