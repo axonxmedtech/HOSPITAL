@@ -135,6 +135,13 @@ public class DatabaseMigrationRunner {
         addColumnIfMissing("prescriptions", "food_timing", "VARCHAR(20) NULL"); // V15
         ensureOpdIdempotencyTable(); // V16 — one OPD registration per logical submission
 
+        // V17 — follow-up lifecycle. A NULL status reads as OPEN, so historical consultations
+        // stay actionable and nothing is rewritten.
+        addColumnIfMissing("medical_records", "follow_up_instructions", "VARCHAR(1000) NULL");
+        addColumnIfMissing("medical_records", "follow_up_status", "VARCHAR(20) NULL");
+        addCompositeIndexIfMissing("medical_records", "idx_medical_records_followup",
+                "`hospital_id`, `follow_up_date`");
+
         // ICU Phase 2 — ward classification (CareUnitRegistry). GENERAL by default, so every
         // existing ward keeps behaving exactly as before and no backfill is needed.
         addColumnIfMissing("wards", "unit_type", "VARCHAR(20) NOT NULL DEFAULT 'GENERAL'");
@@ -1408,6 +1415,28 @@ public class DatabaseMigrationRunner {
         addIndexIfMissing("appointments", "idx_appt_date", "appointment_date");
         addIndexIfMissing("patients",     "idx_patient_hospital", "hospital_id");
         addIndexIfMissing("doctors",      "idx_doctor_hospital",  "hospital_id");
+    }
+
+    /**
+     * Composite sibling of {@link #addIndexIfMissing}, which quotes a single column and so cannot
+     * express one. {@code columns} is inserted as written, already quoted by the caller.
+     */
+    private void addCompositeIndexIfMissing(String table, String indexName, String columns) {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.STATISTICS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?",
+                Integer.class, table, indexName
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "ALTER TABLE `" + table + "` ADD INDEX `" + indexName + "` (" + columns + ")"
+                );
+                log.info("DB migration applied: index {} added on {} ({})", indexName, table, columns);
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (index {} on {}): {}", indexName, table, e.getMessage());
+        }
     }
 
     private void addIndexIfMissing(String table, String indexName, String column) {

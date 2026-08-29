@@ -368,6 +368,8 @@ CREATE TABLE `medical_records` (
   `symptoms` varchar(1000) DEFAULT NULL,
   `treatment_notes` varchar(2000) DEFAULT NULL,
   `visit_type` varchar(255) NOT NULL,
+  `follow_up_instructions` varchar(1000) DEFAULT NULL,
+  `follow_up_status` varchar(20) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_4elkgkxl6vd0j1p95r174acix` (`public_id`),
   UNIQUE KEY `UK_2nyonrbplqq716buy7u4ghmt8` (`appointment_id`),
@@ -938,6 +940,8 @@ CREATE INDEX idx_doctors_hospital ON doctors(hospital_id);
 -- The table is `ipd_admission`, singular. The old line named `ipd_admissions` and would have
 -- failed with "table doesn't exist" even once the syntax was valid.
 CREATE INDEX idx_ipd_admission_hospital_status ON ipd_admission(hospital_id, status);
+-- Follow-up due/overdue list: one facility across a date window (V17).
+CREATE INDEX idx_medical_records_followup ON medical_records(hospital_id, follow_up_date);
 
 -- Deliberately NOT indexed here:
 --   opd(hospital_id, ...) — `opd` has no hospital_id column and never has. Its tenancy is

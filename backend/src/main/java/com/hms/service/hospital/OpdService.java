@@ -247,11 +247,10 @@ public class OpdService {
                 || doctorRepository.findByIdAndHospitalIdAndIsActiveTrue(doctorId, hospitalId).isEmpty()) {
             throw new ResourceNotFoundException("Doctor not found");
         }
-        try {
-            autoQueueTodaysFollowupsForDoctor(hospitalId, doctorId);
-        } catch (Exception e) {
-            logger.warn("Failed to auto-queue today's follow-ups for doctor {}", doctorId, e);
-        }
+        // Reading the queue used to create today's follow-up encounters as a side effect. It no
+        // longer does: a follow-up falling due is not evidence the patient came in, and two
+        // people opening this screen at once produced two encounters for the same patient.
+        // Outstanding follow-ups are read from /hospital/follow-ups, which writes nothing.
         return queueEntryRepository.findQueueForDoctorToday(doctorId);
     }
 
@@ -330,99 +329,12 @@ public class OpdService {
             logger.warn("Could not resolve hospital ID for queue listing", e);
         }
         if (hospitalId == null) return java.util.List.of();
-        try {
-            autoQueueTodaysFollowupsForHospital(hospitalId);
-        } catch (Exception e) {
-            logger.warn("Failed to auto-queue today's follow-ups for hospital {}", hospitalId, e);
-        }
+        // See getQueueForDoctorToday: this read no longer creates follow-up encounters.
         return queueEntryRepository.findQueueForHospitalToday(hospitalId);
     }
 
-    @org.springframework.transaction.annotation.Transactional
-    public void autoQueueTodaysFollowupsForHospital(Long hospitalId) {
-        java.time.LocalDate today = java.time.LocalDate.now();
-        java.time.LocalDateTime startOfToday = today.atStartOfDay();
-
-        java.util.List<com.hms.entity.MedicalRecord> records = medicalRecordRepository.findByHospitalIdAndFollowUpDate(hospitalId, today);
-        for (com.hms.entity.MedicalRecord record : records) {
-            boolean alreadyQueued = opdRepository.existsByPatientIdAndVisitTypeAndCreatedAtGreaterThanEqual(
-                    record.getPatientId(),
-                    com.hms.entity.Opd.VisitType.FOLLOWUP,
-                    startOfToday
-            );
-            if (!alreadyQueued) {
-                queueFollowUp(record);
-            }
-        }
-    }
-
-    @org.springframework.transaction.annotation.Transactional
-    public void autoQueueTodaysFollowupsForDoctor(Long hospitalId, Long doctorId) {
-        java.time.LocalDate today = java.time.LocalDate.now();
-        java.time.LocalDateTime startOfToday = today.atStartOfDay();
-
-        java.util.List<com.hms.entity.MedicalRecord> records = medicalRecordRepository.findByHospitalIdAndDoctorIdAndFollowUpDate(hospitalId, doctorId, today);
-        for (com.hms.entity.MedicalRecord record : records) {
-            boolean alreadyQueued = opdRepository.existsByPatientIdAndVisitTypeAndCreatedAtGreaterThanEqual(
-                    record.getPatientId(),
-                    com.hms.entity.Opd.VisitType.FOLLOWUP,
-                    startOfToday
-            );
-            if (!alreadyQueued) {
-                queueFollowUp(record);
-            }
-        }
-    }
-
-    private void queueFollowUp(com.hms.entity.MedicalRecord record) {
-        com.hms.entity.Opd opd = new com.hms.entity.Opd();
-
-        com.hms.entity.Patient patient = patientRepository.findById(record.getPatientId()).orElse(null);
-        if (patient == null) return;
-        opd.setPatient(patient);
-
-        com.hms.entity.Doctor doctor = doctorRepository.findById(record.getDoctorId()).orElse(null);
-        if (doctor == null) return;
-        opd.setDoctor(doctor);
-
-        opd.setVisitType(com.hms.entity.Opd.VisitType.FOLLOWUP);
-        opd.setProblem(record.getDiagnosis() != null ? "Follow-up: " + record.getDiagnosis() : "Follow-up");
-        opd.setStatus(com.hms.entity.Opd.Status.QUEUED);
-
-        com.hms.entity.Opd saved = opdRepository.save(opd);
-        saved.setCaseId("OPD-" + saved.getId());
-        saved = opdRepository.save(saved);
-
-        com.hms.entity.QueueEntry entry = new com.hms.entity.QueueEntry();
-        entry.setOpd(saved);
-        entry.setDoctor(doctor);
-        queueEntryRepository.save(entry);
-
-        try {
-            String details = "OPD Follow-up " + saved.getCaseId() + " auto-created for patient " + patient.getId();
-            auditLogService.logAction(
-                    "OPD_CREATED",
-                    details,
-                    "SYSTEM",
-                    record.getHospitalId(),
-                    "OPD",
-                    saved.getCaseId(),
-                    null
-            );
-        } catch (Exception e) {
-            logger.warn("Failed to write audit log for follow-up OPD creation {}", saved.getCaseId(), e);
-        }
-    }
-
-    public java.util.List<com.hms.entity.MedicalRecord> getFollowUpsForDoctorToday(Long hospitalId, Long doctorId, java.time.LocalDate today) {
-        return medicalRecordRepository.findByHospitalIdAndDoctorIdAndFollowUpDate(hospitalId, doctorId, today);
-    }
-
-    public java.util.List<com.hms.entity.MedicalRecord> getFollowUpsForHospitalToday(Long hospitalId, java.time.LocalDate today) {
-        return medicalRecordRepository.findByHospitalIdAndFollowUpDate(hospitalId, today);
-    }
-
-    public java.util.Optional<java.util.Map<String, String>> getPatientNameAndCustomIdAndPublicId(Long patientId) {
+@org.springframework.transaction.annotation.Transactional
+public java.util.Optional<java.util.Map<String, String>> getPatientNameAndCustomIdAndPublicId(Long patientId) {
         return patientRepository.findById(patientId).map(p -> {
             java.util.Map<String, String> map = new java.util.HashMap<>();
             map.put("name", p.getName());

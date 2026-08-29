@@ -59,6 +59,9 @@ class ClinicPharmacyIsolationTest {
             "DoctorController",
             "FaqController",
             "FormAccessController",
+            // Follow-ups belong to an OPD consultation, which clinics also run. Reachable from
+            // /clinic but never /pharmacy: a pharmacy has no consultations to follow up.
+            "FollowUpController",
             "HospitalAuditController",
             "HospitalAuthController",
             "HospitalFeeController",

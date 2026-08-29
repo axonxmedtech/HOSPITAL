@@ -565,6 +565,11 @@ public class DoctorService {
         record.setDiagnosis(request.getDiagnosis());
         record.setTreatmentNotes(request.getTreatmentNotes());
         record.setFollowUpDate(request.getFollowUpDate());
+        record.setFollowUpInstructions(request.getFollowUpInstructions());
+        // A follow-up starts open. Left null when no date was given, so a consultation with no
+        // follow-up never appears in anyone's due list.
+        record.setFollowUpStatus(request.getFollowUpDate() != null
+                ? com.hms.entity.MedicalRecord.FOLLOW_UP_OPEN : null);
 
         com.hms.entity.MedicalRecord savedRecord = medicalRecordRepository.save(record);
 

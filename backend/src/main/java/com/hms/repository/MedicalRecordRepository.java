@@ -2,6 +2,7 @@ package com.hms.repository;
 
 import com.hms.entity.MedicalRecord;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -30,6 +31,52 @@ public interface MedicalRecordRepository extends JpaRepository<MedicalRecord, Lo
             @org.springframework.data.repository.query.Param("hospitalId") Long hospitalId);
 
 
-    List<MedicalRecord> findByHospitalIdAndFollowUpDate(Long hospitalId, java.time.LocalDate followUpDate);
-    List<MedicalRecord> findByHospitalIdAndDoctorIdAndFollowUpDate(Long hospitalId, Long doctorId, java.time.LocalDate followUpDate);
+/**
+     * Outstanding follow-ups for one facility in a date window, as the list the front desk reads.
+     *
+     * <p>Patient and doctor are joined here rather than fetched per row: the due list is opened
+     * repeatedly through the day and one query per patient would make it quadratic in the number
+     * of people expected back.
+     *
+     * <p>A NULL status counts as open. Every consultation recorded before the column existed has
+     * one, and treating those as closed would silently retire real follow-ups that nobody has
+     * acted on.
+     *
+     * <p>hospitalId is matched on medical_records directly — the table carries a NOT NULL
+     * hospital_id — and again on the patient, so a record pointing at another facility's patient
+     * cannot drag that patient's name into this list.
+     */
+    @Query("SELECT new com.hms.dto.FollowUpDTO("
+         + "  m.id, m.opdId, p.id, p.publicId, p.customId, p.name, p.phone,"
+         + "  d.id, d.name, m.followUpDate, m.followUpInstructions, m.diagnosis, m.followUpStatus) "
+         + "FROM MedicalRecord m "
+         + "JOIN Patient p ON p.id = m.patientId AND p.hospitalId = m.hospitalId "
+         + "LEFT JOIN Doctor d ON d.id = m.doctorId AND d.hospitalId = m.hospitalId "
+         + "WHERE m.hospitalId = :hospitalId "
+         + "AND m.followUpDate IS NOT NULL "
+         + "AND (m.followUpStatus IS NULL OR m.followUpStatus = 'OPEN') "
+         + "AND m.followUpDate >= :from AND m.followUpDate <= :to "
+         + "ORDER BY m.followUpDate ASC, p.name ASC")
+    List<com.hms.dto.FollowUpDTO> findOpenFollowUpsBetween(
+            @org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
+            @org.springframework.data.repository.query.Param("from") java.time.LocalDate from,
+            @org.springframework.data.repository.query.Param("to") java.time.LocalDate to);
+
+    /** Same list narrowed to one doctor's own patients. */
+    @Query("SELECT new com.hms.dto.FollowUpDTO("
+         + "  m.id, m.opdId, p.id, p.publicId, p.customId, p.name, p.phone,"
+         + "  d.id, d.name, m.followUpDate, m.followUpInstructions, m.diagnosis, m.followUpStatus) "
+         + "FROM MedicalRecord m "
+         + "JOIN Patient p ON p.id = m.patientId AND p.hospitalId = m.hospitalId "
+         + "LEFT JOIN Doctor d ON d.id = m.doctorId AND d.hospitalId = m.hospitalId "
+         + "WHERE m.hospitalId = :hospitalId AND m.doctorId = :doctorId "
+         + "AND m.followUpDate IS NOT NULL "
+         + "AND (m.followUpStatus IS NULL OR m.followUpStatus = 'OPEN') "
+         + "AND m.followUpDate >= :from AND m.followUpDate <= :to "
+         + "ORDER BY m.followUpDate ASC, p.name ASC")
+    List<com.hms.dto.FollowUpDTO> findOpenFollowUpsBetweenForDoctor(
+            @org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
+            @org.springframework.data.repository.query.Param("doctorId") Long doctorId,
+            @org.springframework.data.repository.query.Param("from") java.time.LocalDate from,
+            @org.springframework.data.repository.query.Param("to") java.time.LocalDate to);
 }

@@ -352,57 +352,12 @@ public class OpdController {
         return ResponseEntity.ok(queue);
     }
 
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    @GetMapping("/today-followups")
-    public ResponseEntity<java.util.List<?>> getTodayFollowUps() {
-        try {
-            Long hospitalId = securityHelper.getCurrentHospitalId();
-            if (hospitalId == null) {
-                return ResponseEntity.ok(java.util.List.of());
-            }
+    // GET /today-followups is gone. It triggered follow-up encounter creation from a read, and
+    // resolved each patient and doctor one row at a time. Outstanding follow-ups now come from
+    // FollowUpController, which reads in a single query and writes nothing. No caller existed in
+    // the frontend or backend at the time of removal.
 
-            // Trigger auto-queueing first so today's followups are created and queued
-            opdService.autoQueueTodaysFollowupsForHospital(hospitalId);
-
-            String email = securityHelper.getCurrentUserEmail();
-            java.util.Optional<com.hms.entity.Doctor> d = doctorRepository.findByEmailAndHospitalId(email, hospitalId);
-
-            java.util.List<com.hms.entity.MedicalRecord> followUps;
-            java.time.LocalDate today = java.time.LocalDate.now();
-            if (d.isPresent() && "DOCTOR".equals(securityHelper.getCurrentUserRole())) {
-                followUps = opdService.getFollowUpsForDoctorToday(hospitalId, d.get().getId(), today);
-            } else {
-                followUps = opdService.getFollowUpsForHospitalToday(hospitalId, today);
-            }
-
-            java.util.List<java.util.Map<String, Object>> response = new java.util.ArrayList<>();
-            for (com.hms.entity.MedicalRecord mr : followUps) {
-                java.util.Map<String, Object> map = new java.util.HashMap<>();
-                map.put("id", mr.getId());
-                map.put("followUpDate", mr.getFollowUpDate());
-                map.put("diagnosis", mr.getDiagnosis());
-
-                opdService.getPatientNameAndCustomIdAndPublicId(mr.getPatientId()).ifPresent(p -> {
-                    map.put("patientName", p.get("name"));
-                    map.put("patientCustomId", p.get("customId"));
-                    map.put("patientPublicId", p.get("publicId"));
-                });
-
-                opdService.getDoctorName(mr.getDoctorId()).ifPresent(name -> {
-                    map.put("doctorName", name);
-                });
-
-                response.add(map);
-            }
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            logger.error("Failed to fetch today's followups", e);
-            return ResponseEntity.ok(java.util.List.of());
-        }
-    }
-
-    @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
+@PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     @GetMapping("/report/pdf")
     public ResponseEntity<?> downloadOpdReportPdf(
             @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date,

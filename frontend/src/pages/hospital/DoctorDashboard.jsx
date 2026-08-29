@@ -463,7 +463,8 @@ const DoctorDashboard = () => {
           setAppointments(appointmentsArray);
           setTotalAppointments(data.totalElements || appointmentsArray.length);
 
-          const followUpsData = await hospitalService.getTodaysFollowUps();
+          // The old endpoint inferred this from the caller's role; it is now stated.
+          const followUpsData = await hospitalService.getTodaysFollowUps({ mine: true });
           setTodaysFollowUps(followUpsData || []);
 
           // If Solo Mode is active, fetch patients for Overview's patient list as well

@@ -20,6 +20,9 @@ public class ConsultationRequest {
     private String diagnosis;
     private String treatmentNotes;
     private LocalDate followUpDate;
+
+    /** Optional. Absent on every consultation recorded before this field existed. */
+    private String followUpInstructions;
     private Boolean ipdAdmitRecommended;
 
     @Valid

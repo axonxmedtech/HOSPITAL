@@ -71,6 +71,42 @@ public class MedicalRecord {
 
     private LocalDate followUpDate;
 
+    /**
+     * What the doctor asked the patient to come back for. Kept separate from diagnosis and
+     * treatment notes deliberately: those describe the visit that happened, this describes the
+     * one that has not.
+     */
+    @Column(name = "follow_up_instructions", length = 1000)
+    private String followUpInstructions;
+
+    /**
+     * Where this follow-up has got to. NULL means OPEN — every consultation written before this
+     * column existed is therefore still actionable, which is the honest reading: nobody recorded
+     * that those patients came back, so nothing may claim they did.
+     *
+     * <p>Deliberately absent: RESCHEDULED. Moving a follow-up changes {@link #followUpDate} and
+     * the record stays open; a terminal state for it would end an appointment that is still
+     * outstanding. DUE_TODAY, OVERDUE and UPCOMING are absent for the opposite reason — they are
+     * functions of the date and would otherwise need something to rewrite them every midnight.
+     */
+    @Column(name = "follow_up_status", length = 20)
+    private String followUpStatus;
+
+    /** Open, whether that is recorded explicitly or by the absence of any later decision. */
+    public static final String FOLLOW_UP_OPEN = "OPEN";
+    /** The patient returned and an encounter was created from this follow-up. */
+    public static final String FOLLOW_UP_ACTIONED = "ACTIONED";
+    /** Closed without a return visit being needed. */
+    public static final String FOLLOW_UP_COMPLETED = "COMPLETED";
+    /** Called off — the patient is not expected back for this. */
+    public static final String FOLLOW_UP_CANCELLED = "CANCELLED";
+
+    /** True while this follow-up can still be acted on. */
+    public boolean isFollowUpOpen() {
+        return followUpDate != null
+                && (followUpStatus == null || FOLLOW_UP_OPEN.equals(followUpStatus));
+    }
+
     @Column(name = "administered_items_json", length = 3000)
     private String administeredItemsJson;
 

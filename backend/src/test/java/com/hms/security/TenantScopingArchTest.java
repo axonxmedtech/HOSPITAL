@@ -153,7 +153,6 @@ class TenantScopingArchTest {
             "OpdService#createOpd",
             "OpdService#getDoctorName",
             "OpdService#getPatientNameAndCustomIdAndPublicId",
-            "OpdService#queueFollowUp",
             "OtRoomService#requireRoomById",
             "PatientController#downloadPatientsReportPdf",
             "PatientService#getIpdMedicinesPdf",

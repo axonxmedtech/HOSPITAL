@@ -1,0 +1,104 @@
+package com.hms.service.hospital;
+
+import com.hms.dto.FollowUpDTO;
+import com.hms.exception.UnauthorizedException;
+import com.hms.repository.MedicalRecordRepository;
+import com.hms.security.SecurityContextHelper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+
+/**
+ * Reads outstanding follow-ups. Writes nothing, ever.
+ *
+ * <p>That is the point of this class. Before it, the only way a due follow-up became visible was
+ * a side effect of opening the OPD queue, which created an OPD, a queue entry and an audit row —
+ * so a date arriving was indistinguishable from a patient walking in, and reading a screen twice
+ * could produce two encounters for one person. Being due is now a question about stored data, and
+ * asking it changes nothing.
+ *
+ * <p>OVERDUE, DUE_TODAY and UPCOMING are derived here from the date rather than stored, so no job
+ * has to rewrite anything at midnight and an outage cannot leave a patient in the wrong bucket.
+ */
+@Service
+public class FollowUpService {
+
+    /** Past the date and still open. Stays here until somebody actually deals with it. */
+    public static final String OVERDUE = "OVERDUE";
+    public static final String DUE_TODAY = "DUE_TODAY";
+    public static final String UPCOMING = "UPCOMING";
+
+    /**
+     * How far ahead "upcoming" looks. A window rather than everything, because a list that also
+     * contains next year's appointments is not a worklist.
+     */
+    private static final int UPCOMING_WINDOW_DAYS = 30;
+
+    /**
+     * How far back overdue looks by default. Follow-ups written before this feature existed have
+     * no status, so they are all open — without a bound, a facility's first view would be years
+     * of history. The date is never altered; this only decides what today's list shows, and a
+     * caller that wants the whole tail can ask for it.
+     */
+    private static final int OVERDUE_WINDOW_DAYS = 90;
+
+    @Autowired private MedicalRecordRepository medicalRecordRepository;
+    @Autowired private SecurityContextHelper securityHelper;
+    @Autowired private BusinessClock clock;
+
+    private Long requireHospitalId() {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found in context");
+        return hospitalId;
+    }
+
+    /**
+     * Everything outstanding a facility should be looking at: overdue, due today, and the next
+     * few weeks — in one query, bucketed here.
+     *
+     * @param doctorId optional; when given, only that doctor's own follow-ups
+     * @param overdueDays how far back to look, or null for the default window
+     */
+    @Transactional(readOnly = true)
+    public List<FollowUpDTO> outstanding(Long doctorId, Integer overdueDays) {
+        Long hospitalId = requireHospitalId();
+        LocalDate today = clock.today();
+        int back = overdueDays != null && overdueDays >= 0 ? overdueDays : OVERDUE_WINDOW_DAYS;
+        LocalDate from = today.minusDays(back);
+        LocalDate to = today.plusDays(UPCOMING_WINDOW_DAYS);
+
+        List<FollowUpDTO> rows = doctorId == null
+                ? medicalRecordRepository.findOpenFollowUpsBetween(hospitalId, from, to)
+                : medicalRecordRepository.findOpenFollowUpsBetweenForDoctor(hospitalId, doctorId, from, to);
+
+        for (FollowUpDTO row : rows) {
+            row.setTiming(timingOf(row.getFollowUpDate(), today));
+            row.setDaysOverdue(ChronoUnit.DAYS.between(row.getFollowUpDate(), today));
+        }
+        return rows;
+    }
+
+    /** One bucket only, for a caller that wants exactly one list. */
+    @Transactional(readOnly = true)
+    public List<FollowUpDTO> outstanding(String timing, Long doctorId, Integer overdueDays) {
+        if (timing == null || timing.isBlank()) return outstanding(doctorId, overdueDays);
+        String wanted = timing.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!OVERDUE.equals(wanted) && !DUE_TODAY.equals(wanted) && !UPCOMING.equals(wanted)) {
+            throw new IllegalArgumentException(
+                    "Unknown follow-up bucket: " + timing + ". Expected OVERDUE, DUE_TODAY or UPCOMING.");
+        }
+        return outstanding(doctorId, overdueDays).stream()
+                .filter(r -> wanted.equals(r.getTiming()))
+                .toList();
+    }
+
+    static String timingOf(LocalDate followUpDate, LocalDate today) {
+        if (followUpDate.isBefore(today)) return OVERDUE;
+        if (followUpDate.isEqual(today)) return DUE_TODAY;
+        return UPCOMING;
+    }
+}

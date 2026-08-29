@@ -38,7 +38,9 @@ public final class ControllerModules {
                 "FaqController", "ConsultationNotePresetController", "PrescriptionPresetController",
                 "PharmacistController");
 
-        put(EntitlementRegistry.OPD, "OpdController", "VitalSettingsController");
+        put(EntitlementRegistry.OPD, "OpdController", "VitalSettingsController",
+                // Follow-ups are the tail of an OPD consultation, so they follow OPD.
+                "FollowUpController");
         put(EntitlementRegistry.APPOINTMENTS, "AppointmentController");
 
         // IPD carries wards and beds; admission forms are an inpatient record.

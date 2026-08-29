@@ -103,13 +103,7 @@ public interface OpdRepository extends JpaRepository<Opd, Long> {
 			@Param("excludedStatus") com.hms.entity.Opd.Status excludedStatus,
 			Pageable pageable);
 
-	boolean existsByPatientIdAndVisitTypeAndCreatedAtGreaterThanEqual(
-			Long patientId, 
-			com.hms.entity.Opd.VisitType visitType, 
-			java.time.LocalDateTime startOfDay
-	);
-
-	/**
+/**
 	 * CLIN-P1: every OPD encounter for one patient, tenant-proven through the patient join —
 	 * same reasoning as findByIdAndHospitalIdWithPatientAndDoctor above.
 	 */

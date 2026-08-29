@@ -759,10 +759,19 @@ const hospitalService = {
   },
 
   /**
-   * Get today's follow-up patients list based on role
+   * Today's outstanding follow-ups.
+   *
+   * Reads /hospital/follow-ups, which only reads. The endpoint this used to call created an OPD
+   * and a queue entry for every due follow-up as a side effect of the GET, so simply opening a
+   * dashboard booked patients in who had not arrived — and two dashboards open at once booked
+   * them in twice.
+   *
+   * @param {{ mine?: boolean }} [options] mine: a doctor asking only for their own patients.
    */
-  getTodaysFollowUps: async () => {
-    const response = await apiClient.get('/hospital/opd/today-followups');
+  getTodaysFollowUps: async (options = {}) => {
+    const params = new URLSearchParams({ timing: 'DUE_TODAY' });
+    if (options.mine) params.set('mine', 'true');
+    const response = await apiClient.get(`/hospital/follow-ups?${params.toString()}`);
     return response.data;
   },
 
