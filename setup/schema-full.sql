@@ -606,6 +606,7 @@ CREATE TABLE `pharmacy_sale_items` (
   `medicine_batch_id` bigint NOT NULL,
   `prescribed_quantity` decimal(10,2) DEFAULT NULL,
   `sold_quantity` decimal(10,2) DEFAULT NULL,
+  `returned_quantity` decimal(10,2) NOT NULL DEFAULT '0.00',
   `unit_price` decimal(10,2) DEFAULT NULL,
   `discount_percentage` decimal(5,2) DEFAULT NULL,
   `gst_percentage` decimal(5,2) DEFAULT NULL,

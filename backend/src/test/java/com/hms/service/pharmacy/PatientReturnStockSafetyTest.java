@@ -52,6 +52,7 @@ class PatientReturnStockSafetyTest {
     @Mock SecurityContextHelper securityHelper;
     @Mock com.hms.repository.PrescriptionRepository prescriptionRepository;
     @Mock com.hms.service.RealtimeNotifier notifier;
+    @Mock com.hms.repository.pharmacy.PharmacySaleItemRepository saleItemRepository;
 
     @InjectMocks PharmacySaleService saleService;
 
@@ -89,6 +90,8 @@ class PatientReturnStockSafetyTest {
         when(saleRepository.findByIdScoped(100L, HOSPITAL, null)).thenReturn(Optional.of(sale));
         when(batchRepository.findByIdAndHospitalIdForUpdate(BATCH, HOSPITAL, null))
                 .thenReturn(Optional.of(batch));
+        // The atomic claim is what accepts or refuses a return; success unless a test says otherwise.
+        when(saleItemRepository.claimReturn(any(), any())).thenReturn(1);
     }
 
     /** The request may still carry restock=true; it is ignored. */
@@ -173,11 +176,19 @@ class PatientReturnStockSafetyTest {
     // ── the controls that already existed must survive ───────────────────────
 
     @Test
-    void moreCannotBeReturnedThanWasBought() {
+    void moreCannotBeReturnedThanRemainsReturnable() {
+        when(saleItemRepository.claimReturn(any(), any())).thenReturn(0); // the bound refused it
         assertThatThrownBy(() -> saleService.processPatientReturn(100L, returnOf("11", false)))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("more quantity than originally purchased");
+                .hasMessageContaining("remain returnable");
         assertThat(batch.getCurrentQuantity()).isEqualByComparingTo(STOCK_ON_SHELF);
+    }
+
+    /** Every accepted return goes through the atomic claim rather than a read-then-write check. */
+    @Test
+    void acceptanceIsDecidedByTheAtomicClaim() {
+        saleService.processPatientReturn(100L, returnOf("4", false));
+        verify(saleItemRepository).claimReturn(any(), org.mockito.ArgumentMatchers.eq(new BigDecimal("4")));
     }
 
     @Test

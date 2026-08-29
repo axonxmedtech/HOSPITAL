@@ -40,6 +40,17 @@ public class PharmacySaleItem {
     @Column(name = "sold_quantity", nullable = false, precision = 10, scale = 2)
     private BigDecimal quantity; // Mapped to sold_quantity
 
+    /**
+     * How much of this line has already been returned and refunded.
+     *
+     * <p>Without it the return check compared each request against the originally sold quantity,
+     * so the same units could be refunded again and again. This is the authoritative record of
+     * what is still returnable; it is incremented by a conditional UPDATE that refuses to take
+     * the total past sold_quantity, so two simultaneous returns cannot both win.
+     */
+    @Column(name = "returned_quantity", precision = 10, scale = 2)
+    private BigDecimal returnedQuantity = BigDecimal.ZERO;
+
     @Column(name = "unit_price", nullable = false, precision = 10, scale = 2)
     private BigDecimal unitPrice;
 

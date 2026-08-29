@@ -150,6 +150,11 @@ public class DatabaseMigrationRunner {
         addUniqueIndexIfMissing("medical_records", "uk_medical_records_actioned_opd",
                 "`actioned_opd_id`");
 
+        // V19 — what a pharmacy sale line has already had returned, so the same sold units
+        // cannot be refunded twice. Existing rows start at zero; see the migration.
+        addColumnIfMissing("pharmacy_sale_items", "returned_quantity",
+                "DECIMAL(10,2) NOT NULL DEFAULT 0");
+
         // ICU Phase 2 — ward classification (CareUnitRegistry). GENERAL by default, so every
         // existing ward keeps behaving exactly as before and no backfill is needed.
         addColumnIfMissing("wards", "unit_type", "VARCHAR(20) NOT NULL DEFAULT 'GENERAL'");

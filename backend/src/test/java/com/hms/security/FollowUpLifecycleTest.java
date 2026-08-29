@@ -444,7 +444,11 @@ class FollowUpLifecycleTest {
         for (Future<Integer> f : results) {
             int code = f.get();
             if (code == 200) ok++;
-            else if (code == 409) refused++;
+            // The loser is refused either at the claim (409) or at the pre-check that runs
+            // first — a reschedule that commits ahead of an arrival makes the follow-up not yet
+            // due, which is a 400. Both are deterministic refusals; what must never happen is a
+            // second success, or a 500.
+            else if (code == 400 || code == 409) refused++;
         }
 
         assertThat(ok).as("%s vs %s: exactly one may win", first, second).isEqualTo(1);

@@ -33,6 +33,9 @@ public class PharmacySaleService {
     private SecurityContextHelper securityHelper;
 
     @Autowired
+    private com.hms.repository.pharmacy.PharmacySaleItemRepository saleItemRepository;
+
+    @Autowired
     private com.hms.repository.PrescriptionRepository prescriptionRepository;
 
     @Autowired private com.hms.service.RealtimeNotifier notifier;
@@ -236,8 +239,17 @@ public class PharmacySaleService {
                     .findFirst()
                     .orElseThrow(() -> new RuntimeException("Medicine batch was not part of original invoice"));
 
-            if (soldItem.getQuantity().compareTo(qtyToReturn) < 0) {
-                throw new IllegalArgumentException("Cannot return more quantity than originally purchased for batch " + batchId);
+            // The bound is what is STILL returnable, not what was originally sold. Checked and
+            // taken in one statement: a read-then-write would let two returns submitted together
+            // each see the same remaining quantity and both refund it.
+            if (saleItemRepository.claimReturn(soldItem.getId(), qtyToReturn) != 1) {
+                java.math.BigDecimal already = soldItem.getReturnedQuantity() == null
+                        ? java.math.BigDecimal.ZERO : soldItem.getReturnedQuantity();
+                java.math.BigDecimal remaining = soldItem.getQuantity().subtract(already);
+                throw new IllegalArgumentException(
+                        "Cannot return " + qtyToReturn + " for batch " + batchId
+                                + ": only " + remaining.max(java.math.BigDecimal.ZERO)
+                                + " of the " + soldItem.getQuantity() + " sold remain returnable.");
             }
 
             // Expiry safety check: Reject returns if the medicine batch has expired
