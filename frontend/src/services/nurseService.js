@@ -1,4 +1,5 @@
 import apiClient from './apiService';
+import authService from './authService';
 
 /**
  * nurseService - nurse-facing API calls (Phase 1 Nurse module).
@@ -30,9 +31,21 @@ const nurseService = {
     return response.data;
   },
 
-  /** Composite read-only bedside view for one admission (403 if not assigned). */
+  /**
+   * Composite read-only bedside view for one admission.
+   *
+   * Two endpoints serve the same view under two different scopes, and the caller's role decides
+   * which one is theirs: a staff nurse may open a patient they are assigned to, an incharge may
+   * open any patient in a ward they run. Picking here keeps the branch in one place rather than
+   * in every screen that opens a chart.
+   */
   getPatientDetail: async (admissionId) => {
-    const response = await apiClient.get(`/hospital/nurse/patients/${admissionId}`);
+    const role = authService.getCurrentUser()?.role;
+    const path =
+      role === 'NURSE_INCHARGE' || role === 'HOSPITAL_ADMIN'
+        ? `/hospital/nurse-incharge/patients/${admissionId}`
+        : `/hospital/nurse/patients/${admissionId}`;
+    const response = await apiClient.get(path);
     return response.data;
   },
 

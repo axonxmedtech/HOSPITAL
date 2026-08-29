@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useToast } from '../context/ToastContext';
+import authService from '../services/authService';
+import icuService from '../services/icuService';
 import WardService from '../services/wardService';
 import Button from './Button';
 
@@ -9,7 +11,36 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
   const [bedPrice, setBedPrice] = useState('');
   const [totalBeds, setTotalBeds] = useState('');
   const [floorNumber, setFloorNumber] = useState('');
+  const [unitType, setUnitType] = useState('GENERAL');
+  const [unitTypes, setUnitTypes] = useState([]);
+  const [unitTypesError, setUnitTypesError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Classification is only meaningful for a tenant on the ICU plan; without it the ward keeps
+  // its GENERAL default and the field is simply absent.
+  const hasIcu = (authService.getCurrentUser()?.modules || []).includes('ICU');
+
+  useEffect(() => {
+    if (!open || !hasIcu || unitTypes.length > 0) return;
+    setUnitTypesError('');
+    icuService
+      .getUnitTypes()
+      .then((types) => {
+        setUnitTypes(Array.isArray(types) ? types : []);
+        if (!Array.isArray(types) || types.length === 0) {
+          setUnitTypesError('No unit types were returned.');
+        }
+      })
+      .catch((e) => {
+        // G3: never silently drop the control. A failure here used to make the whole field
+        // vanish, which reads as "this hospital has no ICU classification" rather than
+        // "the list could not be loaded" — two very different things for an administrator.
+        setUnitTypes([]);
+        setUnitTypesError(
+          e?.response?.data?.error || 'Could not load the ICU unit types. Please try again.'
+        );
+      });
+  }, [open, hasIcu, unitTypes.length]);
 
   useEffect(() => {
     if (initial) {
@@ -17,11 +48,13 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
       setBedPrice(initial.bedPrice ?? '');
       setTotalBeds(initial.totalBeds ?? '');
       setFloorNumber(initial.floorNumber ?? '');
+      setUnitType(initial.unitType || 'GENERAL');
     } else {
       setWardName('');
       setBedPrice('');
       setTotalBeds('');
       setFloorNumber('');
+      setUnitType('GENERAL');
     }
   }, [initial, open]);
 
@@ -52,6 +85,9 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
           floorNumber: floorNumber ? Number(floorNumber) : null,
           // Bed count is editable on edit too — the backend adds/removes beds to match.
           totalBeds: totalBeds === '' ? null : Number(totalBeds),
+          // Only send a classification we actually loaded. Sending one from a failed fetch
+          // would overwrite the ward's real type with a guess; omitting it leaves it untouched.
+          ...(hasIcu && unitTypes.length > 0 ? { unitType } : {}),
         };
         await WardService.updateWard(initial.wardId, payload);
       } else {
@@ -60,6 +96,7 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
           bedPrice: Number(bedPrice),
           totalBeds: totalBeds ? Number(totalBeds) : 0,
           floorNumber: floorNumber ? Number(floorNumber) : null,
+          ...(hasIcu && unitTypes.length > 0 ? { unitType } : {}),
         };
         await WardService.createWard(payload);
       }
@@ -143,6 +180,46 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
               className="mt-1 w-full p-2 border rounded"
             />
           </div>
+
+          {hasIcu && (
+            <div>
+              <label htmlFor="fld-ward-unit-type" className="block text-sm text-slate-600">
+                Unit Type
+              </label>
+              <select
+                id="fld-ward-unit-type"
+                value={unitType}
+                onChange={(e) => setUnitType(e.target.value)}
+                disabled={unitTypes.length === 0}
+                aria-describedby="fld-ward-unit-type-help"
+                className={`mt-1 w-full p-2 border rounded ${
+                  unitTypesError
+                    ? 'border-red-300 bg-red-50 text-red-700'
+                    : 'disabled:bg-slate-100 disabled:text-slate-400'
+                }`}
+              >
+                {unitTypes.length === 0 ? (
+                  <option value="">Unavailable</option>
+                ) : (
+                  unitTypes.map((t) => (
+                    <option key={t.key} value={t.key}>
+                      {t.label}
+                    </option>
+                  ))
+                )}
+              </select>
+              {unitTypesError ? (
+                <p id="fld-ward-unit-type-help" className="mt-1 text-xs text-red-600">
+                  {unitTypesError} The ward will keep its current classification.
+                </p>
+              ) : (
+                <p id="fld-ward-unit-type-help" className="mt-1 text-xs text-slate-500">
+                  Critical care units appear on the ICU dashboard and bed board. A ward with an
+                  occupied bed cannot be reclassified — move or discharge its patients first.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" onClick={onClose} type="button">

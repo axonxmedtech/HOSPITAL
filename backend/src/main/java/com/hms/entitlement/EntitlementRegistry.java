@@ -51,7 +51,15 @@ public final class EntitlementRegistry {
     public static final String REPORTS = "REPORTS";
     public static final String NURSING = "NURSING";
     public static final String OT = "OT";
-    public static final String PATHOLOGY = "PATHOLOGY";
+
+    /**
+     * Critical care — the ICU dashboard and bed board.
+     *
+     * <p>Depends on {@link #IPD} rather than being implied by it: an ICU bed is an inpatient
+     * bed, so ICU without IPD is meaningless, but a hospital can run IPD with no critical-care
+     * unit at all. It is therefore sold separately and listed on the plan in its own right.
+     */
+    public static final String ICU = "ICU";
 
     /** Wards and beds exist to support admission and allocation, so IPD carries them. */
     public static final String WARDS = "WARDS";
@@ -104,7 +112,7 @@ public final class EntitlementRegistry {
 
     private static final Map<HospitalType, Set<String>> SELLABLE = Map.of(
             HospitalType.HOSPITAL, Set.of(OPD, IPD, PHARMACY, BILLING, APPOINTMENTS,
-                    MEDICAL_INVENTORY, HOSPITAL_INVENTORY, REPORTS, OT, NURSING),
+                    MEDICAL_INVENTORY, HOSPITAL_INVENTORY, REPORTS, OT, NURSING, ICU),
             HospitalType.CLINIC, Set.of(OPD, PHARMACY, BILLING, APPOINTMENTS,
                     MEDICAL_INVENTORY, REPORTS),
             // PHARMACY plans carry a tier plus the PHARMACY base module, which
@@ -125,7 +133,7 @@ public final class EntitlementRegistry {
     /** Every key the registry knows, sellable or implied. */
     public static final Set<String> ALL_MODULES = Set.of(
             CORE, OPD, IPD, WARDS, BEDS, CLINICAL_RECORDS, APPOINTMENTS, BILLING, PHARMACY,
-            PHARMACY_BRANCH, MEDICAL_INVENTORY, HOSPITAL_INVENTORY, REPORTS, NURSING, OT, PATHOLOGY,
+            PHARMACY_BRANCH, MEDICAL_INVENTORY, HOSPITAL_INVENTORY, REPORTS, NURSING, OT, ICU,
             TIER_SINGLE_PHARMACIST_ADMIN, TIER_SINGLE_PHARMACY, TIER_MULTI_PHARMACY, IN_CLINIC);
 
     private static final Set<String> INTERNAL_KEYS = Set.of(

@@ -442,7 +442,11 @@ public class NurseService {
         if (!user.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Access denied: User belongs to another hospital");
         }
-        if (!"NURSE".equals(user.getRole())) {
+        // A Nurse Incharge IS a nurse - a NurseProfile with is_incharge=true whose login carries
+        // the NURSE_INCHARGE role. Accepting only "NURSE" here meant an admin could not edit,
+        // rename, password-reset or remove an incharge at all: every one of those admin actions
+        // funnels through this method and answered "Target user is not a nurse".
+        if (!"NURSE".equals(user.getRole()) && !"NURSE_INCHARGE".equals(user.getRole())) {
             throw new UnauthorizedException("Target user is not a nurse");
         }
         return user;

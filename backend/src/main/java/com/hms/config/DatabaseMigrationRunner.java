@@ -134,6 +134,19 @@ public class DatabaseMigrationRunner {
         addColumnIfMissing("medicine_purchases", "batch_number", "VARCHAR(100) NULL");
         addColumnIfMissing("prescriptions", "food_timing", "VARCHAR(20) NULL"); // V15
         ensureOpdIdempotencyTable(); // V16 — one OPD registration per logical submission
+
+        // ICU Phase 2 — ward classification (CareUnitRegistry). GENERAL by default, so every
+        // existing ward keeps behaving exactly as before and no backfill is needed.
+        addColumnIfMissing("wards", "unit_type", "VARCHAR(20) NOT NULL DEFAULT 'GENERAL'");
+        backfillWardUnitType();
+        ensureIcuAlertThresholdTable();// ICU Phase 9
+        ensureIcuSeverityScoreTables();// ICU Phase 8
+        ensureIcuVentilatorTables();   // ICU Phase 7
+        ensureIcuInfusionTables();     // ICU Phase 6
+        ensureIcuIoEntryTable();       // ICU Phase 5
+        ensureVitalsIcuColumns();      // ICU Phase 4
+        ensureIcuStayTable();          // ICU Phase 3
+        backfillIcuStaysForCurrentOccupants();
     }
 
     /**
@@ -2484,6 +2497,374 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped ({}.{}): {}", table, column, e.getMessage());
+        }
+    }
+
+    /**
+     * Repairs wards whose unit_type is blank.
+     *
+     * <p>ICU Phase 2 declared the column NOT NULL with a Java-side default only. Hibernate's
+     * ddl-auto=update therefore emitted an ALTER with no DB default, and MySQL back-filled the
+     * existing rows with '' rather than 'GENERAL' — this migration runs at ApplicationReadyEvent,
+     * which is AFTER Hibernate, so its own DEFAULT arrived too late for a database that already
+     * had wards. The entity now carries an explicit columnDefinition so new deployments never
+     * take that path; this repairs the ones that already did.
+     *
+     * <p>Harmless while it lasted — CareUnitRegistry.isCriticalCare("") is false, so a blank ward
+     * correctly stayed off the ICU board — but a blank is not a valid registry key and must not
+     * be allowed to persist.
+     */
+    private void backfillWardUnitType() {
+        try {
+            int fixed = jdbcTemplate.update(
+                    "UPDATE wards SET unit_type = 'GENERAL' WHERE unit_type IS NULL OR TRIM(unit_type) = ''");
+            if (fixed > 0) {
+                log.info("DB migration applied: defaulted unit_type on {} ward(s)", fixed);
+            }
+        } catch (Exception e) {
+            log.warn("backfillWardUnitType skipped: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * ICU Phase 9 - alert thresholds.
+     *
+     * <p>One table, and it ships EMPTY: unlike the other ICU config tables there is no lazy
+     * default, because "no row" means no alert rather than a sensible one. A default threshold
+     * would be the system deciding what a normal MAP is.
+     *
+     * <p>Per hospital only. There is deliberately no alert-event table (D-4): the roadmap scopes
+     * this phase to threshold storage, so nothing records what fired and nothing de-duplicates.
+     */
+    private void ensureIcuAlertThresholdTable() {
+        createTableIfMissing("icu_alert_threshold",
+                "CREATE TABLE icu_alert_threshold ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " source VARCHAR(20) NOT NULL,"
+                    + " metric_key VARCHAR(60) NOT NULL,"
+                    + " min_value DECIMAL(12,3) NULL,"
+                    + " max_value DECIMAL(12,3) NULL,"
+                    + " enabled TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " updated_by_user_id BIGINT NULL,"
+                    + " is_active TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_alert_public_id (public_id),"
+                    + " UNIQUE KEY uk_icu_alert_metric (hospital_id, source, metric_key)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+
+    /**
+     * ICU Phase 8 - severity scores and the small setting that says which ones a hospital uses.
+     *
+     * <p>The setting table is deliberately thinner than ICU-7's parameter catalogue: no display
+     * name, no unit, no custom rows. A hospital chooses whether it runs SOFA, not what SOFA is -
+     * a renamed component would no longer be comparable to anyone else's score.
+     *
+     * <p>Components live in components_json keyed by component key, and total_score is stored
+     * rather than recomputed: a total is part of what was charted at that moment, not a derived
+     * view of it.
+     */
+    private void ensureIcuSeverityScoreTables() {
+        createTableIfMissing("icu_score_type_setting",
+                "CREATE TABLE icu_score_type_setting ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " score_type VARCHAR(20) NOT NULL,"
+                    + " enabled TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_score_type_public_id (public_id),"
+                    + " UNIQUE KEY uk_icu_score_type (hospital_id, score_type)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        createTableIfMissing("icu_severity_score",
+                "CREATE TABLE icu_severity_score ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " ipd_admission_id BIGINT NOT NULL,"
+                    + " patient_id BIGINT NOT NULL,"
+                    + " icu_stay_id BIGINT NULL,"
+                    + " score_type VARCHAR(20) NOT NULL,"
+                    + " components_json TEXT NULL,"
+                    + " total_score INT NULL,"
+                    + " scored_at DATETIME(6) NOT NULL,"
+                    + " recorded_by_user_id BIGINT NULL,"
+                    + " performed_by_nurse_id BIGINT NULL,"
+                    + " supersedes_score_id BIGINT NULL,"
+                    + " note VARCHAR(255) NULL,"
+                    + " is_active TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_score_public_id (public_id),"
+                    + " KEY idx_icu_score_admission (ipd_admission_id, score_type, scored_at),"
+                    + " KEY idx_icu_score_hospital (hospital_id)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+
+    /**
+     * ICU Phase 7 - the ventilator parameter catalogue and the timed snapshots that use it.
+     *
+     * <p>Two tables because they answer different questions. The parameter table answers "what may
+     * be charted?" and holds overrides only - a built-in with no row is enabled, so nothing is
+     * seeded here. The setting table answers "what was recorded at 04:00?" and stores values in
+     * values_json keyed by param_key, NOT one column per parameter: the catalogue is configurable,
+     * and a column per parameter would mean a migration every time a hospital wanted one of its
+     * own.
+     *
+     * <p>ventilation_status stays a typed NOT NULL column - it distinguishes a ventilated row from
+     * an extubation row and must be queryable without parsing JSON.
+     */
+    private void ensureIcuVentilatorTables() {
+        createTableIfMissing("icu_ventilator_parameter",
+                "CREATE TABLE icu_ventilator_parameter ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " param_key VARCHAR(60) NOT NULL,"
+                    + " display_name VARCHAR(60) NOT NULL,"
+                    + " unit VARCHAR(20) NULL,"
+                    + " category VARCHAR(20) NOT NULL DEFAULT 'SETTING',"
+                    + " value_type VARCHAR(20) NOT NULL DEFAULT 'NUMBER',"
+                    + " enabled TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " is_custom TINYINT(1) NOT NULL DEFAULT 0,"
+                    + " sort_order INT NULL,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_vent_param_public_id (public_id),"
+                    + " UNIQUE KEY uk_icu_vent_param_key (hospital_id, param_key)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        createTableIfMissing("icu_ventilator_setting",
+                "CREATE TABLE icu_ventilator_setting ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " ipd_admission_id BIGINT NOT NULL,"
+                    + " patient_id BIGINT NOT NULL,"
+                    + " icu_stay_id BIGINT NULL,"
+                    + " ventilation_status VARCHAR(20) NOT NULL,"
+                    + " values_json TEXT NULL,"
+                    + " observed_at DATETIME(6) NOT NULL,"
+                    + " recorded_by_user_id BIGINT NULL,"
+                    + " performed_by_nurse_id BIGINT NULL,"
+                    + " supersedes_setting_id BIGINT NULL,"
+                    + " note VARCHAR(255) NULL,"
+                    + " is_active TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_vent_public_id (public_id),"
+                    + " KEY idx_icu_vent_admission (ipd_admission_id, observed_at),"
+                    + " KEY idx_icu_vent_hospital (hospital_id)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+
+    /**
+     * ICU Phase 6 - continuous infusions and their rate history.
+     *
+     * <p>Two tables on purpose: the span is one row, but the rate changes repeatedly and every
+     * change must survive, so the current rate is NOT a column on the span. Separate from
+     * icu_io_entry by decision (D-1) - an infusion is drug delivery, not a fluid-balance event.
+     */
+    private void ensureIcuInfusionTables() {
+        createTableIfMissing("icu_infusion", "CREATE TABLE icu_infusion ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " ipd_admission_id BIGINT NOT NULL,"
+                    + " patient_id BIGINT NOT NULL,"
+                    + " prescription_id BIGINT NULL,"
+                    + " medicine_name VARCHAR(255) NOT NULL,"
+                    + " started_at DATETIME(6) NOT NULL,"
+                    + " stopped_at DATETIME(6) NULL,"
+                    + " stop_reason VARCHAR(255) NULL,"
+                    + " started_by_user_id BIGINT NULL,"
+                    + " performed_by_nurse_id BIGINT NULL,"
+                    + " is_active TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_inf_public_id (public_id),"
+                    + " KEY idx_icu_inf_admission (ipd_admission_id),"
+                    + " KEY idx_icu_inf_hospital (hospital_id)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        createTableIfMissing("icu_infusion_rate", "CREATE TABLE icu_infusion_rate ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " icu_infusion_id BIGINT NOT NULL,"
+                    + " rate_value DECIMAL(12,3) NOT NULL,"
+                    + " rate_unit VARCHAR(20) NOT NULL,"
+                    + " effective_from DATETIME(6) NOT NULL,"
+                    + " recorded_by_user_id BIGINT NULL,"
+                    + " performed_by_nurse_id BIGINT NULL,"
+                    + " supersedes_rate_id BIGINT NULL,"
+                    + " is_active TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_inf_rate_public_id (public_id),"
+                    + " KEY idx_icu_inf_rate_infusion (icu_infusion_id),"
+                    + " KEY idx_icu_inf_rate_effective (icu_infusion_id, effective_from)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+
+    /**
+     * ICU Phase 5 - the fluid intake/output event stream.
+     *
+     * <p>Authoritative for ICU fluid balance and the NABH I/O chart (D-2).
+     * {@code vitals_records.urine_output_ml} is a separate point-in-time observation and is
+     * never copied in here.
+     */
+    private void ensureIcuIoEntryTable() {
+        try {
+            Integer exists = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES "
+              + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'icu_io_entry'", Integer.class);
+            if (exists != null && exists == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE icu_io_entry ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " ipd_admission_id BIGINT NOT NULL,"
+                    + " patient_id BIGINT NOT NULL,"
+                    + " direction VARCHAR(6) NOT NULL,"
+                    + " route VARCHAR(30) NOT NULL,"
+                    + " volume_ml INT NOT NULL,"
+                    + " occurred_at DATETIME(6) NOT NULL,"
+                    + " notes VARCHAR(255) NULL,"
+                    + " recorded_by_user_id BIGINT NULL,"
+                    + " performed_by_nurse_id BIGINT NULL,"
+                    + " supersedes_io_entry_id BIGINT NULL,"
+                    + " is_active TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_io_public_id (public_id),"
+                    + " KEY idx_icu_io_admission (ipd_admission_id),"
+                    + " KEY idx_icu_io_hospital (hospital_id),"
+                    + " KEY idx_icu_io_occurred (ipd_admission_id, occurred_at)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created icu_io_entry");
+            }
+        } catch (Exception e) {
+            log.warn("ensureIcuIoEntryTable failed: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * ICU Phase 4 — critical-care observations plus the append-only correction link.
+     *
+     * <p>Every column is NULLABLE, which is the backward-compatibility guarantee: existing rows
+     * and every ward reading are untouched and no backfill is required. (ICU-2 learned the hard
+     * way that a NOT NULL column with only a Java default is added by ddl-auto BEFORE this
+     * runner, with no DB default — none of these take that path.)
+     */
+    private void ensureVitalsIcuColumns() {
+        addColumnIfMissing("vitals_records", "map_mmhg", "INT NULL");
+        addColumnIfMissing("vitals_records", "cvp_cmh2o", "INT NULL");
+        addColumnIfMissing("vitals_records", "urine_output_ml", "INT NULL");
+        addColumnIfMissing("vitals_records", "gcs_eye", "INT NULL");
+        addColumnIfMissing("vitals_records", "gcs_verbal", "INT NULL");
+        addColumnIfMissing("vitals_records", "gcs_motor", "INT NULL");
+        addColumnIfMissing("vitals_records", "gcs_total", "INT NULL");
+        addColumnIfMissing("vitals_records", "supersedes_vitals_id", "BIGINT NULL");
+    }
+
+    /** ICU Phase 3 — the ICU stay record. See IcuStay for why active_marker exists. */
+    private void ensureIcuStayTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'icu_stay'", Integer.class);
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE icu_stay (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  public_id VARCHAR(255) NOT NULL," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  ipd_admission_id BIGINT NOT NULL," +
+                    "  patient_id BIGINT NOT NULL," +
+                    "  ward_id BIGINT NOT NULL," +
+                    "  status VARCHAR(10) NOT NULL DEFAULT 'ACTIVE'," +
+                    "  source VARCHAR(20) NOT NULL," +
+                    "  source_ref_id BIGINT DEFAULT NULL," +
+                    "  admitted_at DATETIME(6) NOT NULL," +
+                    "  admission_reason VARCHAR(255) DEFAULT NULL," +
+                    "  intensivist_doctor_id BIGINT DEFAULT NULL," +
+                    "  admitted_by_user_id BIGINT DEFAULT NULL," +
+                    "  disposition VARCHAR(20) DEFAULT NULL," +
+                    "  discharged_at DATETIME(6) DEFAULT NULL," +
+                    "  discharged_by_user_id BIGINT DEFAULT NULL," +
+                    "  active_marker BIGINT DEFAULT NULL," +
+                    "  created_at DATETIME(6) NOT NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  UNIQUE KEY uk_icu_stay_public_id (public_id)," +
+                    "  UNIQUE KEY uk_icu_stay_active (hospital_id, active_marker)," +
+                    "  KEY idx_icu_stay_admission (ipd_admission_id)," +
+                    "  KEY idx_icu_stay_hospital (hospital_id)" +
+                    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created icu_stay");
+            }
+        } catch (Exception e) {
+            log.warn("ensureIcuStayTable skipped: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * ICU Phase 3 — gives every patient ALREADY lying in a critical-care bed an ACTIVE stay.
+     *
+     * <p>Without this the ICU board contradicts itself from the first minute: the bed is occupied
+     * and the admission is active, but no stay exists, so the biconditional the module rests on
+     * (ACTIVE stay ⟺ patient occupies a critical-care bed) is violated for every existing patient.
+     *
+     * <p>Deliberately honest about what it does NOT know. The moment critical care actually began
+     * was never recorded, so {@code admitted_at} reuses the admission's own timestamp rather than
+     * inventing one, the source is EXTERNAL_REFERRAL (the "arrived already in this state" value),
+     * and the reason says plainly that the row was backfilled. No clinical history is fabricated.
+     *
+     * <p>Idempotent: the WHERE clause excludes admissions that already have an ACTIVE stay, so
+     * running it on every startup is a no-op after the first.
+     */
+    private void backfillIcuStaysForCurrentOccupants() {
+        try {
+            String criticalCare = com.hms.service.hospital.icu.CareUnitRegistry.criticalCareKeys()
+                    .stream().map(k -> "'" + k + "'").reduce((a, b) -> a + "," + b).orElse("''");
+            int created = jdbcTemplate.update(
+                "INSERT INTO icu_stay (public_id, hospital_id, ipd_admission_id, patient_id, ward_id," +
+                "  status, source, admitted_at, admission_reason, admitted_by_user_id," +
+                "  active_marker, created_at) " +
+                "SELECT UUID(), a.hospital_id, a.id, a.patient_id, a.ward_id," +
+                "  'ACTIVE', 'EXTERNAL_REFERRAL', a.admission_datetime," +
+                "  'Backfilled at ICU-3: this patient already occupied a critical-care bed. " +
+                     "The actual time critical care began was not recorded.', NULL," +
+                "  a.id, NOW(6) " +
+                "FROM ipd_admission a " +
+                "JOIN wards w ON w.ward_id = a.ward_id AND w.hospital_id = a.hospital_id " +
+                "WHERE a.status IN ('ADMITTED','DISCHARGE_PLANNED') " +
+                "  AND w.unit_type IN (" + criticalCare + ") " +
+                "  AND NOT EXISTS (SELECT 1 FROM icu_stay s " +
+                "                  WHERE s.ipd_admission_id = a.id AND s.status = 'ACTIVE')");
+            if (created > 0) {
+                log.info("DB migration applied: backfilled {} ACTIVE ICU stay(s) for current occupants", created);
+            }
+        } catch (Exception e) {
+            log.warn("backfillIcuStaysForCurrentOccupants skipped: {}", e.getMessage());
+        }
+    }
+
+    /** CREATE TABLE when absent, matching the ensureXxx idiom used throughout this runner. */
+    private void createTableIfMissing(String table, String ddl) {
+        try {
+            Integer exists = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES "
+              + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?", Integer.class, table);
+            if (exists != null && exists == 0) {
+                jdbcTemplate.execute(ddl);
+                log.info("DB migration applied: created {}", table);
+            }
+        } catch (Exception e) {
+            log.warn("createTableIfMissing skipped ({}): {}", table, e.getMessage());
         }
     }
 }

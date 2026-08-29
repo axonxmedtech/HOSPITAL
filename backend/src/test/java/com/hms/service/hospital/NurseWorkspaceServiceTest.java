@@ -40,6 +40,8 @@ class NurseWorkspaceServiceTest {
     @Mock com.hms.repository.NurseProfileRepository nurseProfileRepository;
     @Mock com.hms.repository.NurseAttendanceRepository nurseAttendanceRepository;
     @Mock NurseCoverageService coverageService;
+    @Mock com.hms.service.RealtimeNotifier notifier;
+    @Mock NurseAssignmentService nurseAssignmentService;
 
     @InjectMocks NurseWorkspaceService service;
 
@@ -163,5 +165,83 @@ class NurseWorkspaceServiceTest {
         assertThat(dto.getPrescriptions()).hasSize(1);
         assertThat(dto.getPrescriptions().get(0).getMedicineName()).isEqualTo("Paracetamol");
         assertThat(dto.getBilling().getBalance()).isEqualByComparingTo("0");
+    }
+
+    // ── incharge bedside view: ward-scoped, not assignment-scoped ────────────
+
+    @org.junit.jupiter.api.Test
+    void inchargeOpensAWardPatientsChartWithoutBeingAssignedToThem() {
+        // The point of the separate entry point: an incharge supervises a ward and is never
+        // assigned to a patient, so the staff-nurse rule would refuse every chart they open.
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        IpdAdmission ipd = new IpdAdmission();
+        ipd.setId(11L);
+        ipd.setHospitalId(7L);
+        ipd.setPatientId(5L);
+        ipd.setDoctorId(2L);
+        ipd.setIpdNumber("IPD-11");
+        ipd.setStatus("ADMITTED");
+        when(ipdAdmissionRepository.findById(11L)).thenReturn(Optional.of(ipd));
+
+        NursePatientDetailDTO dto = service.getWardPatientDetail(11L);
+
+        assertThat(dto.getIpdAdmissionId()).isEqualTo(11L);
+        assertThat(dto.getIpdNumber()).isEqualTo("IPD-11");
+        verify(nurseInchargeGuard).assertAdmissionInMyWard(11L);
+        verifyNoInteractions(nurseAccessGuard);
+    }
+
+    @org.junit.jupiter.api.Test
+    void inchargeCannotOpenAChartOutsideTheirWards() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        doThrow(new AccessDeniedException("not your ward"))
+                .when(nurseInchargeGuard).assertAdmissionInMyWard(11L);
+
+        assertThatThrownBy(() -> service.getWardPatientDetail(11L))
+                .isInstanceOf(AccessDeniedException.class);
+        verifyNoInteractions(ipdAdmissionRepository);
+    }
+
+    @org.junit.jupiter.api.Test
+    void anotherHospitalsAdmissionIsRefusedEvenInsideTheWardCheck() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        IpdAdmission foreign = new IpdAdmission();
+        foreign.setId(11L);
+        foreign.setHospitalId(99L);
+        when(ipdAdmissionRepository.findById(11L)).thenReturn(Optional.of(foreign));
+
+        assertThatThrownBy(() -> service.getWardPatientDetail(11L))
+                .isInstanceOf(com.hms.exception.UnauthorizedException.class);
+    }
+
+    @org.junit.jupiter.api.Test
+    void theStaffNurseRuleIsUntouchedByTheInchargeEntryPoint() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        // Widening getPatientDetail would have loosened "only your own patients" for staff
+        // nurses too. It still asks the assignment guard, and still only that one.
+        doThrow(new AccessDeniedException("not assigned"))
+                .when(nurseAccessGuard).assertAssigned(11L);
+
+        assertThatThrownBy(() -> service.getPatientDetail(11L))
+                .isInstanceOf(AccessDeniedException.class);
+        verifyNoInteractions(nurseInchargeGuard);
+    }
+
+    @org.junit.jupiter.api.Test
+    void assigningANursePushesARefreshSoBothScreensCatchUp() {
+        // The incharge's ward list and the assigned nurse's "My Patients" both change.
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        com.hms.entity.NurseProfile p = new com.hms.entity.NurseProfile();
+        p.setId(4L);
+        p.setHospitalId(7L);
+        p.setIsActive(true);
+        p.setIsIncharge(false);
+        p.setUserId(9L);
+        p.setWardId(3L);
+        when(nurseProfileRepository.findById(4L)).thenReturn(Optional.of(p));
+
+        service.assignPatientNurse(11L, 4L);
+
+        verify(notifier).refresh(7L);
     }
 }

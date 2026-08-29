@@ -66,17 +66,34 @@ public class NurseController {
         return ResponseEntity.ok(nurseService.getNurseByPublicId(id));
     }
 
+    /**
+     * The body is {@code Map<String, Object>}, not {@code Map<String, String>}.
+     *
+     * <p>The edit form posts its whole state, which for a Nurse Incharge includes
+     * {@code inchargeWardIds} - a JSON array. Jackson cannot coerce an array into a String, so
+     * binding failed before the handler ran and every incharge edit answered 400 "Malformed or
+     * unreadable request body". Scalars still arrive as strings via {@link #str}; fields this
+     * endpoint does not own are simply ignored, as they always were.
+     */
     @PutMapping("/{id}")
-    public ResponseEntity<?> updateNurse(@PathVariable String id, @RequestBody Map<String, String> payload) {
-        String name = payload.get("name");
+    public ResponseEntity<?> updateNurse(@PathVariable String id, @RequestBody Map<String, Object> payload) {
+        String name = str(payload, "name");
         if (name == null || name.trim().isEmpty()) {
             return ResponseEntity.badRequest().body("Name is required");
         }
-        return ResponseEntity.ok(nurseService.updateNurse(id, name, parseWardId(payload.get("wardId")),
-                payload.get("phone"),
-                payload.get("shiftTemplatePublicId"),
-                parseDate(payload.get("shiftFromDate")), parseDate(payload.get("shiftToDate")),
-                parseDaysOfWeek(payload.get("shiftDaysOfWeek"))));
+        return ResponseEntity.ok(nurseService.updateNurse(id, name, parseWardId(str(payload, "wardId")),
+                str(payload, "phone"),
+                str(payload, "shiftTemplatePublicId"),
+                parseDate(str(payload, "shiftFromDate")), parseDate(str(payload, "shiftToDate")),
+                parseDaysOfWeek(str(payload, "shiftDaysOfWeek"))));
+    }
+
+    /** A scalar field as text; anything non-scalar (array, object) reads as absent. */
+    private String str(Map<String, Object> payload, String key) {
+        Object v = payload.get(key);
+        if (v == null || v instanceof java.util.Collection || v instanceof Map) return null;
+        String s = String.valueOf(v);
+        return s.isEmpty() ? null : s;
     }
 
     /** Parse an optional wardId string from the request payload. */

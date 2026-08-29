@@ -53,6 +53,7 @@ class IpdAdmissionServiceTest {
     @Mock AppointmentRepository appointmentRepository;
     @Mock HospitalRepository hospitalRepository;
     @Mock IpdBedHistoryRepository ipdBedHistoryRepository;
+    @Mock com.hms.service.hospital.icu.IcuStayService icuStayService;
     @Mock SecurityContextHelper securityHelper;
     @Mock QueueEntryRepository queueEntryRepository;
     @Mock HospitalInventoryRepository hospitalInventoryRepository;

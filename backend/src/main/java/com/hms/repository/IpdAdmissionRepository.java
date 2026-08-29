@@ -43,4 +43,12 @@ public interface IpdAdmissionRepository extends JpaRepository<IpdAdmission, Long
     java.util.List<IpdAdmission> findByHospitalIdAndWardIdInAndStatusIn(Long hospitalId,
             java.util.Collection<Long> wardIds, java.util.Collection<String> statuses);
     java.util.List<IpdAdmission> findByHospitalIdAndAdmissionDatetimeBetween(Long hospitalId, java.time.LocalDateTime start, java.time.LocalDateTime end);
+
+    /**
+     * ICU Phase 2 — active admissions inside a set of wards. Replaces the existing pattern of
+     * loading every admission for the hospital and filtering by ward in Java, which the ICU
+     * board would otherwise repeat on every poll.
+     */
+    java.util.List<IpdAdmission> findByHospitalIdAndStatusInAndWardIdIn(
+            Long hospitalId, java.util.Collection<String> statuses, java.util.Collection<Long> wardIds);
 }

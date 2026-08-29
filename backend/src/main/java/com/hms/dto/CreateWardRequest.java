@@ -25,4 +25,11 @@ public class CreateWardRequest {
     private Integer totalBeds;
 
     private Integer floorNumber;
+
+    /**
+     * CareUnitRegistry key (ICU Phase 2). Null/blank means GENERAL, so an existing client
+     * that does not send it keeps creating general wards exactly as before.
+     */
+    @Size(max = 20)
+    private String unitType;
 }

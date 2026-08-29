@@ -24,11 +24,53 @@ public class IpdAdmissionController {
     @Autowired
     private com.hms.repository.HospitalSettingRepository hospitalSettingRepository;
 
+    /** Attempts for the IPD-number clash. Two callers colliding is normal; more is a real fault. */
+    private static final int ADMISSION_ATTEMPTS = 3;
+
     @PostMapping("/admit")
     @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> admitToIpd(@Valid @RequestBody CreateIpdAdmissionRequest req) {
-        IpdAdmission ipd = ipdAdmissionService.admitFromOpd(req.getOpdId(), req.getWardId(), req.getBedId(), req.getAdmissionType(), req.getPrimaryDiagnosis());
+        IpdAdmission ipd = admitWithIpdNumberRetry(req);
         return ResponseEntity.ok(ipd);
+    }
+
+    /**
+     * E1 (C2) — retries an admission whose IPD number was taken by a concurrent admission.
+     *
+     * <p>The number is allocated as {@code MAX(sequence) + 1} with no lock, so two admissions
+     * starting together compute the same one; the unique index on {@code ipd_number} then rejects
+     * the loser. That is the database doing its job — but the loser is a legitimate admission and
+     * used to receive an opaque 500.
+     *
+     * <p>The retry lives HERE, outside {@code admitFromOpd}, because that method is the
+     * transaction. Catching the violation inside it would leave the caller in a rolled-back,
+     * rollback-only transaction where nothing further can be written; each attempt has to be a
+     * fresh transaction, which means a fresh call through the service proxy.
+     */
+    private IpdAdmission admitWithIpdNumberRetry(CreateIpdAdmissionRequest req) {
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return ipdAdmissionService.admitFromOpd(req.getOpdId(), req.getWardId(),
+                        req.getBedId(), req.getAdmissionType(), req.getPrimaryDiagnosis());
+            } catch (org.springframework.dao.DataIntegrityViolationException e) {
+                // Only an IPD-number clash is safe to retry. Re-running the admission for any
+                // other constraint would just repeat a failure a retry cannot fix.
+                if (!isIpdNumberClash(e) || attempt >= ADMISSION_ATTEMPTS) {
+                    throw new com.hms.exception.ConflictException(
+                            "Could not allocate an IPD number just now. Please try again.");
+                }
+            }
+        }
+    }
+
+    private boolean isIpdNumberClash(org.springframework.dao.DataIntegrityViolationException e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            String msg = t.getMessage();
+            if (msg != null && msg.toLowerCase(java.util.Locale.ROOT).contains("ipd_number")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @GetMapping

@@ -860,6 +860,35 @@ CREATE TABLE `pharmacy_branch` (
 DROP TABLE IF EXISTS `wards`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
+--
+-- Table structure for table `icu_stay`  (ICU Phase 3)
+--
+CREATE TABLE `icu_stay` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ipd_admission_id` bigint NOT NULL,
+  `patient_id` bigint NOT NULL,
+  `ward_id` bigint NOT NULL,
+  `status` varchar(10) NOT NULL DEFAULT 'ACTIVE',
+  `source` varchar(20) NOT NULL,
+  `source_ref_id` bigint DEFAULT NULL,
+  `admitted_at` datetime(6) NOT NULL,
+  `admission_reason` varchar(255) DEFAULT NULL,
+  `intensivist_doctor_id` bigint DEFAULT NULL,
+  `admitted_by_user_id` bigint DEFAULT NULL,
+  `disposition` varchar(20) DEFAULT NULL,
+  `discharged_at` datetime(6) DEFAULT NULL,
+  `discharged_by_user_id` bigint DEFAULT NULL,
+  `active_marker` bigint DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_icu_stay_public_id` (`public_id`),
+  UNIQUE KEY `uk_icu_stay_active` (`hospital_id`,`active_marker`),
+  KEY `idx_icu_stay_admission` (`ipd_admission_id`),
+  KEY `idx_icu_stay_hospital` (`hospital_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE `wards` (
   `ward_id` bigint NOT NULL AUTO_INCREMENT,
   `bed_price` decimal(38,2) NOT NULL,
@@ -869,6 +898,7 @@ CREATE TABLE `wards` (
   `hospital_id` bigint NOT NULL,
   `total_beds` int NOT NULL,
   `ward_name` varchar(255) NOT NULL,
+  `unit_type` varchar(20) NOT NULL DEFAULT 'GENERAL',
   PRIMARY KEY (`ward_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -1148,7 +1178,172 @@ CREATE TABLE `patient_nurse_assignments` (
   CONSTRAINT `FK_pna_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- ICU (Phase 9): alert thresholds. Ships EMPTY - no row means no alert, because a default
+-- threshold would be the system deciding what a normal value is. No alert-event table by
+-- decision: this phase stores thresholds only.
+CREATE TABLE `icu_alert_threshold` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `source` varchar(20) NOT NULL,
+  `metric_key` varchar(60) NOT NULL,
+  `min_value` decimal(12,3) DEFAULT NULL,
+  `max_value` decimal(12,3) DEFAULT NULL,
+  `enabled` tinyint(1) NOT NULL DEFAULT '1',
+  `updated_by_user_id` bigint DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_icu_alert_public_id` (`public_id`),
+  UNIQUE KEY `uk_icu_alert_metric` (`hospital_id`,`source`,`metric_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- ICU (Phase 8): severity scores, and the small setting saying which a hospital uses.
+-- Components are a fixed Java registry (SeverityScoreRegistry), NOT a configurable catalogue:
+-- a renamed SOFA component is no longer comparable to anyone else's SOFA.
+CREATE TABLE `icu_score_type_setting` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `score_type` varchar(20) NOT NULL,
+  `enabled` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_icu_score_type_public_id` (`public_id`),
+  UNIQUE KEY `uk_icu_score_type` (`hospital_id`,`score_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `icu_severity_score` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ipd_admission_id` bigint NOT NULL,
+  `patient_id` bigint NOT NULL,
+  `icu_stay_id` bigint DEFAULT NULL,
+  `score_type` varchar(20) NOT NULL,
+  `components_json` text,
+  `total_score` int DEFAULT NULL,
+  `scored_at` datetime(6) NOT NULL,
+  `recorded_by_user_id` bigint DEFAULT NULL,
+  `performed_by_nurse_id` bigint DEFAULT NULL,
+  `supersedes_score_id` bigint DEFAULT NULL,
+  `note` varchar(255) DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_icu_score_public_id` (`public_id`),
+  KEY `idx_icu_score_admission` (`ipd_admission_id`,`score_type`,`scored_at`),
+  KEY `idx_icu_score_hospital` (`hospital_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- ICU (Phase 7): the ventilator parameter catalogue (configuration) and the timed
+-- snapshots that reference it by stable param_key (clinical record). Kept apart on purpose:
+-- disabling or renaming a parameter must never rewrite a recorded value.
+CREATE TABLE `icu_ventilator_parameter` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `param_key` varchar(60) NOT NULL,
+  `display_name` varchar(60) NOT NULL,
+  `unit` varchar(20) DEFAULT NULL,
+  `category` varchar(20) NOT NULL DEFAULT 'SETTING',
+  `value_type` varchar(20) NOT NULL DEFAULT 'NUMBER',
+  `enabled` tinyint(1) NOT NULL DEFAULT '1',
+  `is_custom` tinyint(1) NOT NULL DEFAULT '0',
+  `sort_order` int DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_icu_vent_param_public_id` (`public_id`),
+  UNIQUE KEY `uk_icu_vent_param_key` (`hospital_id`,`param_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `icu_ventilator_setting` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ipd_admission_id` bigint NOT NULL,
+  `patient_id` bigint NOT NULL,
+  `icu_stay_id` bigint DEFAULT NULL,
+  `ventilation_status` varchar(20) NOT NULL,
+  `values_json` text,
+  `observed_at` datetime(6) NOT NULL,
+  `recorded_by_user_id` bigint DEFAULT NULL,
+  `performed_by_nurse_id` bigint DEFAULT NULL,
+  `supersedes_setting_id` bigint DEFAULT NULL,
+  `note` varchar(255) DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_icu_vent_public_id` (`public_id`),
+  KEY `idx_icu_vent_admission` (`ipd_admission_id`,`observed_at`),
+  KEY `idx_icu_vent_hospital` (`hospital_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- ICU (Phase 6): continuous infusions and their append-only rate history.
+CREATE TABLE `icu_infusion` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ipd_admission_id` bigint NOT NULL,
+  `patient_id` bigint NOT NULL,
+  `prescription_id` bigint DEFAULT NULL,
+  `medicine_name` varchar(255) NOT NULL,
+  `started_at` datetime(6) NOT NULL,
+  `stopped_at` datetime(6) DEFAULT NULL,
+  `stop_reason` varchar(255) DEFAULT NULL,
+  `started_by_user_id` bigint DEFAULT NULL,
+  `performed_by_nurse_id` bigint DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_icu_inf_public_id` (`public_id`),
+  KEY `idx_icu_inf_admission` (`ipd_admission_id`),
+  KEY `idx_icu_inf_hospital` (`hospital_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `icu_infusion_rate` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `icu_infusion_id` bigint NOT NULL,
+  `rate_value` decimal(12,3) NOT NULL,
+  `rate_unit` varchar(20) NOT NULL,
+  `effective_from` datetime(6) NOT NULL,
+  `recorded_by_user_id` bigint DEFAULT NULL,
+  `performed_by_nurse_id` bigint DEFAULT NULL,
+  `supersedes_rate_id` bigint DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_icu_inf_rate_public_id` (`public_id`),
+  KEY `idx_icu_inf_rate_infusion` (`icu_infusion_id`),
+  KEY `idx_icu_inf_rate_effective` (`icu_infusion_id`,`effective_from`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 -- Nurse module (Phase 1): time-series IPD vitals recorded by nurses.
+CREATE TABLE `icu_io_entry` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ipd_admission_id` bigint NOT NULL,
+  `patient_id` bigint NOT NULL,
+  `direction` varchar(6) NOT NULL,
+  `route` varchar(30) NOT NULL,
+  `volume_ml` int NOT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `notes` varchar(255) DEFAULT NULL,
+  `recorded_by_user_id` bigint DEFAULT NULL,
+  `performed_by_nurse_id` bigint DEFAULT NULL,
+  `supersedes_io_entry_id` bigint DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_icu_io_public_id` (`public_id`),
+  KEY `idx_icu_io_admission` (`ipd_admission_id`),
+  KEY `idx_icu_io_hospital` (`hospital_id`),
+  KEY `idx_icu_io_occurred` (`ipd_admission_id`,`occurred_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE `vitals_records` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `public_id` varchar(255) NOT NULL,
@@ -1170,6 +1365,14 @@ CREATE TABLE `vitals_records` (
   `is_active` tinyint(1) NOT NULL DEFAULT '1',
   `created_at` datetime(6) NOT NULL,
   `updated_at` datetime(6) DEFAULT NULL,
+  `map_mmhg` int DEFAULT NULL,
+  `cvp_cmh2o` int DEFAULT NULL,
+  `urine_output_ml` int DEFAULT NULL,
+  `gcs_eye` int DEFAULT NULL,
+  `gcs_verbal` int DEFAULT NULL,
+  `gcs_motor` int DEFAULT NULL,
+  `gcs_total` int DEFAULT NULL,
+  `supersedes_vitals_id` bigint DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_vitals_public_id` (`public_id`),
   KEY `idx_vitals_admission_time` (`ipd_admission_id`,`recorded_at`),

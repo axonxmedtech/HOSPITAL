@@ -117,6 +117,13 @@ public class IpdAdmissionService {
     @Autowired
     private BedStatusService bedStatusService;
 
+    /**
+     * ICU Phase 3. MANDATORY propagation — it joins the transaction opened here and never starts
+     * one, so an ICU stay can never commit apart from the bed movement that caused it.
+     */
+    @Autowired
+    private com.hms.service.hospital.icu.IcuStayService icuStayService;
+
     @Transactional
     public IpdAdmission admitFromOpd(Long opdId, Long wardId, Long bedId, String admissionType, String primaryDiagnosis) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
@@ -186,6 +193,16 @@ public class IpdAdmissionService {
         initialHist.setBedId(bedId);
         initialHist.setAssignedAt(LocalDateTime.now());
         ipdBedHistoryRepository.save(initialHist);
+
+        // ICU Phase 3: a direct admission into a critical-care ward opens an ICU stay. Critical
+        // state, deliberately NOT best-effort — a patient in an ICU bed with no stay record breaks
+        // the board's central invariant silently and loses the admission time for good.
+        // EMERGENCY vs OPD is derived from the admission type rather than asked again.
+        icuStayService.onWardSettled(saved, null,
+                "EMERGENCY".equalsIgnoreCase(saved.getAdmissionType())
+                        ? com.hms.entity.IcuStay.SRC_EMERGENCY
+                        : com.hms.entity.IcuStay.SRC_OPD,
+                null, null);
 
         // Mark bed occupied (Nursing Mgmt Phase C2: audited bed status change)
         Bed occupiedBed = bedStatusService.changeLocked(bed, com.hms.entity.BedStatus.OCCUPIED, "IPD admission");
@@ -1167,6 +1184,9 @@ public class IpdAdmissionService {
             }
         }
 
+        // ICU Phase 3: discharge ends any open ICU stay in the same transaction.
+        icuStayService.onDischarged(ipd, com.hms.entity.IcuStay.DISP_HOME);
+
         // Update IPD status and discharge datetime
         ipd.setStatus("DISCHARGED");
         ipd.setDischargeDatetime(LocalDateTime.now());
@@ -1244,7 +1264,11 @@ public class IpdAdmissionService {
         Bed first = bedRepository.findByBedIdAndHospitalIdForUpdate(firstBedId, hospitalId)
                 .orElseThrow(() -> new ResourceNotFoundException("Bed not found"));
         Bed second = bedRepository.findByBedIdAndHospitalIdForUpdate(secondBedId, hospitalId)
-                .orElseThrow(() -> new ResourceNotFoundException("New bed not found"));
+                // Same wording as the first lookup on purpose. The two beds are locked in id
+                // order, so which of them is "the new one" depends on the ids involved; a
+                // distinct message here would let a caller tell a foreign bed from a missing one
+                // by watching which sentence comes back (C4).
+                .orElseThrow(() -> new ResourceNotFoundException("Bed not found"));
         Bed oldBed = oldBedId.equals(firstBedId) ? first : second;
         Bed newBed = newBedId.equals(firstBedId) ? first : second;
         if (!com.hms.entity.BedStatus.AVAILABLE.equalsIgnoreCase(newBed.getStatus())) {
@@ -1298,6 +1322,13 @@ public class IpdAdmissionService {
         ipd.setWardId(newBed.getWardId());
         
         IpdAdmission saved = ipdAdmissionRepository.save(ipd);
+
+        // ICU Phase 3: one call covers every case, because they are one question — is the patient
+        // in critical care now, and were they before? Ward -> ICU opens, ICU -> ward closes,
+        // ICU -> a different ICU closes and reopens (readmission is real), and a bed change inside
+        // the same unit does nothing, since the stay is bounded by the ward and ipd_bed_history
+        // already records the bed. Same transaction as the transfer.
+        icuStayService.onWardSettled(saved, oldWard.getWardId(), null, oldWard.getWardId(), null);
 
         // A cross-ward transfer ends primary ownership; destination visibility is derived
         // from the admission's new ward and therefore needs no manufactured row.

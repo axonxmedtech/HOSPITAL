@@ -38,4 +38,18 @@ public class VitalsController {
     public ResponseEntity<?> update(@PathVariable String publicId, @Valid @RequestBody VitalsRequest req) {
         return ResponseEntity.ok(vitalsService.update(publicId, req));
     }
+
+    /**
+     * ICU Phase 4 — corrects an observation recorded during an ICU stay by writing a new record
+     * that supersedes it. The original is preserved.
+     *
+     * <p>Same roles as the edit above, and the service applies the same VITALS gate,
+     * recording-nurse rule and edit window: this is not a wider door, it is a different one that
+     * does not destroy history.
+     */
+    @PostMapping("/{publicId}/correction")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
+    public ResponseEntity<?> correct(@PathVariable String publicId, @Valid @RequestBody VitalsRequest req) {
+        return ResponseEntity.ok(vitalsService.correct(publicId, req));
+    }
 }

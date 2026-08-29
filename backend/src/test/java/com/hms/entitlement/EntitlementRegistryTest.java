@@ -26,8 +26,6 @@ class EntitlementRegistryTest {
                 EntitlementRegistry.normalizePlanModules(HospitalType.HOSPITAL, List.of("OPD", "opd")));
         assertThatIllegalArgumentException().isThrownBy(() ->
                 EntitlementRegistry.normalizePlanModules(HospitalType.HOSPITAL, List.of(EntitlementRegistry.PHARMACY_BRANCH)));
-        assertThatIllegalArgumentException().isThrownBy(() ->
-                EntitlementRegistry.normalizePlanModules(HospitalType.HOSPITAL, List.of(EntitlementRegistry.PATHOLOGY)));
     }
 
     @Test

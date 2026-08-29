@@ -51,6 +51,12 @@ public interface DoctorRepository extends JpaRepository<Doctor, Long> {
      */
     Optional<Doctor> findByIdAndHospitalIdAndIsActiveTrue(Long id, Long hospitalId);
 
+    /**
+     * ICU Phase 2 — batch, tenant-scoped resolve for the board's consultant column. Scoped
+     * rather than a bare findAllById so a stray id can never cross tenants.
+     */
+    List<Doctor> findByHospitalIdAndIdIn(Long hospitalId, java.util.Collection<Long> ids);
+
     Optional<Doctor> findByPublicIdAndHospitalIdAndIsActiveTrue(String publicId, Long hospitalId);
 
     /**

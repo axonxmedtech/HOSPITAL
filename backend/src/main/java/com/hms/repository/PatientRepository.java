@@ -65,6 +65,11 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
         @Query("SELECT p FROM Patient p WHERE p.id = :id AND p.hospitalId = :hospitalId")
         Optional<Patient> findByIdAndHospitalIdForUpdate(@Param("id") Long id,
                         @Param("hospitalId") Long hospitalId);
+        /**
+         * ICU Phase 2 — batch, tenant-scoped resolve for a board that shows many patients at
+         * once. Scoped rather than a bare findAllById so a stray id can never cross tenants.
+         */
+        List<Patient> findByHospitalIdAndIdIn(Long hospitalId, java.util.Collection<Long> ids);
 
         Optional<Patient> findByPublicIdAndHospitalIdAndIsActiveTrue(String publicId, Long hospitalId);
 

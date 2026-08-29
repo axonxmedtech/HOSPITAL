@@ -192,6 +192,24 @@ public final class TenantTables {
         // Request bookkeeping: which OPD registration keys a facility has already claimed. No
         // clinical or financial content, and meaningless once the facility is gone.
         purge(22, "opd_idempotency", BY_HOSPITAL);
+
+        // ICU configuration, not ICU records: a ventilator parameter catalogue, which severity
+        // scores a facility uses, and the numbers it wants alerting on. The observations recorded
+        // against them are the icu_* tables classified retain() below.
+        purge(23, "icu_ventilator_parameter", BY_HOSPITAL);
+        purge(24, "icu_score_type_setting", BY_HOSPITAL);
+        purge(25, "icu_alert_threshold", BY_HOSPITAL);
+
+        // An ICU episode and everything charted during it is clinical record. The stay itself carries
+        // the admission and discharge times a later review depends on; the rest is what was
+        // observed, given and titrated at the bedside.
+        retain("icu_stay", Ownership.DIRECT);
+        retain("icu_io_entry", Ownership.DIRECT);
+        retain("icu_infusion", Ownership.DIRECT);
+        retain("icu_infusion_rate", Ownership.DIRECT);
+        retain("icu_ventilator_setting", Ownership.DIRECT);
+        retain("icu_severity_score", Ownership.DIRECT);
+
         retain("medicine_stock_batches", Ownership.DIRECT);
         retain("stock_movements", Ownership.DIRECT);
         retain("ot_recovery_episodes", Ownership.DIRECT);

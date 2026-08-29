@@ -63,6 +63,15 @@ public final class ControllerModules {
                 "SurgeryExecutionController", "RecoveryController", "OtRoomController",
                 "OtPolicyController", "OtPermissionController", "OtInchargeController");
 
+        // Critical care. Hospital-only and never aliased to /clinic or /pharmacy.
+        // Critical care. Hospital-only and never aliased to /clinic or /pharmacy. ICU clinical
+        // records sit here rather than under CLINICAL_RECORDS: ICU is separately sellable, so a
+        // hospital with IPD but without ICU must not reach them through ordinary record access.
+        put(EntitlementRegistry.ICU, "IcuDashboardController", "IcuStayController",
+                "IcuIoController", "IcuInfusionController", "IcuVentilatorController",
+                "IcuVentilatorParameterController", "IcuSeverityScoreController",
+                "IcuScoreTypeSettingController", "IcuAlertThresholdController");
+
         put(EntitlementRegistry.BILLING,
                 "BillingController", "HospitalFeeController", "HospitalServiceController");
 

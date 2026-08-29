@@ -38,6 +38,8 @@ class VitalsServiceTest {
 
     @Mock com.hms.service.RealtimeNotifier notifier;
 
+    @Mock com.hms.service.hospital.icu.IcuAlertEvaluator alertEvaluator;
+
     @InjectMocks VitalsService service;
 
     private IpdAdmission admission() {

@@ -1,14 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
+import authService from '../../../services/authService';
 import formAccessService from '../../../services/formAccessService';
 import nurseService from '../../../services/nurseService';
 import OtNotesSection from '../ot/OtNotesSection';
 import ConsentFormsPanel from './ConsentFormsPanel';
+import InfusionPanel from './InfusionPanel';
 import InitialAssessmentPanel from './InitialAssessmentPanel';
+import IoChartPanel from './IoChartPanel';
 import MedicationPanel from './MedicationPanel';
 import NotesPanel from './NotesPanel';
+import SeverityScorePanel from './SeverityScorePanel';
 import SugarChartPanel from './SugarChartPanel';
+import VentilatorPanel from './VentilatorPanel';
 import VitalsPanel from './VitalsPanel';
 import VulnerabilityAssessmentPanel from './VulnerabilityAssessmentPanel';
 
@@ -68,8 +73,16 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
       })
       .catch((err) => {
         if (!active) return;
-        if (err.response?.status === 403) toastError('You are not assigned to this patient');
-        else toastError('Failed to load patient');
+        // The two scopes fail for different reasons, so they say different things: a staff nurse
+        // is not assigned to the patient, an incharge does not run the patient's ward.
+        if (err.response?.status === 403) {
+          const role = authService.getCurrentUser()?.role;
+          toastError(
+            role === 'NURSE_INCHARGE' || role === 'HOSPITAL_ADMIN'
+              ? 'This patient is not in one of your wards'
+              : 'You are not assigned to this patient'
+          );
+        } else toastError('Failed to load patient');
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -107,8 +120,16 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
     assessment: 'INITIAL_ASSESSMENT',
     vulnerability: 'VULNERABILITY_ASSESSMENT',
     sugar: 'SUGAR_CHART',
+    io: 'IO_CHART',
+    medication: 'MEDICATION',
+    ventilator: 'VENTILATOR',
+    scores: 'SEVERITY_SCORE',
   };
   const verdictFor = (tabId) => formVerdicts[NURSING_FORM_KEY[tabId]] || 'EDITABLE';
+
+  // A staff nurse came from "My Patients"; an incharge came from their ward list.
+  const backLabel =
+    authService.getCurrentUser()?.role === 'NURSE_INCHARGE' ? 'My Ward Patients' : 'My Patients';
 
   const tabs = [
     { id: 'overview', label: 'Overview' },
@@ -122,6 +143,9 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
       ? [{ id: 'vulnerability', label: 'Vulnerability Assessment' }]
       : []),
     ...(verdictFor('sugar') !== 'HIDDEN' ? [{ id: 'sugar', label: 'Sugar Chart' }] : []),
+    ...(verdictFor('io') !== 'HIDDEN' ? [{ id: 'io', label: 'Intake / Output' }] : []),
+    ...(verdictFor('ventilator') !== 'HIDDEN' ? [{ id: 'ventilator', label: 'Ventilator' }] : []),
+    ...(verdictFor('scores') !== 'HIDDEN' ? [{ id: 'scores', label: 'Severity Scores' }] : []),
     ...(hasSurgery ? [{ id: 'consent', label: 'Consent Forms' }] : []),
   ];
 
@@ -145,7 +169,7 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
           onClick={onBack}
           className="text-sm font-semibold text-gray-600 hover:text-gray-900"
         >
-          ← My Patients
+          ← {backLabel}
         </button>
         <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-700">
           {d.status}
@@ -180,10 +204,49 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
       </div>
 
       {tab === 'vitals' && (
-        <VitalsPanel admissionId={admissionId} readOnly={verdictFor('vitals') === 'READ_ONLY'} />
+        <VitalsPanel
+          admissionId={admissionId}
+          readOnly={verdictFor('vitals') === 'READ_ONLY'}
+          refreshKey={refreshKey}
+        />
+      )}
+      {tab === 'io' && (
+        <IoChartPanel
+          admissionId={admissionId}
+          readOnly={verdictFor('io') === 'READ_ONLY'}
+          refreshKey={refreshKey}
+        />
       )}
 
-      {tab === 'medication' && <MedicationPanel admissionId={admissionId} />}
+      {tab === 'ventilator' && (
+        <VentilatorPanel
+          admissionId={admissionId}
+          readOnly={verdictFor('ventilator') === 'READ_ONLY'}
+          refreshKey={refreshKey}
+        />
+      )}
+
+      {tab === 'scores' && (
+        <SeverityScorePanel
+          admissionId={admissionId}
+          readOnly={verdictFor('scores') === 'READ_ONLY'}
+          refreshKey={refreshKey}
+        />
+      )}
+
+      {tab === 'medication' && (
+        <div className="space-y-6">
+          <MedicationPanel admissionId={admissionId} />
+          {/* Infusions live in the medication workspace, not a page of their own: an infusion is
+              medication being given, and the nurse should not look in two places for one
+              patient's drugs. */}
+          <InfusionPanel
+            admissionId={admissionId}
+            readOnly={verdictFor('medication') === 'READ_ONLY'}
+            refreshKey={refreshKey}
+          />
+        </div>
+      )}
 
       {tab === 'notes' && (
         <NotesPanel admissionId={admissionId} readOnly={verdictFor('notes') === 'READ_ONLY'} />

@@ -8,6 +8,7 @@ import useWebSocket from '../../hooks/useWebSocket';
 import authService from '../../services/authService';
 import nurseScheduleService from '../../services/nurseScheduleService';
 import nurseService from '../../services/nurseService';
+import IcuBedBoard from './icu/IcuBedBoard';
 import MyAttendanceView from './nurse/MyAttendanceView';
 import MyPatientsView from './nurse/MyPatientsView';
 import MyShiftsView from './nurse/MyShiftsView';
@@ -101,6 +102,7 @@ const NurseDashboard = () => {
     { id: 'my-shifts', label: 'My Shifts' },
     { id: 'my-attendance', label: 'My Attendance' },
     { id: 'forms', label: 'Forms' },
+    ...(user?.modules?.includes('ICU') ? [{ id: 'icu-beds', label: 'ICU Beds' }] : []),
   ];
 
   const renderContent = () => {
@@ -124,6 +126,9 @@ const NurseDashboard = () => {
         return <MyAttendanceView refreshKey={refreshKey} />;
       case 'forms':
         return <NurseFormsView />;
+      case 'icu-beds':
+        // Row content is narrowed server-side to this nurse's assigned patients.
+        return <IcuBedBoard refreshKey={refreshKey} />;
       case 'dashboard':
       default:
         return <NurseOverviewView onOpenPatient={openPatient} refreshKey={refreshKey} />;

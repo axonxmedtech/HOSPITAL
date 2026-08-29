@@ -88,6 +88,9 @@ public class WardService {
         ward.setBedPrice(req.getBedPrice());
         ward.setTotalBeds(req.getTotalBeds());
         ward.setFloorNumber(req.getFloorNumber());
+        // ICU Phase 2: null/blank normalises to GENERAL, so a client that never sends the
+        // field keeps creating general wards exactly as it did before.
+        ward.setUnitType(com.hms.service.hospital.icu.CareUnitRegistry.normalize(req.getUnitType()));
 
         Ward saved = wardRepository.save(ward);
 
@@ -184,6 +187,7 @@ public class WardService {
         if (req.getWardName() != null) w.setWardName(req.getWardName());
         if (req.getBedPrice() != null) w.setBedPrice(req.getBedPrice());
         if (req.getFloorNumber() != null) w.setFloorNumber(req.getFloorNumber());
+        if (req.getUnitType() != null) applyUnitType(w, req.getUnitType(), hospitalId);
 
         // Bed count is editable: resize the ward's bed list to match. Done after the rename
         // above so any newly created bed codes carry the ward's new name.
@@ -290,6 +294,42 @@ public class WardService {
         ward.setTotalBeds(target);
     }
 
+    /**
+     * ICU Phase 2 — reclassify a ward, rejected while a bed of that ward holds a patient.
+     *
+     * The ICU board's core property is that an ICU bed and a critical-care patient are two
+     * views of one fact. Re-typing a ward under its occupants would break that retroactively:
+     * patients already lying in those beds would appear on (or vanish from) the ICU board with
+     * no admission time, reason or consultant behind the change. The administrator empties the
+     * ward first.
+     *
+     * Only OCCUPIED blocks the change — a bed awaiting cleaning or under maintenance holds no
+     * patient, so reclassifying around it is safe. Setting the same type again is a no-op and
+     * is never rejected.
+     */
+    private void applyUnitType(Ward ward, String requestedType, Long hospitalId) {
+        String normalized = com.hms.service.hospital.icu.CareUnitRegistry.normalize(requestedType);
+        String current = ward.getUnitType() == null
+                ? com.hms.service.hospital.icu.CareUnitRegistry.GENERAL
+                : ward.getUnitType();
+        if (normalized.equals(current)) return;
+
+        boolean hasOccupiedBed = bedRepository.findByWardIdAndHospitalId(ward.getWardId(), hospitalId)
+                .stream()
+                .anyMatch(b -> com.hms.entity.BedStatus.OCCUPIED.equalsIgnoreCase(b.getStatus()));
+        if (hasOccupiedBed) {
+            throw new IllegalArgumentException(
+                    "Cannot change the unit type of a ward with occupied beds. "
+                            + "Move or discharge its patients first.");
+        }
+
+        ward.setUnitType(normalized);
+        auditLogService.logAction("WARD_UNIT_TYPE_CHANGED",
+                "Ward " + ward.getWardName() + " unit type " + current + " -> " + normalized,
+                securityHelper.getCurrentUserEmail(), hospitalId, "WARD",
+                String.valueOf(ward.getWardId()), null);
+    }
+
     private WardResponse toResponse(Ward w) {
         WardResponse r = new WardResponse();
         r.setWardId(w.getWardId());
@@ -299,6 +339,11 @@ public class WardService {
         r.setFloorNumber(w.getFloorNumber());
         r.setInchargeNurseId(w.getInchargeNurseId());
         r.setStaffed(w.getInchargeNurseId() != null);
+        String unitType = (w.getUnitType() == null || w.getUnitType().isBlank())
+                ? com.hms.service.hospital.icu.CareUnitRegistry.GENERAL
+                : w.getUnitType();
+        r.setUnitType(unitType);
+        r.setUnitTypeLabel(com.hms.service.hospital.icu.CareUnitRegistry.labelOf(unitType));
         return r;
     }
 }

@@ -17,11 +17,16 @@ import hospitalService from '../../services/hospitalService';
 import otService from '../../services/otService';
 import wardService from '../../services/wardService';
 import { printBlob } from '../../utils/printPdf';
+import IcuStayCard from './icu/IcuStayCard';
 import ConsentFormsPanel from './nurse/ConsentFormsPanel';
+import InfusionPanel from './nurse/InfusionPanel';
 import InitialAssessmentPanel from './nurse/InitialAssessmentPanel';
+import IoChartPanel from './nurse/IoChartPanel';
 import MedicationPanel from './nurse/MedicationPanel';
 import NotesPanel from './nurse/NotesPanel';
+import SeverityScorePanel from './nurse/SeverityScorePanel';
 import SugarChartPanel from './nurse/SugarChartPanel';
+import VentilatorPanel from './nurse/VentilatorPanel';
 import VitalsPanel from './nurse/VitalsPanel';
 import VulnerabilityAssessmentPanel from './nurse/VulnerabilityAssessmentPanel';
 import SurgeryRequestModal from './ot/SurgeryRequestModal';
@@ -43,6 +48,10 @@ const IpdDetails = () => {
 
   // Files & Access: which clinical forms this role may see / edit here.
   const [tab, setTab] = useState('overview');
+  // Bumped on every realtime REFRESH_DATA. `load()` refetches the case header only;
+  // the clinical sub-tab panels fetch their own data and need their own signal, or a
+  // reading a nurse charts stays invisible in an open case until someone reloads.
+  const [panelRefreshKey, setPanelRefreshKey] = useState(0);
   const [formVerdicts, setFormVerdicts] = useState({});
   useEffect(() => {
     let active = true;
@@ -66,6 +75,9 @@ const IpdDetails = () => {
     assessment: 'INITIAL_ASSESSMENT',
     vulnerability: 'VULNERABILITY_ASSESSMENT',
     sugar: 'SUGAR_CHART',
+    io: 'IO_CHART',
+    ventilator: 'VENTILATOR',
+    scores: 'SEVERITY_SCORE',
   };
   const verdictFor = (tabId) => formVerdicts[FORM_KEY_BY_TAB[tabId]] || 'EDITABLE';
   const admissionId = Number(id);
@@ -82,6 +94,9 @@ const IpdDetails = () => {
       ? [{ id: 'vulnerability', label: 'Vulnerability Assessment' }]
       : []),
     ...(verdictFor('sugar') !== 'HIDDEN' ? [{ id: 'sugar', label: 'Sugar Chart' }] : []),
+    ...(verdictFor('io') !== 'HIDDEN' ? [{ id: 'io', label: 'Intake / Output' }] : []),
+    ...(verdictFor('ventilator') !== 'HIDDEN' ? [{ id: 'ventilator', label: 'Ventilator' }] : []),
+    ...(verdictFor('scores') !== 'HIDDEN' ? [{ id: 'scores', label: 'Severity Scores' }] : []),
     ...(hasOT && otSurgery ? [{ id: 'consent', label: 'Consent Forms' }] : []),
   ];
   // If the active tab got hidden by a Files & Access change, fall back to Overview.
@@ -146,6 +161,8 @@ const IpdDetails = () => {
         { id: 'patients', label: 'Patients', requiredModule: 'OPD' },
         { id: 'opd', label: 'OPD', requiredModule: 'OPD' },
         { id: 'wards', label: 'Wards & Beds', requiredModule: 'IPD' },
+        { id: 'icu-dashboard', label: 'ICU Dashboard', requiredModule: 'ICU' },
+        { id: 'icu-beds', label: 'ICU Bed Board', requiredModule: 'ICU' },
         { id: 'doctors', label: 'Doctors', requiredModule: 'OPD' },
         { id: 'receptionists', label: 'Receptionists', requiredModule: 'OPD' },
         { id: 'billing', label: 'Billing', requiredModule: 'BILLING' },
@@ -411,6 +428,9 @@ const IpdDetails = () => {
   }, [id]);
 
   useWebSocket(user, setUser, (silent) => {
+    // The panels refresh even while a modal is open: they are read-only surfaces that no modal
+    // is editing, so nothing the user is typing can be thrown away by reloading them.
+    setPanelRefreshKey((k) => k + 1);
     if (
       !followupModal.isOpen &&
       !dischargeModal.isOpen &&
@@ -694,6 +714,36 @@ const IpdDetails = () => {
                   <VitalsPanel
                     admissionId={admissionId}
                     readOnly={verdictFor('vitals') === 'READ_ONLY'}
+                    refreshKey={panelRefreshKey}
+                  />
+                </div>
+              )}
+              {tab === 'io' && (
+                <div className="mt-4">
+                  <IoChartPanel
+                    admissionId={admissionId}
+                    readOnly={verdictFor('io') === 'READ_ONLY'}
+                    refreshKey={panelRefreshKey}
+                  />
+                </div>
+              )}
+              {tab === 'ventilator' && (
+                <div className="mt-4">
+                  {/* Writable here, gated by Files & Access like every other panel on this page:
+                      the IPD case is the only ventilator surface an admin or doctor can reach. */}
+                  <VentilatorPanel
+                    admissionId={admissionId}
+                    readOnly={verdictFor('ventilator') === 'READ_ONLY'}
+                    refreshKey={panelRefreshKey}
+                  />
+                </div>
+              )}
+              {tab === 'scores' && (
+                <div className="mt-4">
+                  <SeverityScorePanel
+                    admissionId={admissionId}
+                    readOnly={verdictFor('scores') === 'READ_ONLY'}
+                    refreshKey={panelRefreshKey}
                   />
                 </div>
               )}
@@ -1771,12 +1821,25 @@ const IpdDetails = () => {
                         Medication Administration History (MAR)
                       </h3>
                       <MedicationPanel admissionId={admissionId} readOnly />
+
+                      {/* Continuous infusions sit with the MAR. Unlike the MAR above — which is
+                          read-only here because nurses record administration — infusions follow
+                          Files & Access like every other panel on this page, so whoever the
+                          server lets edit MEDICATION can start and titrate one from the case. */}
+                      <hr className="my-4" />
+                      <InfusionPanel
+                        admissionId={admissionId}
+                        readOnly={verdictFor('medication') === 'READ_ONLY'}
+                        refreshKey={panelRefreshKey}
+                      />
                     </>
                   )}
                 </div>
 
                 <aside className="bg-white border rounded p-4">
                   {/* Discharge + Create Surgery Request now live in the case header (top right). */}
+                  {/* ICU-10: renders nothing unless this admission has an ICU stay. */}
+                  <IcuStayCard admissionId={admissionId} refreshKey={panelRefreshKey} />
                   {hasOT && otSurgery && (
                     <>
                       <h3 className="font-semibold mb-2">Operation Theatre</h3>

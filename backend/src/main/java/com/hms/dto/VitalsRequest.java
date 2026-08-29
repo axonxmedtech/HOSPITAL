@@ -54,4 +54,12 @@ public class VitalsRequest {
 
     @Positive
     private Long performedByNurseId; // optional; required when Separate Nurse Login is OFF
+
+    // ── ICU Phase 4. Optional everywhere; a ward form simply omits them.
+    private Integer mapMmhg;
+    private Integer cvpCmh2o;
+    private Integer urineOutputMl;
+    private Integer gcsEye;
+    private Integer gcsVerbal;
+    private Integer gcsMotor;
 }
