@@ -164,7 +164,7 @@ public class FollowUpService {
 
         int claimed = medicalRecordRepository.claimForArrival(
                 record.getId(), hospitalId, opd.getId(),
-                securityHelper.getCurrentUserId(), java.time.LocalDateTime.now());
+                securityHelper.getCurrentUserId(), java.time.LocalDateTime.now(), clock.today());
         if (claimed != 1) {
             // Lost the race, or the follow-up was closed between the check above and here.
             // Throwing rolls back the OPD created moments ago along with everything it caused.
@@ -209,6 +209,128 @@ public class FollowUpService {
         if (record.getFollowUpDate().isAfter(clock.today())) {
             throw new IllegalArgumentException(
                     "This follow-up is not due until " + record.getFollowUpDate() + ".");
+        }
+    }
+
+    // ── the transitions that do not involve a visit ──────────────────────────
+
+    /**
+     * Moves an outstanding follow-up to a new date. It stays open.
+     *
+     * <p>There is no RESCHEDULED state, deliberately: the appointment is still outstanding, and a
+     * terminal state would say otherwise. What changed is recorded in the audit trail, which
+     * keeps both the old date and the new one — the row itself only ever holds the current
+     * answer, and the history of a clinical instruction belongs somewhere durable.
+     */
+    @Transactional
+    public void reschedule(Long medicalRecordId, LocalDate newDate, String instructions, String reason) {
+        Long hospitalId = requireHospitalId();
+        MedicalRecord record = requireOpenFollowUp(medicalRecordId, hospitalId);
+
+        if (newDate == null) {
+            throw new IllegalArgumentException("A new follow-up date is required.");
+        }
+        // Backwards has no workflow: it would land the patient straight into overdue for a
+        // decision just taken. Today is allowed — "come back this afternoon" is ordinary.
+        if (newDate.isBefore(clock.today())) {
+            throw new IllegalArgumentException("A follow-up cannot be moved into the past.");
+        }
+
+        LocalDate previous = record.getFollowUpDate();
+        int moved = medicalRecordRepository.rescheduleIfOpen(
+                record.getId(), hospitalId, newDate, trimmedOrNull(instructions));
+        if (moved != 1) {
+            throw new ConflictException(lostRaceMessage());
+        }
+
+        audit("FOLLOW_UP_RESCHEDULED",
+                "Follow-up moved from " + previous + " to " + newDate
+                        + (instructions != null && !instructions.isBlank() ? "; instructions updated" : ""),
+                hospitalId, record, reason);
+    }
+
+    /**
+     * Closes a follow-up that no longer needs a visit — the patient improved, was seen
+     * elsewhere, or the question was answered by phone.
+     *
+     * <p>Not the same as an arrival: nothing clinical is created, no queue entry, no bill. The
+     * date and instructions stay exactly as the doctor wrote them.
+     */
+    @Transactional
+    public void complete(Long medicalRecordId, String reason) {
+        close(medicalRecordId, MedicalRecord.FOLLOW_UP_COMPLETED, "FOLLOW_UP_COMPLETED",
+                "Follow-up closed without a return visit", reason);
+    }
+
+    /** Calls off a follow-up. A reason is required — a cancelled clinical instruction needs one. */
+    @Transactional
+    public void cancel(Long medicalRecordId, String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new IllegalArgumentException("A reason is required to cancel a follow-up.");
+        }
+        if (reason.trim().length() > 500) {
+            throw new IllegalArgumentException("The cancellation reason is too long.");
+        }
+        close(medicalRecordId, MedicalRecord.FOLLOW_UP_CANCELLED, "FOLLOW_UP_CANCELLED",
+                "Follow-up cancelled", reason);
+    }
+
+    private void close(Long medicalRecordId, String status, String action, String detail, String reason) {
+        Long hospitalId = requireHospitalId();
+        MedicalRecord record = requireOpenFollowUp(medicalRecordId, hospitalId);
+
+        int closed = medicalRecordRepository.closeIfOpen(record.getId(), hospitalId, status);
+        if (closed != 1) {
+            throw new ConflictException(lostRaceMessage());
+        }
+
+        audit(action, detail + " (was due " + record.getFollowUpDate() + ")", hospitalId, record, reason);
+    }
+
+    /**
+     * The record, if it is this facility's and still open.
+     *
+     * <p>This is a courtesy check that produces a readable refusal; it is not the safety
+     * mechanism. Every transition re-checks the same conditions inside its own UPDATE, which is
+     * what actually holds under concurrency.
+     */
+    private MedicalRecord requireOpenFollowUp(Long medicalRecordId, Long hospitalId) {
+        MedicalRecord record = medicalRecordRepository
+                .findByIdAndHospitalId(medicalRecordId, hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Follow-up not found"));
+
+        if (record.getFollowUpDate() == null) {
+            throw new IllegalArgumentException("This consultation has no follow-up scheduled.");
+        }
+        String status = record.getFollowUpStatus();
+        if (record.getActionedOpdId() != null || MedicalRecord.FOLLOW_UP_ACTIONED.equals(status)) {
+            throw new ConflictException(
+                    "This follow-up has already been actioned and cannot be changed.");
+        }
+        if (MedicalRecord.FOLLOW_UP_COMPLETED.equals(status)) {
+            throw new ConflictException("This follow-up is already completed.");
+        }
+        if (MedicalRecord.FOLLOW_UP_CANCELLED.equals(status)) {
+            throw new ConflictException("This follow-up was cancelled.");
+        }
+        return record;
+    }
+
+    private static String lostRaceMessage() {
+        return "This follow-up was changed by someone else. Refresh to see its current state.";
+    }
+
+    private static String trimmedOrNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    /** Best-effort, as everywhere else here: a missing audit line must not undo a real decision. */
+    private void audit(String action, String details, Long hospitalId, MedicalRecord record, String reason) {
+        try {
+            auditLogService.logAction(action, details, securityHelper.getCurrentUserEmail(),
+                    hospitalId, "MEDICAL_RECORD", String.valueOf(record.getId()), trimmedOrNull(reason));
+        } catch (Exception e) {
+            // deliberately swallowed
         }
     }
 }

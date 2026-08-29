@@ -90,6 +90,67 @@ public class FollowUpController {
                 followUpService.recordArrival(medicalRecordId, body == null ? null : body.getProblem()));
     }
 
+    /**
+     * Moves an outstanding follow-up. It stays open; only its date changes.
+     *
+     * <p>Reception may do this. Rescheduling is the same administrative act as moving any other
+     * appointment, and the clinical instruction itself is unchanged.
+     */
+    @PostMapping("/{medicalRecordId}/reschedule")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','DOCTOR','RECEPTIONIST')")
+    public ResponseEntity<?> reschedule(@PathVariable Long medicalRecordId,
+                                        @RequestBody RescheduleRequest body) {
+        if (body == null) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("A new follow-up date is required."));
+        }
+        followUpService.reschedule(medicalRecordId, body.getNewFollowUpDate(),
+                body.getInstructions(), body.getReason());
+        return ResponseEntity.ok(java.util.Map.of("message", "Follow-up rescheduled"));
+    }
+
+    /**
+     * Closes a follow-up without a visit.
+     *
+     * <p>Doctor or admin only, and deliberately narrower than reschedule: deciding a patient no
+     * longer needs to be seen is a clinical judgement, not a desk one. Reception cancels with a
+     * reason instead, which says the appointment was called off rather than that the question
+     * was resolved.
+     */
+    @PostMapping("/{medicalRecordId}/complete")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','DOCTOR')")
+    public ResponseEntity<?> complete(@PathVariable Long medicalRecordId,
+                                      @RequestBody(required = false) ReasonRequest body) {
+        followUpService.complete(medicalRecordId, body == null ? null : body.getReason());
+        return ResponseEntity.ok(java.util.Map.of("message", "Follow-up completed"));
+    }
+
+    /** Calls off a follow-up. The reason is required and recorded. */
+    @PostMapping("/{medicalRecordId}/cancel")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','DOCTOR','RECEPTIONIST')")
+    public ResponseEntity<?> cancel(@PathVariable Long medicalRecordId,
+                                    @RequestBody(required = false) ReasonRequest body) {
+        followUpService.cancel(medicalRecordId, body == null ? null : body.getReason());
+        return ResponseEntity.ok(java.util.Map.of("message", "Follow-up cancelled"));
+    }
+
+    public static class RescheduleRequest {
+        private java.time.LocalDate newFollowUpDate;
+        private String instructions;
+        private String reason;
+        public java.time.LocalDate getNewFollowUpDate() { return newFollowUpDate; }
+        public void setNewFollowUpDate(java.time.LocalDate d) { this.newFollowUpDate = d; }
+        public String getInstructions() { return instructions; }
+        public void setInstructions(String instructions) { this.instructions = instructions; }
+        public String getReason() { return reason; }
+        public void setReason(String reason) { this.reason = reason; }
+    }
+
+    public static class ReasonRequest {
+        private String reason;
+        public String getReason() { return reason; }
+        public void setReason(String reason) { this.reason = reason; }
+    }
+
     /** Deliberately just the one field; see recordArrival. */
     public static class ArrivalRequest {
         private String problem;

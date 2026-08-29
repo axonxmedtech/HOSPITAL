@@ -57,17 +57,53 @@ public interface MedicalRecordRepository extends JpaRepository<MedicalRecord, Lo
      * <p>Only an open, unclaimed follow-up in the caller's own facility can be taken — a
      * terminal or already-actioned one matches nothing and the caller is told it lost.
      */
+/**
+     * Moves an open follow-up to a new date, atomically.
+     *
+     * <p>Same guard as the arrival claim, for the same reason: a reschedule racing an arrival
+     * must not move a date out from under a visit that is being created, and two reschedules
+     * must not interleave. Returns 1 to the winner, 0 to anyone whose follow-up was already
+     * actioned, completed or cancelled.
+     */
     @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE MedicalRecord m SET m.followUpDate = :newDate, "
+         + "m.followUpInstructions = COALESCE(:instructions, m.followUpInstructions) "
+         + "WHERE m.id = :id AND m.hospitalId = :hospitalId "
+         + "AND m.actionedOpdId IS NULL "
+         + "AND (m.followUpStatus IS NULL OR m.followUpStatus = 'OPEN')")
+    int rescheduleIfOpen(@org.springframework.data.repository.query.Param("id") Long id,
+                         @org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
+                         @org.springframework.data.repository.query.Param("newDate") java.time.LocalDate newDate,
+                         @org.springframework.data.repository.query.Param("instructions") String instructions);
+
+    /**
+     * Closes an open follow-up without a visit — completed or cancelled.
+     *
+     * <p>The date and instructions are untouched: the obligation ends, the clinical record of
+     * what was asked for does not.
+     */
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE MedicalRecord m SET m.followUpStatus = :status "
+         + "WHERE m.id = :id AND m.hospitalId = :hospitalId "
+         + "AND m.actionedOpdId IS NULL "
+         + "AND (m.followUpStatus IS NULL OR m.followUpStatus = 'OPEN')")
+    int closeIfOpen(@org.springframework.data.repository.query.Param("id") Long id,
+                    @org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
+                    @org.springframework.data.repository.query.Param("status") String status);
+
+        @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE MedicalRecord m SET m.followUpStatus = 'ACTIONED', m.actionedOpdId = :opdId, "
          + "m.actionedByUserId = :userId, m.actionedAt = :at "
          + "WHERE m.id = :id AND m.hospitalId = :hospitalId "
          + "AND m.actionedOpdId IS NULL "
+         + "AND m.followUpDate IS NOT NULL AND m.followUpDate <= :today "
          + "AND (m.followUpStatus IS NULL OR m.followUpStatus = 'OPEN')")
     int claimForArrival(@org.springframework.data.repository.query.Param("id") Long id,
                         @org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
                         @org.springframework.data.repository.query.Param("opdId") Long opdId,
                         @org.springframework.data.repository.query.Param("userId") Long userId,
-                        @org.springframework.data.repository.query.Param("at") java.time.LocalDateTime at);
+                        @org.springframework.data.repository.query.Param("at") java.time.LocalDateTime at,
+                        @org.springframework.data.repository.query.Param("today") java.time.LocalDate today);
 
         @Query("SELECT new com.hms.dto.FollowUpDTO("
          + "  m.id, m.opdId, p.id, p.publicId, p.customId, p.name, p.phone,"
