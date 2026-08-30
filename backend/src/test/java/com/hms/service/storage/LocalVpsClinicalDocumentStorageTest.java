@@ -117,10 +117,10 @@ class LocalVpsClinicalDocumentStorageTest {
     }
 
     @Test
-    void everyResolvedPathStaysUnderTheRoot() {
+    void everyResolvedPathStaysUnderTheRoot() throws Exception {
         var stored = storage.store("h1", "p1", "png", bytes("img"), 3);
         Path resolved = storage.resolveWithin(stored.storageKey());
-        assertThat(resolved.normalize().startsWith(root.toAbsolutePath().normalize())).isTrue();
+        assertThat(resolved.normalize().startsWith(root.toRealPath())).isTrue();
     }
 
     /** A real file outside the root stays unreachable however the key is shaped. */
@@ -151,6 +151,82 @@ class LocalVpsClinicalDocumentStorageTest {
     void deletingSomethingAlreadyGoneIsQuiet() {
         assertThatCode(() -> storage.deleteQuietly("h1/p1/" + java.util.UUID.randomUUID() + ".pdf"))
                 .doesNotThrowAnyException();
+    }
+
+    // -- symlink escape ----------------------------------------------------------
+
+    /**
+     * The escape lexical containment cannot see.
+     *
+     * <p>normalize() reasons about the text of a path. A directory inside the root that is a
+     * symbolic link makes a perfectly well-formed key resolve somewhere else entirely, and the
+     * old check called that contained because the spelling never left the root.
+     */
+    @Test
+    void aSymlinkedDirectoryInsideTheRootIsNotAWayOut() throws Exception {
+        Path external = Files.createDirectory(root.getParent().resolve("external-" + System.nanoTime()));
+        Files.writeString(external.resolve("stolen.pdf"), "another tenant's report");
+        Files.createSymbolicLink(root.resolve("h42"), external);
+
+        String key = "h42/p1/" + java.util.UUID.randomUUID() + ".pdf";
+        assertThatThrownBy(() -> storage.load(key))
+                .as("reading through a planted link").isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> storage.store("h42", "p1", "pdf", bytes("x"), 1))
+                .as("writing through a planted link")
+                .isInstanceOfAny(IllegalArgumentException.class,
+                        LocalVpsClinicalDocumentStorage.ClinicalDocumentStorageException.class);
+        assertThatCode(() -> storage.deleteQuietly(key)).doesNotThrowAnyException();
+
+        assertThat(Files.readString(external.resolve("stolen.pdf")))
+                .as("nothing outside the root was touched").isEqualTo("another tenant's report");
+        assertThat(storage.exists(key)).isFalse();
+    }
+
+    /** The same, one level deeper: the patient directory is the link. */
+    @Test
+    void aSymlinkedPatientDirectoryIsNotAWayOut() throws Exception {
+        Path external = Files.createDirectory(root.getParent().resolve("ext2-" + System.nanoTime()));
+        Files.createDirectories(root.resolve("h7"));
+        Files.createSymbolicLink(root.resolve("h7").resolve("p9"), external);
+
+        assertThatThrownBy(() -> storage.store("h7", "p9", "pdf", bytes("x"), 1))
+                .isInstanceOfAny(IllegalArgumentException.class,
+                        LocalVpsClinicalDocumentStorage.ClinicalDocumentStorageException.class);
+        try (var walk = Files.walk(external)) {
+            assertThat(walk.filter(Files::isRegularFile).count()).isZero();
+        }
+    }
+
+    /** A link where the file itself should be must not be readable as that file. */
+    @Test
+    void aSymlinkedFileIsNotReadableAsADocument() throws Exception {
+        Path secret = root.getParent().resolve("secret-" + System.nanoTime() + ".pdf");
+        Files.writeString(secret, "not yours");
+
+        Path dir = Files.createDirectories(root.resolve("h1").resolve("p1"));
+        String name = java.util.UUID.randomUUID() + ".pdf";
+        Files.createSymbolicLink(dir.resolve(name), secret);
+
+        String key = "h1/p1/" + name;
+        assertThat(storage.exists(key)).as("a link is not a document").isFalse();
+        assertThatThrownBy(() -> storage.load(key))
+                .as("refused while resolving, before anything is opened")
+                .isInstanceOfAny(IllegalArgumentException.class,
+                        LocalVpsClinicalDocumentStorage.ClinicalDocumentStorageException.class);
+        assertThat(Files.readString(secret)).isEqualTo("not yours");
+    }
+
+    /** A configured root that is itself a link would make every check meaningless. */
+    @Test
+    void aSymlinkedStorageRootIsRefusedAtStartup() throws Exception {
+        Path real = Files.createDirectory(root.resolve("real-store"));
+        Path link = root.resolve("linked-store");
+        Files.createSymbolicLink(link, real);
+
+        var viaLink = new LocalVpsClinicalDocumentStorage(link.toString(), new MockEnvironment());
+        assertThatThrownBy(viaLink::initialise)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("symbolic link");
     }
 
     /** Production must never invent somewhere ephemeral to keep clinical records. */

@@ -131,15 +131,38 @@ class ClinicPharmacyIsolationTest {
                 .isEqualTo(ALIASED_CONTROLLERS);
     }
 
+    /**
+     * An alias a controller serves must be one its @TenantType permits.
+     *
+     * <p>This used to require that an aliased controller carry no @TenantType at all, which
+     * caught the mismatch it was after -- a hospital-only annotation on something reachable from
+     * /clinic -- but also forbade the legitimate case of a controller aliased to two tenants and
+     * annotated to allow exactly those two. The rule below is the invariant that was actually
+     * meant: every path a controller serves must correspond to a tenant type it accepts.
+     * Anything else is a route that answers 403 for the only tenants that can reach it.
+     */
     @Test
-    void noClinicOrPharmacyReachableController_isMarkedHospitalOnly() {
+    void everyAliasAControllerServes_isATenantItAccepts() {
         for (Class<?> c : controllers()) {
             if (!isAliased(c)) continue;
             TenantType tenantType = AnnotatedElementUtils.findMergedAnnotation(c, TenantType.class);
-            assertThat(tenantType)
-                    .as("%s serves /clinic or /pharmacy but is annotated @TenantType, which would 403 "
-                            + "those tenants", c.getSimpleName())
-                    .isNull();
+            if (tenantType == null) continue; // open to every tenant; the frozen set is the gate
+
+            java.util.Set<com.hms.entity.HospitalType> permitted =
+                    new java.util.HashSet<>(java.util.Arrays.asList(tenantType.value()));
+            for (String path : pathsOf(c)) {
+                com.hms.entity.HospitalType required =
+                        path.startsWith("/clinic") ? com.hms.entity.HospitalType.CLINIC
+                        : path.startsWith("/pharmacy") ? com.hms.entity.HospitalType.PHARMACY
+                        : path.startsWith("/hospital") ? com.hms.entity.HospitalType.HOSPITAL
+                        : null;
+                if (required == null) continue;
+                assertThat(permitted)
+                        .as("%s serves %s but its @TenantType does not accept %s, so that route "
+                                + "would answer 403 for the only tenant that can reach it",
+                                c.getSimpleName(), path, required)
+                        .contains(required);
+            }
         }
     }
 

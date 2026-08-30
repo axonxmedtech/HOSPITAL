@@ -68,9 +68,20 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
             log.warn("hms.document-storage.root is not set; using a temporary directory for development only.");
         }
 
-        this.storageRoot = Paths.get(root).toAbsolutePath().normalize();
+        Path configured = Paths.get(root).toAbsolutePath().normalize();
         try {
-            Files.createDirectories(storageRoot);
+            // A symlinked root is refused outright rather than resolved: if the directory an
+            // operator configured is itself a link, every containment check below would be
+            // measuring against wherever that link happens to point today.
+            if (Files.isSymbolicLink(configured)) {
+                throw new IllegalStateException(
+                        "The configured patient document directory is a symbolic link. Point "
+                                + "HMS_DOCUMENT_STORAGE_PATH at a real directory.");
+            }
+            Files.createDirectories(configured);
+            // Canonical from here on, so containment is compared against real locations rather
+            // than the spelling of a path.
+            this.storageRoot = configured.toRealPath();
             restrictPermissions(storageRoot);
         } catch (IOException e) {
             throw new IllegalStateException(
@@ -95,7 +106,15 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
             // Written aside first: a half-arrived upload must never be readable as a clinical
             // document, and the move below is atomic on the same filesystem.
             temp = Files.createTempFile(target.getParent(), ".incoming-", ".part");
-            long written = Files.copy(content, temp, StandardCopyOption.REPLACE_EXISTING);
+            long written;
+            // NOFOLLOW + CREATE_NEW: if anything replaced the temp entry with a link between its
+            // creation and this write, the open fails rather than writing through it.
+            try (java.io.OutputStream out = Files.newOutputStream(temp,
+                    java.nio.file.StandardOpenOption.WRITE,
+                    java.nio.file.StandardOpenOption.TRUNCATE_EXISTING,
+                    java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                written = content.transferTo(out);
+            }
 
             // A fresh UUID should never collide; if it somehow does, refuse rather than overwrite
             // somebody else's record.
@@ -120,10 +139,12 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
     public InputStream load(String storageKey) {
         Path path = resolveWithin(storageKey);
         try {
-            if (!Files.isRegularFile(path)) {
+            // NOFOLLOW on the check as well: a regular file reached through a link is not ours.
+            if (!Files.isRegularFile(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
                 throw new ClinicalDocumentStorageException("The document file is missing.", null);
             }
-            return Files.newInputStream(path);
+            return Files.newInputStream(path, java.nio.file.StandardOpenOption.READ,
+                    java.nio.file.LinkOption.NOFOLLOW_LINKS);
         } catch (IOException e) {
             throw new ClinicalDocumentStorageException("The document could not be read.", e);
         }
@@ -132,7 +153,7 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
     @Override
     public boolean exists(String storageKey) {
         try {
-            return Files.isRegularFile(resolveWithin(storageKey));
+            return Files.isRegularFile(resolveWithin(storageKey), java.nio.file.LinkOption.NOFOLLOW_LINKS);
         } catch (RuntimeException e) {
             return false;
         }
@@ -182,10 +203,45 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
         }
 
         Path resolved = storageRoot.resolve(storageKey).normalize();
+        // Lexical containment first -- cheap, and catches a key that spells its way out.
         if (!resolved.startsWith(storageRoot)) {
             throw new IllegalArgumentException("Invalid document storage key");
         }
+        assertNoSymlinkEscape(resolved);
         return resolved;
+    }
+
+    /**
+     * Lexical containment is not filesystem containment.
+     *
+     * <p>normalize() works on the text of a path. If a directory inside the root is a symbolic
+     * link -- planted by an attacker who reached the disk, or by an operator restoring a backup
+     * with cp -a -- then a key that looks perfectly well-behaved resolves through it and lands
+     * outside. So every segment that already exists is checked for being a link, and the deepest
+     * existing ancestor is resolved to its real location and re-checked against the real root.
+     *
+     * <p>This narrows but cannot close the gap between the check and the operation: a link
+     * created in that window would not be seen. Refusing to follow links at all during the write
+     * itself (NOFOLLOW on create) is what actually covers that, and the store path does both.
+     */
+    private void assertNoSymlinkEscape(Path resolved) {
+        Path cursor = storageRoot;
+        for (Path segment : storageRoot.relativize(resolved)) {
+            cursor = cursor.resolve(segment);
+            if (!Files.exists(cursor, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                break; // not created yet; nothing here can redirect us
+            }
+            if (Files.isSymbolicLink(cursor)) {
+                throw new IllegalArgumentException("Invalid document storage key");
+            }
+            try {
+                if (!cursor.toRealPath().startsWith(storageRoot)) {
+                    throw new IllegalArgumentException("Invalid document storage key");
+                }
+            } catch (IOException e) {
+                throw new IllegalArgumentException("Invalid document storage key");
+            }
+        }
     }
 
     private static String safeSegment(String reference) {

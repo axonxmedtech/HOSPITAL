@@ -135,9 +135,38 @@ class PatientDocumentApiTest {
                 HttpMethod.POST, new HttpEntity<>(typed, headers), String.class);
     }
 
+    /** Real leading bytes: the server now checks these, not just the declared type. */
+    private static byte[] pdfBytes() {
+        byte[] b = new byte[64];
+        b[0] = 0x25; b[1] = 0x50; b[2] = 0x44; b[3] = 0x46; // %PDF
+        return b;
+    }
+
+    private static byte[] jpegBytes() {
+        byte[] b = new byte[64];
+        b[0] = (byte) 0xFF; b[1] = (byte) 0xD8; b[2] = (byte) 0xFF;
+        return b;
+    }
+
+    private static byte[] pngBytes() {
+        byte[] b = new byte[64];
+        byte[] sig = {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+        System.arraycopy(sig, 0, b, 0, sig.length);
+        return b;
+    }
+
+    private static byte[] webpBytes() {
+        byte[] b = new byte[64];
+        byte[] riff = {0x52, 0x49, 0x46, 0x46};
+        byte[] webp = {0x57, 0x45, 0x42, 0x50};
+        System.arraycopy(riff, 0, b, 0, 4);
+        System.arraycopy(webp, 0, b, 8, 4);
+        return b;
+    }
+
     private ResponseEntity<String> uploadPdf(Long patientId, String token) {
         return upload(patientId, token, "report.pdf", "application/pdf",
-                "%PDF-1.4 fake".getBytes(), PatientDocument.PATHOLOGY_REPORT, null);
+                pdfBytes(), PatientDocument.PATHOLOGY_REPORT, null);
     }
 
     private ResponseEntity<String> get(String path, String token) {
@@ -176,11 +205,14 @@ class PatientDocumentApiTest {
 
     @Test
     void imagesFromAPhoneAreOrdinaryUploads() {
-        for (String[] kind : new String[][]{
-                {"scan.jpg", "image/jpeg"}, {"scan.png", "image/png"}, {"scan.webp", "image/webp"}}) {
+        Object[][] kinds = {
+                {"scan.jpg", "image/jpeg", jpegBytes()},
+                {"scan.png", "image/png", pngBytes()},
+                {"scan.webp", "image/webp", webpBytes()}};
+        for (Object[] kind : kinds) {
             Patient p = patientIn(hospital, "P " + uniq());
-            ResponseEntity<String> res = upload(p.getId(), receptionToken, kind[0], kind[1],
-                    "image-bytes".getBytes(), PatientDocument.OTHER, null);
+            ResponseEntity<String> res = upload(p.getId(), receptionToken, (String) kind[0],
+                    (String) kind[1], (byte[]) kind[2], PatientDocument.OTHER, null);
             assertThat(res.getStatusCode().value()).as("%s -> %s", kind[1], res.getBody()).isEqualTo(200);
         }
     }
@@ -196,7 +228,7 @@ class PatientDocumentApiTest {
     @Test
     void aRenamedFileWhoseTypeDisagreesWithItsNameIsRefused() {
         ResponseEntity<String> res = upload(patient.getId(), receptionToken, "report.exe",
-                "application/pdf", "%PDF".getBytes(), PatientDocument.OTHER, null);
+                "application/pdf", pdfBytes(), PatientDocument.OTHER, null);
         assertThat(res.getStatusCode().value()).isEqualTo(400);
     }
 
@@ -210,7 +242,7 @@ class PatientDocumentApiTest {
     @Test
     void anUnknownDocumentTypeIsRefused() {
         ResponseEntity<String> res = upload(patient.getId(), receptionToken, "r.pdf",
-                "application/pdf", "%PDF".getBytes(), "MADE_UP_TYPE", null);
+                "application/pdf", pdfBytes(), "MADE_UP_TYPE", null);
         assertThat(res.getStatusCode().value()).isEqualTo(400);
     }
 
@@ -224,13 +256,14 @@ class PatientDocumentApiTest {
         }
     }
 
+    /**
+     * A nurse never files documents. Whether they may read one is a separate question, decided by
+     * the nursing rules -- see aNurseWithNoRelationshipToThePatientIsRefused.
+     */
     @Test
-    void aNurseMayReadButNotFile() {
+    void aNurseCannotFileDocuments() {
         assertThat(uploadPdf(patient.getId(), nurseToken).getStatusCode().value()).isEqualTo(403);
-
-        uploadPdf(patient.getId(), receptionToken);
-        assertThat(get("/hospital/patients/" + patient.getId() + "/documents", nurseToken)
-                .getStatusCode().value()).isEqualTo(200);
+        assertThat(documentsFor(patient)).isZero();
     }
 
     @Test
@@ -264,7 +297,7 @@ class PatientDocumentApiTest {
                 get("/hospital/patient-documents/" + publicIdOf(patient) + "/content", doctorToken);
 
         assertThat(res.getStatusCode().value()).isEqualTo(200);
-        assertThat(res.getBody()).contains("%PDF-1.4 fake");
+        assertThat(res.getBody()).startsWith("%PDF");
         assertThat(res.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION)).contains("report.pdf");
         assertThat(res.getHeaders().getFirst(HttpHeaders.CACHE_CONTROL)).contains("no-store");
     }
@@ -301,7 +334,7 @@ class PatientDocumentApiTest {
         MultiValueMap<String, String> extra = new LinkedMultiValueMap<>();
         extra.add("storageKey", "../../etc/passwd");
         ResponseEntity<String> res = upload(patient.getId(), receptionToken, "r.pdf",
-                "application/pdf", "%PDF".getBytes(), PatientDocument.OTHER, extra);
+                "application/pdf", pdfBytes(), PatientDocument.OTHER, extra);
 
         assertThat(res.getStatusCode().value()).isEqualTo(200);
         assertThat(documents.findByHospitalIdAndPatientIdAndIsActiveTrueOrderByReportDateDescIdDesc(
@@ -354,5 +387,83 @@ class PatientDocumentApiTest {
         HttpHeaders h = auth(token);
         h.setContentType(MediaType.APPLICATION_JSON);
         return h;
+    }
+
+    // -- 4B.1 corrections --------------------------------------------------------
+
+    /** A declared type is the caller's word for it; the bytes are not. */
+    @Test
+    void aFileWhoseContentsDoNotMatchItsTypeIsRefused() {
+        ResponseEntity<String> res = upload(patient.getId(), receptionToken, "report.pdf",
+                "application/pdf", "MZ this is actually an executable".getBytes(),
+                PatientDocument.OTHER, null);
+
+        assertThat(res.getStatusCode().value()).isEqualTo(400);
+        assertThat(documentsFor(patient)).isZero();
+    }
+
+    @Test
+    void anImageRenamedAsAPdfIsRefused() {
+        ResponseEntity<String> res = upload(patient.getId(), receptionToken, "scan.pdf",
+                "application/pdf", pngBytes(), PatientDocument.OTHER, null);
+        assertThat(res.getStatusCode().value()).isEqualTo(400);
+    }
+
+    @Test
+    void aTruncatedFileIsRefused() {
+        ResponseEntity<String> res = upload(patient.getId(), receptionToken, "tiny.pdf",
+                "application/pdf", new byte[]{0x25, 0x50}, PatientDocument.OTHER, null);
+        assertThat(res.getStatusCode().value()).isEqualTo(400);
+    }
+
+    /** An archived document is out of the working list and out of reach by direct id. */
+    @Test
+    void anArchivedDocumentCannotBeFetchedByItsId() {
+        uploadPdf(patient.getId(), receptionToken);
+        String id = publicIdOf(patient);
+
+        rest.exchange("/hospital/patient-documents/" + id + "/archive", HttpMethod.POST,
+                new HttpEntity<>("{\"reason\":\"Wrong patient\"}", jsonAuth(doctorToken)), String.class);
+
+        assertThat(get("/hospital/patient-documents/" + id + "/content", doctorToken)
+                .getStatusCode().value())
+                .as("archived means gone from the working record, not merely hidden from a list")
+                .isEqualTo(404);
+    }
+
+    /** A pharmacy facility has no patient records to attach reports to. */
+    @Test
+    void aPharmacyFacilityCannotReachPatientDocuments() {
+        Hospital pharmacy = tenant("Chemist");
+        pharmacy.setType(com.hms.entity.HospitalType.PHARMACY);
+        hospitals.save(pharmacy);
+        String pharmacyAdmin = tokenFor(pharmacy, "HOSPITAL_ADMIN");
+
+        assertThat(get("/hospital/patients/" + patient.getId() + "/documents", pharmacyAdmin)
+                .getStatusCode().is2xxSuccessful())
+                .as("a pharmacy tenant must not reach patient documents").isFalse();
+        assertThat(uploadPdf(patient.getId(), pharmacyAdmin).getStatusCode().is2xxSuccessful()).isFalse();
+    }
+
+    /** Working in the hospital is not by itself a reason to open any patient's file. */
+    @Test
+    void aNurseWithNoRelationshipToThePatientIsRefused() {
+        uploadPdf(patient.getId(), receptionToken);
+
+        assertThat(get("/hospital/patients/" + patient.getId() + "/documents", nurseToken)
+                .getStatusCode().value())
+                .as("this patient is not admitted, so no nurse is looking after them").isEqualTo(403);
+        assertThat(get("/hospital/patient-documents/" + publicIdOf(patient) + "/content", nurseToken)
+                .getStatusCode().value()).isEqualTo(403);
+    }
+
+    /** Reception, doctors and admins are unaffected by the nursing rule. */
+    @Test
+    void theOtherRolesAreNotSubjectToNursingScope() {
+        uploadPdf(patient.getId(), receptionToken);
+        for (String token : new String[]{doctorToken, adminToken, receptionToken}) {
+            assertThat(get("/hospital/patients/" + patient.getId() + "/documents", token)
+                    .getStatusCode().value()).isEqualTo(200);
+        }
     }
 }

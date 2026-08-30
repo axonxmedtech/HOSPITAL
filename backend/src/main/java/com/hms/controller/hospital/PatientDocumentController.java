@@ -25,6 +25,9 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping({"/hospital", "/clinic"})
+// A pharmacy facility holds no patient record to attach a report to. Without this, a
+// PHARMACY-tenant admin reaches these routes simply because the controller is CORE.
+@com.hms.security.TenantType({com.hms.entity.HospitalType.HOSPITAL, com.hms.entity.HospitalType.CLINIC})
 public class PatientDocumentController {
 
     @Autowired private PatientDocumentService documentService;

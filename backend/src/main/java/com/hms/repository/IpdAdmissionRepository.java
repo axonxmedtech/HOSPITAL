@@ -28,6 +28,9 @@ public interface IpdAdmissionRepository extends JpaRepository<IpdAdmission, Long
 
     Optional<IpdAdmission> findByIdAndHospitalId(Long id, Long hospitalId);
 
+    /** A patient's admissions in one facility. Used to decide nursing access to their records. */
+    java.util.List<IpdAdmission> findByHospitalIdAndPatientId(Long hospitalId, Long patientId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @org.springframework.data.jpa.repository.Query("SELECT i FROM IpdAdmission i WHERE i.id = :id AND i.hospitalId = :hospitalId")
     Optional<IpdAdmission> findByIdAndHospitalIdForUpdate(

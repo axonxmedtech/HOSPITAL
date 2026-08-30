@@ -59,6 +59,7 @@ public class PatientDocumentService {
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private AuditLogService auditLogService;
     @Autowired private ClinicalDocumentStorage storage;
+    @Autowired private com.hms.security.NurseAccessGuard nurseAccessGuard;
 
     private Long requireHospitalId() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
@@ -111,6 +112,7 @@ public class PatientDocumentService {
             throw new IllegalArgumentException("The uploaded file could not be read.");
         }
 
+        PatientDocument saved;
         try {
             PatientDocument document = new PatientDocument();
             document.setPublicId("doc-" + UUID.randomUUID());
@@ -130,18 +132,52 @@ public class PatientDocumentService {
             document.setUploadedByUserId(securityHelper.getCurrentUserId());
             document.setIsActive(true);
 
-            PatientDocument saved = documentRepository.save(document);
-
-            audit("PATIENT_DOCUMENT_UPLOADED",
-                    type + " '" + cleanTitle + "' uploaded for patient " + patient.getPublicId(),
-                    hospitalId, saved.getPublicId(), null);
-
-            return new PatientDocumentDTO(saved, uploaderName(saved.getUploadedByUserId()));
+            saved = documentRepository.save(document);
         } catch (RuntimeException e) {
-            // The row never happened, so the bytes must not linger as an orphan nothing refers to.
+            // Only persistence failures reach here. The row never happened, so the bytes must not
+            // linger as an orphan nothing refers to.
             storage.deleteQuietly(stored.storageKey());
             throw e;
         }
+
+        // Past this point the document exists. Nothing below may delete its file: a response that
+        // fails to build is a failed response, not a reason to destroy a stored clinical record.
+        audit("PATIENT_DOCUMENT_UPLOADED",
+                type + " '" + cleanTitle + "' uploaded for patient " + patient.getPublicId(),
+                hospitalId, saved.getPublicId(), null);
+
+        return new PatientDocumentDTO(saved, uploaderName(saved.getUploadedByUserId()));
+    }
+
+    /**
+     * Nursing access follows the nursing rules, not merely the facility.
+     *
+     * <p>A nurse may read the records of patients they are looking after. Being employed by the
+     * hospital is not by itself a reason to open any patient's file, so the existing guard --
+     * ward scope, assignment, or covering for someone who has one -- decides, exactly as it does
+     * for every other nursing record. Doctors, admins and reception are unaffected; the guard
+     * returns immediately for them.
+     */
+    private void assertNursingScope(Long patientId, Long hospitalId) {
+        String role = securityHelper.getCurrentUserRole();
+        if (!"NURSE".equals(role) && !"NURSE_INCHARGE".equals(role)) return;
+
+        List<com.hms.entity.IpdAdmission> admissions =
+                ipdAdmissionRepository.findByHospitalIdAndPatientId(hospitalId, patientId);
+        if (admissions.isEmpty()) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "You are not assigned to this patient");
+        }
+        org.springframework.security.access.AccessDeniedException refusal = null;
+        for (com.hms.entity.IpdAdmission admission : admissions) {
+            try {
+                nurseAccessGuard.assertAssigned(admission.getId());
+                return; // one admission they may see is enough
+            } catch (org.springframework.security.access.AccessDeniedException e) {
+                refusal = e;
+            }
+        }
+        throw refusal;
     }
 
     /** A patient's documents, newest report first. Metadata only. */
@@ -150,6 +186,7 @@ public class PatientDocumentService {
         Long hospitalId = requireHospitalId();
         patientRepository.findByIdAndHospitalIdAndIsActiveTrue(patientId, hospitalId)
                 .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
+        assertNursingScope(patientId, hospitalId);
 
         return documentRepository
                 .findByHospitalIdAndPatientIdAndIsActiveTrueOrderByReportDateDescIdDesc(hospitalId, patientId)
@@ -162,9 +199,11 @@ public class PatientDocumentService {
     @Transactional(readOnly = true)
     public PatientDocument requireReadableDocument(String documentPublicId) {
         Long hospitalId = requireHospitalId();
-        return documentRepository
+        PatientDocument document = documentRepository
                 .findByPublicIdAndHospitalIdAndIsActiveTrue(documentPublicId, hospitalId)
                 .orElseThrow(() -> new ResourceNotFoundException("Document not found"));
+        assertNursingScope(document.getPatientId(), hospitalId);
+        return document;
     }
 
     public InputStream openContent(PatientDocument document) {
@@ -234,7 +273,46 @@ public class PatientDocumentService {
             throw new IllegalArgumentException(
                     "The file name does not match its type. Expected a " + extension + " file.");
         }
+        assertContentMatches(extension, file);
         return extension;
+    }
+
+    /**
+     * What the bytes actually are.
+     *
+     * <p>A declared content type and a file extension are both things the caller chose. These are
+     * the first bytes of the file, which the caller would have to work considerably harder to
+     * lie about. Deliberately small and dependency-free: four formats, checked at the only two
+     * offsets that matter.
+     */
+    private static void assertContentMatches(String extension, MultipartFile file) {
+        byte[] head = new byte[16];
+        int read;
+        try (InputStream in = file.getInputStream()) {
+            read = in.readNBytes(head, 0, head.length);
+        } catch (IOException e) {
+            throw new IllegalArgumentException("The uploaded file could not be read.");
+        }
+        if (read < 12) {
+            throw new IllegalArgumentException("That file does not look like a " + extension + ".");
+        }
+        boolean matches = switch (extension) {
+            // %PDF
+            case "pdf" -> head[0] == 0x25 && head[1] == 0x50 && head[2] == 0x44 && head[3] == 0x46;
+            // JPEG SOI
+            case "jpg" -> (head[0] & 0xFF) == 0xFF && (head[1] & 0xFF) == 0xD8 && (head[2] & 0xFF) == 0xFF;
+            // PNG signature
+            case "png" -> (head[0] & 0xFF) == 0x89 && head[1] == 0x50 && head[2] == 0x4E && head[3] == 0x47
+                    && head[4] == 0x0D && head[5] == 0x0A && head[6] == 0x1A && head[7] == 0x0A;
+            // RIFF....WEBP
+            case "webp" -> head[0] == 0x52 && head[1] == 0x49 && head[2] == 0x46 && head[3] == 0x46
+                    && head[8] == 0x57 && head[9] == 0x45 && head[10] == 0x42 && head[11] == 0x50;
+            default -> false;
+        };
+        if (!matches) {
+            throw new IllegalArgumentException(
+                    "That file is not a valid " + extension + ". Its contents do not match its type.");
+        }
     }
 
     private static String requireDocumentType(String documentType) {
