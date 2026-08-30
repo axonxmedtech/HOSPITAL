@@ -168,7 +168,9 @@ public final class TenantTables {
 
         // Clinical records.
         retain("prescriptions", Ownership.DIRECT);
-        retain("medical_records", Ownership.DIRECT);
+// Documents a patient supplied. Clinical record: the file stays with the row.
+        retain("patient_documents", Ownership.DIRECT);
+                retain("medical_records", Ownership.DIRECT);
         retain("lab_orders", Ownership.DIRECT);
         retain("admission_forms", Ownership.DIRECT);
         retain("initial_assessments", Ownership.DIRECT);

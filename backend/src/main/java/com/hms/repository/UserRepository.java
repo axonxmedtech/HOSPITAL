@@ -43,6 +43,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
          */
         Optional<User> findByPublicId(String publicId);
 
+        /** A user of one facility. Used to name who uploaded a document, without a global by-id read. */
+        Optional<User> findByIdAndHospitalId(Long id, Long hospitalId);
+
         /**
          * Find active users by hospital ID and role
          * Used for fetching lists like Receptionists

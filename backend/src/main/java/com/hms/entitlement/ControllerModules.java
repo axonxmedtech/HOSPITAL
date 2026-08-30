@@ -36,7 +36,9 @@ public final class ControllerModules {
                 "PatientController", "DoctorController", "ReceptionistController",
                 "HospitalAuthController", "HospitalAuditController", "HospitalTicketController",
                 "FaqController", "ConsultationNotePresetController", "PrescriptionPresetController",
-                "PharmacistController");
+                "PharmacistController",
+                // Documents a patient brings belong to the patient, not to any module.
+                "PatientDocumentController");
 
         put(EntitlementRegistry.OPD, "OpdController", "VitalSettingsController",
                 // Follow-ups are the tail of an OPD consultation, so they follow OPD.

@@ -945,6 +945,33 @@ CREATE INDEX idx_doctors_hospital ON doctors(hospital_id);
 -- failed with "table doesn't exist" even once the syntax was valid.
 CREATE INDEX idx_ipd_admission_hospital_status ON ipd_admission(hospital_id, status);
 -- Follow-up due/overdue list: one facility across a date window (V17).
+CREATE TABLE `patient_documents` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(64) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `patient_id` bigint NOT NULL,
+  `opd_id` bigint DEFAULT NULL,
+  `ipd_admission_id` bigint DEFAULT NULL,
+  `document_type` varchar(40) NOT NULL,
+  `title` varchar(200) NOT NULL,
+  `report_date` date DEFAULT NULL,
+  `source` varchar(200) DEFAULT NULL,
+  `notes` varchar(1000) DEFAULT NULL,
+  `original_file_name` varchar(255) NOT NULL,
+  `mime_type` varchar(100) NOT NULL,
+  `file_size_bytes` bigint NOT NULL,
+  `storage_key` varchar(255) NOT NULL,
+  `uploaded_by_user_id` bigint DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `archived_by_user_id` bigint DEFAULT NULL,
+  `archived_at` datetime(6) DEFAULT NULL,
+  `archive_reason` varchar(500) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_patient_documents_public_id` (`public_id`),
+  KEY `idx_patient_documents_patient` (`hospital_id`,`patient_id`,`report_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE INDEX idx_medical_records_followup ON medical_records(hospital_id, follow_up_date);
 -- One follow-up becomes at most one visit (V18). NULLs do not collide, so unactioned
 -- follow-ups are unconstrained.
