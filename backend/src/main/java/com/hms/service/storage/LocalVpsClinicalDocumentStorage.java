@@ -9,12 +9,23 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.channels.Channels;
+import java.nio.channels.SeekableByteChannel;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.OpenOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.SecureDirectoryStream;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributeView;
+import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.Set;
 import java.util.UUID;
 
@@ -29,6 +40,21 @@ import java.util.UUID;
  * <p>Keys are generated here from random UUIDs. Nothing in a stored path comes from a patient's
  * name, the original filename, or anything else a person could guess or that would leak who a
  * document belongs to if the directory listing were ever seen.
+ *
+ * <h2>Why nothing here works with whole paths</h2>
+ *
+ * <p>Checking a path and then using it is two operations, and an attacker who can create entries
+ * inside the root gets to act in between: validate {@code <root>/h42} while it does not exist,
+ * plant {@code h42 -> /elsewhere}, and the create that follows walks straight through the link.
+ * No amount of re-checking closes that -- the check and the syscall resolve the name separately.
+ *
+ * <p>So every directory step is taken through a {@link SecureDirectoryStream}, which resolves
+ * names against an already-open descriptor for the directory above, with links refused at each
+ * step. Once a descriptor is held it keeps referring to the directory it was opened on, whatever
+ * gets renamed or replaced afterwards. Directory creation -- the one thing that API has no
+ * relative form of -- is done by creating the directory directly in the root (whose own path is
+ * operator-owned, not attacker-writable) and moving it into place with the descriptor-relative
+ * move, which is a {@code renameat} and cannot traverse a link either.
  */
 @Component
 public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage {
@@ -37,6 +63,9 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
 
     /** Only these may appear in a key we generate, so a key can never be a path expression. */
     private static final String KEY_CHARS = "[A-Za-z0-9_-]+";
+
+    /** A directory that keeps failing to open or appear is refused rather than retried forever. */
+    private static final int MAX_DIRECTORY_ATTEMPTS = 3;
 
     private final String configuredRoot;
     private final Environment environment;
@@ -88,6 +117,19 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
                     "Patient document storage directory could not be prepared. Check that the "
                             + "service account owns it and that the volume is mounted.", e);
         }
+
+        // Nothing below can be made safe without descriptor-relative directory access, so a
+        // provider that cannot offer it is reported at startup rather than discovered by an
+        // upload. Every operation fails closed regardless; production simply refuses to boot.
+        if (!secureDirectoryAccessAvailable()) {
+            String message = "Patient document storage requires a filesystem supporting "
+                    + "descriptor-relative directory access (SecureDirectoryStream). Point "
+                    + "HMS_DOCUMENT_STORAGE_PATH at a local filesystem.";
+            if (isProduction()) {
+                throw new IllegalStateException(message);
+            }
+            log.warn(message + " Document operations will be refused.");
+        }
         log.info("Patient document storage initialised.");
     }
 
@@ -97,39 +139,48 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
         String key = safeSegment(hospitalRef) + "/" + safeSegment(patientRef) + "/"
                 + UUID.randomUUID() + "." + safeExtension(extension);
 
-        Path target = resolveWithin(key);
-        Path temp = null;
-        try {
-            Files.createDirectories(target.getParent());
-            restrictPermissions(target.getParent());
+        // Shape and lexical containment first, plus the cheap look for links that are already
+        // there: it costs nothing and refuses the ordinary cases with a clearer error.
+        String[] segments = validatedSegments(key);
+        resolveWithin(key);
 
-            // Written aside first: a half-arrived upload must never be readable as a clinical
-            // document, and the move below is atomic on the same filesystem.
-            temp = Files.createTempFile(target.getParent(), ".incoming-", ".part");
-            long written;
-            // NOFOLLOW + CREATE_NEW: if anything replaced the temp entry with a link between its
-            // creation and this write, the open fails rather than writing through it.
-            try (java.io.OutputStream out = Files.newOutputStream(temp,
-                    java.nio.file.StandardOpenOption.WRITE,
-                    java.nio.file.StandardOpenOption.TRUNCATE_EXISTING,
-                    java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
-                written = content.transferTo(out);
+        Path finalName = Paths.get(segments[2]);
+        Path tempName = Paths.get(".incoming-" + UUID.randomUUID() + ".part");
+
+        try (SecureDirectoryStream<Path> root = openRoot()) {
+            try (SecureDirectoryStream<Path> hospital = openOrCreateDirectory(root, root, segments[0]);
+                 SecureDirectoryStream<Path> patient = openOrCreateDirectory(root, hospital, segments[1])) {
+                boolean tempExists = false;
+                try {
+                    // Written aside first: a half-arrived upload must never be readable as a
+                    // clinical document, and the move below is atomic within this directory.
+                    long written;
+                    tempExists = true;
+                    try (SeekableByteChannel channel = patient.newByteChannel(tempName,
+                            openOptions(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE));
+                         OutputStream out = Channels.newOutputStream(channel)) {
+                        written = content.transferTo(out);
+                    }
+                    restrictPermissions(patient, tempName);
+
+                    // A fresh UUID should never collide; if it somehow does, refuse rather than
+                    // overwrite somebody else's record.
+                    if (entryExists(patient, finalName)) {
+                        throw new IllegalStateException("Storage key already in use");
+                    }
+                    patient.move(tempName, patient, finalName);
+                    tempExists = false;
+                    restrictPermissions(patient, finalName);
+
+                    return new StoredDocument(key, written);
+                } catch (IOException | RuntimeException e) {
+                    if (tempExists) {
+                        try { patient.deleteFile(tempName); } catch (IOException ignored) { /* best effort */ }
+                    }
+                    throw e;
+                }
             }
-
-            // A fresh UUID should never collide; if it somehow does, refuse rather than overwrite
-            // somebody else's record.
-            if (Files.exists(target)) {
-                throw new IllegalStateException("Storage key already in use");
-            }
-            Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE);
-            temp = null;
-            restrictPermissions(target);
-
-            return new StoredDocument(key, written);
         } catch (IOException | RuntimeException e) {
-            if (temp != null) {
-                try { Files.deleteIfExists(temp); } catch (IOException ignored) { /* best effort */ }
-            }
             // The path is deliberately absent from the message: it reaches an API client.
             throw new ClinicalDocumentStorageException("The document could not be stored.", e);
         }
@@ -137,14 +188,22 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
 
     @Override
     public InputStream load(String storageKey) {
-        Path path = resolveWithin(storageKey);
-        try {
-            // NOFOLLOW on the check as well: a regular file reached through a link is not ours.
-            if (!Files.isRegularFile(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+        String[] segments = validatedSegments(storageKey);
+        resolveWithin(storageKey);
+
+        try (SecureDirectoryStream<Path> root = openRoot();
+             SecureDirectoryStream<Path> hospital = openDirectory(root, segments[0]);
+             SecureDirectoryStream<Path> patient = openDirectory(hospital, segments[1])) {
+            Path name = Paths.get(segments[2]);
+            // A link, a directory or anything else reached under this name is not our document.
+            if (!isRegularFile(patient, name)) {
                 throw new ClinicalDocumentStorageException("The document file is missing.", null);
             }
-            return Files.newInputStream(path, java.nio.file.StandardOpenOption.READ,
-                    java.nio.file.LinkOption.NOFOLLOW_LINKS);
+            SeekableByteChannel channel = patient.newByteChannel(name, openOptions(StandardOpenOption.READ));
+            // The channel outlives the directory streams: the descriptor stays valid once open.
+            return Channels.newInputStream(channel);
+        } catch (NoSuchFileException e) {
+            throw new ClinicalDocumentStorageException("The document file is missing.", e);
         } catch (IOException e) {
             throw new ClinicalDocumentStorageException("The document could not be read.", e);
         }
@@ -152,9 +211,18 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
 
     @Override
     public boolean exists(String storageKey) {
+        String[] segments;
         try {
-            return Files.isRegularFile(resolveWithin(storageKey), java.nio.file.LinkOption.NOFOLLOW_LINKS);
+            segments = validatedSegments(storageKey);
+            resolveWithin(storageKey);
         } catch (RuntimeException e) {
+            return false;
+        }
+        try (SecureDirectoryStream<Path> root = openRoot();
+             SecureDirectoryStream<Path> hospital = openDirectory(root, segments[0]);
+             SecureDirectoryStream<Path> patient = openDirectory(hospital, segments[1])) {
+            return isRegularFile(patient, Paths.get(segments[2]));
+        } catch (IOException | RuntimeException e) {
             return false;
         }
     }
@@ -162,7 +230,15 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
     @Override
     public void deleteQuietly(String storageKey) {
         try {
-            Files.deleteIfExists(resolveWithin(storageKey));
+            String[] segments = validatedSegments(storageKey);
+            resolveWithin(storageKey);
+            try (SecureDirectoryStream<Path> root = openRoot();
+                 SecureDirectoryStream<Path> hospital = openDirectory(root, segments[0]);
+                 SecureDirectoryStream<Path> patient = openDirectory(hospital, segments[1])) {
+                patient.deleteFile(Paths.get(segments[2]));
+            }
+        } catch (NoSuchFileException e) {
+            // Already gone, which is the state the caller wanted.
         } catch (IOException | RuntimeException e) {
             // The caller is already unwinding a failed upload. Losing the file is not worse than
             // the failure that got us here, but an operator should be able to find the orphan.
@@ -171,15 +247,140 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
         }
     }
 
+    // -- descriptor-relative traversal -------------------------------------------
+
+    /** An open handle on the root, through which every other name is resolved. */
+    private SecureDirectoryStream<Path> openRoot() throws IOException {
+        DirectoryStream<Path> stream = Files.newDirectoryStream(storageRoot);
+        if (stream instanceof SecureDirectoryStream<Path> secure) {
+            return secure;
+        }
+        stream.close();
+        // Fail closed: the path-based fallback is the raceable implementation this replaced.
+        throw new ClinicalDocumentStorageException(
+                "Document storage is not available on this filesystem.", null);
+    }
+
+    /**
+     * Opens one directory below {@code parent}, refusing to follow a link in that position.
+     *
+     * <p>The name is resolved by the kernel against the descriptor {@code parent} holds, so no
+     * component above it can be swapped out from underneath the call.
+     */
+    private SecureDirectoryStream<Path> openDirectory(SecureDirectoryStream<Path> parent, String name)
+            throws IOException {
+        DirectoryStream<Path> child = parent.newDirectoryStream(Paths.get(name), LinkOption.NOFOLLOW_LINKS);
+        if (child instanceof SecureDirectoryStream<Path> secure) {
+            return secure;
+        }
+        child.close();
+        throw new ClinicalDocumentStorageException(
+                "Document storage is not available on this filesystem.", null);
+    }
+
+    /**
+     * The same, creating the directory if it is genuinely absent.
+     *
+     * <p>{@code SecureDirectoryStream} has no relative {@code mkdir}, so the directory is made in
+     * the root -- a path only the operator can influence -- and moved into position with the
+     * descriptor-relative move. Moving a directory onto an existing name fails; it never replaces
+     * a link, and it never resolves through one. If the name appeared meanwhile, the loop reopens
+     * it, and if what appeared is a link the reopen refuses and the upload fails.
+     */
+    private SecureDirectoryStream<Path> openOrCreateDirectory(SecureDirectoryStream<Path> root,
+                                                              SecureDirectoryStream<Path> parent,
+                                                              String name) throws IOException {
+        Path child = Paths.get(name);
+        for (int attempt = 0; attempt < MAX_DIRECTORY_ATTEMPTS; attempt++) {
+            beforeDirectoryOpen(name);
+            try {
+                return openDirectory(parent, name);
+            } catch (NoSuchFileException notThereYet) {
+                // Falls through to creation. Any other failure -- a link in this position, a
+                // permission problem -- propagates: it is not something to retry around.
+            }
+
+            Path staging = Files.createDirectory(
+                    storageRoot.resolve(".staging-" + UUID.randomUUID()));
+            restrictPermissions(staging);
+            try {
+                root.move(staging.getFileName(), parent, child);
+            } catch (IOException raced) {
+                // Someone else got there first, or something that is not a directory now holds
+                // the name. Either way the next open decides, and it is the open that is safe.
+                try { root.deleteDirectory(staging.getFileName()); } catch (IOException ignored) { /* best effort */ }
+            }
+        }
+        throw new ClinicalDocumentStorageException(
+                "The document directory could not be prepared.", null);
+    }
+
+    /**
+     * A seam for the race that motivated all of this.
+     *
+     * <p>Called immediately before a directory is opened or created, which is exactly where a
+     * planted symlink would have to arrive to be dangerous. Production does nothing here; a test
+     * overrides it to make the race deterministic instead of hoping to hit it.
+     */
+    void beforeDirectoryOpen(String name) {
+        // no-op in production
+    }
+
+    private static boolean isRegularFile(SecureDirectoryStream<Path> directory, Path name) {
+        try {
+            return directory.getFileAttributeView(name, BasicFileAttributeView.class,
+                    LinkOption.NOFOLLOW_LINKS).readAttributes().isRegularFile();
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private static boolean entryExists(SecureDirectoryStream<Path> directory, Path name) {
+        try {
+            directory.getFileAttributeView(name, BasicFileAttributeView.class,
+                    LinkOption.NOFOLLOW_LINKS).readAttributes();
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private static Set<OpenOption> openOptions(OpenOption... options) {
+        Set<OpenOption> set = new java.util.LinkedHashSet<>(Arrays.asList(options));
+        set.add(LinkOption.NOFOLLOW_LINKS);
+        return set;
+    }
+
+    private boolean secureDirectoryAccessAvailable() {
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(storageRoot)) {
+            return stream instanceof SecureDirectoryStream;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
     /**
      * Turns a key into a path and proves it stayed inside the root.
      *
      * <p>Keys are generated by this class, so a key that does not look like one did not come from
-     * here -- it came from a request. Both the shape check and the containment check are kept: the
-     * first rejects the obvious attempts, the second is what actually holds if the first is ever
-     * loosened.
+     * here -- it came from a request. This is the first of two lines: it rejects the obvious
+     * attempts with a clear error, while the descriptor-relative traversal above is what actually
+     * holds when an attacker is racing the check.
      */
     Path resolveWithin(String storageKey) {
+        validatedSegments(storageKey);
+
+        Path resolved = storageRoot.resolve(storageKey).normalize();
+        // Lexical containment first -- cheap, and catches a key that spells its way out.
+        if (!resolved.startsWith(storageRoot)) {
+            throw new IllegalArgumentException("Invalid document storage key");
+        }
+        assertNoSymlinkEscape(resolved);
+        return resolved;
+    }
+
+    /** The shape of a key we could have issued, and nothing else. */
+    private static String[] validatedSegments(String storageKey) {
         if (storageKey == null || storageKey.isBlank()) {
             throw new IllegalArgumentException("Missing document storage key");
         }
@@ -201,14 +402,7 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
                 throw new IllegalArgumentException("Invalid document storage key");
             }
         }
-
-        Path resolved = storageRoot.resolve(storageKey).normalize();
-        // Lexical containment first -- cheap, and catches a key that spells its way out.
-        if (!resolved.startsWith(storageRoot)) {
-            throw new IllegalArgumentException("Invalid document storage key");
-        }
-        assertNoSymlinkEscape(resolved);
-        return resolved;
+        return segments;
     }
 
     /**
@@ -220,15 +414,15 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
      * outside. So every segment that already exists is checked for being a link, and the deepest
      * existing ancestor is resolved to its real location and re-checked against the real root.
      *
-     * <p>This narrows but cannot close the gap between the check and the operation: a link
-     * created in that window would not be seen. Refusing to follow links at all during the write
-     * itself (NOFOLLOW on create) is what actually covers that, and the store path does both.
+     * <p>On its own this is check-then-use and a link planted afterwards would not be seen. It is
+     * kept for the clear error it gives on the ordinary case; the guarantee comes from the
+     * descriptor-relative traversal, which never resolves these names by path at all.
      */
     private void assertNoSymlinkEscape(Path resolved) {
         Path cursor = storageRoot;
         for (Path segment : storageRoot.relativize(resolved)) {
             cursor = cursor.resolve(segment);
-            if (!Files.exists(cursor, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            if (!Files.exists(cursor, LinkOption.NOFOLLOW_LINKS)) {
                 break; // not created yet; nothing here can redirect us
             }
             if (Files.isSymbolicLink(cursor)) {
@@ -269,6 +463,18 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
             Files.setPosixFilePermissions(path, permissions);
         } catch (IOException | UnsupportedOperationException e) {
             log.debug("Could not tighten permissions on a document storage path.");
+        }
+    }
+
+    /** The same, on a file named relative to an open directory rather than by path. */
+    private void restrictPermissions(SecureDirectoryStream<Path> directory, Path name) {
+        try {
+            if (!storageRoot.getFileSystem().supportedFileAttributeViews().contains("posix")) return;
+            PosixFileAttributeView view = directory.getFileAttributeView(
+                    name, PosixFileAttributeView.class, LinkOption.NOFOLLOW_LINKS);
+            view.setPermissions(EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
+        } catch (IOException | UnsupportedOperationException e) {
+            log.debug("Could not tighten permissions on a stored document.");
         }
     }
 

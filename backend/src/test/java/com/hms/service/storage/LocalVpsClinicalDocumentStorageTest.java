@@ -216,6 +216,74 @@ class LocalVpsClinicalDocumentStorageTest {
         assertThat(Files.readString(secret)).isEqualTo("not yours");
     }
 
+    /**
+     * The race the checks could not see: the parent does not exist when the key is validated,
+     * and is a symlink by the time the directory is created.
+     *
+     * <p>The seam fires exactly where an attacker would have to win -- between validation and the
+     * open -- so this is deterministic rather than a hopeful loop. Storage must refuse, and the
+     * directory the link points at must be untouched afterwards.
+     */
+    @Test
+    void aParentDirectoryReplacedByASymlinkAfterValidationIsRefused() throws Exception {
+        Path external = Files.createDirectory(root.getParent().resolve("race-" + System.nanoTime()));
+        Files.writeString(external.resolve("existing.pdf"), "another tenant's report");
+
+        var racing = new LocalVpsClinicalDocumentStorage(root.toString(), new MockEnvironment()) {
+            @Override void beforeDirectoryOpen(String name) {
+                // Plant the link the instant before the hospital directory is opened or created.
+                Path parent = root.resolve(name);
+                if ("h42".equals(name) && !Files.exists(parent, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                    try {
+                        Files.createSymbolicLink(parent, external);
+                    } catch (java.io.IOException e) {
+                        throw new IllegalStateException(e);
+                    }
+                }
+            }
+        };
+        racing.initialise();
+
+        assertThatThrownBy(() -> racing.store("h42", "p1", "pdf", bytes("stolen bytes"), 12))
+                .as("the write must not go through the planted link")
+                .isInstanceOf(LocalVpsClinicalDocumentStorage.ClinicalDocumentStorageException.class);
+
+        try (var walk = Files.walk(external)) {
+            assertThat(walk.filter(Files::isRegularFile).map(Path::getFileName).map(Path::toString))
+                    .as("nothing was written outside the root")
+                    .containsExactly("existing.pdf");
+        }
+        assertThat(Files.readString(external.resolve("existing.pdf"))).isEqualTo("another tenant's report");
+    }
+
+    /** The same race one level deeper, where only the patient directory is swapped. */
+    @Test
+    void aPatientDirectoryReplacedByASymlinkAfterValidationIsRefused() throws Exception {
+        Path external = Files.createDirectory(root.getParent().resolve("race2-" + System.nanoTime()));
+
+        var racing = new LocalVpsClinicalDocumentStorage(root.toString(), new MockEnvironment()) {
+            @Override void beforeDirectoryOpen(String name) {
+                Path parent = root.resolve("h7").resolve(name);
+                if ("p9".equals(name) && Files.isDirectory(root.resolve("h7"))
+                        && !Files.exists(parent, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                    try {
+                        Files.createSymbolicLink(parent, external);
+                    } catch (java.io.IOException e) {
+                        throw new IllegalStateException(e);
+                    }
+                }
+            }
+        };
+        racing.initialise();
+
+        assertThatThrownBy(() -> racing.store("h7", "p9", "pdf", bytes("stolen bytes"), 12))
+                .isInstanceOf(LocalVpsClinicalDocumentStorage.ClinicalDocumentStorageException.class);
+
+        try (var walk = Files.walk(external)) {
+            assertThat(walk.filter(Files::isRegularFile).count()).isZero();
+        }
+    }
+
     /** A configured root that is itself a link would make every check meaningless. */
     @Test
     void aSymlinkedStorageRootIsRefusedAtStartup() throws Exception {
