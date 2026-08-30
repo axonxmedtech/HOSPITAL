@@ -22,8 +22,9 @@ import java.nio.file.Paths;
 import java.nio.file.SecureDirectoryStream;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributeView;
-import java.nio.file.attribute.PosixFileAttributeView;
+import java.nio.file.attribute.FileAttribute;
 import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.Set;
@@ -145,37 +146,36 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
         resolveWithin(key);
 
         Path finalName = Paths.get(segments[2]);
-        Path tempName = Paths.get(".incoming-" + UUID.randomUUID() + ".part");
 
         try (SecureDirectoryStream<Path> root = openRoot()) {
             try (SecureDirectoryStream<Path> hospital = openOrCreateDirectory(root, root, segments[0]);
                  SecureDirectoryStream<Path> patient = openOrCreateDirectory(root, hospital, segments[1])) {
-                boolean tempExists = false;
+                beforeDocumentCreate(key);
+                boolean created = false;
                 try {
-                    // Written aside first: a half-arrived upload must never be readable as a
-                    // clinical document, and the move below is atomic within this directory.
+                    // CREATE_NEW is the claim on the name: the kernel refuses if anything
+                    // already holds it, so there is no window between deciding the name is free
+                    // and taking it. Writing straight into the final entry rather than renaming
+                    // one in is what removes that window -- a rename would happily replace an
+                    // entry that appeared after any check we could make. Permissions come from
+                    // the create itself, so the file is never briefly readable by anyone else.
                     long written;
-                    tempExists = true;
-                    try (SeekableByteChannel channel = patient.newByteChannel(tempName,
-                            openOptions(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE));
-                         OutputStream out = Channels.newOutputStream(channel)) {
+                    SeekableByteChannel channel = patient.newByteChannel(finalName,
+                            openOptions(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE),
+                            fileAttributes());
+                    // Only now: if the create lost to an entry that already held the name, the
+                    // cleanup below must not touch it. It is somebody else's file.
+                    created = true;
+                    try (channel; OutputStream out = Channels.newOutputStream(channel)) {
                         written = content.transferTo(out);
                     }
-                    restrictPermissions(patient, tempName);
-
-                    // A fresh UUID should never collide; if it somehow does, refuse rather than
-                    // overwrite somebody else's record.
-                    if (entryExists(patient, finalName)) {
-                        throw new IllegalStateException("Storage key already in use");
-                    }
-                    patient.move(tempName, patient, finalName);
-                    tempExists = false;
-                    restrictPermissions(patient, finalName);
-
                     return new StoredDocument(key, written);
                 } catch (IOException | RuntimeException e) {
-                    if (tempExists) {
-                        try { patient.deleteFile(tempName); } catch (IOException ignored) { /* best effort */ }
+                    // Nothing records this key until store() returns, so an entry left behind
+                    // here would be unreachable rather than half-visible -- but a half-written
+                    // file under a document name should not exist at all.
+                    if (created) {
+                        try { patient.deleteFile(finalName); } catch (IOException ignored) { /* best effort */ }
                     }
                     throw e;
                 }
@@ -300,9 +300,11 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
                 // permission problem -- propagates: it is not something to retry around.
             }
 
+            // Permissions are part of the create, not a second call on a name that could
+            // have been swapped for a link in between. Nothing here ever chmods a path.
             Path staging = Files.createDirectory(
-                    storageRoot.resolve(".staging-" + UUID.randomUUID()));
-            restrictPermissions(staging);
+                    storageRoot.resolve(".staging-" + UUID.randomUUID()), directoryAttributes());
+            afterStagingCreate(staging);
             try {
                 root.move(staging.getFileName(), parent, child);
             } catch (IOException raced) {
@@ -326,6 +328,16 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
         // no-op in production
     }
 
+    /** As above, immediately before the final document entry is claimed. */
+    void beforeDocumentCreate(String storageKey) {
+        // no-op in production
+    }
+
+    /** As above, immediately after a staging directory exists and before it is moved. */
+    void afterStagingCreate(Path staging) {
+        // no-op in production
+    }
+
     private static boolean isRegularFile(SecureDirectoryStream<Path> directory, Path name) {
         try {
             return directory.getFileAttributeView(name, BasicFileAttributeView.class,
@@ -335,20 +347,30 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
         }
     }
 
-    private static boolean entryExists(SecureDirectoryStream<Path> directory, Path name) {
-        try {
-            directory.getFileAttributeView(name, BasicFileAttributeView.class,
-                    LinkOption.NOFOLLOW_LINKS).readAttributes();
-            return true;
-        } catch (IOException e) {
-            return false;
-        }
-    }
-
     private static Set<OpenOption> openOptions(OpenOption... options) {
         Set<OpenOption> set = new java.util.LinkedHashSet<>(Arrays.asList(options));
         set.add(LinkOption.NOFOLLOW_LINKS);
         return set;
+    }
+
+    /** Owner-only, applied by the create itself so no window exists where it is not. */
+    private FileAttribute<?>[] directoryAttributes() {
+        return posixSupported()
+                ? new FileAttribute<?>[]{PosixFilePermissions.asFileAttribute(EnumSet.of(
+                        PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE,
+                        PosixFilePermission.OWNER_EXECUTE))}
+                : new FileAttribute<?>[0];
+    }
+
+    private FileAttribute<?>[] fileAttributes() {
+        return posixSupported()
+                ? new FileAttribute<?>[]{PosixFilePermissions.asFileAttribute(EnumSet.of(
+                        PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE))}
+                : new FileAttribute<?>[0];
+    }
+
+    private boolean posixSupported() {
+        return storageRoot.getFileSystem().supportedFileAttributeViews().contains("posix");
     }
 
     private boolean secureDirectoryAccessAvailable() {
@@ -463,18 +485,6 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
             Files.setPosixFilePermissions(path, permissions);
         } catch (IOException | UnsupportedOperationException e) {
             log.debug("Could not tighten permissions on a document storage path.");
-        }
-    }
-
-    /** The same, on a file named relative to an open directory rather than by path. */
-    private void restrictPermissions(SecureDirectoryStream<Path> directory, Path name) {
-        try {
-            if (!storageRoot.getFileSystem().supportedFileAttributeViews().contains("posix")) return;
-            PosixFileAttributeView view = directory.getFileAttributeView(
-                    name, PosixFileAttributeView.class, LinkOption.NOFOLLOW_LINKS);
-            view.setPermissions(EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
-        } catch (IOException | UnsupportedOperationException e) {
-            log.debug("Could not tighten permissions on a stored document.");
         }
     }
 

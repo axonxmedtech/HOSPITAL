@@ -284,6 +284,115 @@ class LocalVpsClinicalDocumentStorageTest {
         }
     }
 
+    // -- no-overwrite ------------------------------------------------------------
+
+    /**
+     * An entry that appears under the final name after everything has been validated.
+     *
+     * <p>The seam fires immediately before the document is created, which is the only moment
+     * where a check-then-write implementation could be beaten. The stored bytes must not be
+     * replaced and the upload must fail.
+     */
+    @Test
+    void anEntryThatAppearsUnderTheFinalNameIsNeverOverwritten() throws Exception {
+        var racing = new LocalVpsClinicalDocumentStorage(root.toString(), new MockEnvironment()) {
+            @Override void beforeDocumentCreate(String storageKey) {
+                try {
+                    Files.writeString(root.resolve(storageKey), "another patient's report");
+                } catch (java.io.IOException e) {
+                    throw new IllegalStateException(e);
+                }
+            }
+        };
+        racing.initialise();
+
+        assertThatThrownBy(() -> racing.store("h1", "p1", "pdf", bytes("incoming bytes"), 14))
+                .isInstanceOf(LocalVpsClinicalDocumentStorage.ClinicalDocumentStorageException.class);
+
+        try (var walk = Files.walk(root.resolve("h1").resolve("p1"))) {
+            assertThat(walk.filter(Files::isRegularFile).map(f -> {
+                try { return Files.readString(f); } catch (java.io.IOException e) { throw new IllegalStateException(e); }
+            })).as("the entry that was already there is untouched, and nothing else was left")
+               .containsExactly("another patient's report");
+        }
+    }
+
+    /**
+     * A symlink where the final name should be is not a document to overwrite either: the create
+     * refuses it, and whatever it pointed at keeps its contents.
+     */
+    @Test
+    void aSymlinkAppearingUnderTheFinalNameIsNotWrittenThrough() throws Exception {
+        Path secret = root.getParent().resolve("target-" + System.nanoTime() + ".pdf");
+        Files.writeString(secret, "not yours");
+
+        var racing = new LocalVpsClinicalDocumentStorage(root.toString(), new MockEnvironment()) {
+            @Override void beforeDocumentCreate(String storageKey) {
+                try {
+                    Files.createSymbolicLink(root.resolve(storageKey), secret);
+                } catch (java.io.IOException e) {
+                    throw new IllegalStateException(e);
+                }
+            }
+        };
+        racing.initialise();
+
+        assertThatThrownBy(() -> racing.store("h1", "p1", "pdf", bytes("incoming bytes"), 14))
+                .isInstanceOf(LocalVpsClinicalDocumentStorage.ClinicalDocumentStorageException.class);
+        assertThat(Files.readString(secret)).isEqualTo("not yours");
+    }
+
+    /**
+     * Permissions are set by the create, never by a second call on a name.
+     *
+     * <p>The staging directory is replaced with a link to somewhere outside the root at the one
+     * moment a chmod could have followed it. The external directory must keep the permissions it
+     * had, and nothing may be written into it.
+     */
+    @Test
+    void aStagingDirectoryReplacedByASymlinkCannotChangeAnExternalTarget() throws Exception {
+        Path external = Files.createDirectory(root.getParent().resolve("perm-" + System.nanoTime()));
+        Files.writeString(external.resolve("kept.pdf"), "another tenant's report");
+        var before = Files.getPosixFilePermissions(external);
+
+        var racing = new LocalVpsClinicalDocumentStorage(root.toString(), new MockEnvironment()) {
+            @Override void afterStagingCreate(Path staging) {
+                try {
+                    Files.delete(staging);
+                    Files.createSymbolicLink(staging, external);
+                } catch (java.io.IOException e) {
+                    throw new IllegalStateException(e);
+                }
+            }
+        };
+        racing.initialise();
+
+        assertThatThrownBy(() -> racing.store("h9", "p9", "pdf", bytes("stolen bytes"), 12))
+                .isInstanceOf(LocalVpsClinicalDocumentStorage.ClinicalDocumentStorageException.class);
+
+        assertThat(Files.getPosixFilePermissions(external))
+                .as("no permission change reached the link's target").isEqualTo(before);
+        try (var walk = Files.walk(external)) {
+            assertThat(walk.filter(Files::isRegularFile).count())
+                    .as("and nothing was written through it").isEqualTo(1);
+        }
+        assertThat(Files.readString(external.resolve("kept.pdf"))).isEqualTo("another tenant's report");
+    }
+
+    /** A directory this class creates is owner-only from the moment it exists. */
+    @Test
+    void createdDirectoriesAndDocumentsAreOwnerOnly() throws Exception {
+        var stored = storage.store("h1", "p1", "pdf", bytes("x"), 1);
+
+        assertThat(Files.getPosixFilePermissions(root.resolve("h1")))
+                .containsExactlyInAnyOrder(java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                        java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
+                        java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE);
+        assertThat(Files.getPosixFilePermissions(root.resolve(stored.storageKey())))
+                .containsExactlyInAnyOrder(java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                        java.nio.file.attribute.PosixFilePermission.OWNER_WRITE);
+    }
+
     /** A configured root that is itself a link would make every check meaningless. */
     @Test
     void aSymlinkedStorageRootIsRefusedAtStartup() throws Exception {
