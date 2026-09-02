@@ -290,7 +290,12 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
         if (child instanceof SecureDirectoryStream<Path> secure) {
             return secure;
         }
-        child.close();
+        // Nothing usable came back, so this is the fail-closed path either way. The null check is
+        // for the close, not for the decision: the provider's return is not declared non-null,
+        // and an NPE here would replace a clear refusal with a confusing one.
+        if (child != null) {
+            child.close();
+        }
         throw new ClinicalDocumentStorageException(
                 "Document storage is not available on this filesystem.", null);
     }
