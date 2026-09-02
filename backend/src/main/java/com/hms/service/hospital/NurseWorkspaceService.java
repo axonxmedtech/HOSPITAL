@@ -182,6 +182,7 @@ public class NurseWorkspaceService {
         dto.setPrimaryDiagnosis(ipd.getPrimaryDiagnosis());
 
         patientRepository.findById(ipd.getPatientId()).ifPresent(p -> {
+            dto.setPatientId(p.getId());
             dto.setPatientPublicId(p.getPublicId());
             dto.setPatientName(p.getName());
             dto.setAge(p.getAge());

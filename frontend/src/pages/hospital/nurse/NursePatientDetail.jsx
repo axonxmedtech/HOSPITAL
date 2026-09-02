@@ -4,6 +4,7 @@ import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import formAccessService from '../../../services/formAccessService';
 import nurseService from '../../../services/nurseService';
+import PatientDocumentsPanel from '../../../components/PatientDocumentsPanel';
 import OtNotesSection from '../ot/OtNotesSection';
 import ConsentFormsPanel from './ConsentFormsPanel';
 import InfusionPanel from './InfusionPanel';
@@ -147,6 +148,7 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
     ...(verdictFor('ventilator') !== 'HIDDEN' ? [{ id: 'ventilator', label: 'Ventilator' }] : []),
     ...(verdictFor('scores') !== 'HIDDEN' ? [{ id: 'scores', label: 'Severity Scores' }] : []),
     ...(hasSurgery ? [{ id: 'consent', label: 'Consent Forms' }] : []),
+    ...(d?.patientId ? [{ id: 'documents', label: 'Documents' }] : []),
   ];
 
   // Guard against a stale active tab (e.g. it was just hidden).
@@ -272,6 +274,14 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
 
       {tab === 'consent' && (
         <ConsentFormsPanel admissionId={admissionId} formVerdicts={formVerdicts} />
+      )}
+
+      {/* Read-only at the bedside: nurses see what is on file, filing is reception's and the
+          doctor's job. The backend allows a nurse the list and the content, nothing else. */}
+      {tab === 'documents' && d?.patientId && (
+        <div className="bg-white border border-gray-200 rounded-xl p-5">
+          <PatientDocumentsPanel patientId={d.patientId} readOnly />
+        </div>
       )}
 
       {tab === 'overview' && (
