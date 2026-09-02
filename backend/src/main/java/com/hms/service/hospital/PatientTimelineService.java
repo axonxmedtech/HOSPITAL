@@ -8,6 +8,7 @@ import com.hms.entity.MedicalRecord;
 import com.hms.entity.MedicationAdministration;
 import com.hms.entity.NursingNote;
 import com.hms.entity.Opd;
+import com.hms.entity.PatientDocument;
 import com.hms.entity.PatientNurseAssignment;
 import com.hms.entity.Prescription;
 import com.hms.entity.RecoveryEpisode;
@@ -32,6 +33,7 @@ import com.hms.repository.MedicationAdministrationRepository;
 import com.hms.repository.NurseProfileRepository;
 import com.hms.repository.NursingNoteRepository;
 import com.hms.repository.OpdRepository;
+import com.hms.repository.PatientDocumentRepository;
 import com.hms.repository.PatientNurseAssignmentRepository;
 import com.hms.repository.PatientRepository;
 import com.hms.repository.PrescriptionRepository;
@@ -87,6 +89,7 @@ public class PatientTimelineService {
     @Autowired private IpdAdmissionRepository ipdAdmissionRepository;
     @Autowired private IpdBedHistoryRepository ipdBedHistoryRepository;
     @Autowired private PatientNurseAssignmentRepository patientNurseAssignmentRepository;
+    @Autowired private PatientDocumentRepository patientDocumentRepository;
     @Autowired private VitalsRecordRepository vitalsRecordRepository;
     @Autowired private NursingNoteRepository nursingNoteRepository;
     @Autowired private SugarChartEntryRepository sugarChartEntryRepository;
@@ -288,6 +291,38 @@ public class PatientTimelineService {
                             "RecoveryEpisode", ep.getId(), ep.getDischargedByUserId(), userIds));
                 }
             });
+        }
+
+        // ---- Documents the patient brought in ----
+        // Read from the document rows like every other event here: no ledger of its own, and
+        // nothing about where a file lives -- a storage key is not clinical history and would be
+        // a second way to name a file, which is the beginning of a way around the first.
+        for (PatientDocument d : patientDocumentRepository
+                .findByHospitalIdAndPatientIdOrderByIdAsc(hospitalId, patientId)) {
+            String encounterType = d.getIpdAdmissionId() != null ? "IPD"
+                    : (d.getOpdId() != null ? "OPD" : null);
+            Long encounterId = d.getIpdAdmissionId() != null ? d.getIpdAdmissionId() : d.getOpdId();
+
+            StringBuilder summary = new StringBuilder("Document filed: ");
+            summary.append(d.getTitle() == null || d.getTitle().isBlank() ? "untitled" : d.getTitle());
+            if (d.getDocumentType() != null) summary.append(" (").append(d.getDocumentType()).append(")");
+            if (d.getReportDate() != null) summary.append(", reported ").append(d.getReportDate());
+            if (d.getSource() != null && !d.getSource().isBlank()) {
+                summary.append(", from ").append(d.getSource());
+            }
+            events.add(event(d.getCreatedAt(), "DOCUMENT_UPLOADED", encounterType, encounterId,
+                    summary.toString(), "PatientDocument", d.getId(), d.getUploadedByUserId(), userIds));
+
+            // Archiving is a later event, not an erasure: the filing above stays on the timeline
+            // because it happened.
+            if (Boolean.FALSE.equals(d.getIsActive()) && d.getArchivedAt() != null) {
+                String archived = "Document archived: "
+                        + (d.getTitle() == null || d.getTitle().isBlank() ? "untitled" : d.getTitle())
+                        + (d.getArchiveReason() != null && !d.getArchiveReason().isBlank()
+                                ? " -- " + d.getArchiveReason() : "");
+                events.add(event(d.getArchivedAt(), "DOCUMENT_ARCHIVED", encounterType, encounterId,
+                        archived, "PatientDocument", d.getId(), d.getArchivedByUserId(), userIds));
+            }
         }
 
         resolvePerformers(events, userIds);

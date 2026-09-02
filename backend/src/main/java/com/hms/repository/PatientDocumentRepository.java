@@ -18,6 +18,10 @@ public interface PatientDocumentRepository extends JpaRepository<PatientDocument
     List<PatientDocument> findByHospitalIdAndPatientIdAndIsActiveTrueOrderByReportDateDescIdDesc(
             Long hospitalId, Long patientId);
 
+    /** Every document ever filed for this patient, archived ones included -- the timeline shows
+     *  what happened, and something being archived is part of what happened. */
+    List<PatientDocument> findByHospitalIdAndPatientIdOrderByIdAsc(Long hospitalId, Long patientId);
+
     Optional<PatientDocument> findByPublicIdAndHospitalId(String publicId, Long hospitalId);
 
     Optional<PatientDocument> findByPublicIdAndHospitalIdAndIsActiveTrue(String publicId, Long hospitalId);
