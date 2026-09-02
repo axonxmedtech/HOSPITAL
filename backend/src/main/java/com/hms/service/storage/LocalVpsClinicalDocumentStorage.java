@@ -65,6 +65,19 @@ import java.util.UUID;
  * happens: no document overwrites another, no request deletes another's file, nothing escapes
  * the root, and no half-written file is ever reachable as a document.
  *
+ * <h2>What a failed write leaves behind</h2>
+ *
+ * <p>A write that fails part-way leaves its file on disk, deliberately. Removing it would mean
+ * unlinking by name, and a name is not a handle: Linux reuses an inode the instant it is freed,
+ * so the identity check that would make such a delete safe cannot actually tell this file from
+ * one that replaced it. Java offers no unlink through the descriptor already held. Between
+ * leaving a few bytes nobody can reach and holding a delete that could, on a bad day, remove a
+ * different patient's report, the orphan is the safer half of the trade.
+ *
+ * <p>Nothing points at it. The key is a fresh UUID that this call never returns, and the caller
+ * records a document only when store() succeeds, so no row and no API path names it. A
+ * maintenance sweep for such files belongs in operations, not in an upload request.
+ *
  * <p>So every directory step is taken through a {@link SecureDirectoryStream}, which resolves
  * names against an already-open descriptor for the directory above, with links refused at each
  * step. Once a descriptor is held it keeps referring to the directory it was opened on, whatever
@@ -169,38 +182,20 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
                  SecureDirectoryStream<Path> patient =
                          openOrCreateDirectory(hospital, hospitalDir.resolve(segments[1]))) {
                 beforeDocumentCreate(key);
-                boolean created = false;
-                Object ownedIdentity = null;
-                try {
-                    // CREATE_NEW is the claim on the name: the kernel refuses if anything
-                    // already holds it, so there is no window between deciding the name is free
-                    // and taking it. Writing straight into the final entry rather than renaming
-                    // one in is what removes that window -- a rename would happily replace an
-                    // entry that appeared after any check we could make. Permissions come from
-                    // the create itself, so the file is never briefly readable by anyone else.
-                    long written;
-                    SeekableByteChannel channel = patient.newByteChannel(finalName,
-                            openOptions(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE),
-                            fileAttributes());
-                    // Only now: if the create lost to an entry that already held the name, the
-                    // cleanup below must not touch it. It is somebody else's file. The identity
-                    // of what we made is remembered so cleanup can refuse a stand-in.
-                    created = true;
-                    ownedIdentity = fileIdentity(patient, finalName);
-                    try (channel; OutputStream out = Channels.newOutputStream(channel)) {
-                        written = content.transferTo(out);
-                    }
-                    return new StoredDocument(key, written);
-                } catch (IOException | RuntimeException e) {
-                    // Nothing records this key until store() returns, so an entry left behind
-                    // here would be unreachable rather than half-visible -- but a half-written
-                    // file under a document name should not exist at all.
-                    if (created) {
-                        beforeCleanup(key);
-                        deleteIfStillOurs(patient, finalName, ownedIdentity);
-                    }
-                    throw e;
+                // CREATE_NEW is the claim on the name: the kernel refuses if anything already
+                // holds it, so there is no window between deciding the name is free and taking
+                // it. Writing straight into the final entry rather than renaming one in is what
+                // removes that window -- a rename would happily replace an entry that appeared
+                // after any check we could make. Permissions come from the create itself, so the
+                // file is never briefly readable by anyone else.
+                long written;
+                SeekableByteChannel channel = patient.newByteChannel(finalName,
+                        openOptions(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE),
+                        fileAttributes());
+                try (channel; OutputStream out = Channels.newOutputStream(channel)) {
+                    written = content.transferTo(out);
                 }
+                return new StoredDocument(key, written);
             }
         } catch (IOException | RuntimeException e) {
             // The path is deliberately absent from the message: it reaches an API client.
@@ -353,52 +348,6 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
     /** As above, immediately before the final document entry is claimed. */
     void beforeDocumentCreate(String storageKey) {
         // no-op in production
-    }
-
-    /** As above, immediately before a failed write's own entry is removed. */
-    void beforeCleanup(String storageKey) {
-        // no-op in production
-    }
-
-    /**
-     * What the entry is, rather than what it is called.
-     *
-     * <p>A name is not an identity: between a failed write and its cleanup the name could in
-     * principle come to hold something else. The file key is device and inode on Unix, so an
-     * entry that was swapped is visibly not the one this invocation created.
-     */
-    private static Object fileIdentity(SecureDirectoryStream<Path> directory, Path name) {
-        try {
-            return directory.getFileAttributeView(name, BasicFileAttributeView.class,
-                    LinkOption.NOFOLLOW_LINKS).readAttributes().fileKey();
-        } catch (IOException e) {
-            return null;
-        }
-    }
-
-    /**
-     * Removes a half-written document, and only if it is still the one we wrote.
-     *
-     * <p>Standard Java cannot unlink through the descriptor it holds -- there is no
-     * {@code unlinkat} on an open channel -- so the removal is by name and the identity check is
-     * what keeps it from reaching a replacement. Under the ownership assumption for the root
-     * nothing can substitute the entry anyway; this refuses to rely on that.
-     */
-    private static void deleteIfStillOurs(SecureDirectoryStream<Path> directory, Path name,
-                                          Object ownedIdentity) {
-        try {
-            Object current = fileIdentity(directory, name);
-            if (ownedIdentity != null && !ownedIdentity.equals(current)) {
-                log.warn("A partially stored clinical document was replaced before cleanup; "
-                        + "leaving the entry alone.");
-                return;
-            }
-            directory.deleteFile(name);
-        } catch (IOException e) {
-            // Best effort: the caller is already failing, and an orphan no row points at is not
-            // reachable as a document.
-            log.warn("Could not remove a partially stored clinical document.");
-        }
     }
 
     private static boolean isRegularFile(SecureDirectoryStream<Path> directory, Path name) {

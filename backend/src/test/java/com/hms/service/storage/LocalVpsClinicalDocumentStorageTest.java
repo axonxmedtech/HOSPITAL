@@ -67,9 +67,16 @@ class LocalVpsClinicalDocumentStorageTest {
         assertThat(storage.exists(second.storageKey())).isTrue();
     }
 
-    /** A half-written upload must never be left behind looking like a document. */
+    /**
+     * A failed upload fails, and reports nothing stored.
+     *
+     * <p>Its bytes stay on disk on purpose -- see the class doc: removing them would mean
+     * unlinking by name, and after inode reuse a name cannot be proven to still be ours. What
+     * matters is that nothing can reach them: the key is never returned, so no caller records it
+     * and no API path names it.
+     */
     @Test
-    void nothingPartialSurvivesAFailedWrite() throws Exception {
+    void aFailedWriteStoresNothingAndReturnsNothing() {
         InputStream exploding = new InputStream() {
             @Override public int read() throws java.io.IOException {
                 throw new java.io.IOException("connection dropped");
@@ -77,11 +84,24 @@ class LocalVpsClinicalDocumentStorageTest {
         };
 
         assertThatThrownBy(() -> storage.store("h1", "p1", "pdf", exploding, 10))
+                .as("no storage key reaches the caller, so nothing can be recorded")
+                .isInstanceOf(LocalVpsClinicalDocumentStorage.ClinicalDocumentStorageException.class);
+    }
+
+    /** And a later upload is unaffected by whatever the failed one left behind. */
+    @Test
+    void aFailedWriteDoesNotDisturbTheNextUpload() throws Exception {
+        InputStream exploding = new InputStream() {
+            @Override public int read() throws java.io.IOException {
+                throw new java.io.IOException("connection dropped");
+            }
+        };
+        assertThatThrownBy(() -> storage.store("h1", "p1", "pdf", exploding, 10))
                 .isInstanceOf(LocalVpsClinicalDocumentStorage.ClinicalDocumentStorageException.class);
 
-        try (var walk = Files.walk(root)) {
-            assertThat(walk.filter(Files::isRegularFile).count())
-                    .as("no leftover file, partial or otherwise").isZero();
+        var stored = storage.store("h1", "p1", "pdf", bytes("real report"), 11);
+        try (InputStream in = storage.load(stored.storageKey())) {
+            assertThat(new String(in.readAllBytes(), StandardCharsets.UTF_8)).isEqualTo("real report");
         }
     }
 
@@ -359,38 +379,28 @@ class LocalVpsClinicalDocumentStorageTest {
     // -- concurrency between legitimate requests ---------------------------------
 
     /**
-     * A failed upload cleans up after itself, and after nothing else.
+     * A failed write removes nothing at all -- least of all somebody else's document.
      *
-     * <p>The seam fires between the failure and the cleanup -- the only window where a removal by
-     * name could reach something other than what this call created. The stand-in must survive.
+     * <p>The previous version of this class deleted its own entry by name after a failed write,
+     * guarded by an inode comparison. Linux reuses an inode immediately, so an entry that
+     * replaced ours compared equal and was deleted. Nothing is deleted now, which is the only
+     * version of this that holds.
      */
     @Test
-    void aFailedWriteDoesNotDeleteAnEntryThatReplacedItsOwn() throws Exception {
+    void aFailedWriteDeletesNothing() throws Exception {
+        Files.createDirectories(root.resolve("h1").resolve("p1"));
+        Path neighbour = root.resolve("h1").resolve("p1").resolve("neighbour.pdf");
+        Files.writeString(neighbour, "another writer's report");
+
         InputStream exploding = new InputStream() {
             @Override public int read() throws java.io.IOException {
                 throw new java.io.IOException("connection dropped");
             }
         };
-        var racing = new LocalVpsClinicalDocumentStorage(root.toString(), new MockEnvironment()) {
-            @Override void beforeCleanup(String storageKey) {
-                try {
-                    Files.delete(root.resolve(storageKey));
-                    Files.writeString(root.resolve(storageKey), "another writer's report");
-                } catch (java.io.IOException e) {
-                    throw new IllegalStateException(e);
-                }
-            }
-        };
-        racing.initialise();
-
-        assertThatThrownBy(() -> racing.store("h1", "p1", "pdf", exploding, 10))
+        assertThatThrownBy(() -> storage.store("h1", "p1", "pdf", exploding, 10))
                 .isInstanceOf(LocalVpsClinicalDocumentStorage.ClinicalDocumentStorageException.class);
 
-        try (var walk = Files.walk(root.resolve("h1").resolve("p1"))) {
-            assertThat(walk.filter(Files::isRegularFile).map(f -> {
-                try { return Files.readString(f); } catch (java.io.IOException e) { throw new IllegalStateException(e); }
-            })).as("the replacement belongs to someone else").containsExactly("another writer's report");
-        }
+        assertThat(Files.readString(neighbour)).isEqualTo("another writer's report");
     }
 
     /** Something already holding a directory's name is never replaced by the create. */
