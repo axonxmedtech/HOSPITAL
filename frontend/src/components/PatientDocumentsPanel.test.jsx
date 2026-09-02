@@ -107,22 +107,25 @@ describe('PatientDocumentsPanel', () => {
     expect(alert).not.toHaveTextContent('NullPointerException');
   });
 
-  it('keeps the rows it already had when a refresh fails', async () => {
+  it('keeps the rows it already had when a refresh fails, minus the one just archived', async () => {
     const user = userEvent.setup();
     patientDocumentService.listForPatient
-      .mockResolvedValueOnce([aDocument()])
+      .mockResolvedValueOnce([aDocument(), aDocument({ publicId: 'doc-2', title: 'Chest X-ray' })])
       .mockRejectedValueOnce({ response: { data: { error: 'Upstream timeout' } } });
     patientDocumentService.archive.mockResolvedValue({});
     render(<PatientDocumentsPanel patientId={7} />);
     await screen.findByText('CBC report');
 
-    await user.click(screen.getByRole('button', { name: 'Archive' }));
+    await user.click(screen.getAllByRole('button', { name: 'Archive' })[0]);
     await user.type(screen.getByLabelText(/Reason/), 'Filed twice');
     await user.click(screen.getByRole('button', { name: 'Confirm action' }));
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(/showing what was last loaded/);
-    expect(screen.getByText('CBC report')).toBeInTheDocument();
+    expect(screen.getByText('Chest X-ray')).toBeInTheDocument();
+    // The server archived it. A failed reload is no reason to keep offering it.
+    await waitFor(() => expect(screen.queryByText('CBC report')).not.toBeInTheDocument());
+    expect(screen.getAllByRole('button', { name: 'Archive' })).toHaveLength(1);
   });
 
   // -- upload ----------------------------------------------------------------

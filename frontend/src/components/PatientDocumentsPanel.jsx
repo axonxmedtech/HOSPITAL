@@ -136,7 +136,13 @@ const PatientDocumentsPanel = ({ patientId, opdId, ipdAdmissionId, readOnly = fa
   };
 
   const handleArchive = async (reason) => {
-    await patientDocumentService.archive(archiveTarget.publicId, reason);
+    const { publicId } = archiveTarget;
+    await patientDocumentService.archive(publicId, reason);
+    // Dropped locally before the refresh, not by it. If the reload then fails, the panel keeps
+    // showing the rows it already had -- and this document must not be among them: the server
+    // has archived it, and a row still offering View and Archive would be describing a state
+    // that no longer exists.
+    setDocuments((docs) => docs.filter((doc) => doc.publicId !== publicId));
     await load();
   };
 
