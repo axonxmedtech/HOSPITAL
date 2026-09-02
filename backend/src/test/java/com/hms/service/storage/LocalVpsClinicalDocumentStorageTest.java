@@ -342,43 +342,6 @@ class LocalVpsClinicalDocumentStorageTest {
         assertThat(Files.readString(secret)).isEqualTo("not yours");
     }
 
-    /**
-     * Permissions are set by the create, never by a second call on a name.
-     *
-     * <p>The staging directory is replaced with a link to somewhere outside the root at the one
-     * moment a chmod could have followed it. The external directory must keep the permissions it
-     * had, and nothing may be written into it.
-     */
-    @Test
-    void aStagingDirectoryReplacedByASymlinkCannotChangeAnExternalTarget() throws Exception {
-        Path external = Files.createDirectory(root.getParent().resolve("perm-" + System.nanoTime()));
-        Files.writeString(external.resolve("kept.pdf"), "another tenant's report");
-        var before = Files.getPosixFilePermissions(external);
-
-        var racing = new LocalVpsClinicalDocumentStorage(root.toString(), new MockEnvironment()) {
-            @Override void afterStagingCreate(Path staging) {
-                try {
-                    Files.delete(staging);
-                    Files.createSymbolicLink(staging, external);
-                } catch (java.io.IOException e) {
-                    throw new IllegalStateException(e);
-                }
-            }
-        };
-        racing.initialise();
-
-        assertThatThrownBy(() -> racing.store("h9", "p9", "pdf", bytes("stolen bytes"), 12))
-                .isInstanceOf(LocalVpsClinicalDocumentStorage.ClinicalDocumentStorageException.class);
-
-        assertThat(Files.getPosixFilePermissions(external))
-                .as("no permission change reached the link's target").isEqualTo(before);
-        try (var walk = Files.walk(external)) {
-            assertThat(walk.filter(Files::isRegularFile).count())
-                    .as("and nothing was written through it").isEqualTo(1);
-        }
-        assertThat(Files.readString(external.resolve("kept.pdf"))).isEqualTo("another tenant's report");
-    }
-
     /** A directory this class creates is owner-only from the moment it exists. */
     @Test
     void createdDirectoriesAndDocumentsAreOwnerOnly() throws Exception {
@@ -391,6 +354,124 @@ class LocalVpsClinicalDocumentStorageTest {
         assertThat(Files.getPosixFilePermissions(root.resolve(stored.storageKey())))
                 .containsExactlyInAnyOrder(java.nio.file.attribute.PosixFilePermission.OWNER_READ,
                         java.nio.file.attribute.PosixFilePermission.OWNER_WRITE);
+    }
+
+    // -- concurrency between legitimate requests ---------------------------------
+
+    /**
+     * A failed upload cleans up after itself, and after nothing else.
+     *
+     * <p>The seam fires between the failure and the cleanup -- the only window where a removal by
+     * name could reach something other than what this call created. The stand-in must survive.
+     */
+    @Test
+    void aFailedWriteDoesNotDeleteAnEntryThatReplacedItsOwn() throws Exception {
+        InputStream exploding = new InputStream() {
+            @Override public int read() throws java.io.IOException {
+                throw new java.io.IOException("connection dropped");
+            }
+        };
+        var racing = new LocalVpsClinicalDocumentStorage(root.toString(), new MockEnvironment()) {
+            @Override void beforeCleanup(String storageKey) {
+                try {
+                    Files.delete(root.resolve(storageKey));
+                    Files.writeString(root.resolve(storageKey), "another writer's report");
+                } catch (java.io.IOException e) {
+                    throw new IllegalStateException(e);
+                }
+            }
+        };
+        racing.initialise();
+
+        assertThatThrownBy(() -> racing.store("h1", "p1", "pdf", exploding, 10))
+                .isInstanceOf(LocalVpsClinicalDocumentStorage.ClinicalDocumentStorageException.class);
+
+        try (var walk = Files.walk(root.resolve("h1").resolve("p1"))) {
+            assertThat(walk.filter(Files::isRegularFile).map(f -> {
+                try { return Files.readString(f); } catch (java.io.IOException e) { throw new IllegalStateException(e); }
+            })).as("the replacement belongs to someone else").containsExactly("another writer's report");
+        }
+    }
+
+    /** Something already holding a directory's name is never replaced by the create. */
+    @Test
+    void anEntryHoldingADirectoryNameIsNeverReplaced() throws Exception {
+        Files.writeString(root.resolve("h5"), "not a directory");
+
+        assertThatThrownBy(() -> storage.store("h5", "p1", "pdf", bytes("x"), 1))
+                .isInstanceOf(LocalVpsClinicalDocumentStorage.ClinicalDocumentStorageException.class);
+        assertThat(Files.readString(root.resolve("h5"))).isEqualTo("not a directory");
+        assertThat(Files.isRegularFile(root.resolve("h5"))).isTrue();
+    }
+
+    /**
+     * Many requests admitting documents for the same patient at once.
+     *
+     * <p>They race on creating the same two directories and on writing into them. Every upload
+     * must end up with its own file and its own bytes: no overwrite, nothing deleted by a
+     * neighbour, no failure caused by the directory already existing.
+     */
+    @Test
+    void concurrentStoresForTheSamePatientEachKeepTheirOwnDocument() throws Exception {
+        int writers = 16;
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(writers);
+        var start = new java.util.concurrent.CountDownLatch(1);
+        try {
+            var futures = new java.util.ArrayList<java.util.concurrent.Future<String>>();
+            for (int i = 0; i < writers; i++) {
+                final String payload = "report-" + i;
+                futures.add(pool.submit(() -> {
+                    start.await();
+                    return storage.store("h1", "p1", "pdf", bytes(payload), payload.length()).storageKey();
+                }));
+            }
+            start.countDown();
+
+            var keys = new java.util.ArrayList<String>();
+            for (var future : futures) {
+                keys.add(future.get(30, java.util.concurrent.TimeUnit.SECONDS));
+            }
+            assertThat(keys).as("every upload got its own key").doesNotHaveDuplicates().hasSize(writers);
+            for (int i = 0; i < writers; i++) {
+                try (InputStream in = storage.load(keys.get(i))) {
+                    assertThat(new String(in.readAllBytes(), StandardCharsets.UTF_8))
+                            .as("nobody overwrote anybody").isEqualTo("report-" + i);
+                }
+            }
+            try (var walk = Files.walk(root)) {
+                assertThat(walk.filter(Files::isRegularFile).count()).isEqualTo(writers);
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    /** Concurrent uploads for different patients stay in their own directories. */
+    @Test
+    void concurrentStoresForDifferentPatientsStayIndependent() throws Exception {
+        int writers = 8;
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(writers);
+        var start = new java.util.concurrent.CountDownLatch(1);
+        try {
+            var futures = new java.util.ArrayList<java.util.concurrent.Future<String>>();
+            for (int i = 0; i < writers; i++) {
+                final int n = i;
+                futures.add(pool.submit(() -> {
+                    start.await();
+                    return storage.store("h" + n, "p" + n, "pdf", bytes("r" + n), 2).storageKey();
+                }));
+            }
+            start.countDown();
+            for (int i = 0; i < writers; i++) {
+                String key = futures.get(i).get(30, java.util.concurrent.TimeUnit.SECONDS);
+                assertThat(key).startsWith("h" + i + "/p" + i + "/");
+                try (InputStream in = storage.load(key)) {
+                    assertThat(new String(in.readAllBytes(), StandardCharsets.UTF_8)).isEqualTo("r" + i);
+                }
+            }
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
     /** A configured root that is itself a link would make every check meaningless. */

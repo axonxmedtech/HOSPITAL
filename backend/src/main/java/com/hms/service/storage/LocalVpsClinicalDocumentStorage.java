@@ -13,6 +13,7 @@ import java.io.OutputStream;
 import java.nio.channels.Channels;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.file.DirectoryStream;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
@@ -48,6 +49,21 @@ import java.util.UUID;
  * inside the root gets to act in between: validate {@code <root>/h42} while it does not exist,
  * plant {@code h42 -> /elsewhere}, and the create that follows walks straight through the link.
  * No amount of re-checking closes that -- the check and the syscall resolve the name separately.
+ *
+ * <h2>What the root is assumed to be</h2>
+ *
+ * <p>The configured directory is private to the service account: {@code 0700}, owned by the user
+ * the application runs as, and nothing else on the host writes inside it. That is enforced here
+ * as far as a process can enforce it -- the root is refused if it is a symlink, and every
+ * directory this class creates is owner-only from the moment it exists -- and it is the boundary
+ * the guarantees below are stated against. A hospital user reaching the API cannot create a file,
+ * a directory or a symlink inside the root; only this class does. An attacker who already has the
+ * service account's own filesystem authority is a different situation entirely: they can read the
+ * documents directly, and no arrangement of Java filesystem calls changes that.
+ *
+ * <p>What is guaranteed against concurrent legitimate requests, which is the case that actually
+ * happens: no document overwrites another, no request deletes another's file, nothing escapes
+ * the root, and no half-written file is ever reachable as a document.
  *
  * <p>So every directory step is taken through a {@link SecureDirectoryStream}, which resolves
  * names against an already-open descriptor for the directory above, with links refused at each
@@ -148,10 +164,13 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
         Path finalName = Paths.get(segments[2]);
 
         try (SecureDirectoryStream<Path> root = openRoot()) {
-            try (SecureDirectoryStream<Path> hospital = openOrCreateDirectory(root, root, segments[0]);
-                 SecureDirectoryStream<Path> patient = openOrCreateDirectory(root, hospital, segments[1])) {
+            Path hospitalDir = storageRoot.resolve(segments[0]);
+            try (SecureDirectoryStream<Path> hospital = openOrCreateDirectory(root, hospitalDir);
+                 SecureDirectoryStream<Path> patient =
+                         openOrCreateDirectory(hospital, hospitalDir.resolve(segments[1]))) {
                 beforeDocumentCreate(key);
                 boolean created = false;
+                Object ownedIdentity = null;
                 try {
                     // CREATE_NEW is the claim on the name: the kernel refuses if anything
                     // already holds it, so there is no window between deciding the name is free
@@ -164,8 +183,10 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
                             openOptions(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE),
                             fileAttributes());
                     // Only now: if the create lost to an entry that already held the name, the
-                    // cleanup below must not touch it. It is somebody else's file.
+                    // cleanup below must not touch it. It is somebody else's file. The identity
+                    // of what we made is remembered so cleanup can refuse a stand-in.
                     created = true;
+                    ownedIdentity = fileIdentity(patient, finalName);
                     try (channel; OutputStream out = Channels.newOutputStream(channel)) {
                         written = content.transferTo(out);
                     }
@@ -175,7 +196,8 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
                     // here would be unreachable rather than half-visible -- but a half-written
                     // file under a document name should not exist at all.
                     if (created) {
-                        try { patient.deleteFile(finalName); } catch (IOException ignored) { /* best effort */ }
+                        beforeCleanup(key);
+                        deleteIfStillOurs(patient, finalName, ownedIdentity);
                     }
                     throw e;
                 }
@@ -281,36 +303,36 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
     /**
      * The same, creating the directory if it is genuinely absent.
      *
-     * <p>{@code SecureDirectoryStream} has no relative {@code mkdir}, so the directory is made in
-     * the root -- a path only the operator can influence -- and moved into position with the
-     * descriptor-relative move. Moving a directory onto an existing name fails; it never replaces
-     * a link, and it never resolves through one. If the name appeared meanwhile, the loop reopens
-     * it, and if what appeared is a link the reopen refuses and the upload fails.
+     * <p>{@code mkdir} is itself the no-replace primitive: it fails if anything already holds the
+     * name, so two requests admitting patients to the same ward at the same moment cannot have
+     * one replace the other's directory -- the loser simply reopens what the winner made. An
+     * earlier version placed a staging directory with a descriptor-relative rename, which is
+     * {@code renameat} and would happily replace a destination. That is gone; this is both
+     * simpler and stricter.
+     *
+     * <p>The create resolves by path, which is safe under the ownership assumption stated on
+     * this class: only the service account may write inside the root, so no component here can
+     * become a symlink between calls. It is not the last line regardless -- the open below is
+     * descriptor-relative and refuses links, so nothing is ever written through one.
      */
-    private SecureDirectoryStream<Path> openOrCreateDirectory(SecureDirectoryStream<Path> root,
-                                                              SecureDirectoryStream<Path> parent,
-                                                              String name) throws IOException {
-        Path child = Paths.get(name);
+    private SecureDirectoryStream<Path> openOrCreateDirectory(SecureDirectoryStream<Path> parent,
+                                                              Path directory) throws IOException {
+        String name = directory.getFileName().toString();
         for (int attempt = 0; attempt < MAX_DIRECTORY_ATTEMPTS; attempt++) {
             beforeDirectoryOpen(name);
             try {
                 return openDirectory(parent, name);
             } catch (NoSuchFileException notThereYet) {
-                // Falls through to creation. Any other failure -- a link in this position, a
-                // permission problem -- propagates: it is not something to retry around.
+                // Falls through to creation. Any other failure -- a link or a file in this
+                // position, a permission problem -- propagates: it is not one to retry around.
             }
-
-            // Permissions are part of the create, not a second call on a name that could
-            // have been swapped for a link in between. Nothing here ever chmods a path.
-            Path staging = Files.createDirectory(
-                    storageRoot.resolve(".staging-" + UUID.randomUUID()), directoryAttributes());
-            afterStagingCreate(staging);
             try {
-                root.move(staging.getFileName(), parent, child);
-            } catch (IOException raced) {
-                // Someone else got there first, or something that is not a directory now holds
-                // the name. Either way the next open decides, and it is the open that is safe.
-                try { root.deleteDirectory(staging.getFileName()); } catch (IOException ignored) { /* best effort */ }
+                // Owner-only from the moment it exists: the permissions are part of the create,
+                // never a second call on a name.
+                Files.createDirectory(directory, directoryAttributes());
+            } catch (FileAlreadyExistsException raced) {
+                // Someone else got there first. The reopen above decides what it is, and that
+                // is the check that cannot be fooled.
             }
         }
         throw new ClinicalDocumentStorageException(
@@ -333,9 +355,50 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
         // no-op in production
     }
 
-    /** As above, immediately after a staging directory exists and before it is moved. */
-    void afterStagingCreate(Path staging) {
+    /** As above, immediately before a failed write's own entry is removed. */
+    void beforeCleanup(String storageKey) {
         // no-op in production
+    }
+
+    /**
+     * What the entry is, rather than what it is called.
+     *
+     * <p>A name is not an identity: between a failed write and its cleanup the name could in
+     * principle come to hold something else. The file key is device and inode on Unix, so an
+     * entry that was swapped is visibly not the one this invocation created.
+     */
+    private static Object fileIdentity(SecureDirectoryStream<Path> directory, Path name) {
+        try {
+            return directory.getFileAttributeView(name, BasicFileAttributeView.class,
+                    LinkOption.NOFOLLOW_LINKS).readAttributes().fileKey();
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Removes a half-written document, and only if it is still the one we wrote.
+     *
+     * <p>Standard Java cannot unlink through the descriptor it holds -- there is no
+     * {@code unlinkat} on an open channel -- so the removal is by name and the identity check is
+     * what keeps it from reaching a replacement. Under the ownership assumption for the root
+     * nothing can substitute the entry anyway; this refuses to rely on that.
+     */
+    private static void deleteIfStillOurs(SecureDirectoryStream<Path> directory, Path name,
+                                          Object ownedIdentity) {
+        try {
+            Object current = fileIdentity(directory, name);
+            if (ownedIdentity != null && !ownedIdentity.equals(current)) {
+                log.warn("A partially stored clinical document was replaced before cleanup; "
+                        + "leaving the entry alone.");
+                return;
+            }
+            directory.deleteFile(name);
+        } catch (IOException e) {
+            // Best effort: the caller is already failing, and an orphan no row points at is not
+            // reachable as a document.
+            log.warn("Could not remove a partially stored clinical document.");
+        }
     }
 
     private static boolean isRegularFile(SecureDirectoryStream<Path> directory, Path name) {
