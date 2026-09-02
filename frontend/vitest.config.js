@@ -12,6 +12,10 @@ export default defineConfig({
         // Some suites render whole dashboards; 5s is not enough for those under load.
         testTimeout: 20000,
         hookTimeout: 20000,
+        // Several suites render entire dashboards, and unbounded workers starve each other
+        // badly enough that findBy* queries time out on machines with fewer cores than vitest
+        // assumes. Bounded parallelism costs a few seconds and removes the flakiness.
+        poolOptions: { threads: { maxThreads: 4, minThreads: 1 } },
         css: false,
         coverage: {
             provider: 'v8',

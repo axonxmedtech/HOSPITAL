@@ -57,7 +57,7 @@ vi.mock('../services/authService', () => ({
     getCurrentUser: () => ({
       role: 'DOCTOR',
       name: 'Dr Demo',
-      modules: ['OPD', 'BILLING', 'MEDICAL_INVENTORY'],
+      modules: ['OPD', 'IPD', 'BILLING', 'MEDICAL_INVENTORY'],
       userId: 1,
     }),
   },
@@ -263,6 +263,75 @@ describe('ConsultationModal — submission', () => {
 
     await waitFor(() => expect(hospitalService.submitConsultation).toHaveBeenCalledTimes(1));
     expect(payloadOf().prescription).toHaveLength(1);
+  });
+
+  // -- admit to IPD -------------------------------------------------------------
+
+  const admit = (user) =>
+    user.click(screen.getByRole('button', { name: /Admit to IPD/, hidden: true }));
+
+  it('asks for admission through the same consultation, with the flag set', async () => {
+    const user = userEvent.setup();
+    open();
+
+    await user.type(screen.getByPlaceholderText('Enter diagnosis...'), 'Dengue suspected');
+    await addMedicine(user, { name: 'Paracetamol', dosage: '500mg', duration: '5 Days' });
+    await admit(user);
+
+    await waitFor(() => expect(hospitalService.submitConsultation).toHaveBeenCalledTimes(1));
+    const payload = payloadOf();
+    expect(payload.ipdAdmitRecommended).toBe(true);
+    expect(payload.opdId).toBe(42);
+    expect(payload.diagnosis).toBe('Dengue suspected');
+    expect(payload.prescription).toHaveLength(1);
+    expect(payload.administeredItems).toEqual([]);
+  });
+
+  it('will not ask for admission while a typed medicine is unresolved', async () => {
+    const user = userEvent.setup();
+    open();
+
+    await openPrescriptionTab(user);
+    await user.type(screen.getByPlaceholderText('Search medicine from catalog...'), 'Ascoril');
+    await admit(user);
+
+    expect(hospitalService.submitConsultation).not.toHaveBeenCalled();
+    expect(toastError).toHaveBeenCalledWith(
+      'Select the medicine from the suggestions, or clear the field, before submitting.'
+    );
+  });
+
+  it('reports a refused admission request and keeps the consultation intact', async () => {
+    hospitalService.submitConsultation.mockRejectedValue({
+      response: { status: 400, data: { error: 'Prescription dosage is required' } },
+    });
+    const user = userEvent.setup();
+    open();
+
+    await user.type(screen.getByPlaceholderText('Enter diagnosis...'), 'Dengue suspected');
+    await addMedicine(user, { name: 'Paracetamol', dosage: '500mg', duration: '5 Days' });
+    await admit(user);
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Prescription dosage is required'));
+    expect(toastSuccess).not.toHaveBeenCalled();
+
+    // Nothing announced, nothing lost: the doctor can correct it and press again.
+    expect(screen.getByRole('button', { name: /Admit to IPD/, hidden: true })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: /^Prescription \(1\)/ })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^Clinical Notes/ }));
+    expect(screen.getByPlaceholderText('Enter diagnosis...')).toHaveValue('Dengue suspected');
+  });
+
+  it('says nothing reassuring when the server fails outright', async () => {
+    hospitalService.submitConsultation.mockRejectedValue({ response: { status: 500, data: {} } });
+    const user = userEvent.setup();
+    open();
+
+    await addMedicine(user, { name: 'Paracetamol', dosage: '500mg', duration: '5 Days' });
+    await admit(user);
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Failed to submit consultation'));
+    expect(toastSuccess).not.toHaveBeenCalled();
   });
 
   // -- refusals from the server -------------------------------------------------

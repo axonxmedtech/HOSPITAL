@@ -117,8 +117,8 @@ describe('PatientDocumentsPanel', () => {
     await screen.findByText('CBC report');
 
     await user.click(screen.getAllByRole('button', { name: 'Archive' })[0]);
-    await user.type(screen.getByLabelText(/Reason/), 'Filed twice');
-    await user.click(screen.getByRole('button', { name: 'Confirm action' }));
+    await user.type(await screen.findByLabelText(/Reason/), 'Filed twice');
+    await user.click(await screen.findByRole('button', { name: 'Confirm action' }));
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(/showing what was last loaded/);
@@ -267,7 +267,7 @@ describe('PatientDocumentsPanel', () => {
     await screen.findByText('CBC report');
 
     await user.click(screen.getByRole('button', { name: 'Archive' }));
-    const confirm = screen.getByRole('button', { name: 'Confirm action' });
+    const confirm = await screen.findByRole('button', { name: 'Confirm action' });
     expect(confirm).toBeDisabled();
 
     await user.click(confirm);
@@ -284,8 +284,8 @@ describe('PatientDocumentsPanel', () => {
     await screen.findByText('CBC report');
 
     await user.click(screen.getByRole('button', { name: 'Archive' }));
-    await user.type(screen.getByLabelText(/Reason/), 'Wrong patient');
-    await user.click(screen.getByRole('button', { name: 'Confirm action' }));
+    await user.type(await screen.findByLabelText(/Reason/), 'Wrong patient');
+    await user.click(await screen.findByRole('button', { name: 'Confirm action' }));
 
     await waitFor(() =>
       expect(patientDocumentService.archive).toHaveBeenCalledWith('doc-1', 'Wrong patient')
@@ -303,8 +303,8 @@ describe('PatientDocumentsPanel', () => {
     await screen.findByText('CBC report');
 
     await user.click(screen.getByRole('button', { name: 'Archive' }));
-    await user.type(screen.getByLabelText(/Reason/), 'Filed in error');
-    await user.click(screen.getByRole('button', { name: 'Confirm action' }));
+    await user.type(await screen.findByLabelText(/Reason/), 'Filed in error');
+    await user.click(await screen.findByRole('button', { name: 'Confirm action' }));
 
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByRole('alert')).toHaveTextContent('Only a doctor may archive');
