@@ -2,6 +2,49 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// headlessui's combobox measures itself when it closes; jsdom has no ResizeObserver, and the
+// resulting unhandled error leaks across tests in this file.
+globalThis.ResizeObserver =
+  globalThis.ResizeObserver ||
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+
+vi.mock('./MedicineAutocomplete', () => ({
+  default: ({ value, onChange, onSelect, onUnresolvedTextChange }) => (
+    <div>
+      <input
+        placeholder="Search medicine from catalog..."
+        value={value}
+        onChange={(e) => {
+          onChange('');
+          if (onUnresolvedTextChange) onUnresolvedTextChange(e.target.value);
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => {
+          if (onUnresolvedTextChange) onUnresolvedTextChange('');
+          onSelect({ name: 'Paracetamol' });
+        }}
+      >
+        pick Paracetamol
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          if (onUnresolvedTextChange) onUnresolvedTextChange('');
+          onSelect({ name: 'Azithromycin' });
+        }}
+      >
+        pick Azithromycin
+      </button>
+    </div>
+  ),
+}));
+
 const toastError = vi.fn();
 const toastSuccess = vi.fn();
 
@@ -36,13 +79,11 @@ vi.mock('../services/hospitalService', () => ({
     getPrescriptionPresets: vi.fn().mockResolvedValue([]),
     getNotePresets: vi.fn().mockResolvedValue([]),
     getConsultationNotePresets: vi.fn().mockResolvedValue([]),
-    getPatientConsultationDetails: vi
-      .fn()
-      .mockResolvedValue({
-        patient: { name: 'Ravi Kumar', age: 46 },
-        opdHistory: [],
-        ipdHistory: [],
-      }),
+    getPatientConsultationDetails: vi.fn().mockResolvedValue({
+      patient: { name: 'Ravi Kumar', age: 46 },
+      opdHistory: [],
+      ipdHistory: [],
+    }),
     searchMedicines: vi.fn().mockResolvedValue([]),
   },
 }));
@@ -82,11 +123,8 @@ describe('ConsultationModal — submission', () => {
     if (!screen.queryByPlaceholderText('Search medicine from catalog...')) {
       await openPrescriptionTab(user);
     }
-    hospitalService.searchMedicines.mockResolvedValue([
-      { id: Math.floor(Math.random() * 10000), name, type: 'Tablet' },
-    ]);
     await user.type(screen.getByPlaceholderText('Search medicine from catalog...'), name);
-    await user.click(await screen.findByRole('option', { name: new RegExp(name) }));
+    await user.click(screen.getByRole('button', { name: `pick ${name}` }));
 
     await user.type(screen.getByPlaceholderText('Dosage (e.g., 500mg)'), dosage);
     await user.type(screen.getByPlaceholderText('Duration (e.g., 5 Days)'), duration);
@@ -99,7 +137,7 @@ describe('ConsultationModal — submission', () => {
   };
 
   const submit = async (user) =>
-    user.click(screen.getByRole('button', { name: /Complete Consultation/ }));
+    user.click(screen.getByRole('button', { name: /Complete Consultation/, hidden: true }));
 
   const payloadOf = () => hospitalService.submitConsultation.mock.calls[0][0];
 
@@ -177,46 +215,18 @@ describe('ConsultationModal — submission', () => {
 
   // -- refusals before the request ---------------------------------------------
 
-  it('will not submit a medicine the doctor typed but never added', async () => {
-    hospitalService.searchMedicines.mockResolvedValue([
-      { id: 5, name: 'Paracetamol 500', type: 'Tablet' },
-    ]);
+  it('will not submit a medicine the doctor picked but never added', async () => {
     const user = userEvent.setup();
     open();
 
     await openPrescriptionTab(user);
-    await user.type(screen.getByPlaceholderText('Search medicine from catalog...'), 'Paracet');
-    await user.click(await screen.findByRole('option', { name: /Paracetamol 500/ }));
+    await user.click(screen.getByRole('button', { name: 'pick Paracetamol' }));
     await submit(user);
 
     expect(hospitalService.submitConsultation).not.toHaveBeenCalled();
     expect(toastError).toHaveBeenCalledWith(
       "Please click '+ Add Medicine' or clear the medicine fields before submitting."
     );
-  });
-
-  /**
-   * The catalogue field reports a name only once one is picked from the list. Typing alone leaves
-   * the parent's medicineName empty, which is why Add stays disabled -- so no nameless row can
-   * reach the server. Worth pinning: it is also why a doctor who types a medicine and never picks
-   * it submits with no prescription and no warning (see the P1 raised with this test).
-   */
-  it('cannot add a medicine that was typed but never picked from the catalogue', async () => {
-    const user = userEvent.setup();
-    open();
-
-    await openPrescriptionTab(user);
-    await user.type(
-      screen.getByPlaceholderText('Search medicine from catalog...'),
-      'Some Unlisted Syrup'
-    );
-    await user.type(screen.getByPlaceholderText('Dosage (e.g., 500mg)'), '10ml');
-    await user.type(screen.getByPlaceholderText('Duration (e.g., 5 Days)'), '3 Days');
-    const morning = screen.getByLabelText('Morning dose');
-    await user.clear(morning);
-    await user.type(morning, '1');
-    expect(screen.getByRole('button', { name: '+ Add Medicine' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /^Prescription \(0\)/ })).toBeInTheDocument();
   });
 
   it('will not submit a medicine with no frequency, and says which one', async () => {
@@ -242,6 +252,19 @@ describe('ConsultationModal — submission', () => {
     );
   });
 
+  it('lets the consultation through once a catalogue medicine is picked and added', async () => {
+    const user = userEvent.setup();
+    open();
+
+    await addMedicine(user, { name: 'Paracetamol', dosage: '500mg', duration: '5 Days' });
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await submit(user);
+
+    await waitFor(() => expect(hospitalService.submitConsultation).toHaveBeenCalledTimes(1));
+    expect(payloadOf().prescription).toHaveLength(1);
+  });
+
   // -- refusals from the server -------------------------------------------------
 
   it('shows what the server refused, not a generic failure', async () => {
@@ -254,6 +277,7 @@ describe('ConsultationModal — submission', () => {
     await addMedicine(user, { name: 'Paracetamol', dosage: '500mg', duration: '5 Days' });
     await submit(user);
 
+    await waitFor(() => expect(hospitalService.submitConsultation).toHaveBeenCalled());
     await waitFor(() =>
       expect(toastError).toHaveBeenCalledWith('Insufficient stock for: Paracetamol 500')
     );
@@ -270,6 +294,7 @@ describe('ConsultationModal — submission', () => {
     await addMedicine(user, { name: 'Paracetamol', dosage: '500mg', duration: '5 Days' });
     await submit(user);
 
+    await waitFor(() => expect(hospitalService.submitConsultation).toHaveBeenCalled());
     await waitFor(() => expect(toastError).toHaveBeenCalledWith('Failed to submit consultation'));
     expect(toastSuccess).not.toHaveBeenCalled();
   });

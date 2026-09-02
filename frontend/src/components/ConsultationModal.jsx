@@ -424,6 +424,10 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     duration: '',
     instructions: '',
   });
+  // Text typed into the catalogue field that has not been resolved to a medicine. Typing alone
+  // names nothing, so this is the difference between an empty field and a doctor who believes
+  // they have prescribed something.
+  const [unresolvedMedicineText, setUnresolvedMedicineText] = useState('');
 
   const LAB_OPTIONS = [
     'CBC',
@@ -466,6 +470,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         duration: '',
         instructions: '',
       });
+      setUnresolvedMedicineText('');
       setSearchQuery('');
       setHospitalInvSearch('');
       setActiveTab('clinical');
@@ -553,6 +558,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
       duration: '',
       instructions: '',
     });
+    setUnresolvedMedicineText('');
     setEditingMedicineIndex(null);
   };
 
@@ -677,6 +683,14 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
 
   const handleSubmit = async () => {
     if (submitting) return;
+    // Typed but never picked: the catalogue field holds no medicine, so submitting here would
+    // quietly record a consultation with no prescription the doctor believes they wrote.
+    if (unresolvedMedicineText.trim() && !newMedicine.medicineName) {
+      toastError(
+        'Select the medicine from the suggestions, or clear the field, before submitting.'
+      );
+      return;
+    }
     // Warning if user typed a medicine but didn't click Add
     if (newMedicine.medicineName) {
       toastError("Please click '+ Add Medicine' or clear the medicine fields before submitting.");
@@ -734,6 +748,12 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
 
   const handleAdmitToIpdClick = async () => {
     if (submitting) return;
+    if (unresolvedMedicineText.trim() && !newMedicine.medicineName) {
+      toastError(
+        'Select the medicine from the suggestions, or clear the field, before submitting.'
+      );
+      return;
+    }
     // Warning if user typed a medicine but didn't click Add
     if (newMedicine.medicineName) {
       toastError("Please click '+ Add Medicine' or clear the medicine fields before submitting.");
@@ -1770,10 +1790,12 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                       <div className="col-span-2">
                         <MedicineAutocomplete
                           value={newMedicine.medicineName}
+                          onUnresolvedTextChange={setUnresolvedMedicineText}
                           onChange={(name) =>
                             setNewMedicine((prev) => ({ ...prev, medicineName: name }))
                           }
                           onSelect={(med) => {
+                            setUnresolvedMedicineText('');
                             setNewMedicine((prev) => ({
                               ...prev,
                               medicineName: med.name,
@@ -1784,6 +1806,11 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                             }));
                           }}
                         />
+                        {unresolvedMedicineText.trim() && !newMedicine.medicineName && (
+                          <p role="alert" className="mt-1 text-xs font-semibold text-amber-700">
+                            Select a medicine from the suggestions — typing alone does not add it.
+                          </p>
+                        )}
                       </div>
                       <input
                         type="text"

@@ -4,7 +4,18 @@ import { CheckIcon, ChevronUpDownIcon } from '@heroicons/react/20/solid';
 import React, { useState, useEffect } from 'react';
 import hospitalService from '../services/hospitalService';
 
-export default function MedicineAutocomplete({ value, onChange, onSelect }) {
+/**
+ * @param {(text: string) => void} [onUnresolvedTextChange] told what the prescriber has typed
+ *   while no catalogue medicine is selected. Typing here does not name a medicine -- only
+ *   picking one from the list does -- so a caller that can submit needs to know the difference
+ *   between an empty field and a half-finished one.
+ */
+export default function MedicineAutocomplete({
+  value,
+  onChange,
+  onSelect,
+  onUnresolvedTextChange,
+}) {
   const [query, setQuery] = useState('');
   const [selectedMedicine, setSelectedMedicine] = useState(null);
   const [medicines, setMedicines] = useState([]);
@@ -55,6 +66,9 @@ export default function MedicineAutocomplete({ value, onChange, onSelect }) {
       value={selectedMedicine}
       onChange={(medicine) => {
         setSelectedMedicine(medicine);
+        // Only a real pick resolves the field. This fires with null on blur too, which is the
+        // combobox tidying up rather than the prescriber choosing anything.
+        if (medicine && onUnresolvedTextChange) onUnresolvedTextChange('');
         if (medicine) {
           onChange(medicine.name);
           if (onSelect) onSelect(medicine);
@@ -70,8 +84,9 @@ export default function MedicineAutocomplete({ value, onChange, onSelect }) {
             className="w-full border-none py-2 pl-3 pr-10 text-sm leading-5 text-gray-900 focus:ring-0"
             displayValue={(medicine) => medicine?.name || ''}
             onChange={(event) => {
-              setQuery(event.target.value);
-              if (!event.target.value) {
+              const typed = event.target.value;
+              setQuery(typed);
+              if (!typed) {
                 setSelectedMedicine(null);
                 onChange('');
               } else if (selectedMedicine) {
@@ -79,6 +94,19 @@ export default function MedicineAutocomplete({ value, onChange, onSelect }) {
                 setSelectedMedicine(null);
                 onChange('');
               }
+              // Unresolved until something is picked from the list below.
+              //
+              // An empty value arrives here two ways: the prescriber cleared the field, or the
+              // field tidied itself up on blur. Only the first is a decision. Losing focus wipes
+              // the text on screen, so treating that as "nothing was typed" is what let a typed
+              // medicine vanish between the field and the Complete button.
+              if (onUnresolvedTextChange && (typed || document.activeElement === event.target)) {
+                onUnresolvedTextChange(typed);
+              }
+            }}
+            onFocus={(event) => {
+              // Coming back to an empty field is the way out of the warning above.
+              if (onUnresolvedTextChange && !event.target.value) onUnresolvedTextChange('');
             }}
             placeholder="Search medicine from catalog..."
           />
