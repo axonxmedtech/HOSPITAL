@@ -830,8 +830,18 @@ public class DoctorService {
             }
         } catch (Exception e) {
             logger.error("Failed to create OPD bill or administer stocks", e);
-            if (e instanceof RuntimeException && e.getMessage().contains("Insufficient stock")) {
-                throw (RuntimeException) e; // Prevent consultation completion if stock check fails
+            // Classified by type, not by message text: getMessage() is null often enough that
+            // matching on it turned a business refusal into a NullPointerException, and a 400
+            // into a 500.
+            //
+            // Every refusal above -- inactive medicine, a medicine from another facility, a
+            // missing unit price, not enough stock -- is an answer to the doctor, not an
+            // infrastructure hiccup. Swallowing one completes a consultation that says a
+            // medicine was given while nothing was deducted and nothing was billed, which is
+            // worse than failing. Anything else (a bill that could not be written, a total that
+            // could not be recalculated) is still logged and left alone, as before.
+            if (e instanceof IllegalArgumentException) {
+                throw (IllegalArgumentException) e;
             }
         }
 
