@@ -36,7 +36,7 @@ import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
 // BUG-028: single source-of-truth for base URL
 import otService from '../../services/otService';
-import { extractApiError } from '../../utils/apiError';
+import { extractApiError, safeLoadMessage } from '../../utils/apiError';
 import { formatDateTime, formatTime } from '../../utils/date';
 import { printPdf } from '../../utils/printPdf';
 import BillingTable from './BillingTable';
@@ -97,6 +97,10 @@ const ReceptionistDashboard = () => {
   const [billingStatus, setBillingStatus] = useState('PENDING');
   const [recPrintingId, setRecPrintingId] = useState(null);
   const [loading, setLoading] = useState(false);
+  // A failed load is its own state. Without it the screen falls back to whatever it already
+  // held -- [] on a first load -- and an unreachable server draws a desk with no patients
+  // booked, which is a sentence the software has no business saying.
+  const [loadError, setLoadError] = useState('');
   // Scoped loading indicator for just the Appointments list, so switching the
   // Today/Upcoming filter doesn't blow away the whole dashboard's full-page
   // skeleton (that's reserved for actual tab switches).
@@ -524,9 +528,14 @@ const ReceptionistDashboard = () => {
           setTotalElements(data.length);
         }
       }
+      setLoadError('');
     } catch (err) {
       if (requestId !== activeRequestRef.current) return;
       console.error(`[ReceptionistDashboard] Failed to load ${activeTab}:`, err);
+      // safeLoadMessage, not extractApiError: this reaches a banner, and err.message carries
+      // whatever the transport or the JVM threw. Rows already on screen are left alone -- a
+      // failed refresh should not blank a list that was fine a moment ago.
+      setLoadError(safeLoadMessage(err, "Couldn't load this screen. Please try again."));
       // Only show toast error if it was a user-initiated action (spinner shown)
       if (showSpinner) toastError('Failed to load data');
     } finally {
@@ -989,6 +998,24 @@ const ReceptionistDashboard = () => {
         />
 
         <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
+          {loadError && (
+            <div
+              role="alert"
+              className="mb-6 border border-red-200 bg-red-50 rounded-lg p-4 text-sm text-red-800"
+            >
+              <p className="font-semibold">Couldn&apos;t load this screen</p>
+              <p className="mt-0.5">{loadError}</p>
+              <p className="mt-1 text-xs text-red-700">Anything shown below may be out of date.</p>
+              <button
+                type="button"
+                onClick={() => loadData(true)}
+                className="mt-2 px-3 py-1 text-xs font-semibold text-red-800 border border-red-300 rounded-md hover:bg-red-100"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
           {/* Overview Tab */}
           {activeTab === 'overview' && !loading && (
             <div className="space-y-6">
