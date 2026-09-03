@@ -15,6 +15,7 @@ import com.hms.repository.OpdRepository;
 import com.hms.repository.PatientRepository;
 import com.hms.repository.QueueEntryRepository;
 import com.hms.repository.UserRepository;
+import com.hms.service.hospital.BusinessClock;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,6 +57,17 @@ class FollowUpLifecycleTest {
 
     @Autowired TestRestTemplate rest;
     @Autowired JwtUtil jwtUtil;
+    /**
+     * The same "today" the service uses.
+     *
+     * <p>A follow-up is due, overdue or upcoming relative to the business date, which
+     * BusinessClock pins to the deployment's timezone. Asking the JVM for the date instead
+     * answers in whatever zone the runner happens to use, so on a UTC machine after 18:30 these
+     * tests were asserting against yesterday: due-today lists came back empty and daysOverdue
+     * read one too high. Asking the application what day it is keeps them honest at any hour,
+     * in any zone.
+     */
+    @Autowired BusinessClock clock;
     @Autowired HospitalRepository hospitals;
     @Autowired UserRepository users;
     @Autowired DoctorRepository doctors;
@@ -194,10 +206,10 @@ class FollowUpLifecycleTest {
 
     @Test
     void anOverdueFollowUpCanBeMovedForward() {
-        MedicalRecord m = followUp(hospital, patient, LocalDate.now().minusDays(5), null);
+        MedicalRecord m = followUp(hospital, patient, clock.today().minusDays(5), null);
         assertThat(dueList()).contains("OVERDUE");
 
-        LocalDate newDate = LocalDate.now().plusDays(7);
+        LocalDate newDate = clock.today().plusDays(7);
         assertThat(reschedule(m.getId(), newDate, receptionToken).getStatusCode().value()).isEqualTo(200);
 
         MedicalRecord after = records.findById(m.getId()).orElseThrow();
@@ -212,33 +224,33 @@ class FollowUpLifecycleTest {
 
     @Test
     void aFollowUpCanBeMovedToToday() {
-        MedicalRecord m = followUp(hospital, patient, LocalDate.now().plusDays(9), null);
-        assertThat(reschedule(m.getId(), LocalDate.now(), doctorToken).getStatusCode().value()).isEqualTo(200);
+        MedicalRecord m = followUp(hospital, patient, clock.today().plusDays(9), null);
+        assertThat(reschedule(m.getId(), clock.today(), doctorToken).getStatusCode().value()).isEqualTo(200);
         assertThat(get("/hospital/follow-ups?timing=DUE_TODAY", receptionToken).getBody())
                 .contains("Lifecycle Patient");
     }
 
     @Test
     void aFutureFollowUpCanBeMovedToAnotherFutureDate() {
-        MedicalRecord m = followUp(hospital, patient, LocalDate.now().plusDays(3), null);
-        LocalDate later = LocalDate.now().plusDays(20);
+        MedicalRecord m = followUp(hospital, patient, clock.today().plusDays(3), null);
+        LocalDate later = clock.today().plusDays(20);
         assertThat(reschedule(m.getId(), later, receptionToken).getStatusCode().value()).isEqualTo(200);
         assertThat(records.findById(m.getId()).orElseThrow().getFollowUpDate()).isEqualTo(later);
     }
 
     @Test
     void aFollowUpCannotBeMovedIntoThePast() {
-        MedicalRecord m = followUp(hospital, patient, LocalDate.now(), null);
-        assertThat(reschedule(m.getId(), LocalDate.now().minusDays(1), receptionToken)
+        MedicalRecord m = followUp(hospital, patient, clock.today(), null);
+        assertThat(reschedule(m.getId(), clock.today().minusDays(1), receptionToken)
                 .getStatusCode().value()).isEqualTo(400);
-        assertThat(records.findById(m.getId()).orElseThrow().getFollowUpDate()).isEqualTo(LocalDate.now());
+        assertThat(records.findById(m.getId()).orElseThrow().getFollowUpDate()).isEqualTo(clock.today());
     }
 
     @Test
     void reschedulingCanUpdateTheInstructionsAndLeavesTheDiagnosisAlone() {
-        MedicalRecord m = followUp(hospital, patient, LocalDate.now(), null);
+        MedicalRecord m = followUp(hospital, patient, clock.today(), null);
         assertThat(post("/hospital/follow-ups/" + m.getId() + "/reschedule", doctorToken,
-                "{\"newFollowUpDate\":\"" + LocalDate.now().plusDays(4) + "\""
+                "{\"newFollowUpDate\":\"" + clock.today().plusDays(4) + "\""
                         + ",\"instructions\":\"Fasting bloods first\"}")
                 .getStatusCode().value()).isEqualTo(200);
 
@@ -249,8 +261,8 @@ class FollowUpLifecycleTest {
 
     @Test
     void reschedulingWithoutInstructionsKeepsTheOriginalOnes() {
-        MedicalRecord m = followUp(hospital, patient, LocalDate.now(), null);
-        reschedule(m.getId(), LocalDate.now().plusDays(2), receptionToken);
+        MedicalRecord m = followUp(hospital, patient, clock.today(), null);
+        reschedule(m.getId(), clock.today().plusDays(2), receptionToken);
         assertThat(records.findById(m.getId()).orElseThrow().getFollowUpInstructions())
                 .isEqualTo("Bring the BP diary");
     }
@@ -258,8 +270,8 @@ class FollowUpLifecycleTest {
     /** The row holds only the current date, so the move itself has to live in the audit trail. */
     @Test
     void aRescheduleRecordsBothDates() {
-        LocalDate from = LocalDate.now();
-        LocalDate to = LocalDate.now().plusDays(6);
+        LocalDate from = clock.today();
+        LocalDate to = clock.today().plusDays(6);
         MedicalRecord m = followUp(hospital, patient, from, null);
         reschedule(m.getId(), to, receptionToken);
 
@@ -282,7 +294,7 @@ class FollowUpLifecycleTest {
 
     @Test
     void completingClosesTheFollowUpWithoutCreatingAVisit() {
-        MedicalRecord m = followUp(hospital, patient, LocalDate.now(), null);
+        MedicalRecord m = followUp(hospital, patient, clock.today(), null);
         long opdsBefore = opdsFor(patient), queuedBefore = queueEntries.count();
         long billsBefore = billings.findAll().stream()
                 .filter(b -> hospital.getId().equals(b.getHospitalId())).count();
@@ -291,7 +303,7 @@ class FollowUpLifecycleTest {
 
         MedicalRecord after = records.findById(m.getId()).orElseThrow();
         assertThat(after.getFollowUpStatus()).isEqualTo(MedicalRecord.FOLLOW_UP_COMPLETED);
-        assertThat(after.getFollowUpDate()).as("the clinical record is preserved").isEqualTo(LocalDate.now());
+        assertThat(after.getFollowUpDate()).as("the clinical record is preserved").isEqualTo(clock.today());
         assertThat(after.getFollowUpInstructions()).isEqualTo("Bring the BP diary");
         assertThat(dueList()).doesNotContain("Lifecycle Patient");
         assertNothingClinicalHappened(opdsBefore, queuedBefore, billsBefore);
@@ -299,7 +311,7 @@ class FollowUpLifecycleTest {
 
     @Test
     void cancellingClosesTheFollowUpWithoutCreatingAVisit() {
-        MedicalRecord m = followUp(hospital, patient, LocalDate.now(), null);
+        MedicalRecord m = followUp(hospital, patient, clock.today(), null);
         long opdsBefore = opdsFor(patient), queuedBefore = queueEntries.count();
         long billsBefore = billings.findAll().stream()
                 .filter(b -> hospital.getId().equals(b.getHospitalId())).count();
@@ -308,14 +320,14 @@ class FollowUpLifecycleTest {
 
         MedicalRecord after = records.findById(m.getId()).orElseThrow();
         assertThat(after.getFollowUpStatus()).isEqualTo(MedicalRecord.FOLLOW_UP_CANCELLED);
-        assertThat(after.getFollowUpDate()).isEqualTo(LocalDate.now());
+        assertThat(after.getFollowUpDate()).isEqualTo(clock.today());
         assertThat(dueList()).doesNotContain("Lifecycle Patient");
         assertNothingClinicalHappened(opdsBefore, queuedBefore, billsBefore);
     }
 
     @Test
     void cancellingRequiresAReason() {
-        MedicalRecord m = followUp(hospital, patient, LocalDate.now(), null);
+        MedicalRecord m = followUp(hospital, patient, clock.today(), null);
         assertThat(post("/hospital/follow-ups/" + m.getId() + "/cancel", receptionToken, "{}")
                 .getStatusCode().value()).isEqualTo(400);
         assertThat(post("/hospital/follow-ups/" + m.getId() + "/cancel", receptionToken,
@@ -325,7 +337,7 @@ class FollowUpLifecycleTest {
 
     @Test
     void aCancellationReasonIsRecorded() {
-        MedicalRecord m = followUp(hospital, patient, LocalDate.now(), null);
+        MedicalRecord m = followUp(hospital, patient, clock.today(), null);
         cancel(m.getId(), receptionToken);
         assertThat(auditLogs.findAll().stream()
                 .filter(a -> "FOLLOW_UP_CANCELLED".equals(a.getAction()))
@@ -337,10 +349,10 @@ class FollowUpLifecycleTest {
 
     @Test
     void anActionedFollowUpCannotBeChanged() {
-        MedicalRecord m = followUp(hospital, patient, LocalDate.now(), null);
+        MedicalRecord m = followUp(hospital, patient, clock.today(), null);
         assertThat(arrive(m.getId(), receptionToken).getStatusCode().value()).isEqualTo(200);
 
-        assertThat(reschedule(m.getId(), LocalDate.now().plusDays(3), receptionToken)
+        assertThat(reschedule(m.getId(), clock.today().plusDays(3), receptionToken)
                 .getStatusCode().value()).isEqualTo(409);
         assertThat(complete(m.getId(), doctorToken).getStatusCode().value()).isEqualTo(409);
         assertThat(cancel(m.getId(), receptionToken).getStatusCode().value()).isEqualTo(409);
@@ -352,9 +364,9 @@ class FollowUpLifecycleTest {
 
     @Test
     void aCompletedFollowUpIsNotReopened() {
-        MedicalRecord m = followUp(hospital, patient, LocalDate.now(), MedicalRecord.FOLLOW_UP_COMPLETED);
+        MedicalRecord m = followUp(hospital, patient, clock.today(), MedicalRecord.FOLLOW_UP_COMPLETED);
         assertThat(arrive(m.getId(), receptionToken).getStatusCode().value()).isEqualTo(409);
-        assertThat(reschedule(m.getId(), LocalDate.now().plusDays(2), receptionToken)
+        assertThat(reschedule(m.getId(), clock.today().plusDays(2), receptionToken)
                 .getStatusCode().value()).isEqualTo(409);
         assertThat(cancel(m.getId(), receptionToken).getStatusCode().value()).isEqualTo(409);
         assertThat(opdsFor(patient)).isZero();
@@ -362,9 +374,9 @@ class FollowUpLifecycleTest {
 
     @Test
     void aCancelledFollowUpIsNotReopened() {
-        MedicalRecord m = followUp(hospital, patient, LocalDate.now(), MedicalRecord.FOLLOW_UP_CANCELLED);
+        MedicalRecord m = followUp(hospital, patient, clock.today(), MedicalRecord.FOLLOW_UP_CANCELLED);
         assertThat(arrive(m.getId(), receptionToken).getStatusCode().value()).isEqualTo(409);
-        assertThat(reschedule(m.getId(), LocalDate.now().plusDays(2), receptionToken)
+        assertThat(reschedule(m.getId(), clock.today().plusDays(2), receptionToken)
                 .getStatusCode().value()).isEqualTo(409);
         assertThat(complete(m.getId(), doctorToken).getStatusCode().value()).isEqualTo(409);
         assertThat(opdsFor(patient)).isZero();
@@ -374,12 +386,12 @@ class FollowUpLifecycleTest {
 
     @Test
     void receptionMayRescheduleAndCancelButNotCompleteClinically() {
-        MedicalRecord a = followUp(hospital, patient, LocalDate.now(), null);
-        assertThat(reschedule(a.getId(), LocalDate.now().plusDays(1), receptionToken)
+        MedicalRecord a = followUp(hospital, patient, clock.today(), null);
+        assertThat(reschedule(a.getId(), clock.today().plusDays(1), receptionToken)
                 .getStatusCode().value()).isEqualTo(200);
         assertThat(cancel(a.getId(), receptionToken).getStatusCode().value()).isEqualTo(200);
 
-        MedicalRecord b = followUp(hospital, patientIn(hospital, "Other"), LocalDate.now(), null);
+        MedicalRecord b = followUp(hospital, patientIn(hospital, "Other"), clock.today(), null);
         assertThat(complete(b.getId(), receptionToken).getStatusCode().value())
                 .as("deciding a patient need not be seen is a clinical call").isEqualTo(403);
     }
@@ -387,15 +399,15 @@ class FollowUpLifecycleTest {
     @Test
     void doctorsAndAdminsMayCompleteAFollowUp() {
         for (String token : new String[]{doctorToken, adminToken}) {
-            MedicalRecord m = followUp(hospital, patientIn(hospital, "P" + uniq()), LocalDate.now(), null);
+            MedicalRecord m = followUp(hospital, patientIn(hospital, "P" + uniq()), clock.today(), null);
             assertThat(complete(m.getId(), token).getStatusCode().value()).isEqualTo(200);
         }
     }
 
     @Test
     void aNurseHasNoFollowUpWriteAuthority() {
-        MedicalRecord m = followUp(hospital, patient, LocalDate.now(), null);
-        assertThat(reschedule(m.getId(), LocalDate.now().plusDays(1), nurseToken).getStatusCode().value()).isEqualTo(403);
+        MedicalRecord m = followUp(hospital, patient, clock.today(), null);
+        assertThat(reschedule(m.getId(), clock.today().plusDays(1), nurseToken).getStatusCode().value()).isEqualTo(403);
         assertThat(complete(m.getId(), nurseToken).getStatusCode().value()).isEqualTo(403);
         assertThat(cancel(m.getId(), nurseToken).getStatusCode().value()).isEqualTo(403);
         assertThat(records.findById(m.getId()).orElseThrow().getFollowUpStatus()).isNull();
@@ -407,20 +419,20 @@ class FollowUpLifecycleTest {
     void anotherFacilitysFollowUpCannotBeTouched() {
         Hospital other = tenant("Bravo");
         Patient theirPatient = patientIn(other, "Bravo Patient");
-        MedicalRecord theirs = followUp(other, theirPatient, LocalDate.now(), null);
+        MedicalRecord theirs = followUp(other, theirPatient, clock.today(), null);
         // Their own doctor: the tenant check must key on the record, not on anything borrowed
         // from our facility.
         theirs.setDoctorId(doctorIn(other, "doc." + uniq() + "@bravo.test").getId());
         records.save(theirs);
 
-        assertThat(reschedule(theirs.getId(), LocalDate.now().plusDays(1), receptionToken)
+        assertThat(reschedule(theirs.getId(), clock.today().plusDays(1), receptionToken)
                 .getStatusCode().value()).isEqualTo(404);
         assertThat(complete(theirs.getId(), doctorToken).getStatusCode().value()).isEqualTo(404);
         assertThat(cancel(theirs.getId(), receptionToken).getStatusCode().value()).isEqualTo(404);
 
         MedicalRecord after = records.findById(theirs.getId()).orElseThrow();
         assertThat(after.getFollowUpStatus()).isNull();
-        assertThat(after.getFollowUpDate()).isEqualTo(LocalDate.now());
+        assertThat(after.getFollowUpDate()).isEqualTo(clock.today());
     }
 
     // ── races between incompatible transitions ───────────────────────────────
@@ -429,7 +441,7 @@ class FollowUpLifecycleTest {
     private void race(String first, String second, java.util.function.BiFunction<Long, String, ResponseEntity<String>> a,
                       java.util.function.BiFunction<Long, String, ResponseEntity<String>> b,
                       String tokenA, String tokenB) throws Exception {
-        MedicalRecord m = followUp(hospital, patient, LocalDate.now(), null);
+        MedicalRecord m = followUp(hospital, patient, clock.today(), null);
         long opdsBefore = opdsFor(patient);
 
         ExecutorService pool = Executors.newFixedThreadPool(2);
@@ -481,7 +493,7 @@ class FollowUpLifecycleTest {
     void arriveRacingReschedule() throws Exception {
         race("arrive", "reschedule",
                 this::arrive,
-                (id, token) -> reschedule(id, LocalDate.now().plusDays(5), token),
+                (id, token) -> reschedule(id, clock.today().plusDays(5), token),
                 receptionToken, receptionToken);
     }
 
@@ -501,9 +513,9 @@ class FollowUpLifecycleTest {
      */
     @Test
     void twoConcurrentReschedulesLeaveOneCoherentDate() throws Exception {
-        MedicalRecord m = followUp(hospital, patient, LocalDate.now(), null);
-        LocalDate d1 = LocalDate.now().plusDays(4);
-        LocalDate d2 = LocalDate.now().plusDays(9);
+        MedicalRecord m = followUp(hospital, patient, clock.today(), null);
+        LocalDate d1 = clock.today().plusDays(4);
+        LocalDate d2 = clock.today().plusDays(9);
 
         ExecutorService pool = Executors.newFixedThreadPool(2);
         List<Callable<Integer>> jobs = List.of(
@@ -529,12 +541,12 @@ class FollowUpLifecycleTest {
      */
     @Test
     void aFollowUpMovesThroughItsLifecycleAndLeavesTheWorklistWhenClosed() {
-        MedicalRecord m = followUp(hospital, patient, LocalDate.now().minusDays(2), null);
+        MedicalRecord m = followUp(hospital, patient, clock.today().minusDays(2), null);
 
         assertThat(get("/hospital/follow-ups?timing=OVERDUE", receptionToken).getBody())
                 .contains("Lifecycle Patient");
 
-        LocalDate moved = LocalDate.now().plusDays(10);
+        LocalDate moved = clock.today().plusDays(10);
         assertThat(reschedule(m.getId(), moved, receptionToken).getStatusCode().value()).isEqualTo(200);
 
         assertThat(get("/hospital/follow-ups?timing=OVERDUE", receptionToken).getBody())
@@ -544,7 +556,7 @@ class FollowUpLifecycleTest {
 
         // A second patient is closed off instead, and only that one disappears.
         Patient other = patientIn(hospital, "Closed Patient");
-        MedicalRecord closed = followUp(hospital, other, LocalDate.now(), null);
+        MedicalRecord closed = followUp(hospital, other, clock.today(), null);
         assertThat(complete(closed.getId(), doctorToken).getStatusCode().value()).isEqualTo(200);
 
         String body = get("/hospital/follow-ups", receptionToken).getBody();
@@ -573,7 +585,7 @@ class FollowUpLifecycleTest {
         assertThat(post("/hospital/doctors/consultation", doctorToken,
                 "{\"opdId\":" + opdId + ",\"patientId\":" + patient.getId()
                         + ",\"diagnosis\":\"Hypertension\""
-                        + ",\"followUpDate\":\"" + LocalDate.now() + "\""
+                        + ",\"followUpDate\":\"" + clock.today() + "\""
                         + ",\"followUpInstructions\":\"Bring the BP diary\"}")
                 .getStatusCode().value()).isEqualTo(200);
 

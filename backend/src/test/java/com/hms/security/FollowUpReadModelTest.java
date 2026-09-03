@@ -12,6 +12,7 @@ import com.hms.repository.OpdRepository;
 import com.hms.repository.PatientRepository;
 import com.hms.repository.QueueEntryRepository;
 import com.hms.repository.UserRepository;
+import com.hms.service.hospital.BusinessClock;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -53,6 +54,17 @@ class FollowUpReadModelTest {
 
     @Autowired TestRestTemplate rest;
     @Autowired JwtUtil jwtUtil;
+    /**
+     * The same "today" the service uses.
+     *
+     * <p>A follow-up is due, overdue or upcoming relative to the business date, which
+     * BusinessClock pins to the deployment's timezone. Asking the JVM for the date instead
+     * answers in whatever zone the runner happens to use, so on a UTC machine after 18:30 these
+     * tests were asserting against yesterday: due-today lists came back empty and daysOverdue
+     * read one too high. Asking the application what day it is keeps them honest at any hour,
+     * in any zone.
+     */
+    @Autowired BusinessClock clock;
     @Autowired HospitalRepository hospitals;
     @Autowired UserRepository users;
     @Autowired DoctorRepository doctors;
@@ -170,7 +182,7 @@ class FollowUpReadModelTest {
 
     @Test
     void aFollowUpDueTodayIsListedAsDueToday() {
-        record(hospital, patient, doctor, LocalDate.now(), null, "Review blood pressure");
+        record(hospital, patient, doctor, clock.today(), null, "Review blood pressure");
         assertThat(followUps("DUE_TODAY"))
                 .contains("FollowUp Patient")
                 .contains("DUE_TODAY")
@@ -179,7 +191,7 @@ class FollowUpReadModelTest {
 
     @Test
     void aPastFollowUpIsOverdueRatherThanForgotten() {
-        record(hospital, patient, doctor, LocalDate.now().minusDays(3), null, null);
+        record(hospital, patient, doctor, clock.today().minusDays(3), null, null);
         String body = followUps("OVERDUE");
         assertThat(body).contains("FollowUp Patient").contains("OVERDUE");
         assertThat(body).as("and it is reported as three days late").contains("\"daysOverdue\":3");
@@ -188,13 +200,13 @@ class FollowUpReadModelTest {
     /** The old code matched today exactly, so a follow-up nobody looked at that day vanished. */
     @Test
     void anOverdueFollowUpIsStillThereManyDaysLater() {
-        record(hospital, patient, doctor, LocalDate.now().minusDays(45), null, null);
+        record(hospital, patient, doctor, clock.today().minusDays(45), null, null);
         assertThat(followUps("OVERDUE")).contains("FollowUp Patient");
     }
 
     @Test
     void aFutureFollowUpIsUpcomingAndNotDue() {
-        record(hospital, patient, doctor, LocalDate.now().plusDays(5), null, null);
+        record(hospital, patient, doctor, clock.today().plusDays(5), null, null);
         assertThat(followUps("UPCOMING")).contains("FollowUp Patient");
         assertThat(followUps("DUE_TODAY")).doesNotContain("FollowUp Patient");
         assertThat(followUps("OVERDUE")).doesNotContain("FollowUp Patient");
@@ -211,9 +223,9 @@ class FollowUpReadModelTest {
         Patient actioned = patientIn(hospital, "Actioned Patient");
         Patient completed = patientIn(hospital, "Completed Patient");
         Patient cancelled = patientIn(hospital, "Cancelled Patient");
-        record(hospital, actioned, doctor, LocalDate.now(), MedicalRecord.FOLLOW_UP_ACTIONED, null);
-        record(hospital, completed, doctor, LocalDate.now(), MedicalRecord.FOLLOW_UP_COMPLETED, null);
-        record(hospital, cancelled, doctor, LocalDate.now(), MedicalRecord.FOLLOW_UP_CANCELLED, null);
+        record(hospital, actioned, doctor, clock.today(), MedicalRecord.FOLLOW_UP_ACTIONED, null);
+        record(hospital, completed, doctor, clock.today(), MedicalRecord.FOLLOW_UP_COMPLETED, null);
+        record(hospital, cancelled, doctor, clock.today(), MedicalRecord.FOLLOW_UP_CANCELLED, null);
 
         String body = followUps(null);
         assertThat(body)
@@ -225,7 +237,7 @@ class FollowUpReadModelTest {
     /** Consultations written before the status column existed have NULL and are still open. */
     @Test
     void historicalRowsWithNoStatusRemainActionable() {
-        record(hospital, patient, doctor, LocalDate.now().minusDays(2), null, null);
+        record(hospital, patient, doctor, clock.today().minusDays(2), null, null);
         assertThat(followUps("OVERDUE"))
                 .as("a NULL status must read as open, not as dealt with")
                 .contains("FollowUp Patient");
@@ -241,7 +253,7 @@ class FollowUpReadModelTest {
 
     @Test
     void readingTheFollowUpListCreatesNothing() {
-        record(hospital, patient, doctor, LocalDate.now(), null, null);
+        record(hospital, patient, doctor, clock.today(), null, null);
         long opdsBefore = opdCount();
         long queuedBefore = queueEntries.count();
 
@@ -259,7 +271,7 @@ class FollowUpReadModelTest {
      */
     @Test
     void openingTheOpdQueueNoLongerCreatesFollowUpEncounters() {
-        record(hospital, patient, doctor, LocalDate.now(), null, null);
+        record(hospital, patient, doctor, clock.today(), null, null);
         long opdsBefore = opdCount();
         long queuedBefore = queueEntries.count();
 
@@ -277,7 +289,7 @@ class FollowUpReadModelTest {
     /** Two dashboards open at once used to produce two encounters for one patient. */
     @Test
     void concurrentQueueAndFollowUpReadsCreateNothing() throws Exception {
-        record(hospital, patient, doctor, LocalDate.now(), null, null);
+        record(hospital, patient, doctor, clock.today(), null, null);
         long opdsBefore = opdCount();
         long queuedBefore = queueEntries.count();
 
@@ -308,9 +320,9 @@ class FollowUpReadModelTest {
         Hospital other = tenant("Bravo");
         Doctor otherDoctor = doctorIn(other, "doc." + uniq() + "@bravo.test");
         Patient otherPatient = patientIn(other, "Bravo Patient");
-        record(other, otherPatient, otherDoctor, LocalDate.now(), null, null);
-        record(other, otherPatient, otherDoctor, LocalDate.now().minusDays(2), null, null);
-        record(other, otherPatient, otherDoctor, LocalDate.now().plusDays(2), null, null);
+        record(other, otherPatient, otherDoctor, clock.today(), null, null);
+        record(other, otherPatient, otherDoctor, clock.today().minusDays(2), null, null);
+        record(other, otherPatient, otherDoctor, clock.today().plusDays(2), null, null);
 
         for (String bucket : new String[]{"DUE_TODAY", "OVERDUE", "UPCOMING"}) {
             assertThat(followUps(bucket))
@@ -326,8 +338,8 @@ class FollowUpReadModelTest {
     void aDoctorAskingForTheirOwnSeesOnlyTheirOwn() {
         Doctor colleague = doctorIn(hospital, "other." + uniq() + "@fu.test");
         Patient theirs = patientIn(hospital, "Colleague Patient");
-        record(hospital, patient, doctor, LocalDate.now(), null, null);
-        record(hospital, theirs, colleague, LocalDate.now(), null, null);
+        record(hospital, patient, doctor, clock.today(), null, null);
+        record(hospital, theirs, colleague, clock.today(), null, null);
 
         ResponseEntity<String> mine = get("/hospital/follow-ups?mine=true", doctorToken);
         assertThat(mine.getStatusCode().value()).isEqualTo(200);
@@ -356,7 +368,7 @@ class FollowUpReadModelTest {
         ResponseEntity<String> res = post("/hospital/doctors/consultation", doctorToken,
                 "{\"opdId\":" + opdId + ",\"patientId\":" + patient.getId()
                         + ",\"diagnosis\":\"Hypertension\""
-                        + ",\"followUpDate\":\"" + LocalDate.now().plusDays(7) + "\""
+                        + ",\"followUpDate\":\"" + clock.today().plusDays(7) + "\""
                         + ",\"followUpInstructions\":\"Bring the BP diary\"}");
         assertThat(res.getStatusCode().value()).as("%s", res.getBody()).isEqualTo(200);
 
@@ -364,7 +376,7 @@ class FollowUpReadModelTest {
                 .filter(m -> hospital.getId().equals(m.getHospitalId()))
                 .filter(m -> m.getFollowUpDate() != null)
                 .findFirst().orElseThrow();
-        assertThat(saved.getFollowUpDate()).isEqualTo(LocalDate.now().plusDays(7));
+        assertThat(saved.getFollowUpDate()).isEqualTo(clock.today().plusDays(7));
         assertThat(saved.getFollowUpInstructions()).isEqualTo("Bring the BP diary");
         assertThat(saved.getFollowUpStatus())
                 .as("a new follow-up starts open").isEqualTo(MedicalRecord.FOLLOW_UP_OPEN);
@@ -384,7 +396,7 @@ class FollowUpReadModelTest {
         ResponseEntity<String> res = post("/hospital/doctors/consultation", doctorToken,
                 "{\"opdId\":" + opdId + ",\"patientId\":" + patient.getId()
                         + ",\"diagnosis\":\"Hypertension\""
-                        + ",\"followUpDate\":\"" + LocalDate.now() + "\"}");
+                        + ",\"followUpDate\":\"" + clock.today() + "\"}");
         assertThat(res.getStatusCode().value()).as("%s", res.getBody()).isEqualTo(200);
 
         assertThat(followUps("DUE_TODAY")).contains("FollowUp Patient");

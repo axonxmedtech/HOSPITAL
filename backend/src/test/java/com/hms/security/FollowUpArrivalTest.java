@@ -14,6 +14,7 @@ import com.hms.repository.OpdRepository;
 import com.hms.repository.PatientRepository;
 import com.hms.repository.QueueEntryRepository;
 import com.hms.repository.UserRepository;
+import com.hms.service.hospital.BusinessClock;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,6 +57,17 @@ class FollowUpArrivalTest {
 
     @Autowired TestRestTemplate rest;
     @Autowired JwtUtil jwtUtil;
+    /**
+     * The same "today" the service uses.
+     *
+     * <p>A follow-up is due, overdue or upcoming relative to the business date, which
+     * BusinessClock pins to the deployment's timezone. Asking the JVM for the date instead
+     * answers in whatever zone the runner happens to use, so on a UTC machine after 18:30 these
+     * tests were asserting against yesterday: due-today lists came back empty and daysOverdue
+     * read one too high. Asking the application what day it is keeps them honest at any hour,
+     * in any zone.
+     */
+    @Autowired BusinessClock clock;
     @Autowired HospitalRepository hospitals;
     @Autowired UserRepository users;
     @Autowired DoctorRepository doctors;
@@ -183,7 +195,7 @@ class FollowUpArrivalTest {
 
     @Test
     void arrivingOnTheDueDateCreatesTheFollowUpVisit() {
-        MedicalRecord m = followUp(hospital, patient, doctor, LocalDate.now(), null);
+        MedicalRecord m = followUp(hospital, patient, doctor, clock.today(), null);
 
         ResponseEntity<String> res = arrive(m.getId(), receptionToken);
         assertThat(res.getStatusCode().value()).as("%s", res.getBody()).isEqualTo(200);
@@ -199,14 +211,14 @@ class FollowUpArrivalTest {
         assertThat(after.getActionedByUserId()).isNotNull();
 
         // The clinical history of the original consultation is untouched.
-        assertThat(after.getFollowUpDate()).isEqualTo(LocalDate.now());
+        assertThat(after.getFollowUpDate()).isEqualTo(clock.today());
         assertThat(after.getFollowUpInstructions()).isEqualTo("Bring the BP diary");
         assertThat(after.getDiagnosis()).isEqualTo("Hypertension");
     }
 
     @Test
     void aLatePatientCanStillBeSeen() {
-        MedicalRecord m = followUp(hospital, patient, doctor, LocalDate.now().minusDays(10), null);
+        MedicalRecord m = followUp(hospital, patient, doctor, clock.today().minusDays(10), null);
         assertThat(arrive(m.getId(), receptionToken).getStatusCode().value()).isEqualTo(200);
         assertThat(opdsForPatient(patient)).hasSize(1);
     }
@@ -214,7 +226,7 @@ class FollowUpArrivalTest {
     /** The visit must be reachable from the queues reception and the doctor actually read. */
     @Test
     void theNewVisitAppearsInTheQueues() {
-        MedicalRecord m = followUp(hospital, patient, doctor, LocalDate.now(), null);
+        MedicalRecord m = followUp(hospital, patient, doctor, clock.today(), null);
         assertThat(arrive(m.getId(), receptionToken).getStatusCode().value()).isEqualTo(200);
 
         assertThat(get("/hospital/opd/queue", receptionToken).getBody())
@@ -225,7 +237,7 @@ class FollowUpArrivalTest {
 
     @Test
     void anActionedFollowUpLeavesTheDueList() {
-        MedicalRecord m = followUp(hospital, patient, doctor, LocalDate.now(), null);
+        MedicalRecord m = followUp(hospital, patient, doctor, clock.today(), null);
         assertThat(get("/hospital/follow-ups", receptionToken).getBody()).contains("Returning Patient");
 
         arrive(m.getId(), receptionToken);
@@ -239,7 +251,7 @@ class FollowUpArrivalTest {
 
     @Test
     void anEarlyArrivalIsRefused() {
-        MedicalRecord m = followUp(hospital, patient, doctor, LocalDate.now().plusDays(3), null);
+        MedicalRecord m = followUp(hospital, patient, doctor, clock.today().plusDays(3), null);
         ResponseEntity<String> res = arrive(m.getId(), receptionToken);
         assertThat(res.getStatusCode().value()).isEqualTo(400);
         assertThat(opdsForPatient(patient)).isEmpty();
@@ -257,7 +269,7 @@ class FollowUpArrivalTest {
         for (String status : new String[]{MedicalRecord.FOLLOW_UP_COMPLETED,
                                           MedicalRecord.FOLLOW_UP_CANCELLED}) {
             Patient p = patientIn(hospital, "Closed " + status);
-            MedicalRecord m = followUp(hospital, p, doctor, LocalDate.now(), status);
+            MedicalRecord m = followUp(hospital, p, doctor, clock.today(), status);
             assertThat(arrive(m.getId(), receptionToken).getStatusCode().value())
                     .as("%s must not be revived", status).isEqualTo(409);
             assertThat(opdsForPatient(p)).isEmpty();
@@ -266,7 +278,7 @@ class FollowUpArrivalTest {
 
     @Test
     void anAlreadyActionedFollowUpCannotProduceASecondVisit() {
-        MedicalRecord m = followUp(hospital, patient, doctor, LocalDate.now(), null);
+        MedicalRecord m = followUp(hospital, patient, doctor, clock.today(), null);
         assertThat(arrive(m.getId(), receptionToken).getStatusCode().value()).isEqualTo(200);
 
         assertThat(arrive(m.getId(), receptionToken).getStatusCode().value()).isEqualTo(409);
@@ -284,7 +296,7 @@ class FollowUpArrivalTest {
 
     @Test
     void aDoubleClickProducesOneVisit() {
-        MedicalRecord m = followUp(hospital, patient, doctor, LocalDate.now(), null);
+        MedicalRecord m = followUp(hospital, patient, doctor, clock.today(), null);
         long billsBefore = billsFor(hospital);
 
         int first = arrive(m.getId(), receptionToken).getStatusCode().value();
@@ -296,7 +308,7 @@ class FollowUpArrivalTest {
     }
 
     private void concurrentArrivals(int threads, String... tokens) throws Exception {
-        MedicalRecord m = followUp(hospital, patient, doctor, LocalDate.now(), null);
+        MedicalRecord m = followUp(hospital, patient, doctor, clock.today(), null);
         long billsBefore = billsFor(hospital);
 
         ExecutorService pool = Executors.newFixedThreadPool(threads);
@@ -340,7 +352,7 @@ class FollowUpArrivalTest {
     /** A client that retries after a timeout must not book the patient in twice. */
     @Test
     void aRetryAfterTheFirstSucceededIsRefused() {
-        MedicalRecord m = followUp(hospital, patient, doctor, LocalDate.now(), null);
+        MedicalRecord m = followUp(hospital, patient, doctor, clock.today(), null);
         long billsBefore = billsFor(hospital);
 
         assertThat(arrive(m.getId(), receptionToken).getStatusCode().value()).isEqualTo(200);
@@ -356,14 +368,14 @@ class FollowUpArrivalTest {
     void theRolesThatCanRegisterAVisitCanRecordAnArrival() {
         for (String token : new String[]{receptionToken, doctorToken, adminToken}) {
             Patient p = patientIn(hospital, "Allowed " + uniq());
-            MedicalRecord m = followUp(hospital, p, doctor, LocalDate.now(), null);
+            MedicalRecord m = followUp(hospital, p, doctor, clock.today(), null);
             assertThat(arrive(m.getId(), token).getStatusCode().value()).isEqualTo(200);
         }
     }
 
     @Test
     void aNurseCannotRecordAnArrival() {
-        MedicalRecord m = followUp(hospital, patient, doctor, LocalDate.now(), null);
+        MedicalRecord m = followUp(hospital, patient, doctor, clock.today(), null);
         assertThat(arrive(m.getId(), nurseToken).getStatusCode().value()).isEqualTo(403);
         assertThat(opdsForPatient(patient)).isEmpty();
     }
@@ -373,7 +385,7 @@ class FollowUpArrivalTest {
         Hospital other = tenant("Bravo");
         Doctor otherDoctor = doctorIn(other, "doc." + uniq() + "@bravo.test");
         Patient otherPatient = patientIn(other, "Bravo Patient");
-        MedicalRecord theirs = followUp(other, otherPatient, otherDoctor, LocalDate.now(), null);
+        MedicalRecord theirs = followUp(other, otherPatient, otherDoctor, clock.today(), null);
 
         assertThat(arrive(theirs.getId(), receptionToken).getStatusCode().value())
                 .as("another facility's follow-up must be indistinguishable from a missing one")
@@ -395,7 +407,7 @@ class FollowUpArrivalTest {
      */
     @Test
     void aFailedArrivalLeavesNothingBehind() {
-        MedicalRecord m = followUp(hospital, patient, doctor, LocalDate.now(), null);
+        MedicalRecord m = followUp(hospital, patient, doctor, clock.today(), null);
         patient.setIsActive(false);
         patients.save(patient);
 
