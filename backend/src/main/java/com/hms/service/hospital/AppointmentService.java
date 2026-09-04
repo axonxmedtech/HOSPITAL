@@ -56,9 +56,6 @@ public class AppointmentService {
     private DoctorRepository doctorRepository;
 
     @Autowired
-    private com.hms.repository.HospitalRepository hospitalRepository;
-
-    @Autowired
     private SecurityContextHelper securityHelper;
 
     @Autowired
@@ -85,8 +82,9 @@ public class AppointmentService {
         // Get hospital_id from security context (multi-tenant isolation)
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
-        // Enforce OPD Module Access (Real-time)
-        validateOpdAccess(hospitalId);
+        // AppointmentController enforces APPOINTMENTS. The entitlement model guarantees that
+        // APPOINTMENTS includes OPD, avoiding a duplicate service-side module check and its
+        // misleading 400 response for a plan authorization failure.
 
         if (hospitalId == null) {
             throw new UnauthorizedException("Hospital ID not found in context");
@@ -878,15 +876,4 @@ public class AppointmentService {
 
         return page;
     }
-
-    private void validateOpdAccess(Long hospitalId) {
-        if (hospitalId == null)
-            return;
-        com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
-                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
-        if (hospital.getModules() == null || !hospital.getModules().contains("OPD")) {
-            throw new IllegalArgumentException("OPD module is disabled for your hospital.");
-        }
-    }
 }
-

@@ -221,7 +221,14 @@ const PrescriptionsView = ({ onNavigate }) => {
             className="px-3 py-2 border border-gray-300 rounded text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 bg-white font-medium text-gray-700 transition-all cursor-pointer"
           >
             <option value="ALL">All Visit Types</option>
-            <option value="APPOINTMENT">Appointments Only</option>
+            {/* Offered only where appointments exist. prescriptionSource is derived from
+                medical_records.appointment_id, so for a walk-in-only tenant this option can
+                never match anything and every prescription reads as "OPD". Historical rows at a
+                tenant that has since dropped the module still carry APPOINTMENT and remain
+                visible under "All Visit Types". */}
+            {(user?.modules || []).includes('APPOINTMENTS') && (
+              <option value="APPOINTMENT">Appointments Only</option>
+            )}
             <option value="OPD">OPD Direct Only</option>
             <option value="IPD">IPD Admissions Only</option>
           </select>

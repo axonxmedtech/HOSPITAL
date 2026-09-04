@@ -559,6 +559,18 @@ const hospitalService = {
   /**
    * Get Consultation Details (Prescription)
    */
+  /**
+   * Consultation details for a walk-in OPD case, the counterpart of getConsultationDetails.
+   *
+   * Reception could previously reach a consultation only through its appointment, so a walk-in
+   * visit had no per-case prescription view at all. Same {medicalRecord, prescriptions} shape,
+   * same backend repositories — only the key differs.
+   */
+  getConsultationDetailsByOpd: async (opdId) => {
+    const response = await apiClient.get(`/hospital/doctors/consultation/opd/${opdId}`);
+    return response.data;
+  },
+
   getConsultationDetails: async (appointmentId) => {
     const response = await apiClient.get(`/hospital/doctors/consultation/${appointmentId}`);
     return response.data;

@@ -182,7 +182,12 @@ const IpdDetails = () => {
     } else if (effectiveRole === 'DOCTOR') {
       return [
         { id: 'overview', label: 'Overview' },
-        { id: 'appointments', label: 'My Appointments' },
+        // Gated like every other optional capability. The HOSPITAL_ADMIN branch above already
+        // filters on requiredModule; this list did not, so a doctor at a walk-in-only hospital
+        // was offered "My Appointments" here and navigated to a tab their own dashboard hides.
+        ...(modules.includes('APPOINTMENTS')
+          ? [{ id: 'appointments', label: 'My Appointments' }]
+          : []),
         { id: 'ipd', label: 'IPD' },
         { id: 'queue', label: 'Queue' },
         { id: 'opd', label: 'OPD' },

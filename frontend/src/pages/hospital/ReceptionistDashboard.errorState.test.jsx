@@ -13,7 +13,7 @@ vi.mock('../../services/authService', () => ({
     getCurrentUser: () => ({
       role: 'RECEPTIONIST',
       name: 'Reception Desk',
-      modules: ['OPD', 'IPD', 'BILLING'],
+      modules: ['OPD', 'IPD', 'BILLING', 'APPOINTMENTS'],
       userId: 2,
     }),
     getLoginUrl: () => '/login',

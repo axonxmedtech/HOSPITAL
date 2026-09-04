@@ -126,6 +126,9 @@ public final class EntitlementRegistry {
      */
     private static final Map<String, Set<String>> IMPLIED_BY = new LinkedHashMap<>();
     static {
+        // Booking requires the OPD case and consultation workflow, but OPD remains useful for
+        // walk-in hospitals that do not sell appointments.
+        IMPLIED_BY.put(APPOINTMENTS, Set.of(OPD));
         IMPLIED_BY.put(IPD, Set.of(WARDS, BEDS, CLINICAL_RECORDS));
         IMPLIED_BY.put(TIER_MULTI_PHARMACY, Set.of(PHARMACY_BRANCH));
     }
@@ -247,6 +250,37 @@ public final class EntitlementRegistry {
         if (pharmacyTierCount > 1) {
             throw new IllegalArgumentException("A pharmacy plan may select only one pharmacy tier");
         }
+
+        // Persist only dependencies that are also sellable for this plan type. APPOINTMENTS
+        // therefore carries OPD, while internal IPD grants remain runtime-derived.
+        for (String implied : resolve(normalized)) {
+            if (isSellable(type, implied) && !normalized.contains(implied)) {
+                normalized.add(implied);
+            }
+        }
         return normalized;
+    }
+
+    /**
+     * Normalize modules copied from a persisted plan without rejecting legacy combinations.
+     * Operator input is validated by {@link #normalizePlanModules}; application still adds the
+     * sellable dependencies required for a tenant to operate safely.
+     */
+    public static List<String> normalizeAppliedPlanModules(HospitalType type, Collection<String> modules) {
+        Set<String> normalized = new LinkedHashSet<>();
+        if (modules != null) {
+            for (String raw : modules) {
+                if (raw != null && !raw.isBlank()) {
+                    normalized.add(raw.trim().toUpperCase(Locale.ROOT));
+                }
+            }
+        }
+
+        for (String implied : resolve(normalized)) {
+            if (isSellable(type, implied)) {
+                normalized.add(implied);
+            }
+        }
+        return new ArrayList<>(normalized);
     }
 }
