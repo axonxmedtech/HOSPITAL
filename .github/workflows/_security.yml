@@ -179,34 +179,37 @@ jobs:
           node-version: ${{ inputs.node-version }}
           working-directory: frontend
 
-      - name: Generate audit JSON report
-        run: npm audit --json > npm-audit-report.json 2>&1 || true
-
-      - name: npm audit summary
-        if: always()
-        run: |
-          {
-            echo "## Dependency Audit (npm — frontend)"
-            echo ""
-            if command -v jq >/dev/null 2>&1 && [ -f npm-audit-report.json ]; then
-              echo "| Severity | Count |"
-              echo "| --- | --- |"
-              for sev in critical high moderate low; do
-                n=$(jq -r ".metadata.vulnerabilities.$sev // 0" npm-audit-report.json 2>/dev/null || echo 0)
-                echo "| ${sev^} | $n |"
-              done
-              echo ""
-              echo "Gate: build fails on **high** or above. Policy: docs/security/DEPENDENCY_POLICY.md."
-            else
-              echo "Audit report unavailable."
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Enforce high-severity gate (allowlist react-router — no fixed release; SPA, not RSC)
         run: |
-          npm audit --json > npm-audit-gate.json 2>&1 || true
-          node -e '
-            const a = require("./npm-audit-gate.json");
+          set +e
+          npm audit --json > npm-audit-report.json 2> npm-audit-report.stderr
+          audit_status=$?
+          set -e
+          AUDIT_EXIT_STATUS="$audit_status" node <<'NODE'
+            const fs = require("fs");
+            const status = Number(process.env.AUDIT_EXIT_STATUS);
+            const stderr = fs.readFileSync("npm-audit-report.stderr", "utf8").trim();
+
+            function unverified(detail) {
+              console.error("npm audit service failed; dependency security status could not be verified");
+              console.error(detail);
+              console.error("npm audit exit status: " + status);
+              if (stderr) console.error("npm audit stderr:\n" + stderr);
+              process.exit(1);
+            }
+
+            let a;
+            try {
+              a = JSON.parse(fs.readFileSync("npm-audit-report.json", "utf8"));
+            } catch (error) {
+              unverified("npm audit report is invalid: " + error.message);
+            }
+
+            if (!a || typeof a !== "object" || !a.vulnerabilities || typeof a.vulnerabilities !== "object" ||
+                !a.metadata || !a.metadata.vulnerabilities || typeof a.metadata.vulnerabilities !== "object") {
+              unverified("npm audit report is not a usable vulnerability report.");
+            }
+
             // Allowlisted: no fixed release published and not exploitable here.
             //  react-router / react-router-dom -> GHSA-qwww-vcr4-c8h2 (RSC-mode CSRF); this is a
             //  Vite SPA using the data router, RSC mode is not used. review-by 2026-02-15.
@@ -219,8 +222,30 @@ jobs:
               }
             }
             if (blocking) { console.error(blocking + " non-allowlisted high/critical vuln(s)."); process.exit(1); }
+            if (status !== 0) console.log("npm audit exit status " + status + "; evaluated valid report using policy.");
             console.log("npm audit gate OK (allowlisted: " + [...ALLOW].join(", ") + ")");
-          '
+          NODE
+
+      - name: npm audit summary
+        if: always()
+        run: |
+          {
+            echo "## Dependency Audit (npm — frontend)"
+            echo ""
+            if command -v jq >/dev/null 2>&1 && [ -f npm-audit-report.json ] && \
+              jq -e '(.vulnerabilities | type == "object") and (.metadata.vulnerabilities | type == "object")' npm-audit-report.json >/dev/null 2>&1; then
+              echo "| Severity | Count |"
+              echo "| --- | --- |"
+              for sev in critical high moderate low; do
+                n=$(jq -r ".metadata.vulnerabilities.$sev // 0" npm-audit-report.json)
+                echo "| ${sev^} | $n |"
+              done
+              echo ""
+              echo "Gate: build fails on **high** or above. Policy: docs/security/DEPENDENCY_POLICY.md."
+            else
+              echo "Audit report unavailable or invalid; the gate fails closed."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload npm audit report
         if: always()
@@ -228,7 +253,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: npm-audit-report-${{ github.sha }}
-          path: frontend/npm-audit-report.json
+          path: |
+            frontend/npm-audit-report.json
+            frontend/npm-audit-report.stderr
           retention-days: 30
           if-no-files-found: warn
 
