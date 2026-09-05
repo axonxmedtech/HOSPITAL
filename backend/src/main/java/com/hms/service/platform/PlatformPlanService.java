@@ -201,7 +201,8 @@ public class PlatformPlanService {
     }
 
     private void applyPlanToHospital(Hospital hospital, Plan plan) {
-        ArrayList<String> modules = new ArrayList<>(plan.getModules());
+        ArrayList<String> modules = new ArrayList<>(
+                EntitlementRegistry.normalizeAppliedPlanModules(plan.getType(), plan.getModules()));
         if (Boolean.TRUE.equals(plan.getInClinic())) {
             if (!modules.contains("IN_CLINIC")) modules.add("IN_CLINIC");
         } else {

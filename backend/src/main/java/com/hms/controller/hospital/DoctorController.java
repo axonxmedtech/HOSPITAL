@@ -166,6 +166,49 @@ public class DoctorController {
         return ResponseEntity.ok(response);
     }
 
+    /**
+     * The same consultation details, addressed by OPD instead of by appointment.
+     *
+     * <p>Reception's prescription viewer could only reach a consultation through its appointment,
+     * so a walk-in visit — the normal path for a hospital without the APPOINTMENTS module, and
+     * already the majority path for one with it — had no prescription view at reception at all.
+     * The doctor's side never had this problem: it has read by OPD since
+     * {@code /prescription/opd/{opdId}/pdf}. This is that same reading, for the JSON viewer.
+     *
+     * <p>Deliberately not a new consultation architecture: it returns the identical
+     * {medicalRecord, prescriptions} shape as the appointment-keyed endpoint above and reads the
+     * same two repositories. Only the key differs. Both remain, because an appointment-origin
+     * consultation is still addressed by appointment everywhere it already was.
+     *
+     * <p>Ungated by module, like its sibling: a consultation is a clinical record, not an
+     * appointment, and it must stay readable whether or not the tenant sells appointments.
+     *
+     * <p>Tenant scope comes from the authenticated principal and is checked on the medical record,
+     * which carries hospital_id directly — the same check {@code downloadPrescriptionByOpd} makes.
+     * Another tenant's OPD is reported as not found, indistinguishable from one that never existed.
+     */
+    @GetMapping("/consultation/opd/{opdId}")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    public ResponseEntity<?> getConsultationDetailsByOpd(@PathVariable Long opdId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+
+        com.hms.entity.MedicalRecord record = medicalRecordRepository.findByOpdId(opdId)
+                .orElseThrow(() -> new ResourceNotFoundException("Consultation record not found"));
+
+        if (hospitalId == null || !hospitalId.equals(record.getHospitalId())) {
+            throw new ResourceNotFoundException("Consultation record not found");
+        }
+
+        java.util.List<com.hms.entity.Prescription> prescriptions = prescriptionRepository
+                .findByMedicalRecordId(record.getId());
+
+        java.util.Map<String, Object> response = new java.util.HashMap<>();
+        response.put("medicalRecord", record);
+        response.put("prescriptions", prescriptions);
+
+        return ResponseEntity.ok(response);
+    }
+
     @Autowired
     private com.hms.service.PdfService pdfService;
     @Autowired

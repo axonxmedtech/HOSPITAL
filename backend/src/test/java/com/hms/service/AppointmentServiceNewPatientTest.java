@@ -2,11 +2,9 @@ package com.hms.service;
 
 import com.hms.entity.Appointment;
 import com.hms.entity.Doctor;
-import com.hms.entity.Hospital;
 import com.hms.entity.Patient;
 import com.hms.repository.AppointmentRepository;
 import com.hms.repository.DoctorRepository;
-import com.hms.repository.HospitalRepository;
 import com.hms.repository.PatientRepository;
 import com.hms.security.SecurityContextHelper;
 import com.hms.service.hospital.AppointmentService;
@@ -34,7 +32,6 @@ class AppointmentServiceNewPatientTest {
 
     @Mock PatientRepository patientRepository;
     @Mock DoctorRepository doctorRepository;
-    @Mock HospitalRepository hospitalRepository;
     @Mock AppointmentRepository appointmentRepository;
     @Mock SecurityContextHelper securityHelper;
 
@@ -55,10 +52,9 @@ class AppointmentServiceNewPatientTest {
     }
 
     private void mockCommonCollaborators(String phone) {
-        Hospital hospital = new Hospital();
-        hospital.setModules(List.of("OPD"));
+        // Module validity is normalized at the plan boundary; this service only enforces tenant
+        // ownership for the patient and doctor referenced by the booking.
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
-        when(hospitalRepository.findById(1L)).thenReturn(Optional.of(hospital));
         when(patientRepository.findByPhoneAndHospitalIdAndIsActiveTrue(phone, 1L))
                 .thenReturn(Collections.emptyList());
         Doctor doctor = new Doctor();
@@ -99,4 +95,5 @@ class AppointmentServiceNewPatientTest {
         verify(patientRepository).save(patientCaptor.capture());
         assertThat(patientCaptor.getValue().getDateOfBirth()).isEqualTo(LocalDate.now());
     }
+
 }

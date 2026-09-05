@@ -83,6 +83,7 @@ import OtPoliciesCard from './OtPoliciesCard';
 import OtRoomsCard from './OtRoomsCard';
 import BillingHistoryView from './pharmacy/BillingHistoryView';
 import SuppliersView from './pharmacy/SuppliersView';
+import { createOptionalModuleFetcher } from '../../utils/optionalModule';
 import PrintPaymentSettingsCard from './PrintPaymentSettingsCard';
 import ScoreSettingsCard from './ScoreSettingsCard';
 import TimeSlotsView from './TimeSlotsView';
@@ -129,6 +130,7 @@ const HospitalAdminDashboard = () => {
   const modules = user?.modules || [];
   const hasOPD = modules.includes('OPD');
   const hasIPD = modules.includes('IPD');
+  const hasAppointments = modules.includes('APPOINTMENTS');
   // Tenant-aware label: clinic logins say "Clinic" wherever we'd otherwise say "Hospital".
   const tenantWord = user?.hospitalType === 'CLINIC' ? 'Clinic' : 'Hospital';
   const isPharmacyTenant = user?.hospitalType === 'PHARMACY';
@@ -1042,6 +1044,13 @@ const HospitalAdminDashboard = () => {
     );
   };
 
+  /**
+   * Appointment reads that must never take the dashboard down — see utils/optionalModule.
+   * Every tab of this page used to blank out for a tenant without the APPOINTMENTS module,
+   * because the stats call was awaited bare ahead of each tab's own load.
+   */
+  const fetchAppointmentData = createOptionalModuleFetcher(hasAppointments);
+
   const loadData = async (pageNum = page, sizeNum = pageSize, showSpinner = true) => {
     if (showSpinner) setLoading(true);
     setLoadError(null);
@@ -1057,14 +1066,19 @@ const HospitalAdminDashboard = () => {
           setPharmacyRecentBills(recentBillsData.content || recentBillsData || []);
           setPharmacyLowStock(lowStockData.content || lowStockData || []);
         } else {
-          const [statsData, globalStatsData, todaysAppts, docData] = await Promise.all([
-            hospitalService.getAppointmentStats(),
+          // Mandatory data first, on its own. The two appointment calls used to share this
+          // Promise.all, so one 403 rejected the global stats, the doctor list and the patient
+          // load with it and left Overview completely empty.
+          const [globalStatsData, docData] = await Promise.all([
             hospitalService.getGlobalStats(),
-            hospitalService.getTodaysAppointments(),
             hospitalService.getDoctors('', 0, 100),
           ]);
+          const [statsData, todaysAppts] = await Promise.all([
+            fetchAppointmentData(() => hospitalService.getAppointmentStats(), {}),
+            fetchAppointmentData(() => hospitalService.getTodaysAppointments(), []),
+          ]);
           setStats({ ...statsData, ...globalStatsData });
-          setTodaysAppointments(todaysAppts);
+          setTodaysAppointments(Array.isArray(todaysAppts) ? todaysAppts : []);
           if (docData.content) {
             setDoctors(docData.content);
           } else {
@@ -1076,15 +1090,24 @@ const HospitalAdminDashboard = () => {
         // Load dashboard data
         const [statsData, todaysAppts] = await Promise.all([
           hospitalService.getGlobalStats(),
-          hospitalService.getTodaysAppointments(),
+          fetchAppointmentData(() => hospitalService.getTodaysAppointments(), []),
         ]);
         setDashboardStats(statsData);
-        setTodaysAppointments(todaysAppts);
+        setTodaysAppointments(Array.isArray(todaysAppts) ? todaysAppts : []);
       } else {
-        // Always fetch stats when loading data to keep numbers fresh
+        // Refresh the header stat counters. This runs before EVERY other tab's own load, so it
+        // is the single most dangerous call on the page: awaited bare, it used to throw 403 for a
+        // tenant without APPOINTMENTS and drop straight into the outer catch, leaving Patients,
+        // Doctors, OPD, IPD, Billing, Pharmacy, Nurses, OT, Audit and Settings all empty behind a
+        // "Failed to load data" toast. It is optional data and must degrade, not abort.
         if (!isPharmacyTenant) {
-          const statsData = await hospitalService.getAppointmentStats();
-          setStats(statsData);
+          const statsData = await fetchAppointmentData(
+            () => hospitalService.getAppointmentStats(),
+            null
+          );
+          if (statsData) {
+            setStats(statsData);
+          }
         }
 
         if (activeTab === 'patients') {
@@ -1177,7 +1200,10 @@ const HospitalAdminDashboard = () => {
             setTotalPages(1);
             setTotalElements((data || []).length);
           }
-        } else if (activeTab === 'appointments') {
+        } else if (activeTab === 'appointments' && hasAppointments) {
+          // Guarded on the module, not just on the tab being visible: activeTab is read from the
+          // query string, so ?tab=appointments reaches this branch even when the sidebar entry
+          // has been filtered out.
           // Fetch both appointments and doctors (for name lookup)
           // Note: getAppointments now supports page/size, getDoctors might not return all if paginated
           // For now, we fetch paginated appointments and maybe "all" doctors for lookup if possible or handle missing names
@@ -2656,93 +2682,98 @@ const HospitalAdminDashboard = () => {
                     </div>
                   </div>
 
-                  {/* Right Div: Today's Appointments */}
-                  <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-sm flex flex-col">
-                    {/* Head */}
-                    <div className="px-6 py-5 border-b border-neutral-100 bg-neutral-50/50 flex flex-row justify-between items-center">
-                      <div>
-                        <h3 className="text-lg font-bold text-slate-800">
-                          Today&apos;s Appointments
-                        </h3>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          Quick overview of appointments for today
-                        </p>
-                      </div>
-                      {user?.role === 'HOSPITAL_ADMIN' && (
-                        <button
-                          onClick={() => handleAdd('appointments')}
-                          className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-sm transform hover:-translate-y-0.5 transition-all flex items-center gap-1.5"
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            className="h-4 w-4"
-                            viewBox="0 0 20 20"
-                            fill="currentColor"
+                  {/* Today's Appointments — operational appointment UI, so it renders only for a
+                      tenant that holds the APPOINTMENTS module. Historical clinical data is a
+                      different thing and is NOT hidden here: past appointments stay readable
+                      through patient history, billing provenance and reports. */}
+                  {hasAppointments && (
+                    <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-sm flex flex-col">
+                      {/* Head */}
+                      <div className="px-6 py-5 border-b border-neutral-100 bg-neutral-50/50 flex flex-row justify-between items-center">
+                        <div>
+                          <h3 className="text-lg font-bold text-slate-800">
+                            Today&apos;s Appointments
+                          </h3>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            Quick overview of appointments for today
+                          </p>
+                        </div>
+                        {user?.role === 'HOSPITAL_ADMIN' && (
+                          <button
+                            onClick={() => handleAdd('appointments')}
+                            className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-sm transform hover:-translate-y-0.5 transition-all flex items-center gap-1.5"
                           >
-                            <path
-                              fillRule="evenodd"
-                              d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                          <span>Add Appointment</span>
-                        </button>
-                      )}
-                    </div>
-                    {/* Body */}
-                    <div className="p-6 flex-1">
-                      {/* Search Input for appointments */}
-                      <div className="relative mb-4">
-                        <input
-                          type="text"
-                          placeholder="Search today's appointments by patient / doctor name..."
-                          value={appointmentsSearchTerm}
-                          onChange={(e) => setAppointmentsSearchTerm(e.target.value)}
-                          className="pl-9 pr-4 py-2 border border-neutral-300 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent w-full transition-all bg-neutral-50 focus:bg-white text-slate-800 placeholder-slate-400"
-                        />
-                        <span className="absolute left-3 top-2.5 text-slate-400">
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            className="h-4 w-4"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                            />
-                          </svg>
-                        </span>
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              className="h-4 w-4"
+                              viewBox="0 0 20 20"
+                              fill="currentColor"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                            <span>Add Appointment</span>
+                          </button>
+                        )}
                       </div>
-                      {filteredTodaysAppointments.length > 0 ? (
-                        <AppointmentsTable
-                          appointments={filteredTodaysAppointments}
-                          doctors={doctors}
-                          isAdmin={user?.role === 'HOSPITAL_ADMIN'}
-                          onDelete={handleDeleteAppointment}
-                          onStatusUpdate={onAppointmentStatusUpdate}
-                          onHistory={(item) =>
-                            handleHistory('APPOINTMENT', item.publicId || item.id, 'Appointment')
-                          }
-                          startIndex={0}
-                          pagination={appointmentsPagination}
-                        />
-                      ) : (
-                        <EmptyState
-                          icon={null}
-                          title="No Appointments Found"
-                          message="There are no appointments matching your search today."
-                          actionLabel="Schedule Appointment"
-                          onAction={
-                            user?.role === 'HOSPITAL_ADMIN' ? () => handleAdd('appointments') : null
-                          }
-                        />
-                      )}
+                      {/* Body */}
+                      <div className="p-6 flex-1">
+                        {/* Search Input for appointments */}
+                        <div className="relative mb-4">
+                          <input
+                            type="text"
+                            placeholder="Search today's appointments by patient / doctor name..."
+                            value={appointmentsSearchTerm}
+                            onChange={(e) => setAppointmentsSearchTerm(e.target.value)}
+                            className="pl-9 pr-4 py-2 border border-neutral-300 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent w-full transition-all bg-neutral-50 focus:bg-white text-slate-800 placeholder-slate-400"
+                          />
+                          <span className="absolute left-3 top-2.5 text-slate-400">
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              className="h-4 w-4"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                              />
+                            </svg>
+                          </span>
+                        </div>
+                        {filteredTodaysAppointments.length > 0 ? (
+                          <AppointmentsTable
+                            appointments={filteredTodaysAppointments}
+                            doctors={doctors}
+                            isAdmin={user?.role === 'HOSPITAL_ADMIN'}
+                            onDelete={handleDeleteAppointment}
+                            onStatusUpdate={onAppointmentStatusUpdate}
+                            onHistory={(item) =>
+                              handleHistory('APPOINTMENT', item.publicId || item.id, 'Appointment')
+                            }
+                            startIndex={0}
+                            pagination={appointmentsPagination}
+                          />
+                        ) : (
+                          <EmptyState
+                            icon={null}
+                            title="No Appointments Found"
+                            message="There are no appointments matching your search today."
+                            actionLabel="Schedule Appointment"
+                            onAction={
+                              user?.role === 'HOSPITAL_ADMIN' ? () => handleAdd('appointments') : null
+                            }
+                          />
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
             )
@@ -2797,7 +2828,7 @@ const HospitalAdminDashboard = () => {
                       ? 'New Task'
                       : activeTab === 'fees' || activeTab === 'settings'
                         ? ''
-                        : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'nurses' ? 'Nurse' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'ot-incharges' ? 'OT Incharge' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`
+                        : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'nurses' ? 'Nurse' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'ot-incharges' ? 'OT Incharge' : activeTab === 'appointments' && hasAppointments ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`
                 }
                 filter={
                   activeTab === 'patients' ? (
@@ -2899,7 +2930,7 @@ const HospitalAdminDashboard = () => {
                         <span>Download PDF</span>
                       </button>
                     </div>
-                  ) : activeTab === 'appointments' ? (
+                  ) : activeTab === 'appointments' && hasAppointments ? (
                     <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 h-[38px] items-center">
                       {['today', 'upcoming'].map((view) => (
                         <button
@@ -2998,7 +3029,7 @@ const HospitalAdminDashboard = () => {
                 activeTab === 'billing' ||
                 activeTab === 'fees' ||
                 activeTab === 'opd' ||
-                activeTab === 'appointments' ||
+                (activeTab === 'appointments' && hasAppointments) ||
                 activeTab === 'ot-incharges') && (
                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
                   {activeTab === 'patients' &&
@@ -3064,6 +3095,7 @@ const HospitalAdminDashboard = () => {
                     ))}
 
                   {activeTab === 'appointments' &&
+                    hasAppointments &&
                     (appointments.length > 0 ? (
                       <AppointmentsTable
                         appointments={appointments}
@@ -5058,59 +5090,65 @@ const HospitalAdminDashboard = () => {
                               )}
                             </div>
 
-                            {/* Appointment Status Donut */}
-                            <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm lg:col-span-1">
-                              <h3 className="text-lg font-bold text-gray-900 mb-6">
-                                Appointment Status
-                              </h3>
-                              <div className="h-52 relative flex items-center justify-center">
-                                <ResponsiveContainer width="100%" height="100%">
-                                  <PieChart>
-                                    <Pie
-                                      data={analyticsData.appointmentStatus}
-                                      cx="50%"
-                                      cy="50%"
-                                      innerRadius={55}
-                                      outerRadius={75}
-                                      paddingAngle={4}
-                                      dataKey="value"
-                                    >
-                                      {analyticsData.appointmentStatus.map((entry, index) => (
-                                        <Cell
-                                          key={`cell-${index}`}
-                                          fill={COLORS[index % COLORS.length]}
-                                        />
-                                      ))}
-                                    </Pie>
-                                    <Tooltip formatter={(value) => `${value} appointments`} />
-                                  </PieChart>
-                                </ResponsiveContainer>
-                                <div className="absolute text-center">
-                                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-                                    Fulfillment
-                                  </span>
-                                  <p className="text-2xl font-black text-gray-900">
-                                    {analyticsData.fulfillmentRate}%
-                                  </p>
+                            {/* Appointment Status Donut. Only meaningful for a tenant that books
+                                appointments — HospitalStatsService keeps returning the counts
+                                either way (analytics is gated on REPORTS, not APPOINTMENTS), so
+                                without this gate a walk-in-only hospital sees a 0/0/0 donut and
+                                "Fulfillment 0%" and reads it as a fault. */}
+                            {hasAppointments && (
+                              <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm lg:col-span-1">
+                                <h3 className="text-lg font-bold text-gray-900 mb-6">
+                                  Appointment Status
+                                </h3>
+                                <div className="h-52 relative flex items-center justify-center">
+                                  <ResponsiveContainer width="100%" height="100%">
+                                    <PieChart>
+                                      <Pie
+                                        data={analyticsData.appointmentStatus}
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={55}
+                                        outerRadius={75}
+                                        paddingAngle={4}
+                                        dataKey="value"
+                                      >
+                                        {analyticsData.appointmentStatus.map((entry, index) => (
+                                          <Cell
+                                            key={`cell-${index}`}
+                                            fill={COLORS[index % COLORS.length]}
+                                          />
+                                        ))}
+                                      </Pie>
+                                      <Tooltip formatter={(value) => `${value} appointments`} />
+                                    </PieChart>
+                                  </ResponsiveContainer>
+                                  <div className="absolute text-center">
+                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                                      Fulfillment
+                                    </span>
+                                    <p className="text-2xl font-black text-gray-900">
+                                      {analyticsData.fulfillmentRate}%
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex justify-around mt-4">
+                                  {analyticsData.appointmentStatus.map((entry, index) => (
+                                    <div key={entry.name} className="flex flex-col items-center">
+                                      <div className="flex items-center gap-1.5 text-xs text-gray-500 font-medium">
+                                        <span
+                                          className="w-2 h-2 rounded-full"
+                                          style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                                        ></span>
+                                        {entry.name}
+                                      </div>
+                                      <span className="text-xs font-bold text-gray-800 mt-1">
+                                        {entry.value}
+                                      </span>
+                                    </div>
+                                  ))}
                                 </div>
                               </div>
-                              <div className="flex justify-around mt-4">
-                                {analyticsData.appointmentStatus.map((entry, index) => (
-                                  <div key={entry.name} className="flex flex-col items-center">
-                                    <div className="flex items-center gap-1.5 text-xs text-gray-500 font-medium">
-                                      <span
-                                        className="w-2 h-2 rounded-full"
-                                        style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                                      ></span>
-                                      {entry.name}
-                                    </div>
-                                    <span className="text-xs font-bold text-gray-800 mt-1">
-                                      {entry.value}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
+                            )}
                           </div>
 
                           {/* Ward Bed Occupancy Breakdown */}
@@ -5657,7 +5695,7 @@ const HospitalAdminDashboard = () => {
       />
 
       {/* Appointment Modal - Using Shared Component */}
-      {showModal && modalType === 'appointments' && (
+      {showModal && modalType === 'appointments' && hasAppointments && (
         <AppointmentModal
           isOpen={showModal}
           onClose={() => {

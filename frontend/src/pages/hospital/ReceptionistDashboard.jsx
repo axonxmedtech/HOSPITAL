@@ -52,6 +52,7 @@ import ScheduleSurgeryModal from './ot/ScheduleSurgeryModal';
 import AnaesthesiaClearanceModal from './ot/AnaesthesiaClearanceModal';
 import SurgeryExecutionModal from './ot/SurgeryExecutionModal';
 import SurgeryTeamModal from './ot/SurgeryTeamModal';
+import { createOptionalModuleFetcher } from '../../utils/optionalModule';
 
 const ReceptionistDashboard = () => {
   const [user, setUser] = useState(() => authService.getCurrentUser());
@@ -323,12 +324,37 @@ const ReceptionistDashboard = () => {
     if (activeTab === 'ot') loadOt();
   }, [activeTab, otFilter, loadOt]);
 
+  /**
+   * Appointment reads that must never take the desk down — see utils/optionalModule. This is the
+   * role that suffered most: the appointment stats call was the FIRST statement of loadData, so a
+   * 403 there skipped the OPD queue, the patient lookup, the doctor list, the IPD requests and
+   * today's follow-ups behind one "Failed to load data" toast.
+   */
+  const fetchAppointmentData = createOptionalModuleFetcher(hasAppointments);
+
   const loadData = async (showSpinner = true) => {
     const requestId = ++activeRequestRef.current;
     if (showSpinner) setLoading(true);
     try {
-      // Stats
-      const statsData = await hospitalService.getAppointmentStats();
+      let appointmentLoadFailed = false;
+      let appointmentLoadError = '';
+      const reportAppointmentFailure = (message, err) => {
+        console.error(message, err);
+        appointmentLoadError = safeLoadMessage(err, "Couldn't load this screen. Please try again.");
+        if (!appointmentLoadFailed) {
+          appointmentLoadFailed = true;
+          toastError('Failed to load appointments');
+        }
+      };
+
+      // Appointment stats are optional. A failure remains visible, but cannot prevent the desk
+      // from loading its queue, doctors, patients, or follow-ups.
+      let statsData = {};
+      try {
+        statsData = await fetchAppointmentData(() => hospitalService.getAppointmentStats(), {});
+      } catch (err) {
+        reportAppointmentFailure('[ReceptionistDashboard] Failed to load appointment stats', err);
+      }
       if (requestId !== activeRequestRef.current) return;
 
       let ipdRequestsCount = null;
@@ -345,33 +371,43 @@ const ReceptionistDashboard = () => {
 
       if (
         activeTab === 'overview' ||
-        activeTab === 'appointments' ||
+        (activeTab === 'appointments' && hasAppointments) ||
         activeTab === 'opd' ||
         activeTab === 'queue' ||
         activeTab === 'ipd'
       ) {
         if (activeTab === 'overview' || activeTab === 'appointments') setAppointmentsLoading(true);
-        // Fetch appointments (Server-side) + Doctors + Patients for lookup
-        const promises = [
-          activeTab === 'appointments' || activeTab === 'overview'
-            ? hospitalService.getAppointments(searchTerm, page, pageSize, viewFilter)
-            : Promise.resolve({ content: [] }),
+        // Mandatory desk data is deliberately separate from the optional appointments call.
+        const [docData, patData, followUpsData] = await Promise.all([
           hospitalService.getDoctors('', 0, 100), // Fetch doctors for lookup
           hospitalService.getPatients('', 0, 1000), // Fetch ALL patients (up to 1000) for lookup dropdown
           activeTab === 'overview' ? hospitalService.getTodaysFollowUps() : Promise.resolve([]),
-        ];
-        const [apptData, docData, patData, followUpsData] = await Promise.all(promises);
+        ]);
         if (requestId !== activeRequestRef.current) return;
 
         if (activeTab === 'appointments' || activeTab === 'overview') {
-          if (apptData.content) {
-            setAppointments(apptData.content);
-            setTotalPages(apptData.totalPages);
-            setTotalElements(apptData.totalElements);
-          } else {
-            setAppointments(apptData);
-            setTotalPages(1);
-            setTotalElements(apptData.length);
+          try {
+            const apptData = await fetchAppointmentData(
+              () => hospitalService.getAppointments(searchTerm, page, pageSize, viewFilter),
+              { content: [] }
+            );
+            if (requestId !== activeRequestRef.current) return;
+
+            if (apptData?.content) {
+              setAppointments(apptData.content);
+              setTotalPages(apptData.totalPages);
+              setTotalElements(apptData.totalElements);
+            } else if (Array.isArray(apptData)) {
+              setAppointments(apptData);
+              setTotalPages(1);
+              setTotalElements(apptData.length);
+            } else if (!hasAppointments) {
+              setAppointments([]);
+              setTotalPages(1);
+              setTotalElements(0);
+            }
+          } catch (err) {
+            reportAppointmentFailure('[ReceptionistDashboard] Failed to load appointments', err);
           }
         }
 
@@ -528,7 +564,7 @@ const ReceptionistDashboard = () => {
           setTotalElements(data.length);
         }
       }
-      setLoadError('');
+      setLoadError(appointmentLoadError);
     } catch (err) {
       if (requestId !== activeRequestRef.current) return;
       console.error(`[ReceptionistDashboard] Failed to load ${activeTab}:`, err);
@@ -799,15 +835,25 @@ const ReceptionistDashboard = () => {
     }));
   };
 
-  const handleViewPrescription = async (appointmentId) => {
+  /**
+   * Open the prescription for one consultation, whichever way the patient arrived.
+   *
+   * Reception's prescription viewer used to be appointment-keyed end to end — it read
+   * /doctors/consultation/{appointmentId} and printed /doctors/prescription/{appointmentId}/pdf.
+   * A walk-in consultation has no appointment, so for a hospital without the APPOINTMENTS module
+   * (and for the majority of visits at one with it) there was nothing to open. The doctor's side
+   * never had this problem; it has read by OPD for a while.
+   *
+   * Both keys are supported rather than one replacing the other: an appointment-origin
+   * consultation is still addressed by its appointment exactly as before.
+   */
+  const openPrescription = async ({ appointmentId = null, opdId = null }) => {
     try {
       setLoading(true);
-      const data = await hospitalService.getConsultationDetails(appointmentId);
-      setPrescriptionModal({
-        isOpen: true,
-        data: data,
-        appointmentId: appointmentId,
-      });
+      const data = appointmentId
+        ? await hospitalService.getConsultationDetails(appointmentId)
+        : await hospitalService.getConsultationDetailsByOpd(opdId);
+      setPrescriptionModal({ isOpen: true, data, appointmentId, opdId });
     } catch (err) {
       console.error(err);
       toastError('Prescription not available yet.');
@@ -816,13 +862,24 @@ const ReceptionistDashboard = () => {
     }
   };
 
+  const handleViewPrescription = (appointmentId) => openPrescription({ appointmentId });
+
+  const handleViewOpdPrescription = (opd) => openPrescription({ opdId: opd.id });
+
   const handleViewPatientPrescription = (patient) => {
     setViewPrescriptionModal({ isOpen: true, patient });
   };
 
   const handlePrintPrescription = () => {
-    if (!prescriptionModal.appointmentId) return;
-    openPdfInNewTab(`/hospital/doctors/prescription/${prescriptionModal.appointmentId}/pdf`);
+    // Print through whichever key opened the modal. The OPD route already existed and is what
+    // the doctor's dashboard has always used; reception simply never reached it.
+    if (prescriptionModal.appointmentId) {
+      openPdfInNewTab(`/hospital/doctors/prescription/${prescriptionModal.appointmentId}/pdf`);
+      return;
+    }
+    if (prescriptionModal.opdId) {
+      openPdfInNewTab(`/hospital/doctors/prescription/opd/${prescriptionModal.opdId}/pdf`);
+    }
   };
 
   const handleHistory = (type, id, name) => {
@@ -1114,42 +1171,21 @@ const ReceptionistDashboard = () => {
                 )}
               </div>
 
-              {/* Side-by-Side Lists: Appointments and Queue */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
-                {/* Left Div: Appointments */}
-                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col h-[650px] overflow-hidden">
-                  <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gradient-to-r from-gray-50/50 to-white">
-                    <div>
-                      <h3 className="text-lg font-bold text-gray-955">Appointments</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        Manage scheduled clinical slots
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => setIsAddModalOpen(true)}
-                      className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer animate-fade-in"
-                    >
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
+              {/* Follow-ups remain available for walk-in hospitals, independent of appointments. */}
+              <div className={`${hasAppointments ? 'grid grid-cols-1 lg:grid-cols-3' : 'grid grid-cols-1 lg:grid-cols-2'} gap-8 mt-8`}>
+                {hasAppointments && (
+                  <div className="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col h-[650px] overflow-hidden">
+                    <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gradient-to-r from-gray-50/50 to-white">
+                      <div>
+                        <h3 className="text-lg font-bold text-gray-955">Appointments</h3>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Manage scheduled clinical slots
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setIsAddModalOpen(true)}
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer animate-fade-in"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 4v16m8-8H4"
-                        />
-                      </svg>
-                      Add Appointment
-                    </button>
-                  </div>
-
-                  {/* Appointment Controls */}
-                  <div className="px-6 py-3 bg-gray-50/30 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="relative flex-1 max-w-xs">
-                      <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
                         <svg
                           className="w-4 h-4"
                           fill="none"
@@ -1160,128 +1196,130 @@ const ReceptionistDashboard = () => {
                             strokeLinecap="round"
                             strokeLinejoin="round"
                             strokeWidth={2}
-                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                            d="M12 4v16m8-8H4"
                           />
                         </svg>
-                      </span>
-                      <input
-                        type="text"
-                        placeholder="Search appointments..."
-                        value={searchInput}
-                        onChange={(e) => {
-                          setSearchInput(e.target.value);
-                          setPage(0);
-                        }}
-                        className="w-full pl-9 pr-4 py-1.5 text-xs bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 transition-all"
-                      />
+                        Add Appointment
+                      </button>
                     </div>
-                    <div className="flex bg-gray-100 rounded-xl p-1 border border-gray-200">
-                      {['today', 'upcoming'].map((view) => (
-                        <button
-                          key={view}
-                          onClick={() => {
-                            setViewFilter(view);
+
+                    {/* Appointment Controls */}
+                    <div className="px-6 py-3 bg-gray-50/30 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="relative flex-1 max-w-xs">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                            />
+                          </svg>
+                        </span>
+                        <input
+                          type="text"
+                          placeholder="Search appointments..."
+                          value={searchInput}
+                          onChange={(e) => {
+                            setSearchInput(e.target.value);
                             setPage(0);
                           }}
-                          className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                            viewFilter === view
-                              ? 'bg-white text-gray-900 shadow-sm border border-gray-100'
-                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
-                          }`}
-                        >
-                          {view.charAt(0).toUpperCase() + view.slice(1)}
-                        </button>
-                      ))}
+                          className="w-full pl-9 pr-4 py-1.5 text-xs bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 transition-all"
+                        />
+                      </div>
+                      <div className="flex bg-gray-100 rounded-xl p-1 border border-gray-200">
+                        {['today', 'upcoming'].map((view) => (
+                          <button
+                            key={view}
+                            onClick={() => {
+                              setViewFilter(view);
+                              setPage(0);
+                            }}
+                            className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                              viewFilter === view
+                                ? 'bg-white text-gray-900 shadow-sm border border-gray-100'
+                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                            }`}
+                          >
+                            {view.charAt(0).toUpperCase() + view.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Appointment List Content */}
+                    <div className="flex-1 overflow-auto p-6 space-y-6">
+                      <div>
+                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                          <span className="w-1.5 h-3 bg-gray-900 rounded-full"></span>
+                          Active Appointments
+                        </h4>
+                        {appointmentsLoading ? (
+                          <SkeletonTable rows={4} cols={5} />
+                        ) : appointments.length > 0 ? (
+                          <AppointmentsTable
+                            appointments={appointments}
+                            doctors={doctors}
+                            onStatusUpdate={handleStatusUpdate}
+                            onHistory={(item) =>
+                              handleHistory('APPOINTMENT', item.publicId || item.id, 'Appointment')
+                            }
+                            onViewPrescription={handleViewPrescription}
+                            startIndex={page * pageSize}
+                            pagination={pagination}
+                          />
+                        ) : (
+                          <EmptyState
+                            icon={null}
+                            title="No Appointments Found"
+                            message="Schedule appointments for your patients."
+                            actionLabel="Schedule Appointment"
+                            onAction={() => setIsAddModalOpen(true)}
+                          />
+                        )}
+                      </div>
+
                     </div>
                   </div>
+                )}
 
-                  {/* Appointment List Content */}
-                  <div className="flex-1 overflow-auto p-6 space-y-6">
-                    <div>
-                      <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                        <span className="w-1.5 h-3 bg-gray-900 rounded-full"></span>
-                        Active Appointments
-                      </h4>
-                      {appointmentsLoading ? (
-                        <SkeletonTable rows={4} cols={5} />
-                      ) : appointments.length > 0 ? (
-                        <AppointmentsTable
-                          appointments={appointments}
-                          doctors={doctors}
-                          onStatusUpdate={handleStatusUpdate}
-                          onHistory={(item) =>
-                            handleHistory('APPOINTMENT', item.publicId || item.id, 'Appointment')
-                          }
-                          onViewPrescription={handleViewPrescription}
-                          startIndex={page * pageSize}
-                          pagination={pagination}
-                        />
-                      ) : (
-                        <EmptyState
-                          icon={null}
-                          title="No Appointments Found"
-                          message="Schedule appointments for your patients."
-                          actionLabel="Schedule Appointment"
-                          onAction={() => setIsAddModalOpen(true)}
-                        />
-                      )}
-                    </div>
-
-                    <div className="border-t border-gray-100 pt-6">
-                      <h4 className="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-                        <span className="w-1.5 h-3 bg-indigo-600 rounded-full"></span>
-                        Today&apos;s Follow-Ups
-                      </h4>
-                      {todaysFollowUps && todaysFollowUps.length > 0 ? (
-                        <div className="overflow-x-auto border border-gray-100 rounded-xl">
-                          <table className="w-full text-sm text-left">
-                            <thead>
-                              <tr className="bg-gray-50 border-b border-gray-100">
-                                <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">
-                                  Patient ID
-                                </th>
-                                <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">
-                                  Patient Name
-                                </th>
-                                <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">
-                                  Assigned Doctor
-                                </th>
-                                <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">
-                                  Diagnosis / Reason
-                                </th>
+                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col h-[650px] overflow-hidden">
+                  <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-gray-50/50 to-white">
+                    <h3 className="text-lg font-bold text-gray-955">Today&apos;s Follow-Ups</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">Patients due for a follow-up today</p>
+                  </div>
+                  <div className="flex-1 overflow-auto p-6">
+                    {todaysFollowUps.length > 0 ? (
+                      <div className="overflow-x-auto border border-gray-100 rounded-xl">
+                        <table className="w-full text-sm text-left">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-100">
+                              <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Patient ID</th>
+                              <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Patient Name</th>
+                              <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Assigned Doctor</th>
+                              <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">Diagnosis / Reason</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-50">
+                            {todaysFollowUps.map((record) => (
+                              <tr key={record.id} className="hover:bg-gray-50/40 transition-colors">
+                                <td className="px-4 py-3.5 text-xs font-bold text-indigo-600">{record.patientCustomId || record.patientPublicId || '-'}</td>
+                                <td className="px-4 py-3.5 text-sm font-semibold text-gray-900">{record.patientName || '-'}</td>
+                                <td className="px-4 py-3.5 text-sm text-gray-600">{record.doctorName || '-'}</td>
+                                <td className="px-4 py-3.5 text-sm text-gray-500 italic">{record.diagnosis || 'Follow-up'}</td>
                               </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-50">
-                              {todaysFollowUps.map((record) => (
-                                <tr
-                                  key={record.id}
-                                  className="hover:bg-gray-50/40 transition-colors"
-                                >
-                                  <td className="px-4 py-3.5 text-xs font-bold text-indigo-600">
-                                    {record.patientCustomId || record.patientPublicId || '-'}
-                                  </td>
-                                  <td className="px-4 py-3.5 text-sm font-semibold text-gray-900">
-                                    {record.patientName || '-'}
-                                  </td>
-                                  <td className="px-4 py-3.5 text-sm text-gray-600">
-                                    {record.doctorName || '-'}
-                                  </td>
-                                  <td className="px-4 py-3.5 text-sm text-gray-500 italic">
-                                    {record.diagnosis || 'Follow-up'}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : (
-                        <div className="text-center py-8 border border-dashed border-gray-200 rounded-xl">
-                          <p className="text-sm text-gray-400 font-medium">
-                            No follow-ups scheduled for today.
-                          </p>
-                        </div>
-                      )}
-                    </div>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <EmptyState icon={null} title="No Follow-Ups Today" message="No follow-ups scheduled for today." />
+                    )}
                   </div>
                 </div>
 
@@ -1421,7 +1459,7 @@ const ReceptionistDashboard = () => {
               }
               addLabel={activeTab === 'opd' ? 'New OPD / Case' : `Add ${activeTab.slice(0, -1)}`}
               filter={
-                activeTab === 'appointments' ? (
+                activeTab === 'appointments' && hasAppointments ? (
                   <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
                     {['today', 'upcoming'].map((view) => (
                       <button
@@ -1632,6 +1670,7 @@ const ReceptionistDashboard = () => {
           {!loading && activeTab !== 'overview' && (
             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
               {activeTab === 'appointments' &&
+                hasAppointments &&
                 (appointmentsLoading ? (
                   <SkeletonTable rows={6} cols={5} />
                 ) : appointments.length > 0 ? (
@@ -1687,6 +1726,12 @@ const ReceptionistDashboard = () => {
                                   className="px-3 py-1 bg-gray-900 text-white rounded"
                                 >
                                   Print
+                                </button>
+                                <button
+                                  onClick={() => handleViewOpdPrescription(o)}
+                                  className="px-3 py-1 border border-gray-300 text-gray-700 rounded hover:bg-gray-50"
+                                >
+                                  Prescription
                                 </button>
                               </div>
                             </td>
@@ -2131,7 +2176,7 @@ const ReceptionistDashboard = () => {
       </div>
 
       {/* Appointment Modal - Using Shared Component */}
-      {(activeTab === 'appointments' || activeTab === 'overview') && (
+      {hasAppointments && (activeTab === 'appointments' || activeTab === 'overview') && (
         <AppointmentModal
           isOpen={isAddModalOpen}
           onClose={() => setIsAddModalOpen(false)}

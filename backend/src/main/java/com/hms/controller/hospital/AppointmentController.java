@@ -29,8 +29,27 @@ import org.springframework.data.domain.Pageable;
  */
 @RestController
 @RequestMapping({"/hospital/appointments", "/clinic/appointments", "/pharmacy/appointments"})
-@RequireModule("APPOINTMENTS")
 public class AppointmentController {
+
+    // Module gating is per-method, deliberately, and NOT on the class.
+    //
+    // Appointments are an optional tenant capability: a hospital that works walk-in only has the
+    // APPOINTMENTS module withheld from its plan. The rule for that tenant is "gate writes,
+    // preserve historical reads":
+    //
+    //   * every MUTATION (create, update, status, delete) carries @RequireModule("APPOINTMENTS")
+    //     and 403s, so no new appointment can be booked or altered once the module is withdrawn;
+    //   * every READ stays open, so a tenant that used appointments before the module was removed
+    //     can still open a past appointment, a patient's history and the bill that references it.
+    //     Historical clinical information must never disappear because a plan changed.
+    //
+    // The class-level gate this replaces 403'd the reads too — including /stats, /today and
+    // /my-appointments, which the admin, receptionist and doctor dashboards call while loading
+    // unrelated tabs. One optional module thereby took down three whole dashboards.
+    //
+    // ModuleAccessAspect resolves the method annotation before the class one, so if a class-level
+    // gate is ever reintroduced here it would be overridden on these methods but would silently
+    // re-close the reads. Add new mutations with the annotation; do not move it back up.
 
     @Autowired
     private AppointmentService appointmentService;
@@ -40,6 +59,7 @@ public class AppointmentController {
      * Accessible by Hospital Admin and Receptionist
      */
     @PostMapping
+    @RequireModule("APPOINTMENTS")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
     public ResponseEntity<?> createAppointment(@Valid @RequestBody Appointment appointment) {
         Appointment createdAppointment = appointmentService.createAppointment(appointment);
@@ -131,6 +151,7 @@ public class AppointmentController {
      * Only Hospital Admin can delete appointments
      */
     @DeleteMapping("/{id}")
+    @RequireModule("APPOINTMENTS")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<?> deleteAppointment(@PathVariable String id, @RequestParam(required = false) String reason) {
         appointmentService.deleteAppointment(id, reason);
@@ -154,6 +175,7 @@ public class AppointmentController {
      * Update appointment details (Status & Notes)
      */
     @PutMapping("/{id}")
+    @RequireModule("APPOINTMENTS")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> updateAppointment(@PathVariable String id,
             @RequestBody java.util.Map<String, String> payload) {
@@ -193,6 +215,7 @@ public class AppointmentController {
      * Update appointment status (Legacy/Specific)
      */
     @PutMapping("/{id}/status")
+    @RequireModule("APPOINTMENTS")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> updateAppointmentStatus(@PathVariable String id,
             @RequestBody java.util.Map<String, String> payload) {

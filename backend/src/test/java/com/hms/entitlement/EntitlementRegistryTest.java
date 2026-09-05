@@ -17,6 +17,13 @@ class EntitlementRegistryTest {
     }
 
     @Test
+    void normalizesAppointmentsWithItsRequiredOpdCapability() {
+        assertThat(EntitlementRegistry.normalizePlanModules(HospitalType.HOSPITAL,
+                List.of(EntitlementRegistry.APPOINTMENTS)))
+                .containsExactly(EntitlementRegistry.APPOINTMENTS, EntitlementRegistry.OPD);
+    }
+
+    @Test
     void rejectsUnknownBlankDuplicateInternalAndUnavailableModules() {
         assertThatIllegalArgumentException().isThrownBy(() ->
                 EntitlementRegistry.normalizePlanModules(HospitalType.HOSPITAL, List.of("NOT_A_REAL_MODULE")));
@@ -59,5 +66,25 @@ class EntitlementRegistryTest {
                 .extracting(EntitlementRegistry.Capability::key)
                 .containsExactly(EntitlementRegistry.TIER_SINGLE_PHARMACIST_ADMIN,
                         EntitlementRegistry.TIER_SINGLE_PHARMACY, EntitlementRegistry.TIER_MULTI_PHARMACY);
+    }
+
+    @Test
+    void appointmentsImplyOpd() {
+        assertThat(EntitlementRegistry.resolve(List.of(EntitlementRegistry.APPOINTMENTS)))
+                .contains(EntitlementRegistry.APPOINTMENTS, EntitlementRegistry.OPD);
+    }
+
+    @Test
+    void opdDoesNotImplyAppointments() {
+        assertThat(EntitlementRegistry.resolve(List.of(EntitlementRegistry.OPD)))
+                .contains(EntitlementRegistry.OPD)
+                .doesNotContain(EntitlementRegistry.APPOINTMENTS);
+    }
+
+    @Test
+    void walkInOpdRemainsValidWithoutAppointments() {
+        assertThat(EntitlementRegistry.resolve(List.of(EntitlementRegistry.OPD, EntitlementRegistry.BILLING)))
+                .contains(EntitlementRegistry.OPD, EntitlementRegistry.BILLING)
+                .doesNotContain(EntitlementRegistry.APPOINTMENTS);
     }
 }

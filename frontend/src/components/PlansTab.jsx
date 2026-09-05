@@ -3,6 +3,11 @@ import { useToast } from '../context/ToastContext';
 import platformService from '../services/platformService';
 import { extractApiError } from '../utils/apiError';
 
+export const normalizePlanModules = (modules) => {
+  const normalized = new Set(modules);
+  if (normalized.has('APPOINTMENTS')) normalized.add('OPD');
+  return [...normalized];
+};
 const emptyForm = {
   name: '',
   type: 'HOSPITAL',
@@ -77,7 +82,9 @@ export default function PlansTab({ hospitalType = null }) {
       type: plan.type,
       monthlyPrice: plan.monthlyPrice,
       yearlyPrice: plan.yearlyPrice,
-      modules: (plan.modules || []).filter((module) => selectableKeys.has(module)),
+      modules: normalizePlanModules(
+        (plan.modules || []).filter((module) => selectableKeys.has(module))
+      ),
       features: (plan.features || []).join('\n'),
       inClinic: plan.inClinic || false,
       multiOutlet: plan.multiOutlet || false,
@@ -88,12 +95,13 @@ export default function PlansTab({ hospitalType = null }) {
   };
 
   const handleModuleToggle = (mod) => {
-    setForm((prev) => ({
-      ...prev,
-      modules: prev.modules.includes(mod)
+    setForm((prev) => {
+      if (mod === 'OPD' && prev.modules.includes('APPOINTMENTS')) return prev;
+      const modules = prev.modules.includes(mod)
         ? prev.modules.filter((m) => m !== mod)
-        : [...prev.modules, mod],
-    }));
+        : [...prev.modules, mod];
+      return { ...prev, modules: normalizePlanModules(modules) };
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -114,7 +122,7 @@ export default function PlansTab({ hospitalType = null }) {
       type: form.type,
       monthlyPrice: parseFloat(form.monthlyPrice),
       yearlyPrice: parseFloat(form.yearlyPrice),
-      modules: form.modules.filter((module) => selectableKeys.has(module)),
+      modules: normalizePlanModules(form.modules.filter((module) => selectableKeys.has(module))),
       features: form.features
         .split('\n')
         .map((f) => f.trim())
@@ -360,6 +368,7 @@ export default function PlansTab({ hospitalType = null }) {
                         type="button"
                         key={mod}
                         onClick={() => handleModuleToggle(mod)}
+                        disabled={mod === 'OPD' && form.modules.includes('APPOINTMENTS')}
                         className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
                           form.modules.includes(mod)
                             ? 'bg-gray-900 text-white border-gray-900'
