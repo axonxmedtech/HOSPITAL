@@ -1236,10 +1236,11 @@ const DoctorDashboard = () => {
                 </div>
               </div>
 
-              {/* Side-by-Side Lists: Appointments and Queue */}
-              <div
-                className={`${hasAppointments ? 'grid grid-cols-1 lg:grid-cols-2' : 'grid grid-cols-1'} gap-8 mt-8`}
-              >
+              {/* Side-by-Side Lists: the left panel follows the module, the Queue is always
+                  present. Two columns in BOTH module states, deliberately: collapsing to one
+                  stacked a fixed 650px panel above the Queue and pushed the OPD due list and
+                  its Consult button below the fold for a walk-in-only tenant. */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
                 {hasAppointments && (
                   <div className="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col h-[650px] overflow-hidden">
                     <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gradient-to-r from-gray-50/50 to-white">
