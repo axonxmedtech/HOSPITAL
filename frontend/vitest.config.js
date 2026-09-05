@@ -15,7 +15,10 @@ export default defineConfig({
         // Several suites render entire dashboards, and unbounded workers starve each other
         // badly enough that findBy* queries time out on machines with fewer cores than vitest
         // assumes. Bounded parallelism costs a few seconds and removes the flakiness.
-        poolOptions: { threads: { maxThreads: 4, minThreads: 1 } },
+        // Vitest 4 removed test.poolOptions and promoted these to top-level options; the old
+        // form was silently ignored, so the bound was inert and the flakiness came back.
+        maxWorkers: 4,
+        minWorkers: 1,
         css: false,
         coverage: {
             provider: 'v8',
