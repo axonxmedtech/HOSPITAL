@@ -74,6 +74,16 @@ public interface OpdRepository extends JpaRepository<Opd, Long> {
 			@Param("status") com.hms.entity.Opd.Status status,
 			Pageable pageable);
 
+	/** Half-open activity interval; preserve the inclusive search API for its other callers. */
+	@Query(value = "SELECT o FROM Opd o JOIN FETCH o.patient p LEFT JOIN FETCH o.doctor "
+			+ "LEFT JOIN FETCH o.receptionist WHERE p.hospitalId = :hospitalId "
+			+ "AND o.createdAt >= :from AND o.createdAt < :toExclusive",
+		countQuery = "SELECT COUNT(o) FROM Opd o JOIN o.patient p WHERE p.hospitalId = :hospitalId "
+			+ "AND o.createdAt >= :from AND o.createdAt < :toExclusive")
+	Page<Opd> findActivityInDateRange(@Param("hospitalId") Long hospitalId,
+			@Param("from") java.time.LocalDateTime from,
+			@Param("toExclusive") java.time.LocalDateTime toExclusive, Pageable pageable);
+
 	/**
 	 * Admissions the doctor recommended that reception has not yet acted on.
 	 *
