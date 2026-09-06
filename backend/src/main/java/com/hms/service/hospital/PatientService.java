@@ -29,6 +29,9 @@ public class PatientService {
     private static final Logger logger = LoggerFactory.getLogger(PatientService.class);
 
     @Autowired
+    private BusinessClock businessClock;
+
+    @Autowired
     private PatientRepository patientRepository;
 
     @Autowired
@@ -256,30 +259,12 @@ public class PatientService {
 
         org.springframework.data.domain.Page<Patient> patients;
 
-        if (date != null) {
-            java.time.LocalDateTime localStart = date.atStartOfDay();
-            java.time.LocalDateTime localEnd = date.atTime(java.time.LocalTime.MAX);
-
-            java.time.ZoneId sysZone = java.time.ZoneId.systemDefault();
-            java.time.ZoneOffset utcOffset = java.time.ZoneOffset.UTC;
-
-            java.time.LocalDateTime startOfDay = localStart.atZone(sysZone).withZoneSameInstant(utcOffset).toLocalDateTime();
-            java.time.LocalDateTime endOfDay = localEnd.atZone(sysZone).withZoneSameInstant(utcOffset).toLocalDateTime();
-
-            patients = patientRepository.findByHospitalIdAndIsActiveTrueAndCreatedAtBetweenOrderByCreatedAtDesc(
-                    hospitalId, startOfDay, endOfDay, pageable);
-        } else if ("today".equalsIgnoreCase(view)) {
-            java.time.LocalDateTime localStart = java.time.LocalDate.now().atStartOfDay();
-            java.time.LocalDateTime localEnd = java.time.LocalDate.now().atTime(java.time.LocalTime.MAX);
-
-            java.time.ZoneId sysZone = java.time.ZoneId.systemDefault();
-            java.time.ZoneOffset utcOffset = java.time.ZoneOffset.UTC;
-
-            java.time.LocalDateTime startOfDay = localStart.atZone(sysZone).withZoneSameInstant(utcOffset).toLocalDateTime();
-            java.time.LocalDateTime endOfDay = localEnd.atZone(sysZone).withZoneSameInstant(utcOffset).toLocalDateTime();
-
-            patients = patientRepository.findByHospitalIdAndIsActiveTrueAndCreatedAtBetweenOrderByCreatedAtDesc(
-                    hospitalId, startOfDay, endOfDay, pageable);
+        if (date != null || "today".equalsIgnoreCase(view)) {
+            LocalDate businessDate = date != null ? date : businessClock.today();
+            // Existing DATETIME values are IST wall time. Keep bounds in that representation.
+            patients = patientRepository.findActiveInDateRange(
+                    hospitalId, businessDate.atStartOfDay(),
+                    businessDate.plusDays(1).atStartOfDay(), pageable);
         } else {
             // Default / History
             patients = patientRepository.findByHospitalIdAndIsActiveTrueOrderByCreatedAtDesc(hospitalId, pageable);

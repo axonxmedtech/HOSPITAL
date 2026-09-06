@@ -106,14 +106,21 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
          */
         Optional<Patient> findByPublicId(String publicId);
 
-        org.springframework.data.domain.Page<Patient> findByHospitalIdAndIsActiveTrueAndCreatedAtBetweenOrderByCreatedAtDesc(
-                        Long hospitalId, java.time.LocalDateTime start, java.time.LocalDateTime end,
+        /** Business wall-clock interval [from, toExclusive). */
+        @Query("SELECT p FROM Patient p WHERE p.hospitalId = :hospitalId AND p.isActive = true "
+                        + "AND p.createdAt >= :from AND p.createdAt < :toExclusive ORDER BY p.createdAt DESC")
+        org.springframework.data.domain.Page<Patient> findActiveInDateRange(
+                        @Param("hospitalId") Long hospitalId, @Param("from") java.time.LocalDateTime from,
+                        @Param("toExclusive") java.time.LocalDateTime toExclusive,
                         org.springframework.data.domain.Pageable pageable);
 
         /**
          * Count active patients created within a date range
          * Used for "Patients This Month" and "Patients Today" stats
          */
-        long countByHospitalIdAndIsActiveTrueAndCreatedAtBetween(
-                        Long hospitalId, java.time.LocalDateTime start, java.time.LocalDateTime end);
+        @Query("SELECT COUNT(p) FROM Patient p WHERE p.hospitalId = :hospitalId AND p.isActive = true "
+                        + "AND p.createdAt >= :from AND p.createdAt < :toExclusive")
+        long countActiveInDateRange(@Param("hospitalId") Long hospitalId,
+                        @Param("from") java.time.LocalDateTime from,
+                        @Param("toExclusive") java.time.LocalDateTime toExclusive);
 }
