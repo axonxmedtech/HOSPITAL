@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -171,6 +171,30 @@ describe('ConsultationModal — submission', () => {
     expect(Array.isArray(payload.charges)).toBe(true);
     expect(payload.hospitalInventoryItems).toEqual([]);
     expect(payload.labTests).toEqual([]);
+  });
+
+  it('prescribes with a frequency quick preset instead of typing the boxes', async () => {
+    const user = userEvent.setup();
+    open();
+    await openPrescriptionTab(user);
+
+    await user.type(screen.getByPlaceholderText('Search medicine from catalog...'), 'Paracetamol');
+    await user.click(screen.getByRole('button', { name: 'pick Paracetamol' }));
+    await user.type(screen.getByPlaceholderText('Dosage (e.g., 500mg)'), '500mg');
+    await user.type(screen.getByPlaceholderText('Duration (e.g., 5 Days)'), '5 Days');
+
+    // One click instead of three keystrokes -- and it must satisfy the same frequency
+    // validation that blocks Add Medicine when no dose is set.
+    await user.click(screen.getByRole('button', { name: '1-0-1 BD' }));
+    await user.click(screen.getByRole('button', { name: '+ Add Medicine' }));
+    await submit(user);
+
+    await waitFor(() => expect(hospitalService.submitConsultation).toHaveBeenCalledTimes(1));
+    expect(payloadOf().prescription[0]).toMatchObject({
+      medicineName: 'Paracetamol',
+      frequency: '1-0-1',
+    });
+    expect(toastError).not.toHaveBeenCalled();
   });
 
   it('serialises several medicines in order', async () => {
