@@ -111,6 +111,83 @@ class HospitalAuthServiceTest {
                 .hasMessageContaining("billingHandler");
     }
 
+    @Test
+    void updateSettings_bothMode_allowsFlexibleBillingHandler() {
+        Hospital h = new Hospital();
+        h.setId(1L);
+        h.setModules(java.util.List.of("IN_CLINIC"));
+        when(hospitalRepository.findById(1L)).thenReturn(Optional.of(h));
+        when(userRepository.findByEmail("admin@test.com")).thenReturn(Optional.of(adminUser));
+        when(hospitalSettingRepository.findByHospital_Id(1L)).thenReturn(Optional.of(existingSetting));
+
+        // In BOTH mode, billingHandler should NOT be forced to DOCTOR; RECEPTIONIST or BOTH should be kept
+        HospitalSettingDTO dto = new HospitalSettingDTO("BOTH", "RECEPTIONIST", true);
+        HospitalSettingDTO result = service.updateHospitalOperationsSettings("admin@test.com", dto);
+
+        assertThat(result.getReceptionMode()).isEqualTo("BOTH");
+        assertThat(result.getBillingHandler()).isEqualTo("RECEPTIONIST");
+        verify(hospitalSettingRepository).updateByHospitalId(1L, "BOTH", "RECEPTIONIST", true);
+    }
+
+    @Test
+    void login_receptionist_blockedInSoloMode() {
+        User recUser = new User();
+        recUser.setId(60L);
+        recUser.setEmail("rec@test.com");
+        recUser.setRole("RECEPTIONIST");
+        recUser.setHospitalId(1L);
+        recUser.setPassword("ENC");
+        recUser.setIsActive(true);
+
+        when(userRepository.findByEmail("rec@test.com")).thenReturn(Optional.of(recUser));
+        when(passwordEncoder.matches("pw", "ENC")).thenReturn(true);
+        Hospital h = new Hospital();
+        h.setId(1L);
+        h.setIsActive(true);
+        when(hospitalRepository.findById(1L)).thenReturn(Optional.of(h));
+        existingSetting.setReceptionMode("SOLO");
+        when(hospitalSettingRepository.findByHospital_Id(1L)).thenReturn(Optional.of(existingSetting));
+
+        com.hms.dto.LoginRequest req = new com.hms.dto.LoginRequest();
+        req.setEmail("rec@test.com");
+        req.setPassword("pw");
+
+        assertThatThrownBy(() -> service.login(req))
+                .isInstanceOf(com.hms.exception.ForbiddenException.class)
+                .hasMessageContaining("Solo Doctor Mode is active");
+    }
+
+    @Test
+    void login_receptionist_allowedInBothMode() {
+        User recUser = new User();
+        recUser.setId(60L);
+        recUser.setEmail("rec@test.com");
+        recUser.setRole("RECEPTIONIST");
+        recUser.setHospitalId(1L);
+        recUser.setPassword("ENC");
+        recUser.setIsActive(true);
+
+        when(userRepository.findByEmail("rec@test.com")).thenReturn(Optional.of(recUser));
+        when(passwordEncoder.matches("pw", "ENC")).thenReturn(true);
+        Hospital h = new Hospital();
+        h.setId(1L);
+        h.setIsActive(true);
+        when(hospitalRepository.findById(1L)).thenReturn(Optional.of(h));
+        existingSetting.setReceptionMode("BOTH");
+        when(hospitalSettingRepository.findByHospital_Id(1L)).thenReturn(Optional.of(existingSetting));
+        when(receptionistProfileRepository.findByEmail("rec@test.com")).thenReturn(Optional.empty());
+        when(receptionistProfileRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(jwtUtil.generateToken(any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn("rec-tok");
+
+        com.hms.dto.LoginRequest req = new com.hms.dto.LoginRequest();
+        req.setEmail("rec@test.com");
+        req.setPassword("pw");
+
+        com.hms.dto.LoginResponse resp = service.login(req);
+        assertThat(resp.getToken()).isEqualTo("rec-tok");
+        assertThat(resp.getReceptionMode()).isEqualTo("BOTH");
+    }
+
     private User nurseUser() {
         User u = new User();
         u.setId(50L);

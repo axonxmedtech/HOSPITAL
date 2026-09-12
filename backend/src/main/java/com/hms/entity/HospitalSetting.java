@@ -31,7 +31,7 @@ public class HospitalSetting {
     private Hospital hospital;
 
     @Column(name = "reception_mode", nullable = false, length = 20)
-    private String receptionMode = "HAS_RECEPTIONIST"; // HAS_RECEPTIONIST or SOLO
+    private String receptionMode = "HAS_RECEPTIONIST"; // HAS_RECEPTIONIST, SOLO, or BOTH
 
     @Column(name = "billing_handler", nullable = false, length = 20)
     private String billingHandler = "RECEPTIONIST"; // RECEPTIONIST or DOCTOR

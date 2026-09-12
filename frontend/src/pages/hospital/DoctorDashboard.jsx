@@ -492,8 +492,8 @@ const DoctorDashboard = () => {
           const followUpsData = await hospitalService.getTodaysFollowUps({ mine: true });
           setTodaysFollowUps(followUpsData || []);
 
-          // If Solo Mode is active, fetch patients for Overview's patient list as well
-          if (user?.receptionMode === 'SOLO') {
+          // If Solo Mode or Both Mode is active, fetch patients for Overview's patient list as well
+          if (user?.receptionMode === 'SOLO' || user?.receptionMode === 'BOTH') {
             const patData = await hospitalService.getPatients('', 0, 100);
             const patientsArray = Array.isArray(patData) ? patData : patData.content || [];
             setPatients(patientsArray);
@@ -571,8 +571,12 @@ const DoctorDashboard = () => {
             statusParam
           );
           let opdsArray = Array.isArray(opdsData) ? opdsData : opdsData.content || [];
-          // In regular mode for Live view, we only show QUEUED anyway, but let's keep the local safety fallback
-          if (user?.receptionMode !== 'SOLO' && opdTabView === 'Live') {
+          // A doctor who manages reception (SOLO or BOTH) sees the whole live list; otherwise the
+          // front desk owns the queue and the doctor only sees what is waiting for them.
+          if (
+            !(user?.receptionMode === 'SOLO' || user?.receptionMode === 'BOTH') &&
+            opdTabView === 'Live'
+          ) {
             opdsArray = opdsArray.filter((o) => o.status === 'QUEUED');
           }
           setOpds(opdsArray);
@@ -873,6 +877,8 @@ const DoctorDashboard = () => {
   };
 
   const isSolo = user?.receptionMode === 'SOLO';
+  // SOLO and BOTH both put the front desk in the doctor's hands; billing is a separate axis.
+  const canDoctorManageReception = user?.receptionMode === 'SOLO' || user?.receptionMode === 'BOTH';
   const hasBilling = user?.billingHandler === 'DOCTOR' || user?.billingHandler === 'BOTH';
   const hasInClinic = user?.inClinic !== false;
   const hasMedicalInventory = modules.includes('MEDICAL_INVENTORY');
@@ -891,10 +897,10 @@ const DoctorDashboard = () => {
     ...(hasOT ? [{ id: 'ot', label: 'Operation Theatre', icon: null }] : []),
     ...(hasICU ? [{ id: 'icu-dashboard', label: 'ICU Dashboard', icon: null }] : []),
     ...(hasICU ? [{ id: 'icu-beds', label: 'ICU Bed Board', icon: null }] : []),
-    ...(isSolo && hasInClinic && hasMedicalInventory
+    ...(canDoctorManageReception && hasInClinic && hasMedicalInventory
       ? [{ id: 'inventory', label: 'Medicine Inventory', icon: null }]
       : []),
-    ...(isSolo && hasHospitalInventory
+    ...(canDoctorManageReception && hasHospitalInventory
       ? [{ id: 'hospital-inventory', label: `${tenantWord} Inventory`, icon: null }]
       : []),
   ];
@@ -1158,7 +1164,7 @@ const DoctorDashboard = () => {
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold text-gray-900">Overview</h2>
-                {user?.receptionMode === 'SOLO' && (
+                {canDoctorManageReception && (
                   <div className="flex items-center gap-3">
                     <button
                       onClick={() => setIsAddPatientModalOpen(true)}
@@ -1256,7 +1262,7 @@ const DoctorDashboard = () => {
                           Manage scheduled clinical slots
                         </p>
                       </div>
-                      {user?.receptionMode === 'SOLO' && (
+                      {canDoctorManageReception && (
                         <button
                           onClick={() => setIsAddModalOpen(true)}
                           className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer animate-fade-in"
@@ -1386,7 +1392,7 @@ const DoctorDashboard = () => {
                       <h3 className="text-lg font-bold text-gray-955">Queue</h3>
                       <p className="text-xs text-gray-500 mt-0.5">Real-time OPD patient workflow</p>
                     </div>
-                    {user?.receptionMode === 'SOLO' && (
+                    {canDoctorManageReception && (
                       <button
                         onClick={() => setIsOpdModalOpen(true)}
                         className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer animate-fade-in"
@@ -1518,7 +1524,7 @@ const DoctorDashboard = () => {
                 searchValue={searchInput}
                 searchPlaceholder={`Search ${activeTab}...`}
                 onAdd={
-                  user?.receptionMode === 'SOLO' &&
+                  canDoctorManageReception &&
                   (activeTab === 'patients' ||
                     activeTab === 'opd' ||
                     (activeTab === 'appointments' && hasAppointments))
@@ -2007,6 +2013,7 @@ const DoctorDashboard = () => {
                 //   1. case paper (always)
                 //   2. bill (always)
                 //   3. prescription — only when medicines were prescribed
+                //   4. in-clinic medicines slip — only when items were administered
                 const printLang = res?.printLanguage || 'en';
                 const printed = await printPdf(
                   `/hospital/opd/${opdId}/documents/pdf?lang=${encodeURIComponent(printLang)}`
@@ -3315,8 +3322,12 @@ const DoctorOpdTable = ({
             onClick: () => onViewPrescription(opd),
           });
 
-          // Solo Doctor Mode + IPD module enabled: can admit patient to IPD
-          if (user?.receptionMode === 'SOLO' && hasIPD && onAdmitIpd) {
+          // Solo or Both Reception Mode + IPD module enabled: can admit patient to IPD
+          if (
+            (user?.receptionMode === 'SOLO' || user?.receptionMode === 'BOTH') &&
+            hasIPD &&
+            onAdmitIpd
+          ) {
             actions.push({
               label: 'Admit to IPD',
               icon: (

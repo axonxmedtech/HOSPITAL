@@ -1091,12 +1091,13 @@ public class IpdAdmissionService {
         String role = securityHelper.getCurrentUserRole();
         Long hospitalId = ipd.getHospitalId();
         com.hms.entity.HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(hospitalId).orElse(null);
-        boolean isSolo = settings != null && "SOLO".equalsIgnoreCase(settings.getReceptionMode());
+        boolean isSoloOrBoth = settings != null && 
+            ("SOLO".equalsIgnoreCase(settings.getReceptionMode()) || "BOTH".equalsIgnoreCase(settings.getReceptionMode()));
 
         if (!"RECEPTIONIST".equalsIgnoreCase(role) && 
             !"HOSPITAL_ADMIN".equalsIgnoreCase(role) && 
-            !("DOCTOR".equalsIgnoreCase(role) && isSolo)) {
-            throw new org.springframework.security.access.AccessDeniedException("Only receptionists (or doctors under Solo Doctor mode) can confirm discharge");
+            !("DOCTOR".equalsIgnoreCase(role) && isSoloOrBoth)) {
+            throw new org.springframework.security.access.AccessDeniedException("Only receptionists (or doctors under Solo / Both mode) can confirm discharge");
         }
         if (ipd.getStatus() == null || !ipd.getStatus().equalsIgnoreCase("DISCHARGE_PLANNED")) {
             throw new IllegalArgumentException("Discharge is not planned for this IPD");
@@ -1241,12 +1242,13 @@ public class IpdAdmissionService {
         String role = securityHelper.getCurrentUserRole();
         Long hospitalId = ipd.getHospitalId();
         com.hms.entity.HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(hospitalId).orElse(null);
-        boolean isSolo = settings != null && "SOLO".equalsIgnoreCase(settings.getReceptionMode());
+        boolean isSoloOrBoth = settings != null && 
+            ("SOLO".equalsIgnoreCase(settings.getReceptionMode()) || "BOTH".equalsIgnoreCase(settings.getReceptionMode()));
 
         if (!"RECEPTIONIST".equalsIgnoreCase(role) && 
             !"HOSPITAL_ADMIN".equalsIgnoreCase(role) && 
-            !("DOCTOR".equalsIgnoreCase(role) && isSolo)) {
-            throw new org.springframework.security.access.AccessDeniedException("Only receptionists (or doctors under Solo Doctor mode) can change beds");
+            !("DOCTOR".equalsIgnoreCase(role) && isSoloOrBoth)) {
+            throw new org.springframework.security.access.AccessDeniedException("Only receptionists (or doctors under Solo / Both mode) can change beds");
         }
 
         if (!"ADMITTED".equalsIgnoreCase(ipd.getStatus()) && !"DISCHARGE_PLANNED".equalsIgnoreCase(ipd.getStatus())) {

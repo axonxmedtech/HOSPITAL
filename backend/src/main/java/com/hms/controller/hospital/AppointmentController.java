@@ -54,14 +54,44 @@ public class AppointmentController {
     @Autowired
     private AppointmentService appointmentService;
 
+    @Autowired
+    private com.hms.security.SecurityContextHelper securityHelper;
+
+    @Autowired
+    private com.hms.repository.HospitalSettingRepository hospitalSettingRepository;
+
+    /**
+     * A doctor may act as the front desk only when the hospital says so. Under HAS_RECEPTIONIST
+     * these mutations stay with reception; SOLO and BOTH open them to the doctor. Admins and
+     * receptionists are untouched. The dashboard hides the buttons, but that is convenience -
+     * this is the boundary. Mirrors BillingController.validateBillingAccess.
+     */
+    private void requireFrontDeskAccess() {
+        String role = securityHelper.getCurrentUserRole();
+        if (!"DOCTOR".equalsIgnoreCase(role) && !"ROLE_DOCTOR".equalsIgnoreCase(role)) return;
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new org.springframework.security.access.AccessDeniedException("Invalid hospital context");
+        }
+        // Transient defaults when no row exists yet - same reasoning as BillingController.
+        String mode = hospitalSettingRepository.findByHospital_Id(hospitalId)
+                .orElseGet(com.hms.entity.HospitalSetting::new)
+                .getReceptionMode();
+        if (!"SOLO".equalsIgnoreCase(mode) && !"BOTH".equalsIgnoreCase(mode)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Front-desk actions are handled by reception in this hospital.");
+        }
+    }
+
     /**
      * Create a new appointment
      * Accessible by Hospital Admin and Receptionist
      */
     @PostMapping
     @RequireModule("APPOINTMENTS")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> createAppointment(@Valid @RequestBody Appointment appointment) {
+        requireFrontDeskAccess();
         Appointment createdAppointment = appointmentService.createAppointment(appointment);
         return ResponseEntity.ok(createdAppointment);
     }

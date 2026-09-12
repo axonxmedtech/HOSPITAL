@@ -765,43 +765,44 @@ const HospitalAdminDashboard = () => {
     }
   };
 
-  const toggleReceptionMode = () => {
-    const isCurrentlySolo = operationsSettings.receptionMode === 'SOLO';
-    const nextValue = isCurrentlySolo ? 'HAS_RECEPTIONIST' : 'SOLO';
-    const title = isCurrentlySolo ? 'Enable Reception Mode' : 'Switch to Self Manage Mode';
-    const message = isCurrentlySolo
-      ? 'Are you sure you want to enable Reception Mode? Receptionists will be allowed to log in and manage the clinic workflow.'
-      : 'Are you sure you want to activate Self Manage mode? Receptionist accounts will be blocked from logging in, and Billing will automatically switch to the Doctor.';
+  const handleReceptionModeChange = (nextValue) => {
+    if (nextValue === operationsSettings.receptionMode) return;
 
-    openConfirmation(
-      title,
-      message,
-      async () => {
-        try {
-          setSettingsLoading(true);
-          const updated = {
-            receptionMode: nextValue,
-            billingHandler: nextValue === 'SOLO' ? 'DOCTOR' : operationsSettings.billingHandler,
-            inClinic: operationsSettings.inClinic,
-          };
-          await hospitalService.updateHospitalOperationsSettings(updated);
-          setOperationsSettings(updated);
-          setOrigOperationsSettings(updated);
-          success('Operational settings updated successfully.');
+    const applyChange = async () => {
+      try {
+        setSettingsLoading(true);
+        const updated = {
+          receptionMode: nextValue,
+          billingHandler: nextValue === 'SOLO' ? 'DOCTOR' : operationsSettings.billingHandler,
+          inClinic: operationsSettings.inClinic,
+        };
+        await hospitalService.updateHospitalOperationsSettings(updated);
+        setOperationsSettings(updated);
+        setOrigOperationsSettings(updated);
+        success('Operational settings updated successfully.');
 
-          // Refresh local user profile session
-          const profile = await authService.getProfile();
-          authService.updateCurrentUser(profile);
-          setUser(profile);
-        } catch (err) {
-          const msg = extractApiError(err, 'Failed to update operations mode');
-          toastError(msg);
-        } finally {
-          setSettingsLoading(false);
-        }
-      },
-      false
-    );
+        // Refresh local user profile session
+        const profile = await authService.getProfile();
+        authService.updateCurrentUser(profile);
+        setUser(profile);
+      } catch (err) {
+        const msg = extractApiError(err, 'Failed to update operations mode');
+        toastError(msg);
+      } finally {
+        setSettingsLoading(false);
+      }
+    };
+
+    if (nextValue === 'SOLO') {
+      openConfirmation(
+        'Switch to Self Manage Mode',
+        'Are you sure you want to activate Self Manage mode? Receptionist accounts will be blocked from logging in, and Billing will automatically switch to the Doctor.',
+        applyChange,
+        false
+      );
+    } else {
+      applyChange();
+    }
   };
 
   const handleBillingHandlerChange = async (e) => {
@@ -3870,43 +3871,50 @@ const HospitalAdminDashboard = () => {
                                       </svg>
                                     </div>
                                     <span
-                                      className={`px-3 py-1 text-xs font-semibold rounded-full ${operationsSettings.receptionMode === 'SOLO' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}
+                                      className={`px-3 py-1 text-xs font-semibold rounded-full ${
+                                        operationsSettings.receptionMode === 'SOLO'
+                                          ? 'bg-amber-100 text-amber-800'
+                                          : operationsSettings.receptionMode === 'BOTH'
+                                            ? 'bg-indigo-100 text-indigo-800'
+                                            : 'bg-emerald-100 text-emerald-800'
+                                      }`}
                                     >
                                       {operationsSettings.receptionMode === 'SOLO'
                                         ? 'Self Manage'
-                                        : 'Reception Mode'}
+                                        : operationsSettings.receptionMode === 'BOTH'
+                                          ? 'Both (Shared)'
+                                          : 'Reception Mode'}
                                     </span>
                                   </div>
                                   <h3 className="text-lg font-bold text-gray-900 mb-2">
                                     Operations Mode
                                   </h3>
                                   <p className="text-sm text-gray-600 leading-relaxed mb-6">
-                                    Configure practice operations. Under Self Manage, billing and
-                                    scheduling are managed directly by the doctor. Under Reception
-                                    Mode, receptionists have system access.
+                                    Configure practice operations. Under Reception Mode, front-desk
+                                    tasks are allocated to receptionists. Under Self Manage, tasks
+                                    are handled directly by the doctor. Under Both, front-desk tasks
+                                    are available to both receptionists and doctors.
                                   </p>
                                 </div>
-                                <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                                <div className="flex flex-col gap-2 border-t border-gray-100 pt-4">
                                   <span className="text-sm font-medium text-gray-700">
-                                    Enable Reception Mode
+                                    Reception Mode
                                   </span>
-                                  <button
-                                    onClick={toggleReceptionMode}
-                                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 ${
-                                      operationsSettings.receptionMode === 'HAS_RECEPTIONIST'
-                                        ? 'bg-sky-600'
-                                        : 'bg-gray-200'
-                                    }`}
+                                  <select
+                                    value={operationsSettings.receptionMode}
+                                    onChange={(e) => handleReceptionModeChange(e.target.value)}
+                                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-sky-500 focus:border-transparent outline-none bg-white text-sm text-gray-700"
                                   >
-                                    <span className="sr-only">Toggle Reception Mode</span>
-                                    <span
-                                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                                        operationsSettings.receptionMode === 'HAS_RECEPTIONIST'
-                                          ? 'translate-x-5'
-                                          : 'translate-x-0'
-                                      }`}
-                                    />
-                                  </button>
+                                    <option value="HAS_RECEPTIONIST">
+                                      Reception Mode (Receptionist Only)
+                                    </option>
+                                    <option value="SOLO">
+                                      Self Manage (Doctor Only - Reception Off)
+                                    </option>
+                                    <option value="BOTH">
+                                      Both (Doctor & Receptionist - Shared)
+                                    </option>
+                                  </select>
                                 </div>
                               </div>
 

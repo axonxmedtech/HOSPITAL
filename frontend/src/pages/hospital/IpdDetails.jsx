@@ -40,7 +40,8 @@ const IpdDetails = () => {
   const [user, setUser] = useState(() => authService.getCurrentUser() || {});
   const isDoctor = authService.isDoctor();
   const isReceptionist = authService.isReceptionist();
-  const isSoloDoctor = isDoctor && user?.receptionMode === 'SOLO';
+  const isSoloDoctor =
+    isDoctor && (user?.receptionMode === 'SOLO' || user?.receptionMode === 'BOTH');
   const { success, error: toastError } = useToast();
   const [otSurgery, setOtSurgery] = useState(null);
   const [otModalOpen, setOtModalOpen] = useState(false);
@@ -143,7 +144,7 @@ const IpdDetails = () => {
     navigate(loginUrl);
   };
 
-  const isSolo = user?.receptionMode === 'SOLO';
+  const isSoloOrBoth = user?.receptionMode === 'SOLO' || user?.receptionMode === 'BOTH';
   const hasBilling = user?.billingHandler === 'DOCTOR' || user?.billingHandler === 'BOTH';
   const hasInClinic = user?.inClinic !== false;
   const modules = user?.modules || [];
@@ -191,10 +192,10 @@ const IpdDetails = () => {
         { id: 'ipd', label: 'IPD' },
         { id: 'queue', label: 'Queue' },
         { id: 'opd', label: 'OPD' },
-        ...(isSolo ? [{ id: 'patients', label: 'Patients' }] : []),
-        ...(isSolo || hasBilling ? [{ id: 'billing', label: 'Billing' }] : []),
-        ...(isSolo && hasInClinic ? [{ id: 'inventory', label: 'Medicine Inventory' }] : []),
-        ...(isSolo ? [{ id: 'hospital-inventory', label: 'Hospital Inventory' }] : []),
+        ...(isSoloOrBoth ? [{ id: 'patients', label: 'Patients' }] : []),
+        ...(isSoloOrBoth || hasBilling ? [{ id: 'billing', label: 'Billing' }] : []),
+        ...(isSoloOrBoth && hasInClinic ? [{ id: 'inventory', label: 'Medicine Inventory' }] : []),
+        ...(isSoloOrBoth ? [{ id: 'hospital-inventory', label: 'Hospital Inventory' }] : []),
       ];
     } else if (effectiveRole === 'RECEPTIONIST') {
       return [

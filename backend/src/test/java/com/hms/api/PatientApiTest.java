@@ -2,6 +2,8 @@ package com.hms.api;
 
 import com.hms.entity.Hospital;
 import com.hms.repository.HospitalRepository;
+import com.hms.repository.HospitalSettingRepository;
+import com.hms.repository.UserRepository;
 import com.hms.security.JwtUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,6 +32,8 @@ class PatientApiTest {
     @Autowired TestRestTemplate rest;
     @Autowired JwtUtil jwtUtil;
     @Autowired HospitalRepository hospitalRepository;
+    @Autowired HospitalSettingRepository hospitalSettingRepository;
+    @Autowired UserRepository userRepository;
 
     private static final List<String> MODULES =
             List.of("OPD", "IPD", "PHARMACY", "BILLING", "NURSING", "APPOINTMENTS");
@@ -45,8 +49,68 @@ class PatientApiTest {
         h.setIsActive(true);
         h.setModules(MODULES);
         h.setIsSingleDoctor(false);
-        long hid = hospitalRepository.save(h).getId();
+        hospital = hospitalRepository.save(h);
+        long hid = hospital.getId();
         token = jwtUtil.generateToken(1L, "admin@apitest.com", "HOSPITAL_ADMIN", hid, MODULES, null, "HOSPITAL", null);
+    }
+
+    private Hospital hospital;
+
+    /** A real, active DOCTOR: the JWT filter checks the user's token version, so it must exist. */
+    private HttpHeaders doctorAuth() {
+        com.hms.entity.User d = new com.hms.entity.User();
+        d.setEmail("doc-" + System.nanoTime() + "@apitest.com");
+        d.setPassword("{noop}x");
+        d.setName("Dr Front Desk");
+        d.setRole("DOCTOR");
+        d.setHospitalId(hospital.getId());
+        d.setIsActive(true);
+        d = userRepository.save(d);
+        HttpHeaders h = new HttpHeaders();
+        h.setBearerAuth(jwtUtil.generateToken(d.getId(), d.getEmail(), d.getRole(), hospital.getId(),
+                MODULES, null, "HOSPITAL", null, d.getTokenVersion()));
+        h.setContentType(MediaType.APPLICATION_JSON);
+        return h;
+    }
+
+    private void setReceptionMode(String mode) {
+        com.hms.entity.HospitalSetting s = new com.hms.entity.HospitalSetting();
+        s.setHospital(hospital);
+        s.setReceptionMode(mode);
+        if ("SOLO".equals(mode)) s.setBillingHandler("DOCTOR");
+        hospitalSettingRepository.save(s);
+    }
+
+    private static final String DOCTOR_PATIENT =
+            "{\"name\":\"Front Desk Doc\",\"dateOfBirth\":\"1990-01-01\",\"gender\":\"FEMALE\",\"phone\":\"9900112244\"}";
+
+    /**
+     * The doctor-side front desk is a hospital setting, not a role. Under HAS_RECEPTIONIST the
+     * dashboard hides the button, but the API is the boundary: a doctor must still be refused.
+     */
+    @Test
+    void registerPatient_doctorUnderHasReceptionist_returns403() {
+        // No settings row at all: the transient default is HAS_RECEPTIONIST.
+        ResponseEntity<String> res = rest.exchange("/hospital/patients", HttpMethod.POST,
+                new HttpEntity<>(DOCTOR_PATIENT, doctorAuth()), String.class);
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void registerPatient_doctorUnderBoth_succeeds() {
+        setReceptionMode("BOTH");
+        ResponseEntity<String> res = rest.exchange("/hospital/patients", HttpMethod.POST,
+                new HttpEntity<>(DOCTOR_PATIENT, doctorAuth()), String.class);
+        assertThat(res.getStatusCode().is2xxSuccessful()).as(res.getBody()).isTrue();
+        assertThat(res.getBody()).contains("Front Desk Doc");
+    }
+
+    @Test
+    void registerPatient_doctorUnderSolo_succeeds() {
+        setReceptionMode("SOLO");
+        ResponseEntity<String> res = rest.exchange("/hospital/patients", HttpMethod.POST,
+                new HttpEntity<>(DOCTOR_PATIENT, doctorAuth()), String.class);
+        assertThat(res.getStatusCode().is2xxSuccessful()).as(res.getBody()).isTrue();
     }
 
     private HttpHeaders auth() {

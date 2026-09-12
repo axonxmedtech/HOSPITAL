@@ -24,6 +24,9 @@ public class PatientController {
     private com.hms.security.SecurityContextHelper securityHelper;
 
     @Autowired
+    private com.hms.repository.HospitalSettingRepository hospitalSettingRepository;
+
+    @Autowired
     private com.hms.repository.HospitalRepository hospitalRepository;
 
     @Autowired
@@ -32,16 +35,41 @@ public class PatientController {
     @Autowired
     private com.hms.service.hospital.PatientTimelineService patientTimelineService;
 
+    /**
+     * A doctor may act as the front desk only when the hospital says so. Under HAS_RECEPTIONIST
+     * these mutations stay with reception; SOLO and BOTH open them to the doctor. Admins and
+     * receptionists are untouched. The dashboard hides the buttons, but that is convenience -
+     * this is the boundary. Mirrors BillingController.validateBillingAccess.
+     */
+    private void requireFrontDeskAccess() {
+        String role = securityHelper.getCurrentUserRole();
+        if (!"DOCTOR".equalsIgnoreCase(role) && !"ROLE_DOCTOR".equalsIgnoreCase(role)) return;
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new org.springframework.security.access.AccessDeniedException("Invalid hospital context");
+        }
+        // Transient defaults when no row exists yet - same reasoning as BillingController.
+        String mode = hospitalSettingRepository.findByHospital_Id(hospitalId)
+                .orElseGet(com.hms.entity.HospitalSetting::new)
+                .getReceptionMode();
+        if (!"SOLO".equalsIgnoreCase(mode) && !"BOTH".equalsIgnoreCase(mode)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Front-desk actions are handled by reception in this hospital.");
+        }
+    }
+
     @PostMapping
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> addPatient(@Valid @RequestBody Patient patient) {
+        requireFrontDeskAccess();
         Patient createdPatient = patientService.addPatient(patient);
         return ResponseEntity.ok(createdPatient);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> updatePatient(@PathVariable Long id, @Valid @RequestBody Patient patient) {
+        requireFrontDeskAccess();
         Patient updatedPatient = patientService.updatePatient(id, patient);
         return ResponseEntity.ok(updatedPatient);
     }
