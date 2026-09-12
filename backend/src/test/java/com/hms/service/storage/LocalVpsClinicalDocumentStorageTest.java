@@ -2,6 +2,8 @@ package com.hms.service.storage;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.mock.env.MockEnvironment;
 
@@ -22,6 +24,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * tests use a temporary directory -- nothing depends on a real server, a deployment path, or
  * anything existing on the machine running them.
  */
+@EnabledOnOs(
+        value = {OS.LINUX, OS.MAC},
+        disabledReason =
+                "Clinical document storage resolves every name through a SecureDirectoryStream,"
+                        + " which only the JDK's Unix filesystem provider implements."
+                        + " openRoot() fails closed without it, so these run on CI (Linux)"
+                        + " rather than being weakened to suit a platform the storage does not target.")
 class LocalVpsClinicalDocumentStorageTest {
 
     @TempDir Path root;

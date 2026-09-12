@@ -10,6 +10,8 @@ import com.hms.repository.PatientRepository;
 import com.hms.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -34,6 +36,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * see it -- and a caller from another facility gets the same answer as one asking for a document
  * that does not exist.
  */
+@EnabledOnOs(
+        value = {OS.LINUX, OS.MAC},
+        disabledReason =
+                "Clinical document storage resolves every name through a SecureDirectoryStream,"
+                        + " which only the JDK's Unix filesystem provider implements."
+                        + " openRoot() fails closed without it, so these run on CI (Linux)"
+                        + " rather than being weakened to suit a platform the storage does not target.")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 class PatientDocumentApiTest {
