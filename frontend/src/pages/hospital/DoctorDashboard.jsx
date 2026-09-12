@@ -1,6 +1,4 @@
 import { createColumnHelper } from '@tanstack/react-table';
-import FollowUpPanel from '../../components/FollowUpPanel';
-import { safeLoadMessage } from '../../utils/apiError';
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import ActionMenu from '../../components/ActionMenu';
@@ -10,6 +8,7 @@ import ConsultationModal from '../../components/ConsultationModal';
 import DataTable from '../../components/DataTable';
 import DateSelect from '../../components/DateSelect';
 import EmptyState from '../../components/EmptyState';
+import FollowUpPanel from '../../components/FollowUpPanel';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
 import LowStockBanner from '../../components/LowStockBanner';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
@@ -35,12 +34,12 @@ import apiClient from '../../services/apiService';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
 import otService from '../../services/otService';
-import { extractApiError } from '../../utils/apiError';
+import { safeLoadMessage, extractApiError } from '../../utils/apiError';
+import { createOptionalModuleFetcher } from '../../utils/optionalModule';
 import BillingTable from './BillingTable';
 import IcuBedBoard from './icu/IcuBedBoard';
 import IcuDashboard from './icu/IcuDashboard';
 import OtBoard from './ot/OtBoard';
-import { createOptionalModuleFetcher } from '../../utils/optionalModule';
 
 /**
  * DoctorDashboard - Doctor dashboard
@@ -450,7 +449,12 @@ const DoctorDashboard = () => {
           try {
             const data = await fetchAppointmentData(
               () =>
-                hospitalService.getMyAppointments(viewFilter, searchTerm, localPage, ITEMS_PER_PAGE),
+                hospitalService.getMyAppointments(
+                  viewFilter,
+                  searchTerm,
+                  localPage,
+                  ITEMS_PER_PAGE
+                ),
               { content: [], totalElements: 0, totalPages: 1 }
             );
             // Handle both array and paginated response
@@ -1132,7 +1136,9 @@ const DoctorDashboard = () => {
               className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-4 flex items-start justify-between gap-4"
             >
               <div>
-                <p className="text-sm font-semibold text-red-800">Couldn&apos;t load your patients</p>
+                <p className="text-sm font-semibold text-red-800">
+                  Couldn&apos;t load your patients
+                </p>
                 <p className="mt-1 text-sm text-red-700">{loadError}</p>
                 <p className="mt-1 text-xs text-red-600">
                   Anything shown below may be out of date.
@@ -1724,6 +1730,7 @@ const DoctorDashboard = () => {
                   />
                 ))}
 
+              {/* eslint-disable-next-line jsx-a11y/aria-role -- `role` is FollowUpPanel's own prop, not an ARIA role */}
               {activeTab === 'follow-ups' && <FollowUpPanel role="DOCTOR" mine />}
 
               {activeTab === 'opd' &&
@@ -2000,8 +2007,10 @@ const DoctorDashboard = () => {
                 //   1. case paper (always)
                 //   2. bill (always)
                 //   3. prescription — only when medicines were prescribed
-                //   4. in-clinic medicines slip — only when items were administered
-                const printed = await printPdf(`/hospital/opd/${opdId}/documents/pdf`);
+                const printLang = res?.printLanguage || 'en';
+                const printed = await printPdf(
+                  `/hospital/opd/${opdId}/documents/pdf?lang=${encodeURIComponent(printLang)}`
+                );
 
                 if (!printed) {
                   toastError(

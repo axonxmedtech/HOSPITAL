@@ -5,6 +5,7 @@ import com.hms.entity.Patient;
 import com.lowagie.text.*;
 import com.lowagie.text.Font;
 import com.lowagie.text.Rectangle;
+import com.lowagie.text.pdf.BaseFont;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
@@ -29,6 +30,39 @@ public class PdfLayoutHelper {
     protected static final Color NAVY_BLUE = new Color(0, 51, 102);
     protected static final Font RED_TITLE_FONT = FontFactory.getFont(FontFactory.TIMES_BOLD, 22, Font.BOLD, NAVY_BLUE);
     protected static final Font RED_DOCTOR_FONT = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, Font.BOLD, NAVY_BLUE);
+
+    protected static BaseFont UNICODE_BASE_FONT;
+    public static final Font UNICODE_NORMAL_FONT;
+
+    static {
+        BaseFont bf = null;
+        try {
+            java.io.InputStream is = PdfLayoutHelper.class.getResourceAsStream("/fonts/NotoSansDevanagari-Regular.ttf");
+            if (is == null && PdfLayoutHelper.class.getClassLoader() != null) {
+                is = PdfLayoutHelper.class.getClassLoader().getResourceAsStream("fonts/NotoSansDevanagari-Regular.ttf");
+            }
+            if (is == null && Thread.currentThread().getContextClassLoader() != null) {
+                is = Thread.currentThread().getContextClassLoader().getResourceAsStream("fonts/NotoSansDevanagari-Regular.ttf");
+            }
+            if (is != null) {
+                byte[] fontBytes;
+                try {
+                    fontBytes = is.readAllBytes();
+                } finally {
+                    is.close();
+                }
+                bf = BaseFont.createFont("NotoSansDevanagari-Regular.ttf", BaseFont.IDENTITY_H, BaseFont.EMBEDDED, true, fontBytes, null);
+            } else {
+                org.slf4j.LoggerFactory.getLogger(PdfLayoutHelper.class).warn("Devanagari font resource /fonts/NotoSansDevanagari-Regular.ttf not found on classpath");
+            }
+        } catch (Exception e) {
+            org.slf4j.LoggerFactory.getLogger(PdfLayoutHelper.class).warn("Could not load embedded Devanagari font; falling back to Helvetica", e);
+        }
+        UNICODE_BASE_FONT = bf;
+        UNICODE_NORMAL_FONT = (bf != null)
+                ? new Font(bf, 10, Font.NORMAL, Color.BLACK)
+                : FontFactory.getFont(FontFactory.HELVETICA, 10, Font.NORMAL, Color.BLACK);
+    }
 
     // Helper: build a dynamic list of charge rows from billing items + medicines
     public java.util.List<Object[]> buildDynamicChargeRows(
@@ -202,7 +236,11 @@ public class PdfLayoutHelper {
     }
 
     public void addTableCell(PdfPTable table, String text, boolean alignRight) {
-        PdfPCell cell = new PdfPCell(new Phrase(text != null ? text : "", NORMAL_FONT));
+        addTableCell(table, text, alignRight, NORMAL_FONT);
+    }
+
+    public void addTableCell(PdfPTable table, String text, boolean alignRight, Font font) {
+        PdfPCell cell = new PdfPCell(new Phrase(text != null ? text : "", font != null ? font : NORMAL_FONT));
         cell.setBorder(Rectangle.BOTTOM);
         cell.setBorderColor(Color.LIGHT_GRAY);
         cell.setPaddingTop(6f);

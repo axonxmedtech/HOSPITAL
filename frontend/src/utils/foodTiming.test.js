@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { describeFoodTiming, FOOD_TIMING_OPTIONS, isFoodTimingApplicable } from './foodTiming';
+import {
+  describeFoodTiming,
+  FOOD_TIMING_OPTIONS,
+  isFoodTimingApplicable,
+  getFoodTimingTranslation,
+} from './foodTiming';
 
 describe('food timing', () => {
   it('offers exactly the vocabulary the server accepts', () => {
@@ -60,5 +65,32 @@ describe('food timing applicability', () => {
     expect(isFoodTimingApplicable(undefined, undefined)).toBe(true);
     expect(isFoodTimingApplicable('', '')).toBe(true);
     expect(isFoodTimingApplicable('OINTMENT', 'TOPICAL')).toBe(true);
+  });
+});
+
+describe('food timing translations', () => {
+  it('translates BEFORE_FOOD and AFTER_FOOD to Marathi and Hindi', () => {
+    expect(getFoodTimingTranslation('BEFORE_FOOD', 'mr')).toBe('जेवणापूर्वी');
+    expect(getFoodTimingTranslation('AFTER_FOOD', 'mr')).toBe('जेवणानंतर');
+
+    expect(getFoodTimingTranslation('BEFORE_FOOD', 'hi')).toBe('भोजन से पहले');
+    expect(getFoodTimingTranslation('AFTER_FOOD', 'hi')).toBe('भोजन के बाद');
+
+    expect(getFoodTimingTranslation('BEFORE_FOOD', 'en')).toBe('Before Food');
+    expect(getFoodTimingTranslation('AFTER_FOOD', 'en')).toBe('After Food');
+  });
+
+  it('handles NOT_SPECIFIED and null by returning null', () => {
+    expect(getFoodTimingTranslation('NOT_SPECIFIED', 'mr')).toBeNull();
+    expect(getFoodTimingTranslation(null, 'mr')).toBeNull();
+    expect(getFoodTimingTranslation('', 'hi')).toBeNull();
+  });
+
+  it('falls back to English when language is not supported', () => {
+    expect(getFoodTimingTranslation('BEFORE_FOOD', 'fr')).toBe('Before Food');
+  });
+
+  it('returns unknown values verbatim', () => {
+    expect(getFoodTimingTranslation('CUSTOM_TIMING', 'mr')).toBe('CUSTOM_TIMING');
   });
 });

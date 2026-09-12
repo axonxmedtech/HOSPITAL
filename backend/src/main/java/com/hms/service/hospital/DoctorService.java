@@ -597,6 +597,7 @@ public class DoctorService {
                 p.setDosage(item.getDosage());
                 p.setFrequency(item.getFrequency());
                 p.setDuration(item.getDuration());
+                p.setFoodTiming(com.hms.entity.FoodTiming.normalize(item.getFoodTiming()));
                 p.setInstructions(item.getInstructions());
                 prescriptionRepository.save(p);
 

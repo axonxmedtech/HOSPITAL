@@ -52,4 +52,25 @@ export const describeFoodTiming = (value) => {
   return LABELS[value] ?? String(value);
 };
 
+export const FOOD_TIMING_TRANSLATIONS = {
+  en: {
+    BEFORE_FOOD: 'Before Food',
+    AFTER_FOOD: 'After Food',
+  },
+  mr: {
+    BEFORE_FOOD: 'जेवणापूर्वी',
+    AFTER_FOOD: 'जेवणानंतर',
+  },
+  hi: {
+    BEFORE_FOOD: 'भोजन से पहले',
+    AFTER_FOOD: 'भोजन के बाद',
+  },
+};
+
+export const getFoodTimingTranslation = (timing, lang = 'en') => {
+  if (!timing || timing === 'NOT_SPECIFIED') return null;
+  const langTable = FOOD_TIMING_TRANSLATIONS[lang] || FOOD_TIMING_TRANSLATIONS.en;
+  return langTable[timing] || LABELS[timing] || String(timing);
+};
+
 export default describeFoodTiming;
