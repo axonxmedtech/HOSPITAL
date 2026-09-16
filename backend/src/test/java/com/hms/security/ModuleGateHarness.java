@@ -43,9 +43,15 @@ final class ModuleGateHarness {
         ReflectionTestUtils.setField(aspect, "hospitalRepository", hospitalRepository);
     }
 
-    /** Authenticate a tenant of the given type whose live row holds {@code modules}. */
+    /**
+     * Authenticate a tenant of the given type whose live row holds {@code modules}.
+     *
+     * <p>The type is written to the row as well as the token: since S-SEC-3C the row is what
+     * decides whether the gate runs, so a test about clinic or pharmacy behaviour that only set
+     * the claim would be testing nothing.
+     */
     void tenant(HospitalType type, List<String> modules) {
-        liveRowHolds(modules);
+        liveRowHolds(type, modules);
         UserAuthenticationDetails details =
                 new UserAuthenticationDetails(1L, "HOSPITAL_ADMIN", 7L, new ArrayList<>(modules));
         details.setHospitalType(type == null ? null : type.name());
@@ -60,7 +66,12 @@ final class ModuleGateHarness {
      * stale module claim) exactly as it was. This is the mid-session revocation scenario.
      */
     void liveRowHolds(List<String> modules) {
+        liveRowHolds(HospitalType.HOSPITAL, modules);
+    }
+
+    void liveRowHolds(HospitalType type, List<String> modules) {
         Hospital hospital = new Hospital();
+        hospital.setType(type);
         hospital.setModules(new ArrayList<>(modules));
         when(hospitalRepository.findById(anyLong())).thenReturn(Optional.of(hospital));
     }
