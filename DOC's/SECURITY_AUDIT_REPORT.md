@@ -99,8 +99,8 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 - `frontend/checkDuplicates.js` (Line 6-7)
 
 ```javascript
-const USERNAME = 'audit@cityhospital.com';
-const PASSWORD = 'password';
+const USERNAME = '<REDACTED_IN_S-SEC-5B>';
+const PASSWORD = '<REDACTED_IN_S-SEC-5B>';
 ```
 
 **Risk:** Credentials committed to version control.

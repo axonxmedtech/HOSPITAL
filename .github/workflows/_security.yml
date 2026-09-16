@@ -102,6 +102,25 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The repository's own scanner over every tracked file. Gitleaks scans history with its own
+      # ruleset; this gate covers the current tree using rules tuned to the shapes that have
+      # actually leaked here (command-line passwords, raw signing keys). Fails closed.
+      #
+      # actions/setup-node directly, NOT ./.github/actions/setup-node: that composite runs `npm ci`
+      # in frontend/, and this scanner has no dependencies. Wiring it through the composite would
+      # make a frontend lockfile problem stop the secret gate from ever running.
+      # Pin to SHA in production: https://github.com/actions/setup-node/releases
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Secret scanner self-test
+        run: node --test scripts/secret-scan.test.mjs
+
+      - name: Secret scan (repository scanner, all tracked files)
+        run: node scripts/secret-scan.mjs --all
+
       - name: Install Gitleaks
         run: |
           curl -sSfL \

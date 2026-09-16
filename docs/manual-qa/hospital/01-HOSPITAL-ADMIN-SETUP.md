@@ -42,7 +42,7 @@
 ### TC-HA-004 — Create doctor → login → dashboard → picker
 
 `HOSPITAL_A · HOSPITAL_ADMIN → DOCTOR · Doctors · Critical · Staff ▸ Doctors`
-**Data:** name `Dr Meera Kulkarni`, email `doc1.hospa@qa.test`, phone `9900100001`, specialization `General Medicine`, password `QaPass#2026`.
+**Data:** name `Dr Meera Kulkarni`, email `doc1.hospa@qa.test`, phone `9900100001`, specialization `General Medicine`, password `QaPass#2026`. <!-- pragma: allowlist secret — synthetic QA credential, see docs/manual-qa/02-TEST-DATA-SETUP.md -->
 **Steps:** 1. Doctors → **Add**. 2. Fill; Save. 3. New tab: log in as the doctor. 4. As reception, open Appointments → Add → doctor dropdown; OPD → Add → doctor dropdown. 5. As doctor call `GET /hospital/patients` with a HOSPITAL_B patient id.
 **Expected:** row appears, Active; login lands `/hospital/doctor` with Overview/Patients/Appointments/OPD/Follow-ups/IPD/Billing/OT/ICU/Medicine Inventory tabs (module-dependent); doctor is offered in **both** pickers; step 5 → 403/404.
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
@@ -151,7 +151,7 @@
 ### TC-HA-017 — Separate Nurse Login ON → staff nurse gets credentials
 
 `HOSPITAL_A · HOSPITAL_ADMIN → NURSE · Nurses · Critical · Settings ▸ Operations`
-**Steps:** 1. Settings → Operations Settings → nurse login toggle **ON**. 2. Nurses → Reena → set/reset password `QaPass#2026`, email `nurse.hospa@qa.test`. 3. Log in as Reena.
+**Steps:** 1. Settings → Operations Settings → nurse login toggle **ON**. 2. Nurses → Reena → set/reset password `QaPass#2026`, email `nurse.hospa@qa.test`. 3. Log in as Reena. <!-- pragma: allowlist secret — synthetic QA credential, see docs/manual-qa/02-TEST-DATA-SETUP.md -->
 **Expected:** lands `/hospital/nurse` (Dashboard, My Patients, My Tasks, My Shifts, My Attendance, Forms, ICU Beds). Downstream: nursing records now attribute to the logged-in nurse; the "Performed By Nurse" picker disappears for her (`TC-VIS-015`).
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
 

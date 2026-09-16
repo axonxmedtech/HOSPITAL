@@ -343,7 +343,7 @@ Note: **Pharmacy has no Inventory Items screen** — the group has four sub-item
 **Steps**
 
 1. Hospital name `QA Hospital A`.
-2. Admin name `Anita Deshpande`, admin email `admin.hospa@qa.test`, password `QaPass#2026` (confirm it).
+2. Admin name `Anita Deshpande`, admin email `admin.hospa@qa.test`, password `QaPass#2026` (confirm it). <!-- pragma: allowlist secret — synthetic QA credential, see docs/manual-qa/02-TEST-DATA-SETUP.md -->
 3. Type **HOSPITAL**. Plan **QA-HOSP-FULL**. Billing period **MONTHLY**. Single doctor **off**.
 4. Save.
 5. Record the tenant's numeric **id** and **customId** from the list.

@@ -168,7 +168,7 @@
 
 **Steps**
 
-1. Log in with `rec.hospa@qa.test` and password `WrongPass#1`.
+1. Log in with `rec.hospa@qa.test` and password `WrongPass#1`. <!-- pragma: allowlist secret — synthetic QA credential, see docs/manual-qa/02-TEST-DATA-SETUP.md -->
 
 **Expected**
 
