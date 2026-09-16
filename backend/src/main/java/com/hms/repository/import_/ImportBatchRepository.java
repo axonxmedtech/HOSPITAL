@@ -20,6 +20,9 @@ public interface ImportBatchRepository extends JpaRepository<ImportBatch, Long> 
 
     Optional<ImportBatch> findByPublicIdAndHospitalId(String publicId, Long hospitalId);
 
+    /** For following a link's batch pointer without leaving the tenant. */
+    Optional<ImportBatch> findByIdAndHospitalId(Long id, Long hospitalId);
+
     List<ImportBatch> findByHospitalIdOrderByCreatedAtDesc(Long hospitalId);
 
     boolean existsByHospitalIdAndStatus(Long hospitalId, ImportStatus status);

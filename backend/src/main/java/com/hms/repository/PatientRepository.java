@@ -60,6 +60,13 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
          */
         Optional<Patient> findByIdAndHospitalIdAndIsActiveTrue(Long id, Long hospitalId);
 
+        /**
+         * Tenant-scoped lookup that also sees inactive rows. The legacy importer needs it to tell
+         * "this MRN's patient was deactivated" from "this MRN's patient is gone"; every other caller
+         * should keep using the IsActiveTrue variant.
+         */
+        Optional<Patient> findByIdAndHospitalId(Long id, Long hospitalId);
+
         /** Serializes admission decisions for one tenant-scoped patient. */
         @Lock(LockModeType.PESSIMISTIC_WRITE)
         @Query("SELECT p FROM Patient p WHERE p.id = :id AND p.hospitalId = :hospitalId")

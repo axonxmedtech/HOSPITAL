@@ -29,6 +29,10 @@ public enum ImportReasonCode {
     // FAILED — the row could not be applied as given
     NAME_MISSING,
     INVALID_DOB,
+    /** The parser dropped a cell over the resource cap; the row's data is not trustworthy. */
+    VALUE_TOO_LONG,
+    /** A value sat in a column with no header; the parser could not name it. */
+    UNEXPECTED_COLUMN,
     VALIDATION_FAILED,
     CONSTRAINT_FAILED,
     UNEXPECTED_ERROR
