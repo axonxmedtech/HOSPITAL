@@ -141,12 +141,12 @@ class PatientImporterDryRunSliceTest {
 
         List<RowEvaluation> out = List.of(
                 importer.evaluate(row(2, "MRN-1", "Test Linked", "9000000001", "M", "1980-01-01", "Newer Address"), header, MAPPING, ctx), // update
-                importer.evaluate(row(3, "MRN-NEW", "Brand New", "9000000005", "F", "", ""), header, MAPPING, ctx), // create
-                importer.evaluate(row(4, "MRN-X", "Someone", "9000000006", "M", "", ""), header, MAPPING, ctx), // existing holder → review
+                importer.evaluate(row(3, "MRN-NEW", "Brand New", "9000000005", "F", "1990-01-01", ""), header, MAPPING, ctx), // create
+                importer.evaluate(row(4, "MRN-X", "Someone", "9000000006", "M", "1990-01-01", ""), header, MAPPING, ctx), // existing holder → review
                 importer.evaluate(row(5, "MRN-U", "Test Undone", "9000000004", "M", "", ""), header, MAPPING, ctx), // reactivate
-                importer.evaluate(row(6, "MRN-Y", "Reuse", "9000000003", "M", "", ""), header, MAPPING, ctx), // inactive holder → free
+                importer.evaluate(row(6, "MRN-Y", "Reuse", "9000000003", "M", "1990-01-01", ""), header, MAPPING, ctx), // inactive holder → free
                 importer.evaluate(row(7, "", "Test Manual", "9000000002", "M", "", "Seed Address"), header, mappingWithoutMrn(), ctx), // no change
-                importer.evaluate(row(8, "MRN-Z", "Third", "9000000006", "M", "", ""), header, MAPPING, ctx)); // in-file dup of row 4
+                importer.evaluate(row(8, "MRN-Z", "Third", "9000000006", "M", "1990-01-01", ""), header, MAPPING, ctx)); // in-file dup of row 4
 
         assertThat(out).extracting(RowEvaluation::state)
                 .containsExactly(
@@ -192,29 +192,29 @@ class PatientImporterDryRunSliceTest {
     void phoneLookupsAreTenantScopedAndIgnoreInactiveHolders() {
         ImportEvaluationContext h2 = new ImportEvaluationContext(H2);
         // 9000000002 is H1's manual patient; for H2 the number is free.
-        RowEvaluation free = importer.evaluate(row(2, "MRN-Q", "Fresh", "9000000002", "M"), header, MAPPING, h2);
+        RowEvaluation free = importer.evaluate(row(2, "MRN-Q", "Fresh", "9000000002", "M", "1990-01-01"), header, MAPPING, h2);
         assertThat(free.state()).isEqualTo(ImportRowState.CREATED);
 
         // 9000000001 is held by H2's own patient → review, and the related id is H2's, not H1's.
-        RowEvaluation held = importer.evaluate(row(3, "MRN-R", "Fresh Two", "9000000001", "M"), header, MAPPING, h2);
+        RowEvaluation held = importer.evaluate(row(3, "MRN-R", "Fresh Two", "9000000001", "M", "1990-01-01"), header, MAPPING, h2);
         assertThat(held.reasonCode()).isEqualTo(ImportReasonCode.DUPLICATE_PHONE_REQUIRES_REVIEW);
         assertThat(held.relatedPatientIds()).containsExactly(h2SamePhone.getId());
 
         // In H1, 9000000003 is held only by an inactive patient → free.
-        RowEvaluation inactive = importer.evaluate(row(4, "MRN-S", "Fresh Three", "9000000003", "M"), header, MAPPING, new ImportEvaluationContext(H1));
+        RowEvaluation inactive = importer.evaluate(row(4, "MRN-S", "Fresh Three", "9000000003", "M", "1990-01-01"), header, MAPPING, new ImportEvaluationContext(H1));
         assertThat(inactive.state()).isEqualTo(ImportRowState.CREATED);
     }
 
     @Test
     void theFilesHospitalIdColumnIsDataNotTenancy() {
         RowEvaluation e = importer.evaluate(
-                row(2, "MRN-NEW", "Brand New", "9000000005", "F", "", "", String.valueOf(H2)), header, MAPPING, new ImportEvaluationContext(H1));
+                row(2, "MRN-NEW", "Brand New", "9000000005", "F", "1990-01-01", "", String.valueOf(H2)), header, MAPPING, new ImportEvaluationContext(H1));
 
         assertThat(e.state()).isEqualTo(ImportRowState.CREATED);
         assertThat(e.create().customFields()).containsEntry("hospital_id", String.valueOf(H2));
         // The number 9000000001 is held in H1 — evaluating the same row with that phone under H1's context sees H1's holder.
         RowEvaluation e2 = importer.evaluate(
-                row(3, "MRN-NEW2", "Brand New", "9000000001", "F", "", "", String.valueOf(H2)), header, MAPPING, new ImportEvaluationContext(H1));
+                row(3, "MRN-NEW2", "Brand New", "9000000001", "F", "1990-01-01", "", String.valueOf(H2)), header, MAPPING, new ImportEvaluationContext(H1));
         assertThat(e2.relatedPatientIds()).containsExactly(h1Linked.getId());
     }
 

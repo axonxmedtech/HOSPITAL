@@ -353,7 +353,36 @@ public class PatientImporter {
                         null,
                         List.of());
             }
-        } else if (genderRaw != null && gender.isEmpty()) {
+            if (!dob.isValid()) {
+                // A new patient needs a date of birth, as on the manual path. An omitted or blank
+                // cell is a question for a human, not a null on the record.
+                return RowEvaluation.review(
+                        rowNum,
+                        ImportReasonCode.DOB_MISSING,
+                        headerOf.get("dateOfBirth"),
+                        headerOf.containsKey("dateOfBirth")
+                                ? "Date of birth is blank. It is required to register a patient; add it and re-import this row."
+                                : "No date of birth column is mapped. It is required to register a patient; map one and re-import this row.",
+                        null,
+                        null,
+                        List.of());
+            }
+        } else {
+            // An existing patient: an omitted or blank phone/DOB leaves the record as it is (the
+            // file never erases), but a phone that was SUPPLIED and cannot be read is not ignored —
+            // the whole row waits for a human rather than applying its other fields around it.
+            if (phone.kind() == LegacyPhoneNormalizer.Kind.UNRECOVERABLE) {
+                return RowEvaluation.review(
+                        rowNum,
+                        ImportReasonCode.PHONE_UNRECOVERABLE,
+                        headerOf.get("phone"),
+                        "Phone number could not be read as a 10-digit number. Correct it and re-import this row; nothing on it was applied.",
+                        null,
+                        matched.getId(),
+                        List.of());
+            }
+        }
+        if (matched != null && genderRaw != null && gender.isEmpty()) {
             return RowEvaluation.review(
                     rowNum,
                     ImportReasonCode.INVALID_GENDER,

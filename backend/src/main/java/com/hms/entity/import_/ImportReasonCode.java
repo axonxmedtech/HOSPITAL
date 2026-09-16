@@ -17,6 +17,8 @@ public enum ImportReasonCode {
     // NEEDS_REVIEW — a human must decide
     PHONE_MISSING,
     PHONE_UNRECOVERABLE,
+    /** A new patient needs a date of birth; the column was unmapped or the cell blank. */
+    DOB_MISSING,
     DUPLICATE_PHONE_IN_FILE,
     DUPLICATE_PHONE_REQUIRES_REVIEW,
     DUPLICATE_PHONE_RACE,

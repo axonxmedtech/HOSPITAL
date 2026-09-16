@@ -184,18 +184,18 @@ class PatientImporterTest {
     void anEntityInvalidNameFailsRatherThanBeingCleaned() {
         assertThat(evaluate(row(2, "MRN1", "Test 😀 Person", "9000000001", "M")).reasonCode()).isEqualTo(ImportReasonCode.VALIDATION_FAILED);
         assertThat(evaluate(row(3, "MRN2", "x".repeat(101), "9000000001", "M")).reasonCode()).isEqualTo(ImportReasonCode.VALIDATION_FAILED);
-        assertThat(evaluate(row(4, "MRN3", "x".repeat(100), "9000000001", "M")).state()).isEqualTo(ImportRowState.CREATED);
+        assertThat(evaluate(row(4, "MRN3", "x".repeat(100), "9000000001", "M", "01/01/1990")).state()).isEqualTo(ImportRowState.CREATED);
     }
 
     @Test
     void anInvalidEmailIsPreservedAsImportMetadataAndPatientEmailStaysEmpty() {
-        RowEvaluation e = evaluate(row(2, "MRN1", "Test Person", "9000000001", "M", "", "n/a"));
+        RowEvaluation e = evaluate(row(2, "MRN1", "Test Person", "9000000001", "M", "01/01/1990", "n/a"));
 
         assertThat(e.state()).isEqualTo(ImportRowState.CREATED);
         assertThat(e.create().values().email()).isNull();
         assertThat(e.create().customFields()).containsEntry(PatientImporter.EMAIL_NOT_VALID, "n/a");
 
-        RowEvaluation ok = evaluate(row(3, "MRN2", "Test Person", "9000000002", "M", "", "person@example.test"));
+        RowEvaluation ok = evaluate(row(3, "MRN2", "Test Person", "9000000002", "M", "01/01/1990", "person@example.test"));
         assertThat(ok.create().values().email()).isEqualTo("person@example.test");
         assertThat(ok.create().customFields()).doesNotContainKey(PatientImporter.EMAIL_NOT_VALID);
     }
@@ -203,7 +203,7 @@ class PatientImporterTest {
     @Test
     void addressAndHistoryOverTheBusinessLimitAreClampedWithTheFullValuePreservedButIdentityFieldsNeverAre() {
         String longAddress = "a".repeat(300);
-        RowEvaluation e = evaluate(row(2, "MRN1", "Test Person", "9000000001", "M", "", "", longAddress, "h".repeat(1001)));
+        RowEvaluation e = evaluate(row(2, "MRN1", "Test Person", "9000000001", "M", "01/01/1990", "", longAddress, "h".repeat(1001)));
 
         assertThat(e.state()).isEqualTo(ImportRowState.CREATED);
         assertThat(e.create().values().address()).hasSize(255);
@@ -256,7 +256,7 @@ class PatientImporterTest {
         when(finder.findActiveByPhone(HOSPITAL, "9000000001", null))
                 .thenReturn(List.of(new DuplicatePatientMatch(50L, "p50", "PAT50", "Test Person", 40)));
 
-        RowEvaluation e = evaluate(row(2, "NEW-1", "Test Person", "9000000001", "M"));
+        RowEvaluation e = evaluate(row(2, "NEW-1", "Test Person", "9000000001", "M", "01/01/1990"));
 
         // It is a create — which then trips the real duplicate-phone rule, as it must.
         assertThat(e.state()).isEqualTo(ImportRowState.NEEDS_REVIEW);
@@ -388,7 +388,7 @@ class PatientImporterTest {
         when(finder.findActiveByPhone(HOSPITAL, "9000000001", null))
                 .thenReturn(List.of(new DuplicatePatientMatch(20L, "p20", "PAT20", "Ramesh Kumar", 40)));
 
-        RowEvaluation e = evaluateNoMrn(row(2, "", "Ramesh Kumaar", "9000000001", "M"));
+        RowEvaluation e = evaluateNoMrn(row(2, "", "Ramesh Kumaar", "9000000001", "M", "01/01/1990"));
 
         assertThat(e.state()).isEqualTo(ImportRowState.NEEDS_REVIEW);
         assertThat(e.reasonCode()).isEqualTo(ImportReasonCode.DUPLICATE_PHONE_REQUIRES_REVIEW);
@@ -426,7 +426,7 @@ class PatientImporterTest {
     void theSameCanonicalPhoneUnderTwoIdentitiesInOneFileIsReview() {
         when(links.findByHospitalIdAndLegacyId(anyLong(), anyString())).thenReturn(Optional.empty());
 
-        RowEvaluation first = evaluate(row(2, "MRN1", "Person One", "9000000001", "M"));
+        RowEvaluation first = evaluate(row(2, "MRN1", "Person One", "9000000001", "M", "01/01/1990"));
         RowEvaluation same = evaluate(row(3, "MRN1", "Person One", "98765 43210", "M")); // same MRN again → skipped, not a phone conflict
         RowEvaluation second = evaluate(row(4, "MRN2", "Person Two", "+91 9000000001", "F"));
         RowEvaluation noMrn = evaluateNoMrn(row(5, "", "Person Three", "09000000001", "F"));
@@ -448,7 +448,7 @@ class PatientImporterTest {
         when(finder.findActiveByPhone(HOSPITAL, "9000000001", null))
                 .thenReturn(List.of(new DuplicatePatientMatch(30L, "p30", "PAT30", "Sharer", 50)));
 
-        RowEvaluation e = evaluate(row(2, "MRN1", "Third Person", "9000000001", "M"));
+        RowEvaluation e = evaluate(row(2, "MRN1", "Third Person", "9000000001", "M", "01/01/1990"));
 
         assertThat(e.state()).isEqualTo(ImportRowState.NEEDS_REVIEW);
         assertThat(e.reasonCode()).isEqualTo(ImportReasonCode.DUPLICATE_PHONE_REQUIRES_REVIEW);
@@ -461,7 +461,7 @@ class PatientImporterTest {
     void theFinderIsAskedWithTheCallersHospitalOnlyAndAnEmptyAnswerMeansNoConflict() {
         when(links.findByHospitalIdAndLegacyId(HOSPITAL, "MRN1")).thenReturn(Optional.empty());
 
-        RowEvaluation e = evaluate(row(2, "MRN1", "Test Person", "9000000001", "M"));
+        RowEvaluation e = evaluate(row(2, "MRN1", "Test Person", "9000000001", "M", "01/01/1990"));
 
         assertThat(e.state()).isEqualTo(ImportRowState.CREATED);
         verify(finder).findActiveByPhone(HOSPITAL, "9000000001", null);
@@ -559,7 +559,7 @@ class PatientImporterTest {
     void everyLookupCarriesTheContextHospitalAndTheFileCannotChangeIt() {
         when(links.findByHospitalIdAndLegacyId(HOSPITAL, "MRN1")).thenReturn(Optional.empty());
 
-        RowEvaluation e = evaluate(row(2, "MRN1", "Test Person", "9000000001", "M", "", "", "", "", String.valueOf(OTHER_HOSPITAL)));
+        RowEvaluation e = evaluate(row(2, "MRN1", "Test Person", "9000000001", "M", "01/01/1990", "", "", "", String.valueOf(OTHER_HOSPITAL)));
 
         assertThat(e.state()).isEqualTo(ImportRowState.CREATED);
         assertThat(e.create().customFields()).containsEntry("hospital_id", "8");
@@ -585,6 +585,130 @@ class PatientImporterTest {
     void theContextRefusesToExistWithoutAHospital() {
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> new ImportEvaluationContext(null))
                 .isInstanceOf(NullPointerException.class);
+    }
+
+    // ── correction 1: date of birth ─────────────────────────────────────────
+
+    @Test
+    void aNewPatientWithNoDobColumnMappedIsDobMissing() {
+        when(links.findByHospitalIdAndLegacyId(HOSPITAL, "MRN1")).thenReturn(Optional.empty());
+        Map<String, String> noDob = new LinkedHashMap<>(MAPPING);
+        noDob.remove("DOB");
+
+        RowEvaluation e = importer.evaluate(row(2, "MRN1", "Test Person", "9000000001", "M", "01/01/1990"), header(), noDob, ctx);
+
+        assertThat(e.state()).isEqualTo(ImportRowState.NEEDS_REVIEW);
+        assertThat(e.reasonCode()).isEqualTo(ImportReasonCode.DOB_MISSING);
+        assertThat(e.message()).contains("No date of birth column");
+        assertThat(e.create()).isNull();
+    }
+
+    @Test
+    void aNewPatientWithABlankDobIsDobMissingAndWithAValidOneIsCreated() {
+        when(links.findByHospitalIdAndLegacyId(anyLong(), anyString())).thenReturn(Optional.empty());
+
+        RowEvaluation blank = evaluate(row(2, "MRN1", "Test Person", "9000000001", "M", ""));
+        assertThat(blank.reasonCode()).isEqualTo(ImportReasonCode.DOB_MISSING);
+        assertThat(blank.column()).isEqualTo("DOB");
+        assertThat(blank.create()).isNull();
+
+        RowEvaluation ok = evaluate(row(3, "MRN2", "Test Person", "9000000002", "M", "03/04/1977"));
+        assertThat(ok.state()).isEqualTo(ImportRowState.CREATED);
+        assertThat(ok.create().values().dateOfBirth()).isEqualTo(LocalDate.of(1977, 4, 3));
+
+        // Unparseable stays FAILED: INVALID_DOB, as before.
+        assertThat(evaluate(row(4, "MRN3", "Test Person", "9000000003", "M", "31/02/2020")).reasonCode()).isEqualTo(ImportReasonCode.INVALID_DOB);
+    }
+
+    @Test
+    void anUpdateWithTheDobUnmappedOrBlankLeavesTheExistingDobAlone() {
+        Patient existing = patient(10L, "Test Person", "9000000001", LocalDate.of(1977, 4, 3), true);
+        when(links.findByHospitalIdAndLegacyId(HOSPITAL, "MRN1")).thenReturn(Optional.of(link(10L, "MRN1", 1L, PatientFieldValues.of(existing))));
+        when(patients.findByIdAndHospitalId(10L, HOSPITAL)).thenReturn(Optional.of(existing));
+        Map<String, String> noDob = new LinkedHashMap<>(MAPPING);
+        noDob.remove("DOB");
+
+        RowEvaluation unmapped = importer.evaluate(row(2, "MRN1", "Test Person", "9000000001", "M", "", "", "New Address"), header(), noDob, ctx);
+        assertThat(unmapped.state()).isEqualTo(ImportRowState.UPDATED);
+        assertThat(unmapped.update().changes()).containsOnlyKeys("address");
+
+        ctx = new ImportEvaluationContext(HOSPITAL);
+        RowEvaluation blank = evaluate(row(3, "MRN1", "Test Person", "9000000001", "M", "", "", "Newer Address"));
+        assertThat(blank.state()).isEqualTo(ImportRowState.UPDATED);
+        assertThat(blank.update().changes()).containsOnlyKeys("address");
+        assertThat(existing.getDateOfBirth()).isEqualTo(LocalDate.of(1977, 4, 3));
+    }
+
+    @Test
+    void anUpdateWithAChangedDobFollowsTheOwnershipRules() {
+        Patient existing = patient(10L, "Test Person", "9000000001", LocalDate.of(1977, 4, 3), true);
+        PatientFieldValues imported = PatientFieldValues.of(existing); // DOB import-owned
+        when(links.findByHospitalIdAndLegacyId(HOSPITAL, "MRN1")).thenReturn(Optional.of(link(10L, "MRN1", 1L, imported)));
+        when(patients.findByIdAndHospitalId(10L, HOSPITAL)).thenReturn(Optional.of(existing));
+
+        RowEvaluation owned = evaluate(row(2, "MRN1", "Test Person", "9000000001", "M", "04/04/1977"));
+        assertThat(owned.state()).isEqualTo(ImportRowState.UPDATED);
+        assertThat(owned.update().changes()).containsExactly(Map.entry("dateOfBirth", "1977-04-04"));
+
+        existing.setDateOfBirth(LocalDate.of(1977, 4, 5)); // a human corrected it since
+        ctx = new ImportEvaluationContext(HOSPITAL);
+        RowEvaluation human = evaluate(row(3, "MRN1", "Test Person", "9000000001", "M", "04/04/1977"));
+        assertThat(human.reasonCode()).isEqualTo(ImportReasonCode.EDITED_SINCE_IMPORT);
+        assertThat(human.update()).isNull();
+    }
+
+    // ── correction 2: phone on update ───────────────────────────────────────
+
+    @Test
+    void anUpdateWithThePhoneUnmappedOrBlankLeavesTheExistingPhoneAlone() {
+        Patient existing = patient(10L, "Test Person", "9000000001", LocalDate.of(1977, 4, 3), true);
+        when(links.findByHospitalIdAndLegacyId(HOSPITAL, "MRN1")).thenReturn(Optional.of(link(10L, "MRN1", 1L, PatientFieldValues.of(existing))));
+        when(patients.findByIdAndHospitalId(10L, HOSPITAL)).thenReturn(Optional.of(existing));
+        Map<String, String> noPhone = new LinkedHashMap<>(MAPPING);
+        noPhone.remove("Phone");
+
+        RowEvaluation unmapped = importer.evaluate(row(2, "MRN1", "Test Person", "N/A", "M", "", "", "New Address"), header(), noPhone, ctx);
+        assertThat(unmapped.state()).isEqualTo(ImportRowState.UPDATED);
+        assertThat(unmapped.update().changes()).containsOnlyKeys("address");
+
+        ctx = new ImportEvaluationContext(HOSPITAL);
+        RowEvaluation blank = evaluate(row(3, "MRN1", "Test Person", "", "M", "", "", "Newer Address"));
+        assertThat(blank.state()).isEqualTo(ImportRowState.UPDATED);
+        assertThat(blank.update().changes()).containsOnlyKeys("address");
+        assertThat(existing.getPhone()).isEqualTo("9000000001");
+        verify(finder, never()).findActiveByPhone(anyLong(), anyString(), any());
+    }
+
+    @Test
+    void anUpdateWithAMalformedSuppliedPhoneIsReviewedAndAppliesNothingElse() {
+        Patient existing = patient(10L, "Test Person", "9000000001", LocalDate.of(1977, 4, 3), true);
+        when(links.findByHospitalIdAndLegacyId(HOSPITAL, "MRN1")).thenReturn(Optional.of(link(10L, "MRN1", 1L, PatientFieldValues.of(existing))));
+        when(patients.findByIdAndHospitalId(10L, HOSPITAL)).thenReturn(Optional.of(existing));
+
+        RowEvaluation e = evaluate(row(2, "MRN1", "Test Person", "98765ABC10", "M", "", "new@example.test", "New Address"));
+
+        assertThat(e.state()).isEqualTo(ImportRowState.NEEDS_REVIEW);
+        assertThat(e.reasonCode()).isEqualTo(ImportReasonCode.PHONE_UNRECOVERABLE);
+        assertThat(e.matchedPatientId()).isEqualTo(10L);
+        assertThat(e.update()).isNull(); // no candidate, so no partial email/address change
+        assertThat(e.message()).doesNotContain("98765ABC10");
+        assertThat(existing.getEmail()).isNull();
+        assertThat(existing.getAddress()).isEqualTo("Old Address");
+        verify(finder, never()).findActiveByPhone(anyLong(), anyString(), any());
+    }
+
+    @Test
+    void anUpdateWithAFormattedButValidPhoneGoesThroughNormalProcessing() {
+        Patient existing = patient(10L, "Test Person", "9000000001", LocalDate.of(1977, 4, 3), true);
+        when(links.findByHospitalIdAndLegacyId(HOSPITAL, "MRN1")).thenReturn(Optional.of(link(10L, "MRN1", 1L, PatientFieldValues.of(existing))));
+        when(patients.findByIdAndHospitalId(10L, HOSPITAL)).thenReturn(Optional.of(existing));
+
+        RowEvaluation e = evaluate(row(2, "MRN1", "Test Person", "+91 90000-00002", "M"));
+
+        assertThat(e.state()).isEqualTo(ImportRowState.UPDATED);
+        assertThat(e.update().changes()).containsExactly(Map.entry("phone", "9000000002"));
+        assertThat(e.update().customFields()).containsEntry(PatientImporter.PHONE_AS_IMPORTED, "+91 90000-00002");
+        verify(finder).findActiveByPhone(HOSPITAL, "9000000002", 10L);
     }
 
     private static PatientFieldValues snapshot(Patient p) {
