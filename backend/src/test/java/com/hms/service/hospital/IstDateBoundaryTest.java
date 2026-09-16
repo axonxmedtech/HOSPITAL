@@ -49,7 +49,8 @@ import static org.mockito.Mockito.when;
         "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.H2Dialect"})
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ActiveProfiles("test")
-@Import({HospitalStatsService.class, PatientService.class, IstDateBoundaryTest.Caching.class, PatientRegistrar.class,
+@Import({HospitalStatsService.class, PatientService.class,
+        com.hms.service.hospital.DuplicatePhoneRaceTranslator.class, IstDateBoundaryTest.Caching.class, PatientRegistrar.class,
         PatientDuplicateFinder.class})
 class IstDateBoundaryTest {
     static final LocalDate DAY = LocalDate.of(2026, 9, 6);

@@ -2,6 +2,7 @@ package com.hms.controller.pharmacy;
 
 import jakarta.validation.Valid;
 
+import com.hms.security.RequireModule;
 import com.hms.exception.ResourceNotFoundException;
  
 import com.hms.dto.pharmacy.PharmacySaleRequest;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.*;
  
 @RestController
 @RequestMapping("/pharmacy/sales")
+@RequireModule("PHARMACY")
 public class PharmacySaleController {
  
     @Autowired

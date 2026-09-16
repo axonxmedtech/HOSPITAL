@@ -29,7 +29,7 @@ public class PatientService {
      * Shown to the person at the desk, so it says what happened rather than what was rejected.
      * Shared with the appointment path so both ways of registering a patient read the same.
      */
-    static final String DUPLICATE_PHONE_MESSAGE =
+    public static final String DUPLICATE_PHONE_MESSAGE =
             "This mobile number is already registered to a patient at this hospital.";
 
 
@@ -43,6 +43,9 @@ public class PatientService {
 
     @Autowired
     private PatientRegistrar patientRegistrar;
+
+    @Autowired
+    private DuplicatePhoneRaceTranslator duplicatePhoneRaceTranslator;
 
     @Autowired
     private PatientDuplicateFinder patientDuplicateFinder;
@@ -132,6 +135,49 @@ public class PatientService {
      * phone later changes — an acknowledgement for X must never exempt Y. See
      * {@code Patient.duplicatePhoneAckFor} for the full semantics.
      */
+    /**
+     * Write the new patient, and turn a lost race into the same answer a detected duplicate gets.
+     *
+     * <p>Two registrations can both pass the duplicate check above before either commits; the
+     * database settles it and the loser arrives here. The re-read is safe precisely because
+     * {@code addPatient} is NOT transactional: {@link PatientRegistrar} owns its own transaction,
+     * so by the time this catch runs that transaction has already rolled back and closed, and a
+     * fresh query is a fresh session rather than a doomed one.
+     *
+     * <p>Only the active-phone index is translated. Any other constraint failure is rethrown
+     * untouched — calling an unrelated defect a duplicate phone would hide it.
+     */
+    private Patient persistOrReportDuplicatePhone(Patient patient, Long hospitalId, String phone) {
+        try {
+            return patientRegistrar.persistNewPatient(patient);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            throw duplicatePhoneOrOriginal(e, hospitalId, phone, null);
+        }
+    }
+
+    /** The same translation for a phone EDIT, which can lose the same race. */
+    private Patient saveOrReportDuplicatePhone(Patient patient, Long hospitalId, String phone,
+            Long excludePatientId) {
+        try {
+            return patientRepository.save(patient);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            throw duplicatePhoneOrOriginal(e, hospitalId, phone, excludePatientId);
+        }
+    }
+
+    /**
+     * @return the structured duplicate-phone conflict when this really was the active-phone index,
+     *         and the original exception otherwise. The decision itself lives in
+     *         {@link DuplicatePhoneRaceTranslator} so the appointment path, which must translate at
+     *         its controller, uses exactly the same rule.
+     */
+    private RuntimeException duplicatePhoneOrOriginal(
+            org.springframework.dao.DataIntegrityViolationException e, Long hospitalId, String phone,
+            Long excludePatientId) {
+        return duplicatePhoneRaceTranslator.translate(e, hospitalId, phone, excludePatientId,
+                DUPLICATE_PHONE_MESSAGE);
+    }
+
     private void recordAcknowledgement(Patient patient, String phone) {
         patient.setDuplicatePhoneAckFor(phone);
         patient.setDuplicatePhoneAckAt(java.time.LocalDateTime.now(java.time.ZoneId.systemDefault()));
@@ -261,7 +307,7 @@ public class PatientService {
         }
 
         logger.info("Hospital {} creating new patient: {}", hospitalId, LogSanitizer.clean(patient.getName()));
-        Patient savedPatient = patientRegistrar.persistNewPatient(patient);
+        Patient savedPatient = persistOrReportDuplicatePhone(patient, hospitalId, patient.getPhone());
 
         if (acknowledged) {
             auditDuplicatePhoneAcknowledgement(savedPatient, patient.getPhone(), conflicts,
@@ -354,7 +400,8 @@ public class PatientService {
         existingPatient.setAddress(updatedData.getAddress());
         existingPatient.setMedicalHistory(updatedData.getMedicalHistory());
 
-        Patient saved = patientRepository.save(existingPatient);
+        Patient saved = saveOrReportDuplicatePhone(existingPatient, existingPatient.getHospitalId(),
+                newPhone, existingPatient.getId());
         evictStatsCache(saved.getHospitalId());
 
         if (!acknowledgedConflicts.isEmpty()) {

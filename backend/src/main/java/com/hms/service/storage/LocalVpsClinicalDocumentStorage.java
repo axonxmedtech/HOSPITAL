@@ -122,8 +122,7 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
                                 + "private directory for patient documents, on persistent storage "
                                 + "and outside anything the web server publishes.");
             }
-            root = Paths.get(System.getProperty("java.io.tmpdir"), "hms-patient-documents")
-                    .toAbsolutePath().toString();
+            root = developmentFallbackDirectory().toString();
             log.warn("hms.document-storage.root is not set; using a temporary directory for development only.");
         }
 
@@ -492,6 +491,40 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
     }
 
     /** Nothing outside the service account needs to read a patient's records. */
+    /**
+     * The development-only fallback under {@code java.io.tmpdir}, created safely.
+     *
+     * <p>The system temp directory is shared by every local user, so a FIXED name there
+     * ({@code hms-patient-documents}, as this used to be) is a directory anyone can create first:
+     * pre-create it world-readable and the service would write patient documents into it, with
+     * {@link #restrictPermissions} unable to tighten a directory it does not own. A fixed name also
+     * left a window between {@code createDirectories} (default umask, typically world-readable) and
+     * the later chmod. {@link Files#createTempDirectory} closes both: the name is unpredictable, the
+     * directory is guaranteed not to have existed, and on POSIX the owner-only mode is applied
+     * atomically at creation rather than afterwards. Nothing after this point changes — the symlink
+     * refusal, {@code toRealPath} canonicalisation and containment checks all still run on the result.
+     *
+     * <p>The cost is that a development instance gets a fresh directory each start. That is the
+     * documented contract of this fallback already ("for development only"); production refuses to
+     * start without an explicit, persistent directory.
+     */
+    private static Path developmentFallbackDirectory() {
+        Path tmp = Paths.get(System.getProperty("java.io.tmpdir")).toAbsolutePath();
+        try {
+            if (tmp.getFileSystem().supportedFileAttributeViews().contains("posix")) {
+                return Files.createTempDirectory(tmp, "hms-patient-documents-",
+                        PosixFilePermissions.asFileAttribute(EnumSet.of(
+                                PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE,
+                                PosixFilePermission.OWNER_EXECUTE)));
+            }
+            return Files.createTempDirectory(tmp, "hms-patient-documents-");
+        } catch (IOException e) {
+            throw new IllegalStateException(
+                    "A private temporary directory for patient documents could not be created. "
+                            + "Set HMS_DOCUMENT_STORAGE_PATH to a directory the service account owns.", e);
+        }
+    }
+
     private static void restrictPermissions(Path path) {
         try {
             if (!path.getFileSystem().supportedFileAttributeViews().contains("posix")) return;

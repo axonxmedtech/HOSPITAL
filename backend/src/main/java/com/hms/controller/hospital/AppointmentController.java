@@ -54,6 +54,12 @@ public class AppointmentController {
     @Autowired
     private AppointmentService appointmentService;
 
+    @Autowired
+    private com.hms.service.hospital.DuplicatePhoneRaceTranslator duplicatePhoneRaceTranslator;
+
+    @Autowired
+    private com.hms.security.SecurityContextHelper securityHelper;
+
     /**
      * Create a new appointment
      * Accessible by Hospital Admin and Receptionist
@@ -64,8 +70,20 @@ public class AppointmentController {
     public ResponseEntity<?> createAppointment(@Valid @RequestBody Appointment appointment,
             @RequestParam(name = "acknowledgeDuplicatePhone", defaultValue = "false")
             boolean acknowledgeDuplicatePhone) {
-        Appointment createdAppointment = appointmentService.createAppointment(appointment,
-                acknowledgeDuplicatePhone);
+        Appointment createdAppointment;
+        try {
+            createdAppointment = appointmentService.createAppointment(appointment,
+                    acknowledgeDuplicatePhone);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            // Booking an appointment can create the patient, so it can lose the same duplicate-phone
+            // race registration can. It is translated HERE rather than inside the service because
+            // createAppointment is @Transactional: catching in there would leave a rollback-only
+            // transaction and the re-read would run inside it. By this line that transaction has
+            // already rolled back and closed.
+            throw duplicatePhoneRaceTranslator.translate(e, securityHelper.getCurrentHospitalId(),
+                    appointment.getPatientPhone(), null,
+                    com.hms.service.hospital.PatientService.DUPLICATE_PHONE_MESSAGE);
+        }
         return ResponseEntity.ok(createdAppointment);
     }
 

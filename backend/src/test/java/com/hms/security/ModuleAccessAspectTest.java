@@ -42,7 +42,16 @@ class ModuleAccessAspectTest {
 
     /** The tenant's live plan, as stored on the hospital row. */
     private void hospitalHasModules(List<String> modules) {
+        hospitalRowIs(HospitalType.HOSPITAL, modules);
+    }
+
+    /**
+     * The authoritative row: its type is what decides whether the gate runs, so a test about
+     * clinic or pharmacy behaviour has to say so HERE, not only in the token.
+     */
+    private void hospitalRowIs(HospitalType type, List<String> modules) {
         Hospital hospital = new Hospital();
+        hospital.setType(type);
         hospital.setModules(modules == null ? null : new java.util.ArrayList<>(modules));
         when(hospitalRepository.findById(anyLong())).thenReturn(Optional.of(hospital));
     }
@@ -143,14 +152,21 @@ class ModuleAccessAspectTest {
                 .hasMessageContaining("OT");
     }
 
-    /** A vanished hospital row must not lock a live session out — fall back to the token claim. */
+    /**
+     * A vanished hospital row denies (S-SEC-3C). This used to fall back to the token's module
+     * claim so a live session kept working, but that made a claim able to grant a module with no
+     * authoritative state behind it. FacilityAccessAspect already refuses the same condition on
+     * every controller method, so the fallback could not be reached in a running system anyway —
+     * only in a unit test that drives this aspect alone.
+     */
     @Test
-    void missingHospitalRow_fallsBackToTheTokenClaim() throws Exception {
-        authenticate(7L, HospitalType.HOSPITAL.name(), List.of("OPD", "OT"));
+    void missingHospitalRow_denies_ratherThanTrustingTheToken() throws Exception {
+        authenticate(7L, HospitalType.HOSPITAL.name(), List.of("OPD", "OT")); // token claims OT
         when(hospitalRepository.findById(anyLong())).thenReturn(Optional.empty());
         JoinPoint jp = joinPointFor(new ClassGatedController(), "handler");
 
-        assertThatCode(() -> aspect.checkModuleAccess(jp)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> aspect.checkModuleAccess(jp))
+                .isInstanceOf(AccessDeniedException.class);
     }
 
     /**
@@ -159,6 +175,7 @@ class ModuleAccessAspectTest {
      */
     @Test
     void clinicSession_isNeverModuleGated() throws Exception {
+        hospitalRowIs(HospitalType.CLINIC, List.of("OPD"));
         authenticate(7L, HospitalType.CLINIC.name(), List.of("OPD"));
         JoinPoint jp = joinPointFor(new ClassGatedController(), "handler");
 
@@ -168,6 +185,7 @@ class ModuleAccessAspectTest {
     /** F16 regression: pharmacy plans hold only tier keys, never APPOINTMENTS/BILLING. */
     @Test
     void pharmacySession_isNeverModuleGated() throws Exception {
+        hospitalRowIs(HospitalType.PHARMACY, List.of("SINGLE_PHARMACY"));
         authenticate(7L, HospitalType.PHARMACY.name(), List.of("SINGLE_PHARMACY"));
         JoinPoint jp = joinPointFor(new MethodGatedController(), "handler");
 
@@ -182,12 +200,18 @@ class ModuleAccessAspectTest {
         assertThatCode(() -> aspect.checkModuleAccess(jp)).doesNotThrowAnyException();
     }
 
-    /** A token minted before the hospitalType claim existed must not be revoked mid-session. */
+    /**
+     * A token minted before the hospitalType claim existed no longer decides anything (S-SEC-3C).
+     * The row says HOSPITAL, so the gate runs — previously the absent claim switched it off, which
+     * was a way for an old token to keep reaching a module its plan had lost.
+     */
     @Test
-    void tokenWithoutTenantTypeClaim_isNotEnforced() throws Exception {
+    void tokenWithoutTenantTypeClaim_isStillEnforcedFromTheRow() throws Exception {
+        hospitalRowIs(HospitalType.HOSPITAL, List.of("OPD")); // no OT
         authenticate(7L, null, List.of("OPD"));
         JoinPoint jp = joinPointFor(new ClassGatedController(), "handler");
 
-        assertThatCode(() -> aspect.checkModuleAccess(jp)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> aspect.checkModuleAccess(jp))
+                .isInstanceOf(AccessDeniedException.class);
     }
 }

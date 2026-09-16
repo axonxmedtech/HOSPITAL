@@ -266,4 +266,82 @@ class MedicineStockServiceTest {
         assertThat(stockService.batchesFor(medicineId)).hasSize(1);
         assertThat(stockService.availableQuantity(medicineId)).isEqualTo(25);
     }
+
+    // ── Receipt arithmetic must never wrap (CodeQL: user-controlled data in arithmetic) ────────
+
+    /** Normal and boundary receipts: the batch total is exact right up to the column ceiling. */
+    @Test
+    void receivingUpToTheColumnCeilingIsExact() {
+        LocalDate expiry = LocalDate.now().plusMonths(3);
+        stockService.receiveBatch(medicineId, "CEIL", expiry, Integer.MAX_VALUE - 10, 1.0, null, null);
+        stockService.receiveBatch(medicineId, "CEIL", expiry, 10, 1.0, null, null);
+
+        MedicineStockBatch batch = stockService.batchesFor(medicineId).get(0);
+        assertThat(batch.getCurrentQuantity()).isEqualTo(Integer.MAX_VALUE);
+        assertThat(batch.getReceivedQuantity()).isEqualTo(Integer.MAX_VALUE);
+    }
+
+    /**
+     * The overflow: one more unit than the column can hold. Before the fix this wrapped to a
+     * negative number in memory; current_quantity was then refused by the DB check as an opaque
+     * conflict, while received_quantity — which has no check — would have kept the corrupted value.
+     */
+    @Test
+    void aReceiptThatWouldOverflowTheBatchIsRefused_andTheBatchIsUntouched() {
+        LocalDate expiry = LocalDate.now().plusMonths(3);
+        stockService.receiveBatch(medicineId, "FULL", expiry, Integer.MAX_VALUE, 1.0, null, null);
+
+        assertThatThrownBy(() ->
+                stockService.receiveBatch(medicineId, "FULL", expiry, 1, 1.0, null, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("too large");
+
+        MedicineStockBatch batch = stockService.batchesFor(medicineId).get(0);
+        assertThat(batch.getCurrentQuantity()).as("no wrap, no partial write").isEqualTo(Integer.MAX_VALUE);
+        assertThat(batch.getReceivedQuantity()).isEqualTo(Integer.MAX_VALUE);
+        assertThat(stockService.availableQuantity(medicineId)).isEqualTo(Integer.MAX_VALUE);
+    }
+
+    /** The helper itself, at the exact edges, independent of any database. */
+    @Test
+    void addToStockIsExactAtTheEdges() {
+        assertThat(MedicineStockService.addToStock(0, 1)).isEqualTo(1);
+        assertThat(MedicineStockService.addToStock(Integer.MAX_VALUE - 1, 1)).isEqualTo(Integer.MAX_VALUE);
+        assertThatThrownBy(() -> MedicineStockService.addToStock(Integer.MAX_VALUE, 1))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> MedicineStockService.addToStock(1, Integer.MAX_VALUE))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> MedicineStockService.addToStock(Integer.MAX_VALUE, Integer.MAX_VALUE))
+                .as("the worst case must not wrap to a negative number")
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    /** Zero and negative receipts stay rejected at the boundary — the fix added nothing looser. */
+    @Test
+    void zeroAndNegativeReceiptsAreStillRejected() {
+        LocalDate expiry = LocalDate.now().plusMonths(3);
+        for (int bad : new int[] {0, -1, Integer.MIN_VALUE}) {
+            assertThatThrownBy(() ->
+                    stockService.receiveBatch(medicineId, "BAD", expiry, bad, 1.0, null, null))
+                    .as("quantity %s", bad)
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+        assertThat(stockService.batchesFor(medicineId)).isEmpty();
+    }
+
+    /** A refused overflow in one tenant is invisible to another tenant's identical batch. */
+    @Test
+    void overflowRefusalDoesNotCrossTenants() {
+        LocalDate expiry = LocalDate.now().plusMonths(3);
+        stockService.receiveBatch(medicineId, "SHARED", expiry, Integer.MAX_VALUE, 1.0, null, null);
+        assertThatThrownBy(() ->
+                stockService.receiveBatch(medicineId, "SHARED", expiry, 1, 1.0, null, null))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        when(securityHelper.getCurrentHospitalId()).thenReturn(OTHER_HOSPITAL);
+        Long otherMedicine = newMedicine(OTHER_HOSPITAL, "Paracetamol");
+        stockService.receiveBatch(otherMedicine, "SHARED", expiry, 5, 1.0, null, null);
+        assertThat(stockService.availableQuantity(otherMedicine))
+                .as("the other tenant's batch of the same name is its own row").isEqualTo(5);
+    }
 }

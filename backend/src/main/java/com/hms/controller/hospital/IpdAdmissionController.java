@@ -1,5 +1,6 @@
 package com.hms.controller.hospital;
 
+import com.hms.security.RequireModule;
 import jakarta.validation.Valid;
 
 import com.hms.dto.CreateIpdAdmissionRequest;
@@ -27,6 +28,7 @@ public class IpdAdmissionController {
     /** Attempts for the IPD-number clash. Two callers colliding is normal; more is a real fault. */
     private static final int ADMISSION_ATTEMPTS = 3;
 
+    @RequireModule("IPD")
     @PostMapping("/admit")
     @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> admitToIpd(@Valid @RequestBody CreateIpdAdmissionRequest req) {
@@ -112,6 +114,7 @@ public class IpdAdmissionController {
         return ResponseEntity.ok(dto);
     }
 
+    @RequireModule("IPD")
     @PostMapping("/{id}/followup")
     @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> addFollowup(@PathVariable("id") Long id, @jakarta.validation.Valid @RequestBody com.hms.dto.AddIpdFollowupRequest req) {
@@ -119,6 +122,7 @@ public class IpdAdmissionController {
         return ResponseEntity.ok(mr);
     }
 
+    @RequireModule("IPD")
     @PostMapping("/{id}/plan-discharge")
     @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> planDischarge(@PathVariable("id") Long id, @RequestBody com.hms.dto.PlanDischargeRequest req) {
@@ -126,6 +130,7 @@ public class IpdAdmissionController {
         return ResponseEntity.ok(ds);
     }
 
+    @RequireModule("IPD")
     @PostMapping("/{id}/confirm-discharge")
     @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> confirmDischarge(@PathVariable("id") Long id) {
@@ -133,6 +138,7 @@ public class IpdAdmissionController {
         return ResponseEntity.ok(ipd);
     }
 
+    @RequireModule("IPD")
     @PostMapping("/{id}/administer")
     @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> administerItems(@PathVariable("id") Long id, @jakarta.validation.Valid @RequestBody com.hms.dto.AdministerItemsRequest req) {
@@ -140,6 +146,7 @@ public class IpdAdmissionController {
         return ResponseEntity.ok().body("{\"message\":\"Items administered successfully\"}");
     }
 
+    @RequireModule("IPD")
     @PostMapping("/{id}/administer-hospital-items")
     @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> administerHospitalItems(@PathVariable("id") Long id, @jakarta.validation.Valid @RequestBody com.hms.dto.AdministerHospitalItemsRequest req) {
@@ -147,6 +154,7 @@ public class IpdAdmissionController {
         return ResponseEntity.ok().body("{\"message\":\"Hospital items administered successfully\"}");
     }
 
+    @RequireModule("IPD")
     @PostMapping("/{id}/prescriptions")
     @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> addPrescription(@PathVariable("id") Long id, @jakarta.validation.Valid @RequestBody com.hms.dto.AddIpdPrescriptionRequest req) {
@@ -154,6 +162,7 @@ public class IpdAdmissionController {
         return ResponseEntity.ok(p);
     }
 
+    @RequireModule("IPD")
     @PutMapping("/prescriptions/{id}/stop")
     @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> stopPrescription(@PathVariable("id") Long id) {
@@ -161,6 +170,7 @@ public class IpdAdmissionController {
         return ResponseEntity.ok(p);
     }
 
+    @RequireModule("IPD")
     @PutMapping("/{id}/change-bed")
     @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> changeBed(@PathVariable("id") Long id, @RequestParam("newBedId") Long newBedId) {

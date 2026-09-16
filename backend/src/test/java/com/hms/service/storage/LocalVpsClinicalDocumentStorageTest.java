@@ -2,6 +2,10 @@ package com.hms.service.storage;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import java.util.Set;
+import java.nio.file.attribute.PosixFilePermission;
+import org.junit.jupiter.api.condition.OS;
+import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.mock.env.MockEnvironment;
 
@@ -513,5 +517,61 @@ class LocalVpsClinicalDocumentStorageTest {
     void developmentFallsBackToATemporaryDirectory() {
         var dev = new LocalVpsClinicalDocumentStorage("", new MockEnvironment());
         assertThatCode(dev::initialise).doesNotThrowAnyException();
+    }
+
+    // ── The fallback must not be a fixed, squattable, world-readable name in the shared temp
+    //    directory (CodeQL: local information disclosure in a temporary directory) ───────────
+
+    /**
+     * The old fallback was {@code $TMPDIR/hms-patient-documents}: any local user could create it
+     * first. Two fresh instances must now each get a directory that did not exist before, under the
+     * temp root, with an unpredictable name — so nobody can have pre-created it.
+     */
+    @Test
+    void developmentFallbackIsUniquePerInstance_andUnderTheTempRoot() throws Exception {
+        Path tmp = Path.of(System.getProperty("java.io.tmpdir")).toRealPath();
+        var a = new LocalVpsClinicalDocumentStorage("", new MockEnvironment());
+        var b = new LocalVpsClinicalDocumentStorage("", new MockEnvironment());
+        a.initialise();
+        b.initialise();
+
+        Path rootA = rootOf(a);
+        Path rootB = rootOf(b);
+        assertThat(rootA).isNotEqualTo(rootB);
+        assertThat(rootA.getParent()).isEqualTo(tmp);
+        assertThat(rootA.getFileName().toString()).startsWith("hms-patient-documents-");
+        assertThat(rootA.getFileName().toString())
+                .as("the name must carry entropy, not be the old fixed spelling")
+                .isNotEqualTo("hms-patient-documents");
+        assertThat(Files.isSymbolicLink(rootA)).isFalse();
+    }
+
+    /** On POSIX the directory is owner-only from the instant it exists — no umask window. */
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void developmentFallbackIsOwnerOnlyOnPosix() throws Exception {
+        var dev = new LocalVpsClinicalDocumentStorage("", new MockEnvironment());
+        dev.initialise();
+        Set<PosixFilePermission> perms = Files.getPosixFilePermissions(rootOf(dev));
+        assertThat(perms).containsExactlyInAnyOrder(
+                PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE,
+                PosixFilePermission.OWNER_EXECUTE);
+    }
+
+    /** A document written through the fallback is itself owner-only, not readable by others. */
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void aDocumentStoredViaTheFallbackIsNotReadableByOtherLocalUsers() throws Exception {
+        var dev = new LocalVpsClinicalDocumentStorage("", new MockEnvironment());
+        dev.initialise();
+        Path root = rootOf(dev);
+        Set<PosixFilePermission> dirPerms = Files.getPosixFilePermissions(root);
+        assertThat(dirPerms).doesNotContain(
+                PosixFilePermission.GROUP_READ, PosixFilePermission.OTHERS_READ,
+                PosixFilePermission.GROUP_EXECUTE, PosixFilePermission.OTHERS_EXECUTE);
+    }
+
+    private static Path rootOf(LocalVpsClinicalDocumentStorage storage) {
+        return (Path) org.springframework.test.util.ReflectionTestUtils.getField(storage, "storageRoot");
     }
 }

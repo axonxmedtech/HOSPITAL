@@ -9,6 +9,7 @@ import com.hms.entity.Opd;
 import com.hms.entity.Hospital;
 import com.hms.entity.MedicalRecord;
 import com.hms.service.hospital.OpdService;
+import com.hms.security.RequireModule;
 import com.hms.security.SecurityContextHelper;
 import com.hms.repository.DoctorRepository;
 import com.hms.repository.HospitalRepository;
@@ -92,6 +93,7 @@ public class OpdController {
      * <p>A caller that sends no key behaves exactly as before, so no existing client breaks.
      */
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    @RequireModule("OPD")
     @PostMapping
     public ResponseEntity<Opd> createOpd(@Valid @RequestBody CreateOpdRequest req) {
         String key = req.getIdempotencyKey() == null ? null : req.getIdempotencyKey().trim();

@@ -181,8 +181,8 @@ public class MedicineStockService {
                         + batch.getExpiryDate() + ". Use a different batch number for stock expiring "
                         + expiryDate + ".");
             }
-            batch.setReceivedQuantity(batch.getReceivedQuantity() + quantity);
-            batch.setCurrentQuantity(batch.getCurrentQuantity() + quantity);
+            batch.setReceivedQuantity(addToStock(batch.getReceivedQuantity(), quantity));
+            batch.setCurrentQuantity(addToStock(batch.getCurrentQuantity(), quantity));
             if (unitPrice != null) batch.setUnitPrice(unitPrice);
             batch.setIsActive(true);
             batch = batchRepository.save(batch);
@@ -273,6 +273,30 @@ public class MedicineStockService {
     private StockMovement findReplay(Long hospitalId, String idempotencyKey) {
         if (idempotencyKey == null || idempotencyKey.isBlank()) return null;
         return movementRepository.findByHospitalIdAndIdempotencyKey(hospitalId, idempotencyKey).orElse(null);
+    }
+
+    /**
+     * Add a received quantity to a batch's running total without ever wrapping.
+     *
+     * <p>Both operands come from an authenticated user — the batch total from earlier receipts and
+     * the quantity from this one — and both are plain {@code int}s, so a sufficiently large receipt
+     * on a sufficiently full batch would silently wrap negative. The DB's
+     * {@code ck_medicine_batch_qty_non_negative} check would then reject {@code current_quantity}
+     * with an opaque conflict, but {@code received_quantity} has no such check and would keep the
+     * corrupted value as the audit trail. The ceiling is not an invented business number: it is the
+     * signed 32-bit range of the {@code received_quantity}/{@code current_quantity} INT columns
+     * themselves, so a total that cannot fit is refused as a bad request rather than clamped,
+     * wrapped, or left for the database to describe.
+     */
+    static int addToStock(int existing, int quantity) {
+        try {
+            return Math.addExact(existing, quantity);
+        } catch (ArithmeticException overflow) {
+            throw new IllegalArgumentException(
+                    "Received quantity is too large: the batch total would exceed the maximum stock a "
+                            + "batch can hold (" + Integer.MAX_VALUE + "). Receive it as a separate batch "
+                            + "or in smaller deliveries.");
+        }
     }
 
     private void postMovement(Long hospitalId, Long medicineId, Long batchId, String type, String direction,
