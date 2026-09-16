@@ -37,7 +37,8 @@ import static org.mockito.Mockito.when;
 @DataJpaTest(showSql = false)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ActiveProfiles("test")
-@Import({AppointmentService.class, PatientService.class, PatientRegistrar.class,
+@Import({AppointmentService.class, PatientService.class,
+        com.hms.service.hospital.DuplicatePhoneRaceTranslator.class, PatientRegistrar.class,
         PatientDuplicateFinder.class})
 class AppointmentPatientPersistenceTest {
 

@@ -562,8 +562,14 @@ CREATE TABLE `patients` (
   `duplicate_phone_ack_for` varchar(15) DEFAULT NULL,
   `duplicate_phone_ack_at` datetime(6) DEFAULT NULL,
   `duplicate_phone_ack_by` varchar(100) DEFAULT NULL,
+  -- S-PID-D: the phone number ONLY while this row competes for it. Inactive rows and rows
+  -- acknowledged for their CURRENT phone are NULL, and MySQL allows repeated NULLs in a unique
+  -- index -- which is what lets known sharers and released numbers coexist while two
+  -- unacknowledged active patients in one hospital cannot hold the same number.
+  `active_phone_key` varchar(15) GENERATED ALWAYS AS (case when ((`is_active` = 1) and (`phone` is not null) and (`phone` <> _utf8mb4'') and ((`duplicate_phone_ack_for` is null) or (`duplicate_phone_ack_for` <> `phone`))) then `phone` end) VIRTUAL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `UK_8isyrjl9ji56k5uv4cgp9p2q6` (`public_id`)
+  UNIQUE KEY `UK_8isyrjl9ji56k5uv4cgp9p2q6` (`public_id`),
+  UNIQUE KEY `uq_patient_active_phone` (`hospital_id`,`active_phone_key`)
 ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

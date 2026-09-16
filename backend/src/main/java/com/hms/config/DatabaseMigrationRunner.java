@@ -1509,6 +1509,77 @@ public class DatabaseMigrationRunner {
         }
     }
 
+
+    /**
+     * Race-safe enforcement of the patient duplicate-phone invariant (S-PID-D).
+     *
+     * <p>Deliberately does NOT use {@code addColumnIfMissing} or {@code addIndexIfMissing}: both
+     * log a warning and continue, and {@code addIndexIfMissing} cannot express UNIQUE at all. A
+     * constraint that silently fails to exist is worse than no constraint, because the deployment
+     * reports success and the invariant is not enforced. Everything here propagates.
+     *
+     * <p>Flyway owns this on prod/staging (V21) and may have created the objects already, so each
+     * step checks {@code information_schema} first. Where an object exists, its shape is verified
+     * rather than assumed: a same-named NON-UNIQUE index would satisfy a naive existence check
+     * while enforcing nothing.
+     */
+    private void ensurePatientActivePhoneUniqueness() {
+        Integer keyColumn = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() "
+                + "AND TABLE_NAME = 'patients' AND COLUMN_NAME = 'active_phone_key'", Integer.class);
+        if (keyColumn == null || keyColumn == 0) {
+            jdbcTemplate.execute(
+                "ALTER TABLE patients ADD COLUMN active_phone_key VARCHAR(15) GENERATED ALWAYS AS ("
+                    + "CASE WHEN is_active = 1 AND phone IS NOT NULL AND phone <> '' "
+                    + "AND (duplicate_phone_ack_for IS NULL OR duplicate_phone_ack_for <> phone) "
+                    + "THEN phone END) VIRTUAL");
+            log.info("DB migration applied: patients.active_phone_key generated column added");
+        } else {
+            // A column of that name with a different expression would enforce a different rule.
+            String expression = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(GENERATION_EXPRESSION, '') FROM information_schema.COLUMNS "
+                    + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'patients' "
+                    + "AND COLUMN_NAME = 'active_phone_key'", String.class);
+            if (expression == null || !expression.contains("duplicate_phone_ack_for")) {
+                throw new IllegalStateException(
+                    "patients.active_phone_key exists but does not test duplicate_phone_ack_for. "
+                        + "It is enforcing a different rule; resolve it before starting the application.");
+            }
+        }
+
+        Integer index = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() "
+                + "AND TABLE_NAME = 'patients' AND INDEX_NAME = 'uq_patient_active_phone'", Integer.class);
+        if (index == null || index == 0) {
+            // Fails with ER_DUP_ENTRY if conflicting rows exist. That is the point: a human decides
+            // what to do with them (docs/operations/patient-duplicate-phone-preflight.sql), never
+            // this migration, because merging or deactivating a patient moves their appointments,
+            // bills, prescriptions and admissions with them.
+            jdbcTemplate.execute(
+                "ALTER TABLE patients ADD UNIQUE KEY uq_patient_active_phone (hospital_id, active_phone_key)");
+            log.info("DB migration applied: patients.uq_patient_active_phone unique index added");
+            return;
+        }
+
+        Integer nonUnique = jdbcTemplate.queryForObject(
+            "SELECT MAX(NON_UNIQUE) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() "
+                + "AND TABLE_NAME = 'patients' AND INDEX_NAME = 'uq_patient_active_phone'", Integer.class);
+        if (nonUnique != null && nonUnique == 1) {
+            throw new IllegalStateException(
+                "patients.uq_patient_active_phone exists but is NOT UNIQUE, so it enforces nothing. "
+                    + "Drop it and restart so the unique index can be created.");
+        }
+        String columns = jdbcTemplate.queryForObject(
+            "SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) FROM information_schema.STATISTICS "
+                + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'patients' "
+                + "AND INDEX_NAME = 'uq_patient_active_phone'", String.class);
+        if (!"hospital_id,active_phone_key".equals(columns)) {
+            throw new IllegalStateException(
+                "patients.uq_patient_active_phone covers [" + columns
+                    + "] instead of [hospital_id,active_phone_key].");
+        }
+    }
+
     private void addIndexIfMissing(String table, String indexName, String column) {
         try {
             Integer count = jdbcTemplate.queryForObject(
@@ -2985,6 +3056,7 @@ public class DatabaseMigrationRunner {
         addColumnIfMissing("patients", "duplicate_phone_ack_for", "VARCHAR(15) DEFAULT NULL");
         addColumnIfMissing("patients", "duplicate_phone_ack_at", "DATETIME(6) DEFAULT NULL");
         addColumnIfMissing("patients", "duplicate_phone_ack_by", "VARCHAR(100) DEFAULT NULL");
+        ensurePatientActivePhoneUniqueness();
     }
 
 }
