@@ -225,7 +225,10 @@ public class DoctorController {
     @Autowired
     private com.hms.repository.AppointmentRepository appointmentRepository;
 
+    // Same readership as /consultation/{appointmentId} above: the PDF is that consultation in
+    // another format, so it carries the same rule rather than a looser one.
     @GetMapping("/prescription/{appointmentId}/pdf")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> downloadPrescription(@PathVariable String appointmentId) {
         try {
             Long hospitalId = securityHelper.getCurrentHospitalId();
@@ -273,7 +276,9 @@ public class DoctorController {
         }
     }
 
+        // Same readership as /consultation/opd/{opdId} above.
         @GetMapping("/prescription/opd/{opdId}/pdf")
+        @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
         public ResponseEntity<?> downloadPrescriptionByOpd(@PathVariable Long opdId) {
         try {
             Long hospitalId = securityHelper.getCurrentHospitalId();
