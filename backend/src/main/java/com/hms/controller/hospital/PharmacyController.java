@@ -6,6 +6,7 @@ import com.hms.entity.Medicine;
 import com.hms.entity.Prescription;
 import com.hms.repository.PrescriptionRepository;
 import com.hms.service.hospital.InventoryService;
+import com.hms.security.RequireModule;
 import com.hms.security.SecurityContextHelper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -59,6 +60,7 @@ public class PharmacyController {
         return ResponseEntity.ok(inventoryService.getLowStockMedicines());
     }
 
+    @RequireModule("PHARMACY")
     @PostMapping("/inventory/stock")
     @PreAuthorize("hasRole('PHARMACIST')")
     public ResponseEntity<?> updateStock(@RequestBody Map<String, Object> request) {
@@ -219,6 +221,7 @@ public class PharmacyController {
      * the right one. There is no rule that turns "1-0-1" and "5 Days" into a unit count, so the
      * pharmacist states what they dispensed.
      */
+    @RequireModule("PHARMACY")
     @PostMapping("/dispense/{prescriptionId}")
     @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> dispenseMedicine(@PathVariable Long prescriptionId,

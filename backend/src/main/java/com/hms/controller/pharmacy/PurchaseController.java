@@ -2,6 +2,7 @@ package com.hms.controller.pharmacy;
 
 import jakarta.validation.Valid;
 
+import com.hms.security.RequireModule;
 import com.hms.dto.pharmacy.PurchaseRequest;
 import com.hms.entity.pharmacy.PurchaseInvoice;
 import com.hms.service.pharmacy.PurchaseService;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/pharmacy/purchases")
 @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','PHARMACIST')")
+@RequireModule("PHARMACY")
 public class PurchaseController {
 
     @Autowired
