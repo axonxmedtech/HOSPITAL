@@ -2155,3 +2155,69 @@ CREATE TABLE `ot_incharges` (
   PRIMARY KEY (`id`),
   CONSTRAINT `FK_ot_incharges_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Legacy patient import (Flyway V22/V23): batch ledger, per-row outcomes, and patient provenance.
+-- patients is untouched; import lineage lives in patient_import_links (patient_id UNIQUE, cascades
+-- with the patient). Batches cascade with their hospital, results with their batch.
+CREATE TABLE `import_batches` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(36) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `entity_type` varchar(20) NOT NULL,
+  `source_filename` varchar(255) DEFAULT NULL,
+  `sheet_name` varchar(255) DEFAULT NULL,
+  `mapping_json` text,
+  `file_sha256` char(64) NOT NULL,
+  `status` varchar(20) NOT NULL,
+  `failure_reason` varchar(255) DEFAULT NULL,
+  `total_rows` int NOT NULL DEFAULT '0',
+  `created_count` int NOT NULL DEFAULT '0',
+  `updated_count` int NOT NULL DEFAULT '0',
+  `skipped_count` int NOT NULL DEFAULT '0',
+  `needs_review_count` int NOT NULL DEFAULT '0',
+  `failed_count` int NOT NULL DEFAULT '0',
+  `created_by` varchar(100) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  `heartbeat_at` datetime(6) DEFAULT NULL,
+  `committed_at` datetime(6) DEFAULT NULL,
+  `undone_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_import_batch_public_id` (`public_id`),
+  KEY `idx_import_batch_hospital_status` (`hospital_id`,`status`),
+  KEY `idx_import_batch_hospital_sha` (`hospital_id`,`file_sha256`,`created_at`),
+  CONSTRAINT `FK_import_batch_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `import_row_results` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `batch_id` bigint NOT NULL,
+  `row_num` int NOT NULL,
+  `state` varchar(16) NOT NULL,
+  `reason_code` varchar(40) DEFAULT NULL,
+  `column_name` varchar(120) DEFAULT NULL,
+  `message` varchar(500) DEFAULT NULL,
+  `phone_masked` varchar(15) DEFAULT NULL,
+  `matched_patient_id` bigint DEFAULT NULL,
+  `raw_row_json` text,
+  PRIMARY KEY (`id`),
+  KEY `idx_import_row_result_batch_row` (`batch_id`,`row_num`),
+  CONSTRAINT `FK_import_row_result_batch` FOREIGN KEY (`batch_id`) REFERENCES `import_batches` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `patient_import_links` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `patient_id` bigint NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `legacy_id` varchar(100) DEFAULT NULL,
+  `created_by_batch_id` bigint DEFAULT NULL,
+  `last_batch_id` bigint NOT NULL,
+  `last_imported_at` datetime(6) NOT NULL,
+  `last_imported_values_json` text,
+  `custom_fields_json` text,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_patient_import_link_patient` (`patient_id`),
+  UNIQUE KEY `uk_patient_import_link_legacy` (`hospital_id`,`legacy_id`),
+  KEY `idx_patient_import_link_created_by` (`hospital_id`,`created_by_batch_id`),
+  CONSTRAINT `FK_patient_import_link_patient` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
