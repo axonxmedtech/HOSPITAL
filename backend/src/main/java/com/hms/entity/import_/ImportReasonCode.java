@@ -22,6 +22,8 @@ public enum ImportReasonCode {
     DUPLICATE_PHONE_IN_FILE,
     DUPLICATE_PHONE_REQUIRES_REVIEW,
     DUPLICATE_PHONE_RACE,
+    /** The patient was changed in HMS between evaluation and the write; the proposal was not applied. */
+    PATIENT_CHANGED_SINCE_EVALUATION,
     AMBIGUOUS_PATIENT_MATCH,
     INACTIVE_MATCH,
     MRN_IDENTITY_MISMATCH,

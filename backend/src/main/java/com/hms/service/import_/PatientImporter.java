@@ -420,7 +420,7 @@ public class PatientImporter {
                 history);
 
         if (matched == null) {
-            return RowEvaluation.created(rowNum, new CreateCandidate(proposed, legacyId, customFields));
+            return RowEvaluation.created(rowNum, new CreateCandidate(hospitalId, proposed, legacyId, customFields));
         }
 
         // 7. Update: ownership against the last-imported snapshot, then only the changes.
@@ -463,7 +463,17 @@ public class PatientImporter {
                 && !matched.getDuplicatePhoneAckFor().equals(changes.get("phone"));
 
         UpdateCandidate update = new UpdateCandidate(
-                matched.getId(), changes, reactivate, clearStaleAck, legacyId, customFields, snapshot != null);
+                hospitalId,
+                matched.getId(),
+                current,
+                Boolean.TRUE.equals(matched.getIsActive()),
+                matched.getDuplicatePhoneAckFor(),
+                changes,
+                reactivate,
+                clearStaleAck,
+                legacyId,
+                customFields,
+                snapshot != null);
         if (update.isNoOp()) {
             return RowEvaluation.skipped(
                     rowNum, ImportReasonCode.NO_CHANGE, "This row matches an existing patient" + customIdSuffix(matched) + " and changes nothing.", matched.getId());

@@ -192,9 +192,7 @@ public class PatientService {
      * claiming staff acknowledged a number the patient does not have is a misleading audit trail.
      */
     private void clearStaleAcknowledgement(Patient patient) {
-        patient.setDuplicatePhoneAckFor(null);
-        patient.setDuplicatePhoneAckAt(null);
-        patient.setDuplicatePhoneAckBy(null);
+        DuplicatePhoneAcknowledgement.clear(patient);
     }
 
     /**

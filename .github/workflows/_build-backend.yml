@@ -103,6 +103,7 @@ jobs:
               "com.hms.service.hospital.IstDateBoundaryIT",
               "com.hms.integration.PatientDuplicatePhoneConcurrencyIT",
               "com.hms.integration.ImportSchemaFoundationIT",
+              "com.hms.integration.ImportedPatientWriterIT",
           ]
 
           seen, problems = {}, []
