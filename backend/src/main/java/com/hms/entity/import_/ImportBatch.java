@@ -90,6 +90,15 @@ public class ImportBatch {
     @Column(name = "undone_at")
     private LocalDateTime undoneAt;
 
+    /**
+     * Database-derived (V24): 1 while the batch is RUNNING, COMPLETED or PARTIAL, NULL otherwise,
+     * so that {@code uk_import_batch_active (hospital_id, file_sha256, active_marker)} allows at
+     * most one live batch per file per hospital while FAILED and UNDONE stay retryable. Never
+     * written by the application.
+     */
+    @Column(name = "active_marker", insertable = false, updatable = false)
+    private Integer activeMarker;
+
     @PrePersist
     public void prePersist() {
         if (this.publicId == null) this.publicId = java.util.UUID.randomUUID().toString();

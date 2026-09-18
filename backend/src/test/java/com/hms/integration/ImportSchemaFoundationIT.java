@@ -71,13 +71,13 @@ class ImportSchemaFoundationIT {
     @BeforeAll
     void applyMigrationsVerbatim() throws Exception {
         dropImportTables();
-        for (String file : List.of("V22__create_import_batches.sql", "V23__create_patient_import_links.sql")) {
+        for (String file : List.of("V22__create_import_batches.sql", "V23__create_patient_import_links.sql", "V24__add_import_batch_active_uniqueness.sql")) {
             for (String statement : statementsOf(file)) {
                 jdbc.execute(statement);
             }
         }
         // Idempotency: staging can arrive here with the tables already present (see V12/V13).
-        for (String file : List.of("V22__create_import_batches.sql", "V23__create_patient_import_links.sql")) {
+        for (String file : List.of("V22__create_import_batches.sql", "V23__create_patient_import_links.sql", "V24__add_import_batch_active_uniqueness.sql")) {
             for (String statement : statementsOf(file)) {
                 jdbc.execute(statement);
             }
@@ -99,7 +99,7 @@ class ImportSchemaFoundationIT {
                 "id", "public_id", "hospital_id", "entity_type", "source_filename", "sheet_name",
                 "mapping_json", "file_sha256", "status", "failure_reason", "total_rows", "created_count",
                 "updated_count", "skipped_count", "needs_review_count", "failed_count", "created_by",
-                "created_at", "heartbeat_at", "committed_at", "undone_at");
+                "created_at", "heartbeat_at", "committed_at", "undone_at", "active_marker");
         assertThat(columnsOf("import_row_results")).containsExactlyInAnyOrder(
                 "id", "batch_id", "row_num", "state", "reason_code", "column_name", "message",
                 "phone_masked", "matched_patient_id", "raw_row_json");
@@ -107,7 +107,9 @@ class ImportSchemaFoundationIT {
                 "id", "patient_id", "hospital_id", "legacy_id", "created_by_batch_id", "last_batch_id",
                 "last_imported_at", "last_imported_values_json", "custom_fields_json");
 
-        assertThat(uniqueIndexes("import_batches")).containsEntry("uk_import_batch_public_id", "public_id");
+        assertThat(uniqueIndexes("import_batches"))
+                .containsEntry("uk_import_batch_public_id", "public_id")
+                .containsEntry("uk_import_batch_active", "hospital_id,file_sha256,active_marker"); // V24
         assertThat(nonUniqueIndexes("import_batches"))
                 .containsEntry("idx_import_batch_hospital_status", "hospital_id,status")
                 .containsEntry("idx_import_batch_hospital_sha", "hospital_id,file_sha256,created_at");
@@ -275,6 +277,11 @@ class ImportSchemaFoundationIT {
 
     private String uniq() { return Long.toString(System.nanoTime()); }
 
+    private String uniqueSha() {
+        String u = uniq();
+        return ("0".repeat(64) + u).substring(u.length());
+    }
+
     private String freshPhone() {
         String tail = uniq();
         return "98" + tail.substring(tail.length() - 8);
@@ -311,7 +318,7 @@ class ImportSchemaFoundationIT {
     private long seedBatch(long hospitalId) {
         jdbc.update("INSERT INTO import_batches (public_id, hospital_id, entity_type, file_sha256, status, created_at)"
                         + " VALUES (?,?,?,?,?,NOW(6))",
-                "b-" + uniq(), hospitalId, "PATIENT", "0".repeat(64), "COMPLETED");
+                "b-" + uniq(), hospitalId, "PATIENT", uniqueSha(), "COMPLETED"); // V24: one live batch per file
         return jdbc.queryForObject("SELECT MAX(id) FROM import_batches", Long.class);
     }
 

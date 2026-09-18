@@ -31,6 +31,12 @@ public interface ImportBatchRepository extends JpaRepository<ImportBatch, Long> 
     Optional<ImportBatch> findFirstByHospitalIdAndFileSha256AndStatusInOrderByCreatedAtDesc(
             Long hospitalId, String fileSha256, Collection<ImportStatus> statuses);
 
+    /** Rows the batch created or updated, for recovery reconciliation. */
+    @org.springframework.data.jpa.repository.Query(
+            "SELECT COUNT(l) FROM PatientImportLink l WHERE l.hospitalId = :hospitalId AND l.lastBatchId = :batchId")
+    long countLinksTouchedBy(@org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
+                             @org.springframework.data.repository.query.Param("batchId") Long batchId);
+
     /** Abandoned-run detector: RUNNING batches whose heartbeat stopped before {@code cutoff}. */
     List<ImportBatch> findByHospitalIdAndStatusAndHeartbeatAtBefore(
             Long hospitalId, ImportStatus status, LocalDateTime cutoff);

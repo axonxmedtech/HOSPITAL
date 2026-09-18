@@ -104,6 +104,7 @@ jobs:
               "com.hms.integration.PatientDuplicatePhoneConcurrencyIT",
               "com.hms.integration.ImportSchemaFoundationIT",
               "com.hms.integration.ImportedPatientWriterIT",
+              "com.hms.integration.ImportEngineIT",
           ]
 
           seen, problems = {}, []

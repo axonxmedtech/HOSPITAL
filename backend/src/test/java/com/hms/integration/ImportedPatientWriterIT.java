@@ -85,7 +85,7 @@ class ImportedPatientWriterIT {
         // Hibernate built the import tables from the entities without the V22/V23 FKs and unique
         // keys; the writer's atomicity story depends on those, so rebuild them from the migrations.
         for (String t : List.of("patient_import_links", "import_row_results", "import_batches")) jdbc.execute("DROP TABLE IF EXISTS " + t);
-        for (String f : List.of("V22__create_import_batches.sql", "V23__create_patient_import_links.sql")) {
+        for (String f : List.of("V22__create_import_batches.sql", "V23__create_patient_import_links.sql", "V24__add_import_batch_active_uniqueness.sql")) {
             String sql = new String(new org.springframework.core.io.ClassPathResource("db/migration/" + f).getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
             for (String st : sql.replaceAll("(?m)^\\s*--.*$", "").split(";")) if (!st.isBlank()) jdbc.execute(st);
         }
@@ -124,7 +124,8 @@ class ImportedPatientWriterIT {
     private long batch(long hospitalId, ImportStatus status) {
         ImportBatch b = new ImportBatch();
         b.setHospitalId(hospitalId);
-        b.setFileSha256("0".repeat(64));
+        String u = uniq();
+        b.setFileSha256(("0".repeat(64) + u).substring(u.length())); // V24: one live batch per file
         b.setStatus(status);
         return batches.save(b).getId();
     }

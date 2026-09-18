@@ -24,4 +24,9 @@ public interface ImportRowResultRepository extends JpaRepository<ImportRowResult
             Long batchId, Collection<ImportRowState> states, Pageable pageable);
 
     long countByBatchIdAndState(Long batchId, ImportRowState state);
+
+    /** State → count for a batch, in one query; the source of truth counters are reconciled against. */
+    @org.springframework.data.jpa.repository.Query(
+            "SELECT r.state, COUNT(r) FROM ImportRowResult r WHERE r.batchId = :batchId GROUP BY r.state")
+    List<Object[]> countByStateForBatch(@org.springframework.data.repository.query.Param("batchId") Long batchId);
 }

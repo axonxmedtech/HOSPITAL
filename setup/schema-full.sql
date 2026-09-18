@@ -2181,8 +2181,10 @@ CREATE TABLE `import_batches` (
   `heartbeat_at` datetime(6) DEFAULT NULL,
   `committed_at` datetime(6) DEFAULT NULL,
   `undone_at` datetime(6) DEFAULT NULL,
+  `active_marker` tinyint GENERATED ALWAYS AS ((case when (`status` in (_utf8mb4'RUNNING',_utf8mb4'COMPLETED',_utf8mb4'PARTIAL')) then 1 end)) VIRTUAL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_import_batch_public_id` (`public_id`),
+  UNIQUE KEY `uk_import_batch_active` (`hospital_id`,`file_sha256`,`active_marker`),
   KEY `idx_import_batch_hospital_status` (`hospital_id`,`status`),
   KEY `idx_import_batch_hospital_sha` (`hospital_id`,`file_sha256`,`created_at`),
   CONSTRAINT `FK_import_batch_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
