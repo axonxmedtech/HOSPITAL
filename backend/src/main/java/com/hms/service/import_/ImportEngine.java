@@ -129,7 +129,8 @@ public class ImportEngine {
     /**
      * Imports the file for real.
      *
-     * @throws AlreadyImportedException a live batch for these exact bytes exists for this hospital
+     * @throws AlreadyImportedException a live batch for these exact bytes exists for this hospital (visible, or
+     *         refused by V24 but not yet visible — see its condition)
      * @throws ImportRunFailedException an infrastructure failure stopped the run; the batch is FAILED
      * @throws ImportParseException     the file itself was refused before any row was processed
      */
@@ -148,7 +149,10 @@ public class ImportEngine {
         ImportBatch batch;
         try {
             batch = batchStore.start(request, sha, mappingJson(request.mapping()), now());
-        } catch (org.springframework.dao.DataIntegrityViolationException raced) {
+        } catch (org.springframework.dao.DataIntegrityViolationException refused) {
+            // Only V24's own index means "a live batch for this file exists". Any other constraint
+            // is an unexpected persistence failure and propagates as such.
+            if (!ImportBatchActiveConstraint.isViolation(refused)) throw refused;
             throw batchStore.alreadyImported(hospitalId, sha);
         }
         String publicId = batch.getPublicId();

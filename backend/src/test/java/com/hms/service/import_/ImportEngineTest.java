@@ -312,18 +312,71 @@ class ImportEngineTest {
         verify(batchStore, never()).fail(anyLong(), anyLong(), anyString(), any(), any());
     }
 
+    private static DataIntegrityViolationException v24() {
+        return new DataIntegrityViolationException("could not execute statement",
+                new java.sql.SQLIntegrityConstraintViolationException("Duplicate entry '7-abc' for key 'import_batches.uk_import_batch_active'"));
+    }
+
     @Test
-    void aLiveBatchForTheSameBytesRefusesTheCommitBeforeAnyRowIsRead() throws Exception {
-        when(batchStore.start(any(), anyString(), anyString(), any())).thenThrow(new DataIntegrityViolationException("uk_import_batch_active"));
-        when(batchStore.alreadyImported(eq(H), anyString())).thenReturn(new AlreadyImportedException("earlier", ImportStatus.RUNNING, null));
+    void aVisibleLiveBatchForTheSameBytesRefusesTheCommitWithItsRealIdBeforeAnyRowIsRead() throws Exception {
+        when(batchStore.start(any(), anyString(), anyString(), any())).thenThrow(v24());
+        when(batchStore.alreadyImported(eq(H), anyString())).thenReturn(AlreadyImportedException.visible("earlier", ImportStatus.RUNNING, null));
 
         try (SpooledUpload u = csv(rows(3))) {
             assertThatThrownBy(() -> engine.commit(u, ImportFormat.CSV, request()))
                     .isInstanceOf(AlreadyImportedException.class)
-                    .satisfies(e -> assertThat(((AlreadyImportedException) e).getBatchPublicId()).isEqualTo("earlier"));
+                    .satisfies(e -> {
+                        AlreadyImportedException a = (AlreadyImportedException) e;
+                        assertThat(a.getCondition()).isEqualTo(AlreadyImportedException.Condition.ALREADY_IMPORTED);
+                        assertThat(a.getBatchPublicId()).contains("earlier");
+                        assertThat(a.isDetailsAvailable()).isTrue();
+                    });
         }
         verifyNoInteractions(importer, persister, resultStore);
         verify(batchStore).resolveStale(eq(H), any()); // stale runs are resolved before the attempt
+    }
+
+    @Test
+    void aWinnerNotYetVisibleIsReportedAsInProgressWithNoFabricatedId() throws Exception {
+        when(batchStore.start(any(), anyString(), anyString(), any())).thenThrow(v24());
+        when(batchStore.alreadyImported(eq(H), anyString())).thenReturn(AlreadyImportedException.inProgressButNotYetVisible());
+
+        try (SpooledUpload u = csv(rows(3))) {
+            assertThatThrownBy(() -> engine.commit(u, ImportFormat.CSV, request()))
+                    .isInstanceOf(AlreadyImportedException.class)
+                    .satisfies(e -> {
+                        AlreadyImportedException a = (AlreadyImportedException) e;
+                        assertThat(a.getCondition()).isEqualTo(AlreadyImportedException.Condition.IMPORT_ALREADY_IN_PROGRESS);
+                        assertThat(a.isDetailsAvailable()).isFalse();
+                        assertThat(a.getBatchPublicId()).isEmpty();
+                        assertThat(a.getCommittedAt()).isEmpty();
+                        assertThat(a.getStatus()).isEqualTo(ImportStatus.RUNNING);
+                        assertThat(a.getMessage()).doesNotContain("unknown");
+                    });
+        }
+        verifyNoInteractions(importer, persister, resultStore);
+    }
+
+    @Test
+    void anUnrelatedConstraintFailureAtBatchStartPropagatesAndIsNeverAlreadyImported() throws Exception {
+        when(batchStore.start(any(), anyString(), anyString(), any())).thenThrow(new DataIntegrityViolationException("could not execute statement",
+                new java.sql.SQLIntegrityConstraintViolationException("Duplicate entry 'x' for key 'import_batches.uk_import_batch_public_id'")));
+
+        try (SpooledUpload u = csv(rows(3))) {
+            assertThatThrownBy(() -> engine.commit(u, ImportFormat.CSV, request()))
+                    .isInstanceOf(DataIntegrityViolationException.class)
+                    .isNotInstanceOf(AlreadyImportedException.class);
+        }
+        verify(batchStore, never()).alreadyImported(anyLong(), anyString());
+        verifyNoInteractions(importer, persister, resultStore);
+    }
+
+    @Test
+    void theV24ConstraintIsRecognisedOnlyByItsExactIndexName() {
+        assertThat(ImportBatchActiveConstraint.isViolation(v24())).isTrue();
+        assertThat(ImportBatchActiveConstraint.isViolation(new DataIntegrityViolationException("uk_import_batch_public_id"))).isFalse();
+        assertThat(ImportBatchActiveConstraint.isViolation(new DataIntegrityViolationException("uq_patient_active_phone"))).isFalse();
+        assertThat(ImportBatchActiveConstraint.isViolation(new DataIntegrityViolationException("plain"))).isFalse();
     }
 
     @Test

@@ -78,12 +78,15 @@ public class ImportBatchStore {
         return batches.saveAndFlush(b);
     }
 
-    /** Called by the engine after {@link #start} threw: that transaction has rolled back, so this read is a fresh one. */
+    /**
+     * Called by the engine after {@link #start} was refused by {@code uk_import_batch_active}: that
+     * transaction has rolled back, so this read is a fresh one. A visible winner is named; a winner
+     * still committing is reported as in progress with no details — never with a made-up id.
+     */
     public AlreadyImportedException alreadyImported(Long hospitalId, String sha256) {
         return findLive(hospitalId, sha256)
-                .map(b -> new AlreadyImportedException(b.getPublicId(), b.getStatus(), b.getCommittedAt()))
-                // The index refused us but the winner is not visible (it rolled back too): still not ours to run.
-                .orElseGet(() -> new AlreadyImportedException("unknown", ImportStatus.RUNNING, null));
+                .map(b -> AlreadyImportedException.visible(b.getPublicId(), b.getStatus(), b.getCommittedAt()))
+                .orElseGet(AlreadyImportedException::inProgressButNotYetVisible);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

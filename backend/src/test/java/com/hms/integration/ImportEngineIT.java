@@ -252,9 +252,11 @@ class ImportEngineIT {
                 .isInstanceOf(AlreadyImportedException.class)
                 .satisfies(e -> {
                     AlreadyImportedException a = (AlreadyImportedException) e;
-                    assertThat(a.getBatchPublicId()).isEqualTo(done.batchPublicId());
+                    assertThat(a.getCondition()).isEqualTo(AlreadyImportedException.Condition.ALREADY_IMPORTED);
+                    assertThat(a.isDetailsAvailable()).isTrue();
+                    assertThat(a.getBatchPublicId()).contains(done.batchPublicId());
                     assertThat(a.getStatus()).isEqualTo(ImportStatus.COMPLETED);
-                    assertThat(a.getCommittedAt()).isNotNull();
+                    assertThat(a.getCommittedAt()).isPresent();
                 });
         assertThat(tableCounts()).isEqualTo(before);
 
@@ -303,6 +305,16 @@ class ImportEngineIT {
             assertThat(results).filteredOn(r -> r instanceof AlreadyImportedException).hasSize(1);
             ImportCommitSummary winner = (ImportCommitSummary) results.stream().filter(r -> r instanceof ImportCommitSummary).findFirst().orElseThrow();
             assertThat(winner.counts().created()).isEqualTo(40);
+            AlreadyImportedException loser = (AlreadyImportedException) results.stream().filter(r -> r instanceof AlreadyImportedException).findFirst().orElseThrow();
+            if (loser.isDetailsAvailable()) {
+                assertThat(loser.getCondition()).isEqualTo(AlreadyImportedException.Condition.ALREADY_IMPORTED);
+                assertThat(loser.getBatchPublicId()).contains(winner.batchPublicId()); // the real winner, never a made-up id
+            } else {
+                assertThat(loser.getCondition()).isEqualTo(AlreadyImportedException.Condition.IMPORT_ALREADY_IN_PROGRESS);
+                assertThat(loser.getBatchPublicId()).isEmpty();
+                assertThat(loser.getCommittedAt()).isEmpty();
+                assertThat(loser.getStatus()).isEqualTo(ImportStatus.RUNNING);
+            }
             String sha;
             try (SpooledUpload u = upload(csv)) { sha = u.sha256(); }
             assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM import_batches WHERE hospital_id = ? AND file_sha256 = ?", Long.class, hospitalA, sha)).isEqualTo(1);
