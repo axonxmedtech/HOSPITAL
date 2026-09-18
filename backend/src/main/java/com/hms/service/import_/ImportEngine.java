@@ -79,6 +79,11 @@ public class ImportEngine {
 
     // ── preview ─────────────────────────────────────────────────────────────
 
+    /** The sheet names of an .xlsx upload, for the client to choose from. Read-only. */
+    public List<String> sheetNames(SpooledUpload upload) {
+        return parser.sheetNames(upload);
+    }
+
     /** A dry run. Reads patients and links through the evaluator; writes nothing anywhere. */
     public ImportPreview preview(SpooledUpload upload, ImportFormat format, String sheetName, Map<String, String> mapping, Long hospitalId) {
         ImportEvaluationContext ctx = new ImportEvaluationContext(hospitalId);
@@ -145,6 +150,12 @@ public class ImportEngine {
 
         // Abandoned runs first, so a crashed import of this very file does not block its retry forever.
         batchStore.resolveStale(hospitalId, now());
+
+        // Phase 5 §5: the cheap, honest answer first. The V24 index below is what makes this hold
+        // under concurrency; this read is what makes it hold on any database at all.
+        batchStore.findLive(hospitalId, sha).ifPresent(live -> {
+            throw AlreadyImportedException.visible(live.getPublicId(), live.getStatus(), live.getCommittedAt());
+        });
 
         ImportBatch batch;
         try {

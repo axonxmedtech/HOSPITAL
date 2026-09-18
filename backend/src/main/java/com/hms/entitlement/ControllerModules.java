@@ -41,7 +41,10 @@ public final class ControllerModules {
                 // inside the response, so the endpoint itself belongs to every hospital.
                 "HospitalDashboardController",
                 // Documents a patient brings belong to the patient, not to any module.
-                "PatientDocumentController");
+                "PatientDocumentController",
+                // Bulk registration of a hospital's existing patients: the same CORE capability as
+                // registering them one at a time.
+                "PatientImportController");
 
         put(EntitlementRegistry.OPD, "OpdController", "VitalSettingsController",
                 // Follow-ups are the tail of an OPD consultation, so they follow OPD.
