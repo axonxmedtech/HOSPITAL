@@ -30,7 +30,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import com.hms.filter.UploadLimits;
+import com.hms.exception.UploadTooLargeException;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.multipart.MultipartHttpServletRequest;
 
 /**
  * Legacy patient import over HTTP — synchronous in this phase: a commit responds only after
@@ -45,8 +48,8 @@ import org.springframework.web.multipart.MultipartFile;
  *
  * <p>The upload is spooled once ({@link SpooledUpload}, try-with-resources) so the temp file is
  * gone on every path out of a request — success, refused mapping, parse failure, engine failure,
- * already-imported. The upload size is the application's current multipart limit; the audited
- * import-specific limit is Phase 6B.
+ * already-imported. The upload boundary is {@link UploadLimits}: 50 MiB for the file, enforced
+ * before parsing by {@code UploadSizeGuardFilter}, and re-checked here.
  */
 @RestController
 @RequestMapping({"/hospital/patients/import", "/clinic/patients/import"})
@@ -80,10 +83,12 @@ public class PatientImportController {
     /** Dry run. Writes nothing. */
     @PostMapping(value = "/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<ImportPreviewResponse>> preview(
+            MultipartHttpServletRequest request,
             @RequestParam("file") MultipartFile file,
             @RequestParam("mapping") String mappingJson,
             @RequestParam(value = "sheetName", required = false) String sheetName) throws IOException {
         Long hospitalId = securityHelper.getCurrentHospitalId();
+        requireShape(request, file);
         Map<String, String> mapping = mappingValidator.validate(parseMapping(mappingJson));
         String name = ImportFilenames.sanitize(file.getOriginalFilename());
         ImportFormat format = requireFormat(name, file);
@@ -98,18 +103,20 @@ public class PatientImportController {
     /** Imports the file. Synchronous: 200 with the finished batch, or a 409/400/5xx from the advice. */
     @PostMapping(value = "/commit", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<ImportCommitResponse>> commit(
+            MultipartHttpServletRequest request,
             @RequestParam("file") MultipartFile file,
             @RequestParam("mapping") String mappingJson,
             @RequestParam(value = "sheetName", required = false) String sheetName) throws IOException {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         String actor = securityHelper.getCurrentUserEmail();
+        requireShape(request, file);
         Map<String, String> mapping = mappingValidator.validate(parseMapping(mappingJson));
         String name = ImportFilenames.sanitize(file.getOriginalFilename());
         ImportFormat format = requireFormat(name, file);
-        ImportCommitRequest request = new ImportCommitRequest(hospitalId, actor, name, blankToNull(sheetName), mapping);
+        ImportCommitRequest commitRequest = new ImportCommitRequest(hospitalId, actor, name, blankToNull(sheetName), mapping);
 
         try (InputStream in = file.getInputStream(); SpooledUpload upload = SpooledUpload.spool(in, spoolDir)) {
-            return ResponseEntity.ok(ApiResponse.ok("Import complete", ImportCommitResponse.from(engine.commit(upload, format, request))));
+            return ResponseEntity.ok(ApiResponse.ok("Import complete", ImportCommitResponse.from(engine.commit(upload, format, commitRequest))));
         }
     }
 
@@ -135,10 +142,38 @@ public class PatientImportController {
         }
     }
 
-    private static ImportFormat requireFormat(String sanitizedName, MultipartFile file) {
+    /**
+     * Defence in depth behind {@link com.hms.filter.UploadSizeGuardFilter}, which is the resource
+     * boundary: the file itself may not exceed 50 MiB, and the request may carry exactly one file
+     * part named {@code file} plus the {@code mapping} and optional {@code sheetName} parameters —
+     * no second file, no arbitrary extra parts.
+     */
+    private static void requireShape(MultipartHttpServletRequest request, MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("No file was uploaded.");
         }
+        if (file.getSize() > UploadLimits.IMPORT_FILE_BYTES) {
+            throw new UploadTooLargeException("The import file is too large. The maximum is 50 MB.");
+        }
+        int fileParts = request.getMultiFileMap().values().stream().mapToInt(List::size).sum();
+        if (fileParts != 1 || !request.getMultiFileMap().containsKey("file")) {
+            throw new IllegalArgumentException("Upload exactly one file, in the \"file\" part.");
+        }
+        // Only the multipart PARTS are shape-checked; a query-string parameter is not an upload
+        // and is ignored exactly as before (the tenant never comes from it either way).
+        String query = request.getQueryString();
+        for (String name : request.getParameterMap().keySet()) {
+            if (ALLOWED_PARAMS.contains(name)) continue;
+            boolean fromQuery = query != null && (query.startsWith(name + "=") || query.contains("&" + name + "="));
+            if (!fromQuery) {
+                throw new IllegalArgumentException("Unexpected request part \"" + name + "\".");
+            }
+        }
+    }
+
+    private static final java.util.Set<String> ALLOWED_PARAMS = java.util.Set.of("mapping", "sheetName");
+
+    private static ImportFormat requireFormat(String sanitizedName, MultipartFile file) {
         ImportFormat format = ImportFilenames.formatOf(sanitizedName);
         if (format == null) {
             throw new IllegalArgumentException("Only .xlsx and .csv files are supported.");

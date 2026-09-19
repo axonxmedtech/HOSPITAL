@@ -24,18 +24,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.core.io.ByteArrayResource;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 
 /**
  * The HTTP contract of the patient import endpoints, following PatientApiTest's conventions
@@ -75,11 +69,6 @@ class PatientImportApiTest {
     void tenants() {
         hospitalA = hospital();
         hospitalB = hospital();
-        // HttpURLConnection cannot deliver a 401/403 that the server sends before the multipart
-        // body has been streamed; buffer the body so the status comes back like any other.
-        org.springframework.http.client.SimpleClientHttpRequestFactory f = new org.springframework.http.client.SimpleClientHttpRequestFactory();
-        f.setOutputStreaming(false);
-        rest.getRestTemplate().setRequestFactory(f);
     }
 
     private long patientsIn(long hospitalId) {
@@ -97,8 +86,22 @@ class PatientImportApiTest {
         return hospitals.save(h).getId();
     }
 
+    /** A token for a real user row: session revalidation denies tokens without a matching tokenVersion. */
     private String token(String role, Long hospitalId) {
-        return jwt.generateToken(1L, role.toLowerCase() + "@import.test", role, hospitalId, MODULES, null, "HOSPITAL", null);
+        String email = role.toLowerCase() + "@import.test";
+        com.hms.entity.User u = users.findByEmail(email).orElseGet(() -> {
+            com.hms.entity.User fresh = new com.hms.entity.User();
+            fresh.setEmail(email);
+            fresh.setPassword("{noop}fixture");
+            fresh.setName(role);
+            fresh.setRole(role);
+            fresh.setIsActive(true);
+            fresh.setTokenVersion(0);
+            return fresh;
+        });
+        u.setHospitalId(hospitalId);
+        u = users.save(u);
+        return jwt.generateToken(u.getId(), u.getEmail(), role, hospitalId, MODULES, null, "HOSPITAL", null, u.getTokenVersion());
     }
 
     private String admin(long hospitalId) {
@@ -114,51 +117,49 @@ class PatientImportApiTest {
     }
 
     /**
-     * For requests the server refuses BEFORE reading the body (401/403), the JDK's
-     * HttpURLConnection cannot report the status; java.net.http can. Status only.
+     * Multipart over java.net.http with an explicit Content-Length. TestRestTemplate (backed by
+     * HttpComponents here) streams multipart bodies chunked, which the upload boundary refuses by
+     * policy (411); browsers, axios and the JDK client all declare the length, as this does.
      */
-    private int rawStatus(String path, String token, byte[] bytes, String filename, String mapping) throws Exception {
-        String boundary = "----hms" + System.nanoTime();
-        java.io.ByteArrayOutputStream body = new java.io.ByteArrayOutputStream();
-        java.io.PrintStream out = new java.io.PrintStream(body, true, StandardCharsets.UTF_8);
-        if (bytes != null) {
-            out.print("--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + filename + "\"\r\nContent-Type: application/octet-stream\r\n\r\n");
+    private ResponseEntity<String> upload(String path, String token, byte[] bytes, String filename, String mapping, String sheet) {
+        try {
+            String boundary = "----hms" + System.nanoTime();
+            java.io.ByteArrayOutputStream body = new java.io.ByteArrayOutputStream();
+            java.io.PrintStream out = new java.io.PrintStream(body, true, StandardCharsets.UTF_8);
+            if (bytes != null) {
+                out.print("--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + filename + "\"\r\nContent-Type: application/octet-stream\r\n\r\n");
+                out.flush();
+                body.write(bytes);
+                out.print("\r\n");
+            }
+            if (mapping != null) out.print("--" + boundary + "\r\nContent-Disposition: form-data; name=\"mapping\"\r\n\r\n" + mapping + "\r\n");
+            if (sheet != null) out.print("--" + boundary + "\r\nContent-Disposition: form-data; name=\"sheetName\"\r\n\r\n" + sheet + "\r\n");
+            out.print("--" + boundary + "--\r\n");
             out.flush();
-            body.write(bytes);
-            out.print("\r\n");
+            java.net.http.HttpRequest.Builder req = java.net.http.HttpRequest.newBuilder(java.net.URI.create(rest.getRootUri() + path))
+                    .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofByteArray(body.toByteArray()));
+            if (token != null) req.header("Authorization", "Bearer " + token);
+            java.net.http.HttpResponse<String> r = java.net.http.HttpClient.newHttpClient().send(req.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+            return ResponseEntity.status(r.statusCode()).body(r.body());
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
         }
-        if (mapping != null) out.print("--" + boundary + "\r\nContent-Disposition: form-data; name=\"mapping\"\r\n\r\n" + mapping + "\r\n");
-        out.print("--" + boundary + "--\r\n");
-        out.flush();
-        java.net.http.HttpRequest.Builder req = java.net.http.HttpRequest.newBuilder(java.net.URI.create(rest.getRootUri() + path))
-                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
-                .POST(java.net.http.HttpRequest.BodyPublishers.ofByteArray(body.toByteArray()));
-        if (token != null) req.header("Authorization", "Bearer " + token);
-        return java.net.http.HttpClient.newHttpClient().send(req.build(), java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode();
     }
 
-    private ResponseEntity<String> upload(String path, String token, byte[] bytes, String filename, String mapping, String sheet) {
-        MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
-        if (bytes != null) {
-            form.add("file", new ByteArrayResource(bytes) {
-                @Override
-                public String getFilename() {
-                    return filename;
-                }
-            });
-        }
-        if (mapping != null) form.add("mapping", mapping);
-        if (sheet != null) form.add("sheetName", sheet);
-        HttpHeaders h = new HttpHeaders();
-        if (token != null) h.setBearerAuth(token);
-        h.setContentType(MediaType.MULTIPART_FORM_DATA);
-        return rest.exchange(path, HttpMethod.POST, new HttpEntity<>(form, h), String.class);
+    private int rawStatus(String path, String token, byte[] bytes, String filename, String mapping) {
+        return upload(path, token, bytes, filename, mapping, null).getStatusCode().value();
     }
 
     private ResponseEntity<String> get(String path, String token) {
-        HttpHeaders h = new HttpHeaders();
-        if (token != null) h.setBearerAuth(token);
-        return rest.exchange(path, HttpMethod.GET, new HttpEntity<>(h), String.class);
+        try {
+            java.net.http.HttpRequest.Builder req = java.net.http.HttpRequest.newBuilder(java.net.URI.create(rest.getRootUri() + path)).GET();
+            if (token != null) req.header("Authorization", "Bearer " + token);
+            java.net.http.HttpResponse<String> r = java.net.http.HttpClient.newHttpClient().send(req.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+            return ResponseEntity.status(r.statusCode()).body(r.body());
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private JsonNode body(ResponseEntity<String> r) throws IOException {

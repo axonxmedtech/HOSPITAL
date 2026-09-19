@@ -32,18 +32,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.core.io.ByteArrayResource;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 
 /**
  * With the engine mocked: the commit endpoint answers only after the engine returns (no 202, no
@@ -82,16 +75,23 @@ class PatientImportControllerSyncTest {
         token = jwt.generateToken(1L, "admin@sync.test", "HOSPITAL_ADMIN", id, List.of("OPD"), null, "HOSPITAL", null);
     }
 
+    /** Multipart with an explicit Content-Length (TestRestTemplate would stream it chunked, which the boundary refuses). */
     private ResponseEntity<String> commit() {
-        MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
-        form.add("file", new ByteArrayResource("Name,Phone\nA,9000000001\n".getBytes(StandardCharsets.UTF_8)) {
-            @Override public String getFilename() { return "a.csv"; }
-        });
-        form.add("mapping", "{\"Name\":\"name\",\"Phone\":\"phone\"}");
-        HttpHeaders h = new HttpHeaders();
-        h.setBearerAuth(token);
-        h.setContentType(MediaType.MULTIPART_FORM_DATA);
-        return rest.exchange("/hospital/patients/import/commit", HttpMethod.POST, new HttpEntity<>(form, h), String.class);
+        try {
+            String boundary = "----hmsSync";
+            String body = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.csv\"\r\nContent-Type: text/csv\r\n\r\nName,Phone\nA,9000000001\n\r\n"
+                    + "--" + boundary + "\r\nContent-Disposition: form-data; name=\"mapping\"\r\n\r\n{\"Name\":\"name\",\"Phone\":\"phone\"}\r\n"
+                    + "--" + boundary + "--\r\n";
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder(java.net.URI.create(rest.getRootUri() + "/hospital/patients/import/commit"))
+                    .header("Authorization", "Bearer " + token)
+                    .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+                    .build();
+            java.net.http.HttpResponse<String> r = java.net.http.HttpClient.newHttpClient().send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+            return ResponseEntity.status(r.statusCode()).body(r.body());
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private long spoolFiles() throws IOException {
