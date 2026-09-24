@@ -136,7 +136,7 @@ public class ImportBatchStore {
             b.setFailureReason(ABANDONED_REASON);
             b.setHeartbeatAt(now);
             long touched = batches.countLinksTouchedBy(hospitalId, b.getId());
-            long recorded = c.created() + c.updated();
+            long recorded = (long) c.created() + c.updated();
             if (touched > recorded) {
                 log.warn("Import {} abandoned: lineage shows {} patient(s) written but only {} success result(s) recorded — recovery review needed",
                         b.getPublicId(), touched, recorded);
