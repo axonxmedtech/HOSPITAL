@@ -443,9 +443,12 @@ class ImportEngineIT {
         // Simulate an abandoned run: a RUNNING batch with two persisted results and a heartbeat at t0.
         String sha;
         try (SpooledUpload u = upload(csv)) { sha = u.sha256(); }
-        jdbc.update("INSERT INTO import_batches (public_id, hospital_id, entity_type, file_sha256, status, created_at, heartbeat_at) VALUES (?,?,?,?,?,?,?)",
-                "stale-" + t, hospitalA, "PATIENT", sha, "RUNNING", LocalDateTime.ofInstant(t0, PinnedClock.CLOCK.getZone()), LocalDateTime.ofInstant(t0, PinnedClock.CLOCK.getZone()));
-        long staleId = jdbc.queryForObject("SELECT id FROM import_batches WHERE public_id = ?", Long.class, "stale-" + t);
+        // Use the production timestamp binding path: raw JDBC LocalDateTime and Hibernate's
+        // Timestamp binding differ when the JVM zone is UTC but Connector/J uses Asia/Kolkata.
+        LocalDateTime heartbeat = LocalDateTime.ofInstant(t0, PinnedClock.CLOCK.getZone());
+        ImportBatch abandoned = batchStore.start(request(hospitalA), sha, "{}", heartbeat);
+        long staleId = abandoned.getId();
+        assertThat(batch(abandoned.getPublicId()).getHeartbeatAt()).isEqualTo(heartbeat);
         jdbc.update("INSERT INTO import_row_results (batch_id, row_num, state) VALUES (?,2,'CREATED'),(?,3,'NEEDS_REVIEW')", staleId, staleId);
 
         PinnedClock.CLOCK.now = t0.plus(Duration.ofMinutes(29)).plusSeconds(59);
