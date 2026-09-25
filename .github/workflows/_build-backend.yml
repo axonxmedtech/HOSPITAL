@@ -102,6 +102,9 @@ jobs:
               "com.hms.service.hospital.PharmacySaleTimestampIT",
               "com.hms.service.hospital.IstDateBoundaryIT",
               "com.hms.integration.PatientDuplicatePhoneConcurrencyIT",
+              "com.hms.integration.ImportSchemaFoundationIT",
+              "com.hms.integration.ImportedPatientWriterIT",
+              "com.hms.integration.ImportEngineIT",
           ]
 
           seen, problems = {}, []

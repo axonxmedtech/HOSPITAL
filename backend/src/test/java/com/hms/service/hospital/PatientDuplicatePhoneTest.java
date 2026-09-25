@@ -41,7 +41,9 @@ import static org.mockito.Mockito.when;
  * <p>Against a real schema rather than a mocked repository: the behaviour under test is which
  * rows exist afterwards.
  */
-@DataJpaTest(showSql = false)
+// A dedicated database prevents unrelated cached Spring contexts from changing these counts.
+@DataJpaTest(showSql = false, properties =
+        "spring.datasource.url=jdbc:h2:mem:patient_duplicate_phone_test;MODE=MySQL;NON_KEYWORDS=VALUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE")
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ActiveProfiles("test")
 @Import({PatientService.class,

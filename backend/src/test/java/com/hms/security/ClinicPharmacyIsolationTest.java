@@ -65,6 +65,9 @@ class ClinicPharmacyIsolationTest {
             // Patients bring outside reports to clinics too. Reachable from /clinic, never
             // /pharmacy -- a pharmacy holds no patient record to attach one to.
             "PatientDocumentController",
+            // Legacy patient import: bulk registration into the same register PatientController
+            // serves. Reachable from /clinic, never /pharmacy, for the same reason as documents.
+            "PatientImportController",
             "HospitalAuditController",
             "HospitalAuthController",
             "HospitalFeeController",

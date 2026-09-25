@@ -46,7 +46,13 @@ public enum ErrorCode {
     TRANSACTION_FAILURE(HttpStatus.INTERNAL_SERVER_ERROR),
 
     /** An unhandled server fault. The client is told nothing beyond the request id. */
-    UNEXPECTED_ERROR(HttpStatus.INTERNAL_SERVER_ERROR);
+    UNEXPECTED_ERROR(HttpStatus.INTERNAL_SERVER_ERROR),
+
+    /** A multipart upload exceeds the boundary for its route (see UploadSizeGuardFilter). */
+    PAYLOAD_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE),
+
+    /** A multipart upload arrived without a trustworthy Content-Length; V1 refuses rather than guesses. */
+    LENGTH_REQUIRED(HttpStatus.LENGTH_REQUIRED);
 
     private final HttpStatus status;
 

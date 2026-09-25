@@ -21,7 +21,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * another tenant's rows. Opd has no hospital_id, so tenancy is proven by joining the owning
  * patient — that join is what these tests exercise.
  */
-@SpringBootTest
+// Cleanup must only see this class's fixtures, never another context's OPD/queue rows.
+@SpringBootTest(properties =
+        "spring.datasource.url=jdbc:h2:mem:opd_pending_ipd_requests_test;MODE=MySQL;NON_KEYWORDS=VALUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE")
 @ActiveProfiles("test")
 class OpdPendingIpdRequestsQueryTest {
 

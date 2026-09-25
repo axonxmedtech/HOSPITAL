@@ -165,6 +165,16 @@ public final class TenantTables {
                 NOT_PURGED, "");
         add("ipd_bed_history", Ownership.INDIRECT, Retention.RETAIN_DECISION_REQUIRED,
                 NOT_PURGED, "");
+        // Legacy import history (Flyway V22/V23): who imported which file, what happened to each
+        // row, and which source-system record a patient came from. Provenance for patient
+        // records, so it shares the open decision above. No statement is needed or wanted here --
+        // the schema already follows what deleteHospital does today: links cascade with patients
+        // (FK ON DELETE CASCADE), batches cascade with the hospital row, results with their batch.
+        // Verified in ImportSchemaFoundationIT against the purge's own statement order.
+        retain("import_batches", Ownership.DIRECT);
+        retain("patient_import_links", Ownership.DIRECT);
+        add("import_row_results", Ownership.INDIRECT, Retention.RETAIN_DECISION_REQUIRED,
+                NOT_PURGED, "");
 
         // Clinical records.
         retain("prescriptions", Ownership.DIRECT);

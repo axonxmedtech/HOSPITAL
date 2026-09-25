@@ -1,7 +1,9 @@
 package com.hms.api;
 
 import com.hms.entity.Hospital;
+import com.hms.entity.User;
 import com.hms.repository.HospitalRepository;
+import com.hms.repository.UserRepository;
 import com.hms.security.JwtUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -9,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.*;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.util.List;
@@ -23,13 +26,17 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Complements CrossTenantIsolationTest (which covers cross-tenant access) — here we prove the
  * happy path and input validation for a single tenant.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+// Keep the live HTTP context's authentication fixtures independent of other JPA contexts.
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties =
+        "spring.datasource.url=jdbc:h2:mem:patient_api_test;MODE=MySQL;NON_KEYWORDS=VALUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE")
 @ActiveProfiles("test")
 class PatientApiTest {
 
     @Autowired TestRestTemplate rest;
     @Autowired JwtUtil jwtUtil;
     @Autowired HospitalRepository hospitalRepository;
+    @Autowired UserRepository userRepository;
+    @Autowired PasswordEncoder passwordEncoder;
 
     private static final List<String> MODULES =
             List.of("OPD", "IPD", "PHARMACY", "BILLING", "NURSING", "APPOINTMENTS");
@@ -46,7 +53,16 @@ class PatientApiTest {
         h.setModules(MODULES);
         h.setIsSingleDoctor(false);
         long hid = hospitalRepository.save(h).getId();
-        token = jwtUtil.generateToken(1L, "admin@apitest.com", "HOSPITAL_ADMIN", hid, MODULES, null, "HOSPITAL", null);
+        User user = new User();
+        user.setEmail("admin-" + hid + "@apitest.com");
+        user.setPassword(passwordEncoder.encode("ApiTestPassword!123"));
+        user.setName("API Test Admin");
+        user.setRole("HOSPITAL_ADMIN");
+        user.setHospitalId(hid);
+        user.setIsActive(true);
+        user = userRepository.saveAndFlush(user);
+        token = jwtUtil.generateToken(user.getId(), user.getEmail(), user.getRole(), hid,
+                MODULES, null, "HOSPITAL", null, user.getTokenVersion());
     }
 
     private HttpHeaders auth() {

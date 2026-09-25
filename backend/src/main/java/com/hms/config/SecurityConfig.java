@@ -94,6 +94,14 @@ public class SecurityConfig {
                         // WebSocket endpoints - authenticated standard HMS roles & Super Admin
                         .requestMatchers("/ws/**").hasAnyRole(HOSPITAL_ADMIN, DOCTOR, RECEPTIONIST, PHARMACIST, "NURSE", "NURSE_INCHARGE", "SUPER_ADMIN", "OT_INCHARGE")
 
+                        // Legacy patient import: HOSPITAL_ADMIN only, decided HERE in the filter chain
+                        // rather than only by the controller's @PreAuthorize. Method security runs after
+                        // DispatcherServlet has parsed the multipart body, so a URL rule is what keeps a
+                        // wrong-role user's 50 MiB upload from being materialised before its 403
+                        // (UploadBoundaryTest proves the order with a counting resolver).
+                        .requestMatchers("/hospital/patients/import/**", "/clinic/patients/import/**")
+                        .hasRole(HOSPITAL_ADMIN)
+
                         // Module namespaces - only standard HMS roles allowed.
                         // /hospital/** = hospital tenants, /clinic/** = clinic tenants,
                         // /pharmacy/** = standalone pharmacy tenants (ERP + shared admin endpoints).
