@@ -3083,6 +3083,15 @@ const HospitalAdminDashboard = () => {
                 filter={
                   activeTab === 'patients' ? (
                     <div className="flex items-center gap-2">
+                      {!isPharmacyTenant && user?.role === 'HOSPITAL_ADMIN' && (
+                        <button
+                          type="button"
+                          className="px-4 py-2 rounded-lg border border-gray-300 bg-white text-sm font-medium hover:bg-gray-50"
+                          onClick={() => navigate('/hospital/patients/import')}
+                        >
+                          Import Patients
+                        </button>
+                      )}
                       <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 h-[38px] items-center">
                         {['All', 'Date'].map((view) => (
                           <button

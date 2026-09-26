@@ -127,6 +127,28 @@ class ImportEngineTest {
     }
 
     @Test
+    void xlsxExclusionsReachBothEvaluationsAndNeverReachStoredReviewRows() throws Exception {
+        when(importer.evaluate(any(), any(), any(), any())).thenAnswer(inv -> {
+            ParsedRow row = inv.getArgument(0);
+            SheetHeader header = inv.getArgument(1);
+            assertThat(header.display()).containsExactly("Name", "Phone");
+            assertThat(row.values()).containsExactly("Person", "9000000001");
+            return review(row.rowNum());
+        });
+        byte[] bytes = ImportTestFiles.xlsx(List.of(List.of("Name", "Extra", "Phone"), List.of("Person", "excluded-value", "9000000001")));
+        try (SpooledUpload upload = ImportTestFiles.bytes(bytes)) {
+            String originalHash = upload.sha256();
+            var preview = engine.preview(upload, ImportFormat.XLSX, "Sheet1", mapping, H, List.of("Extra"));
+            var commit = engine.commit(upload, ImportFormat.XLSX, new ImportCommitRequest(H, "admin@test", "a.xlsx", "Sheet1", mapping, List.of("Extra")));
+            assertThat(commit.counts()).isEqualTo(preview.counts());
+            assertThat(upload.sha256()).isEqualTo(originalHash);
+            verify(batchStore).start(any(), eq(originalHash), anyString(), any());
+        }
+        assertThat(savedChunks.get(0).get(0).getRawRowJson()).doesNotContain("Extra", "excluded-value");
+        verify(importer, times(2)).evaluate(any(), any(), any(), any());
+    }
+
+    @Test
     void previewEvaluatesEveryRowWithOneContextAndNeverTouchesAStore() throws Exception {
         when(importer.evaluate(any(), any(), any(), any())).thenAnswer(inv -> {
             ParsedRow r = inv.getArgument(0);
