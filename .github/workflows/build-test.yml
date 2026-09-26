@@ -71,10 +71,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [build-frontend, build-backend, check-secrets]
+    # SonarCloud analysis runs on pull_request only. A push-triggered analysis of a
+    # feature branch is typed SHORT with target=main, so for staging-based branches its
+    # "new code" is the whole staging..main delta rather than the change under review.
+    # The PR analysis diffs against the real base and enforces the same quality gate.
     if: >
-      (github.event_name == 'push' ||
-       (github.event_name == 'pull_request' &&
-        github.event.pull_request.head.repo.full_name == github.repository)) &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
       needs.check-secrets.outputs.has_sonar_token == 'true'
     permissions:
       contents: read
