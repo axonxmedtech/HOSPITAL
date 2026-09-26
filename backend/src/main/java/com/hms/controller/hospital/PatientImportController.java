@@ -86,17 +86,19 @@ public class PatientImportController {
             MultipartHttpServletRequest request,
             @RequestParam("file") MultipartFile file,
             @RequestParam("mapping") String mappingJson,
-            @RequestParam(value = "sheetName", required = false) String sheetName) throws IOException {
+            @RequestParam(value = "sheetName", required = false) String sheetName,
+            @RequestParam(value = "excludedColumns", required = false) String excludedColumnsJson) throws IOException {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         requireShape(request, file);
         Map<String, String> mapping = mappingValidator.validate(parseMapping(mappingJson));
+        List<String> excludedColumns = parseExcludedColumns(excludedColumnsJson);
         String name = ImportFilenames.sanitize(file.getOriginalFilename());
         ImportFormat format = requireFormat(name, file);
 
         try (InputStream in = file.getInputStream(); SpooledUpload upload = SpooledUpload.spool(in, spoolDir)) {
             List<String> sheets = format == ImportFormat.XLSX ? engine.sheetNames(upload) : List.of();
             return ResponseEntity.ok(ApiResponse.ok(
-                    ImportPreviewResponse.from(engine.preview(upload, format, blankToNull(sheetName), mapping, hospitalId), sheets)));
+                    ImportPreviewResponse.from(engine.preview(upload, format, blankToNull(sheetName), mapping, hospitalId, excludedColumns), sheets)));
         }
     }
 
@@ -106,14 +108,16 @@ public class PatientImportController {
             MultipartHttpServletRequest request,
             @RequestParam("file") MultipartFile file,
             @RequestParam("mapping") String mappingJson,
-            @RequestParam(value = "sheetName", required = false) String sheetName) throws IOException {
+            @RequestParam(value = "sheetName", required = false) String sheetName,
+            @RequestParam(value = "excludedColumns", required = false) String excludedColumnsJson) throws IOException {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         String actor = securityHelper.getCurrentUserEmail();
         requireShape(request, file);
         Map<String, String> mapping = mappingValidator.validate(parseMapping(mappingJson));
+        List<String> excludedColumns = parseExcludedColumns(excludedColumnsJson);
         String name = ImportFilenames.sanitize(file.getOriginalFilename());
         ImportFormat format = requireFormat(name, file);
-        ImportCommitRequest commitRequest = new ImportCommitRequest(hospitalId, actor, name, blankToNull(sheetName), mapping);
+        ImportCommitRequest commitRequest = new ImportCommitRequest(hospitalId, actor, name, blankToNull(sheetName), mapping, excludedColumns);
 
         try (InputStream in = file.getInputStream(); SpooledUpload upload = SpooledUpload.spool(in, spoolDir)) {
             return ResponseEntity.ok(ApiResponse.ok("Import complete", ImportCommitResponse.from(engine.commit(upload, format, commitRequest))));
@@ -126,6 +130,25 @@ public class PatientImportController {
     }
 
     // ── request shaping ──────────────────────────────────────────────────────
+
+    private List<String> parseExcludedColumns(String value) {
+        if (value == null) return List.of();
+        if (value.length() > 64 * 1024) throw new InvalidImportMappingException("The exclusions are too large.");
+        try {
+            var node = json.readTree(value);
+            if (node == null || !node.isArray() || node.size() > ImportMappingValidator.MAX_ENTRIES) {
+                throw new InvalidImportMappingException("excludedColumns must be an array of source column names (at most 100).");
+            }
+            List<String> result = new java.util.ArrayList<>();
+            for (var column : node) {
+                if (!column.isTextual()) throw new InvalidImportMappingException("Every excluded column must be a source column name.");
+                result.add(column.textValue());
+            }
+            return result;
+        } catch (IOException e) {
+            throw new InvalidImportMappingException("excludedColumns must be a JSON array of source column names.");
+        }
+    }
 
     /** A flat JSON object of header → field key; anything nested or non-string is refused by the type itself. */
     private Map<String, String> parseMapping(String mappingJson) {
@@ -145,7 +168,7 @@ public class PatientImportController {
     /**
      * Defence in depth behind {@link com.hms.filter.UploadSizeGuardFilter}, which is the resource
      * boundary: the file itself may not exceed 50 MiB, and the request may carry exactly one file
-     * part named {@code file} plus the {@code mapping} and optional {@code sheetName} parameters —
+     * part named {@code file} plus {@code mapping}, optional {@code sheetName}, and optional {@code excludedColumns} parameters —
      * no second file, no arbitrary extra parts.
      */
     private static void requireShape(MultipartHttpServletRequest request, MultipartFile file) {
@@ -171,7 +194,7 @@ public class PatientImportController {
         }
     }
 
-    private static final java.util.Set<String> ALLOWED_PARAMS = java.util.Set.of("mapping", "sheetName");
+    private static final java.util.Set<String> ALLOWED_PARAMS = java.util.Set.of("mapping", "sheetName", "excludedColumns");
 
     private static ImportFormat requireFormat(String sanitizedName, MultipartFile file) {
         ImportFormat format = ImportFilenames.formatOf(sanitizedName);

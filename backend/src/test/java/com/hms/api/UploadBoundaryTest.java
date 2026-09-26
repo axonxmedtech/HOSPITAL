@@ -2,6 +2,7 @@ package com.hms.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -144,7 +145,7 @@ class UploadBoundaryTest {
         rec.setTokenVersion(0);
         rec = users.save(rec);
         receptionist = jwt.generateToken(rec.getId(), rec.getEmail(), "RECEPTIONIST", id, List.of("OPD"), null, "HOSPITAL", null, rec.getTokenVersion());
-        when(engine.preview(any(), any(), any(), any(), any()))
+        when(engine.preview(any(), any(), any(), any(), any(), eq(List.of())))
                 .thenReturn(new ImportPreview("csv", List.of("Name"), new ImportCounters.Snapshot(1, 1, 0, 0, 0, 0), List.of(), false, null));
         when(engine.commit(any(), any(), any()))
                 .thenReturn(new ImportCommitSummary("id", ImportStatus.COMPLETED, new ImportCounters.Snapshot(1, 1, 0, 0, 0, 0), LocalDateTime.now()));
@@ -421,7 +422,7 @@ class UploadBoundaryTest {
     @Test
     void theClinicAliasGetsTheSameImportLimitAndGetStatusGetsNoUploadAllowance() throws Exception {
         assertThat(send(CLINIC_IMPORT, admin, body("a.csv", 8 * UploadLimits.MEBIBYTE, MAPPING), true).statusCode()).isEqualTo(200);
-        verify(engine).preview(any(), any(), any(), any(), any());
+        verify(engine).preview(any(), any(), any(), any(), any(), eq(List.of()));
         // GET is not an upload route: an 8 MiB multipart GET is refused by the guard like any other route.
         HttpRequest get = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/hospital/patients/import/some-id"))
                 .header("Authorization", "Bearer " + admin)

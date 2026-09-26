@@ -56,6 +56,7 @@ class PatientImportApiTest {
     @Autowired PatientRepository patients;
     @Autowired com.hms.repository.UserRepository users;
     @Autowired ObjectMapper json;
+    @Autowired com.hms.repository.import_.PatientImportLinkRepository links;
 
     private static final List<String> MODULES = List.of("OPD", "IPD", "BILLING", "APPOINTMENTS");
     private static final String BASE = "/hospital/patients/import";
@@ -101,7 +102,8 @@ class PatientImportApiTest {
         });
         u.setHospitalId(hospitalId);
         u = users.save(u);
-        return jwt.generateToken(u.getId(), u.getEmail(), role, hospitalId, MODULES, null, "HOSPITAL", null, u.getTokenVersion());
+        String type = hospitals.findById(hospitalId).orElseThrow().getType().name();
+        return jwt.generateToken(u.getId(), u.getEmail(), role, hospitalId, MODULES, null, type, null, u.getTokenVersion());
     }
 
     private String admin(long hospitalId) {
@@ -122,6 +124,10 @@ class PatientImportApiTest {
      * policy (411); browsers, axios and the JDK client all declare the length, as this does.
      */
     private ResponseEntity<String> upload(String path, String token, byte[] bytes, String filename, String mapping, String sheet) {
+        return upload(path, token, bytes, filename, mapping, sheet, null);
+    }
+
+    private ResponseEntity<String> upload(String path, String token, byte[] bytes, String filename, String mapping, String sheet, String excluded) {
         try {
             String boundary = "----hms" + System.nanoTime();
             java.io.ByteArrayOutputStream body = new java.io.ByteArrayOutputStream();
@@ -133,6 +139,7 @@ class PatientImportApiTest {
                 out.print("\r\n");
             }
             if (mapping != null) out.print("--" + boundary + "\r\nContent-Disposition: form-data; name=\"mapping\"\r\n\r\n" + mapping + "\r\n");
+            if (excluded != null) out.print("--" + boundary + "\r\nContent-Disposition: form-data; name=\"excludedColumns\"\r\n\r\n" + excluded + "\r\n");
             if (sheet != null) out.print("--" + boundary + "\r\nContent-Disposition: form-data; name=\"sheetName\"\r\n\r\n" + sheet + "\r\n");
             out.print("--" + boundary + "--\r\n");
             out.flush();
@@ -174,6 +181,99 @@ class PatientImportApiTest {
         try (Stream<Path> s = Files.list(spoolDir)) {
             return s.count();
         }
+    }
+
+    @Test
+    void explicitExclusionsMatchPreviewAndCommitOnBothAliases() throws Exception {
+        for (String base : List.of(BASE, "/clinic/patients/import")) {
+            if (base.startsWith("/clinic")) {
+                Hospital clinic = hospitals.findById(hospitalA).orElseThrow();
+                clinic.setType(com.hms.entity.HospitalType.CLINIC);
+                hospitals.save(clinic);
+            }
+            for (String excluded : List.of("[\"Extra\"]", "[\"Extra\",\"Other\"]")) {
+                String t = tag();
+                String csv = HEADER.strip() + ",Extra,Other\n" + csvRow(t, 1).strip() + ",discard-me,keep-unless-excluded\n";
+                String tok = admin(hospitalA);
+                var preview = upload(base + "/preview", tok, bytes(csv), "a.csv", MAPPING, null, excluded);
+                assertThat(preview.getStatusCode()).isEqualTo(HttpStatus.OK);
+                long before = patientsIn(hospitalA);
+                var commit = upload(base + "/commit", tok, bytes(csv), "a.csv", MAPPING, null, excluded);
+                assertThat(commit.getStatusCode()).isEqualTo(HttpStatus.OK);
+                assertThat(body(commit).at("/data/counts")).isEqualTo(body(preview).at("/data/counts"));
+                assertThat(patientsIn(hospitalA)).isEqualTo(before + 1);
+                var link = links.findByHospitalIdAndLegacyId(hospitalA, "M" + t + "-1").orElseThrow();
+                if (excluded.contains("Other")) assertThat(link.getCustomFieldsJson()).isNull();
+                else assertThat(json.readTree(link.getCustomFieldsJson())).isEqualTo(json.readTree("{\"Other\":\"keep-unless-excluded\"}"));
+                // Original-file fingerprinting is unchanged even when the exclusions change.
+                assertThat(upload(base + "/commit", tok, bytes(csv), "a.csv", MAPPING, null, "[]").getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+                String publicId = body(commit).at("/data/batchPublicId").asText();
+                assertThat(get(base + "/" + publicId, admin(hospitalB)).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+            }
+        }
+    }
+
+    @Test
+    void exclusionsDoNotCauseUpdatesOrEraseExistingMetadata() throws Exception {
+        String t = tag();
+        String header = HEADER.strip() + ",Extra\n";
+        String row = csvRow(t, 1).strip();
+        String tok = admin(hospitalA);
+        assertThat(upload(BASE + "/commit", tok, bytes(header + row + ",original\n"), "a.csv", MAPPING, null).getStatusCode()).isEqualTo(HttpStatus.OK);
+        var before = links.findByHospitalIdAndLegacyId(hospitalA, "M" + t + "-1").orElseThrow();
+        String metadata = before.getCustomFieldsJson();
+        String csv = header + row + ",changed-but-excluded\n";
+        var preview = upload(BASE + "/preview", tok, bytes(csv), "b.csv", MAPPING, null, "[\"Extra\"]");
+        var commit = upload(BASE + "/commit", tok, bytes(csv), "b.csv", MAPPING, null, "[\"Extra\"]");
+        assertThat(commit.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(body(commit).at("/data/counts")).isEqualTo(body(preview).at("/data/counts"));
+        assertThat(body(commit).at("/data/counts/skipped").asInt()).isEqualTo(1);
+        assertThat(body(commit).at("/data/counts/updated").asInt()).isZero();
+        assertThat(links.findById(before.getId()).orElseThrow().getCustomFieldsJson()).isEqualTo(metadata);
+        // A real mapped-field update still merges without deleting previously stored metadata.
+        String updated = header + row.replace("Person 1", "Renamed Person") + ",another-excluded-value\n";
+        var update = upload(BASE + "/commit", tok, bytes(updated), "c.csv", MAPPING, null, "[\"Extra\"]");
+        assertThat(body(update).at("/data/counts/updated").asInt()).isEqualTo(1);
+        assertThat(links.findById(before.getId()).orElseThrow().getCustomFieldsJson()).isEqualTo(metadata);
+        String withoutGender = MAPPING.replace(",\"Gender\":\"gender\"", "");
+        String excludedField = header + row.replace("Person 1", "Second Rename").replace(",F,", ",M,") + ",excluded\n";
+        var fieldUpdate = upload(BASE + "/commit", tok, bytes(excludedField), "d.csv", withoutGender, null, "[\"Extra\",\"Gender\"]");
+        assertThat(body(fieldUpdate).at("/data/counts/updated").asInt()).isEqualTo(1);
+        assertThat(patients.findById(before.getPatientId()).orElseThrow().getGender()).isEqualTo("FEMALE");
+        assertThat(links.findById(before.getId()).orElseThrow().getCustomFieldsJson()).isEqualTo(metadata);
+    }
+
+    @Test
+    void invalidExclusionsAreRejectedBeforeAnyBatchOrPatientWrite() throws Exception {
+        String tok = admin(hospitalA);
+        String csv = HEADER.strip() + ",Extra\n" + csvRow(tag(), 1).strip() + ",value\n";
+        long batchCount = batches.count();
+        for (String excluded : List.of("[\"Name\"]", "[\"Unknown\"]", "[\"Extra\",\" extra \"]", "[\" \"]", "[null]", "[12]", "{}", "")) {
+            for (String action : List.of("preview", "commit")) {
+                assertThat(upload(BASE + "/" + action, tok, bytes(csv), "a.csv", MAPPING, null, excluded).getStatusCode())
+                        .as(action + " " + excluded).isEqualTo(HttpStatus.BAD_REQUEST);
+            }
+        }
+        assertThat(upload(BASE + "/commit", tok, bytes(csv), "a.csv", "{\"Phone\":\"phone\"}", null, "[\"Name\"]").getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(batches.count()).isEqualTo(batchCount);
+        assertThat(patientsIn(hospitalA)).isZero();
+    }
+
+    @Test
+    void exclusionsPreserveDuplicatePhoneReviewAndAuthorization() throws Exception {
+        String t = tag();
+        String first = csvRow(t, 1).strip();
+        String csv = HEADER.strip() + ",Extra\n" + first + ",one\n" + first.replace("-1,", "-2,").replace("Person 1", "Other Person") + ",two\n";
+        String excluded = "[\"Extra\"]";
+        for (String action : List.of("preview", "commit")) {
+            assertThat(upload(BASE + "/" + action, token("DOCTOR", hospitalA), bytes(csv), "a.csv", MAPPING, null, excluded).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+            assertThat(upload(BASE + "/" + action, null, bytes(csv), "a.csv", MAPPING, null, excluded).getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        }
+        var preview = upload(BASE + "/preview", admin(hospitalA), bytes(csv), "a.csv", MAPPING, null, excluded);
+        var commit = upload(BASE + "/commit", admin(hospitalA), bytes(csv), "a.csv", MAPPING, null, excluded);
+        assertThat(body(commit).at("/data/counts")).isEqualTo(body(preview).at("/data/counts"));
+        assertThat(body(commit).at("/data/counts/needsReview").asInt()).isEqualTo(1);
+        assertThat(body(commit).at("/data/counts/created").asInt()).isEqualTo(1);
     }
 
     // ── authentication / authorization ──────────────────────────────────────
