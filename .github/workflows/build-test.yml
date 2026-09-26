@@ -105,7 +105,6 @@ jobs:
         continue-on-error: true
       - name: Run SonarCloud analysis
         uses: sonarsource/sonarqube-scan-action@v6
-        continue-on-error: true
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN || vars.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
