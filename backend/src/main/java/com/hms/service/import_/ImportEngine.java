@@ -86,6 +86,11 @@ public class ImportEngine {
 
     /** A dry run. Reads patients and links through the evaluator; writes nothing anywhere. */
     public ImportPreview preview(SpooledUpload upload, ImportFormat format, String sheetName, Map<String, String> mapping, Long hospitalId) {
+        return preview(upload, format, sheetName, mapping, hospitalId, List.of());
+    }
+
+    public ImportPreview preview(SpooledUpload upload, ImportFormat format, String sheetName, Map<String, String> mapping, Long hospitalId, List<String> excludedColumns) {
+        ImportColumnExclusions exclusions = exclusions(upload, format, sheetName, mapping, excludedColumns);
         ImportEvaluationContext ctx = new ImportEvaluationContext(hospitalId);
         ImportCounters counters = new ImportCounters();
         List<ImportPreview.RowSample> samples = new ArrayList<>();
@@ -98,13 +103,14 @@ public class ImportEngine {
 
             @Override
             public void header(SheetHeader h) {
-                header = h;
+                header = exclusions.header(h);
                 sheet[0] = h.sheetName();
                 headers.set(0, h.display());
             }
 
             @Override
             public boolean row(ParsedRow row) {
+                row = exclusions.row(row);
                 RowEvaluation e = importer.evaluate(row, header, mapping, ctx);
                 counters.count(e.state());
                 if (!e.isSuccess()) {
@@ -140,6 +146,7 @@ public class ImportEngine {
      * @throws ImportParseException     the file itself was refused before any row was processed
      */
     public ImportCommitSummary commit(SpooledUpload upload, ImportFormat format, ImportCommitRequest request) {
+        ImportColumnExclusions exclusions = exclusions(upload, format, request.sheetName(), request.mapping(), request.excludedColumns());
         Long hospitalId = request.hospitalId();
         String sha;
         try {
@@ -172,7 +179,7 @@ public class ImportEngine {
         ImportEvaluationContext ctx = new ImportEvaluationContext(hospitalId);
         ImportCounters counters = new ImportCounters();
         ImportWriteContext writeCtx = new ImportWriteContext(hospitalId, batch.getId(), now());
-        CommitSink sink = new CommitSink(batch.getId(), request.mapping(), ctx, counters, writeCtx);
+        CommitSink sink = new CommitSink(batch.getId(), request.mapping(), ctx, counters, writeCtx, exclusions);
 
         try {
             parser.parse(upload, format, request.sheetName(), sink);
@@ -195,6 +202,19 @@ public class ImportEngine {
         return new ImportCommitSummary(publicId, done.getStatus(), counters.snapshot(), done.getCommittedAt());
     }
 
+    // Validate against the real header before any commit state is created. Existing callers
+    // take the unchanged path, without an extra parse. The spooled bytes are never rewritten.
+    private ImportColumnExclusions exclusions(SpooledUpload upload, ImportFormat format, String sheetName,
+            Map<String, String> mapping, List<String> excludedColumns) {
+        if (excludedColumns.isEmpty()) return ImportColumnExclusions.NONE;
+        List<SheetHeader> headers = new ArrayList<>();
+        parser.parse(upload, format, sheetName, new RowSink() {
+            @Override public void header(SheetHeader header) { headers.add(header); }
+            @Override public boolean row(ParsedRow row) { return false; }
+        });
+        return ImportColumnExclusions.validate(headers.get(0), mapping, excludedColumns);
+    }
+
     private void markFailed(ImportBatch batch, String reason, ImportCounters counters) {
         try {
             batchStore.fail(batch.getHospitalId(), batch.getId(), reason, counters.snapshot(), now());
@@ -210,6 +230,7 @@ public class ImportEngine {
      * the loop stops, and {@link #commit} rethrows after the parser has closed its resources.
      */
     private final class CommitSink implements RowSink {
+        private final ImportColumnExclusions exclusions;
         private final Long batchId;
         private final Map<String, String> mapping;
         private final ImportEvaluationContext ctx;
@@ -219,7 +240,8 @@ public class ImportEngine {
         private SheetHeader header;
         RuntimeException failure;
 
-        CommitSink(Long batchId, Map<String, String> mapping, ImportEvaluationContext ctx, ImportCounters counters, ImportWriteContext writeCtx) {
+        CommitSink(Long batchId, Map<String, String> mapping, ImportEvaluationContext ctx, ImportCounters counters, ImportWriteContext writeCtx, ImportColumnExclusions exclusions) {
+            this.exclusions = exclusions;
             this.batchId = batchId;
             this.mapping = mapping;
             this.ctx = ctx;
@@ -229,12 +251,13 @@ public class ImportEngine {
 
         @Override
         public void header(SheetHeader h) {
-            header = h;
+            header = exclusions.header(h);
         }
 
         @Override
         public boolean row(ParsedRow row) {
             try {
+                row = exclusions.row(row);
                 RowEvaluation e = importer.evaluate(row, header, mapping, ctx);
                 ImportWriteResult w = persister.persist(e, writeCtx); // pass-through for non-success states
                 pending.add(toResult(row, e, w));

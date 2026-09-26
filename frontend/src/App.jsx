@@ -9,6 +9,7 @@ const PlatformLogin = lazy(() => import('./pages/platform/PlatformLogin'));
 const PlatformDashboard = lazy(() => import('./pages/platform/PlatformDashboard'));
 const HospitalLogin = lazy(() => import('./pages/hospital/HospitalLogin'));
 const HospitalAdminDashboard = lazy(() => import('./pages/hospital/HospitalAdminDashboard'));
+const PatientImportPage = lazy(() => import('./pages/hospital/PatientImportPage'));
 const DoctorDashboard = lazy(() => import('./pages/hospital/DoctorDashboard'));
 const ReceptionistDashboard = lazy(() => import('./pages/hospital/ReceptionistDashboard'));
 const PharmacyDashboard = lazy(() => import('./pages/hospital/PharmacyDashboard'));
@@ -179,6 +180,16 @@ function App() {
             />
 
             {/* DASHBOARDS — PROTECTED */}
+            <Route
+              path="/hospital/patients/import"
+              element={
+                <ProtectedRoute allowedRoles={['HOSPITAL_ADMIN']}>
+                  <PageMeta title="HMS - Import Patients">
+                    <PatientImportPage />
+                  </PageMeta>
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/platform/dashboard"
               element={
