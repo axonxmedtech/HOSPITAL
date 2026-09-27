@@ -96,6 +96,9 @@ public class IpdAdmissionService {
     private com.hms.repository.IpdBedHistoryRepository ipdBedHistoryRepository;
 
     @Autowired
+    private com.hms.repository.IcuWardRepository icuWardRepository;
+
+    @Autowired
     private SecurityContextHelper securityHelper;
 
     @Autowired
@@ -374,8 +377,15 @@ public class IpdAdmissionService {
             throw new org.springframework.security.access.AccessDeniedException("Not allowed");
         }
 
+        java.util.Set<Long> icuWardIds = icuWardRepository.findByHospitalId(hospitalId).stream()
+                .map(com.hms.entity.IcuWard::getWardId)
+                .collect(java.util.stream.Collectors.toSet());
+
         java.util.List<com.hms.dto.IpdAdmissionSummaryDTO> result = new java.util.ArrayList<>();
         for (IpdAdmission ipd : admissions) {
+            if (ipd.getWardId() != null && icuWardIds.contains(ipd.getWardId())) {
+                continue;
+            }
             com.hms.dto.IpdAdmissionSummaryDTO dto = new com.hms.dto.IpdAdmissionSummaryDTO();
             dto.setIpdId(ipd.getId());
             dto.setIpdNumber(ipd.getIpdNumber());

@@ -68,6 +68,7 @@ class IcuCrossRoleJourneyTest {
     @Autowired DoctorRepository doctors;
     @Autowired PatientRepository patients;
     @Autowired WardRepository wards;
+    @Autowired com.hms.repository.IcuWardRepository icuWards;
     @Autowired BedRepository beds;
     @Autowired OpdRepository opds;
     @Autowired IpdAdmissionRepository admissions;
@@ -126,8 +127,19 @@ class IcuCrossRoleJourneyTest {
         w.setHospitalId(h.getId());
         w.setBedPrice(new BigDecimal("2500"));
         w.setTotalBeds(4);
-        w.setUnitType(unitType);
-        return wards.save(w);
+        Ward saved = wards.save(w);
+        if (com.hms.service.hospital.icu.CareUnitRegistry.isCriticalCare(unitType)) {
+            com.hms.entity.IcuWard icu = new com.hms.entity.IcuWard();
+            icu.setPublicId("icuw-" + uniq());
+            icu.setHospitalId(h.getId());
+            icu.setWardId(saved.getWardId());
+            icu.setWardName(saved.getWardName());
+            icu.setUnitType(unitType);
+            icu.setBedPrice(new BigDecimal("2500"));
+            icu.setTotalBeds(4);
+            icuWards.save(icu);
+        }
+        return saved;
     }
 
     private Long bed(Hospital h, Ward w) {

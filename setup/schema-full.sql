@@ -921,7 +921,6 @@ CREATE TABLE `wards` (
   `hospital_id` bigint NOT NULL,
   `total_beds` int NOT NULL,
   `ward_name` varchar(255) NOT NULL,
-  `unit_type` varchar(20) NOT NULL DEFAULT 'GENERAL',
   PRIMARY KEY (`ward_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -2221,5 +2220,27 @@ CREATE TABLE `patient_import_links` (
   UNIQUE KEY `uk_patient_import_link_legacy` (`hospital_id`,`legacy_id`),
   KEY `idx_patient_import_link_created_by` (`hospital_id`,`created_by_batch_id`),
   CONSTRAINT `FK_patient_import_link_patient` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Dedicated ICU wards table. Coordinates with base wards table so all bed, admission,
+-- billing, and nursing relationships remain intact.
+CREATE TABLE IF NOT EXISTS `icu_wards` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ward_id` bigint NOT NULL,
+  `ward_name` varchar(100) NOT NULL,
+  `unit_type` varchar(20) NOT NULL DEFAULT 'ICU',
+  `bed_price` decimal(10,2) NOT NULL,
+  `total_beds` int NOT NULL,
+  `floor_number` int DEFAULT NULL,
+  `incharge_nurse_id` bigint DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  `updated_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_icu_ward_public_id` (`public_id`),
+  UNIQUE KEY `uk_icu_ward_ward_id` (`ward_id`),
+  UNIQUE KEY `uk_icu_ward_hospital_name` (`hospital_id`, `ward_name`),
+  KEY `idx_icu_wards_hospital` (`hospital_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 

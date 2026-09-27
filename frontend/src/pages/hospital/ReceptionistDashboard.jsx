@@ -1983,7 +1983,6 @@ const ReceptionistDashboard = () => {
                             <th className="px-4 py-2">Bed</th>
                             <th className="px-4 py-2">Admitted</th>
                             <th className="px-4 py-2">Status</th>
-                            <th className="px-4 py-2">Actions</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2010,7 +2009,22 @@ const ReceptionistDashboard = () => {
                               <tr key={idx} className="border-t">
                                 <td className="px-4 py-3">{page * pageSize + idx + 1}</td>
                                 <td className="px-4 py-3">{ipdNumber || row.id}</td>
-                                <td className="px-4 py-3">{patientName}</td>
+                                <td className="px-4 py-3">
+                                  {ipdId ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        window.location.href = `/ipd/${ipdId}`;
+                                      }}
+                                      className="font-medium text-blue-600 hover:text-blue-800 hover:underline text-left cursor-pointer"
+                                      title="View IPD details"
+                                    >
+                                      {patientName}
+                                    </button>
+                                  ) : (
+                                    <span>{patientName}</span>
+                                  )}
+                                </td>
                                 <td className="px-4 py-3">{doctorName}</td>
                                 <td className="px-4 py-3">{wardName}</td>
                                 <td className="px-4 py-3">{bedNumber}</td>
@@ -2030,18 +2044,6 @@ const ReceptionistDashboard = () => {
                                       <span className="text-[10px] text-gray-500">{status}</span>
                                     )}
                                   </div>
-                                </td>
-                                <td className="px-4 py-3">
-                                  <button
-                                    className={`px-3 py-1 rounded ${ipdId ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
-                                    onClick={() => {
-                                      if (ipdId) window.location.href = `/ipd/${ipdId}`;
-                                    }}
-                                    disabled={!ipdId}
-                                    title={ipdId ? 'View IPD details' : 'IPD id not available'}
-                                  >
-                                    View
-                                  </button>
                                 </td>
                               </tr>
                             );

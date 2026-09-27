@@ -1,6 +1,4 @@
 import { createColumnHelper } from '@tanstack/react-table';
-import FollowUpPanel from '../../components/FollowUpPanel';
-import { safeLoadMessage } from '../../utils/apiError';
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import ActionMenu from '../../components/ActionMenu';
@@ -10,6 +8,7 @@ import ConsultationModal from '../../components/ConsultationModal';
 import DataTable from '../../components/DataTable';
 import DateSelect from '../../components/DateSelect';
 import EmptyState from '../../components/EmptyState';
+import FollowUpPanel from '../../components/FollowUpPanel';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
 import LowStockBanner from '../../components/LowStockBanner';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
@@ -35,12 +34,12 @@ import apiClient from '../../services/apiService';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
 import otService from '../../services/otService';
-import { extractApiError } from '../../utils/apiError';
+import { safeLoadMessage, extractApiError } from '../../utils/apiError';
+import { createOptionalModuleFetcher } from '../../utils/optionalModule';
 import BillingTable from './BillingTable';
 import IcuBedBoard from './icu/IcuBedBoard';
 import IcuDashboard from './icu/IcuDashboard';
 import OtBoard from './ot/OtBoard';
-import { createOptionalModuleFetcher } from '../../utils/optionalModule';
 
 /**
  * DoctorDashboard - Doctor dashboard
@@ -450,7 +449,12 @@ const DoctorDashboard = () => {
           try {
             const data = await fetchAppointmentData(
               () =>
-                hospitalService.getMyAppointments(viewFilter, searchTerm, localPage, ITEMS_PER_PAGE),
+                hospitalService.getMyAppointments(
+                  viewFilter,
+                  searchTerm,
+                  localPage,
+                  ITEMS_PER_PAGE
+                ),
               { content: [], totalElements: 0, totalPages: 1 }
             );
             // Handle both array and paginated response
@@ -1132,7 +1136,9 @@ const DoctorDashboard = () => {
               className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-4 flex items-start justify-between gap-4"
             >
               <div>
-                <p className="text-sm font-semibold text-red-800">Couldn&apos;t load your patients</p>
+                <p className="text-sm font-semibold text-red-800">
+                  Couldn&apos;t load your patients
+                </p>
                 <p className="mt-1 text-sm text-red-700">{loadError}</p>
                 <p className="mt-1 text-xs text-red-600">
                   Anything shown below may be out of date.
@@ -1724,6 +1730,7 @@ const DoctorDashboard = () => {
                   />
                 ))}
 
+              {/* eslint-disable-next-line jsx-a11y/aria-role -- `role` is FollowUpPanel's own prop, not an ARIA role */}
               {activeTab === 'follow-ups' && <FollowUpPanel role="DOCTOR" mine />}
 
               {activeTab === 'opd' &&
@@ -1772,7 +1779,6 @@ const DoctorDashboard = () => {
                           <th className="px-4 py-2">Bed</th>
                           <th className="px-4 py-2">Admitted</th>
                           <th className="px-4 py-2">Status</th>
-                          <th className="px-4 py-2">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1793,11 +1799,26 @@ const DoctorDashboard = () => {
                             row.admissionDatetime ||
                             row.ipd?.admissionDatetime;
                           const status = row.status || row.ipd?.status || 'ADMITTED';
+                          const theId =
+                            row.ipdId || row.id || row.ipd?.id || row.ipd?.ipdId || null;
                           return (
                             <tr key={row.ipdId || row.id || ipdNumber || idx} className="border-t">
                               <td className="px-4 py-3">{(page - 1) * ITEMS_PER_PAGE + idx + 1}</td>
                               <td className="px-4 py-3">{ipdNumber || row.id}</td>
-                              <td className="px-4 py-3">{patientName}</td>
+                              <td className="px-4 py-3">
+                                {theId ? (
+                                  <button
+                                    type="button"
+                                    className="font-medium text-blue-600 hover:text-blue-800 hover:underline text-left cursor-pointer"
+                                    onClick={() => navigate(`/ipd/${theId}`)}
+                                    title="Open IPD case"
+                                  >
+                                    {patientName}
+                                  </button>
+                                ) : (
+                                  <span>{patientName}</span>
+                                )}
+                              </td>
                               <td className="px-4 py-3">{doctorName}</td>
                               <td className="px-4 py-3">{wardName}</td>
                               <td className="px-4 py-3">{bedNumber}</td>
@@ -1819,24 +1840,6 @@ const DoctorDashboard = () => {
                                     <span className="text-[10px] text-gray-500">{status}</span>
                                   )}
                                 </div>
-                              </td>
-                              <td className="px-4 py-3">
-                                {(() => {
-                                  const theId =
-                                    row.ipdId || row.id || row.ipd?.id || row.ipd?.ipdId || null;
-                                  return (
-                                    <button
-                                      className={`px-3 py-1 rounded ${theId ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
-                                      onClick={() => {
-                                        if (theId) navigate(`/ipd/${theId}`);
-                                      }}
-                                      disabled={!theId}
-                                      title={theId ? 'Open IPD case' : 'IPD id not available'}
-                                    >
-                                      Open Case
-                                    </button>
-                                  );
-                                })()}
                               </td>
                             </tr>
                           );

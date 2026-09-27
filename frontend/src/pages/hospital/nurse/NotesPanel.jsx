@@ -18,7 +18,7 @@ const esc = escapeHtml;
 
 // Prints the nursing notes as the "RE-ASSESSMENT SHEET" — a repeating table
 // (Date/Time | Clinical Notes | Orders) that flows onto extra pages as needed.
-export const buildReassessmentHtml = (notes, f, hospital) => {
+export const buildReassessmentHtml = (notes, f, hospital, title = 'RE-ASSESSMENT SHEET') => {
   const hname = esc(titleCase(hospital.name)) || 'Hospital';
   const patientName = [f.patientSurname, f.patientFirstName, f.husbandFatherName]
     .filter(Boolean)
@@ -76,7 +76,7 @@ export const buildReassessmentHtml = (notes, f, hospital) => {
       td.cn { width:56%; }
       th.orders { width:30%; }
     </style></head><body>
-      <div class="head">${logo}<div class="hname">${hname}</div><div class="haddr">${esc(hospital.address)}</div><div class="title">RE-ASSESSMENT SHEET</div></div>
+      <div class="head">${logo}<div class="hname">${hname}</div><div class="haddr">${esc(hospital.address)}</div><div class="title">${esc(title || 'RE-ASSESSMENT SHEET')}</div></div>
       <div class="idbox">
         <div class="idrow">
           <span><b>UHID No. :</b> <span class="flexval">${esc(f.prnNo) || '—'}</span></span>
@@ -107,10 +107,11 @@ export const buildReassessmentHtml = (notes, f, hospital) => {
 };
 
 /** readOnly: hide the Add Note form; the timeline stays visible and printable. */
-const NotesPanel = ({ admissionId, readOnly = false }) => {
+const NotesPanel = ({ admissionId, category = 'NURSE', readOnly = false, refreshKey = 0 }) => {
   const { success, error: toastError } = useToast();
   const user = authService.getCurrentUser();
   const currentUserId = user?.userId;
+  const isDoctorNote = category === 'DOCTOR';
   // The "Performed By Nurse" flow only applies to nurses; a non-nurse (e.g. a
   // doctor adding a note from the IPD case) records as themselves.
   const isNurse = user?.role === 'NURSE' || user?.role === 'NURSE_INCHARGE';
@@ -132,15 +133,15 @@ const NotesPanel = ({ admissionId, readOnly = false }) => {
   const load = useCallback(() => {
     setLoading(true);
     nurseService
-      .getNotes(admissionId)
+      .getNotes(admissionId, category)
       .then((d) => setNotes(Array.isArray(d) ? d : []))
       .catch(() => toastError('Failed to load notes'))
       .finally(() => setLoading(false));
-  }, [admissionId, toastError]);
+  }, [admissionId, category, toastError]);
 
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, refreshKey]);
 
   // Patient identifiers + branding for the Re-Assessment Sheet header.
   useEffect(() => {
@@ -182,13 +183,18 @@ const NotesPanel = ({ admissionId, readOnly = false }) => {
 
   const handlePrintReassessment = () => {
     printHtml(
-      buildReassessmentHtml(notes, f, {
-        name: f.hospitalName || user?.hospitalName,
-        address: f.hospitalAddress || user?.hospitalAddress,
-        logo: f.hospitalLogoUrl || user?.logoUrl,
-        customId: f.hospitalCustomId,
-        nurse: user?.name,
-      })
+      buildReassessmentHtml(
+        notes,
+        f,
+        {
+          name: f.hospitalName || user?.hospitalName,
+          address: f.hospitalAddress || user?.hospitalAddress,
+          logo: f.hospitalLogoUrl || user?.logoUrl,
+          customId: f.hospitalCustomId,
+          nurse: user?.name,
+        },
+        isDoctorNote ? 'DOCTORS ROUND NOTES' : 'RE-ASSESSMENT SHEET'
+      )
     );
   };
 
@@ -197,17 +203,22 @@ const NotesPanel = ({ admissionId, readOnly = false }) => {
       toastError('Enter a note');
       return;
     }
-    if (isNurse && separateLogin === false && !performedByNurseId) {
+    if (!isDoctorNote && isNurse && separateLogin === false && !performedByNurseId) {
       toastError('Select the nurse who performed this');
       return;
     }
     setSubmitting(true);
     try {
-      const payload = { ipdAdmissionId: admissionId, noteText: text.trim(), orders: orders.trim() };
-      if (isNurse && separateLogin === false)
+      const payload = {
+        ipdAdmissionId: admissionId,
+        noteText: text.trim(),
+        orders: orders.trim(),
+        category,
+      };
+      if (!isDoctorNote && isNurse && separateLogin === false)
         payload.performedByNurseId = Number(performedByNurseId);
       await nurseService.createNote(payload);
-      success('Note added');
+      success(isDoctorNote ? 'Doctor note added' : 'Nurse note added');
       setText('');
       setOrders('');
       setPerformedByNurseId('');
@@ -272,12 +283,14 @@ const NotesPanel = ({ admissionId, readOnly = false }) => {
   return (
     <div className="space-y-5">
       {!readOnly && (
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <h3 className="font-bold text-gray-800 text-sm mb-3">Add Note</h3>
+        <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-xs">
+          <h3 className="font-bold text-gray-800 text-sm mb-3">
+            {isDoctorNote ? 'Add Doctors Round Note' : 'Add Nurse Round Note'}
+          </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label htmlFor="fld-173" className="block text-xs font-medium text-gray-600 mb-1">
-                Clinical Notes
+                {isDoctorNote ? "Doctor's Clinical Notes / Observations" : 'Clinical Notes'}
               </label>
               <textarea
                 id="fld-173"
@@ -285,13 +298,17 @@ const NotesPanel = ({ admissionId, readOnly = false }) => {
                 maxLength={MAX}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                placeholder="Observation, patient condition, handover note…"
+                placeholder={
+                  isDoctorNote
+                    ? 'Patient condition, progress note, examination findings…'
+                    : 'Observation, patient condition, handover note…'
+                }
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               />
             </div>
             <div>
               <label htmlFor="fld-172" className="block text-xs font-medium text-gray-600 mb-1">
-                Orders — Drugs / IV Fluids
+                {isDoctorNote ? 'Orders / Treatment Plan' : 'Orders — Drugs / IV Fluids'}
               </label>
               <textarea
                 id="fld-172"
@@ -299,12 +316,16 @@ const NotesPanel = ({ admissionId, readOnly = false }) => {
                 maxLength={MAX}
                 value={orders}
                 onChange={(e) => setOrders(e.target.value)}
-                placeholder="Drugs, IV fluids, instructions…"
+                placeholder={
+                  isDoctorNote
+                    ? 'Medications, dose changes, investigations advised…'
+                    : 'Drugs, IV fluids, instructions…'
+                }
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               />
             </div>
           </div>
-          {isNurse && separateLogin === false && (
+          {!isDoctorNote && isNurse && separateLogin === false && (
             <div className="mt-3">
               <label htmlFor="fld-171" className="block text-xs font-medium text-gray-600 mb-1">
                 Performed By Nurse <span className="text-red-600">*</span>
@@ -332,22 +353,24 @@ const NotesPanel = ({ admissionId, readOnly = false }) => {
             <button
               onClick={add}
               disabled={submitting}
-              className={`px-4 py-2 text-sm font-semibold text-white rounded-lg ${submitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-900 hover:bg-gray-800'}`}
+              className={`px-4 py-2 text-sm font-semibold text-white rounded-lg ${submitting ? 'bg-gray-400 cursor-not-allowed' : isDoctorNote ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-900 hover:bg-gray-800'}`}
             >
-              {submitting ? 'Saving…' : 'Add Note'}
+              {submitting ? 'Saving…' : isDoctorNote ? 'Save Doctor Note' : 'Add Note'}
             </button>
           </div>
         </div>
       )}
 
-      <div className="bg-white border border-gray-200 rounded-xl">
+      <div className="bg-white border border-gray-200 rounded-xl shadow-xs">
         <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-          <h3 className="font-bold text-gray-800 text-sm">Notes Timeline</h3>
+          <h3 className="font-bold text-gray-800 text-sm">
+            {isDoctorNote ? 'Doctors Round Notes Timeline' : 'Nurse Round Notes Timeline'}
+          </h3>
           <button
             onClick={handlePrintReassessment}
             className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700"
           >
-            Print Reassessment
+            {isDoctorNote ? 'Print Doctor Notes' : 'Print Reassessment'}
           </button>
         </div>
         {loading ? (

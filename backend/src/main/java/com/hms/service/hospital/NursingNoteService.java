@@ -52,7 +52,23 @@ public class NursingNoteService {
             throw new IllegalArgumentException("ipdAdmissionId is required");
         }
         IpdAdmission admission = requireAdmission(req.getIpdAdmissionId(), hospitalId);
-        nurseWriteAccess.assertCanWriteFor(admission.getId());
+
+        String role = securityHelper.getCurrentUserRole();
+        String category = (req.getCategory() != null && !req.getCategory().trim().isEmpty())
+                ? req.getCategory().trim().toUpperCase()
+                : "NURSE";
+
+        if ("DOCTOR".equals(category)) {
+            if (!"DOCTOR".equals(role) && !"HOSPITAL_ADMIN".equals(role)) {
+                throw new AccessDeniedException("Only doctors can create Doctor Round Notes");
+            }
+        } else {
+            if (!"NURSE".equals(role) && !"NURSE_INCHARGE".equals(role) && !"HOSPITAL_ADMIN".equals(role)) {
+                throw new AccessDeniedException("Only nurses can create Nurse Round Notes");
+            }
+            nurseWriteAccess.assertCanWriteFor(admission.getId());
+        }
+
         String text = validateText(req.getNoteText());
 
         NursingNote n = new NursingNote();
@@ -62,25 +78,30 @@ public class NursingNoteService {
         n.setNurseUserId(securityHelper.getCurrentUserId());
         n.setNoteText(text);
         n.setOrders(req.getOrders());
-        n.setCategory(req.getCategory());
+        n.setCategory(category);
         n.setSurgeryId(req.getSurgeryId());
         n.setRecordedAt(LocalDateTime.now());
         n.setPerformedByNurseId(performingNurseResolver.resolve(req.getPerformedByNurseId()));
         n.setIsActive(true);
         NursingNote saved = noteRepository.save(n);
 
-        auditAndNotify("NURSING_NOTE_ADDED", "Added nursing note for IPD " + admission.getIpdNumber(),
+        auditAndNotify("NURSING_NOTE_ADDED", "Added " + category.toLowerCase() + " note for IPD " + admission.getIpdNumber(),
                 hospitalId, admission.getId());
         return saved;
     }
 
-    public List<NursingNote> getByAdmission(Long ipdAdmissionId) {
+    public List<NursingNote> getByAdmission(Long ipdAdmissionId, String category) {
         Long hospitalId = requireHospitalId();
         IpdAdmission admission = requireAdmission(ipdAdmissionId, hospitalId);
         if ("NURSE".equals(securityHelper.getCurrentUserRole())) {
             nurseAccessGuard.assertAssigned(admission.getId());
         }
-        return noteRepository.findByIpdAdmissionIdAndIsActiveTrueOrderByRecordedAtDesc(ipdAdmissionId);
+        String cat = (category != null && !category.trim().isEmpty()) ? category.trim().toUpperCase() : null;
+        return noteRepository.findByAdmissionAndCategory(ipdAdmissionId, cat);
+    }
+
+    public List<NursingNote> getByAdmission(Long ipdAdmissionId) {
+        return getByAdmission(ipdAdmissionId, null);
     }
 
     public java.util.List<com.hms.entity.NursingNote> getBySurgery(Long surgeryId) {

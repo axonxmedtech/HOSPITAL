@@ -10,8 +10,10 @@ import com.hms.entity.NurseProfile;
 import com.hms.entity.Patient;
 import com.hms.entity.VitalsRecord;
 import com.hms.entity.Ward;
+import com.hms.entity.IcuWard;
 import com.hms.repository.BedRepository;
 import com.hms.repository.DoctorRepository;
+import com.hms.repository.IcuWardRepository;
 import com.hms.repository.IpdAdmissionRepository;
 import com.hms.repository.NurseProfileRepository;
 import com.hms.repository.PatientNurseAssignmentRepository;
@@ -59,6 +61,7 @@ class IcuBoardServiceTest {
 
     private static final Long HOSPITAL = 7L;
 
+    @Mock IcuWardRepository icuWardRepository;
     @Mock WardRepository wardRepository;
     @Mock BedRepository bedRepository;
     @Mock IpdAdmissionRepository ipdAdmissionRepository;
@@ -74,8 +77,7 @@ class IcuBoardServiceTest {
     @Mock SecurityContextHelper securityHelper;
     @InjectMocks IcuBoardService service;
 
-    private Ward icu;
-    private Ward general;
+    private IcuWard icu;
 
     @BeforeEach
     void setUp() {
@@ -84,8 +86,7 @@ class IcuBoardServiceTest {
         when(securityHelper.getCurrentUserId()).thenReturn(99L);
         when(securityHelper.getCurrentUserEmail()).thenReturn("admin@h.test");
 
-        icu = ward(10L, "ICU-1", CareUnitRegistry.ICU);
-        general = ward(20L, "General-A", CareUnitRegistry.GENERAL);
+        icu = icuWard(1L, 10L, "ICU-1", CareUnitRegistry.ICU);
 
         when(patientRepository.findByHospitalIdAndIdIn(anyLong(), any())).thenReturn(List.of());
         when(doctorRepository.findByHospitalIdAndIdIn(anyLong(), any())).thenReturn(List.of());
@@ -93,15 +94,16 @@ class IcuBoardServiceTest {
         when(bedRepository.findByHospitalIdAndWardIdIn(anyLong(), any())).thenReturn(List.of());
         when(ipdAdmissionRepository.findByHospitalIdAndStatusInAndWardIdIn(anyLong(), any(), any()))
                 .thenReturn(List.of());
-        when(wardRepository.findByHospitalIdAndUnitTypeIn(anyLong(), any())).thenReturn(List.of());
+        when(icuWardRepository.findByHospitalId(anyLong())).thenReturn(List.of());
         when(icuStayService.activeStaysFor(anyLong(), any())).thenReturn(List.of());
     }
 
     // ── fixtures ──────────────────────────────────────────────────────────────
 
-    private Ward ward(Long id, String name, String unitType) {
-        Ward w = new Ward();
-        w.setWardId(id);
+    private IcuWard icuWard(Long id, Long wardId, String name, String unitType) {
+        IcuWard w = new IcuWard();
+        w.setId(id);
+        w.setWardId(wardId);
         w.setHospitalId(HOSPITAL);
         w.setWardName(name);
         w.setUnitType(unitType);
@@ -146,8 +148,8 @@ class IcuBoardServiceTest {
         return p;
     }
 
-    private void givenUnits(List<Ward> units, List<Bed> beds, List<IpdAdmission> admissions) {
-        when(wardRepository.findByHospitalIdAndUnitTypeIn(eq(HOSPITAL), any())).thenReturn(units);
+    private void givenUnits(List<IcuWard> units, List<Bed> beds, List<IpdAdmission> admissions) {
+        when(icuWardRepository.findByHospitalId(eq(HOSPITAL))).thenReturn(units);
         when(bedRepository.findByHospitalIdAndWardIdIn(eq(HOSPITAL), any())).thenReturn(beds);
         when(ipdAdmissionRepository.findByHospitalIdAndStatusInAndWardIdIn(eq(HOSPITAL), any(), any()))
                 .thenReturn(admissions);
@@ -167,17 +169,11 @@ class IcuBoardServiceTest {
 
     @Test
     void onlyCriticalCareWardsAreQueried_generalWardsNeverReachTheBoard() {
-        // The repository is asked for critical-care keys only, so a GENERAL ward can never be
-        // returned. Guard the contract: GENERAL must not be among the requested keys.
         givenUnits(List.of(icu), List.of(bed(1L, icu.getWardId(), "ICU-1-B1", BedStatus.AVAILABLE)), List.of());
 
         service.getBoard();
 
-        verify(wardRepository).findByHospitalIdAndUnitTypeIn(eq(HOSPITAL),
-                argThat(keys -> !keys.contains(CareUnitRegistry.GENERAL)
-                        && keys.contains(CareUnitRegistry.ICU)
-                        && keys.contains(CareUnitRegistry.NICU)));
-        assertThat(general.getUnitType()).isEqualTo(CareUnitRegistry.GENERAL); // fixture sanity
+        verify(icuWardRepository).findByHospitalId(eq(HOSPITAL));
     }
 
     private static <T extends java.util.Collection<String>> T argThat(java.util.function.Predicate<T> p) {
@@ -218,7 +214,7 @@ class IcuBoardServiceTest {
 
     @Test
     void totals_areTheSumOfTheUnits() {
-        Ward nicu = ward(11L, "NICU", CareUnitRegistry.NICU);
+        IcuWard nicu = icuWard(2L, 11L, "NICU", CareUnitRegistry.NICU);
         List<Bed> beds = List.of(
                 bed(1L, 10L, "ICU-1-B1", BedStatus.OCCUPIED),
                 bed(2L, 10L, "ICU-1-B2", BedStatus.AVAILABLE),
@@ -386,7 +382,7 @@ class IcuBoardServiceTest {
 
     @Test
     void nurseIncharge_seesOnlyOwnWards() {
-        Ward other = ward(11L, "ICU-2", CareUnitRegistry.ICU);
+        IcuWard other = icuWard(3L, 11L, "ICU-2", CareUnitRegistry.ICU);
         when(securityHelper.getCurrentUserRole()).thenReturn("NURSE_INCHARGE");
         when(nurseInchargeGuard.myWardIds()).thenReturn(List.of(10L));
         givenUnits(List.of(icu, other), List.of(bed(1L, 10L, "ICU-1-B1", BedStatus.AVAILABLE)), List.of());
@@ -500,13 +496,14 @@ class IcuBoardServiceTest {
 
         service.getBoard();
 
-        verify(wardRepository).findByHospitalIdAndUnitTypeIn(eq(HOSPITAL), any());
+        verify(icuWardRepository).findByHospitalId(eq(HOSPITAL));
         verify(bedRepository).findByHospitalIdAndWardIdIn(eq(HOSPITAL), any());
         verify(ipdAdmissionRepository).findByHospitalIdAndStatusInAndWardIdIn(eq(HOSPITAL), any(), any());
         verify(patientRepository).findByHospitalIdAndIdIn(eq(HOSPITAL), any());
         verify(doctorRepository).findByHospitalIdAndIdIn(eq(HOSPITAL), any());
         // No unscoped lookup-by-id anywhere in the read path.
         verify(bedRepository, never()).findById(any());
+        verify(icuWardRepository, never()).findById(any());
         verify(wardRepository, never()).findById(any());
         verify(ipdAdmissionRepository, never()).findById(any());
         verify(patientRepository, never()).findById(any());
