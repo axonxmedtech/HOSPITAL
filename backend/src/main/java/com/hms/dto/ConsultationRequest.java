@@ -60,6 +60,8 @@ public class ConsultationRequest {
         @NotBlank(message = "Prescription duration is required")
         private String duration;
 
+        private String foodTiming;
+
         private String instructions;
     }
 

@@ -24,6 +24,9 @@ public class PatientController {
     private com.hms.security.SecurityContextHelper securityHelper;
 
     @Autowired
+    private com.hms.security.FrontDeskAccessGuard frontDeskAccessGuard;
+
+    @Autowired
     private com.hms.repository.HospitalRepository hospitalRepository;
 
     @Autowired
@@ -37,22 +40,29 @@ public class PatientController {
      * Patient entity, so a field there would be settable by any caller and would turn the
      * shared-phone workflow into an opt-out. Both roles that may register a patient may also
      * acknowledge a shared number — they are the people standing in front of the family.
+     *
+     * <p>A doctor may act as the front desk only when the hospital says so: under
+     * HAS_RECEPTIONIST these mutations stay with reception, SOLO and BOTH open them to the
+     * doctor. Admins and receptionists are untouched. The dashboard hides the buttons, but that
+     * is convenience — {@link FrontDeskAccessGuard} is the boundary.
      */
     @PostMapping
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> addPatient(@Valid @RequestBody Patient patient,
             @RequestParam(name = "acknowledgeDuplicatePhone", defaultValue = "false")
             boolean acknowledgeDuplicatePhone) {
+        frontDeskAccessGuard.require();
         Patient createdPatient = patientService.addPatient(patient, acknowledgeDuplicatePhone);
         return ResponseEntity.ok(createdPatient);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> updatePatient(@PathVariable Long id,
             @Valid @RequestBody Patient patient,
             @RequestParam(name = "acknowledgeDuplicatePhone", defaultValue = "false")
             boolean acknowledgeDuplicatePhone) {
+        frontDeskAccessGuard.require();
         Patient updatedPatient = patientService.updatePatient(id, patient,
                 acknowledgeDuplicatePhone);
         return ResponseEntity.ok(updatedPatient);

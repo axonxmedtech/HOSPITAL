@@ -828,8 +828,8 @@ public class HospitalAuthService {
         String billingHandler = dto.getBillingHandler() == null ? null : dto.getBillingHandler().trim().toUpperCase();
 
         // Guard: validate normalized values against allowed domains
-        if (!"HAS_RECEPTIONIST".equals(receptionMode) && !"SOLO".equals(receptionMode)) {
-            throw new IllegalArgumentException("receptionMode must be HAS_RECEPTIONIST or SOLO");
+        if (!"HAS_RECEPTIONIST".equals(receptionMode) && !"SOLO".equals(receptionMode) && !"BOTH".equals(receptionMode)) {
+            throw new IllegalArgumentException("receptionMode must be HAS_RECEPTIONIST, SOLO, or BOTH");
         }
         if (!"RECEPTIONIST".equals(billingHandler) && !"DOCTOR".equals(billingHandler) && !"BOTH".equals(billingHandler)) {
             throw new IllegalArgumentException("billingHandler must be RECEPTIONIST, DOCTOR, or BOTH");

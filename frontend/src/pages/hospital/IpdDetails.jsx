@@ -16,6 +16,7 @@ import formAccessService from '../../services/formAccessService';
 import hospitalService from '../../services/hospitalService';
 import otService from '../../services/otService';
 import wardService from '../../services/wardService';
+import { FOOD_TIMING_OPTIONS, isFoodTimingApplicable } from '../../utils/foodTiming';
 import { printBlob } from '../../utils/printPdf';
 import IcuStayCard from './icu/IcuStayCard';
 import ConsentFormsPanel from './nurse/ConsentFormsPanel';
@@ -30,7 +31,6 @@ import VentilatorPanel from './nurse/VentilatorPanel';
 import VitalsPanel from './nurse/VitalsPanel';
 import VulnerabilityAssessmentPanel from './nurse/VulnerabilityAssessmentPanel';
 import SurgeryRequestModal from './ot/SurgeryRequestModal';
-import { FOOD_TIMING_OPTIONS } from '../../utils/foodTiming';
 
 const IpdDetails = () => {
   const { id } = useParams();
@@ -40,7 +40,8 @@ const IpdDetails = () => {
   const [user, setUser] = useState(() => authService.getCurrentUser() || {});
   const isDoctor = authService.isDoctor();
   const isReceptionist = authService.isReceptionist();
-  const isSoloDoctor = isDoctor && user?.receptionMode === 'SOLO';
+  const isSoloDoctor =
+    isDoctor && (user?.receptionMode === 'SOLO' || user?.receptionMode === 'BOTH');
   const { success, error: toastError } = useToast();
   const [otSurgery, setOtSurgery] = useState(null);
   const [otModalOpen, setOtModalOpen] = useState(false);
@@ -143,7 +144,7 @@ const IpdDetails = () => {
     navigate(loginUrl);
   };
 
-  const isSolo = user?.receptionMode === 'SOLO';
+  const isSoloOrBoth = user?.receptionMode === 'SOLO' || user?.receptionMode === 'BOTH';
   const hasBilling = user?.billingHandler === 'DOCTOR' || user?.billingHandler === 'BOTH';
   const hasInClinic = user?.inClinic !== false;
   const modules = user?.modules || [];
@@ -191,10 +192,10 @@ const IpdDetails = () => {
         { id: 'ipd', label: 'IPD' },
         { id: 'queue', label: 'Queue' },
         { id: 'opd', label: 'OPD' },
-        ...(isSolo ? [{ id: 'patients', label: 'Patients' }] : []),
-        ...(isSolo || hasBilling ? [{ id: 'billing', label: 'Billing' }] : []),
-        ...(isSolo && hasInClinic ? [{ id: 'inventory', label: 'Medicine Inventory' }] : []),
-        ...(isSolo ? [{ id: 'hospital-inventory', label: 'Hospital Inventory' }] : []),
+        ...(isSoloOrBoth ? [{ id: 'patients', label: 'Patients' }] : []),
+        ...(isSoloOrBoth || hasBilling ? [{ id: 'billing', label: 'Billing' }] : []),
+        ...(isSoloOrBoth && hasInClinic ? [{ id: 'inventory', label: 'Medicine Inventory' }] : []),
+        ...(isSoloOrBoth ? [{ id: 'hospital-inventory', label: 'Hospital Inventory' }] : []),
       ];
     } else if (effectiveRole === 'RECEPTIONIST') {
       return [
@@ -487,7 +488,7 @@ const IpdDetails = () => {
       dose: '',
       frequency: '',
       durationDays: '',
-    foodTiming: '',
+      foodTiming: '',
       startDate: todayStr(),
       saving: false,
     });
@@ -1011,14 +1012,25 @@ const IpdDetails = () => {
                                             const match = m.defaultDuration.match(/\d+/);
                                             if (match) parsedDur = parseInt(match[0]);
                                           }
+                                          const pickedType = m.type?.toUpperCase() || 'TABLET';
                                           setMedicineModal((prev) => ({
                                             ...prev,
                                             medicineId: m.id,
                                             medicineName: m.name,
-                                            type: m.type?.toUpperCase() || 'TABLET',
+                                            type: pickedType,
                                             dose: m.defaultDosage || '',
                                             frequency: m.defaultFrequency || '',
                                             durationDays: parsedDur || prev.durationDays,
+                                            // This is the quiet path to an injection: picking one
+                                            // from the catalogue sets the type without the doctor
+                                            // touching the Type field, so any timing already
+                                            // chosen has to go with it.
+                                            foodTiming: isFoodTimingApplicable(
+                                              pickedType,
+                                              prev.route
+                                            )
+                                              ? prev.foodTiming
+                                              : '',
                                           }));
                                           setMedSearchResults([]);
                                         }}
@@ -1039,7 +1051,15 @@ const IpdDetails = () => {
                                   id="fld-128"
                                   value={medicineModal.type}
                                   onChange={(e) =>
-                                    setMedicineModal((prev) => ({ ...prev, type: e.target.value }))
+                                    setMedicineModal((prev) => ({
+                                      ...prev,
+                                      type: e.target.value,
+                                      // Drop a timing the new type cannot have, so the form
+                                      // never shows an answer it is no longer asking for.
+                                      foodTiming: isFoodTimingApplicable(e.target.value, prev.route)
+                                        ? prev.foodTiming
+                                        : '',
+                                    }))
                                   }
                                   className="w-full border p-2 rounded text-sm"
                                 >
@@ -1056,7 +1076,15 @@ const IpdDetails = () => {
                                   id="fld-127"
                                   value={medicineModal.route}
                                   onChange={(e) =>
-                                    setMedicineModal((prev) => ({ ...prev, route: e.target.value }))
+                                    setMedicineModal((prev) => ({
+                                      ...prev,
+                                      route: e.target.value,
+                                      // Same reason as Type: an IV/IM route also makes the
+                                      // question meaningless, so the answer goes with it.
+                                      foodTiming: isFoodTimingApplicable(prev.type, e.target.value)
+                                        ? prev.foodTiming
+                                        : '',
+                                    }))
                                   }
                                   className="w-full border p-2 rounded text-sm"
                                 >
@@ -1107,19 +1135,30 @@ const IpdDetails = () => {
                                 />
                               </div>
                               <div>
-                                <label htmlFor="fld-food-timing" className="block text-sm font-medium mb-1">
+                                <label
+                                  htmlFor="fld-food-timing"
+                                  className="block text-sm font-medium mb-1"
+                                >
                                   Food Timing
                                 </label>
                                 <select
                                   id="fld-food-timing"
                                   value={medicineModal.foodTiming || ''}
+                                  disabled={
+                                    !isFoodTimingApplicable(medicineModal.type, medicineModal.route)
+                                  }
+                                  aria-describedby={
+                                    isFoodTimingApplicable(medicineModal.type, medicineModal.route)
+                                      ? undefined
+                                      : 'fld-food-timing-na'
+                                  }
                                   onChange={(e) =>
                                     setMedicineModal((prev) => ({
                                       ...prev,
                                       foodTiming: e.target.value,
                                     }))
                                   }
-                                  className="w-full border p-2 rounded text-sm"
+                                  className="w-full border p-2 rounded text-sm disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
                                 >
                                   <option value="">Not stated</option>
                                   {FOOD_TIMING_OPTIONS.map(([value, label]) => (
@@ -1128,6 +1167,14 @@ const IpdDetails = () => {
                                     </option>
                                   ))}
                                 </select>
+                                {!isFoodTimingApplicable(
+                                  medicineModal.type,
+                                  medicineModal.route
+                                ) && (
+                                  <p id="fld-food-timing-na" className="mt-1 text-xs text-gray-500">
+                                    Not applicable for injections.
+                                  </p>
+                                )}
                               </div>
                               <div>
                                 <label htmlFor="fld-124" className="block text-sm font-medium mb-1">
@@ -1191,7 +1238,16 @@ const IpdDetails = () => {
                                       frequency: medicineModal.frequency,
                                       durationDays: Number(medicineModal.durationDays),
                                       startDate: medicineModal.startDate || null,
-                                      foodTiming: medicineModal.foodTiming || null,
+                                      // Authoritative guard, not a convenience: the field is
+                                      // also cleared as the order changes, but only this
+                                      // decides what leaves the browser, so no present or
+                                      // future path can put a meal time on an injection.
+                                      foodTiming: isFoodTimingApplicable(
+                                        medicineModal.type,
+                                        medicineModal.route
+                                      )
+                                        ? medicineModal.foodTiming || null
+                                        : null,
                                     };
                                     await hospitalService.addIpdPrescription(id, payload);
                                     success('Medicine prescribed successfully');

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -102,12 +102,12 @@ describe('ConsultationModal — submission', () => {
   const opd = { id: 42, patient: { id: 7, publicId: 'ppub-7' } };
   const patient = { id: 7, publicId: 'ppub-7', name: 'Ravi Kumar' };
 
-  const open = () =>
+  const open = (onSuccess = vi.fn()) =>
     render(
       <ConsultationModal
         isOpen
         onClose={vi.fn()}
-        onSuccess={vi.fn()}
+        onSuccess={onSuccess}
         appointment={null}
         patient={patient}
         opd={opd}
@@ -119,7 +119,7 @@ describe('ConsultationModal — submission', () => {
   };
 
   /** The catalogue field only yields a name when one is picked from the list, so pick one. */
-  const addMedicine = async (user, { name, dosage, duration, frequency = true }) => {
+  const addMedicine = async (user, { name, dosage, duration, frequency = true, foodTiming }) => {
     if (!screen.queryByPlaceholderText('Search medicine from catalog...')) {
       await openPrescriptionTab(user);
     }
@@ -132,6 +132,9 @@ describe('ConsultationModal — submission', () => {
       const morning = screen.getByLabelText('Morning dose');
       await user.clear(morning);
       await user.type(morning, '1');
+    }
+    if (foodTiming) {
+      await user.selectOptions(screen.getByRole('combobox', { name: /food timing/i }), foodTiming);
     }
     await user.click(screen.getByRole('button', { name: '+ Add Medicine' }));
   };
@@ -173,6 +176,30 @@ describe('ConsultationModal — submission', () => {
     expect(payload.labTests).toEqual([]);
   });
 
+  it('prescribes with a frequency quick preset instead of typing the boxes', async () => {
+    const user = userEvent.setup();
+    open();
+    await openPrescriptionTab(user);
+
+    await user.type(screen.getByPlaceholderText('Search medicine from catalog...'), 'Paracetamol');
+    await user.click(screen.getByRole('button', { name: 'pick Paracetamol' }));
+    await user.type(screen.getByPlaceholderText('Dosage (e.g., 500mg)'), '500mg');
+    await user.type(screen.getByPlaceholderText('Duration (e.g., 5 Days)'), '5 Days');
+
+    // One click instead of three keystrokes -- and it must satisfy the same frequency
+    // validation that blocks Add Medicine when no dose is set.
+    await user.click(screen.getByRole('button', { name: '1-0-1 BD' }));
+    await user.click(screen.getByRole('button', { name: '+ Add Medicine' }));
+    await submit(user);
+
+    await waitFor(() => expect(hospitalService.submitConsultation).toHaveBeenCalledTimes(1));
+    expect(payloadOf().prescription[0]).toMatchObject({
+      medicineName: 'Paracetamol',
+      frequency: '1-0-1',
+    });
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
   it('serialises several medicines in order', async () => {
     const user = userEvent.setup();
     open();
@@ -186,6 +213,33 @@ describe('ConsultationModal — submission', () => {
       'Paracetamol',
       'Azithromycin',
     ]);
+  });
+
+  it('sends foodTiming when selected and returns selected printLanguage to onSuccess', async () => {
+    const user = userEvent.setup();
+    const onSuccess = vi.fn();
+    open(onSuccess);
+
+    await addMedicine(user, {
+      name: 'Paracetamol',
+      dosage: '500mg',
+      duration: '5 Days',
+      foodTiming: 'AFTER_FOOD',
+    });
+
+    // Pick Marathi print language
+    await user.click(screen.getByRole('button', { name: 'मराठी' }));
+    await submit(user);
+
+    await waitFor(() => expect(hospitalService.submitConsultation).toHaveBeenCalled());
+    const payload = payloadOf();
+    expect(payload.prescription[0].foodTiming).toBe('AFTER_FOOD');
+    expect(onSuccess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'ok',
+        printLanguage: 'mr',
+      })
+    );
   });
 
   it('serialises an administered medicine with the fields the server reads', async () => {

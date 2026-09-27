@@ -60,16 +60,20 @@ public class AppointmentController {
     @Autowired
     private com.hms.security.SecurityContextHelper securityHelper;
 
+    @Autowired
+    private com.hms.security.FrontDeskAccessGuard frontDeskAccessGuard;
+
     /**
      * Create a new appointment
      * Accessible by Hospital Admin and Receptionist
      */
     @PostMapping
     @RequireModule("APPOINTMENTS")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> createAppointment(@Valid @RequestBody Appointment appointment,
             @RequestParam(name = "acknowledgeDuplicatePhone", defaultValue = "false")
             boolean acknowledgeDuplicatePhone) {
+        frontDeskAccessGuard.require();
         Appointment createdAppointment;
         try {
             createdAppointment = appointmentService.createAppointment(appointment,
