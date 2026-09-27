@@ -148,6 +148,22 @@ class PrescriptionPdfAuthorizationTest {
         assertLeakFree(get("/hospital/doctors/prescription/opd/99999999/pdf", admin));
     }
 
+    /**
+     * A caller with no token at all. The role matrix above starts from an authenticated session,
+     * so it cannot see a regression that lets the filter chain through unauthenticated — and a
+     * clinical PDF is the last endpoint where that should go unnoticed.
+     */
+    @Test
+    void anUnauthenticatedCallerIsRefusedByBothEndpoints() {
+        for (String path : List.of("/hospital/doctors/prescription/" + apptA + "/pdf",
+                "/hospital/doctors/prescription/opd/" + opdA + "/pdf")) {
+            Response r = getWithoutToken(path);
+            assertThat(r.status).as("%s must not be served to an anonymous caller", path)
+                    .isIn(401, 403);
+            assertLeakFree(r);
+        }
+    }
+
     private void assertLeakFree(Response r) {
         assertThat(r.bodyText())
                 .as("no foreign clinical content may appear in the response")
@@ -244,12 +260,19 @@ class PrescriptionPdfAuthorizationTest {
         String bodyText() { return new String(body, StandardCharsets.ISO_8859_1); }
     }
 
+    private Response getWithoutToken(String path) {
+        return send(HttpRequest.newBuilder(URI.create("http://localhost:" + port + path)).GET().build());
+    }
+
     private Response get(String path, String token) {
+        return send(HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
+                .header("Authorization", "Bearer " + token)
+                .GET()
+                .build());
+    }
+
+    private Response send(HttpRequest request) {
         try {
-            HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
-                    .header("Authorization", "Bearer " + token)
-                    .GET()
-                    .build();
             HttpResponse<byte[]> response =
                     HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofByteArray());
             return new Response(response.statusCode(), response.body(), response.headers());
