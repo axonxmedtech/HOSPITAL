@@ -34,8 +34,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * effect, so a refusal that arrived too late would leave a patient record behind. Each refusal
  * here is asserted against the row counts as well as the status code.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties =
-        "spring.datasource.url=jdbc:h2:mem:appointment_front_desk;MODE=MySQL;NON_KEYWORDS=VALUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE")
+// Shares the default test context deliberately: a bespoke datasource URL would be one more
+// cached application context, and evicting one tears down the in-memory database the rest of the
+// suite is still using. Nothing here needs an empty database — every assertion is a delta.
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 class AppointmentFrontDeskApiTest {
 
@@ -147,14 +149,17 @@ class AppointmentFrontDeskApiTest {
         // are what make a booking able to create a patient, which is what the counts assert.
         String body = "{\"doctorId\":" + doctor.getId()
                 + ",\"patientName\":\"Synthetic Walkin\""
-                + ",\"patientPhone\":\"99000000" + (10 + counter++) + "\""
+                + ",\"patientPhone\":\"" + uniquePhone() + "\""
                 + ",\"appointmentDate\":\"" + LocalDate.now() + "\""
                 + ",\"appointmentTime\":\"11:30\"}";
         return rest.exchange("/hospital/appointments", HttpMethod.POST,
                 new HttpEntity<>(body, headers), String.class);
     }
 
-    private static int counter = 0;
+    /** Ten digits, unique per call: the shared database already holds other suites' patients. */
+    private static String uniquePhone() {
+        return "9" + String.format("%09d", System.nanoTime() % 1_000_000_000L);
+    }
 
     private void receptionMode(String mode) {
         HospitalSetting s = new HospitalSetting();
