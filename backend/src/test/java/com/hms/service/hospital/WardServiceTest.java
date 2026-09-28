@@ -121,7 +121,7 @@ class WardServiceTest {
         ward.setInchargeNurseId(null);
         Bed available = new Bed();
         available.setStatus("available");
-        when(wardRepository.findByHospitalId(7L)).thenReturn(List.of(ward));
+        when(wardRepository.findGeneralWardsByHospitalId(7L)).thenReturn(List.of(ward));
         when(bedRepository.findByWardIdAndHospitalId(3L, 7L)).thenReturn(List.of(available));
 
         List<WardResponse> wards = service.getWardsForAdmission();

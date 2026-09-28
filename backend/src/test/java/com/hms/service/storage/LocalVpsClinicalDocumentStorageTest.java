@@ -26,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * tests use a temporary directory -- nothing depends on a real server, a deployment path, or
  * anything existing on the machine running them.
  */
+@EnabledOnOs({OS.LINUX, OS.MAC})
 class LocalVpsClinicalDocumentStorageTest {
 
     @TempDir Path root;

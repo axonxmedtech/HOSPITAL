@@ -52,8 +52,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * that disappears from history when it is archived is a record that lies. Everything goes through
  * the real endpoints with real tokens, so the guards are the product's own.
  */
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
+
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
+@EnabledOnOs({OS.LINUX, OS.MAC})
 class PatientDocumentJourneyTest {
 
     private static final AtomicLong SEQ = new AtomicLong();

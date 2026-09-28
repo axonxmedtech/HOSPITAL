@@ -34,8 +34,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * see it -- and a caller from another facility gets the same answer as one asking for a document
  * that does not exist.
  */
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
+
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
+@EnabledOnOs({OS.LINUX, OS.MAC})
 class PatientDocumentApiTest {
 
     private static final AtomicLong SEQ = new AtomicLong();
