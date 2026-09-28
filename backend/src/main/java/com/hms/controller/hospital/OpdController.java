@@ -128,7 +128,9 @@ public class OpdController {
 
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     @GetMapping("/{id}/pdf")
-    public ResponseEntity<byte[]> getOpdPdf(@PathVariable String id) {
+    public ResponseEntity<byte[]> getOpdPdf(
+            @PathVariable String id,
+            @RequestParam(name = "lang", defaultValue = "en") String lang) {
         Long opdId;
         try {
             if (id.startsWith("OPD-")) {
@@ -154,7 +156,7 @@ public class OpdController {
                 ? labOrderRepository.findByMedicalRecordId(medicalRecord.getId())
                 : java.util.List.of();
 
-        try (java.io.ByteArrayInputStream pdfStream = pdfService.generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord, labOrders)) {
+        try (java.io.ByteArrayInputStream pdfStream = pdfService.generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord, labOrders, lang)) {
             byte[] pdfBytes = pdfStream.readAllBytes();
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_PDF);
@@ -174,7 +176,9 @@ public class OpdController {
      */
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     @GetMapping("/{id}/documents/pdf")
-    public ResponseEntity<byte[]> getOpdDocumentsPdf(@PathVariable String id) {
+    public ResponseEntity<byte[]> getOpdDocumentsPdf(
+            @PathVariable String id,
+            @RequestParam(name = "lang", defaultValue = "en") String lang) {
         Long opdId;
         try {
             opdId = Long.parseLong(id.startsWith("OPD-") ? id.substring(4) : id);
@@ -205,7 +209,7 @@ public class OpdController {
             if (incCasePaper) {
                 java.util.List<com.hms.entity.LabOrder> labOrders = medicalRecord != null
                         ? labOrderRepository.findByMedicalRecordId(medicalRecord.getId()) : java.util.List.of();
-                parts.add(pdfService.generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord, labOrders)
+                parts.add(pdfService.generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord, labOrders, lang)
                         .readAllBytes());
             }
 
@@ -228,7 +232,7 @@ public class OpdController {
                                 .orElse(null);
                     }
                     parts.add(pdfService.generatePrescriptionPdf(hospital, rxDoctor, patient, medicalRecord,
-                            prescriptions).readAllBytes());
+                            prescriptions, lang).readAllBytes());
                 }
             }
 

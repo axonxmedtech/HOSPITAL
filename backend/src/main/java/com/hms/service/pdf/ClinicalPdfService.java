@@ -96,6 +96,16 @@ public class ClinicalPdfService {
             Patient patient,
             MedicalRecord medicalRecord,
             List<Prescription> prescriptions) {
+        return generatePrescriptionPdf(hospital, doctor, patient, medicalRecord, prescriptions, "en");
+    }
+
+    public ByteArrayInputStream generatePrescriptionPdf(
+            Hospital hospital,
+            Doctor doctor,
+            Patient patient,
+            MedicalRecord medicalRecord,
+            List<Prescription> prescriptions,
+            String lang) {
 
         Document document = new Document(PageSize.A4, 36, 36, 36, 180);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -155,7 +165,22 @@ public class ClinicalPdfService {
                     helper.addTableCell(rxTable, p.getDosage(), false);
                     helper.addTableCell(rxTable, p.getFrequency(), false);
                     helper.addTableCell(rxTable, p.getDuration(), false);
-                    helper.addTableCell(rxTable, p.getInstructions(), false);
+
+                    String foodTimingLabel = FoodTimingLabels.getLabel(p.getFoodTiming(), lang);
+                    String instructionText = (p.getInstructions() != null && !p.getInstructions().trim().isEmpty())
+                            ? p.getInstructions().trim()
+                            : "";
+                    String cellContent;
+                    if (foodTimingLabel != null && !foodTimingLabel.isBlank()) {
+                        if (!instructionText.isEmpty()) {
+                            cellContent = foodTimingLabel + " · " + instructionText;
+                        } else {
+                            cellContent = foodTimingLabel;
+                        }
+                    } else {
+                        cellContent = instructionText;
+                    }
+                    helper.addTableCell(rxTable, cellContent, false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
                 }
             } else {
                 PdfPCell cell = new PdfPCell(new Phrase("No medications prescribed.", PdfLayoutHelper.NORMAL_FONT));
@@ -279,6 +304,17 @@ public class ClinicalPdfService {
             Opd opd,
             MedicalRecord medicalRecord,
             java.util.List<com.hms.entity.LabOrder> labOrders) {
+        return generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord, labOrders, "en");
+    }
+
+    public ByteArrayInputStream generateCasePaperPdf(
+            Hospital hospital,
+            Doctor doctor,
+            Patient patient,
+            Opd opd,
+            MedicalRecord medicalRecord,
+            java.util.List<com.hms.entity.LabOrder> labOrders,
+            String lang) {
 
         Document document = new Document(PageSize.A4, 36, 36, 36, 180);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -345,7 +381,7 @@ public class ClinicalPdfService {
                 cell.setBorder(Rectangle.NO_BORDER);
                 Paragraph problemTitle = new Paragraph("CHIEF COMPLAINT / REASON FOR VISIT:", PdfLayoutHelper.SMALL_BOLD_FONT);
                 problemTitle.setSpacingBefore(5f);
-                Paragraph problemVal = new Paragraph(opd.getProblem(), PdfLayoutHelper.NORMAL_FONT);
+                Paragraph problemVal = new Paragraph(opd.getProblem(), PdfLayoutHelper.UNICODE_NORMAL_FONT);
                 problemVal.setSpacingAfter(10f);
                 cell.addElement(problemTitle);
                 cell.addElement(problemVal);
@@ -359,7 +395,7 @@ public class ClinicalPdfService {
                     cell.setBorder(Rectangle.NO_BORDER);
                     Paragraph symTitle = new Paragraph("SYMPTOMS / CHIEF COMPLAINTS:", PdfLayoutHelper.SMALL_BOLD_FONT);
                     symTitle.setSpacingBefore(5f);
-                    Paragraph symVal = new Paragraph(medicalRecord.getSymptoms(), PdfLayoutHelper.NORMAL_FONT);
+                    Paragraph symVal = new Paragraph(medicalRecord.getSymptoms(), PdfLayoutHelper.UNICODE_NORMAL_FONT);
                     symVal.setSpacingAfter(10f);
                     cell.addElement(symTitle);
                     cell.addElement(symVal);
@@ -372,7 +408,7 @@ public class ClinicalPdfService {
                     cell.setBorder(Rectangle.NO_BORDER);
                     Paragraph diagTitle = new Paragraph("DIAGNOSIS / CLINICAL IMPRESSION:", PdfLayoutHelper.SMALL_BOLD_FONT);
                     diagTitle.setSpacingBefore(5f);
-                    Paragraph diagVal = new Paragraph(medicalRecord.getDiagnosis(), FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Font.BOLD, PdfLayoutHelper.NAVY_BLUE));
+                    Paragraph diagVal = new Paragraph(medicalRecord.getDiagnosis(), PdfLayoutHelper.UNICODE_NORMAL_FONT);
                     diagVal.setSpacingAfter(10f);
                     cell.addElement(diagTitle);
                     cell.addElement(diagVal);
@@ -385,7 +421,7 @@ public class ClinicalPdfService {
                     cell.setBorder(Rectangle.NO_BORDER);
                     Paragraph notesTitle = new Paragraph("TREATMENT & CLINICAL NOTES:", PdfLayoutHelper.SMALL_BOLD_FONT);
                     notesTitle.setSpacingBefore(5f);
-                    Paragraph notesVal = new Paragraph(medicalRecord.getTreatmentNotes(), PdfLayoutHelper.NORMAL_FONT);
+                    Paragraph notesVal = new Paragraph(medicalRecord.getTreatmentNotes(), PdfLayoutHelper.UNICODE_NORMAL_FONT);
                     notesVal.setSpacingAfter(10f);
                     cell.addElement(notesTitle);
                     cell.addElement(notesVal);

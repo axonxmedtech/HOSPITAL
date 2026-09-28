@@ -23,12 +23,12 @@ public class HospitalSettingDTO {
 
     /**
      * Reception mode for the hospital.
-     * Must be one of: HAS_RECEPTIONIST, SOLO
+     * Must be one of: HAS_RECEPTIONIST, SOLO, BOTH
      */
     @NotBlank(message = "receptionMode is required")
     @Pattern(
-        regexp = "HAS_RECEPTIONIST|SOLO",
-        message = "receptionMode must be HAS_RECEPTIONIST or SOLO"
+        regexp = "HAS_RECEPTIONIST|SOLO|BOTH",
+        message = "receptionMode must be HAS_RECEPTIONIST, SOLO, or BOTH"
     )
     private String receptionMode;
 

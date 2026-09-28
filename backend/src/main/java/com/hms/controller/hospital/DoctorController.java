@@ -229,7 +229,9 @@ public class DoctorController {
     // another format, so it carries the same rule rather than a looser one.
     @GetMapping("/prescription/{appointmentId}/pdf")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> downloadPrescription(@PathVariable String appointmentId) {
+    public ResponseEntity<?> downloadPrescription(
+            @PathVariable String appointmentId,
+            @RequestParam(name = "lang", defaultValue = "en") String lang) {
         try {
             Long hospitalId = securityHelper.getCurrentHospitalId();
             logger.info("Downloading prescription for appointment: {} in hospital: {}", LogSanitizer.clean(appointmentId), hospitalId);
@@ -260,7 +262,7 @@ public class DoctorController {
                     .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
             java.io.ByteArrayInputStream pdf = pdfService.generatePrescriptionPdf(hospital, doctor, patient, record,
-                    prescriptions);
+                    prescriptions, lang);
 
             HttpHeaders headers = new HttpHeaders();
             headers.add("Content-Disposition", "inline; filename=prescription_" + appointmentId + ".pdf");
@@ -279,7 +281,9 @@ public class DoctorController {
         // Same readership as /consultation/opd/{opdId} above.
         @GetMapping("/prescription/opd/{opdId}/pdf")
         @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-        public ResponseEntity<?> downloadPrescriptionByOpd(@PathVariable Long opdId) {
+        public ResponseEntity<?> downloadPrescriptionByOpd(
+                @PathVariable Long opdId,
+                @RequestParam(name = "lang", defaultValue = "en") String lang) {
         try {
             Long hospitalId = securityHelper.getCurrentHospitalId();
 
@@ -312,7 +316,7 @@ public class DoctorController {
                 .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
             java.io.ByteArrayInputStream pdf = pdfService.generatePrescriptionPdf(hospital, doctor, patient, record,
-                prescriptions);
+                prescriptions, lang);
 
             HttpHeaders headers = new HttpHeaders();
             headers.add("Content-Disposition", "inline; filename=prescription_opd_" + opdId + ".pdf");

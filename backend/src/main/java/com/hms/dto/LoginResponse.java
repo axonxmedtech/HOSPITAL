@@ -62,12 +62,12 @@ public class LoginResponse {
     private java.util.List<String> modules;
 
     /**
-     * Operational mode for hospital (receptionMode enums HAS_RECEPTIONIST or SOLO)
+     * Operational mode for hospital (receptionMode: HAS_RECEPTIONIST, SOLO, or BOTH)
      */
     private String receptionMode;
 
     /**
-     * Billing responsibility (billingHandler enums RECEPTIONIST or DOCTOR)
+     * Billing responsibility (billingHandler: RECEPTIONIST, DOCTOR, or BOTH)
      */
     private String billingHandler;
 
