@@ -1247,6 +1247,11 @@ public class IpdAdmissionService {
 
     @org.springframework.transaction.annotation.Transactional
     public IpdAdmission changeBed(Long ipdId, Long newBedId) {
+        return changeBed(ipdId, newBedId, null);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public IpdAdmission changeBed(Long ipdId, Long newBedId, Long expectedWardId) {
         IpdAdmission ipd = requireOwnedAdmissionForUpdate(ipdId);
 
         String role = securityHelper.getCurrentUserRole();
@@ -1283,6 +1288,9 @@ public class IpdAdmissionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Bed not found"));
         Bed oldBed = oldBedId.equals(firstBedId) ? first : second;
         Bed newBed = newBedId.equals(firstBedId) ? first : second;
+        if (expectedWardId != null && !expectedWardId.equals(newBed.getWardId())) {
+            throw new IllegalArgumentException("Selected bed does not belong to the destination ward");
+        }
         if (!com.hms.entity.BedStatus.AVAILABLE.equalsIgnoreCase(newBed.getStatus())) {
             throw new ConflictException("Requested bed is no longer available");
         }

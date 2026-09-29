@@ -29,6 +29,9 @@ class IcuWardServiceTest {
     @Autowired private IcuWardRepository icuWardRepository;
     @Autowired private HospitalRepository hospitalRepository;
 
+    @Autowired private com.hms.repository.WardRepository wardRepository;
+    @Autowired private com.hms.repository.NurseProfileRepository nurseRepository;
+
     @MockBean private SecurityContextHelper securityHelper;
 
     private Long hospitalId;
@@ -154,5 +157,37 @@ class IcuWardServiceTest {
         icuWardService.deleteIcuWard(created.getPublicId());
 
         assertThat(icuWardRepository.findByPublicIdAndHospitalId(created.getPublicId(), hospitalId)).isEmpty();
+    }
+
+    @Test
+    void metadataEditPreservesIncharge_andDedicatedEndpointChangesAndRemovesIt() {
+        com.hms.entity.NurseProfile nurse = new com.hms.entity.NurseProfile();
+        nurse.setHospitalId(hospitalId);
+        nurse.setName("Incharge");
+        nurse.setEmail("nurse-" + uniq() + "@icu.test");
+        nurse.setIsIncharge(true);
+        Long nurseId = nurseRepository.save(nurse).getId();
+        IcuWardRequest request = new IcuWardRequest();
+        request.setWardName("Incharge-" + uniq());
+        request.setUnitType("ICU");
+        request.setBedPrice(new BigDecimal("1000"));
+        request.setTotalBeds(1);
+        request.setInchargeNurseId(nurseId);
+        IcuWardResponse created = icuWardService.createIcuWard(request);
+
+        request.setInchargeNurseId(null);
+        request.setFloorNumber(3);
+        IcuWardResponse updated = icuWardService.updateIcuWard(created.getPublicId(), request);
+        assertThat(updated.getInchargeNurseId()).isEqualTo(nurseId);
+        assertThat(wardRepository.findById(created.getWardId()).orElseThrow().getInchargeNurseId()).isEqualTo(nurseId);
+
+        request.setInchargeNurseId(nurseId + 100000);
+        assertThatThrownBy(() -> icuWardService.updateIcuWard(created.getPublicId(), request))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("incharge endpoint");
+        icuWardService.setIncharge(created.getPublicId(), null);
+        assertThat(wardRepository.findById(created.getWardId()).orElseThrow().getInchargeNurseId()).isNull();
+        assertThat(icuWardRepository.findByPublicIdAndHospitalId(created.getPublicId(), hospitalId).orElseThrow().getInchargeNurseId()).isNull();
+        icuWardService.setIncharge(created.getPublicId(), nurseId);
+        assertThat(wardRepository.findById(created.getWardId()).orElseThrow().getInchargeNurseId()).isEqualTo(nurseId);
     }
 }

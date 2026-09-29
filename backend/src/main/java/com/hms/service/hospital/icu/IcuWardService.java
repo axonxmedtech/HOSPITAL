@@ -115,6 +115,12 @@ public class IcuWardService {
         IcuWard icuWard = icuWardRepository.findByPublicIdAndHospitalId(publicId, hospitalId)
                 .orElseThrow(() -> new ResourceNotFoundException("ICU ward not found"));
 
+        // Incharge changes use the dedicated assignment endpoint, never metadata edits.
+        if (req.getInchargeNurseId() != null
+                && !req.getInchargeNurseId().equals(icuWard.getInchargeNurseId())) {
+            throw new IllegalArgumentException("Use the incharge endpoint to change the ward incharge");
+        }
+
         String normalizedUnitType = CareUnitRegistry.normalize(req.getUnitType());
         if (!CareUnitRegistry.isCriticalCare(normalizedUnitType)) {
             throw new IllegalArgumentException("Unit type must be a critical care unit type");
@@ -133,17 +139,12 @@ public class IcuWardService {
 
         wardService.updateWard(icuWard.getWardId(), updateReq);
 
-        if (req.getInchargeNurseId() != null || icuWard.getInchargeNurseId() != null) {
-            wardService.setIncharge(icuWard.getWardId(), req.getInchargeNurseId());
-        }
-
         // 2. Update IcuWard
         icuWard.setWardName(req.getWardName());
         icuWard.setUnitType(normalizedUnitType);
         icuWard.setBedPrice(req.getBedPrice());
         icuWard.setTotalBeds(req.getTotalBeds());
         icuWard.setFloorNumber(req.getFloorNumber());
-        icuWard.setInchargeNurseId(req.getInchargeNurseId());
 
         IcuWard saved = icuWardRepository.save(icuWard);
 

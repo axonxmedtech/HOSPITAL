@@ -60,6 +60,11 @@ public class IcuStayService {
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private AuditLogService auditLogService;
 
+    @Autowired private com.hms.security.NurseInchargeGuard nurseInchargeGuard;
+    @Autowired private com.hms.repository.NurseProfileRepository nurseProfileRepository;
+    @Autowired private com.hms.repository.PatientNurseAssignmentRepository assignments;
+    @Autowired private com.hms.service.hospital.NurseCoverageService coverageService;
+
     // ── lifecycle, driven by IPD movement ────────────────────────────────────
 
     /**
@@ -232,7 +237,8 @@ public class IcuStayService {
     @Transactional(readOnly = true)
     public List<com.hms.dto.icu.IcuPatientSummaryDTO> getAdmittedIcuPatientsForCurrentUser() {
         Long hospitalId = requireHospitalId();
-        List<com.hms.entity.IcuWard> icuWards = icuWardRepository.findByHospitalId(hospitalId);
+        String role = securityHelper.getCurrentUserRole();
+        List<com.hms.entity.IcuWard> icuWards = scopedPatientWards(hospitalId, role);
         if (icuWards == null || icuWards.isEmpty()) {
             return List.of();
         }
@@ -247,13 +253,13 @@ public class IcuStayService {
             return List.of();
         }
 
-        String role = securityHelper.getCurrentUserRole();
         final Long filterDoctorId;
         if ("DOCTOR".equalsIgnoreCase(role)) {
             String email = securityHelper.getCurrentUserEmail();
             filterDoctorId = doctorRepository.findByEmailAndHospitalId(email, hospitalId)
                     .map(com.hms.entity.Doctor::getId)
                     .orElse(null);
+            if (filterDoctorId == null) return List.of();
         } else {
             filterDoctorId = null;
         }
@@ -266,6 +272,13 @@ public class IcuStayService {
 
         List<com.hms.dto.icu.IcuPatientSummaryDTO> result = new java.util.ArrayList<>();
         for (IpdAdmission ipd : admissions) {
+            if ("NURSE".equals(role)) {
+                Long userId = securityHelper.getCurrentUserId();
+                if (userId == null || (!assignments.existsByIpdAdmissionIdAndNurseUserIdAndIsActiveTrue(ipd.getId(), userId)
+                        && !coverageService.coversAdmission(userId, ipd.getId(), java.time.LocalDate.now()))) {
+                    continue;
+                }
+            }
             IcuStay stay = stayMap.get(ipd.getId());
             if (filterDoctorId != null) {
                 boolean isPrimaryDoctor = filterDoctorId.equals(ipd.getDoctorId());
@@ -281,7 +294,7 @@ public class IcuStayService {
             dto.setPatientId(ipd.getPatientId());
 
             if (ipd.getPatientId() != null) {
-                patientRepository.findById(ipd.getPatientId()).ifPresent(p -> {
+                patientRepository.findByIdAndHospitalId(ipd.getPatientId(), hospitalId).ifPresent(p -> {
                     dto.setPatientName(p.getName());
                     try { dto.setAge(p.getAge()); } catch (Exception ignored) {}
                     dto.setGender(p.getGender());
@@ -297,20 +310,20 @@ public class IcuStayService {
 
             dto.setBedId(ipd.getBedId());
             if (ipd.getBedId() != null) {
-                bedRepository.findById(ipd.getBedId()).ifPresent(b -> dto.setBedNumber(b.getBedCode()));
+                bedRepository.findByBedIdAndHospitalId(ipd.getBedId(), hospitalId).ifPresent(b -> dto.setBedNumber(b.getBedCode()));
             }
 
             dto.setDoctorId(ipd.getDoctorId());
             if (ipd.getDoctorId() != null) {
-                doctorRepository.findById(ipd.getDoctorId()).ifPresent(d -> dto.setDoctorName(d.getName()));
+                doctorRepository.findByIdAndHospitalIdAndIsActiveTrue(ipd.getDoctorId(), hospitalId).ifPresent(d -> dto.setDoctorName(d.getName()));
             }
 
             if (stay != null) {
                 dto.setStayPublicId(stay.getPublicId());
-                dto.setAdmissionReason(stay.getAdmissionReason());
+                if (!"RECEPTIONIST".equals(role)) dto.setAdmissionReason(stay.getAdmissionReason());
                 dto.setIntensivistDoctorId(stay.getIntensivistDoctorId());
                 if (stay.getIntensivistDoctorId() != null) {
-                    doctorRepository.findById(stay.getIntensivistDoctorId()).ifPresent(d -> dto.setIntensivistName(d.getName()));
+                    doctorRepository.findByIdAndHospitalIdAndIsActiveTrue(stay.getIntensivistDoctorId(), hospitalId).ifPresent(d -> dto.setIntensivistName(d.getName()));
                 }
             }
 
@@ -326,6 +339,26 @@ public class IcuStayService {
         });
 
         return result;
+    }
+
+    /** Match the established ICU board ward scope before loading patient identities. */
+    private List<com.hms.entity.IcuWard> scopedPatientWards(Long hospitalId, String role) {
+        List<com.hms.entity.IcuWard> wards = icuWardRepository.findByHospitalId(hospitalId);
+        return switch (role == null ? "" : role) {
+            case "HOSPITAL_ADMIN", "DOCTOR", "RECEPTIONIST" -> wards;
+            case "NURSE_INCHARGE" -> {
+                var wardIds = nurseInchargeGuard.myWardIds();
+                yield wards.stream().filter(w -> wardIds.contains(w.getWardId())).toList();
+            }
+            case "NURSE" -> {
+                Long wardId = nurseProfileRepository.findByUserId(securityHelper.getCurrentUserId())
+                        .filter(n -> hospitalId.equals(n.getHospitalId()))
+                        .map(com.hms.entity.NurseProfile::getWardId).orElse(null);
+                yield wardId == null ? List.of()
+                        : wards.stream().filter(w -> wardId.equals(w.getWardId())).toList();
+            }
+            default -> List.of();
+        };
     }
 
     @Transactional

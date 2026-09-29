@@ -211,4 +211,57 @@ class IcuPatientsEndpointTest {
         List<IcuPatientSummaryDTO> hospitalBList = icuStayService.getAdmittedIcuPatientsForCurrentUser();
         assertThat(hospitalBList).isEmpty();
     }
+
+    @Test
+    void transferRejectsMismatchedDestinationBeforeChangingOccupancy() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalIdA);
+        when(securityHelper.getCurrentUserRole()).thenReturn("HOSPITAL_ADMIN");
+        Ward oldWard = new Ward();
+        oldWard.setHospitalId(hospitalIdA);
+        oldWard.setWardName("Old-" + uniq());
+        oldWard.setBedPrice(BigDecimal.ZERO);
+        oldWard.setTotalBeds(1);
+        wardRepository.save(oldWard);
+        Ward target = new Ward();
+        target.setHospitalId(hospitalIdA);
+        target.setWardName("Target-" + uniq());
+        target.setBedPrice(BigDecimal.ZERO);
+        target.setTotalBeds(1);
+        wardRepository.save(target);
+        Bed oldBed = new Bed();
+        oldBed.setHospitalId(hospitalIdA);
+        oldBed.setWardId(oldWard.getWardId());
+        oldBed.setBedCode("OLD-" + uniq());
+        oldBed.setStatus(BedStatus.OCCUPIED);
+        bedRepository.save(oldBed);
+        Bed newBed = new Bed();
+        newBed.setHospitalId(hospitalIdA);
+        newBed.setWardId(target.getWardId());
+        newBed.setBedCode("NEW-" + uniq());
+        newBed.setStatus(BedStatus.AVAILABLE);
+        bedRepository.save(newBed);
+        IpdAdmission admission = new IpdAdmission();
+        admission.setHospitalId(hospitalIdA);
+        admission.setIpdNumber("FIXT-" + uniq());
+        admission.setPatientId(1L);
+        admission.setDoctorId(1L);
+        admission.setWardId(oldWard.getWardId());
+        admission.setBedId(oldBed.getBedId());
+        admission.setStatus("ADMITTED");
+        admission.setAdmissionType("EMERGENCY");
+        admission.setAdmissionDatetime(LocalDateTime.now());
+        ipdAdmissionRepository.save(admission);
+        oldBed.setCurrentIpdAdmissionId(admission.getId());
+        bedRepository.saveAndFlush(oldBed);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> ipdAdmissionService.changeBed(
+                admission.getId(), newBed.getBedId(), oldWard.getWardId()))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("destination ward");
+        assertThat(admission.getWardId()).isEqualTo(oldWard.getWardId());
+        assertThat(admission.getBedId()).isEqualTo(oldBed.getBedId());
+        assertThat(oldBed.getStatus()).isEqualTo(BedStatus.OCCUPIED);
+        assertThat(oldBed.getCurrentIpdAdmissionId()).isEqualTo(admission.getId());
+        assertThat(newBed.getStatus()).isEqualTo(BedStatus.AVAILABLE);
+        assertThat(newBed.getCurrentIpdAdmissionId()).isNull();
+    }
 }

@@ -24,6 +24,8 @@ const IcuDischargeToIpdModal = ({ isOpen, onClose, onSuccess, initialIcuPatient 
   const [selectedWardId, setSelectedWardId] = useState('');
   const [availableBeds, setAvailableBeds] = useState([]);
   const [selectedBedId, setSelectedBedId] = useState('');
+  const [bedsWardId, setBedsWardId] = useState('');
+  const [bedsLoading, setBedsLoading] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -72,7 +74,11 @@ const IcuDischargeToIpdModal = ({ isOpen, onClose, onSuccess, initialIcuPatient 
 
   // Load available beds for chosen general ward
   useEffect(() => {
-    if (!selectedWardId) {
+    setAvailableBeds([]);
+    setSelectedBedId('');
+    setBedsWardId('');
+    setBedsLoading(false);
+    if (!isOpen || !selectedWardId) {
       setAvailableBeds([]);
       setSelectedBedId('');
       return;
@@ -80,11 +86,13 @@ const IcuDischargeToIpdModal = ({ isOpen, onClose, onSuccess, initialIcuPatient 
 
     let isMounted = true;
     const loadBeds = async () => {
+      setBedsLoading(true);
       try {
         const b = await wardService.getAvailableBeds(selectedWardId);
         if (isMounted) {
           const list = b || [];
           setAvailableBeds(list);
+          setBedsWardId(selectedWardId);
           if (list.length === 1) {
             setSelectedBedId(String(list[0].bedId));
           } else {
@@ -93,7 +101,12 @@ const IcuDischargeToIpdModal = ({ isOpen, onClose, onSuccess, initialIcuPatient 
         }
       } catch (err) {
         console.error('Failed to load beds for general ward', err);
-        if (isMounted) setAvailableBeds([]);
+        if (isMounted) {
+          setAvailableBeds([]);
+          setSelectedBedId('');
+        }
+      } finally {
+        if (isMounted) setBedsLoading(false);
       }
     };
 
@@ -101,7 +114,12 @@ const IcuDischargeToIpdModal = ({ isOpen, onClose, onSuccess, initialIcuPatient 
     return () => {
       isMounted = false;
     };
-  }, [selectedWardId]);
+  }, [isOpen, selectedWardId]);
+
+  const validBed =
+    !bedsLoading &&
+    bedsWardId === selectedWardId &&
+    availableBeds.some((bed) => String(bed.bedId) === selectedBedId);
 
   if (!isOpen) return null;
 
@@ -129,7 +147,7 @@ const IcuDischargeToIpdModal = ({ isOpen, onClose, onSuccess, initialIcuPatient 
       toastError('Please select a target General Ward');
       return;
     }
-    if (!selectedBedId) {
+    if (!validBed) {
       toastError('Please select an available bed in the general ward');
       return;
     }
@@ -137,7 +155,11 @@ const IcuDischargeToIpdModal = ({ isOpen, onClose, onSuccess, initialIcuPatient 
     setSubmitting(true);
     try {
       // Step down to general ward bed (which closes the active IcuStay with DISP_WARD)
-      await hospitalService.changeBed(Number(selectedIpdId), Number(selectedBedId));
+      await hospitalService.changeBed(
+        Number(selectedIpdId),
+        Number(selectedBedId),
+        Number(selectedWardId)
+      );
       success('Patient successfully discharged from ICU and moved to General IPD ward');
       onSuccess && onSuccess();
       onClose();
@@ -299,7 +321,13 @@ const IcuDischargeToIpdModal = ({ isOpen, onClose, onSuccess, initialIcuPatient 
                   <select
                     id="icu-discharge-ward-select"
                     value={selectedWardId}
-                    onChange={(e) => setSelectedWardId(e.target.value)}
+                    onChange={(e) => {
+                      if (e.target.value === selectedWardId) return;
+                      setSelectedBedId('');
+                      setAvailableBeds([]);
+                      setBedsWardId('');
+                      setSelectedWardId(e.target.value);
+                    }}
                     required
                     className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                   >
@@ -377,7 +405,9 @@ const IcuDischargeToIpdModal = ({ isOpen, onClose, onSuccess, initialIcuPatient 
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting || !selectedIpdId || !selectedWardId || !selectedBedId}
+                  disabled={
+                    submitting || !validBed || !selectedIpdId || !selectedWardId || !selectedBedId
+                  }
                   className="px-5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition-colors shadow-md disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   {submitting ? (

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import hospitalService from '../services/hospitalService';
@@ -108,7 +108,7 @@ describe('IcuAdmitModal', () => {
     await user.click(submitBtn);
 
     await waitFor(() => {
-      expect(hospitalService.changeBed).toHaveBeenCalledWith(101, 501);
+      expect(hospitalService.changeBed).toHaveBeenCalledWith(101, 501, 50);
       expect(mockSuccess).toHaveBeenCalledWith('Patient successfully admitted to ICU ward');
       expect(onSuccess).toHaveBeenCalled();
       expect(onClose).toHaveBeenCalled();
@@ -172,9 +172,85 @@ describe('IcuAdmitModal', () => {
     await user.click(submitBtn);
 
     await waitFor(() => {
-      expect(hospitalService.changeBed).toHaveBeenCalledWith(101, 501);
+      expect(hospitalService.changeBed).toHaveBeenCalledWith(101, 501, 50);
       expect(onSuccess).toHaveBeenCalled();
       expect(onClose).toHaveBeenCalled();
     });
+  });
+
+  it.each(['success', 'failure'])(
+    'clears the old bed while a new destination loads (%s)',
+    async (outcome) => {
+      icuWardService.getIcuWards.mockResolvedValue([
+        { wardId: 50, wardName: 'First ward' },
+        { wardId: 51, wardName: 'Second ward' },
+      ]);
+      let resolveBeds;
+      let rejectBeds;
+      wardService.getAvailableBeds
+        .mockResolvedValueOnce([{ bedId: 501, bedCode: 'FIRST' }])
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve, reject) => {
+              resolveBeds = resolve;
+              rejectBeds = reject;
+            })
+        );
+      render(<IcuAdmitModal isOpen={true} onClose={vi.fn()} onSuccess={vi.fn()} />);
+      const user = userEvent.setup();
+      await screen.findByText('First ward');
+      const selects = screen.getAllByRole('combobox');
+      await user.selectOptions(selects[0], '101');
+      await user.selectOptions(selects[1], '50');
+      await screen.findByText(/FIRST/);
+      expect(selects[2]).toHaveValue('501');
+      await user.selectOptions(selects[1], '51');
+      expect(selects[2]).toHaveValue('');
+      const submit = screen.getByRole('button', { name: 'Confirm ICU Admission' });
+      expect(submit).toBeDisabled();
+      await user.click(submit);
+      expect(hospitalService.changeBed).not.toHaveBeenCalled();
+      await act(async () => {
+        if (outcome === 'success') resolveBeds([{ bedId: 502, bedCode: 'SECOND' }]);
+        else rejectBeds(new Error('Unavailable'));
+      });
+      if (outcome === 'failure') {
+        expect(submit).toBeDisabled();
+        expect(selects[2]).toHaveValue('');
+        expect(hospitalService.changeBed).not.toHaveBeenCalled();
+      } else {
+        await user.click(submit);
+        expect(hospitalService.changeBed).toHaveBeenCalledExactlyOnceWith(101, 502, 51);
+      }
+    }
+  );
+
+  it('ignores a late bed response from a previous destination', async () => {
+    icuWardService.getIcuWards.mockResolvedValue([
+      { wardId: 50, wardName: 'First ward' },
+      { wardId: 51, wardName: 'Second ward' },
+    ]);
+    let resolveOld;
+    wardService.getAvailableBeds
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveOld = resolve;
+          })
+      )
+      .mockResolvedValueOnce([{ bedId: 502, bedCode: 'SECOND' }]);
+    render(<IcuAdmitModal isOpen={true} onClose={vi.fn()} onSuccess={vi.fn()} />);
+    const user = userEvent.setup();
+    await screen.findByText('First ward');
+    const selects = screen.getAllByRole('combobox');
+    await user.selectOptions(selects[0], '101');
+    await user.selectOptions(selects[1], '50');
+    await user.selectOptions(selects[1], '51');
+    await screen.findByText(/SECOND/);
+    await act(async () => resolveOld([{ bedId: 501, bedCode: 'OLD' }]));
+    expect(selects[2]).toHaveValue('502');
+    expect(screen.queryByText(/OLD/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Confirm ICU Admission' }));
+    expect(hospitalService.changeBed).toHaveBeenCalledExactlyOnceWith(101, 502, 51);
   });
 });

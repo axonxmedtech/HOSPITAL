@@ -164,10 +164,7 @@ public class DatabaseMigrationRunner {
         ensureIcuIoEntryTable();       // ICU Phase 5
         ensureVitalsIcuColumns();      // ICU Phase 4
         ensureIcuStayTable();          // ICU Phase 3
-        ensureIcuWardsTable();         // Dedicated ICU wards table
-        backfillExistingIcuWards();    // Sync existing critical care wards
-        backfillIcuStaysForCurrentOccupants();
-        dropLegacyWardUnitTypeColumn();// Drops legacy unit_type column from wards
+        migrateIcuWardsAndStays();
         ensurePatientDuplicatePhoneAckColumns(); // Patient duplicate prevention (Phase A)
 
     }
@@ -2989,7 +2986,7 @@ public class DatabaseMigrationRunner {
                 log.info("DB migration applied: backfilled {} ACTIVE ICU stay(s) for current occupants", created);
             }
         } catch (Exception e) {
-            log.warn("backfillIcuStaysForCurrentOccupants skipped: {}", e.getMessage());
+            throw new IllegalStateException("ICU stay backfill failed; legacy classification retained", e);
         }
     }
 
@@ -3074,30 +3071,31 @@ public class DatabaseMigrationRunner {
                     "FROM wards w " +
                     "WHERE w.unit_type IN (" + criticalCare + ") " +
                     "  AND NOT EXISTS (SELECT 1 FROM icu_wards iw WHERE iw.ward_id = w.ward_id)");
+                Integer incomplete = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM wards w LEFT JOIN icu_wards iw ON iw.ward_id = w.ward_id " +
+                    "WHERE w.unit_type IN (" + criticalCare + ") AND " +
+                    "(iw.id IS NULL OR iw.hospital_id <> w.hospital_id)",
+                    Integer.class);
+                if (incomplete == null || incomplete != 0) {
+                    throw new IllegalStateException("ICU ward backfill is incomplete or inconsistent");
+                }
                 if (backfilled > 0) {
                     log.info("DB migration applied: backfilled {} ICU ward(s) into icu_wards", backfilled);
                 }
             }
         } catch (Exception e) {
-            log.warn("backfillExistingIcuWards skipped: {}", e.getMessage());
+            throw new IllegalStateException("ICU ward backfill failed; legacy classification retained", e);
         }
     }
 
     /**
-     * Drops legacy unit_type column from wards table now that ICU wards have their own table.
+     * Additive migration: retain the legacy classification for recovery/rollback.
+     * A failed or incomplete copy must stop startup before stay backfill proceeds.
      */
-    private void dropLegacyWardUnitTypeColumn() {
-        try {
-            Integer hasCol = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wards' AND COLUMN_NAME = 'unit_type'",
-                Integer.class);
-            if (hasCol != null && hasCol > 0) {
-                jdbcTemplate.execute("ALTER TABLE wards DROP COLUMN unit_type");
-                log.info("DB migration applied: dropped legacy unit_type column from wards");
-            }
-        } catch (Exception e) {
-            log.warn("dropLegacyWardUnitTypeColumn skipped: {}", e.getMessage());
-        }
+    private void migrateIcuWardsAndStays() {
+        ensureIcuWardsTable();
+        backfillExistingIcuWards();
+        backfillIcuStaysForCurrentOccupants();
     }
 
 }

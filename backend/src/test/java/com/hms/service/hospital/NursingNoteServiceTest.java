@@ -215,4 +215,72 @@ class NursingNoteServiceTest {
 
         assertThat(n.getIsActive()).isFalse();
     }
+
+    private NursingNote editable(String category, String role) {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(securityHelper.getCurrentUserId()).thenReturn(20L);
+        when(securityHelper.getCurrentUserRole()).thenReturn(role);
+        NursingNote note = new NursingNote();
+        note.setHospitalId(7L);
+        note.setNurseUserId(20L);
+        note.setIpdAdmissionId(1L);
+        note.setCategory(category);
+        note.setNoteText("original");
+        note.setCreatedAt(LocalDateTime.now());
+        when(noteRepository.findByPublicId("pub-1")).thenReturn(Optional.of(note));
+        return note;
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"NURSE,NURSE", "DOCTOR,DOCTOR", "NURSE,NURSE_INCHARGE", "DOCTOR,HOSPITAL_ADMIN"})
+    void update_allowsAuthorInCorrectCategory(String category, String role) {
+        NursingNote note = editable(category, role);
+        when(noteRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        NursingNoteRequest request = req("updated");
+        request.setCategory(category);
+        assertThat(service.update("pub-1", request).getNoteText()).isEqualTo("updated");
+        assertThat(note.getCategory()).isEqualTo(category);
+        if ("NURSE".equals(category)) verify(nurseWriteAccess).assertCanWriteFor(1L);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"NURSE,DOCTOR", "DOCTOR,NURSE"})
+    void update_cannotChangeCategory(String persisted, String requested) {
+        NursingNote note = editable(persisted, persisted);
+        NursingNoteRequest request = req("spoofed");
+        request.setCategory(requested);
+        assertThatThrownBy(() -> service.update("pub-1", request)).isInstanceOf(IllegalArgumentException.class);
+        assertThat(note.getCategory()).isEqualTo(persisted);
+        assertThat(note.getNoteText()).isEqualTo("original");
+        verify(noteRepository, never()).save(any());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"NURSE,DOCTOR", "DOCTOR,NURSE"})
+    void update_authorizesPersistedCategory_evenWhenRequestClaimsCurrentRole(String persisted, String role) {
+        NursingNote note = editable(persisted, role);
+        NursingNoteRequest request = req("spoofed");
+        request.setCategory(role);
+        assertThatThrownBy(() -> service.update("pub-1", request)).isInstanceOf(AccessDeniedException.class);
+        assertThat(note.getNoteText()).isEqualTo("original");
+        verify(noteRepository, never()).save(any());
+    }
+
+    @Test
+    void update_rechecksNurseAssignment() {
+        editable("NURSE", "NURSE");
+        doThrow(new AccessDeniedException("Not assigned")).when(nurseWriteAccess).assertCanWriteFor(1L);
+        assertThatThrownBy(() -> service.update("pub-1", req("edit"))).isInstanceOf(AccessDeniedException.class);
+        verify(noteRepository, never()).save(any());
+    }
+
+    @Test
+    void create_rejectsUnknownCategory() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
+        NursingNoteRequest request = req("text");
+        request.setCategory("OTHER");
+        assertThatThrownBy(() -> service.create(request)).isInstanceOf(IllegalArgumentException.class);
+        verify(noteRepository, never()).save(any());
+    }
 }
