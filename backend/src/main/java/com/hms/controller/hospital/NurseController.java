@@ -3,7 +3,7 @@ package com.hms.controller.hospital;
 import com.hms.entity.User;
 import com.hms.security.RequireModule;
 import com.hms.service.hospital.NurseService;
-import com.hms.service.hospital.WardService;
+import com.hms.service.hospital.icu.IcuWardService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -29,7 +29,7 @@ public class NurseController {
     private NurseService nurseService;
 
     @Autowired
-    private WardService wardService;
+    private IcuWardService icuWardService;
 
     @PostMapping
     public ResponseEntity<?> createNurse(@RequestBody Map<String, String> payload) {
@@ -168,7 +168,7 @@ public class NurseController {
 
     @PostMapping("/ward-incharge")
     public ResponseEntity<?> setWardIncharge(@RequestBody com.hms.dto.SetWardInchargeRequest req) {
-        wardService.setIncharge(req.getWardId(), req.getInchargeNurseProfileId());
+        icuWardService.setWardIncharge(req.getWardId(), req.getInchargeNurseProfileId());
         return ResponseEntity.ok(Map.of("message", "Ward incharge updated"));
     }
 }

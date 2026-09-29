@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -50,11 +51,19 @@ public class IcuStayService {
             IcuStay.DISP_REFERRED_OUT, IcuStay.DISP_EXPIRED, IcuStay.DISP_ANOTHER_ICU);
 
     @Autowired private IcuStayRepository icuStayRepository;
-    @Autowired private WardRepository wardRepository;
+    @Autowired private com.hms.repository.IcuWardRepository icuWardRepository;
+    @Autowired private com.hms.repository.IpdAdmissionRepository ipdAdmissionRepository;
+    @Autowired private com.hms.repository.PatientRepository patientRepository;
+    @Autowired private com.hms.repository.BedRepository bedRepository;
     @Autowired private DoctorRepository doctorRepository;
     @Autowired private com.hms.service.RealtimeNotifier notifier;
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private AuditLogService auditLogService;
+
+    @Autowired private com.hms.security.NurseInchargeGuard nurseInchargeGuard;
+    @Autowired private com.hms.repository.NurseProfileRepository nurseProfileRepository;
+    @Autowired private com.hms.repository.PatientNurseAssignmentRepository assignments;
+    @Autowired private com.hms.service.hospital.NurseCoverageService coverageService;
 
     // ── lifecycle, driven by IPD movement ────────────────────────────────────
 
@@ -225,6 +234,133 @@ public class IcuStayService {
         return historyFor(ipdAdmissionId).stream().map(this::toDto).toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<com.hms.dto.icu.IcuPatientSummaryDTO> getAdmittedIcuPatientsForCurrentUser() {
+        Long hospitalId = requireHospitalId();
+        String role = securityHelper.getCurrentUserRole();
+        List<com.hms.entity.IcuWard> icuWards = scopedPatientWards(hospitalId, role);
+        if (icuWards == null || icuWards.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, com.hms.entity.IcuWard> wardMap = icuWards.stream()
+                .collect(java.util.stream.Collectors.toMap(com.hms.entity.IcuWard::getWardId, w -> w, (a, b) -> a));
+
+        List<IpdAdmission> admissions = ipdAdmissionRepository.findByHospitalIdAndStatusInAndWardIdIn(
+                hospitalId, List.of("ADMITTED", "DISCHARGE_PLANNED"), wardMap.keySet());
+
+        if (admissions.isEmpty()) {
+            return List.of();
+        }
+
+        final Long filterDoctorId;
+        if ("DOCTOR".equalsIgnoreCase(role)) {
+            String email = securityHelper.getCurrentUserEmail();
+            filterDoctorId = doctorRepository.findByEmailAndHospitalId(email, hospitalId)
+                    .map(com.hms.entity.Doctor::getId)
+                    .orElse(null);
+            if (filterDoctorId == null) return List.of();
+        } else {
+            filterDoctorId = null;
+        }
+
+        List<Long> ipdIds = admissions.stream().map(IpdAdmission::getId).toList();
+        List<IcuStay> stays = icuStayRepository.findByHospitalIdAndStatusAndIpdAdmissionIdIn(
+                hospitalId, IcuStay.ACTIVE, ipdIds);
+        Map<Long, IcuStay> stayMap = stays.stream()
+                .collect(java.util.stream.Collectors.toMap(IcuStay::getIpdAdmissionId, s -> s, (a, b) -> a));
+
+        List<com.hms.dto.icu.IcuPatientSummaryDTO> result = new java.util.ArrayList<>();
+        for (IpdAdmission ipd : admissions) {
+            if ("NURSE".equals(role)) {
+                Long userId = securityHelper.getCurrentUserId();
+                if (userId == null || (!assignments.existsByIpdAdmissionIdAndNurseUserIdAndIsActiveTrue(ipd.getId(), userId)
+                        && !coverageService.coversAdmission(userId, ipd.getId(), java.time.LocalDate.now()))) {
+                    continue;
+                }
+            }
+            IcuStay stay = stayMap.get(ipd.getId());
+            if (filterDoctorId != null) {
+                boolean isPrimaryDoctor = filterDoctorId.equals(ipd.getDoctorId());
+                boolean isIntensivist = stay != null && filterDoctorId.equals(stay.getIntensivistDoctorId());
+                if (!isPrimaryDoctor && !isIntensivist) {
+                    continue;
+                }
+            }
+
+            com.hms.dto.icu.IcuPatientSummaryDTO dto = new com.hms.dto.icu.IcuPatientSummaryDTO();
+            dto.setIpdId(ipd.getId());
+            dto.setIpdNumber(ipd.getIpdNumber());
+            dto.setPatientId(ipd.getPatientId());
+
+            if (ipd.getPatientId() != null) {
+                patientRepository.findByIdAndHospitalId(ipd.getPatientId(), hospitalId).ifPresent(p -> {
+                    dto.setPatientName(p.getName());
+                    try { dto.setAge(p.getAge()); } catch (Exception ignored) {}
+                    dto.setGender(p.getGender());
+                });
+            }
+
+            com.hms.entity.IcuWard icuWard = wardMap.get(ipd.getWardId());
+            if (icuWard != null) {
+                dto.setIcuWardId(icuWard.getId());
+                dto.setIcuWardName(icuWard.getWardName());
+                dto.setUnitType(icuWard.getUnitType());
+            }
+
+            dto.setBedId(ipd.getBedId());
+            if (ipd.getBedId() != null) {
+                bedRepository.findByBedIdAndHospitalId(ipd.getBedId(), hospitalId).ifPresent(b -> dto.setBedNumber(b.getBedCode()));
+            }
+
+            dto.setDoctorId(ipd.getDoctorId());
+            if (ipd.getDoctorId() != null) {
+                doctorRepository.findByIdAndHospitalIdAndIsActiveTrue(ipd.getDoctorId(), hospitalId).ifPresent(d -> dto.setDoctorName(d.getName()));
+            }
+
+            if (stay != null) {
+                dto.setStayPublicId(stay.getPublicId());
+                if (!"RECEPTIONIST".equals(role)) dto.setAdmissionReason(stay.getAdmissionReason());
+                dto.setIntensivistDoctorId(stay.getIntensivistDoctorId());
+                if (stay.getIntensivistDoctorId() != null) {
+                    doctorRepository.findByIdAndHospitalIdAndIsActiveTrue(stay.getIntensivistDoctorId(), hospitalId).ifPresent(d -> dto.setIntensivistName(d.getName()));
+                }
+            }
+
+            dto.setAdmissionDateTime(ipd.getAdmissionDatetime());
+            dto.setStatus(ipd.getStatus());
+            result.add(dto);
+        }
+
+        result.sort((a, b) -> {
+            if (a.getAdmissionDateTime() == null) return 1;
+            if (b.getAdmissionDateTime() == null) return -1;
+            return b.getAdmissionDateTime().compareTo(a.getAdmissionDateTime());
+        });
+
+        return result;
+    }
+
+    /** Match the established ICU board ward scope before loading patient identities. */
+    private List<com.hms.entity.IcuWard> scopedPatientWards(Long hospitalId, String role) {
+        List<com.hms.entity.IcuWard> wards = icuWardRepository.findByHospitalId(hospitalId);
+        return switch (role == null ? "" : role) {
+            case "HOSPITAL_ADMIN", "DOCTOR", "RECEPTIONIST" -> wards;
+            case "NURSE_INCHARGE" -> {
+                var wardIds = nurseInchargeGuard.myWardIds();
+                yield wards.stream().filter(w -> wardIds.contains(w.getWardId())).toList();
+            }
+            case "NURSE" -> {
+                Long wardId = nurseProfileRepository.findByUserId(securityHelper.getCurrentUserId())
+                        .filter(n -> hospitalId.equals(n.getHospitalId()))
+                        .map(com.hms.entity.NurseProfile::getWardId).orElse(null);
+                yield wardId == null ? List.of()
+                        : wards.stream().filter(w -> wardId.equals(w.getWardId())).toList();
+            }
+            default -> List.of();
+        };
+    }
+
     @Transactional
     public com.hms.dto.icu.IcuStayDTO setIntensivistAndView(String publicId, Long doctorId) {
         return toDto(setIntensivist(publicId, doctorId));
@@ -264,10 +400,7 @@ public class IcuStayService {
 
     private boolean isCriticalCare(Long wardId, Long hospitalId) {
         if (wardId == null) return false;
-        return wardRepository.findByWardIdAndHospitalId(wardId, hospitalId)
-                .map(Ward::getUnitType)
-                .map(CareUnitRegistry::isCriticalCare)
-                .orElse(false);
+        return icuWardRepository.findByWardIdAndHospitalId(wardId, hospitalId).isPresent();
     }
 
     /** A step-up from a known ward is WARD; anything else is a direct entry. */

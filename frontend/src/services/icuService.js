@@ -11,6 +11,9 @@ const IcuService = {
   /** Totals, per-unit counts and every bed row, as one snapshot. */
   getBoard: () => apiClient.get('/hospital/icu/board').then((r) => r.data),
 
+  /** Admitted patients in ICU wards for the dedicated ICU tab. */
+  getIcuPatients: () => apiClient.get('/hospital/icu/patients').then((r) => r.data),
+
   /** Totals and per-unit counts without the bed grid — the dashboard's lighter refresh. */
   getUnits: () => apiClient.get('/hospital/icu/board/units').then((r) => r.data),
 

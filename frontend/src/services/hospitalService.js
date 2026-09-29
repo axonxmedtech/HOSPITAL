@@ -790,8 +790,11 @@ const hospitalService = {
     const response = await apiClient.put(`/hospital/ipd/prescriptions/${prescriptionId}/stop`);
     return response.data;
   },
-  changeBed: async (ipdId, newBedId) => {
-    const response = await apiClient.put(`/hospital/ipd/${ipdId}/change-bed?newBedId=${newBedId}`);
+  changeBed: async (ipdId, newBedId, newWardId) => {
+    const wardQuery = newWardId == null ? '' : `&newWardId=${encodeURIComponent(newWardId)}`;
+    const response = await apiClient.put(
+      `/hospital/ipd/${ipdId}/change-bed?newBedId=${newBedId}${wardQuery}`
+    );
     return response.data;
   },
 

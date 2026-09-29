@@ -1,6 +1,11 @@
 package com.hms.integration;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.TestInstance;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.annotation.Transactional;
+import com.hms.config.DatabaseMigrationRunner;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -9,6 +14,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * ICU Phase 3 — the backfill, against a real MySQL.
@@ -23,6 +29,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest
 @EnabledIfSystemProperty(named = "hms.it.mysql.url", matches = ".+")
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@Transactional
 class IcuBackfillIT {
 
     @DynamicPropertySource
@@ -40,21 +48,36 @@ class IcuBackfillIT {
 
     private String uniq() { return Long.toString(System.nanoTime()); }
 
-    /** The backfill statement, verbatim in shape from DatabaseMigrationRunner. */
+    /**
+     * Hibernate models the new schema; this fixture explicitly represents a pre-upgrade ward.
+     *
+     * <p>Added only if absent: {@link IcuFreshInstallIT} deliberately drops the column to model a
+     * fresh install, and Spring may hand both classes the same cached context -- and therefore the
+     * same database -- so this must not depend on which class ran first.
+     */
+    @BeforeAll
+    void legacySchema() {
+        Integer present = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.COLUMNS "
+                + "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='wards' AND COLUMN_NAME='unit_type'",
+                Integer.class);
+        if (present == null || present == 0) {
+            jdbc.execute("ALTER TABLE wards ADD COLUMN unit_type VARCHAR(20) NOT NULL DEFAULT 'GENERAL'");
+        }
+    }
+
+    /** Invoke production orchestration, including fail-closed validation, rather than copied SQL. */
     private int runBackfill() {
-        return jdbc.update(
-            "INSERT INTO icu_stay (public_id, hospital_id, ipd_admission_id, patient_id, ward_id," +
-            "  status, source, admitted_at, admission_reason, admitted_by_user_id," +
-            "  active_marker, created_at) " +
-            "SELECT UUID(), a.hospital_id, a.id, a.patient_id, a.ward_id," +
-            "  'ACTIVE', 'EXTERNAL_REFERRAL', a.admission_datetime," +
-            "  'Backfilled at ICU-3', NULL, a.id, NOW(6) " +
-            "FROM ipd_admission a " +
-            "JOIN wards w ON w.ward_id = a.ward_id AND w.hospital_id = a.hospital_id " +
-            "WHERE a.status IN ('ADMITTED','DISCHARGE_PLANNED') " +
-            "  AND w.unit_type IN ('ICU','MICU','SICU','NICU','PICU','CCU','HDU') " +
-            "  AND NOT EXISTS (SELECT 1 FROM icu_stay s " +
-            "                  WHERE s.ipd_admission_id = a.id AND s.status = 'ACTIVE')");
+        int before = activeStays();
+        DatabaseMigrationRunner runner = new DatabaseMigrationRunner();
+        ReflectionTestUtils.setField(runner, "jdbcTemplate", jdbc);
+        ReflectionTestUtils.invokeMethod(runner, "migrateIcuWardsAndStays");
+        return activeStays() - before;
+    }
+
+    private void assertLegacyClassificationRetained() {
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.COLUMNS "
+                + "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='wards' AND COLUMN_NAME='unit_type'", Integer.class))
+                .isEqualTo(1);
     }
 
     private long seedAdmission(long hospitalId, String unitType, String admissionStatus) {
@@ -104,6 +127,7 @@ class IcuBackfillIT {
 
         // The verification the plan asks for: occupants == ACTIVE stays.
         assertThat(activeStays()).isEqualTo(currentIcuOccupants());
+        assertLegacyClassificationRetained();
 
         // And no stay was invented for the general ward or the discharged patient.
         Integer strays = jdbc.queryForObject(
@@ -129,5 +153,37 @@ class IcuBackfillIT {
                 "SELECT admission_reason FROM icu_stay WHERE ipd_admission_id = ?",
                 String.class, admissionId);
         assertThat(reason).as("provenance is explicit").contains("Backfilled");
+    }
+
+    @Test
+    void failedWardCopyRetainsLegacyData_andDoesNotBackfillStays() {
+        long hospitalId = 920001L;
+        long admissionId = seedAdmission(hospitalId, "ICU", "ADMITTED");
+        Long wardId = jdbc.queryForObject("SELECT ward_id FROM ipd_admission WHERE id=?", Long.class, admissionId);
+        // A conflicting destination name makes the real INSERT fail its uniqueness constraint.
+        jdbc.update("INSERT INTO icu_wards (public_id,hospital_id,ward_id,ward_name,unit_type,bed_price,total_beds,created_at) "
+                + "SELECT UUID(),hospital_id,ward_id+1000000,ward_name,'ICU',bed_price,total_beds,NOW(6) FROM wards WHERE ward_id=?", wardId);
+        int before = activeStays();
+        assertThatThrownBy(this::runBackfill).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("legacy classification retained");
+        assertLegacyClassificationRetained();
+        assertThat(jdbc.queryForObject("SELECT unit_type FROM wards WHERE ward_id=?", String.class, wardId)).isEqualTo("ICU");
+        assertThat(activeStays()).isEqualTo(before);
+    }
+
+    @Test
+    void incompleteWardCopyFailsClosed_andRetainsLegacyData() {
+        long hospitalId = 930001L;
+        long admissionId = seedAdmission(hospitalId, "MICU", "ADMITTED");
+        Long wardId = jdbc.queryForObject("SELECT ward_id FROM ipd_admission WHERE id=?", Long.class, admissionId);
+        // A partial previous migration linked this ward to the wrong tenant.
+        jdbc.update("INSERT INTO icu_wards (public_id,hospital_id,ward_id,ward_name,unit_type,bed_price,total_beds,created_at) "
+                + "SELECT UUID(),hospital_id+1,ward_id,ward_name,unit_type,bed_price,total_beds,NOW(6) FROM wards WHERE ward_id=?", wardId);
+        int before = activeStays();
+        assertThatThrownBy(this::runBackfill).isInstanceOf(IllegalStateException.class)
+                .hasRootCauseMessage("ICU ward backfill is incomplete or inconsistent");
+        assertLegacyClassificationRetained();
+        assertThat(jdbc.queryForObject("SELECT unit_type FROM wards WHERE ward_id=?", String.class, wardId)).isEqualTo("MICU");
+        assertThat(activeStays()).isEqualTo(before);
     }
 }

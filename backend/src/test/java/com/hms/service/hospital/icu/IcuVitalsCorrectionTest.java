@@ -60,6 +60,7 @@ class IcuVitalsCorrectionTest {
     @Autowired HospitalRepository hospitalRepository;
     @Autowired PatientRepository patientRepository;
     @Autowired WardRepository wardRepository;
+    @Autowired com.hms.repository.IcuWardRepository icuWardRepository;
     @Autowired IpdAdmissionRepository ipdAdmissionRepository;
     @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
 
@@ -102,8 +103,19 @@ class IcuVitalsCorrectionTest {
         w.setHospitalId(hospitalId);
         w.setBedPrice(BigDecimal.ZERO);
         w.setTotalBeds(2);
-        w.setUnitType(unitType);
-        return wardRepository.save(w).getWardId();
+        Ward saved = wardRepository.save(w);
+        if (CareUnitRegistry.isCriticalCare(unitType)) {
+            com.hms.entity.IcuWard icu = new com.hms.entity.IcuWard();
+            icu.setPublicId("icuw-" + uniq());
+            icu.setHospitalId(hospitalId);
+            icu.setWardId(saved.getWardId());
+            icu.setWardName(saved.getWardName());
+            icu.setUnitType(unitType);
+            icu.setBedPrice(BigDecimal.ZERO);
+            icu.setTotalBeds(2);
+            icuWardRepository.save(icu);
+        }
+        return saved.getWardId();
     }
 
     private Long admission(Long wardId) {

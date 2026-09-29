@@ -45,6 +45,15 @@ class WardServiceTest {
     @Mock HospitalWebSocketHandler webSocketHandler;
     @Mock NurseProfileRepository nurseProfileRepository;
     @Mock AuditLogService auditLogService;
+    @Mock com.hms.repository.IcuWardRepository icuWardRepository;
+
+    @org.junit.jupiter.api.BeforeEach
+    void wireBaseWrites() {
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "wardWrites",
+                new WardWriteService(wardRepository, bedRepository, securityHelper,
+                        webSocketHandler, nurseProfileRepository, auditLogService));
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "icuWardRepository", icuWardRepository);
+    }
     @InjectMocks WardService service;
 
     private CreateWardRequest req(String name, Integer totalBeds) {
@@ -121,7 +130,7 @@ class WardServiceTest {
         ward.setInchargeNurseId(null);
         Bed available = new Bed();
         available.setStatus("available");
-        when(wardRepository.findByHospitalId(7L)).thenReturn(List.of(ward));
+        when(wardRepository.findGeneralWardsByHospitalId(7L)).thenReturn(List.of(ward));
         when(bedRepository.findByWardIdAndHospitalId(3L, 7L)).thenReturn(List.of(available));
 
         List<WardResponse> wards = service.getWardsForAdmission();
@@ -152,27 +161,25 @@ class WardServiceTest {
         verify(bedRepository, never()).save(any());
     }
 
-    // ── ICU Phase 2: ward classification (wards.unit_type) ────────────────────
+    // ── General Wards Isolation & Operations ──────────────────────────────────
 
-    private Ward typedWard(Long id, String name, String unitType) {
-        Ward w = savedWard(id, name, 2);
-        w.setUnitType(unitType);
-        return w;
-    }
+    @Test
+    void getAllWards_returnsOnlyGeneralWards() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        Ward w1 = savedWard(1L, "General-A", 10);
+        Ward w2 = savedWard(2L, "General-B", 5);
+        when(wardRepository.findGeneralWardsByHospitalId(7L)).thenReturn(List.of(w1, w2));
 
-    private Bed bedWithStatus(Long id, String status) {
-        Bed b = new Bed();
-        b.setBedId(id);
-        b.setHospitalId(7L);
-        b.setWardId(3L);
-        b.setBedCode("ICU-B" + id);
-        b.setStatus(status);
-        return b;
+        List<WardResponse> responses = service.getAllWards();
+
+        assertThat(responses).hasSize(2);
+        assertThat(responses.get(0).getWardName()).isEqualTo("General-A");
+        assertThat(responses.get(1).getWardName()).isEqualTo("General-B");
+        verify(wardRepository).findGeneralWardsByHospitalId(7L);
     }
 
     @Test
-    void createWard_withoutAUnitType_defaultsToGeneral() {
-        // An existing client that never sends the field keeps creating general wards.
+    void createWard_createsGeneralWardSuccessfully() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
         when(wardRepository.save(any())).thenAnswer(i -> {
             Ward w = i.getArgument(0);
@@ -182,146 +189,24 @@ class WardServiceTest {
         when(bedRepository.findByWardIdAndHospitalId(3L, 7L)).thenReturn(List.of());
         when(bedRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        WardResponse resp = service.createWard(req("General-A", 1));
+        WardResponse resp = service.createWard(req("General-A", 2));
 
-        assertThat(resp.getUnitType()).isEqualTo("GENERAL");
-        assertThat(resp.getUnitTypeLabel()).isEqualTo("General Ward");
+        assertThat(resp.getWardName()).isEqualTo("General-A");
+        assertThat(resp.getTotalBeds()).isEqualTo(2);
     }
 
     @Test
-    void createWard_storesTheRequestedUnitType() {
+    void updateWard_updatesGeneralWardSuccessfully() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
-        when(wardRepository.save(any())).thenAnswer(i -> {
-            Ward w = i.getArgument(0);
-            w.setWardId(3L);
-            return w;
-        });
-        when(bedRepository.findByWardIdAndHospitalId(3L, 7L)).thenReturn(List.of());
-        when(bedRepository.save(any())).thenAnswer(i -> i.getArgument(0));
-
-        CreateWardRequest r = req("Neonatal", 1);
-        r.setUnitType("nicu"); // normalised, not taken verbatim
-
-        WardResponse resp = service.createWard(r);
-
-        assertThat(resp.getUnitType()).isEqualTo("NICU");
-        assertThat(resp.getUnitTypeLabel()).isEqualTo("Neonatal ICU");
-    }
-
-    @Test
-    void createWard_rejectsAnUnknownUnitType() {
-        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
-        CreateWardRequest r = req("Mystery", 1);
-        r.setUnitType("SUPER_ICU");
-
-        assertThatThrownBy(() -> service.createWard(r))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Unknown ward unit type");
-        verify(wardRepository, never()).save(any());
-    }
-
-    @Test
-    void updateWard_reclassifiesAWardWithNoOccupiedBed() {
-        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
-        when(securityHelper.getCurrentUserEmail()).thenReturn("admin@h.test");
-        Ward existing = typedWard(3L, "Ward-3", "GENERAL");
-        when(wardRepository.findById(3L)).thenReturn(java.util.Optional.of(existing));
-        when(wardRepository.save(any())).thenAnswer(i -> i.getArgument(0));
-        when(bedRepository.findByWardIdAndHospitalId(3L, 7L))
-                .thenReturn(List.of(bedWithStatus(1L, BedStatus.AVAILABLE),
-                                    bedWithStatus(2L, BedStatus.CLEANING)));
-
-        UpdateWardRequest r = new UpdateWardRequest();
-        r.setUnitType("ICU");
-
-        WardResponse resp = service.updateWard(3L, r);
-
-        assertThat(resp.getUnitType()).isEqualTo("ICU");
-        verify(auditLogService).logAction(eq("WARD_UNIT_TYPE_CHANGED"), any(), any(), eq(7L),
-                eq("WARD"), eq("3"), any());
-    }
-
-    @Test
-    void updateWard_refusesToReclassifyAWardWithAnOccupiedBed() {
-        // ICU Phase 2 invariant: an ACTIVE critical-care patient and an ICU bed are two views of
-        // one fact. Re-typing under the occupants would break that retroactively.
-        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
-        Ward existing = typedWard(3L, "Ward-3", "GENERAL");
-        when(wardRepository.findById(3L)).thenReturn(java.util.Optional.of(existing));
-        when(bedRepository.findByWardIdAndHospitalId(3L, 7L))
-                .thenReturn(List.of(bedWithStatus(1L, BedStatus.AVAILABLE),
-                                    bedWithStatus(2L, BedStatus.OCCUPIED)));
-
-        UpdateWardRequest r = new UpdateWardRequest();
-        r.setUnitType("ICU");
-
-        assertThatThrownBy(() -> service.updateWard(3L, r))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("occupied beds");
-        assertThat(existing.getUnitType()).isEqualTo("GENERAL");
-        verify(wardRepository, never()).save(any());
-    }
-
-    @Test
-    void updateWard_settingTheSameUnitTypeIsANoOp_evenWithOccupiedBeds() {
-        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
-        Ward existing = typedWard(3L, "ICU-1", "ICU");
-        when(wardRepository.findById(3L)).thenReturn(java.util.Optional.of(existing));
+        Ward existing = savedWard(3L, "Ward-3", 2);
+        when(wardRepository.findByWardIdAndHospitalIdForUpdate(3L, 7L)).thenReturn(java.util.Optional.of(existing));
         when(wardRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         UpdateWardRequest r = new UpdateWardRequest();
-        r.setUnitType("ICU");
+        r.setWardName("Ward-3-Renamed");
 
         WardResponse resp = service.updateWard(3L, r);
 
-        assertThat(resp.getUnitType()).isEqualTo("ICU");
-        // No bed scan was needed, and nothing was audited as a change.
-        verify(bedRepository, never()).findByWardIdAndHospitalId(3L, 7L);
-        verify(auditLogService, never()).logAction(eq("WARD_UNIT_TYPE_CHANGED"),
-                any(), any(), any(), any(), any(), any());
-    }
-
-    @Test
-    void updateWard_withoutAUnitType_leavesTheClassificationUntouched() {
-        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
-        Ward existing = typedWard(3L, "ICU-1", "ICU");
-        when(wardRepository.findById(3L)).thenReturn(java.util.Optional.of(existing));
-        when(wardRepository.save(any())).thenAnswer(i -> i.getArgument(0));
-
-        UpdateWardRequest r = new UpdateWardRequest();
-        r.setWardName("ICU-One");
-
-        WardResponse resp = service.updateWard(3L, r);
-
-        assertThat(resp.getUnitType()).isEqualTo("ICU");
-        assertThat(resp.getWardName()).isEqualTo("ICU-One");
-    }
-
-    @Test
-    void toResponse_treatsABlankUnitTypeAsGeneral() {
-        // A ward migrated by ddl-auto before the column had a DB default was back-filled with ''
-        // rather than 'GENERAL'. Blank is not a registry key and must never surface as one.
-        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
-        Ward blank = savedWard(3L, "Migrated", 1);
-        blank.setUnitType("");
-        when(wardRepository.findByHospitalId(7L)).thenReturn(List.of(blank));
-
-        WardResponse resp = service.getAllWards().get(0);
-
-        assertThat(resp.getUnitType()).isEqualTo("GENERAL");
-        assertThat(resp.getUnitTypeLabel()).isEqualTo("General Ward");
-    }
-
-    @Test
-    void toResponse_treatsANullUnitTypeAsGeneral() {
-        // A ward row written before the migration has no value; it must never read as ICU.
-        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
-        Ward legacy = savedWard(3L, "Legacy", 1);
-        legacy.setUnitType(null);
-        when(wardRepository.findByHospitalId(7L)).thenReturn(List.of(legacy));
-
-        WardResponse resp = service.getAllWards().get(0);
-
-        assertThat(resp.getUnitType()).isEqualTo("GENERAL");
+        assertThat(resp.getWardName()).isEqualTo("Ward-3-Renamed");
     }
 }

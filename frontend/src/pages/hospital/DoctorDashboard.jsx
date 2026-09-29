@@ -1785,7 +1785,6 @@ const DoctorDashboard = () => {
                           <th className="px-4 py-2">Bed</th>
                           <th className="px-4 py-2">Admitted</th>
                           <th className="px-4 py-2">Status</th>
-                          <th className="px-4 py-2">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1806,11 +1805,26 @@ const DoctorDashboard = () => {
                             row.admissionDatetime ||
                             row.ipd?.admissionDatetime;
                           const status = row.status || row.ipd?.status || 'ADMITTED';
+                          const theId =
+                            row.ipdId || row.id || row.ipd?.id || row.ipd?.ipdId || null;
                           return (
                             <tr key={row.ipdId || row.id || ipdNumber || idx} className="border-t">
                               <td className="px-4 py-3">{(page - 1) * ITEMS_PER_PAGE + idx + 1}</td>
                               <td className="px-4 py-3">{ipdNumber || row.id}</td>
-                              <td className="px-4 py-3">{patientName}</td>
+                              <td className="px-4 py-3">
+                                {theId ? (
+                                  <button
+                                    type="button"
+                                    className="font-medium text-blue-600 hover:text-blue-800 hover:underline text-left cursor-pointer"
+                                    onClick={() => navigate(`/ipd/${theId}`)}
+                                    title="Open IPD case"
+                                  >
+                                    {patientName}
+                                  </button>
+                                ) : (
+                                  <span>{patientName}</span>
+                                )}
+                              </td>
                               <td className="px-4 py-3">{doctorName}</td>
                               <td className="px-4 py-3">{wardName}</td>
                               <td className="px-4 py-3">{bedNumber}</td>
@@ -1832,24 +1846,6 @@ const DoctorDashboard = () => {
                                     <span className="text-[10px] text-gray-500">{status}</span>
                                   )}
                                 </div>
-                              </td>
-                              <td className="px-4 py-3">
-                                {(() => {
-                                  const theId =
-                                    row.ipdId || row.id || row.ipd?.id || row.ipd?.ipdId || null;
-                                  return (
-                                    <button
-                                      className={`px-3 py-1 rounded ${theId ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
-                                      onClick={() => {
-                                        if (theId) navigate(`/ipd/${theId}`);
-                                      }}
-                                      disabled={!theId}
-                                      title={theId ? 'Open IPD case' : 'IPD id not available'}
-                                    >
-                                      Open Case
-                                    </button>
-                                  );
-                                })()}
                               </td>
                             </tr>
                           );

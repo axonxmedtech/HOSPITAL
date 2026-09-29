@@ -57,6 +57,7 @@ class IcuStayLifecycleTest {
     @Autowired PatientRepository patientRepository;
     @Autowired DoctorRepository doctorRepository;
     @Autowired WardRepository wardRepository;
+    @Autowired com.hms.repository.IcuWardRepository icuWardRepository;
     @Autowired BedRepository bedRepository;
     @Autowired OpdRepository opdRepository;
     @Autowired IpdAdmissionRepository ipdAdmissionRepository;
@@ -129,8 +130,19 @@ class IcuStayLifecycleTest {
         w.setHospitalId(hospitalId);
         w.setBedPrice(bedPrice);
         w.setTotalBeds(4);
-        w.setUnitType(unitType);
-        return wardRepository.save(w).getWardId();
+        Ward saved = wardRepository.save(w);
+        if (CareUnitRegistry.isCriticalCare(unitType)) {
+            com.hms.entity.IcuWard icu = new com.hms.entity.IcuWard();
+            icu.setPublicId("icuw-" + uniq());
+            icu.setHospitalId(hospitalId);
+            icu.setWardId(saved.getWardId());
+            icu.setWardName(saved.getWardName());
+            icu.setUnitType(unitType);
+            icu.setBedPrice(bedPrice);
+            icu.setTotalBeds(4);
+            icuWardRepository.save(icu);
+        }
+        return saved.getWardId();
     }
 
     private Long bed(Long wardId) {

@@ -60,6 +60,7 @@ class IcuBoardTenancyTest {
     @Autowired BedRepository bedRepository;
     @Autowired IpdAdmissionRepository ipdAdmissionRepository;
     @Autowired UserRepository userRepository;
+    @Autowired com.hms.repository.IcuWardRepository icuWardRepository;
     @Autowired com.hms.repository.IcuStayRepository icuStayRepository;
 
     private static final List<String> MODULES = List.of("OPD", "IPD", "BILLING", "ICU");
@@ -70,6 +71,10 @@ class IcuBoardTenancyTest {
     private String tokenBNoIcu;
     private Long aBedId;
     private Long hospitalIdB;
+    private Long bAdmissionId;
+    @Autowired com.hms.repository.NurseProfileRepository nurseRepository;
+    @Autowired com.hms.repository.PatientNurseAssignmentRepository assignmentRepository;
+    @Autowired com.hms.repository.NurseSubstitutionRepository substitutionRepository;
     private String aPatientName;
     private String bPatientName;
 
@@ -143,8 +148,17 @@ class IcuBoardTenancyTest {
         w.setHospitalId(hid);
         w.setBedPrice(new BigDecimal("5000"));
         w.setTotalBeds(1);
-        w.setUnitType(CareUnitRegistry.ICU);
         long wid = wardRepository.save(w).getWardId();
+
+        com.hms.entity.IcuWard icu = new com.hms.entity.IcuWard();
+        icu.setPublicId("icuw-" + uniq());
+        icu.setHospitalId(hid);
+        icu.setWardId(wid);
+        icu.setWardName(w.getWardName());
+        icu.setUnitType(CareUnitRegistry.ICU);
+        icu.setBedPrice(new BigDecimal("5000"));
+        icu.setTotalBeds(1);
+        icuWardRepository.save(icu);
 
         Bed b = new Bed();
         b.setHospitalId(hid);
@@ -187,7 +201,7 @@ class IcuBoardTenancyTest {
         stay.setActiveMarker(a.getId());
         icuStayRepository.save(stay);
 
-        return new long[] { wid, bid };
+        return new long[] { wid, bid, a.getId() };
     }
 
     @BeforeEach
@@ -200,7 +214,7 @@ class IcuBoardTenancyTest {
 
         long[] a = seedIcu(hidA, "alpha", aPatientName);
         aBedId = a[1];
-        seedIcu(hidB, "bravo", bPatientName);
+        bAdmissionId = seedIcu(hidB, "bravo", bPatientName)[2];
 
         hospitalIdB = hidB;
         tokenA = tokenFor(seedUser(hidA, "alpha"), hidA, MODULES);
@@ -284,7 +298,6 @@ class IcuBoardTenancyTest {
         general.setHospitalId(hospitalIdB);
         general.setBedPrice(new BigDecimal("500"));
         general.setTotalBeds(1);
-        general.setUnitType(CareUnitRegistry.GENERAL);
         long wid = wardRepository.save(general).getWardId();
 
         Bed b = new Bed();
@@ -298,5 +311,138 @@ class IcuBoardTenancyTest {
 
         assertThat(body).doesNotContain("GeneralWardBravo");
         assertThat(body).contains("\"totalBeds\":1"); // still just the one ICU bed
+    }
+
+    private User roleUser(String role) {
+        User user = seedUser(hospitalIdB, role);
+        user.setRole(role);
+        return userRepository.save(user);
+    }
+
+    private IpdAdmission bAdmission() { return ipdAdmissionRepository.findById(bAdmissionId).orElseThrow(); }
+
+    private void assertPatientList(User user, boolean seesPatient) {
+        ResponseEntity<String> response = get("/hospital/icu/patients", tokenFor(user, hospitalIdB, MODULES));
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        assertThat(response.getBody()).doesNotContain(aPatientName);
+        if (seesPatient) assertThat(response.getBody()).contains(bPatientName);
+        else assertThat(response.getBody()).doesNotContain(bPatientName).doesNotContain("Reason-bravo");
+    }
+
+    @Test
+    void patientList_adminIsTenantScoped() {
+        assertPatientList(roleUser("HOSPITAL_ADMIN"), true);
+    }
+
+    @Test
+    void patientList_doctorMustBePrimaryOrIntensivist_andMissingProfileFailsClosed() {
+        User user = roleUser("DOCTOR");
+        assertPatientList(user, false); // no corresponding doctor profile
+        Doctor primary = doctorRepository.findById(bAdmission().getDoctorId()).orElseThrow();
+        primary.setEmail(user.getEmail());
+        doctorRepository.save(primary);
+        assertPatientList(user, true);
+    }
+
+    @Test
+    void patientList_unrelatedDoctorCannotSeeClinicalPatientList() {
+        User user = roleUser("DOCTOR");
+        Doctor unrelated = new Doctor();
+        unrelated.setHospitalId(hospitalIdB);
+        unrelated.setName("Other doctor");
+        unrelated.setEmail(user.getEmail());
+        unrelated.setPhone("9800000002");
+        unrelated.setSpecialization("General");
+        unrelated.setIsActive(true);
+        doctorRepository.save(unrelated);
+        assertPatientList(user, false);
+        var stay = icuStayRepository.findByIpdAdmissionIdAndHospitalIdAndStatus(bAdmissionId, hospitalIdB, "ACTIVE").orElseThrow();
+        stay.setIntensivistDoctorId(unrelated.getId());
+        icuStayRepository.save(stay);
+        assertPatientList(user, true);
+    }
+
+    private com.hms.entity.NurseProfile nurseProfile(User user, Long wardId) {
+        var nurse = new com.hms.entity.NurseProfile();
+        nurse.setHospitalId(hospitalIdB);
+        nurse.setUserId(user.getId());
+        nurse.setName("Nurse");
+        nurse.setEmail(user.getEmail());
+        nurse.setWardId(wardId);
+        return nurseRepository.save(nurse);
+    }
+
+    @Test
+    void patientList_nurseNeedsBothWardScopeAndAssignment() {
+        User user = roleUser("NURSE");
+        var nurse = nurseProfile(user, bAdmission().getWardId());
+        assertPatientList(user, false);
+        var assignment = new com.hms.entity.PatientNurseAssignment();
+        assignment.setHospitalId(hospitalIdB);
+        assignment.setIpdAdmissionId(bAdmissionId);
+        assignment.setPatientId(bAdmission().getPatientId());
+        assignment.setNurseUserId(user.getId());
+        assignment.setAssignedByUserId(user.getId());
+        assignmentRepository.save(assignment);
+        assertPatientList(user, true);
+        nurse.setWardId(null);
+        nurseRepository.save(nurse);
+        assertPatientList(user, false);
+    }
+
+    @Test
+    void patientList_inchargeNeedsWardScope() {
+        User user = roleUser("NURSE_INCHARGE");
+        var nurse = nurseProfile(user, bAdmission().getWardId());
+        nurse.setIsIncharge(true);
+        nurseRepository.save(nurse);
+        assertPatientList(user, false);
+        Ward ward = wardRepository.findById(bAdmission().getWardId()).orElseThrow();
+        ward.setInchargeNurseId(nurse.getId());
+        wardRepository.save(ward);
+        assertPatientList(user, true);
+    }
+
+    @Test
+    void patientList_receptionSeesIdentityButNotClinicalReason() {
+        User user = roleUser("RECEPTIONIST");
+        assertPatientList(user, true);
+        assertThat(get("/hospital/icu/patients", tokenFor(user, hospitalIdB, MODULES)).getBody())
+                .doesNotContain("Reason-bravo");
+    }
+
+    @Test
+    void patientList_keepsModuleAndAuthenticationGates() {
+        assertThat(get("/hospital/icu/patients", tokenBNoIcu).getStatusCode().value()).isIn(401, 403);
+        assertThat(rest.getForEntity("/hospital/icu/patients", String.class).getStatusCode().value()).isIn(401, 403);
+    }
+
+    @Test
+    void patientList_nurseCoverageExpiresWithoutChangingPrimaryAssignment() {
+        User primaryUser = roleUser("NURSE");
+        User replacementUser = roleUser("NURSE");
+        var primary = nurseProfile(primaryUser, bAdmission().getWardId());
+        var replacement = nurseProfile(replacementUser, bAdmission().getWardId());
+        var assignment = new com.hms.entity.PatientNurseAssignment();
+        assignment.setHospitalId(hospitalIdB);
+        assignment.setIpdAdmissionId(bAdmissionId);
+        assignment.setPatientId(bAdmission().getPatientId());
+        assignment.setNurseUserId(primaryUser.getId());
+        assignment.setAssignedByUserId(primaryUser.getId());
+        assignmentRepository.save(assignment);
+        assertPatientList(replacementUser, false);
+        var coverage = new com.hms.entity.NurseSubstitution();
+        coverage.setHospitalId(hospitalIdB);
+        coverage.setPrimaryNurseProfileId(primary.getId());
+        coverage.setReplacementNurseProfileId(replacement.getId());
+        coverage.setFromDate(LocalDate.now());
+        coverage.setToDate(LocalDate.now());
+        substitutionRepository.save(coverage);
+        assertPatientList(replacementUser, true);
+        coverage.setFromDate(LocalDate.now().minusDays(2));
+        coverage.setToDate(LocalDate.now().minusDays(1));
+        substitutionRepository.save(coverage);
+        assertPatientList(replacementUser, false);
+        assertPatientList(primaryUser, true);
     }
 }

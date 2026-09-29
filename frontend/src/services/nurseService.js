@@ -155,9 +155,10 @@ const nurseService = {
     return response.data;
   },
 
-  /** Notes timeline for an admission (newest first). */
-  getNotes: async (admissionId) => {
-    const response = await apiClient.get(`/hospital/nurse/notes/admission/${admissionId}`);
+  /** Notes timeline for an admission (newest first), optionally filtered by category. */
+  getNotes: async (admissionId, category = '') => {
+    const query = category ? `?category=${encodeURIComponent(category)}` : '';
+    const response = await apiClient.get(`/hospital/nurse/notes/admission/${admissionId}${query}`);
     return response.data;
   },
 

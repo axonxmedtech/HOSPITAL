@@ -96,6 +96,9 @@ public class IpdAdmissionService {
     private com.hms.repository.IpdBedHistoryRepository ipdBedHistoryRepository;
 
     @Autowired
+    private com.hms.repository.IcuWardRepository icuWardRepository;
+
+    @Autowired
     private SecurityContextHelper securityHelper;
 
     @Autowired
@@ -374,8 +377,15 @@ public class IpdAdmissionService {
             throw new org.springframework.security.access.AccessDeniedException("Not allowed");
         }
 
+        java.util.Set<Long> icuWardIds = icuWardRepository.findByHospitalId(hospitalId).stream()
+                .map(com.hms.entity.IcuWard::getWardId)
+                .collect(java.util.stream.Collectors.toSet());
+
         java.util.List<com.hms.dto.IpdAdmissionSummaryDTO> result = new java.util.ArrayList<>();
         for (IpdAdmission ipd : admissions) {
+            if (ipd.getWardId() != null && icuWardIds.contains(ipd.getWardId())) {
+                continue;
+            }
             com.hms.dto.IpdAdmissionSummaryDTO dto = new com.hms.dto.IpdAdmissionSummaryDTO();
             dto.setIpdId(ipd.getId());
             dto.setIpdNumber(ipd.getIpdNumber());
@@ -1237,6 +1247,11 @@ public class IpdAdmissionService {
 
     @org.springframework.transaction.annotation.Transactional
     public IpdAdmission changeBed(Long ipdId, Long newBedId) {
+        return changeBed(ipdId, newBedId, null);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public IpdAdmission changeBed(Long ipdId, Long newBedId, Long expectedWardId) {
         IpdAdmission ipd = requireOwnedAdmissionForUpdate(ipdId);
 
         String role = securityHelper.getCurrentUserRole();
@@ -1273,6 +1288,9 @@ public class IpdAdmissionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Bed not found"));
         Bed oldBed = oldBedId.equals(firstBedId) ? first : second;
         Bed newBed = newBedId.equals(firstBedId) ? first : second;
+        if (expectedWardId != null && !expectedWardId.equals(newBed.getWardId())) {
+            throw new IllegalArgumentException("Selected bed does not belong to the destination ward");
+        }
         if (!com.hms.entity.BedStatus.AVAILABLE.equalsIgnoreCase(newBed.getStatus())) {
             throw new ConflictException("Requested bed is no longer available");
         }

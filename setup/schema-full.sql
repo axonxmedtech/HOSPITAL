@@ -912,6 +912,14 @@ CREATE TABLE `icu_stay` (
   KEY `idx_icu_stay_hospital` (`hospital_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- NOTE: `wards` intentionally has NO `unit_type` column.
+-- ICU classification is owned by `icu_wards.unit_type` (defined at the end of this file).
+-- `wards.unit_type` is a LEGACY COMPATIBILITY column that exists only on databases predating
+-- `icu_wards`. DatabaseMigrationRunner copies it into `icu_wards` and then deliberately RETAINS
+-- it (never drops it) as the rollback record of the pre-ICU classification. Fresh installs never
+-- create it and no runtime code reads it -- do not re-add it here for symmetry, or classification
+-- gains a second writable source of truth. See DatabaseMigrationRunner#migrateIcuWardsAndStays,
+-- IcuFreshInstallIT (new database) and IcuBackfillIT (upgraded database).
 CREATE TABLE `wards` (
   `ward_id` bigint NOT NULL AUTO_INCREMENT,
   `bed_price` decimal(38,2) NOT NULL,
@@ -921,7 +929,6 @@ CREATE TABLE `wards` (
   `hospital_id` bigint NOT NULL,
   `total_beds` int NOT NULL,
   `ward_name` varchar(255) NOT NULL,
-  `unit_type` varchar(20) NOT NULL DEFAULT 'GENERAL',
   PRIMARY KEY (`ward_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -2221,5 +2228,27 @@ CREATE TABLE `patient_import_links` (
   UNIQUE KEY `uk_patient_import_link_legacy` (`hospital_id`,`legacy_id`),
   KEY `idx_patient_import_link_created_by` (`hospital_id`,`created_by_batch_id`),
   CONSTRAINT `FK_patient_import_link_patient` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Dedicated ICU wards table. Coordinates with base wards table so all bed, admission,
+-- billing, and nursing relationships remain intact.
+CREATE TABLE IF NOT EXISTS `icu_wards` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(255) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ward_id` bigint NOT NULL,
+  `ward_name` varchar(100) NOT NULL,
+  `unit_type` varchar(20) NOT NULL DEFAULT 'ICU',
+  `bed_price` decimal(10,2) NOT NULL,
+  `total_beds` int NOT NULL,
+  `floor_number` int DEFAULT NULL,
+  `incharge_nurse_id` bigint DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  `updated_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_icu_ward_public_id` (`public_id`),
+  UNIQUE KEY `uk_icu_ward_ward_id` (`ward_id`),
+  UNIQUE KEY `uk_icu_ward_hospital_name` (`hospital_id`, `ward_name`),
+  KEY `idx_icu_wards_hospital` (`hospital_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 

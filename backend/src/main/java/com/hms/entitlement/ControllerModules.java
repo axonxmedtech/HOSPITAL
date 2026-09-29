@@ -80,7 +80,7 @@ public final class ControllerModules {
         put(EntitlementRegistry.ICU, "IcuDashboardController", "IcuStayController",
                 "IcuIoController", "IcuInfusionController", "IcuVentilatorController",
                 "IcuVentilatorParameterController", "IcuSeverityScoreController",
-                "IcuScoreTypeSettingController", "IcuAlertThresholdController");
+                "IcuScoreTypeSettingController", "IcuAlertThresholdController", "IcuWardController");
 
         put(EntitlementRegistry.BILLING,
                 "BillingController", "HospitalFeeController", "HospitalServiceController");

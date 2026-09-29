@@ -173,8 +173,9 @@ public class IpdAdmissionController {
     @RequireModule("IPD")
     @PutMapping("/{id}/change-bed")
     @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
-    public ResponseEntity<?> changeBed(@PathVariable("id") Long id, @RequestParam("newBedId") Long newBedId) {
-        IpdAdmission updated = ipdAdmissionService.changeBed(id, newBedId);
+    public ResponseEntity<?> changeBed(@PathVariable("id") Long id, @RequestParam("newBedId") Long newBedId,
+                                       @RequestParam(value = "newWardId", required = false) Long newWardId) {
+        IpdAdmission updated = ipdAdmissionService.changeBed(id, newBedId, newWardId);
         return ResponseEntity.ok(updated);
     }
 }

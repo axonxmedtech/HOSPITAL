@@ -19,7 +19,8 @@ import com.hms.repository.PatientNurseAssignmentRepository;
 import com.hms.repository.PatientRepository;
 import com.hms.repository.NurseProfileRepository;
 import com.hms.repository.VitalsRecordRepository;
-import com.hms.repository.WardRepository;
+import com.hms.entity.IcuWard;
+import com.hms.repository.IcuWardRepository;
 import com.hms.security.NurseInchargeGuard;
 import com.hms.security.SecurityContextHelper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -58,7 +59,7 @@ public class IcuBoardService {
     /** An admission occupies a bed while it is in one of these states. */
     private static final List<String> ACTIVE_ADMISSION_STATUSES = List.of("ADMITTED", "DISCHARGE_PLANNED");
 
-    @Autowired private WardRepository wardRepository;
+    @Autowired private IcuWardRepository icuWardRepository;
     @Autowired private BedRepository bedRepository;
     @Autowired private IpdAdmissionRepository ipdAdmissionRepository;
     @Autowired private PatientRepository patientRepository;
@@ -89,19 +90,16 @@ public class IcuBoardService {
         Long hospitalId = requireHospitalId();
         IcuDashboardDTO dto = new IcuDashboardDTO();
 
-        // Every critical-care ward in the tenant — used to answer "is ICU set up at all?"
-        // separately from "may this caller see any of it?", so a nurse with no ICU ward gets an
-        // empty board rather than a misleading "configure ICU" prompt.
-        List<Ward> tenantUnits =
-                wardRepository.findByHospitalIdAndUnitTypeIn(hospitalId, CareUnitRegistry.criticalCareKeys());
+        // Every critical-care ward in the tenant — read directly from dedicated icu_wards
+        List<IcuWard> tenantUnits = icuWardRepository.findByHospitalId(hospitalId);
         dto.setHasCriticalCareUnits(!tenantUnits.isEmpty());
 
-        List<Ward> units = applyRoleScope(tenantUnits);
+        List<IcuWard> units = applyRoleScope(tenantUnits);
         if (units.isEmpty()) {
             return dto;
         }
 
-        List<Long> wardIds = units.stream().map(Ward::getWardId).toList();
+        List<Long> wardIds = units.stream().map(IcuWard::getWardId).toList();
         List<Bed> beds = bedRepository.findByHospitalIdAndWardIdIn(hospitalId, wardIds);
         List<IpdAdmission> admissions = ipdAdmissionRepository
                 .findByHospitalIdAndStatusInAndWardIdIn(hospitalId, ACTIVE_ADMISSION_STATUSES, wardIds);
@@ -137,11 +135,11 @@ public class IcuBoardService {
         DetailScope scope = resolveDetailScope(hospitalId);
         LocalDate today = LocalDate.now();
 
-        for (Ward ward : units) {
+        for (IcuWard ward : units) {
             IcuUnitSummaryDTO unit = new IcuUnitSummaryDTO();
             unit.setWardId(ward.getWardId());
             unit.setWardName(ward.getWardName());
-            String unitType = unitTypeOf(ward);
+            String unitType = ward.getUnitType();
             unit.setUnitType(unitType);
             unit.setUnitTypeLabel(CareUnitRegistry.labelOf(unitType));
             unit.setInchargeNurseId(ward.getInchargeNurseId());
@@ -231,7 +229,7 @@ public class IcuBoardService {
         return out;
     }
 
-    private IcuBedRowDTO toRow(Ward ward, String unitType, Bed bed, IpdAdmission admission,
+    private IcuBedRowDTO toRow(IcuWard ward, String unitType, Bed bed, IpdAdmission admission,
                                String mismatch, Map<Long, Patient> patients,
                                Map<Long, Doctor> doctors, Map<Long, VitalsRecord> vitals,
                                Map<Long, com.hms.dto.icu.IcuStayDTO> stays,
@@ -336,7 +334,7 @@ public class IcuBoardService {
      * hospital see every unit, a Nurse Incharge is limited to the wards
      * {@link NurseInchargeGuard} already governs, and a staff nurse sees their own ward.
      */
-    private List<Ward> applyRoleScope(List<Ward> criticalCareWards) {
+    private List<IcuWard> applyRoleScope(List<IcuWard> criticalCareWards) {
         if (criticalCareWards.isEmpty()) return List.of();
         String role = securityHelper.getCurrentUserRole();
         if (role == null) return List.of();
@@ -425,10 +423,6 @@ public class IcuBoardService {
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
-
-    private String unitTypeOf(Ward ward) {
-        return ward.getUnitType() == null ? CareUnitRegistry.GENERAL : ward.getUnitType();
-    }
 
     private Long requireHospitalId() {
         Long hospitalId = securityHelper.getCurrentHospitalId();

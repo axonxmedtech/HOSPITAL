@@ -52,7 +52,10 @@ public class NursingNoteService {
             throw new IllegalArgumentException("ipdAdmissionId is required");
         }
         IpdAdmission admission = requireAdmission(req.getIpdAdmissionId(), hospitalId);
-        nurseWriteAccess.assertCanWriteFor(admission.getId());
+
+        String category = normalizedCategory(req.getCategory());
+        assertCategoryWrite(category, admission.getId(), "create");
+
         String text = validateText(req.getNoteText());
 
         NursingNote n = new NursingNote();
@@ -62,25 +65,30 @@ public class NursingNoteService {
         n.setNurseUserId(securityHelper.getCurrentUserId());
         n.setNoteText(text);
         n.setOrders(req.getOrders());
-        n.setCategory(req.getCategory());
+        n.setCategory(category);
         n.setSurgeryId(req.getSurgeryId());
         n.setRecordedAt(LocalDateTime.now());
         n.setPerformedByNurseId(performingNurseResolver.resolve(req.getPerformedByNurseId()));
         n.setIsActive(true);
         NursingNote saved = noteRepository.save(n);
 
-        auditAndNotify("NURSING_NOTE_ADDED", "Added nursing note for IPD " + admission.getIpdNumber(),
+        auditAndNotify("NURSING_NOTE_ADDED", "Added " + category.toLowerCase() + " note for IPD " + admission.getIpdNumber(),
                 hospitalId, admission.getId());
         return saved;
     }
 
-    public List<NursingNote> getByAdmission(Long ipdAdmissionId) {
+    public List<NursingNote> getByAdmission(Long ipdAdmissionId, String category) {
         Long hospitalId = requireHospitalId();
         IpdAdmission admission = requireAdmission(ipdAdmissionId, hospitalId);
         if ("NURSE".equals(securityHelper.getCurrentUserRole())) {
             nurseAccessGuard.assertAssigned(admission.getId());
         }
-        return noteRepository.findByIpdAdmissionIdAndIsActiveTrueOrderByRecordedAtDesc(ipdAdmissionId);
+        String cat = (category != null && !category.trim().isEmpty()) ? category.trim().toUpperCase() : null;
+        return noteRepository.findByAdmissionAndCategory(ipdAdmissionId, cat);
+    }
+
+    public List<NursingNote> getByAdmission(Long ipdAdmissionId) {
+        return getByAdmission(ipdAdmissionId, null);
     }
 
     public java.util.List<com.hms.entity.NursingNote> getBySurgery(Long surgeryId) {
@@ -94,9 +102,13 @@ public class NursingNoteService {
     public NursingNote update(String publicId, NursingNoteRequest req) {
         formAccessService.assertCanEdit("NOTES");
         NursingNote n = requireEditableOwnNote(publicId);
+        String category = normalizedCategory(n.getCategory());
+        assertCategoryWrite(category, n.getIpdAdmissionId(), "update");
+        if (req.getCategory() != null && !category.equals(normalizedCategory(req.getCategory()))) {
+            throw new IllegalArgumentException("A note's category cannot be changed");
+        }
         n.setNoteText(validateText(req.getNoteText()));
         if (req.getOrders() != null) n.setOrders(req.getOrders());
-        if (req.getCategory() != null) n.setCategory(req.getCategory());
         NursingNote saved = noteRepository.save(n);
         auditAndNotify("NURSING_NOTE_UPDATED", "Edited nursing note " + n.getPublicId(), n.getHospitalId(), n.getIpdAdmissionId());
         return saved;
@@ -128,6 +140,29 @@ public class NursingNoteService {
             throw new IllegalArgumentException("Edit window has passed for this note");
         }
         return n;
+    }
+
+    private String normalizedCategory(String category) {
+        String normalized = category == null || category.isBlank() ? "NURSE"
+                : category.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!"NURSE".equals(normalized) && !"DOCTOR".equals(normalized)) {
+            throw new IllegalArgumentException("Unknown note category");
+        }
+        return normalized;
+    }
+
+    private void assertCategoryWrite(String category, Long admissionId, String operation) {
+        String role = securityHelper.getCurrentUserRole();
+        if ("DOCTOR".equals(category)) {
+            if (!"DOCTOR".equals(role) && !"HOSPITAL_ADMIN".equals(role)) {
+                throw new AccessDeniedException("Only doctors can " + operation + " Doctor Round Notes");
+            }
+        } else {
+            if (!"NURSE".equals(role) && !"NURSE_INCHARGE".equals(role) && !"HOSPITAL_ADMIN".equals(role)) {
+                throw new AccessDeniedException("Only nurses can " + operation + " Nurse Round Notes");
+            }
+            nurseWriteAccess.assertCanWriteFor(admissionId);
+        }
     }
 
     private String validateText(String text) {

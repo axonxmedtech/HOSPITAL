@@ -4,6 +4,8 @@ import ConfirmationModal from '../../components/ConfirmationModal';
 import DateSelect from '../../components/DateSelect';
 import EmptyState from '../../components/EmptyState';
 import FrequencyInput from '../../components/FrequencyInput';
+import IcuAdmitModal from '../../components/IcuAdmitModal';
+import IcuDischargeToIpdModal from '../../components/IcuDischargeToIpdModal';
 import Navbar from '../../components/Navbar';
 import PageHeader from '../../components/PageHeader';
 import ProfileModal from '../../components/ProfileModal';
@@ -14,6 +16,7 @@ import useWebSocket from '../../hooks/useWebSocket';
 import authService from '../../services/authService';
 import formAccessService from '../../services/formAccessService';
 import hospitalService from '../../services/hospitalService';
+import icuService from '../../services/icuService';
 import otService from '../../services/otService';
 import wardService from '../../services/wardService';
 import { FOOD_TIMING_OPTIONS, isFoodTimingApplicable } from '../../utils/foodTiming';
@@ -39,13 +42,21 @@ const IpdDetails = () => {
   const [data, setData] = useState(null);
   const [user, setUser] = useState(() => authService.getCurrentUser() || {});
   const isDoctor = authService.isDoctor();
+  const isNurse = user?.role === 'NURSE' || user?.role === 'NURSE_INCHARGE';
   const isReceptionist = authService.isReceptionist();
   const isSoloDoctor =
     isDoctor && (user?.receptionMode === 'SOLO' || user?.receptionMode === 'BOTH');
+  const [notesModal, setNotesModal] = useState({ isOpen: false, category: 'DOCTOR' });
   const { success, error: toastError } = useToast();
   const [otSurgery, setOtSurgery] = useState(null);
   const [otModalOpen, setOtModalOpen] = useState(false);
   const hasOT = (user?.modules || []).includes('OT');
+
+  // ICU admission & discharge state
+  const [icuStays, setIcuStays] = useState([]);
+  const [isIcuAdmitOpen, setIsIcuAdmitOpen] = useState(false);
+  const [isIcuDischargeOpen, setIsIcuDischargeOpen] = useState(false);
+  const isIcuActive = icuStays[0]?.status === 'ACTIVE';
 
   // Files & Access: which clinical forms this role may see / edit here.
   const [tab, setTab] = useState('overview');
@@ -87,7 +98,6 @@ const IpdDetails = () => {
     { id: 'overview', label: 'Overview' },
     ...(verdictFor('vitals') !== 'HIDDEN' ? [{ id: 'vitals', label: 'Vitals' }] : []),
     ...(verdictFor('medication') !== 'HIDDEN' ? [{ id: 'medication', label: 'Medication' }] : []),
-    ...(verdictFor('notes') !== 'HIDDEN' ? [{ id: 'notes', label: 'Notes' }] : []),
     ...(verdictFor('assessment') !== 'HIDDEN'
       ? [{ id: 'assessment', label: 'Initial Assessment' }]
       : []),
@@ -419,8 +429,12 @@ const IpdDetails = () => {
   const load = async (showSpinner = true) => {
     if (showSpinner) setLoading(true);
     try {
-      const resp = await hospitalService.getIpdDetails(id);
+      const [resp, stays] = await Promise.all([
+        hospitalService.getIpdDetails(id),
+        icuService.getStaysForAdmission(id).catch(() => []),
+      ]);
       setData(resp);
+      setIcuStays(Array.isArray(stays) ? stays : []);
     } catch (err) {
       console.error('Failed to load IPD details', err);
       setData(null);
@@ -442,7 +456,10 @@ const IpdDetails = () => {
       !dischargeModal.isOpen &&
       !medicineModal.isOpen &&
       !bedModal.isOpen &&
-      !billModal.isOpen
+      !billModal.isOpen &&
+      !isIcuAdmitOpen &&
+      !isIcuDischargeOpen &&
+      !notesModal.isOpen
     ) {
       load(silent);
     }
@@ -682,6 +699,54 @@ const IpdDetails = () => {
                       Create Surgery Request
                     </button>
                   )}
+                  {/* Contextual ICU Action Button: Admit to ICU or Discharge to IPD */}
+                  {(isAdmin || isDoctor || isReceptionist) &&
+                    (data.status === 'ADMITTED' || data.status === 'DISCHARGE_PLANNED') &&
+                    (isIcuActive ? (
+                      <button
+                        type="button"
+                        onClick={() => setIsIcuDischargeOpen(true)}
+                        className="px-3 py-1.5 rounded-lg text-sm font-semibold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 shadow-xs transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                        title="Step down / transfer patient from ICU to General IPD Ward"
+                      >
+                        <svg
+                          className="w-4 h-4 text-amber-700"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+                          />
+                        </svg>
+                        Discharge to IPD
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setIsIcuAdmitOpen(true)}
+                        className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 shadow-xs transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                        title="Transfer patient to Intensive Care Unit (ICU)"
+                      >
+                        <svg
+                          className="w-4 h-4 text-white"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 4v16m8-8H4"
+                          />
+                        </svg>
+                        Admit to ICU
+                      </button>
+                    ))}
                   {isDoctor && data.status === 'ADMITTED' && (
                     <button
                       onClick={onPlanDischarge}
@@ -750,14 +815,6 @@ const IpdDetails = () => {
                     admissionId={admissionId}
                     readOnly={verdictFor('scores') === 'READ_ONLY'}
                     refreshKey={panelRefreshKey}
-                  />
-                </div>
-              )}
-              {tab === 'notes' && (
-                <div className="mt-4">
-                  <NotesPanel
-                    admissionId={admissionId}
-                    readOnly={verdictFor('notes') === 'READ_ONLY'}
                   />
                 </div>
               )}
@@ -1914,6 +1971,71 @@ const IpdDetails = () => {
                     </>
                   )}
 
+                  <div className="mb-4">
+                    <h3 className="font-semibold mb-2">Round Notes</h3>
+                    <div className="flex flex-col gap-2">
+                      <button
+                        type="button"
+                        className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg border border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100 transition shadow-sm"
+                        onClick={() => setNotesModal({ isOpen: true, category: 'DOCTOR' })}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <svg
+                            className="w-4 h-4 text-blue-600"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                            />
+                          </svg>
+                          Doctors Round Notes
+                        </span>
+                        <span
+                          className={`text-[10px] uppercase tracking-wide font-bold px-1.5 py-0.5 rounded ${
+                            isDoctor ? 'bg-blue-200 text-blue-900' : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {isDoctor ? 'Write & Read' : 'Read Only'}
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg border border-teal-200 bg-teal-50 text-teal-800 hover:bg-teal-100 transition shadow-sm"
+                        onClick={() => setNotesModal({ isOpen: true, category: 'NURSE' })}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <svg
+                            className="w-4 h-4 text-teal-600"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                            />
+                          </svg>
+                          Nurse Round Notes
+                        </span>
+                        <span
+                          className={`text-[10px] uppercase tracking-wide font-bold px-1.5 py-0.5 rounded ${
+                            isNurse ? 'bg-teal-200 text-teal-900' : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {isNurse ? 'Write & Read' : 'Read Only'}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+
                   <h3 className="font-semibold mb-2">Billing</h3>
                   {canManageBilling ? (
                     <div>
@@ -1962,6 +2084,46 @@ const IpdDetails = () => {
                   admissionId={id}
                   onClose={() => setOtModalOpen(false)}
                   onCreated={() => {}}
+                />
+              )}
+
+              {/* ICU Admit Modal (single-patient contextual) */}
+              {isIcuAdmitOpen && data && (
+                <IcuAdmitModal
+                  isOpen={isIcuAdmitOpen}
+                  onClose={() => setIsIcuAdmitOpen(false)}
+                  initialPatient={{
+                    id: admissionId,
+                    ipdId: admissionId,
+                    ipdNumber: data.ipdNumber,
+                    patientName: data.patient?.name,
+                    wardName: data.admission?.ward,
+                    bedNumber: data.admission?.bed,
+                  }}
+                  onSuccess={() => {
+                    load(false);
+                    setPanelRefreshKey((k) => k + 1);
+                  }}
+                />
+              )}
+
+              {/* ICU Discharge to IPD Modal (single-patient contextual) */}
+              {isIcuDischargeOpen && data && (
+                <IcuDischargeToIpdModal
+                  isOpen={isIcuDischargeOpen}
+                  onClose={() => setIsIcuDischargeOpen(false)}
+                  initialIcuPatient={{
+                    id: admissionId,
+                    ipdId: admissionId,
+                    ipdNumber: data.ipdNumber,
+                    patientName: data.patient?.name,
+                    icuWardName: data.admission?.ward,
+                    bedNumber: data.admission?.bed,
+                  }}
+                  onSuccess={() => {
+                    load(false);
+                    setPanelRefreshKey((k) => k + 1);
+                  }}
                 />
               )}
 
@@ -2252,6 +2414,74 @@ const IpdDetails = () => {
                         </div>
                       </div>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* Doctors / Nurse Round Notes Modal */}
+              {notesModal.isOpen && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+                  <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50/80">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`w-3 h-3 rounded-full ${
+                            notesModal.category === 'DOCTOR' ? 'bg-blue-600' : 'bg-teal-600'
+                          }`}
+                        />
+                        <div>
+                          <h3 className="text-lg font-bold text-gray-900">
+                            {notesModal.category === 'DOCTOR'
+                              ? "Doctor's Round Notes"
+                              : "Nurse's Round Notes"}
+                          </h3>
+                          <p className="text-xs text-gray-500">
+                            Patient:{' '}
+                            <span className="font-semibold text-gray-700">{data?.patientName}</span>
+                            {' • '}
+                            <span className="font-medium text-gray-600">
+                              {notesModal.category === 'DOCTOR'
+                                ? isDoctor
+                                  ? 'Write & Read Access'
+                                  : 'Read Only Mode'
+                                : isNurse
+                                  ? 'Write & Read Access'
+                                  : 'Read Only Mode'}
+                            </span>
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setNotesModal({ isOpen: false, category: 'DOCTOR' })}
+                        className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                      >
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="p-6 overflow-y-auto flex-1">
+                      <NotesPanel
+                        admissionId={admissionId}
+                        category={notesModal.category}
+                        readOnly={
+                          verdictFor('notes') === 'READ_ONLY' ||
+                          (notesModal.category === 'DOCTOR' ? !isDoctor : !isNurse)
+                        }
+                        refreshKey={panelRefreshKey}
+                      />
+                    </div>
                   </div>
                 </div>
               )}

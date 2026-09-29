@@ -157,10 +157,6 @@ public class DatabaseMigrationRunner {
 
         ensurePatientDocumentsTable(); // V20 -- documents patients bring with them
 
-        // ICU Phase 2 — ward classification (CareUnitRegistry). GENERAL by default, so every
-        // existing ward keeps behaving exactly as before and no backfill is needed.
-        addColumnIfMissing("wards", "unit_type", "VARCHAR(20) NOT NULL DEFAULT 'GENERAL'");
-        backfillWardUnitType();
         ensureIcuAlertThresholdTable();// ICU Phase 9
         ensureIcuSeverityScoreTables();// ICU Phase 8
         ensureIcuVentilatorTables();   // ICU Phase 7
@@ -168,7 +164,7 @@ public class DatabaseMigrationRunner {
         ensureIcuIoEntryTable();       // ICU Phase 5
         ensureVitalsIcuColumns();      // ICU Phase 4
         ensureIcuStayTable();          // ICU Phase 3
-        backfillIcuStaysForCurrentOccupants();
+        migrateIcuWardsAndStays();
         ensurePatientDuplicatePhoneAckColumns(); // Patient duplicate prevention (Phase A)
 
     }
@@ -2671,32 +2667,6 @@ public class DatabaseMigrationRunner {
     }
 
     /**
-     * Repairs wards whose unit_type is blank.
-     *
-     * <p>ICU Phase 2 declared the column NOT NULL with a Java-side default only. Hibernate's
-     * ddl-auto=update therefore emitted an ALTER with no DB default, and MySQL back-filled the
-     * existing rows with '' rather than 'GENERAL' — this migration runs at ApplicationReadyEvent,
-     * which is AFTER Hibernate, so its own DEFAULT arrived too late for a database that already
-     * had wards. The entity now carries an explicit columnDefinition so new deployments never
-     * take that path; this repairs the ones that already did.
-     *
-     * <p>Harmless while it lasted — CareUnitRegistry.isCriticalCare("") is false, so a blank ward
-     * correctly stayed off the ICU board — but a blank is not a valid registry key and must not
-     * be allowed to persist.
-     */
-    private void backfillWardUnitType() {
-        try {
-            int fixed = jdbcTemplate.update(
-                    "UPDATE wards SET unit_type = 'GENERAL' WHERE unit_type IS NULL OR TRIM(unit_type) = ''");
-            if (fixed > 0) {
-                log.info("DB migration applied: defaulted unit_type on {} ward(s)", fixed);
-            }
-        } catch (Exception e) {
-            log.warn("backfillWardUnitType skipped: {}", e.getMessage());
-        }
-    }
-
-    /**
      * ICU Phase 9 - alert thresholds.
      *
      * <p>One table, and it ships EMPTY: unlike the other ICU config tables there is no lazy
@@ -2998,8 +2968,6 @@ public class DatabaseMigrationRunner {
      */
     private void backfillIcuStaysForCurrentOccupants() {
         try {
-            String criticalCare = com.hms.service.hospital.icu.CareUnitRegistry.criticalCareKeys()
-                    .stream().map(k -> "'" + k + "'").reduce((a, b) -> a + "," + b).orElse("''");
             int created = jdbcTemplate.update(
                 "INSERT INTO icu_stay (public_id, hospital_id, ipd_admission_id, patient_id, ward_id," +
                 "  status, source, admitted_at, admission_reason, admitted_by_user_id," +
@@ -3007,19 +2975,18 @@ public class DatabaseMigrationRunner {
                 "SELECT UUID(), a.hospital_id, a.id, a.patient_id, a.ward_id," +
                 "  'ACTIVE', 'EXTERNAL_REFERRAL', a.admission_datetime," +
                 "  'Backfilled at ICU-3: this patient already occupied a critical-care bed. " +
-                     "The actual time critical care began was not recorded.', NULL," +
+                "The actual time critical care began was not recorded.', NULL," +
                 "  a.id, NOW(6) " +
                 "FROM ipd_admission a " +
-                "JOIN wards w ON w.ward_id = a.ward_id AND w.hospital_id = a.hospital_id " +
+                "JOIN icu_wards iw ON iw.ward_id = a.ward_id AND iw.hospital_id = a.hospital_id " +
                 "WHERE a.status IN ('ADMITTED','DISCHARGE_PLANNED') " +
-                "  AND w.unit_type IN (" + criticalCare + ") " +
                 "  AND NOT EXISTS (SELECT 1 FROM icu_stay s " +
                 "                  WHERE s.ipd_admission_id = a.id AND s.status = 'ACTIVE')");
             if (created > 0) {
                 log.info("DB migration applied: backfilled {} ACTIVE ICU stay(s) for current occupants", created);
             }
         } catch (Exception e) {
-            log.warn("backfillIcuStaysForCurrentOccupants skipped: {}", e.getMessage());
+            throw new IllegalStateException("ICU stay backfill failed; legacy classification retained", e);
         }
     }
 
@@ -3057,6 +3024,98 @@ public class DatabaseMigrationRunner {
         addColumnIfMissing("patients", "duplicate_phone_ack_at", "DATETIME(6) DEFAULT NULL");
         addColumnIfMissing("patients", "duplicate_phone_ack_by", "VARCHAR(100) DEFAULT NULL");
         ensurePatientActivePhoneUniqueness();
+    }
+
+    /**
+     * Dedicated ICU wards table. Coordinates with base wards table so all bed, admission,
+     * billing, and nursing relationships remain intact.
+     */
+    private void ensureIcuWardsTable() {
+        createTableIfMissing("icu_wards",
+                "CREATE TABLE icu_wards ("
+                + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                + " public_id VARCHAR(255) NOT NULL,"
+                + " hospital_id BIGINT NOT NULL,"
+                + " ward_id BIGINT NOT NULL,"
+                + " ward_name VARCHAR(100) NOT NULL,"
+                + " unit_type VARCHAR(20) NOT NULL DEFAULT 'ICU',"
+                + " bed_price DECIMAL(10,2) NOT NULL,"
+                + " total_beds INT NOT NULL,"
+                + " floor_number INT NULL,"
+                + " incharge_nurse_id BIGINT NULL,"
+                + " created_at DATETIME(6) NOT NULL,"
+                + " updated_at DATETIME(6) NULL,"
+                + " PRIMARY KEY (id),"
+                + " UNIQUE KEY uk_icu_ward_public_id (public_id),"
+                + " UNIQUE KEY uk_icu_ward_ward_id (ward_id),"
+                + " UNIQUE KEY uk_icu_ward_hospital_name (hospital_id, ward_name),"
+                + " KEY idx_icu_wards_hospital (hospital_id)"
+                + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+
+    /**
+     * Idempotently backfills existing critical care wards from base wards into icu_wards
+     * if the legacy unit_type column is still present in the wards table.
+     */
+    private void backfillExistingIcuWards() {
+        try {
+            Integer hasCol = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wards' AND COLUMN_NAME = 'unit_type'",
+                Integer.class);
+            if (hasCol != null && hasCol > 0) {
+                String criticalCare = com.hms.service.hospital.icu.CareUnitRegistry.criticalCareKeys()
+                        .stream().map(k -> "'" + k + "'").reduce((a, b) -> a + "," + b).orElse("''");
+                int backfilled = jdbcTemplate.update(
+                    "INSERT INTO icu_wards (public_id, hospital_id, ward_id, ward_name, unit_type, bed_price, total_beds, floor_number, incharge_nurse_id, created_at, updated_at) " +
+                    "SELECT UUID(), w.hospital_id, w.ward_id, w.ward_name, w.unit_type, w.bed_price, w.total_beds, w.floor_number, w.incharge_nurse_id, NOW(6), NOW(6) " +
+                    "FROM wards w " +
+                    "WHERE w.unit_type IN (" + criticalCare + ") " +
+                    "  AND NOT EXISTS (SELECT 1 FROM icu_wards iw WHERE iw.ward_id = w.ward_id)");
+                Integer incomplete = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM wards w LEFT JOIN icu_wards iw ON iw.ward_id = w.ward_id " +
+                    "WHERE w.unit_type IN (" + criticalCare + ") AND " +
+                    "(iw.id IS NULL OR iw.hospital_id <> w.hospital_id)",
+                    Integer.class);
+                if (incomplete == null || incomplete != 0) {
+                    throw new IllegalStateException("ICU ward backfill is incomplete or inconsistent");
+                }
+                if (backfilled > 0) {
+                    log.info("DB migration applied: backfilled {} ICU ward(s) into icu_wards", backfilled);
+                }
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("ICU ward backfill failed; legacy classification retained", e);
+        }
+    }
+
+    /**
+     * Additive migration: retain the legacy classification for recovery/rollback.
+     * A failed or incomplete copy must stop startup before stay backfill proceeds.
+     *
+     * <p><b>Lifecycle of {@code wards.unit_type} — legacy compatibility column.</b> ICU
+     * classification is owned by {@code icu_wards.unit_type}. The {@code Ward} entity no longer
+     * maps {@code unit_type} and {@code setup/schema-full.sql} does not declare it on
+     * {@code wards}, so a NEW database never has the column; an UPGRADED database keeps it, and
+     * nothing here will ever drop it. That asymmetry is deliberate, not an oversight:
+     *
+     * <ul>
+     *   <li>dropping it is destructive and irreversible — it is the only remaining record of how
+     *       a pre-ICU ward was classified, so it is retained as the rollback path if the copy
+     *       into {@code icu_wards} is ever found to be wrong;</li>
+     *   <li>re-adding it to fresh installs for symmetry would resurrect a second, writable source
+     *       of truth for classification that no runtime code reads.</li>
+     * </ul>
+     *
+     * <p>Because the backfill now fails closed, the missing-column case must stay explicitly
+     * guarded: {@link #backfillExistingIcuWards()} checks {@code information_schema} first and
+     * skips when the column is absent, and {@link #backfillIcuStaysForCurrentOccupants()} joins
+     * {@code icu_wards} rather than the legacy column. Both paths are proven by
+     * {@code IcuFreshInstallIT} (new database) and {@code IcuBackfillIT} (upgraded database).
+     */
+    private void migrateIcuWardsAndStays() {
+        ensureIcuWardsTable();
+        backfillExistingIcuWards();
+        backfillIcuStaysForCurrentOccupants();
     }
 
 }
