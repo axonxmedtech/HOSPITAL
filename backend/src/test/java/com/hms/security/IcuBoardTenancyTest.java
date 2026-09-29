@@ -60,6 +60,7 @@ class IcuBoardTenancyTest {
     @Autowired BedRepository bedRepository;
     @Autowired IpdAdmissionRepository ipdAdmissionRepository;
     @Autowired UserRepository userRepository;
+    @Autowired com.hms.repository.IcuWardRepository icuWardRepository;
     @Autowired com.hms.repository.IcuStayRepository icuStayRepository;
 
     private static final List<String> MODULES = List.of("OPD", "IPD", "BILLING", "ICU");
@@ -143,8 +144,17 @@ class IcuBoardTenancyTest {
         w.setHospitalId(hid);
         w.setBedPrice(new BigDecimal("5000"));
         w.setTotalBeds(1);
-        w.setUnitType(CareUnitRegistry.ICU);
         long wid = wardRepository.save(w).getWardId();
+
+        com.hms.entity.IcuWard icu = new com.hms.entity.IcuWard();
+        icu.setPublicId("icuw-" + uniq());
+        icu.setHospitalId(hid);
+        icu.setWardId(wid);
+        icu.setWardName(w.getWardName());
+        icu.setUnitType(CareUnitRegistry.ICU);
+        icu.setBedPrice(new BigDecimal("5000"));
+        icu.setTotalBeds(1);
+        icuWardRepository.save(icu);
 
         Bed b = new Bed();
         b.setHospitalId(hid);
@@ -284,7 +294,6 @@ class IcuBoardTenancyTest {
         general.setHospitalId(hospitalIdB);
         general.setBedPrice(new BigDecimal("500"));
         general.setTotalBeds(1);
-        general.setUnitType(CareUnitRegistry.GENERAL);
         long wid = wardRepository.save(general).getWardId();
 
         Bed b = new Bed();

@@ -35,6 +35,11 @@ public class IcuStayController {
     @Autowired
     private IcuStayService icuStayService;
 
+    @GetMapping("/patients")
+    public ResponseEntity<List<com.hms.dto.icu.IcuPatientSummaryDTO>> getIcuPatients() {
+        return ResponseEntity.ok(icuStayService.getAdmittedIcuPatientsForCurrentUser());
+    }
+
     @GetMapping("/stays/{publicId}")
     public ResponseEntity<IcuStayDTO> getStay(@PathVariable String publicId) {
         return ResponseEntity.ok(icuStayService.viewByPublicId(publicId));

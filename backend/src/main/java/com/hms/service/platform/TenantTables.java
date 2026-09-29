@@ -281,6 +281,7 @@ public final class TenantTables {
         retain("hospital_settings", Ownership.DIRECT);
         retain("hospital_modules", Ownership.DIRECT);
         retain("wards", Ownership.DIRECT);
+        retain("icu_wards", Ownership.DIRECT);
         retain("beds", Ownership.DIRECT);
 
         // The facility row. Retained under an ARCHIVE lifecycle, removed under a hard delete.

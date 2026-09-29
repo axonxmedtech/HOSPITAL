@@ -12,8 +12,4 @@ public class WardResponse {
     private Integer floorNumber;
     private Long inchargeNurseId;
     private Boolean staffed;
-    /** CareUnitRegistry key — GENERAL by default (ICU Phase 2). */
-    private String unitType;
-    /** Display label for {@link #unitType}. */
-    private String unitTypeLabel;
 }

@@ -94,17 +94,43 @@ const WardsAndBeds = () => {
     });
   };
 
+  const currentUser = authService.getCurrentUser();
+  const isAdmin = currentUser?.role === 'HOSPITAL_ADMIN';
+  const displayedWards = wards;
+
   return (
-    <div>
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+        <div>
+          <h2 className="text-xl font-bold text-slate-800">General Wards & Beds</h2>
+          <p className="text-xs text-slate-500 mt-1">
+            General inpatient departments and non-critical care beds.
+          </p>
+        </div>
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => {
+              setEditWard(null);
+              setEditOpen(true);
+            }}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm font-semibold shadow-sm transition-all"
+          >
+            <span>+</span>
+            <span>Create Ward</span>
+          </button>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {loading && <div>Loading wards...</div>}
-        {!loading && wards.length === 0 && (
-          <div className="text-slate-500">
-            No wards found. Use &quot;Create Ward&quot; to add one.
+        {!loading && displayedWards.length === 0 && (
+          <div className="text-slate-500 col-span-full py-8 text-center bg-white rounded-2xl border border-dashed border-slate-300">
+            No general wards found. Use &quot;Create Ward&quot; to add one.
           </div>
         )}
 
-        {wards.map((w) => (
+        {displayedWards.map((w) => (
           <WardCard
             key={w.wardId}
             ward={w}

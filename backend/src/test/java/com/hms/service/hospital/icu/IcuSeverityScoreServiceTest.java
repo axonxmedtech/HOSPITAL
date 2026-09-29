@@ -71,6 +71,7 @@ class IcuSeverityScoreServiceTest {
     @Autowired HospitalRepository hospitalRepository;
     @Autowired PatientRepository patientRepository;
     @Autowired WardRepository wardRepository;
+    @Autowired com.hms.repository.IcuWardRepository icuWardRepository;
     @Autowired IpdAdmissionRepository ipdAdmissionRepository;
     @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
 
@@ -101,8 +102,17 @@ class IcuSeverityScoreServiceTest {
         w.setHospitalId(hospitalId);
         w.setBedPrice(BigDecimal.ZERO);
         w.setTotalBeds(2);
-        w.setUnitType(CareUnitRegistry.ICU);
-        Long wardId = wardRepository.save(w).getWardId();
+        Ward savedWard = wardRepository.save(w);
+        Long wardId = savedWard.getWardId();
+        com.hms.entity.IcuWard icu = new com.hms.entity.IcuWard();
+        icu.setPublicId("icuw-" + uniq());
+        icu.setHospitalId(hospitalId);
+        icu.setWardId(wardId);
+        icu.setWardName(savedWard.getWardName());
+        icu.setUnitType(CareUnitRegistry.ICU);
+        icu.setBedPrice(BigDecimal.ZERO);
+        icu.setTotalBeds(2);
+        icuWardRepository.save(icu);
 
         Patient p = new Patient();
         p.setName("Test Patient");
