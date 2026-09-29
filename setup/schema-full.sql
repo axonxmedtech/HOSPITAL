@@ -912,6 +912,14 @@ CREATE TABLE `icu_stay` (
   KEY `idx_icu_stay_hospital` (`hospital_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- NOTE: `wards` intentionally has NO `unit_type` column.
+-- ICU classification is owned by `icu_wards.unit_type` (defined at the end of this file).
+-- `wards.unit_type` is a LEGACY COMPATIBILITY column that exists only on databases predating
+-- `icu_wards`. DatabaseMigrationRunner copies it into `icu_wards` and then deliberately RETAINS
+-- it (never drops it) as the rollback record of the pre-ICU classification. Fresh installs never
+-- create it and no runtime code reads it -- do not re-add it here for symmetry, or classification
+-- gains a second writable source of truth. See DatabaseMigrationRunner#migrateIcuWardsAndStays,
+-- IcuFreshInstallIT (new database) and IcuBackfillIT (upgraded database).
 CREATE TABLE `wards` (
   `ward_id` bigint NOT NULL AUTO_INCREMENT,
   `bed_price` decimal(38,2) NOT NULL,

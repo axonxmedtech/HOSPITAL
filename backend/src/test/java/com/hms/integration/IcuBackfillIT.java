@@ -48,10 +48,21 @@ class IcuBackfillIT {
 
     private String uniq() { return Long.toString(System.nanoTime()); }
 
-    /** Hibernate models the new schema; this fixture explicitly represents a pre-upgrade ward. */
+    /**
+     * Hibernate models the new schema; this fixture explicitly represents a pre-upgrade ward.
+     *
+     * <p>Added only if absent: {@link IcuFreshInstallIT} deliberately drops the column to model a
+     * fresh install, and Spring may hand both classes the same cached context -- and therefore the
+     * same database -- so this must not depend on which class ran first.
+     */
     @BeforeAll
     void legacySchema() {
-        jdbc.execute("ALTER TABLE wards ADD COLUMN unit_type VARCHAR(20) NOT NULL DEFAULT 'GENERAL'");
+        Integer present = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.COLUMNS "
+                + "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='wards' AND COLUMN_NAME='unit_type'",
+                Integer.class);
+        if (present == null || present == 0) {
+            jdbc.execute("ALTER TABLE wards ADD COLUMN unit_type VARCHAR(20) NOT NULL DEFAULT 'GENERAL'");
+        }
     }
 
     /** Invoke production orchestration, including fail-closed validation, rather than copied SQL. */

@@ -3091,6 +3091,26 @@ public class DatabaseMigrationRunner {
     /**
      * Additive migration: retain the legacy classification for recovery/rollback.
      * A failed or incomplete copy must stop startup before stay backfill proceeds.
+     *
+     * <p><b>Lifecycle of {@code wards.unit_type} — legacy compatibility column.</b> ICU
+     * classification is owned by {@code icu_wards.unit_type}. The {@code Ward} entity no longer
+     * maps {@code unit_type} and {@code setup/schema-full.sql} does not declare it on
+     * {@code wards}, so a NEW database never has the column; an UPGRADED database keeps it, and
+     * nothing here will ever drop it. That asymmetry is deliberate, not an oversight:
+     *
+     * <ul>
+     *   <li>dropping it is destructive and irreversible — it is the only remaining record of how
+     *       a pre-ICU ward was classified, so it is retained as the rollback path if the copy
+     *       into {@code icu_wards} is ever found to be wrong;</li>
+     *   <li>re-adding it to fresh installs for symmetry would resurrect a second, writable source
+     *       of truth for classification that no runtime code reads.</li>
+     * </ul>
+     *
+     * <p>Because the backfill now fails closed, the missing-column case must stay explicitly
+     * guarded: {@link #backfillExistingIcuWards()} checks {@code information_schema} first and
+     * skips when the column is absent, and {@link #backfillIcuStaysForCurrentOccupants()} joins
+     * {@code icu_wards} rather than the legacy column. Both paths are proven by
+     * {@code IcuFreshInstallIT} (new database) and {@code IcuBackfillIT} (upgraded database).
      */
     private void migrateIcuWardsAndStays() {
         ensureIcuWardsTable();
