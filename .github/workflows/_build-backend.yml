@@ -98,6 +98,7 @@ jobs:
           required = [
               "com.hms.integration.IpdConcurrencyIT",
               "com.hms.integration.IcuBackfillIT",
+              "com.hms.integration.IcuFreshInstallIT",
               "com.hms.service.hospital.HospitalDashboardServiceIT",
               "com.hms.service.hospital.PharmacySaleTimestampIT",
               "com.hms.service.hospital.IstDateBoundaryIT",

@@ -10,6 +10,8 @@ import org.springframework.data.jpa.repository.Lock;
 
 @Repository
 public interface IpdAdmissionRepository extends JpaRepository<IpdAdmission, Long> {
+    boolean existsByWardIdAndHospitalId(Long wardId, Long hospitalId);
+
     Optional<IpdAdmission> findByIpdNumber(String ipdNumber);
 
     /**

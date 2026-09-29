@@ -9,6 +9,8 @@ import java.util.Optional;
 
 /** ICU Phase 3. Every finder is tenant-scoped; nothing here resolves a bare id. */
 public interface IcuStayRepository extends JpaRepository<IcuStay, Long> {
+    boolean existsByWardIdAndHospitalId(Long wardId, Long hospitalId);
+
 
     Optional<IcuStay> findByPublicIdAndHospitalId(String publicId, Long hospitalId);
 

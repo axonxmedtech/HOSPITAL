@@ -45,6 +45,15 @@ class WardServiceTest {
     @Mock HospitalWebSocketHandler webSocketHandler;
     @Mock NurseProfileRepository nurseProfileRepository;
     @Mock AuditLogService auditLogService;
+    @Mock com.hms.repository.IcuWardRepository icuWardRepository;
+
+    @org.junit.jupiter.api.BeforeEach
+    void wireBaseWrites() {
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "wardWrites",
+                new WardWriteService(wardRepository, bedRepository, securityHelper,
+                        webSocketHandler, nurseProfileRepository, auditLogService));
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "icuWardRepository", icuWardRepository);
+    }
     @InjectMocks WardService service;
 
     private CreateWardRequest req(String name, Integer totalBeds) {
@@ -190,7 +199,7 @@ class WardServiceTest {
     void updateWard_updatesGeneralWardSuccessfully() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
         Ward existing = savedWard(3L, "Ward-3", 2);
-        when(wardRepository.findById(3L)).thenReturn(java.util.Optional.of(existing));
+        when(wardRepository.findByWardIdAndHospitalIdForUpdate(3L, 7L)).thenReturn(java.util.Optional.of(existing));
         when(wardRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         UpdateWardRequest r = new UpdateWardRequest();

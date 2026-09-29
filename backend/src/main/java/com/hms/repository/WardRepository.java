@@ -9,6 +9,10 @@ import java.util.Optional;
 
 public interface WardRepository extends JpaRepository<Ward, Long> {
     List<Ward> findByHospitalId(Long hospitalId);
+
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT w FROM Ward w WHERE w.wardId = :wardId AND w.hospitalId = :hospitalId")
+    Optional<Ward> findByWardIdAndHospitalIdForUpdate(@Param("wardId") Long wardId, @Param("hospitalId") Long hospitalId);
     Optional<Ward> findByWardIdAndHospitalId(Long wardId, Long hospitalId);
 
     List<Ward> findByHospitalIdAndInchargeNurseId(Long hospitalId, Long inchargeNurseId);

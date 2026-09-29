@@ -31,6 +31,9 @@ import java.util.stream.Collectors;
 /**
  * Service managing dedicated ICU wards. Coordinates with base Ward and Bed models
  * to preserve full integration with IPD admissions, daily billing, and nurse management.
+ * Ward owns name, price, bed count, floor and incharge; IcuWard mirrors those fields for
+ * its existing API and owns public ICU identity and unit type. All ICU mutations enter
+ * here and commit both representations together, locking base Ward before IcuWard.
  */
 @Service
 public class IcuWardService {
@@ -41,6 +44,10 @@ public class IcuWardService {
     @Autowired private WardRepository wardRepository;
     @Autowired private BedRepository bedRepository;
     @Autowired private WardService wardService;
+    @Autowired private com.hms.service.hospital.WardWriteService wardWrites;
+    @Autowired private com.hms.repository.IcuStayRepository stayRepository;
+    @Autowired private com.hms.repository.IpdAdmissionRepository admissionRepository;
+    @Autowired private com.hms.repository.IpdBedHistoryRepository bedHistoryRepository;
     @Autowired private NurseProfileRepository nurseProfileRepository;
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private RealtimeNotifier notifier;
@@ -112,8 +119,7 @@ public class IcuWardService {
     @Transactional
     public IcuWardResponse updateIcuWard(String publicId, IcuWardRequest req) {
         Long hospitalId = requireHospitalId();
-        IcuWard icuWard = icuWardRepository.findByPublicIdAndHospitalId(publicId, hospitalId)
-                .orElseThrow(() -> new ResourceNotFoundException("ICU ward not found"));
+        IcuWard icuWard = lockIcuWard(publicId, hospitalId);
 
         // Incharge changes use the dedicated assignment endpoint, never metadata edits.
         if (req.getInchargeNurseId() != null
@@ -137,14 +143,14 @@ public class IcuWardService {
         updateReq.setTotalBeds(req.getTotalBeds());
         updateReq.setFloorNumber(req.getFloorNumber());
 
-        wardService.updateWard(icuWard.getWardId(), updateReq);
+        Ward base = wardWrites.updateWard(icuWard.getWardId(), updateReq);
 
         // 2. Update IcuWard
-        icuWard.setWardName(req.getWardName());
+        icuWard.setWardName(base.getWardName());
         icuWard.setUnitType(normalizedUnitType);
-        icuWard.setBedPrice(req.getBedPrice());
-        icuWard.setTotalBeds(req.getTotalBeds());
-        icuWard.setFloorNumber(req.getFloorNumber());
+        icuWard.setBedPrice(base.getBedPrice());
+        icuWard.setTotalBeds(base.getTotalBeds());
+        icuWard.setFloorNumber(base.getFloorNumber());
 
         IcuWard saved = icuWardRepository.save(icuWard);
 
@@ -159,11 +165,15 @@ public class IcuWardService {
     @Transactional
     public void deleteIcuWard(String publicId) {
         Long hospitalId = requireHospitalId();
-        IcuWard icuWard = icuWardRepository.findByPublicIdAndHospitalId(publicId, hospitalId)
-                .orElseThrow(() -> new ResourceNotFoundException("ICU ward not found"));
+        IcuWard icuWard = lockIcuWard(publicId, hospitalId);
 
-        // Delete base ward first (enforces occupied bed guards and assigned nurse guards)
-        wardService.deleteWard(icuWard.getWardId());
+        // Clinical records are never cascaded or detached by ward lifecycle operations.
+        if (stayRepository.existsByWardIdAndHospitalId(icuWard.getWardId(), hospitalId)
+                || admissionRepository.existsByWardIdAndHospitalId(icuWard.getWardId(), hospitalId)
+                || bedHistoryRepository.existsForWardAndHospital(icuWard.getWardId(), hospitalId)) {
+            throw new ConflictException("Cannot delete an ICU ward with clinical history");
+        }
+        wardWrites.deleteWard(icuWard.getWardId());
 
         // Delete dedicated icu_ward row
         icuWardRepository.delete(icuWard);
@@ -178,13 +188,31 @@ public class IcuWardService {
     @Transactional
     public void setIncharge(String publicId, Long inchargeNurseProfileId) {
         Long hospitalId = requireHospitalId();
-        IcuWard icuWard = icuWardRepository.findByPublicIdAndHospitalId(publicId, hospitalId)
-                .orElseThrow(() -> new ResourceNotFoundException("ICU ward not found"));
+        IcuWard icuWard = lockIcuWard(publicId, hospitalId);
 
-        wardService.setIncharge(icuWard.getWardId(), inchargeNurseProfileId);
+        wardWrites.setIncharge(icuWard.getWardId(), inchargeNurseProfileId);
         icuWard.setInchargeNurseId(inchargeNurseProfileId);
         icuWardRepository.save(icuWard);
         notifier.refresh(hospitalId);
+    }
+
+    /** Nursing admin entry: route ICU assignments through the same authoritative operation. */
+    @Transactional
+    public void setWardIncharge(Long wardId, Long nurseProfileId) {
+        Long hospitalId = requireHospitalId();
+        wardWrites.lockWard(wardId);
+        var icu = icuWardRepository.findByWardIdAndHospitalIdForUpdate(wardId, hospitalId);
+        if (icu.isPresent()) setIncharge(icu.get().getPublicId(), nurseProfileId);
+        else wardService.setIncharge(wardId, nurseProfileId);
+    }
+
+    private IcuWard lockIcuWard(String publicId, Long hospitalId) {
+        Long wardId = icuWardRepository.findWardIdByPublicIdAndHospitalId(publicId, hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("ICU ward not found"));
+        wardWrites.lockWard(wardId);
+        return icuWardRepository.findByWardIdAndHospitalIdForUpdate(wardId, hospitalId)
+                .filter(w -> publicId.equals(w.getPublicId()))
+                .orElseThrow(() -> new ResourceNotFoundException("ICU ward not found"));
     }
 
     private IcuWardResponse toResponse(IcuWard w) {
