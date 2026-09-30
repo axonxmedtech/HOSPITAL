@@ -52,9 +52,66 @@ describe('PlansTab', () => {
     fireEvent.click(screen.getByRole('button', { name: 'OPD' }));
     fireEvent.click(screen.getAllByRole('button', { name: /create plan/i })[1]);
 
-    await waitFor(() => expect(platformService.createPlan).toHaveBeenCalledWith(
-      expect.objectContaining({ modules: ['OPD'] })
-    ));
+    await waitFor(() =>
+      expect(platformService.createPlan).toHaveBeenCalledWith(
+        expect.objectContaining({ modules: ['OPD'] })
+      )
+    );
+  });
+
+  it('offers ICU from the catalog and sends it when selected', async () => {
+    platformService.getPlanCapabilities.mockResolvedValue([
+      ...hospitalCatalog,
+      { key: 'ICU', label: 'ICU / Critical Care', pharmacyTier: false },
+    ]);
+    platformService.createPlan.mockResolvedValue({});
+    render(<PlansTab hospitalType="HOSPITAL" />);
+    await screen.findByText('No plans found. Create one to get started.');
+    fireEvent.click(screen.getByRole('button', { name: /create plan/i }));
+    fireEvent.change(screen.getByLabelText(/plan name/i), { target: { value: 'Critical Care' } });
+    fireEvent.change(screen.getByLabelText(/monthly price/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/yearly price/i), { target: { value: '1000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'OPD' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ICU / Critical Care' }));
+    fireEvent.click(screen.getAllByRole('button', { name: /create plan/i })[1]);
+
+    await waitFor(() =>
+      expect(platformService.createPlan).toHaveBeenCalledWith(
+        expect.objectContaining({ modules: ['OPD', 'ICU'] })
+      )
+    );
+  });
+
+  it('keeps ICU on a plan when it is edited and saved', async () => {
+    platformService.getPlanCapabilities.mockResolvedValue([
+      ...hospitalCatalog,
+      { key: 'ICU', label: 'ICU / Critical Care', pharmacyTier: false },
+    ]);
+    platformService.getPlans.mockResolvedValue([
+      {
+        publicId: 'plan-pub',
+        name: 'Critical Care',
+        type: 'HOSPITAL',
+        monthlyPrice: 100,
+        yearlyPrice: 1000,
+        modules: ['OPD', 'ICU'],
+        features: [],
+      },
+    ]);
+    platformService.updatePlan.mockResolvedValue({});
+    render(<PlansTab hospitalType="HOSPITAL" />);
+    await screen.findByText('Critical Care');
+    // The catalog loads independently of the plan list; wait for it before editing.
+    await waitFor(() => expect(platformService.getPlanCapabilities).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(await screen.findByRole('button', { name: /update plan/i }));
+
+    await waitFor(() =>
+      expect(platformService.updatePlan).toHaveBeenCalledWith(
+        'plan-pub',
+        expect.objectContaining({ modules: ['OPD', 'ICU'] })
+      )
+    );
   });
 
   it('shows a controlled error and disables plan creation when the catalog is unavailable', async () => {
