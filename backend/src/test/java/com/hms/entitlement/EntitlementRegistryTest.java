@@ -60,12 +60,50 @@ class EntitlementRegistryTest {
     void catalogContainsOnlySelectableCapabilities() {
         assertThat(EntitlementRegistry.catalogFor(HospitalType.HOSPITAL))
                 .extracting(EntitlementRegistry.Capability::key)
-                .contains("OPD", "IPD")
+                .contains("OPD", "IPD", "ICU")
                 .doesNotContain("PATHOLOGY", "CORE", "PHARMACY_BRANCH");
+        assertThat(EntitlementRegistry.catalogFor(HospitalType.CLINIC))
+                .extracting(EntitlementRegistry.Capability::key)
+                .doesNotContain(EntitlementRegistry.ICU);
         assertThat(EntitlementRegistry.catalogFor(HospitalType.PHARMACY))
                 .extracting(EntitlementRegistry.Capability::key)
                 .containsExactly(EntitlementRegistry.TIER_SINGLE_PHARMACIST_ADMIN,
                         EntitlementRegistry.TIER_SINGLE_PHARMACY, EntitlementRegistry.TIER_MULTI_PHARMACY);
+    }
+
+    /**
+     * ICU is sold separately from IPD, so a Super Admin must be able to pick it on a hospital plan.
+     * It was sellable but missing from the catalogue, which left the plan editor unable to offer it.
+     */
+    @Test
+    void icuIsSelectableOnHospitalPlansAndSurvivesNormalization() {
+        assertThat(EntitlementRegistry.catalogFor(HospitalType.HOSPITAL))
+                .filteredOn(capability -> capability.key().equals(EntitlementRegistry.ICU))
+                .singleElement()
+                .satisfies(capability -> {
+                    assertThat(capability.key()).isEqualTo("ICU");
+                    assertThat(capability.label()).isEqualTo("ICU / Critical Care");
+                    assertThat(capability.pharmacyTier()).isFalse();
+                });
+
+        assertThat(EntitlementRegistry.isSellable(HospitalType.HOSPITAL, EntitlementRegistry.ICU)).isTrue();
+        assertThat(EntitlementRegistry.isSellable(HospitalType.CLINIC, EntitlementRegistry.ICU)).isFalse();
+        assertThat(EntitlementRegistry.isSellable(HospitalType.PHARMACY, EntitlementRegistry.ICU)).isFalse();
+
+        assertThat(EntitlementRegistry.normalizePlanModules(HospitalType.HOSPITAL, List.of("OPD", "IPD", " icu ")))
+                .containsExactly("OPD", "IPD", "ICU");
+        assertThat(EntitlementRegistry.normalizeAppliedPlanModules(HospitalType.HOSPITAL, List.of("OPD", "IPD", "ICU")))
+                .contains("OPD", "IPD", "ICU");
+    }
+
+    @Test
+    void icuIsNeverImpliedByIpd() {
+        assertThat(EntitlementRegistry.normalizePlanModules(HospitalType.HOSPITAL, List.of("OPD", "IPD")))
+                .doesNotContain(EntitlementRegistry.ICU);
+        assertThat(EntitlementRegistry.normalizeAppliedPlanModules(HospitalType.HOSPITAL, List.of("OPD", "IPD")))
+                .doesNotContain(EntitlementRegistry.ICU);
+        assertThat(EntitlementRegistry.resolve(List.of(EntitlementRegistry.IPD)))
+                .doesNotContain(EntitlementRegistry.ICU);
     }
 
     @Test

@@ -153,13 +153,14 @@ public final class EntitlementRegistry {
             Map.entry(REPORTS, "Reports & Analytics"),
             Map.entry(NURSING, "Nursing"),
             Map.entry(OT, "Operation Theatre"),
+            Map.entry(ICU, "ICU / Critical Care"),
             Map.entry(TIER_SINGLE_PHARMACIST_ADMIN, "Single Pharmacist Admin"),
             Map.entry(TIER_SINGLE_PHARMACY, "Single Pharmacy"),
             Map.entry(TIER_MULTI_PHARMACY, "Multi Pharmacy"));
 
     private static final List<String> CATALOG_ORDER = List.of(
             OPD, IPD, PHARMACY, BILLING, APPOINTMENTS, MEDICAL_INVENTORY, HOSPITAL_INVENTORY,
-            REPORTS, OT, NURSING, TIER_SINGLE_PHARMACIST_ADMIN, TIER_SINGLE_PHARMACY,
+            REPORTS, OT, NURSING, ICU, TIER_SINGLE_PHARMACIST_ADMIN, TIER_SINGLE_PHARMACY,
             TIER_MULTI_PHARMACY);
 
     // ── queries ───────────────────────────────────────────────────────────────

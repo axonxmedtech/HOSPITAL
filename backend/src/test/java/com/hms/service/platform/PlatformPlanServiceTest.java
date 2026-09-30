@@ -178,4 +178,81 @@ class PlatformPlanServiceTest {
         verify(subscriptionRepository).deactivateCurrentSubscription(10L);
         verify(hospitalRepository).save(argThat(h -> h.getModules().containsAll(List.of("OPD", "IPD", "BILLING"))));
     }
+
+    @Test
+    void createPlan_preservesIcuOnHospitalPlan() {
+        CreatePlanRequest req = new CreatePlanRequest();
+        req.setName("Hospital Critical Care");
+        req.setType("HOSPITAL");
+        req.setMonthlyPrice(BigDecimal.ONE);
+        req.setYearlyPrice(BigDecimal.TEN);
+        req.setModules(List.of("OPD", "IPD", "ICU"));
+        when(planRepository.save(any(Plan.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Plan result = service.createPlan(req);
+
+        assertThat(result.getModules()).containsExactly("OPD", "IPD", "ICU");
+    }
+
+    @Test
+    void updatePlan_addingIcuReachesCurrentSubscriberHospitals() {
+        Plan plan = new Plan();
+        plan.setId(1L);
+        plan.setPublicId("plan-pub");
+        plan.setType(HospitalType.HOSPITAL);
+        plan.setModules(new ArrayList<>(List.of("OPD", "IPD")));
+        plan.setInClinic(false);
+        when(planRepository.findByPublicId("plan-pub")).thenReturn(Optional.of(plan));
+        when(planRepository.save(any(Plan.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        HospitalPlanSubscription sub = new HospitalPlanSubscription();
+        sub.setHospitalId(10L);
+        when(subscriptionRepository.findByPlan_IdAndIsCurrentTrue(1L)).thenReturn(List.of(sub));
+        Hospital hospital = new Hospital();
+        hospital.setId(10L);
+        hospital.setType(HospitalType.HOSPITAL);
+        hospital.setModules(new ArrayList<>(List.of("OPD", "IPD")));
+        when(hospitalRepository.findById(10L)).thenReturn(Optional.of(hospital));
+        when(hospitalRepository.save(any())).thenReturn(hospital);
+        when(hospitalSettingRepository.findByHospital(any())).thenReturn(Optional.empty());
+
+        CreatePlanRequest req = new CreatePlanRequest();
+        req.setName("Hospital Critical Care");
+        req.setType("HOSPITAL");
+        req.setMonthlyPrice(BigDecimal.ONE);
+        req.setYearlyPrice(BigDecimal.TEN);
+        req.setModules(List.of("OPD", "IPD", "ICU"));
+
+        Plan result = service.updatePlan("plan-pub", req);
+
+        assertThat(result.getModules()).containsExactly("OPD", "IPD", "ICU");
+        verify(hospitalRepository).save(argThat(h -> h.getModules().contains("ICU")));
+    }
+
+    @Test
+    void assignPlan_appliesIcuOnlyWhenThePlanCarriesIt() {
+        Plan plan = new Plan();
+        plan.setId(1L);
+        plan.setType(HospitalType.HOSPITAL);
+        plan.setModules(new ArrayList<>(List.of("OPD", "IPD", "ICU")));
+        plan.setInClinic(false);
+        when(planRepository.findByPublicId("plan-pub")).thenReturn(Optional.of(plan));
+
+        Hospital hospital = new Hospital();
+        hospital.setId(10L);
+        hospital.setType(HospitalType.HOSPITAL);
+        hospital.setName("Test Hospital");
+        when(hospitalRepository.findByPublicId("hosp-pub")).thenReturn(Optional.of(hospital));
+        when(hospitalRepository.save(any())).thenReturn(hospital);
+        when(hospitalSettingRepository.findByHospital(any())).thenReturn(Optional.empty());
+        when(subscriptionRepository.save(any())).thenReturn(new HospitalPlanSubscription());
+
+        AssignPlanRequest req = new AssignPlanRequest();
+        req.setHospitalPublicId("hosp-pub");
+        req.setBillingPeriod("MONTHLY");
+
+        service.assignPlan("plan-pub", req);
+
+        verify(hospitalRepository).save(argThat(h -> h.getModules().containsAll(List.of("OPD", "IPD", "ICU"))));
+    }
 }

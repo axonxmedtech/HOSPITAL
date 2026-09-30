@@ -36,6 +36,7 @@ class PlatformPlanControllerTest {
         mockMvc.perform(get("/platform/plans/capabilities").param("type", "HOSPITAL"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.key == 'OPD')]").exists())
+                .andExpect(jsonPath("$[?(@.key == 'ICU')].label").value("ICU / Critical Care"))
                 .andExpect(jsonPath("$[?(@.key == 'PATHOLOGY')]").doesNotExist())
                 .andExpect(jsonPath("$[?(@.key == 'PHARMACY_BRANCH')]").doesNotExist());
     }
