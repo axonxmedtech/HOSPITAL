@@ -29,14 +29,16 @@ public class AdmissionFormController {
         return ResponseEntity.ok(admissionFormService.getOrDraft(admissionId));
     }
 
+    // Reception and admin fill it at the admission desk, where the form is commonly signed; the
+    // ward nurse can still complete it. Tenant scope and assignment are enforced in the service.
     @PostMapping("/admission/{admissionId}")
-    @PreAuthorize("hasRole('NURSE')")
+    @PreAuthorize("hasAnyRole('NURSE','RECEPTIONIST','HOSPITAL_ADMIN')")
     public ResponseEntity<?> save(@PathVariable Long admissionId, @Valid @RequestBody AdmissionForm form) {
         return ResponseEntity.ok(admissionFormService.save(admissionId, form));
     }
 
     @PostMapping("/admission/{admissionId}/confirm")
-    @PreAuthorize("hasRole('NURSE')")
+    @PreAuthorize("hasAnyRole('NURSE','RECEPTIONIST','HOSPITAL_ADMIN')")
     public ResponseEntity<?> markAdmitted(@PathVariable Long admissionId) {
         admissionFormService.markAdmitted(admissionId);
         return ResponseEntity.ok(java.util.Map.of("admissionConfirmed", true));

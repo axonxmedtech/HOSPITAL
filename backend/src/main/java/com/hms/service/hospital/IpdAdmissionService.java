@@ -457,6 +457,7 @@ public class IpdAdmissionService {
         adm.admissionDateTime = ipd.getAdmissionDatetime();
         adm.admissionType = ipd.getAdmissionType();
         adm.primaryDiagnosis = ipd.getPrimaryDiagnosis();
+        adm.admissionConfirmed = Boolean.TRUE.equals(ipd.getAdmissionConfirmed());
         wardRepository.findById(ipd.getWardId()).ifPresent(w -> adm.ward = w.getWardName());
         bedRepository.findById(ipd.getBedId()).ifPresent(b -> adm.bed = b.getBedCode());
         doctorRepository.findById(ipd.getDoctorId()).ifPresent(d -> adm.doctor = d.getName());
@@ -1320,11 +1321,29 @@ public class IpdAdmissionService {
             java.math.BigDecimal oldRate = oldWard.getBedPrice() != null ? oldWard.getBedPrice() : java.math.BigDecimal.ZERO;
             java.math.BigDecimal newRate = newWardEntity.getBedPrice() != null ? newWardEntity.getBedPrice() : java.math.BigDecimal.ZERO;
 
-            java.math.BigDecimal diff = newRate.subtract(oldRate);
+            java.util.List<Billing> bills = billingRepository.findByIpdAdmissionId(ipd.getId());
+            Billing bill = (bills != null && !bills.isEmpty()) ? bills.get(0) : null;
+
+            // Charge only the part of the new rate not already billed for this admission. Using
+            // newRate - oldRate charged a ward -> ICU -> ward -> ICU patient the full upgrade on
+            // every return to ICU, because stepping down never credits it back. The admission
+            // Bed Price plus earlier adjustments is what has been charged so far; the old ward's
+            // rate is the floor, so a legacy bill without those lines keeps the old behaviour.
+            java.math.BigDecimal alreadyCharged = oldRate;
+            if (bill != null) {
+                java.math.BigDecimal billed = java.math.BigDecimal.ZERO;
+                for (com.hms.entity.BillingItem it : billingItemRepository.findByBillingId(bill.getId())) {
+                    if (it.getAmount() != null && ("Bed Price".equals(it.getDescription())
+                            || "Bed Upgrade Price Adjustment".equals(it.getDescription()))) {
+                        billed = billed.add(it.getAmount());
+                    }
+                }
+                alreadyCharged = alreadyCharged.max(billed);
+            }
+
+            java.math.BigDecimal diff = newRate.subtract(alreadyCharged);
             // If positive difference (upgrade), add to bill immediately
             if (diff.compareTo(java.math.BigDecimal.ZERO) > 0) {
-                java.util.List<Billing> bills = billingRepository.findByIpdAdmissionId(ipd.getId());
-                Billing bill = (bills != null && !bills.isEmpty()) ? bills.get(0) : null;
                 if (bill != null) {
                     com.hms.entity.BillingItem item = new com.hms.entity.BillingItem();
                     item.setBillingId(bill.getId());

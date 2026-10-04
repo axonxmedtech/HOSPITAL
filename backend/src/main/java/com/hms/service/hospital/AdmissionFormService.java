@@ -179,12 +179,11 @@ public class AdmissionFormService {
     }
 
     private IpdAdmission requireAdmission(Long ipdAdmissionId, Long hospitalId) {
-        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdAdmissionId)
-                .orElseThrow(() -> new IllegalArgumentException("IPD admission not found"));
-        if (!hospitalId.equals(ipd.getHospitalId())) {
-            throw new UnauthorizedException("Access denied: admission belongs to another hospital");
-        }
-        return ipd;
+        // Another hospital's admission is "not found", exactly like a missing one. It used to be
+        // a 401, which the frontend treats as an expired session and logs the user out, and the
+        // two different answers told a caller which admission ids exist in other hospitals.
+        return ipdAdmissionRepository.findByIdAndHospitalId(ipdAdmissionId, hospitalId)
+                .orElseThrow(() -> new com.hms.exception.ResourceNotFoundException("IPD admission not found"));
     }
 
     private Long requireHospitalId() {

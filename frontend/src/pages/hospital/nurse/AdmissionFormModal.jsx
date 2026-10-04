@@ -9,7 +9,7 @@ import { printHtml } from '../../../utils/printHtml';
 import { titleCase } from '../../../utils/text';
 
 /**
- * AdmissionFormModal - the nurse fills the IPD admission form to complete a
+ * AdmissionFormModal - reception/admin (at the desk) or the ward nurse fills the IPD admission form to complete a
  * patient's admission (Phase 1 Nurse module). Known values arrive pre-filled;
  * the rest are editable. Save persists it; Print opens a printable copy for the
  * relative's offline signature; Mark as Admitted confirms the admission once the
