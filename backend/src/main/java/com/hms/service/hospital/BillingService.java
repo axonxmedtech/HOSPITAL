@@ -87,12 +87,17 @@ public class BillingService {
         // the consultation fee, exactly as the walk-in OPD bill does (createOpdBill). Previously
         // an appointment patient was billed the consultation fee only, silently skipping the
         // hospital's case-paper fee — the same encounter priced two different ways.
-        BigDecimal fee = hospital.getConsultationFee();
         BigDecimal caseFee = hospital.getCasePaperFee();
         if (caseFee == null || caseFee.compareTo(BigDecimal.ZERO) < 0) {
             caseFee = BigDecimal.ZERO;
         }
-        if (fee != null && fee.compareTo(BigDecimal.ZERO) > 0) {
+        // A free consultation still owes the case-paper fee, as it does on the walk-in bill.
+        // Previously a 0 consultation fee skipped the bill entirely, dropping the case-paper fee.
+        BigDecimal fee = hospital.getConsultationFee();
+        if (fee == null || fee.compareTo(BigDecimal.ZERO) < 0) {
+            fee = BigDecimal.ZERO;
+        }
+        if (fee.add(caseFee).compareTo(BigDecimal.ZERO) > 0) {
             final BigDecimal casePaperFee = caseFee;
             BigDecimal total = fee.add(casePaperFee);
 
@@ -103,9 +108,11 @@ public class BillingService {
             bill.setAppointmentId(appointment.getId());
             bill.setAmount(total);
             bill.setPaymentStatus("PENDING"); // nothing collected yet
-            bill.setDescription(casePaperFee.compareTo(BigDecimal.ZERO) > 0
-                    ? "OPD - Case Paper + Consultation"
-                    : "Consultation Fee - Auto Generated");
+            bill.setDescription(casePaperFee.compareTo(BigDecimal.ZERO) <= 0
+                    ? "Consultation Fee - Auto Generated"
+                    : fee.compareTo(BigDecimal.ZERO) > 0
+                            ? "OPD - Case Paper + Consultation"
+                            : "OPD - Case Paper");
 
             // Attempt to resolve related opdId from MedicalRecord
             try {
@@ -128,18 +135,20 @@ public class BillingService {
                     billingItemRepository.save(caseItem);
                 }
 
-                com.hms.entity.BillingItem item = new com.hms.entity.BillingItem();
-                item.setBillingId(saved.getId());
-                item.setHospitalId(hospital.getId());
-                item.setDescription("Consultation Fee");
-                item.setAmount(fee);
-                billingItemRepository.save(item);
+                if (fee.compareTo(BigDecimal.ZERO) > 0) {
+                    com.hms.entity.BillingItem item = new com.hms.entity.BillingItem();
+                    item.setBillingId(saved.getId());
+                    item.setHospitalId(hospital.getId());
+                    item.setDescription("Consultation Fee");
+                    item.setAmount(fee);
+                    billingItemRepository.save(item);
+                }
             } catch (Exception e) {
                 logger.warn("Failed to create billing items for auto-bill {}", saved.getId(), e);
             }
 
 
-            logger.info("Auto-generated bill for appointment: {} with amount: {}", appointment.getId(), fee);
+            logger.info("Auto-generated bill for appointment: {} with amount: {}", appointment.getId(), total);
         } else {
             logger.warn("Skipped bill generation for appointment {}. Fee is null or zero. Hospital Fee: {}",
                     appointment.getId(), fee);
@@ -152,13 +161,13 @@ public class BillingService {
     public Page<Billing> getAllBills(String search, String status, Pageable pageable) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (search != null && !search.isEmpty()) {
-            Page<Billing> p = billingRepository.searchBillings(hospitalId, search, pageable);
+            // The status filter belongs in the query. Filtering one fetched page in memory
+            // dropped matching bills from later pages and reported a total of whatever survived
+            // on this page, so a search for "PENDING" bills could show a few and hide the rest.
             if (status != null && !status.isEmpty()) {
-                java.util.List<Billing> filtered = new java.util.ArrayList<>();
-                for (Billing b : p.getContent()) if (status.equalsIgnoreCase(b.getPaymentStatus())) filtered.add(b);
-                return new org.springframework.data.domain.PageImpl<>(filtered, pageable, filtered.size());
+                return billingRepository.searchBillingsByStatus(hospitalId, search, status, pageable);
             }
-            return p;
+            return billingRepository.searchBillings(hospitalId, search, pageable);
         }
 
         if (status != null && !status.isEmpty()) {
@@ -192,6 +201,13 @@ public class BillingService {
 
         Billing bill = billingRepository.findByIdAndHospitalIdForUpdate(id, hospitalId)
                 .orElseThrow(() -> new ResourceNotFoundException("Bill not found"));
+
+        // CLOSED is terminal: updateBillItems and recalculateTotal both refuse to change it. This
+        // was the one way back, and marking a written-off bill PAID also writes a ledger row for
+        // its whole balance, inventing money that was never collected.
+        if ("CLOSED".equalsIgnoreCase(bill.getPaymentStatus()) && !"CLOSED".equalsIgnoreCase(status)) {
+            throw new IllegalArgumentException("A closed bill cannot be reopened");
+        }
 
         bill.setPaymentStatus(status);
         if ("PAID".equalsIgnoreCase(status)) {
@@ -387,7 +403,9 @@ public class BillingService {
         }
 
         java.math.BigDecimal consultFee = hospital.getConsultationFee();
-        if (consultFee == null || consultFee.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+        // Only an unset fee falls back to the default. An explicit 0 is a free consultation; it
+        // used to be replaced by 500, charging patients a fee the hospital had switched off.
+        if (consultFee == null || consultFee.compareTo(java.math.BigDecimal.ZERO) < 0) {
             consultFee = new java.math.BigDecimal("500.00");
         }
 
@@ -429,6 +447,81 @@ public class BillingService {
 
         logger.info("OPD bill generated for OPD {} patient {} with amount {}", opdId, patientId, total);
         return saved;
+    }
+
+    /**
+     * What a legacy IPD bill (no lines, stored amount 0) is worth: its ward's bed price, the same
+     * figure the IPD bill screen and mark-as-PAID already use. Zero for anything else. The
+     * admission and ward are only read when they belong to the bill's own hospital.
+     */
+    public BigDecimal legacyIpdBedPrice(Billing bill) {
+        if (!"IPD".equalsIgnoreCase(bill.getBillingType()) || bill.getIpdAdmissionId() == null) {
+            return BigDecimal.ZERO;
+        }
+        com.hms.entity.IpdAdmission ipd = ipdAdmissionRepository.findById(bill.getIpdAdmissionId())
+                .filter(a -> java.util.Objects.equals(a.getHospitalId(), bill.getHospitalId()))
+                .orElse(null);
+        if (ipd == null || ipd.getWardId() == null) return BigDecimal.ZERO;
+        com.hms.entity.Ward ward = wardRepository.findById(ipd.getWardId())
+                .filter(w -> java.util.Objects.equals(w.getHospitalId(), bill.getHospitalId()))
+                .orElse(null);
+        return ward != null && ward.getBedPrice() != null ? ward.getBedPrice() : BigDecimal.ZERO;
+    }
+
+    /**
+     * Replace a bill's charge lines, atomically.
+     *
+     * <p>Refuses a negative charge, and refuses a new total below what has already been
+     * collected: that left the bill reading PAID with a negative balance and no refund recorded.
+     */
+    @Transactional
+    public Billing replaceBillItems(Long id, java.util.List<com.hms.dto.HospitalFeeDTO> items) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        Billing billing = billingRepository.findByIdAndHospitalIdForUpdate(id, hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Bill not found"));
+
+        if ("PAID".equalsIgnoreCase(billing.getPaymentStatus()) || "CLOSED".equalsIgnoreCase(billing.getPaymentStatus())) {
+            throw new IllegalArgumentException("Cannot edit items of a paid or closed bill");
+        }
+
+        java.util.List<com.hms.entity.BillingItem> replacement = new java.util.ArrayList<>();
+        BigDecimal newItemsTotal = BigDecimal.ZERO;
+        if (items != null) {
+            for (com.hms.dto.HospitalFeeDTO itemDto : items) {
+                if (itemDto.getName() == null || itemDto.getName().trim().isEmpty()) {
+                    continue;
+                }
+                BigDecimal amt = itemDto.getDefaultAmount() != null ? itemDto.getDefaultAmount() : BigDecimal.ZERO;
+                if (amt.signum() < 0) {
+                    throw new IllegalArgumentException("A charge cannot be negative");
+                }
+                com.hms.entity.BillingItem item = new com.hms.entity.BillingItem();
+                item.setBillingId(id);
+                item.setHospitalId(hospitalId);
+                item.setDescription(itemDto.getName().trim());
+                item.setAmount(amt);
+                replacement.add(item);
+                newItemsTotal = newItemsTotal.add(amt);
+            }
+        }
+
+        BigDecimal medicinesTotal = BigDecimal.ZERO;
+        for (com.hms.entity.BillingMedicine med : billingMedicineRepository.findByBillingId(id)) {
+            if (med.getAmount() != null) medicinesTotal = medicinesTotal.add(med.getAmount());
+        }
+        BigDecimal collected = BigDecimal.ZERO;
+        for (com.hms.entity.BillingPayment p : billingPaymentRepository.findByBillingId(id)) {
+            if (p.getAmount() != null) collected = collected.add(p.getAmount());
+        }
+        if (newItemsTotal.add(medicinesTotal).compareTo(collected) < 0) {
+            throw new IllegalArgumentException("The new total is less than the " + collected
+                    + " already collected on this bill");
+        }
+
+        billingItemRepository.deleteAll(billingItemRepository.findByBillingId(id));
+        billingItemRepository.saveAll(replacement);
+        recalculateTotal(id);
+        return billing;
     }
 
     /**

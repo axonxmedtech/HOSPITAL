@@ -7,7 +7,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -31,11 +30,16 @@ public class BillingSchedulerService {
     @Autowired
     private BillingItemRepository billingItemRepository;
 
+    @Autowired
+    private BillingService billingService;
+
+    @Autowired
+    private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
+
     /**
      * Runs at midnight IST (12:00 AM IST) to calculate charges for the day just ended.
      */
     @Scheduled(cron = "0 0 0 * * ?", zone = "Asia/Kolkata")
-    @Transactional
     public void processDailyBedCharges() {
         logger.info("Executing daily bed charge processing scheduled task...");
         
@@ -53,8 +57,12 @@ public class BillingSchedulerService {
                 continue; 
             }
             
+            // One transaction per admission. The whole run was one transaction, so a database
+            // error on any single admission marked it rollback-only and every other hospital's
+            // charges for the night were lost at commit, despite this catch.
             try {
-                processAdmissionCharge(admission, chargeDescription);
+                transactionTemplate.executeWithoutResult(
+                        status -> processAdmissionCharge(admission, chargeDescription));
                 processed++;
             } catch (Exception e) {
                 logger.error("Failed to process bed charge for admission ID: {}", admission.getId(), e);
@@ -71,6 +79,11 @@ public class BillingSchedulerService {
         
         if (bill == null) {
             logger.warn("No primary bill found for IPD admission {}, skipping bed charge.", admission.getId());
+            return;
+        }
+
+        // A written-off bill takes no further charges.
+        if ("CLOSED".equalsIgnoreCase(bill.getPaymentStatus())) {
             return;
         }
 
@@ -104,8 +117,9 @@ public class BillingSchedulerService {
         billingItemRepository.save(newItem);
 
         // 5. Increment aggregate parent bill total.
-        BigDecimal currentTotal = bill.getAmount() != null ? bill.getAmount() : BigDecimal.ZERO;
-        bill.setAmount(currentTotal.add(bedPrice));
-        billingRepository.save(bill);
+        // Re-derive the total AND the status from the lines and the ledger. Bumping only the
+        // amount left a settled bill reading PAID while today's charge was owed, and the
+        // dashboards offer "Mark Paid" only for PENDING/PARTIAL bills, so it was never collected.
+        billingService.recalculateTotal(bill.getId());
     }
 }
