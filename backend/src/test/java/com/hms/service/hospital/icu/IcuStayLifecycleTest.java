@@ -61,6 +61,8 @@ class IcuStayLifecycleTest {
     @Autowired BedRepository bedRepository;
     @Autowired OpdRepository opdRepository;
     @Autowired IpdAdmissionRepository ipdAdmissionRepository;
+    @Autowired com.hms.repository.BillingRepository billingRepository;
+    @Autowired com.hms.repository.BillingItemRepository billingItemRepository;
 
     @MockBean BedStatusService bedStatusService;
     @MockBean SecurityContextHelper securityHelper;
@@ -284,6 +286,48 @@ class IcuStayLifecycleTest {
 
         assertThat(staysOf(a.getId())).hasSize(2);
         assertThat(activeOf(a.getId())).isNotNull();
+    }
+
+    // ── bed-rate charges across ICU moves ────────────────────────────────────
+
+    private BigDecimal upgradeCharges(Long admissionId) {
+        Long billId = billingRepository.findByIpdAdmissionId(admissionId).get(0).getId();
+        return billingItemRepository.findByBillingId(billId).stream()
+                .filter(i -> "Bed Upgrade Price Adjustment".equals(i.getDescription()))
+                .map(com.hms.entity.BillingItem::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /**
+     * Stepping down never credits the upgrade back, so charging newRate - oldRate on every
+     * transfer billed a ward -> ICU -> ward -> ICU patient the ICU upgrade twice.
+     */
+    @Test
+    void returningToIcuAfterStepDown_doesNotChargeTheUpgradeAgain() {
+        Long cheapWard = ward("General-1000", CareUnitRegistry.GENERAL, new BigDecimal("1000"));
+        Long dearIcu = ward("ICU-3000", CareUnitRegistry.ICU, new BigDecimal("3000"));
+        IpdAdmission a = admitTo(cheapWard, "ELECTIVE");
+
+        ipdService.changeBed(a.getId(), bed(dearIcu));
+        ipdService.changeBed(a.getId(), bed(cheapWard));
+        ipdService.changeBed(a.getId(), bed(dearIcu));
+
+        assertThat(upgradeCharges(a.getId()))
+                .as("the 1000 -> 3000 upgrade is charged once, not once per return to ICU")
+                .isEqualByComparingTo("2000");
+    }
+
+    @Test
+    void aStepByStepUpgradeStillChargesUpToTheHighestRate() {
+        Long w1000 = ward("General-1000", CareUnitRegistry.GENERAL, new BigDecimal("1000"));
+        Long w2000 = ward("Semi-2000", CareUnitRegistry.GENERAL, new BigDecimal("2000"));
+        Long icu3000 = ward("ICU-3000", CareUnitRegistry.ICU, new BigDecimal("3000"));
+        IpdAdmission a = admitTo(w1000, "ELECTIVE");
+
+        ipdService.changeBed(a.getId(), bed(w2000));
+        ipdService.changeBed(a.getId(), bed(icu3000));
+
+        assertThat(upgradeCharges(a.getId())).isEqualByComparingTo("2000");
     }
 
     // ── at most one ACTIVE ───────────────────────────────────────────────────
