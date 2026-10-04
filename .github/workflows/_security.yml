@@ -233,16 +233,49 @@ jobs:
             //  react-router / react-router-dom -> GHSA-qwww-vcr4-c8h2 (RSC-mode CSRF); this is a
             //  Vite SPA using the data router, RSC mode is not used. review-by 2026-02-15.
             const ALLOW = new Set(["react-router", "react-router-dom"]);
+
+            // Allowlisted by ADVISORY, not by package: every other advisory on these packages still
+            // blocks. npm reports one advisory under each package that depends on the vulnerable
+            // one, so a package is blocked if any high/critical advisory it reaches is not listed.
+            //  GHSA-vfj7-8cjw-p6xm -> braces <=3.0.3 stack-exhaustion DoS on deeply nested patterns.
+            //  No fixed release exists (3.0.3 is the latest). Reached only through tailwindcss 3's
+            //  build-time file watcher (chokidar / micromatch / fast-glob); nothing ships to users
+            //  (npm ls braces --omit=dev is empty). Remove when braces ships a fix or tailwindcss is
+            //  upgraded to v4. review-by 2027-01-15.
+            const ALLOW_ADVISORIES = new Set(["GHSA-vfj7-8cjw-p6xm"]);
+            const isHigh = (sev) => sev === "high" || sev === "critical";
+
+            // The high/critical advisory ids a package reaches, following "via" package names.
+            const advisoriesOf = (name, seen = new Set()) => {
+              const ids = new Set();
+              const v = a.vulnerabilities[name];
+              if (!v || seen.has(name)) return ids;
+              seen.add(name);
+              for (const via of v.via || []) {
+                if (typeof via === "string") {
+                  for (const id of advisoriesOf(via, seen)) ids.add(id);
+                } else if (via && isHigh(via.severity)) {
+                  // An advisory without a recognisable id is treated as unknown, so it blocks.
+                  ids.add(String(via.url || "").split("/").pop() || "UNKNOWN");
+                }
+              }
+              return ids;
+            };
+
             let blocking = 0;
             for (const [name, v] of Object.entries(a.vulnerabilities || {})) {
-              if ((v.severity === "high" || v.severity === "critical") && !ALLOW.has(name)) {
-                console.error("BLOCK " + name + " (" + v.severity + ")");
+              if (!isHigh(v.severity) || ALLOW.has(name)) continue;
+              const ids = [...advisoriesOf(name)];
+              const unlisted = ids.filter((id) => !ALLOW_ADVISORIES.has(id));
+              // Fail closed: a high/critical finding with no traceable advisory still blocks.
+              if (ids.length === 0 || unlisted.length > 0) {
+                console.error("BLOCK " + name + " (" + v.severity + ")" + (unlisted.length ? " " + unlisted.join(", ") : ""));
                 blocking++;
               }
             }
             if (blocking) { console.error(blocking + " non-allowlisted high/critical vuln(s)."); process.exit(1); }
             if (status !== 0) console.log("npm audit exit status " + status + "; evaluated valid report using policy.");
-            console.log("npm audit gate OK (allowlisted: " + [...ALLOW].join(", ") + ")");
+            console.log("npm audit gate OK (allowlisted: " + [...ALLOW, ...ALLOW_ADVISORIES].join(", ") + ")");
           NODE
 
       - name: npm audit summary
