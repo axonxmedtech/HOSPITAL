@@ -77,6 +77,132 @@ class BillingServiceTest {
         verify(billingItemRepository, times(2)).save(any(BillingItem.class));
     }
 
+    private Hospital billingHospital(String consultationFee, String casePaperFee) {
+        Hospital hospital = new Hospital();
+        hospital.setId(1L);
+        hospital.setModules(List.of("BILLING"));
+        hospital.setConsultationFee(consultationFee == null ? null : new BigDecimal(consultationFee));
+        hospital.setCasePaperFee(casePaperFee == null ? null : new BigDecimal(casePaperFee));
+        return hospital;
+    }
+
+    @Test
+    void createOpdBill_anExplicitZeroConsultationFee_isFree_notTheDefault() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        when(hospitalRepository.findById(1L)).thenReturn(Optional.of(billingHospital("0", "100.00")));
+        Billing saved = new Billing();
+        saved.setId(10L);
+        when(billingRepository.save(any(Billing.class))).thenReturn(saved);
+
+        billingService.createOpdBill(300L, 100L, 200L);
+
+        ArgumentCaptor<Billing> captor = ArgumentCaptor.forClass(Billing.class);
+        verify(billingRepository).save(captor.capture());
+        assertThat(captor.getValue().getAmount())
+                .as("case paper only; the consultation was configured free")
+                .isEqualByComparingTo("100.00");
+    }
+
+    @Test
+    void autoGenerateOpdBill_aFreeConsultationStillChargesTheCasePaperFee() {
+        com.hms.entity.Appointment appt = new com.hms.entity.Appointment();
+        appt.setId(7L);
+        appt.setHospitalId(1L);
+        appt.setPatientId(100L);
+        appt.setDoctorId(200L);
+        when(billingRepository.existsByAppointmentId(7L)).thenReturn(false);
+        when(hospitalRepository.findById(1L)).thenReturn(Optional.of(billingHospital("0", "50.00")));
+        Billing saved = new Billing();
+        saved.setId(11L);
+        when(billingRepository.save(any(Billing.class))).thenReturn(saved);
+
+        billingService.autoGenerateOpdBill(appt);
+
+        ArgumentCaptor<Billing> bill = ArgumentCaptor.forClass(Billing.class);
+        verify(billingRepository).save(bill.capture());
+        assertThat(bill.getValue().getAmount()).isEqualByComparingTo("50.00");
+        ArgumentCaptor<BillingItem> item = ArgumentCaptor.forClass(BillingItem.class);
+        verify(billingItemRepository).save(item.capture());
+        assertThat(item.getValue().getDescription()).isEqualTo("Case Paper Fee");
+    }
+
+    @Test
+    void getAllBills_searchWithStatus_filtersInTheQuery_soPagingStaysCorrect() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        Pageable pageable = PageRequest.of(0, 10);
+        Billing b = new Billing();
+        b.setId(1L);
+        when(billingRepository.searchBillingsByStatus(1L, "ravi", "PENDING", pageable))
+                .thenReturn(new PageImpl<>(List.of(b), pageable, 25));
+
+        Page<Billing> result = billingService.getAllBills("ravi", "PENDING", pageable);
+
+        assertThat(result.getTotalElements()).as("every matching bill counts, not one page's worth").isEqualTo(25);
+        verify(billingRepository, never()).searchBillings(anyLong(), anyString(), any());
+    }
+
+    @Test
+    void updateStatus_aClosedBillCannotBeReopened_andNoPaymentIsInvented() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        when(hospitalRepository.findById(1L)).thenReturn(Optional.of(billingHospital("500", "100")));
+        Billing closed = new Billing();
+        closed.setId(5L);
+        closed.setHospitalId(1L);
+        closed.setPaymentStatus("CLOSED");
+        when(billingRepository.findByIdAndHospitalIdForUpdate(5L, 1L)).thenReturn(Optional.of(closed));
+
+        assertThatThrownBy(() -> billingService.updateStatus(5L, "PAID", "CASH", null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("closed");
+
+        assertThat(closed.getPaymentStatus()).isEqualTo("CLOSED");
+        verify(billingRepository, never()).save(any());
+        verify(billingPaymentRepository, never()).save(any());
+    }
+
+    private com.hms.dto.HospitalFeeDTO charge(String name, String amount) {
+        com.hms.dto.HospitalFeeDTO dto = new com.hms.dto.HospitalFeeDTO();
+        dto.setName(name);
+        dto.setDefaultAmount(new BigDecimal(amount));
+        return dto;
+    }
+
+    private Billing partialBill() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        Billing bill = new Billing();
+        bill.setId(9L);
+        bill.setHospitalId(1L);
+        bill.setPaymentStatus("PARTIAL");
+        when(billingRepository.findByIdAndHospitalIdForUpdate(9L, 1L)).thenReturn(Optional.of(bill));
+        return bill;
+    }
+
+    @Test
+    void replaceBillItems_aTotalBelowWhatWasCollected_isRefused_andNothingIsDeleted() {
+        partialBill();
+        com.hms.entity.BillingPayment paid = new com.hms.entity.BillingPayment();
+        paid.setAmount(new BigDecimal("500.00"));
+        when(billingPaymentRepository.findByBillingId(9L)).thenReturn(List.of(paid));
+
+        assertThatThrownBy(() -> billingService.replaceBillItems(9L, List.of(charge("Consultation", "300.00"))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("already collected");
+
+        verify(billingItemRepository, never()).deleteAll(any());
+        verify(billingItemRepository, never()).saveAll(any());
+    }
+
+    @Test
+    void replaceBillItems_aNegativeCharge_isRefused() {
+        partialBill();
+
+        assertThatThrownBy(() -> billingService.replaceBillItems(9L, List.of(charge("Discount", "-50.00"))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("negative");
+
+        verify(billingItemRepository, never()).deleteAll(any());
+    }
+
     /** A new bill must default to PENDING — never silently "already paid". */
     @Test
     void newBilling_defaultsToPending_notPaid() {

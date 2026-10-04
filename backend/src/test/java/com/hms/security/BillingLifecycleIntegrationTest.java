@@ -313,4 +313,34 @@ class BillingLifecycleIntegrationTest {
                 .isNotEmpty();
         assertReconciles(billId, BED_PRICE, BigDecimal.ZERO, "PENDING");
     }
+
+    /**
+     * A legacy IPD bill (no lines, stored amount 0) is shown at its ward's bed price, but the
+     * payment guard valued it at 0, so paying the balance the screen offered was refused.
+     */
+    @Test
+    void aLegacyLineLessIpdBill_acceptsTheBalanceTheBillScreenShows() {
+        String admitBody = "{\"opdId\":" + opdId + ",\"wardId\":" + wardId + ",\"bedId\":" + bedId
+                + ",\"admissionType\":\"ELECTIVE\",\"primaryDiagnosis\":\"obs\"}";
+        assertThat(post("/hospital/ipd/admit", admitBody).getStatusCode().value()).isEqualTo(200);
+        long ipdId = ipdAdmissionRepository.findAll().stream()
+                .filter(a -> a.getBedId() != null && a.getBedId().equals(bedId))
+                .findFirst().orElseThrow().getId();
+        long billId = ((Number) ipdBill(ipdId).get("billingId")).longValue();
+
+        // Make it a legacy bill: no lines, stored amount 0.
+        billingItemRepository.deleteAll(billingItemRepository.findByBillingId(billId));
+        Billing legacy = billingRepository.findById(billId).orElseThrow();
+        legacy.setAmount(BigDecimal.ZERO);
+        billingRepository.save(legacy);
+
+        BigDecimal shown = money(ipdBill(ipdId).get("balance"));
+        assertThat(shown).as("the bill screen values it at the bed price").isEqualByComparingTo(BED_PRICE);
+
+        ResponseEntity<String> paid = post("/hospital/billing/" + billId + "/pay",
+                "{\"amount\":" + shown + ",\"mode\":\"CASH\"}");
+
+        assertThat(paid.getStatusCode().value()).as(paid.getBody()).isEqualTo(200);
+        assertThat(billingRepository.findById(billId).orElseThrow().getPaymentStatus()).isEqualTo("PAID");
+    }
 }

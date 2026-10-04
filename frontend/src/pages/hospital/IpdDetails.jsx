@@ -19,6 +19,7 @@ import hospitalService from '../../services/hospitalService';
 import icuService from '../../services/icuService';
 import otService from '../../services/otService';
 import wardService from '../../services/wardService';
+import { canManageBilling as userCanManageBilling } from '../../utils/billingAccess';
 import { FOOD_TIMING_OPTIONS, isFoodTimingApplicable } from '../../utils/foodTiming';
 import { printBlob } from '../../utils/printPdf';
 import IcuStayCard from './icu/IcuStayCard';
@@ -155,7 +156,7 @@ const IpdDetails = () => {
   };
 
   const isSoloOrBoth = user?.receptionMode === 'SOLO' || user?.receptionMode === 'BOTH';
-  const hasBilling = user?.billingHandler === 'DOCTOR' || user?.billingHandler === 'BOTH';
+  const hasBilling = userCanManageBilling(user);
   const hasInClinic = user?.inClinic !== false;
   const modules = user?.modules || [];
 
@@ -203,7 +204,7 @@ const IpdDetails = () => {
         { id: 'queue', label: 'Queue' },
         { id: 'opd', label: 'OPD' },
         ...(isSoloOrBoth ? [{ id: 'patients', label: 'Patients' }] : []),
-        ...(isSoloOrBoth || hasBilling ? [{ id: 'billing', label: 'Billing' }] : []),
+        ...(hasBilling ? [{ id: 'billing', label: 'Billing' }] : []),
         ...(isSoloOrBoth && hasInClinic ? [{ id: 'inventory', label: 'Medicine Inventory' }] : []),
         ...(isSoloOrBoth ? [{ id: 'hospital-inventory', label: 'Hospital Inventory' }] : []),
       ];
@@ -215,7 +216,7 @@ const IpdDetails = () => {
         { id: 'ipd', label: 'IPD' },
         { id: 'billing', label: 'Billing' },
         ...(user?.inClinic !== false ? [{ id: 'inventory', label: 'Medicine Inventory' }] : []),
-      ].filter((tab) => tab.id !== 'billing' || user?.billingHandler !== 'DOCTOR');
+      ].filter((tab) => tab.id !== 'billing' || hasBilling);
     } else if (effectiveRole === 'PHARMACIST') {
       const isStandalonePharmacy = modules.includes('PHARMACY') && !modules.includes('OPD');
       return [
@@ -247,11 +248,9 @@ const IpdDetails = () => {
   };
 
   const isAdmin = user?.role === 'HOSPITAL_ADMIN';
-  const canManageBilling =
-    isAdmin ||
-    (isDoctor && (user?.billingHandler === 'DOCTOR' || user?.billingHandler === 'BOTH')) ||
-    (isReceptionist &&
-      (user?.billingHandler === 'RECEPTIONIST' || user?.billingHandler === 'BOTH'));
+  // The backend's rule, module and solo mode included: a solo doctor was refused here though the
+  // server allows them, and a hospital without BILLING was offered Take Payment.
+  const canManageBilling = hasBilling;
 
   const [confirmState, setConfirmState] = useState({
     open: false,

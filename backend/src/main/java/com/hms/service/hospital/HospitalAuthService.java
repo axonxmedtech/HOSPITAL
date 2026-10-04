@@ -614,6 +614,12 @@ public class HospitalAuthService {
         if (!"HOSPITAL_ADMIN".equals(user.getRole())) {
             throw new ForbiddenException("Access denied: requires HOSPITAL_ADMIN role");
         }
+        // Fees are charged as entered, so a negative one would credit the patient or be silently
+        // replaced by a default at billing time. Refuse it here, where the admin can correct it.
+        if ((fees.getConsultationFee() != null && fees.getConsultationFee().signum() < 0)
+                || (fees.getCasePaperFee() != null && fees.getCasePaperFee().signum() < 0)) {
+            throw new IllegalArgumentException("Fees cannot be negative");
+        }
         Hospital hospital = hospitalRepository.findById(user.getHospitalId()).orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
         hospital.setConsultationFee(fees.getConsultationFee());
         hospital.setCasePaperFee(fees.getCasePaperFee());

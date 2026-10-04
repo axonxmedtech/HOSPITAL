@@ -42,6 +42,7 @@ import hospitalService from '../../services/hospitalService';
 // BUG-028: single source-of-truth for base URL
 import otService from '../../services/otService';
 import { extractApiError, safeLoadMessage } from '../../utils/apiError';
+import { canManageBilling } from '../../utils/billingAccess';
 import { formatDateTime, formatTime } from '../../utils/date';
 import { extractPhoneConflicts } from '../../utils/duplicatePhone';
 import { createOptionalModuleFetcher } from '../../utils/optionalModule';
@@ -66,7 +67,8 @@ const ReceptionistDashboard = () => {
   const modules = user?.modules || [];
   const hasOPD = modules.includes('OPD');
   const hasIPD = modules.includes('IPD');
-  const hasBilling = modules.includes('BILLING');
+  // Module AND billing handler AND not solo mode — the backend refuses the rest (utils/billingAccess).
+  const hasBilling = canManageBilling(user);
   const hasAppointments = modules.includes('APPOINTMENTS');
   const hasMedicalInventory = modules.includes('MEDICAL_INVENTORY');
   const hasHospitalInventory = modules.includes('HOSPITAL_INVENTORY');
@@ -1015,7 +1017,7 @@ const ReceptionistDashboard = () => {
     ...(hasOT ? [{ id: 'ot', label: 'Operation Theatre', icon: null }] : []),
     ...(hasICU ? [{ id: 'icu-dashboard', label: 'ICU Dashboard', icon: null }] : []),
     ...(hasICU ? [{ id: 'icu-beds', label: 'ICU Bed Board', icon: null }] : []),
-  ].filter((tab) => tab.id !== 'billing' || user?.billingHandler !== 'DOCTOR');
+  ];
 
   // Fallback if the URL parameter tab is not currently valid/visible
   useEffect(() => {

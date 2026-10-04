@@ -251,36 +251,10 @@ public class BillingController {
     public ResponseEntity<?> updateBillItems(@PathVariable Long id, @RequestBody java.util.List<com.hms.dto.HospitalFeeDTO> items) {
         validateBillingAccess();
         Long hospitalId = securityHelper.getCurrentHospitalId();
-        Billing billing = billingRepository.findByIdAndHospitalIdForUpdate(id, hospitalId)
-                .orElseThrow(() -> new ResourceNotFoundException("Bill not found"));
-
-        if ("PAID".equalsIgnoreCase(billing.getPaymentStatus()) || "CLOSED".equalsIgnoreCase(billing.getPaymentStatus())) {
-            throw new IllegalArgumentException("Cannot edit items of a paid or closed bill");
-        }
-
-        // Delete existing billing items
-        java.util.List<BillingItem> existing = billingItemRepository.findByBillingId(id);
-        billingItemRepository.deleteAll(existing);
-
-        // Add new billing items
-        if (items != null) {
-            for (com.hms.dto.HospitalFeeDTO itemDto : items) {
-                if (itemDto.getName() == null || itemDto.getName().trim().isEmpty()) {
-                    continue;
-                }
-                BigDecimal amt = itemDto.getDefaultAmount() != null ? itemDto.getDefaultAmount() : BigDecimal.ZERO;
-
-                BillingItem item = new BillingItem();
-                item.setBillingId(id);
-                item.setHospitalId(hospitalId);
-                item.setDescription(itemDto.getName().trim());
-                item.setAmount(amt);
-                billingItemRepository.save(item);
-            }
-        }
-
-        // Recalculate bill total
-        billingService.recalculateTotal(id);
+        // Lock, validation, line replacement and the total/status re-derivation are one
+        // transaction in the service. Here they were separate auto-commits, so the row lock was
+        // released at once and a failure part-way left the bill with some or none of its lines.
+        Billing billing = billingService.replaceBillItems(id, items);
 
         // Audit logging
         try {
@@ -508,6 +482,9 @@ public class BillingController {
             }
             if (totalVal.compareTo(BigDecimal.ZERO) == 0 && (itemsVal == null || itemsVal.isEmpty()) && (medicinesVal == null || medicinesVal.isEmpty())) {
                 totalVal = bill.getAmount() != null ? bill.getAmount() : BigDecimal.ZERO;
+                // A legacy line-less IPD bill is shown at its ward's bed price (getIpdBill); value
+                // it the same here, or the balance the screen offers is refused as an overpayment.
+                if (totalVal.signum() == 0) totalVal = billingService.legacyIpdBedPrice(bill);
             }
 
             List<BillingPayment> paymentsVal = billingPaymentRepository.findByBillingId(billingId);
@@ -563,6 +540,7 @@ public class BillingController {
         }
         if (total.compareTo(BigDecimal.ZERO) == 0 && (items == null || items.isEmpty()) && (medicines == null || medicines.isEmpty())) {
             total = bill.getAmount() != null ? bill.getAmount() : BigDecimal.ZERO;
+            if (total.signum() == 0) total = billingService.legacyIpdBedPrice(bill);
         }
 
         List<BillingPayment> payments = billingPaymentRepository.findByBillingId(billingId);

@@ -59,6 +59,9 @@ class TenantScopingArchTest {
             "BillingSchedulerService#processAdmissionCharge",
             "BillingService#autoGenerateOpdBill",
             "BillingService#createOpdBill",
+            // Reads the admission and ward of an already tenant-scoped bill, and checks both
+            // belong to that bill's hospital before using them.
+            "BillingService#legacyIpdBedPrice",
             "BillingService#recalculateTotal",
             "BillingService#updateStatus",
             "BillingService#validateBillingAccess",

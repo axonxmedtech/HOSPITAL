@@ -35,6 +35,7 @@ import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
 import otService from '../../services/otService';
 import { safeLoadMessage, extractApiError } from '../../utils/apiError';
+import { canManageBilling } from '../../utils/billingAccess';
 import { createOptionalModuleFetcher } from '../../utils/optionalModule';
 import BillingTable from './BillingTable';
 import IcuBedBoard from './icu/IcuBedBoard';
@@ -879,7 +880,8 @@ const DoctorDashboard = () => {
   const isSolo = user?.receptionMode === 'SOLO';
   // SOLO and BOTH both put the front desk in the doctor's hands; billing is a separate axis.
   const canDoctorManageReception = user?.receptionMode === 'SOLO' || user?.receptionMode === 'BOTH';
-  const hasBilling = user?.billingHandler === 'DOCTOR' || user?.billingHandler === 'BOTH';
+  // Same rule as the backend, including the BILLING module (see utils/billingAccess).
+  const hasBilling = canManageBilling(user);
   const hasInClinic = user?.inClinic !== false;
   const hasMedicalInventory = modules.includes('MEDICAL_INVENTORY');
   const hasHospitalInventory = modules.includes('HOSPITAL_INVENTORY');
@@ -893,7 +895,7 @@ const DoctorDashboard = () => {
     { id: 'opd', label: 'OPD', icon: null },
     { id: 'follow-ups', label: 'Follow-ups', icon: null },
     ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
-    ...(isSolo || hasBilling ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
+    ...(hasBilling ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
     ...(hasOT ? [{ id: 'ot', label: 'Operation Theatre', icon: null }] : []),
     ...(hasICU ? [{ id: 'icu-dashboard', label: 'ICU Dashboard', icon: null }] : []),
     ...(hasICU ? [{ id: 'icu-beds', label: 'ICU Bed Board', icon: null }] : []),
