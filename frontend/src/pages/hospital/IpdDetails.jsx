@@ -22,6 +22,7 @@ import wardService from '../../services/wardService';
 import { FOOD_TIMING_OPTIONS, isFoodTimingApplicable } from '../../utils/foodTiming';
 import { printBlob } from '../../utils/printPdf';
 import IcuStayCard from './icu/IcuStayCard';
+import AdmissionFormModal from './nurse/AdmissionFormModal';
 import ConsentFormsPanel from './nurse/ConsentFormsPanel';
 import InfusionPanel from './nurse/InfusionPanel';
 import InitialAssessmentPanel from './nurse/InitialAssessmentPanel';
@@ -55,6 +56,7 @@ const IpdDetails = () => {
   // ICU admission & discharge state
   const [icuStays, setIcuStays] = useState([]);
   const [isIcuAdmitOpen, setIsIcuAdmitOpen] = useState(false);
+  const [isAdmissionFormOpen, setIsAdmissionFormOpen] = useState(false);
   const [isIcuDischargeOpen, setIsIcuDischargeOpen] = useState(false);
   const isIcuActive = icuStays[0]?.status === 'ACTIVE';
 
@@ -247,6 +249,11 @@ const IpdDetails = () => {
   };
 
   const isAdmin = user?.role === 'HOSPITAL_ADMIN';
+  // ICU moves are bed transfers, so they follow the bed-transfer rule the server enforces
+  // (receptionist, admin, or a doctor in Solo/Both mode) and need the ICU module, without which
+  // the ICU ward list is refused and the modal opens empty.
+  const canMoveToIcu =
+    (user?.modules || []).includes('ICU') && (isAdmin || isSoloDoctor || isReceptionist);
   const canManageBilling =
     isAdmin ||
     (isDoctor && (user?.billingHandler === 'DOCTOR' || user?.billingHandler === 'BOTH')) ||
@@ -459,6 +466,7 @@ const IpdDetails = () => {
       !billModal.isOpen &&
       !isIcuAdmitOpen &&
       !isIcuDischargeOpen &&
+      !isAdmissionFormOpen &&
       !notesModal.isOpen
     ) {
       load(silent);
@@ -699,8 +707,20 @@ const IpdDetails = () => {
                       Create Surgery Request
                     </button>
                   )}
+                  {/* The admission form is commonly filled and signed at the admission desk. */}
+                  {(isReceptionist || isAdmin) &&
+                    !data.admission?.admissionConfirmed &&
+                    (data.status === 'ADMITTED' || data.status === 'DISCHARGE_PLANNED') && (
+                      <button
+                        type="button"
+                        onClick={() => setIsAdmissionFormOpen(true)}
+                        className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 whitespace-nowrap"
+                      >
+                        Complete Admission
+                      </button>
+                    )}
                   {/* Contextual ICU Action Button: Admit to ICU or Discharge to IPD */}
-                  {(isAdmin || isDoctor || isReceptionist) &&
+                  {canMoveToIcu &&
                     (data.status === 'ADMITTED' || data.status === 'DISCHARGE_PLANNED') &&
                     (isIcuActive ? (
                       <button
@@ -2084,6 +2104,14 @@ const IpdDetails = () => {
                   admissionId={id}
                   onClose={() => setOtModalOpen(false)}
                   onCreated={() => {}}
+                />
+              )}
+
+              {isAdmissionFormOpen && (
+                <AdmissionFormModal
+                  admissionId={Number(id)}
+                  onClose={() => setIsAdmissionFormOpen(false)}
+                  onConfirmed={() => load(false)}
                 />
               )}
 
