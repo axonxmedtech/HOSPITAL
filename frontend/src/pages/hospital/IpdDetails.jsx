@@ -674,7 +674,7 @@ const IpdDetails = () => {
               </div>
 
               {/* Sub-tabs — same set the nurse sees; form tabs respect Files & Access. */}
-              <div className="mt-4 border-b border-gray-200 flex gap-1 overflow-x-auto">
+              <div className="mt-4 border-b border-gray-200 flex gap-1 overflow-x-auto overflow-y-hidden">
                 {tabs.map((t) => (
                   <button
                     key={t.id}
