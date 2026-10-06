@@ -9,6 +9,11 @@ import org.springframework.context.event.EventListener;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 /**
  * Runs idempotent schema patches on every startup.
  *
@@ -28,8 +33,77 @@ public class DatabaseMigrationRunner {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private StartupInitializationState startupState;
+
+    /**
+     * Schema objects the application needs on EVERY request path, whatever modules a hospital
+     * has enabled, that only this runner (or Hibernate) creates -- Flyway does not. A missing one
+     * makes readiness DOWN, so a deployment cannot be declared healthy without it.
+     *
+     * <p>Kept deliberately narrow; this lists objects, never data (an empty table is fine, and a
+     * hospital with no ICU wards is normal):
+     * <ul>
+     *   <li>{@code icu_wards} and {@code icu_stay}: every IPD admission, bed transfer and discharge
+     *       consults them (IcuStayService.onWardSettled / onDischarged), with or without ICU.</li>
+     *   <li>the ICU columns on {@code vitals_records}: mapped on VitalsRecord, so every vitals read
+     *       and write selects them.</li>
+     * </ul>
+     *
+     * <p>Not listed, on purpose: tables used only behind a module gate (the other ICU tables, the
+     * OT pre-op tables), objects Flyway already guarantees (V12-V24), and legacy compatibility
+     * patches. Their failures keep today's log-and-continue behaviour. When a new step creates an
+     * object that a non-gated path requires, add it here.
+     */
+    static final Map<String, List<String>> REQUIRED_SCHEMA = requiredSchema();
+
+    private static Map<String, List<String>> requiredSchema() {
+        Map<String, List<String>> required = new LinkedHashMap<>();
+        required.put("icu_wards", List.of("id", "hospital_id", "ward_id"));
+        required.put("icu_stay", List.of("id", "hospital_id", "ipd_admission_id", "status", "active_marker"));
+        required.put("vitals_records", List.of("gcs_eye", "gcs_verbal", "gcs_motor", "gcs_total",
+                "map_mmhg", "urine_output_ml", "supersedes_vitals_id"));
+        return java.util.Collections.unmodifiableMap(required);
+    }
+
     @EventListener(ApplicationReadyEvent.class)
     public void runMigrations() {
+        try {
+            runAllSteps();
+        } catch (RuntimeException e) {
+            // The fail-closed steps throw on purpose. Spring then aborts startup, so readiness
+            // never reaches ACCEPTING_TRAFFIC; recording it as well keeps the reason in the log.
+            startupState.fail(List.of("startup step failed: " + e.getClass().getSimpleName()));
+            throw e;
+        }
+        List<String> missing = missingRequiredSchema();
+        if (missing.isEmpty()) {
+            startupState.complete();
+        } else {
+            startupState.fail(missing);
+        }
+    }
+
+    /**
+     * Each required table and column, probed with a zero-row SELECT: read-only, portable across
+     * MySQL and H2, and it fails exactly when the application's own query would. The names are
+     * constants above, never input.
+     */
+    List<String> missingRequiredSchema() {
+        List<String> missing = new ArrayList<>();
+        for (Map.Entry<String, List<String>> entry : REQUIRED_SCHEMA.entrySet()) {
+            String table = entry.getKey();
+            String columns = String.join(", ", entry.getValue());
+            try {
+                jdbcTemplate.queryForList("SELECT " + columns + " FROM " + table + " WHERE 1 = 0");
+            } catch (RuntimeException e) {
+                missing.add("missing required schema: " + table + " (" + columns + ")");
+            }
+        }
+        return missing;
+    }
+
+    void runAllSteps() {
         fixHospitalsPlanColumn();
         ensureHospitalSettingsInClinic();
         ensureHospitalsIsSingleDoctor();
