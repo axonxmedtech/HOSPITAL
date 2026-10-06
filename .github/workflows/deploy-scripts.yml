@@ -7,11 +7,17 @@ on:
     paths:
       - 'scripts/deploy/**'
       - '.github/workflows/_deploy.yml'
+      - '.github/workflows/deploy-staging.yml'
+      - '.github/workflows/deploy-prod.yml'
+      - '.github/workflows/deploy-rollback.yml'
       - '.github/workflows/deploy-scripts.yml'
   pull_request:
     paths:
       - 'scripts/deploy/**'
       - '.github/workflows/_deploy.yml'
+      - '.github/workflows/deploy-staging.yml'
+      - '.github/workflows/deploy-prod.yml'
+      - '.github/workflows/deploy-rollback.yml'
       - '.github/workflows/deploy-scripts.yml'
   workflow_dispatch:
 
@@ -30,6 +36,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Shellcheck deploy scripts
-        run: shellcheck -S warning scripts/deploy/await-release.sh scripts/deploy/rollback.sh scripts/deploy/test-await-release.sh
+        run: shellcheck -S warning scripts/deploy/await-release.sh scripts/deploy/rollback.sh scripts/deploy/test-await-release.sh scripts/deploy/validate-config.sh scripts/deploy/test-validate-config.sh
       - name: Run await-release.sh scenario tests
         run: bash scripts/deploy/test-await-release.sh
+      - name: Health-port validation and no-fallback guard
+        run: bash scripts/deploy/test-validate-config.sh

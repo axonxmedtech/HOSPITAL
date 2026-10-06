@@ -61,12 +61,30 @@ BASE="http://127.0.0.1:$PORT"
 DEAD_BASE="http://127.0.0.1:9"   # nothing listens on the discard port
 
 # ── helpers ────────────────────────────────────────────────────────────────
-info_full()   { printf '{"git":{"commit":{"id":{"full":"%s","abbrev":"%s"}}}}' "$1" "${1:0:7}" > "$STUB/info.body"; echo 200 > "$STUB/info.code"; }
-info_abbrev() { printf '{"git":{"commit":{"id":{"abbrev":"%s"}}}}' "${1:0:7}" > "$STUB/info.body"; echo 200 > "$STUB/info.code"; }
+# info_full <sha> [pid|none]: a current artifact; the PID defaults to whatever the stub
+# systemctl reports, i.e. the HTTP answer comes from the restarted process.
+info_full() {
+  local pid="${2:-$(cat "$STUB/pid" 2>/dev/null || echo 0)}"
+  if [ "$pid" = "none" ]; then
+    printf '{"git":{"commit":{"id":{"full":"%s","abbrev":"%s"}}}}' "$1" "${1:0:7}" > "$STUB/info.body"
+  else
+    printf '{"git":{"commit":{"id":{"full":"%s","abbrev":"%s"}}},"runtime":{"pid":%s}}' "$1" "${1:0:7}" "$pid" > "$STUB/info.body"
+  fi
+  echo 200 > "$STUB/info.code"
+}
+# info_abbrev <sha> [pid]: a legacy artifact -- abbreviated revision and, unless given, no PID.
+info_abbrev() {
+  if [ -n "${2:-}" ]; then
+    printf '{"git":{"commit":{"id":{"abbrev":"%s"}}},"runtime":{"pid":%s}}' "${1:0:7}" "$2" > "$STUB/info.body"
+  else
+    printf '{"git":{"commit":{"id":{"abbrev":"%s"}}}}' "${1:0:7}" > "$STUB/info.body"
+  fi
+  echo 200 > "$STUB/info.code"
+}
 probe()       { printf '{"status":"%s"}' "$2" > "$STUB/$1.body"; echo "$3" > "$STUB/$1.code"; }
 service()     { echo "$1" > "$STUB/active"; echo "$2" > "$STUB/pid"; }
 
-healthy_new() { service active "$NEW_PID"; info_full "$NEW_SHA"; probe readiness UP 200; probe liveness UP 200; }
+healthy_new() { service active "$NEW_PID"; info_full "$NEW_SHA" "$NEW_PID"; probe readiness UP 200; probe liveness UP 200; }
 
 run() { # run <expected-sha> [extra args...]; returns the script's exit code
   local sha="$1"; shift
@@ -84,7 +102,7 @@ expect() { # expect <name> <expected-exit> <actual-exit>
 healthy_new; run "$NEW_SHA"; expect "1 expected SHA + READY + new PID is accepted" 0 $?
 
 # 2. the old application answering HTTP 200 with the previous SHA -> rejected
-service active "$OLD_PID"; info_full "$OLD_SHA"; probe readiness UP 200; probe liveness UP 200
+service active "$OLD_PID"; info_full "$OLD_SHA" "$OLD_PID"; probe readiness UP 200; probe liveness UP 200
 run "$NEW_SHA"; expect "2 old SHA + HTTP 200 is rejected" 1 $?
 
 # 2b. previous SHA even on a new PID -> rejected
@@ -125,12 +143,12 @@ wait "$bg"
 
 # 8b. the process restarts (PID changes) during stabilisation -> rejected
 healthy_new
-( sleep 1.5; service active 6262 ) & bg=$!
+( sleep 1.5; service active 6262; info_full "$NEW_SHA" 6262 ) & bg=$!
 run "$NEW_SHA" --stable-checks 5; expect "8b PID change during stabilisation is rejected" 1 $?
 wait "$bg"
 
 # 9. unchanged old PID, even reporting the new SHA and READY -> rejected
-healthy_new; service active "$OLD_PID"; run "$NEW_SHA"; expect "9 unchanged pre-restart PID is rejected" 1 $?
+healthy_new; service active "$OLD_PID"; info_full "$NEW_SHA" "$OLD_PID"; run "$NEW_SHA"; expect "9 unchanged pre-restart PID is rejected" 1 $?
 
 # 9b. service not active -> rejected
 healthy_new; service failed 0; run "$NEW_SHA"; expect "9b inactive service is rejected" 1 $?
@@ -142,6 +160,53 @@ healthy_new; info_abbrev "$NEW_SHA"; run "$NEW_SHA" --allow-abbrev
 expect "10b abbreviated revision is accepted with --allow-abbrev" 0 $?
 healthy_new; info_abbrev "$OLD_SHA"; run "$NEW_SHA" --allow-abbrev
 expect "10c --allow-abbrev still rejects a non-matching abbreviation" 1 $?
+
+# ── HTTP-to-process binding (runtime.pid == MainPID) ───────────────────────
+
+# 13. correct SHA, but the HTTP answer comes from a different process
+healthy_new; info_full "$NEW_SHA" 7777; run "$NEW_SHA"; expect "13 correct SHA + wrong HTTP PID is rejected" 1 $?
+
+# 14. a healthy wrong service: different revision and different PID
+healthy_new; info_full "$OTHER_SHA" 7777; run "$NEW_SHA"; expect "14 healthy wrong service with another PID is rejected" 1 $?
+
+# 15. the wrong port, answered by production: main's abbreviated revision, no runtime.pid
+healthy_new; info_abbrev "$OLD_SHA"; run "$NEW_SHA"; expect "15 wrong port returning main's revision is rejected" 1 $?
+
+# 16. a NEW release that does not report runtime.pid
+healthy_new; info_full "$NEW_SHA" none; run "$NEW_SHA"
+rc=$?; expect "16 new release without runtime.pid is rejected" 1 "$rc"
+expect "16 ...with a reason that names runtime.pid" true "$(grep -q 'no runtime.pid reported' "$WORK/out.log" && echo true || echo false)"
+
+# 17. the HTTP PID changes during stabilisation while systemd's MainPID does not
+healthy_new
+( sleep 1.5; info_full "$NEW_SHA" 8888 ) & bg=$!
+run "$NEW_SHA" --stable-checks 5; expect "17 HTTP PID change during stabilisation is rejected" 1 $?
+wait "$bg"
+
+# 18. the same PID and SHA stay healthy through the full 6/6 window
+healthy_new; run "$NEW_SHA" --stable-checks 6 --timeout 12
+rc=$?; expect "18 same PID/SHA healthy through 6/6 is accepted" 0 "$rc"
+expect "18 ...and all six stability checks were logged" true "$(grep -q 'Stable 6/6' "$WORK/out.log" && echo true || echo false)"
+
+# 19. legacy rollback target that DOES report a PID, but not the restarted one
+healthy_new; info_abbrev "$NEW_SHA" 7777; run "$NEW_SHA" --allow-abbrev
+expect "19 legacy rollback with a mismatched runtime.pid is rejected" 1 $?
+
+# 20. legacy rollback target reporting the matching PID
+healthy_new; info_abbrev "$NEW_SHA" "$NEW_PID"; run "$NEW_SHA" --allow-abbrev
+expect "20 legacy rollback with a matching runtime.pid is accepted" 0 $?
+
+# 21. legacy rollback without runtime.pid is accepted only with --allow-abbrev, and says so
+healthy_new; info_abbrev "$NEW_SHA"; run "$NEW_SHA" --allow-abbrev
+rc=$?; expect "21 legacy rollback without runtime.pid is accepted with --allow-abbrev" 0 "$rc"
+expect "21 ...and logs that binding was not possible" true "$(grep -q 'reports no runtime.pid' "$WORK/out.log" && echo true || echo false)"
+
+# 22. no default health port: --base-url missing, or without an explicit port, is a usage error
+bash "$SCRIPT" --expected-sha "$NEW_SHA" --service hms-test --previous-pid "$OLD_PID" > "$WORK/out.log" 2>&1
+expect "22a missing --base-url is a usage error" 2 $?
+bash "$SCRIPT" --expected-sha "$NEW_SHA" --service hms-test --previous-pid "$OLD_PID" \
+  --base-url "http://127.0.0.1" > "$WORK/out.log" 2>&1
+expect "22b --base-url without an explicit port is a usage error" 2 $?
 
 # Usage: a short expected SHA is refused outright, even with --allow-abbrev
 bash "$SCRIPT" --expected-sha "${NEW_SHA:0:7}" --service hms-test --previous-pid "$OLD_PID" \

@@ -306,7 +306,8 @@ jobs:
       git_branch: main
       ssh_host: ${{ vars.PRODUCTION_SSH_HOST }}
       ssh_port: ${{ vars.PRODUCTION_SSH_PORT || '22' }}
-      health_port: ${{ vars.PRODUCTION_HEALTH_PORT || '8080' }}
+      # Required, no fallback: the deploy refuses to start until it is set and verified.
+      health_port: ${{ vars.PRODUCTION_HEALTH_PORT }}
       app_url: ${{ vars.PRODUCTION_APP_URL }}
       enable_rollback: true
       notify_slack: true

@@ -51,7 +51,7 @@ jobs:
               echo "service=hms-production"
               echo "host=${{ vars.PRODUCTION_SSH_HOST || vars.HOST || vars.SSH_HOST }}"
               echo "port=${{ vars.PRODUCTION_SSH_PORT || '22' }}"
-              echo "hport=${{ vars.PRODUCTION_HEALTH_PORT || '8080' }}"
+              echo "hport=${{ vars.PRODUCTION_HEALTH_PORT }}"
             } >> "$GITHUB_OUTPUT"
           else
             {
@@ -59,7 +59,7 @@ jobs:
               echo "service=hms-staging"
               echo "host=${{ vars.STAGING_SSH_HOST || vars.HOST || vars.SSH_HOST }}"
               echo "port=${{ vars.STAGING_SSH_PORT || '22' }}"
-              echo "hport=${{ vars.STAGING_HEALTH_PORT || '8080' }}"
+              echo "hport=${{ vars.STAGING_HEALTH_PORT }}"
             } >> "$GITHUB_OUTPUT"
           fi
 
@@ -67,7 +67,9 @@ jobs:
         env:
           HMS_HOST: ${{ steps.env.outputs.host }}
           HMS_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-        run: bash scripts/deploy/validate-config.sh HMS_HOST HMS_KEY
+          # No fallback: the rollback must verify the same service the deploy did.
+          HMS_HEALTH_PORT: ${{ steps.env.outputs.hport }}
+        run: bash scripts/deploy/validate-config.sh HMS_HOST HMS_KEY HMS_HEALTH_PORT:port
 
       - name: Execute rollback on VPS
         id: run
