@@ -256,7 +256,8 @@ jobs:
       git_branch: staging
       ssh_host: ${{ vars.STAGING_SSH_HOST }}
       ssh_port: ${{ vars.STAGING_SSH_PORT || '22' }}
-      health_port: ${{ vars.STAGING_HEALTH_PORT || '8080' }}
+      # Required, no fallback: the deploy refuses to start without it (staging is 8081).
+      health_port: ${{ vars.STAGING_HEALTH_PORT }}
       app_url: ${{ vars.STAGING_APP_URL }}
       enable_rollback: true
       notify_slack: false

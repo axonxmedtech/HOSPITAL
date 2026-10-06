@@ -5,7 +5,10 @@
 # A release is accepted only when, on every check:
 #   1. systemd reports the service active, with a MainPID that is NOT the pre-restart PID
 #      (so the old JVM, which may still answer HTTP while it shuts down, can never pass);
-#   2. /actuator/info reports the exact expected 40-character revision (git.commit.id.full);
+#   2. /actuator/info reports runtime.pid EQUAL to that MainPID -- binding the HTTP answer to the
+#      process systemd restarted, so a healthy response from another service, another instance,
+#      the old JVM or a wrong port is refused -- and the exact expected 40-character revision
+#      (git.commit.id.full);
 #   3. /actuator/health/readiness is HTTP 200 with status UP -- which in this application means
 #      Spring is accepting traffic, post-start schema initialisation is COMPLETE and the database
 #      is up (see StartupInitializationState);
@@ -14,12 +17,16 @@
 #
 # Usage:
 #   await-release.sh --expected-sha <sha> --service <systemd unit> --previous-pid <pid>
-#                    [--base-url http://localhost:8080] [--timeout 300] [--interval 5]
-#                    [--stable-checks 6] [--allow-abbrev]
+#                    --base-url http://localhost:<health port>
+#                    [--timeout 300] [--interval 5] [--stable-checks 6] [--allow-abbrev]
+#
+# --base-url is required: there is no default port, because a default can point at a different
+# service on the same host (that is how staging verification once checked production).
 #
 # --allow-abbrev is ONLY for verifying a rollback to an artifact built before /actuator/info
-# carried the full revision: it accepts the 7+-character abbreviation when the full id is absent.
-# A normal deployment must never pass it.
+# carried the full revision and runtime.pid. It accepts the 7+-character abbreviation when the
+# full id is absent, and tolerates runtime.pid being ABSENT ENTIRELY (logged). A PID that is
+# present must still match. A normal deployment must never pass it.
 #
 # Exit: 0 accepted, 1 not accepted (timed out, wrong revision, unhealthy, restarted), 2 bad usage.
 # Prints revision, PID and status only -- never response bodies, configuration or credentials.
@@ -30,7 +37,7 @@ set -uo pipefail
 EXPECTED=""
 SERVICE=""
 PREVIOUS_PID=""
-BASE_URL="http://localhost:8080"
+BASE_URL=""
 TIMEOUT=300
 INTERVAL=5
 STABLE_CHECKS=6
@@ -55,6 +62,10 @@ done
 
 EXPECTED="$(printf '%s' "$EXPECTED" | tr 'A-F' 'a-f')"
 [ -n "$SERVICE" ] || usage
+if ! printf '%s' "$BASE_URL" | grep -qE '^https?://[^/]+:[0-9]{1,5}$'; then
+  echo "--base-url is required and must include an explicit port, e.g. http://localhost:8081" >&2
+  usage
+fi
 [ -n "$PREVIOUS_PID" ] || usage
 for n in "$TIMEOUT" "$INTERVAL" "$STABLE_CHECKS" "$PREVIOUS_PID"; do
   case "$n" in ''|*[!0-9]*) echo "numeric argument expected, got '$n'" >&2; usage ;; esac
@@ -68,7 +79,7 @@ fi
 TS() { date -u '+%Y-%m-%dT%H:%M:%SZ'; }
 
 # Last values observed, for the log line and the stabilisation comparison.
-PID="?"; RUNNING="?"; READY="?"; LIVE="?"; REASON=""
+PID="?"; HTTP_PID="?"; RUNNING="?"; READY="?"; LIVE="?"; REASON=""
 
 fetch() { # url -> sets BODY and CODE; never echoes the body
   local out
@@ -96,7 +107,15 @@ check_once() {
     RUNNING="$(printf '%s' "$BODY" | grep -oE '"abbrev":"[0-9a-f]{7,40}"' | head -1 | cut -d'"' -f4)"
   fi
   RUNNING="${RUNNING:-none}"
+  HTTP_PID="$(printf '%s' "$BODY" | grep -oE '"runtime":\{"pid":[0-9]+' | head -1 | grep -oE '[0-9]+$')"
+  HTTP_PID="${HTTP_PID:-none}"
   if [ "$CODE" != "200" ]; then REASON="/actuator/info answered HTTP $CODE"; return 1; fi
+  if [ "$HTTP_PID" = "none" ]; then
+    if ! $ALLOW_ABBREV; then REASON="no runtime.pid reported (cannot bind the response to PID $PID)"; return 1; fi
+    LEGACY_NO_PID=true
+  elif [ "$HTTP_PID" != "$PID" ]; then
+    REASON="HTTP response is from PID $HTTP_PID, not the restarted PID $PID"; return 1
+  fi
   if [ "$RUNNING" = "none" ]; then REASON="no revision reported"; return 1; fi
   if [ "$RUNNING" != "$EXPECTED" ]; then
     # The abbreviation is a prefix of the full id; only accepted for legacy rollback targets.
@@ -115,11 +134,13 @@ check_once() {
 }
 
 line() { # attempt-label
-  echo "[$(TS)] $1 | PID $PID | expected $EXPECTED | running $RUNNING | readiness $READY | liveness $LIVE${REASON:+ | $REASON}"
+  echo "[$(TS)] $1 | PID $PID | HTTP PID $HTTP_PID | expected $EXPECTED | running $RUNNING | readiness $READY | liveness $LIVE${REASON:+ | $REASON}"
 }
 
 echo "[$(TS)] Verifying release: service=$SERVICE previous-pid=$PREVIOUS_PID timeout=${TIMEOUT}s interval=${INTERVAL}s stable-checks=$STABLE_CHECKS$($ALLOW_ABBREV && echo ' (legacy abbreviated revision allowed)')"
 echo "Expected revision: $EXPECTED"
+echo "Health endpoint: $BASE_URL"
+LEGACY_NO_PID=false
 
 deadline=$(( $(date +%s) + TIMEOUT ))
 attempt=0
@@ -161,5 +182,9 @@ while [ "$n" -lt "$STABLE_CHECKS" ]; do
 done
 
 echo "Running revision: $RUNNING"
+echo "Running PID: $STABLE_PID (HTTP runtime.pid $HTTP_PID)"
+if $LEGACY_NO_PID; then
+  echo "[$(TS)] NOTE: legacy rollback target reports no runtime.pid; HTTP-to-process binding was not possible (--allow-abbrev)."
+fi
 echo "[$(TS)] ACCEPTED: PID $STABLE_PID, readiness UP and liveness UP for $STABLE_CHECKS consecutive checks."
 exit 0

@@ -107,4 +107,28 @@ class DeploymentReadinessEndpointTest {
                 .doesNotContainIgnoringCase("secret")
                 .doesNotContain("\"env\"");
     }
+
+    /**
+     * The deploy binds the HTTP answer to the restarted process by comparing this PID with
+     * systemd's MainPID, so it must be this JVM's own PID -- and the only process detail exposed.
+     */
+    @Test
+    void infoCarriesThisJvmsPid_andNoOtherProcessOrEnvironmentDetail() {
+        ResponseEntity<String> res = rest.getForEntity("/actuator/info", String.class);
+
+        assertThat(res.getStatusCode().value()).isEqualTo(200);
+        assertThat(res.getBody()).contains("\"runtime\":{\"pid\":" + ProcessHandle.current().pid() + "}");
+        assertThat(res.getBody())
+                .doesNotContain("\"owner\"")
+                .doesNotContain("\"parentPid\"")
+                .doesNotContain("\"cpus\"")
+                .doesNotContain("\"process\"")
+                .doesNotContainIgnoringCase("java.home")
+                .doesNotContainIgnoringCase("user.name")
+                .doesNotContain(System.getProperty("user.name"))
+                .doesNotContainIgnoringCase("jdbc")
+                .doesNotContainIgnoringCase("password")
+                .doesNotContainIgnoringCase("secret")
+                .doesNotContain("\"env\"");
+    }
 }

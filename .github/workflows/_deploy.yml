@@ -25,9 +25,12 @@ on:
       ssh_port:
         type: string
         default: '22'
+      # The backend's own HTTP port on the server, used by EVERY post-deploy check (release
+      # verification, rollback verification, extended verification). Required, no default: a
+      # default once pointed staging verification at another service on the same host.
       health_port:
         type: string
-        default: '8080'
+        required: true
       app_url:
         type: string
         default: ''
@@ -89,7 +92,8 @@ jobs:
           HMS_REPO_PATH: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
           HMS_SERVICE: ${{ inputs.service_name || vars.SERVICE_NAME }}
           HMS_BRANCH: ${{ inputs.git_branch || vars.BRANCH_NAME }}
-        run: bash scripts/deploy/validate-config.sh HMS_SSH_HOST HMS_SSH_KEY HMS_REPO_PATH HMS_SERVICE HMS_BRANCH
+          HMS_HEALTH_PORT: ${{ inputs.health_port }}
+        run: bash scripts/deploy/validate-config.sh HMS_SSH_HOST HMS_SSH_KEY HMS_REPO_PATH HMS_SERVICE HMS_BRANCH HMS_HEALTH_PORT:port
 
       # ── SSH Connection Diagnostics ───────────────────────────────────────
       # Retries TCP check 5 times before failing — surfaces Hostinger hPanel
@@ -331,7 +335,9 @@ jobs:
               sudo systemctl daemon-reload
             fi
 
-            HPORT="${{ inputs.health_port || vars.PORT || vars.STAGING_HEALTH_PORT || vars.PRODUCTION_HEALTH_PORT || '8080' }}"
+            # The one health port for this deployment, validated before anything on the server
+            # changed. Release verification and rollback verification both use it.
+            HPORT="${{ inputs.health_port }}"
             BASE_URL="http://localhost:${HPORT}"
             EXPECTED_SHA="${{ github.sha }}"
             # Copied out of the checkout: a rollback resets it to an older commit that may predate
@@ -414,7 +420,7 @@ jobs:
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
           SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
           REPO: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
-          HPORT: ${{ inputs.health_port || vars.PORT || vars.STAGING_HEALTH_PORT || vars.PRODUCTION_HEALTH_PORT || '8080' }}
+          HPORT: ${{ inputs.health_port }}
           APP_URL: ${{ inputs.app_url }}
         run: |
           mkdir -p deployment-logs
