@@ -1,0 +1,35 @@
+name: Deploy Scripts
+
+# Release verification decides whether a deployment is accepted and when a rollback runs, so its
+# behaviour is tested whenever it, or the workflow that calls it, changes.
+on:
+  push:
+    paths:
+      - 'scripts/deploy/**'
+      - '.github/workflows/_deploy.yml'
+      - '.github/workflows/deploy-scripts.yml'
+  pull_request:
+    paths:
+      - 'scripts/deploy/**'
+      - '.github/workflows/_deploy.yml'
+      - '.github/workflows/deploy-scripts.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-scripts-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  release-verification:
+    name: Release verification scenarios
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shellcheck deploy scripts
+        run: shellcheck -S warning scripts/deploy/await-release.sh scripts/deploy/rollback.sh scripts/deploy/test-await-release.sh
+      - name: Run await-release.sh scenario tests
+        run: bash scripts/deploy/test-await-release.sh

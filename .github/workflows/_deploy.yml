@@ -190,10 +190,18 @@ jobs:
             REPO="${{ inputs.repo_path || vars.DEPLOY_PATH }}"
             BRANCH="${{ inputs.git_branch || vars.BRANCH_NAME }}"
 
-            echo "[$(TS)] Pulling latest code..."
+            # The exact commit this run built and is deploying -- not whatever the branch tip is
+            # by now. The artifacts are named after it, and release verification compares the
+            # running revision against it.
+            EXPECTED_SHA="${{ github.sha }}"
+
+            echo "[$(TS)] Pulling code for $EXPECTED_SHA ($BRANCH)..."
             cd "$REPO"
+            # What is deployed NOW, captured before the checkout moves: it is what a rollback
+            # restores. (It used to be read after the reset, so it recorded the new commit.)
+            PREV_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
             git fetch origin
-            git reset --hard "origin/$BRANCH"
+            git reset --hard "$EXPECTED_SHA"
             git log -1 --oneline
 
             # Ensure build directories exist
@@ -207,7 +215,6 @@ jobs:
               cp -f backend/target/*.jar ../rollback_backup/prev_backend.jar || true
               rm -rf ../rollback_backup/prev_frontend_dist
               cp -r frontend/dist ../rollback_backup/prev_frontend_dist || true
-              PREV_SHA=$(git rev-parse HEAD)
               echo "$PREV_SHA" > ../rollback_backup/prev_sha.txt
             fi
 
@@ -288,7 +295,8 @@ jobs:
           key: ${{ secrets.ssh_key }}
           port: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
           timeout: 60s
-          command_timeout: 10m
+          # Verification may take up to 300s (+30s stabilisation), and a rollback as long again.
+          command_timeout: 15m
           script: |
             set -euo pipefail
             TS() { date -u '+%Y-%m-%dT%H:%M:%SZ'; }
@@ -323,82 +331,79 @@ jobs:
               sudo systemctl daemon-reload
             fi
 
+            HPORT="${{ inputs.health_port || vars.PORT || vars.STAGING_HEALTH_PORT || vars.PRODUCTION_HEALTH_PORT || '8080' }}"
+            BASE_URL="http://localhost:${HPORT}"
+            EXPECTED_SHA="${{ github.sha }}"
+            # Copied out of the checkout: a rollback resets it to an older commit that may predate
+            # the verifier.
+            AWAIT="$(mktemp)"
+            cp scripts/deploy/await-release.sh "$AWAIT"
+
             # Restart service
-            echo "[$(TS)] Restarting $SERVICE ..."
+            PREV_PID=$(systemctl show -p MainPID --value "$SERVICE" 2>/dev/null || echo 0)
+            echo "[$(TS)] Restarting $SERVICE (current PID ${PREV_PID:-0}) ..."
             sudo systemctl restart "$SERVICE"
 
-            # Health check
-            MAX=15
-            DELAY=10
-            URL="http://localhost:${{ inputs.health_port || vars.PORT || vars.STAGING_HEALTH_PORT || vars.PRODUCTION_HEALTH_PORT || '8080' }}/api/public/health"
-            echo "[$(TS)] Health check: $URL"
-            HEALTHY=false
-            for i in $(seq 1 $MAX); do
-              STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$URL" || echo 000)
-              echo "[$(TS)] Attempt $i/$MAX — HTTP $STATUS"
-              if [ "$STATUS" = "200" ]; then
-                HEALTHY=true
-                break
-              fi
-              sleep "$DELAY"
-            done
-
-            if $HEALTHY; then
-              echo "[$(TS)] Service is healthy."
+            # Release verification. The NEW process (a different MainPID) must report EXACTLY this
+            # commit on /actuator/info, be ready (Spring accepting traffic, post-start schema
+            # initialisation complete, database up) and live, and stay so for 6 checks. An HTTP 200
+            # alone -- which the old JVM can give while it shuts down -- is never accepted.
+            if bash "$AWAIT" --expected-sha "$EXPECTED_SHA" --service "$SERVICE" \
+                 --previous-pid "${PREV_PID:-0}" --base-url "$BASE_URL" \
+                 --timeout 300 --interval 5 --stable-checks 6; then
+              rm -f "$AWAIT"
+              echo "[$(TS)] Release verified."
               exit 0
             fi
 
-            # ── Health check failed ───────────────────────────────────────
+            # ── Release not verified ──────────────────────────────────────
+            echo "[$(TS)] Hint: check 'journalctl -u $SERVICE -n 150' on the server."
             if [ "${{ inputs.enable_rollback }}" = "true" ]; then
-              PREV_SHA=$(cat ../rollback_backup/prev_sha.txt || echo "")
+              PREV_SHA=$(cat ../rollback_backup/prev_sha.txt 2>/dev/null || echo "")
+              FAILED_PID=$(systemctl show -p MainPID --value "$SERVICE" 2>/dev/null || echo 0)
               echo ""
               echo "============================================"
-              echo "  HEALTH CHECK FAILED — INITIATING ROLLBACK"
-              echo "  Rolling back to: $PREV_SHA"
+              echo "  RELEASE NOT VERIFIED — APPLICATION ROLLBACK"
+              echo "  Rolling back to: ${PREV_SHA:-<unknown>}"
+              echo "  The DATABASE is NOT rolled back: migrations already applied stay applied."
+              echo "  Restore the pre-deploy backup if the data must be returned to its prior state."
               echo "============================================"
               cd "$REPO"
-              git reset --hard "$PREV_SHA"
-              
+              if [ -n "$PREV_SHA" ]; then git reset --hard "$PREV_SHA"; fi
+
               # Restore backups
               echo "Restoring previous build artifacts..."
               cp -f ../rollback_backup/prev_backend.jar backend/target/hospital-management-system-1.0.0.jar || true
               rm -rf frontend/dist
               cp -r ../rollback_backup/prev_frontend_dist frontend/dist || true
-              
+
               echo "Restarting service..."
-              sudo systemctl restart "${{ inputs.service_name || vars.SERVICE_NAME }}"
-              
-              # Post-rollback health check
-              ROLLBACK_HEALTHY=false
-              for i in $(seq 1 $MAX); do
-                STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$URL" || echo 000)
-                echo "[$(TS)] Rollback health $i/$MAX — HTTP $STATUS"
-                if [ "$STATUS" = "200" ]; then
-                  ROLLBACK_HEALTHY=true
-                  break
-                fi
-                sleep "$DELAY"
-              done
-              
-              if $ROLLBACK_HEALTHY; then
-                echo "[$(TS)] Rollback succeeded. Previous version is live."
+              sudo systemctl restart "$SERVICE"
+
+              # Same verification against the previous revision. --allow-abbrev only because the
+              # previous artifact may predate the full revision in /actuator/info.
+              if [ -n "$PREV_SHA" ] && bash "$AWAIT" --expected-sha "$PREV_SHA" --service "$SERVICE" \
+                   --previous-pid "${FAILED_PID:-0}" --base-url "$BASE_URL" \
+                   --timeout 300 --interval 5 --stable-checks 6 --allow-abbrev; then
+                echo "[$(TS)] Application rollback verified: $PREV_SHA is running and ready."
+                echo "[$(TS)] The database was NOT rolled back."
               else
-                echo "[$(TS)] Rollback health check also failed. Manual intervention required."
+                echo "[$(TS)] Application rollback could NOT be verified. Manual intervention required."
               fi
+              rm -f "$AWAIT"
               echo "[$(TS)] Deployment FAILED — exiting with error."
               exit 1
             else
-              echo "[$(TS)] Health check failed. Rollback disabled."
-              echo "[$(TS)] Hint: check 'journalctl -u ${{ inputs.service_name || vars.SERVICE_NAME }} -n 100' on the server."
+              rm -f "$AWAIT"
+              echo "[$(TS)] Release not verified. Rollback disabled."
               exit 1
             fi
 
       # ── Extended health verification (readiness, dependencies, resources) ──
-      # The proven step above is the rollback gate (liveness 200). This adds readiness (Actuator
-      # overall status reflects DB/Redis/disk) + host resource checks and records structured
-      # results for the manifest. Report-only for now (continue-on-error) so it augments the
-      # signal without destabilising the proven flow — promote to a hard gate after validating
-      # on staging (see docs/deployment/DEPLOYMENT.md §Health verification).
+      # The rollback gate is release verification in the step above (exact revision, new PID,
+      # readiness, liveness, stabilisation -- scripts/deploy/await-release.sh). This step records
+      # host resources and overall health for the manifest and stays report-only
+      # (continue-on-error): it is a diagnostic record, not the gate.
       - name: Extended health verification
         id: verify
         if: success()

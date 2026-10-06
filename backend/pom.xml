@@ -277,6 +277,11 @@
                 <failOnNoGitDirectory>false</failOnNoGitDirectory>
                 <failOnUnableToExtractRepoInfo>false</failOnUnableToExtractRepoInfo>
                 <generateGitPropertiesFile>true</generateGitPropertiesFile>
+                <!-- "full" names the 40-character id git.commit.id.full. The default ("flat") names
+                     it git.commit.id, which the include list below filtered out, so /actuator/info
+                     carried only the 7-character abbreviation. Deployment verification compares
+                     the running revision against the exact deployed SHA and needs the full id. -->
+                <commitIdGenerationMode>full</commitIdGenerationMode>
                 <includeOnlyProperties>
                     <property>^git.branch$</property>
                     <property>^git.build.time$</property>
