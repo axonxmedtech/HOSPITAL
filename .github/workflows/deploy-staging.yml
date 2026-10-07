@@ -256,8 +256,8 @@ jobs:
       git_branch: staging
       ssh_host: ${{ vars.STAGING_SSH_HOST }}
       ssh_port: ${{ vars.STAGING_SSH_PORT || '22' }}
-      # Required, no fallback: the deploy refuses to start without it (staging is 8081).
-      health_port: ${{ vars.STAGING_HEALTH_PORT }}
+      # No health_port here: this caller job has no environment scope, so vars.STAGING_HEALTH_PORT
+      # would be empty. _deploy.yml resolves it inside the Staging environment, no fallback.
       app_url: ${{ vars.STAGING_APP_URL }}
       enable_rollback: true
       notify_slack: false

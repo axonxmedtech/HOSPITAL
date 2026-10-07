@@ -306,8 +306,8 @@ jobs:
       git_branch: main
       ssh_host: ${{ vars.PRODUCTION_SSH_HOST }}
       ssh_port: ${{ vars.PRODUCTION_SSH_PORT || '22' }}
-      # Required, no fallback: the deploy refuses to start until it is set and verified.
-      health_port: ${{ vars.PRODUCTION_HEALTH_PORT }}
+      # No health_port here: this caller job has no environment scope, so vars.PRODUCTION_HEALTH_PORT
+      # would be empty. _deploy.yml resolves it inside the Production environment, no fallback.
       app_url: ${{ vars.PRODUCTION_APP_URL }}
       enable_rollback: true
       notify_slack: true

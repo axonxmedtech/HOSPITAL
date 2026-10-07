@@ -25,12 +25,15 @@ on:
       ssh_port:
         type: string
         default: '22'
-      # The backend's own HTTP port on the server, used by EVERY post-deploy check (release
-      # verification, rollback verification, extended verification). Required, no default: a
-      # default once pointed staging verification at another service on the same host.
+      # Optional override for the backend's own HTTP port on the server. Normally left empty: the
+      # deploy job resolves it from the environment's STAGING_/PRODUCTION_HEALTH_PORT variable,
+      # which a caller cannot read (environment variables reach only jobs that declare
+      # `environment:`). No default port: a default once pointed staging verification at another
+      # service on the same host.
       health_port:
         type: string
-        required: true
+        required: false
+        default: ''
       app_url:
         type: string
         default: ''
@@ -84,6 +87,16 @@ jobs:
           | Started | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |
           EOF
 
+      # ── Resolve the health port once; EVERY post-deploy check below uses this value ──
+      - name: Resolve health port
+        id: hport
+        env:
+          INPUT_PORT: ${{ inputs.health_port }}
+          ENV_NAME: ${{ inputs.environment }}
+          STAGING_PORT: ${{ vars.STAGING_HEALTH_PORT }}
+          PRODUCTION_PORT: ${{ vars.PRODUCTION_HEALTH_PORT }}
+        run: bash scripts/deploy/resolve-health-port.sh >> "$GITHUB_OUTPUT"
+
       # ── Fail fast if required configuration is missing (never prints values) ──
       - name: Validate deployment configuration
         env:
@@ -92,7 +105,7 @@ jobs:
           HMS_REPO_PATH: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
           HMS_SERVICE: ${{ inputs.service_name || vars.SERVICE_NAME }}
           HMS_BRANCH: ${{ inputs.git_branch || vars.BRANCH_NAME }}
-          HMS_HEALTH_PORT: ${{ inputs.health_port }}
+          HMS_HEALTH_PORT: ${{ steps.hport.outputs.port }}
         run: bash scripts/deploy/validate-config.sh HMS_SSH_HOST HMS_SSH_KEY HMS_REPO_PATH HMS_SERVICE HMS_BRANCH HMS_HEALTH_PORT:port
 
       # ── SSH Connection Diagnostics ───────────────────────────────────────
@@ -337,7 +350,7 @@ jobs:
 
             # The one health port for this deployment, validated before anything on the server
             # changed. Release verification and rollback verification both use it.
-            HPORT="${{ inputs.health_port }}"
+            HPORT="${{ steps.hport.outputs.port }}"
             BASE_URL="http://localhost:${HPORT}"
             EXPECTED_SHA="${{ github.sha }}"
             # Copied out of the checkout: a rollback resets it to an older commit that may predate
@@ -420,7 +433,7 @@ jobs:
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
           SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
           REPO: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
-          HPORT: ${{ inputs.health_port }}
+          HPORT: ${{ steps.hport.outputs.port }}
           APP_URL: ${{ inputs.app_url }}
         run: |
           mkdir -p deployment-logs
