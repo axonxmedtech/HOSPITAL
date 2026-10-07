@@ -28,7 +28,7 @@ same "BCrypt hash"                  "binding parameter (2:VARCHAR) <- [$HASH]" "
 same "credentials in a URL"         "connecting to mysql://app:s3cret@db:3306/x" "connecting to mysql://[REDACTED]@db:3306/x"
 same "JDBC query-string password"   "jdbc:mysql://localhost:3306/hms?user=app&password=s3cret&useSSL=false" "jdbc:mysql://localhost:3306/hms?user=[REDACTED]&password=[REDACTED]&useSSL=false"
 same "key=value password"           "spring.datasource.password=s3cret"        "spring.datasource.password=[REDACTED]"
-same "env-style secret"             "Environment=JWT_SECRET=abcdef0123456789"  "Environment=JWT_SECRET=[REDACTED]"
+same "env-style secret"             "Environment=JWT_SECRET=not-a-real-value"  "Environment=JWT_SECRET=[REDACTED]"
 same "key: value password"          "[DataInitializer]   Password: hunter2"   "[DataInitializer]   Password: [REDACTED]"
 same "JSON password"                '{"email":"x","password":"hunter2"}'       '{"email":"x","password":[REDACTED]}'
 same "quoted token value"           "api_key='abc 123' next"                   "api_key=[REDACTED] next"
