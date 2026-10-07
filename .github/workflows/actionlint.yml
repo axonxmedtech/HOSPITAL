@@ -8,9 +8,11 @@ on:
   push:
     paths:
       - '.github/workflows/**'
+      - 'scripts/ci/**'
   pull_request:
     paths:
       - '.github/workflows/**'
+      - 'scripts/ci/**'
   workflow_dispatch:
 
 concurrency:
@@ -34,3 +36,10 @@ jobs:
           # Official rhysd/actionlint installer; shellcheck is preinstalled on the runner.
           bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) 1.7.7
           ./actionlint -color
+
+      # Credentials must come from secrets only: GitHub variables are printed unmasked in step logs.
+      - name: No credential read from a GitHub variable
+        run: |
+          shellcheck -S warning scripts/ci/check-workflow-secrets.sh scripts/ci/test-check-workflow-secrets.sh
+          bash scripts/ci/test-check-workflow-secrets.sh
+          bash scripts/ci/check-workflow-secrets.sh

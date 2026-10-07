@@ -37,6 +37,25 @@ public interface UserRepository extends JpaRepository<User, Long> {
          */
         boolean existsByEmail(String email);
 
+        /** True if any user, active or not, holds this role. */
+        boolean existsByRole(String role);
+
+        /**
+         * E-mail and stored password hash of every ACTIVE super admin, for the known-default
+         * credential check at startup. Active means what the authentication filter means: null
+         * isActive counts as active. Only these two columns are read.
+         */
+        @Query("SELECT u.email AS email, u.password AS passwordHash FROM User u "
+                        + "WHERE u.role = 'SUPER_ADMIN' AND (u.isActive IS NULL OR u.isActive = true)")
+        java.util.List<StoredCredential> findActiveSuperAdminCredentials();
+
+        /** Projection for {@link #findActiveSuperAdminCredentials()}. */
+        interface StoredCredential {
+                String getEmail();
+
+                String getPasswordHash();
+        }
+
         /**
          * Find active users by hospital ID and role
          * Used for fetching lists like Receptionists
