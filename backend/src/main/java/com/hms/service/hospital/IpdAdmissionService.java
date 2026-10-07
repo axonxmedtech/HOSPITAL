@@ -892,20 +892,15 @@ public class IpdAdmissionService {
             latest = mrs.get(0);
         }
 
-        // Resolve medicine name:
-        // Priority 1: explicit name from request (doctor typed it manually)
-        // Priority 2: look up from inventory by medicineId
-        // Priority 3: fallback label using medicineId
+        // Resolve medicine name from the prescription request only.
+        // IPD prescriptions are digital prescriptions and must not depend on
+        // physical medical inventory.
         String medicineName = req.getMedicineName() != null && !req.getMedicineName().trim().isEmpty()
                 ? req.getMedicineName().trim()
                 : null;
-        if (medicineName == null && req.getMedicineId() != null) {
-            medicineName = medicineRepository.findById(req.getMedicineId())
-                    .map(m -> m.getName())
-                    .orElse(null);
-        }
-        if ((req.getMedicineName() == null || req.getMedicineName().trim().isEmpty()) && req.getMedicineId() == null) {
-            throw new IllegalArgumentException("Either Medicine Name or Medicine ID is required");
+
+        if (medicineName == null) {
+            throw new IllegalArgumentException("Medicine Name is required");
         }
         if (req.getDose() == null || req.getDose().trim().isEmpty()) {
             throw new IllegalArgumentException("Prescription dose is required");
