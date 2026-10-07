@@ -14,15 +14,15 @@
 
 The audit is split into **7 phases**, each independently executable:
 
-| Phase | Focus | Priority |
-|---|---|---|
-| 1 | Critical Security Fixes | CRITICAL |
-| 2 | Backend Code Quality & Duplicate Elimination | HIGH |
-| 3 | Frontend Code Quality & Duplicate Elimination | HIGH |
-| 4 | Feature Verification — Every Screen Every Tab | HIGH |
-| 5 | Enterprise Practices (API standards, error handling, logging) | MEDIUM |
-| 6 | Test Coverage | MEDIUM |
-| 7 | Performance & Observability | MEDIUM |
+| Phase | Focus                                                         | Priority |
+| ----- | ------------------------------------------------------------- | -------- |
+| 1     | Critical Security Fixes                                       | CRITICAL |
+| 2     | Backend Code Quality & Duplicate Elimination                  | HIGH     |
+| 3     | Frontend Code Quality & Duplicate Elimination                 | HIGH     |
+| 4     | Feature Verification — Every Screen Every Tab                 | HIGH     |
+| 5     | Enterprise Practices (API standards, error handling, logging) | MEDIUM   |
+| 6     | Test Coverage                                                 | MEDIUM   |
+| 7     | Performance & Observability                                   | MEDIUM   |
 
 ---
 
@@ -31,6 +31,7 @@ The audit is split into **7 phases**, each independently executable:
 ### Task 1.1: Remove the Public Debug Endpoint
 
 **Files:**
+
 - Modify: `backend/src/main/java/com/hms/controller/platform/PlatformUserController.java`
 - Modify: `backend/src/main/java/com/hms/config/SecurityConfig.java`
 
@@ -72,6 +73,7 @@ git commit -m "security: remove publicly accessible debug-users endpoint"
 ### Task 1.2: Add Login Rate Limiting
 
 **Files:**
+
 - Modify: `backend/pom.xml` (add bucket4j or spring-boot-starter-cache dependency)
 - Create: `backend/src/main/java/com/hms/config/RateLimitConfig.java`
 - Create: `backend/src/main/java/com/hms/filter/RateLimitFilter.java`
@@ -180,6 +182,7 @@ git commit -m "security: add in-memory rate limiting on all /login endpoints (10
 ### Task 1.3: Enforce Axios Request Timeouts and Size Limits
 
 **Files:**
+
 - Modify: `frontend/src/services/apiService.js`
 
 - [ ] **Step 1: Read current apiService.js**
@@ -195,7 +198,7 @@ Replace the axios instance creation with:
 ```js
 const apiService = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080',
-  timeout: 30000,           // 30 second request timeout
+  timeout: 30000, // 30 second request timeout
   maxContentLength: 5242880, // 5 MB response cap
   headers: {
     'Content-Type': 'application/json',
@@ -225,6 +228,7 @@ git commit -m "security: enforce 30s axios timeout and 5MB response cap"
 ### Task 1.4: Sanitize Logging — Disable SQL and Security Debug Logs in Production
 
 **Files:**
+
 - Modify: `backend/src/main/resources/application.properties`
 - Create: `backend/src/main/resources/application-prod.properties`
 
@@ -273,6 +277,7 @@ git commit -m "security: disable SQL logging and security debug in production pr
 ### Task 1.5: Validate CORS Origins Are Not Wildcard
 
 **Files:**
+
 - Read: `backend/src/main/java/com/hms/config/SecurityConfig.java`
 
 - [ ] **Step 1: Inspect CORS configuration**
@@ -312,6 +317,7 @@ git commit -m "security: enforce explicit CORS origins, no wildcard"
 ### Task 2.1: Add @Transactional Where Missing on @Modifying Queries
 
 **Files:**
+
 - Read: `backend/src/main/java/com/hms/service/hospital/HospitalAuthService.java`
 - Read: All service files using `@Modifying` repositories
 
@@ -358,6 +364,7 @@ git commit -m "fix: ensure @Transactional on all service methods calling @Modify
 ### Task 2.2: Centralize Multi-Tenant hospitalId Extraction
 
 **Files:**
+
 - Read: `backend/src/main/java/com/hms/security/SecurityContextHelper.java` (or `SecurityHelper.java`)
 - Spot-check 5 services for repeated `SecurityHelper.getCurrentHospitalId()` pattern
 
@@ -395,6 +402,7 @@ git commit -m "refactor: remove redundant hospitalId DB calls, use SecurityHelpe
 ### Task 2.3: Verify All Controller Endpoints Have @PreAuthorize
 
 **Files:**
+
 - All files in `backend/src/main/java/com/hms/controller/`
 
 - [ ] **Step 1: List all controller methods lacking @PreAuthorize**
@@ -430,6 +438,7 @@ public ResponseEntity<?> createOpd(@RequestBody CreateOpdRequest req) { ... }
 - [ ] **Step 3: Confirm public endpoints are intentionally public**
 
 Only these should be in the permit list in SecurityConfig:
+
 - `/login`
 - `/platform/login`
 - `/api/public/health`
@@ -451,6 +460,7 @@ git commit -m "security: add missing @PreAuthorize on unprotected hospital contr
 ### Task 2.4: Eliminate Duplicate Exception Handlers
 
 **Files:**
+
 - Read: `backend/src/main/java/com/hms/exception/GlobalExceptionHandler.java`
 - Read: `backend/src/main/java/com/hms/exception/RestExceptionHandler.java`
 
@@ -519,6 +529,7 @@ git commit -m "refactor: merge duplicate exception handlers into single GlobalEx
 ### Task 2.5: Validate HospitalSetting Default Values on First Row Creation
 
 **Files:**
+
 - Read: `backend/src/main/java/com/hms/service/hospital/HospitalAuthService.java`
 
 - [ ] **Step 1: Find the orElseGet block that creates HospitalSetting**
@@ -564,6 +575,7 @@ git commit -m "fix: safe defaults when HospitalSetting row is missing on GET and
 ### Task 2.6: Extract PdfService Into Focused Classes
 
 **Files:**
+
 - Read: `backend/src/main/java/com/hms/service/PdfService.java` (1568 lines)
 - Create: `backend/src/main/java/com/hms/service/pdf/CasePaperPdfService.java`
 - Create: `backend/src/main/java/com/hms/service/pdf/BillingPdfService.java`
@@ -576,6 +588,7 @@ grep -n "public\|private" backend/src/main/java/com/hms/service/PdfService.java 
 ```
 
 Categorize each method:
+
 - Case paper generation → `CasePaperPdfService`
 - Billing invoice generation → `BillingPdfService`
 - Discharge summary generation → `DischargePdfService`
@@ -626,6 +639,7 @@ git commit -m "refactor: split 1568-line PdfService into CasePaperPdfService, Bi
 ### Task 2.7: Add OpenAPI / Swagger Documentation
 
 **Files:**
+
 - Modify: `backend/pom.xml`
 - Create: `backend/src/main/java/com/hms/config/OpenApiConfig.java`
 
@@ -705,6 +719,7 @@ git commit -m "docs: add Swagger/OpenAPI UI at /swagger-ui.html"
 ### Task 3.1: Extract a useModal Hook to Eliminate Repeated Modal State
 
 **Files:**
+
 - Create: `frontend/src/hooks/useModal.js`
 - Modify: `frontend/src/pages/hospital/HospitalAdminDashboard.jsx` (apply hook to one modal as proof-of-concept)
 
@@ -751,6 +766,7 @@ const patientModal = useModal();
 ```
 
 Update all references:
+
 - `setIsPatientModalOpen(true)` → `patientModal.open(patient, 'edit')`
 - `isPatientModalOpen` → `patientModal.isOpen`
 - `editingPatient` → `patientModal.data`
@@ -773,6 +789,7 @@ git commit -m "refactor: introduce useModal hook, apply to patient modal in Hosp
 ### Task 3.2: Create a useFetch Hook to Eliminate Repeated Fetch Patterns
 
 **Files:**
+
 - Create: `frontend/src/hooks/useFetch.js`
 
 - [ ] **Step 1: Create useFetch.js**
@@ -800,7 +817,7 @@ export function useFetch(fetchFn, deps = []) {
     } finally {
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
   useEffect(() => {
@@ -838,9 +855,14 @@ useEffect(() => {
 Replace with:
 
 ```js
-const { data: patientsData, loading: loadingPatients, refetch: refetchPatients } =
-  useFetch(() => hospitalService.getPatients({ page: patientPage, search: patientSearch }),
-           [patientPage, patientSearch]);
+const {
+  data: patientsData,
+  loading: loadingPatients,
+  refetch: refetchPatients,
+} = useFetch(
+  () => hospitalService.getPatients({ page: patientPage, search: patientSearch }),
+  [patientPage, patientSearch]
+);
 const patients = patientsData?.content ?? [];
 ```
 
@@ -865,6 +887,7 @@ git commit -m "refactor: introduce useFetch hook, apply to patient list fetch"
 ### Task 3.3: Add Frontend Input Validation to All Create/Edit Modals
 
 **Files:**
+
 - Read: `frontend/src/utils/validation.js`
 - Modify: `frontend/src/components/PatientModal.jsx`
 - Modify: `frontend/src/components/AppointmentModal.jsx`
@@ -881,11 +904,11 @@ Add the following if not already present:
 
 ```js
 export const validators = {
-  required: (val) => (!val || val.toString().trim() === '') ? 'This field is required' : null,
-  phone: (val) => (val && !/^\+?[\d\s\-]{7,15}$/.test(val)) ? 'Invalid phone number' : null,
-  email: (val) => (val && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) ? 'Invalid email address' : null,
-  minLength: (min) => (val) => (val && val.length < min) ? `Minimum ${min} characters` : null,
-  maxLength: (max) => (val) => (val && val.length > max) ? `Maximum ${max} characters` : null,
+  required: (val) => (!val || val.toString().trim() === '' ? 'This field is required' : null),
+  phone: (val) => (val && !/^\+?[\d\s\-]{7,15}$/.test(val) ? 'Invalid phone number' : null),
+  email: (val) => (val && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val) ? 'Invalid email address' : null),
+  minLength: (min) => (val) => (val && val.length < min ? `Minimum ${min} characters` : null),
+  maxLength: (max) => (val) => (val && val.length > max ? `Maximum ${max} characters` : null),
 };
 
 export function validate(values, rules) {
@@ -893,7 +916,10 @@ export function validate(values, rules) {
   for (const field in rules) {
     for (const rule of rules[field]) {
       const error = rule(values[field]);
-      if (error) { errors[field] = error; break; }
+      if (error) {
+        errors[field] = error;
+        break;
+      }
     }
   }
   return errors;
@@ -907,9 +933,9 @@ At the top of the submit handler in `PatientModal.jsx`:
 ```js
 const errors = validate(formData, {
   firstName: [validators.required],
-  lastName:  [validators.required],
-  phone:     [validators.required, validators.phone],
-  gender:    [validators.required],
+  lastName: [validators.required],
+  phone: [validators.required, validators.phone],
+  gender: [validators.required],
 });
 if (Object.keys(errors).length > 0) {
   setFormErrors(errors);
@@ -922,9 +948,9 @@ Add `const [formErrors, setFormErrors] = useState({})` to state.
 Show errors below each field:
 
 ```jsx
-{formErrors.firstName && (
-  <p className="text-red-500 text-xs mt-1">{formErrors.firstName}</p>
-)}
+{
+  formErrors.firstName && <p className="text-red-500 text-xs mt-1">{formErrors.firstName}</p>;
+}
 ```
 
 - [ ] **Step 4: Apply same pattern to AppointmentModal**
@@ -947,6 +973,7 @@ git commit -m "feat: add client-side validation to PatientModal and AppointmentM
 ### Task 3.4: Verify Sidebar Shows Correct Items Per Role
 
 **Files:**
+
 - Read: `frontend/src/components/Sidebar.jsx`
 
 - [ ] **Step 1: Read Sidebar.jsx**
@@ -959,13 +986,13 @@ cat frontend/src/components/Sidebar.jsx
 
 Expected nav items per role:
 
-| Role | Expected Nav Items |
-|---|---|
+| Role           | Expected Nav Items                                                                                                                      |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | HOSPITAL_ADMIN | Overview, Patients, Doctors, Appointments, Receptionists, Pharmacists, Billing, Wards & Beds, Inventory, Pharmacy, Settings, Audit Logs |
-| DOCTOR | Overview, Appointments, Patients, IPD (if module enabled) |
-| RECEPTIONIST | Overview, Queue/OPD, Patients, Appointments |
-| PHARMACIST | Pharmacy Dashboard (redirects to pharmacy module) |
-| SUPER_ADMIN | Hospitals, Users, Tickets, Audit Logs |
+| DOCTOR         | Overview, Appointments, Patients, IPD (if module enabled)                                                                               |
+| RECEPTIONIST   | Overview, Queue/OPD, Patients, Appointments                                                                                             |
+| PHARMACIST     | Pharmacy Dashboard (redirects to pharmacy module)                                                                                       |
+| SUPER_ADMIN    | Hospitals, Users, Tickets, Audit Logs                                                                                                   |
 
 - [ ] **Step 3: Check module-gated items**
 
@@ -985,6 +1012,7 @@ git commit -m "fix: correct sidebar nav items per role and module flags"
 ### Task 3.5: Standardize Toast Notifications Across All Error Paths
 
 **Files:**
+
 - Read: `frontend/src/context/ToastContext.jsx`
 - Spot-check: `frontend/src/pages/hospital/HospitalAdminDashboard.jsx`
 - Spot-check: `frontend/src/pages/hospital/DoctorDashboard.jsx`
@@ -1037,7 +1065,7 @@ git commit -m "ux: replace silent console.error with toast notifications in all 
 
 ### Task 4.1: Platform / Super Admin Screens
 
-**URL:** http://localhost:5173/platform (login: admin@hms.com / admin123)
+**URL:** http://localhost:5173/platform (login: your local development Super Admin)
 
 - [ ] **Hospitals Tab**
   - [ ] Hospital list loads with pagination
@@ -1316,6 +1344,7 @@ git commit -m "ux: replace silent console.error with toast notifications in all 
 ### Task 5.1: Add Correlation ID Header for Request Tracing
 
 **Files:**
+
 - Create: `backend/src/main/java/com/hms/filter/CorrelationIdFilter.java`
 
 - [ ] **Step 1: Create CorrelationIdFilter.java**
@@ -1384,6 +1413,7 @@ git commit -m "ops: add X-Correlation-ID header propagation via MDC for request 
 ### Task 5.2: Add Standardized API Response Envelope
 
 **Files:**
+
 - Create: `backend/src/main/java/com/hms/dto/ApiResponse.java`
 
 - [ ] **Step 1: Create ApiResponse.java**
@@ -1450,6 +1480,7 @@ git commit -m "refactor: introduce ApiResponse envelope; apply to HospitalFeeCon
 ### Task 5.3: Add Health Actuator Endpoint with DB Check
 
 **Files:**
+
 - Modify: `backend/pom.xml`
 - Modify: `backend/src/main/resources/application.properties`
 
@@ -1486,8 +1517,9 @@ curl http://localhost:8080/actuator/health
 ```
 
 Expected:
+
 ```json
-{"status":"UP","components":{"db":{"status":"UP"},"redis":{"status":"UP"}}}
+{ "status": "UP", "components": { "db": { "status": "UP" }, "redis": { "status": "UP" } } }
 ```
 
 - [ ] **Step 5: Commit**
@@ -1503,6 +1535,7 @@ git commit -m "ops: add Spring Boot Actuator with DB and Redis health checks"
 ### Task 5.4: Set JPA Cascade and Orphan Policies Explicitly
 
 **Files:**
+
 - Read: All entity files in `backend/src/main/java/com/hms/entity/`
 
 - [ ] **Step 1: Find all @OneToMany without explicit cascade**
@@ -1552,6 +1585,7 @@ git commit -m "fix: explicit cascade and fetch types on all JPA associations"
 ### Task 6.1: Unit Tests for HospitalAuthService Settings Update
 
 **Files:**
+
 - Create: `backend/src/test/java/com/hms/service/HospitalAuthServiceTest.java`
 
 - [ ] **Step 1: Verify test directory exists**
@@ -1670,6 +1704,7 @@ git commit -m "test: unit tests for HospitalAuthService settings update logic"
 ### Task 6.2: Unit Tests for Patient Service — customId in Consultation Response
 
 **Files:**
+
 - Create: `backend/src/test/java/com/hms/service/PatientServiceTest.java`
 
 - [ ] **Step 1: Write failing test**
@@ -1741,6 +1776,7 @@ git commit -m "test: verify getPatientConsultationDetails returns customId and i
 ### Task 6.3: Integration Test for Settings Toggle Endpoint
 
 **Files:**
+
 - Create: `backend/src/test/java/com/hms/controller/HospitalAuthControllerIT.java`
 
 - [ ] **Step 1: Add test dependencies to pom.xml if missing**
@@ -1808,6 +1844,7 @@ git commit -m "test: integration test - settings endpoint requires auth"
 ### Task 7.1: Add Database Indexes for Frequently Queried Columns
 
 **Files:**
+
 - Modify: `setup/schema-full.sql`
 - Modify: `setup/schema-full-utf8.sql`
 
@@ -1815,15 +1852,15 @@ git commit -m "test: integration test - settings endpoint requires auth"
 
 Based on service code, these columns are in WHERE clauses on every request:
 
-| Table | Column | Reason |
-|---|---|---|
-| `patients` | `hospital_id` | Every patient query is scoped to hospital |
-| `appointments` | `hospital_id, appointment_date` | Date-scoped appointment lists |
-| `opd` | `hospital_id, created_at` | Daily OPD queue |
-| `billing` | `hospital_id, payment_status` | Status-filtered billing list |
-| `medicine_batches` | `hospital_id, expiry_date` | Expiry tracking |
-| `audit_logs` | `hospital_id, timestamp` | Audit log paging |
-| `users` | `email` | Login lookup |
+| Table              | Column                          | Reason                                    |
+| ------------------ | ------------------------------- | ----------------------------------------- |
+| `patients`         | `hospital_id`                   | Every patient query is scoped to hospital |
+| `appointments`     | `hospital_id, appointment_date` | Date-scoped appointment lists             |
+| `opd`              | `hospital_id, created_at`       | Daily OPD queue                           |
+| `billing`          | `hospital_id, payment_status`   | Status-filtered billing list              |
+| `medicine_batches` | `hospital_id, expiry_date`      | Expiry tracking                           |
+| `audit_logs`       | `hospital_id, timestamp`        | Audit log paging                          |
+| `users`            | `email`                         | Login lookup                              |
 
 - [ ] **Step 2: Add indexes to schema-full.sql**
 
@@ -1858,6 +1895,7 @@ git commit -m "perf: add composite indexes on hospital_id + frequently filtered 
 ### Task 7.2: Add @Transactional(readOnly=true) on Read-Only Service Methods
 
 **Files:**
+
 - All service files in `backend/src/main/java/com/hms/service/hospital/`
 
 - [ ] **Step 1: Find all service methods that only do reads (no save/delete)**
@@ -1902,6 +1940,7 @@ git commit -m "perf: add @Transactional(readOnly=true) on all read-only service 
 ### Task 7.3: Verify WebSocket Does Not Leak Connections
 
 **Files:**
+
 - Read: `frontend/src/hooks/useWebSocket.js`
 
 - [ ] **Step 1: Read the hook**
@@ -1960,4 +1999,4 @@ git commit -m "fix: close WebSocket on component unmount to prevent connection l
 
 ---
 
-*Generated: 2026-06-17 | Repo: e:\Projects\HOSPITAL | Branch: staging*
+_Generated: 2026-06-17 | Repo: e:\Projects\HOSPITAL | Branch: staging_
