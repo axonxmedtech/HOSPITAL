@@ -13,6 +13,7 @@ This Hospital Management System is a multi-tenant SaaS platform that streamlines
 ## 🛠️ Tech Stack
 
 ### Backend
+
 - Java 17
 - Spring Boot 3.2.0
 - Spring Security with JWT
@@ -21,6 +22,7 @@ This Hospital Management System is a multi-tenant SaaS platform that streamlines
 - Lombok / Maven
 
 ### Frontend
+
 - React 18
 - React Router DOM
 - Axios
@@ -29,6 +31,7 @@ This Hospital Management System is a multi-tenant SaaS platform that streamlines
 ## 👥 Roles & Features
 
 ### Super Admin (Platform level)
+
 - Separate login at `/platform/login`
 - Create hospitals with admin credentials
 - View all hospitals
@@ -40,6 +43,7 @@ This Hospital Management System is a multi-tenant SaaS platform that streamlines
 - Platform-level audit trails.
 
 ### Hospital Admin
+
 - Login at `/login`
 - Manage staff accounts (Doctors, Pharmacists, Receptionists, and Wards Admins).
 - Manage hospital-wide audit logging and system events.
@@ -48,6 +52,7 @@ This Hospital Management System is a multi-tenant SaaS platform that streamlines
 - Manage clinical supplies catalog and configure inventory stock linkages.
 
 ### Doctor
+
 - Login at `/login`
 - Conduct patient consultations, document symptoms/diagnoses, and write prescriptions.
 - Administer in-clinic medicines and hospital inventory items (which automatically degrades inventory stock and applies scaled linked fees: `quantity * fee`).
@@ -55,12 +60,14 @@ This Hospital Management System is a multi-tenant SaaS platform that streamlines
 - Manage IPD Admissions, daily follow-ups, and patient discharge summaries.
 
 ### Pharmacist
+
 - Login at `/login`
 - Manage medicine database, unit pricing, and active status.
 - File medicine purchases for stock replenishment.
 - View and dispense medications for doctor prescriptions.
 
 ### Receptionist
+
 - Login at `/login`
 - Register patients, track demographics, and assign custom public IDs.
 - Schedule and queue patient appointments.
@@ -69,6 +76,7 @@ This Hospital Management System is a multi-tenant SaaS platform that streamlines
 ## 🚀 Setup Instructions
 
 ### Prerequisites
+
 - Java 17 or higher
 - Maven 3.6+
 - MySQL 8.0+
@@ -77,36 +85,41 @@ This Hospital Management System is a multi-tenant SaaS platform that streamlines
 ### Database Setup
 
 1. Create a MySQL database:
+
 ```sql
 CREATE DATABASE hospital_management;
 ```
 
 2. Configure database credentials in `backend/src/main/resources/application.properties`:
+
 ```properties
 spring.datasource.username=root
 spring.datasource.password=your_password
 ```
 
-3. Create the initial Super Admin user (run after first backend startup):
-```sql
-USE hospital_management;
-INSERT INTO users (email, password, name, role, hospital_id, created_at)
-VALUES ('admin@hms.com', '$2a$10$qMUbT7gyNjvCsRS//Gf7g.1vFwZAq9RVSn3qpLuPjUzoB8fz0AxWy', 'Super Admin', 'SUPER_ADMIN', NULL, NOW());
-```
+3. Super Admin access (no credential is published in this repository):
+   - **Local development** (`default`, `dev`, `local` or `test` profile): the backend seeds a development-only
+     Super Admin on first startup (`DataInitializer`). It is never created under staging, production or any other profile.
+   - **Deployed environments**: set `INITIAL_SUPER_ADMIN_EMAIL` and `INITIAL_SUPER_ADMIN_PASSWORD` (12+ characters with
+     upper-case, lower-case, digit and symbol) for the first startup, or run `setup/setup-super-admin.sql` with a BCrypt
+     hash you generate yourself. Never use a password or hash copied from documentation.
 
 ### Backend Setup
 
 1. Navigate to backend directory:
+
 ```bash
 cd backend
 ```
 
 2. Build the project:
+
 ```bash
 mvn clean install
 ```
 
 3. Run the application:
+
 ```bash
 mvn spring-boot:run
 ```
@@ -116,20 +129,22 @@ Backend will start on `http://localhost:8080`
 ### Frontend Setup
 
 1. Navigate to frontend directory:
+
 ```bash
 cd frontend
 ```
 
 2. Install dependencies:
+
 ```bash
 npm install
 ```
 
 3. Start development server:
+
 ```bash
 npm run dev
 ```
-
 
 Frontend will start on `http://localhost:5173`.
 
@@ -157,6 +172,7 @@ Hospital Management/
 ```
 
 ## ⚠️ Limitations & Future Scope
+
 - ❌ External payment gateway integration (Stripe/Razorpay)
 - ❌ Automatic SMS and Email patient notifications
 - ❌ Dedicated native mobile applications (iOS/Android)

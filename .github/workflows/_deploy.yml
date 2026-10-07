@@ -514,13 +514,18 @@ jobs:
           echo "$SSH_KEY" > /tmp/deploy_key
           chmod 600 /tmp/deploy_key
 
-          ssh -i /tmp/deploy_key \
-            -o StrictHostKeyChecking=no \
-            -o ConnectTimeout=15 \
-            -p "$SSH_PORT" \
-            "$SSH_USER@$SSH_HOST" \
-            "journalctl -u ${{ inputs.service_name || vars.SERVICE_NAME }} --since '30 minutes ago' --no-pager 2>&1" \
-            > deployment-logs/service.log 2>&1 \
+          # The journal is redacted on the runner before it is written, so credentials, tokens,
+          # password hashes and e-mail addresses never reach the uploaded artifact, which any
+          # signed-in GitHub user can download from this public repository.
+          {
+            ssh -i /tmp/deploy_key \
+              -o StrictHostKeyChecking=no \
+              -o ConnectTimeout=15 \
+              -p "$SSH_PORT" \
+              "$SSH_USER@$SSH_HOST" \
+              "journalctl -u ${{ inputs.service_name || vars.SERVICE_NAME }} --since '30 minutes ago' --no-pager 2>&1" \
+              2>&1 || echo "[log collection failed]"
+          } | bash scripts/deploy/redact-log.sh > deployment-logs/service.log \
             || echo "[log collection failed]" > deployment-logs/service.log
 
           ssh -i /tmp/deploy_key \
@@ -542,7 +547,8 @@ jobs:
         with:
           name: ${{ inputs.environment }}-deploy-logs-${{ github.run_id }}
           path: deployment-logs/
-          retention-days: 90
+          # Staging diagnostics are kept two weeks; production keeps its existing 90 days.
+          retention-days: ${{ inputs.environment == 'Staging' && 14 || 90 }}
           if-no-files-found: warn
 
       # ── Slack notification ───────────────────────────────────────────────

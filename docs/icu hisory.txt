@@ -11944,7 +11944,7 @@ ok
 2026-08-25 00:58:49 [] INFO  com.hms.component.DataInitializer - =================================================
 2026-08-25 00:58:49 [] INFO  com.hms.component.DataInitializer - [DataInitializer] Super Admin CREATED
 2026-08-25 00:58:49 [] INFO  com.hms.component.DataInitializer - [DataInitializer]   Email   : admin123@gmail.com
-2026-08-25 00:58:49 [] INFO  com.hms.component.DataInitializer - [DataInitializer]   Password: pass123
+2026-08-25 00:58:49 [] INFO  com.hms.component.DataInitializer - [DataInitializer]   Password: [REDACTED]
 2026-08-25 00:58:49 [] INFO  com.hms.component.DataInitializer - =================================================
 2026-08-25 00:58:49 [] INFO  c.h.component.PlatformStatsVerifier - === HOSPITAL STATS VERIFICATION ===
 2026-08-25 00:58:49 [] INFO  c.h.component.PlatformStatsVerifier - RAW STATS FROM SERVICE:
