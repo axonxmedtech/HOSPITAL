@@ -134,7 +134,7 @@ public class DoctorController {
             response.put("hasPrescription", hasPrescription);
             response.put("hasAdministered", hasAdministered);
             return ResponseEntity.ok(response);
-        } catch (IllegalArgumentException | com.hms.exception.ResourceNotFoundException | com.hms.exception.UnauthorizedException e) {
+        } catch (IllegalArgumentException | com.hms.exception.ResourceNotFoundException | com.hms.exception.UnauthorizedException | com.hms.exception.ConflictException e) {
             throw e;
         } catch (Exception e) {
             logger.error("Error submitting consultation", e);

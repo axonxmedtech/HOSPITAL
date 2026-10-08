@@ -500,7 +500,7 @@ public class DoctorService {
             resolvedDoctorId = appointment.getDoctorId();
         } else if (request.getOpdId() != null) {
             try {
-                var existingOpdOpt = opdRepository.findById(request.getOpdId());
+                var existingOpdOpt = opdRepository.findByIdAndHospitalIdWithPatientAndDoctor(request.getOpdId(), hospitalId);
                 if (existingOpdOpt.isPresent() && existingOpdOpt.get().getDoctor() != null) {
                     resolvedDoctorId = existingOpdOpt.get().getDoctor().getId();
                 }
@@ -549,10 +549,14 @@ public class DoctorService {
             // rather than falling through to the create-a-new-OPD branch below.
             opd = opdRepository.findByIdAndHospitalIdWithPatientAndDoctor(request.getOpdId(), hospitalId)
                     .orElseThrow(() -> new com.hms.exception.ResourceNotFoundException("OPD not found"));
-            if (opd != null && request.getIpdAdmitRecommended() != null) {
-                opd.setIpdAdmitRecommended(request.getIpdAdmitRecommended());
-                opd = opdRepository.save(opd);
+            if (opd.getStatus() == com.hms.entity.Opd.Status.COMPLETED) {
+                throw new com.hms.exception.ConflictException("OPD consultation has already been completed");
             }
+            opd.setStatus(com.hms.entity.Opd.Status.COMPLETED);
+            if (request.getIpdAdmitRecommended() != null) {
+                opd.setIpdAdmitRecommended(request.getIpdAdmitRecommended());
+            }
+            opd = opdRepository.save(opd);
         } else if (appointment != null) {
             opd = new com.hms.entity.Opd();
             opd.setPatient(patient);
