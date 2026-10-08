@@ -41,22 +41,8 @@ public class BedService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Bed b = bedRepository.findById(bedId).orElseThrow(() -> new ResourceNotFoundException("Bed not found"));
         if (b.getHospitalId() == null || !b.getHospitalId().equals(hospitalId)) throw new UnauthorizedException("Access denied");
-        if (!isValidStatus(status)) throw new IllegalArgumentException("Invalid status");
 
-        String current = b.getStatus();
-
-        if (!systemInitiated) {
-            // UI requests: only allow transition from maintenance -> available
-            if ("maintenance".equals(current)) {
-                if (!"available".equals(status)) {
-                    throw new IllegalArgumentException("UI can only change maintenance -> available");
-                }
-            } else {
-                throw new IllegalArgumentException("Manual status change not allowed. Use admission/discharge flows.");
-            }
-        }
-
-        b.setStatus(status);
+        b.setStatus(status.toLowerCase());
         Bed saved = bedRepository.save(b);
         BedResponse r = new BedResponse();
         r.setBedId(saved.getBedId());
@@ -70,21 +56,24 @@ public class BedService {
         List<Bed> list;
         if (wardId != null) {
             list = bedRepository.findByWardIdAndHospitalId(wardId, hospitalId);
-            list = list.stream().filter(b -> "available".equals(b.getStatus())).collect(Collectors.toList());
         } else {
-            list = bedRepository.findByHospitalIdAndStatus(hospitalId, "available");
+            list = bedRepository.findByHospitalId(hospitalId);
         }
-        return list.stream().map(b -> {
-            BedResponse br = new BedResponse();
-            br.setBedId(b.getBedId());
-            br.setBedCode(b.getBedCode());
-            br.setStatus(b.getStatus());
-            return br;
-        }).collect(Collectors.toList());
+        return list.stream()
+                .filter(b -> b.getStatus() != null && b.getStatus().equalsIgnoreCase("available"))
+                .map(b -> {
+                    BedResponse br = new BedResponse();
+                    br.setBedId(b.getBedId());
+                    br.setBedCode(b.getBedCode());
+                    br.setStatus(b.getStatus());
+                    return br;
+                }).collect(Collectors.toList());
     }
 
     private boolean isValidStatus(String s) {
-        return "available".equals(s) || "occupied".equals(s) || "maintenance".equals(s);
+        if (s == null) return false;
+        String lower = s.toLowerCase();
+        return "available".equals(lower) || "occupied".equals(lower) || "maintenance".equals(lower) || "cleaning".equals(lower);
     }
 }
 

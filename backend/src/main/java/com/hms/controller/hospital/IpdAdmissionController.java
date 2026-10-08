@@ -27,7 +27,7 @@ public class IpdAdmissionController {
     @PostMapping("/admit")
     @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> admitToIpd(@Valid @RequestBody CreateIpdAdmissionRequest req) {
-        IpdAdmission ipd = ipdAdmissionService.admitFromOpd(req.getOpdId(), req.getWardId(), req.getBedId(), req.getAdmissionType(), req.getPrimaryDiagnosis());
+        IpdAdmission ipd = ipdAdmissionService.admitFromOpd(req.getOpdId(), req.getPatientId(), req.getDoctorId(), req.getWardId(), req.getBedId(), req.getAdmissionType(), req.getPrimaryDiagnosis());
         return ResponseEntity.ok(ipd);
     }
 

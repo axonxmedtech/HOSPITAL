@@ -133,6 +133,13 @@ public class PatientService {
      * @return Created Patient entity
      */
     public Patient addPatient(Patient patient) {
+        if (patient.getPhone() != null) {
+            String sanitized = patient.getPhone().replaceAll("[^0-9]", "");
+            if (sanitized.length() > 10 && sanitized.startsWith("91")) {
+                sanitized = sanitized.substring(sanitized.length() - 10);
+            }
+            patient.setPhone(sanitized);
+        }
         // Validate phone number
         if (patient.getPhone() == null || !patient.getPhone().matches("^[0-9]{10}$")) {
             throw new IllegalArgumentException("Phone number must be exactly 10 digits");
@@ -192,6 +199,13 @@ public class PatientService {
      * @return Updated Patient entity
      */
     public Patient updatePatient(Long publicId, Patient updatedData) {
+        if (updatedData.getPhone() != null) {
+            String sanitized = updatedData.getPhone().replaceAll("[^0-9]", "");
+            if (sanitized.length() > 10 && sanitized.startsWith("91")) {
+                sanitized = sanitized.substring(sanitized.length() - 10);
+            }
+            updatedData.setPhone(sanitized);
+        }
         // Validate phone number
         if (updatedData.getPhone() == null || !updatedData.getPhone().matches("^[0-9]{10}$")) {
             throw new IllegalArgumentException("Phone number must be exactly 10 digits");

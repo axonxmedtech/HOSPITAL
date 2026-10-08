@@ -66,7 +66,7 @@ const BedListDrawer = ({ open, ward, onClose, onStatusChange }) => {
                   <div className="text-sm text-slate-500">{b.status}</div>
                 </div>
                 <div>
-                  {b.status === 'maintenance' && (
+                  {b.status?.toLowerCase() !== 'available' && (
                     <Button
                       size="sm"
                       variant="success"

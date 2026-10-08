@@ -89,6 +89,19 @@ public class DoctorController {
         return ResponseEntity.ok("Doctor deleted successfully");
     }
 
+    @GetMapping("/deleted")
+    @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
+    public ResponseEntity<?> getDeletedDoctors() {
+        return ResponseEntity.ok(doctorService.getDeletedDoctors());
+    }
+
+    @PostMapping("/{id}/restore")
+    @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
+    public ResponseEntity<?> restoreDoctor(@PathVariable String id) {
+        Doctor restoredDoctor = doctorService.restoreDoctor(id);
+        return ResponseEntity.ok(restoredDoctor);
+    }
+
     @PostMapping("/{id}/reset-password")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<?> resetDoctorPassword(@PathVariable String id, @RequestBody java.util.Map<String, String> body) {

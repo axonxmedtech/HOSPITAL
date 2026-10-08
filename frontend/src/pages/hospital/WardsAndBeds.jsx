@@ -50,7 +50,7 @@ const WardsAndBeds = () => {
     try {
       const data = await hospitalService.getNurses('', 0, 500);
       const list = data?.content || data || [];
-      setNurseIncharges(list.filter((n) => n.isIncharge));
+      setNurseIncharges(list.filter((n) => n.isActive !== false));
     } catch (e) {
       console.error(e);
     }

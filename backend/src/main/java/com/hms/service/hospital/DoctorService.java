@@ -330,6 +330,92 @@ public class DoctorService {
     }
 
     /**
+     * Get all deleted (inactive) doctors for the current hospital
+     * Automatically filters by hospital_id from security context
+     * 
+     * @return List of deleted doctors for the hospital
+     */
+    @Transactional(readOnly = true)
+    public List<Doctor> getDeletedDoctors() {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+
+        if (hospitalId == null) {
+            throw new UnauthorizedException("Hospital ID not found in context");
+        }
+
+        return doctorRepository.findByHospitalIdAndIsActiveFalseOrderByCreatedAtDesc(hospitalId);
+    }
+
+    /**
+     * Restore a soft-deleted doctor and their user account
+     * 
+     * @param publicId Doctor Public ID or ID
+     * @return Restored Doctor entity
+     */
+    @Transactional
+    public Doctor restoreDoctor(String publicId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new UnauthorizedException("Hospital ID not found in context");
+        }
+
+        // Find doctor belonging to this hospital (active or inactive)
+        Optional<Doctor> docOpt = doctorRepository.findByPublicIdAndHospitalId(publicId, hospitalId);
+        if (docOpt.isEmpty()) {
+            try {
+                Long id = Long.parseLong(publicId);
+                docOpt = doctorRepository.findByIdAndHospitalId(id, hospitalId);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        Doctor doctor = docOpt.orElseThrow(() -> new ResourceNotFoundException("Doctor not found"));
+
+        // If doctor is already active, return safely
+        if (Boolean.TRUE.equals(doctor.getIsActive())) {
+            logger.info("Doctor ID {} is already active", LogSanitizer.clean(publicId));
+            return doctor;
+        }
+
+        // Set Doctor.isActive = true
+        doctor.setIsActive(true);
+        Doctor savedDoctor = doctorRepository.save(doctor);
+
+        // Find associated user account and set User.isActive = true
+        Optional<User> userOpt = userRepository.findByEmail(doctor.getEmail());
+        if (userOpt.isPresent()) {
+            User user = userOpt.get();
+            user.setIsActive(true);
+            userRepository.save(user);
+        }
+
+        logger.info("Doctor restored: ID={}, Name={}, Email={}", LogSanitizer.clean(publicId),
+                LogSanitizer.clean(savedDoctor.getName()), LogSanitizer.clean(savedDoctor.getEmail()));
+
+        // Audit log DOCTOR_RESTORED
+        try {
+            auditLogService.logAction(
+                    "DOCTOR_RESTORED",
+                    "Doctor " + savedDoctor.getName() + " was restored.",
+                    securityHelper.getCurrentUserEmail(),
+                    hospitalId,
+                    "DOCTOR",
+                    publicId,
+                    null);
+        } catch (Exception e) {
+            logger.warn("Failed to create audit log for doctor restoration", e);
+        }
+
+        // Broadcast real-time refresh
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after doctor restoration", e);
+        }
+
+        return savedDoctor;
+    }
+
+    /**
      * Reset a doctor's password (Hospital Admin only)
      * Generates a new random password, encodes and saves it.
      *

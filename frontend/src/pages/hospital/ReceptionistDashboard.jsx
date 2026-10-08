@@ -48,6 +48,7 @@ import RecoveryModal from './ot/RecoveryModal';
 import ScheduleSurgeryModal from './ot/ScheduleSurgeryModal';
 import SurgeryExecutionModal from './ot/SurgeryExecutionModal';
 import SurgeryTeamModal from './ot/SurgeryTeamModal';
+import IcuDashboardView from './IcuDashboardView';
 
 const ReceptionistDashboard = () => {
   const [user, setUser] = useState(() => authService.getCurrentUser());
@@ -891,6 +892,7 @@ const ReceptionistDashboard = () => {
     ...(hasAppointments ? [{ id: 'appointments', label: 'Appointments', icon: null }] : []),
     ...(hasOPD ? [{ id: 'opd', label: 'OPD', icon: null }] : []),
     ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
+    ...(hasIPD ? [{ id: 'icu', label: 'ICU', icon: null }] : []),
     ...(hasBilling ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
     ...(hasMedicalInventory && user?.inClinic !== false
       ? [{ id: 'inventory', label: 'Medicine Inventory', icon: null }]
@@ -1357,7 +1359,8 @@ const ReceptionistDashboard = () => {
                 activeTab === 'ipd' ||
                 activeTab === 'inventory' ||
                 activeTab === 'hospital-inventory' ||
-                activeTab === 'ot'
+                activeTab === 'ot' ||
+                activeTab === 'icu'
                   ? null
                   : () => {
                       if (activeTab === 'opd') setIsOpdModalOpen(true);
@@ -1870,6 +1873,7 @@ const ReceptionistDashboard = () => {
               )}
               {activeTab === 'inventory' && <MedicineInventoryTab hidePrescribingColumns />}
               {activeTab === 'hospital-inventory' && <HospitalInventoryTab />}
+              {activeTab === 'icu' && <IcuDashboardView />}
               {activeTab === 'ot' && (
                 <div>
                   <div className="flex items-center justify-between mb-4">

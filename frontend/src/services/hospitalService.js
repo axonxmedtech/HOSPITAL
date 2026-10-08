@@ -141,6 +141,22 @@ const hospitalService = {
   },
 
   /**
+   * Get deleted doctors for current hospital
+   */
+  getDeletedDoctors: async () => {
+    const response = await apiClient.get('/hospital/doctors/deleted');
+    return response.data;
+  },
+
+  /**
+   * Restore doctor
+   */
+  restoreDoctor: async (id) => {
+    const response = await apiClient.post(`/hospital/doctors/${id}/restore`);
+    return response.data;
+  },
+
+  /**
    * Reset doctor password
    */
   resetDoctorPassword: async (id, newPassword) => {
@@ -553,6 +569,11 @@ const hospitalService = {
     if (status) url += `&status=${encodeURIComponent(status)}`;
     const response = await apiClient.get(url);
     return response.data; // Returns Page object with { content: [...], totalElements: ..., totalPages: ... }
+  },
+
+  createBill: async (billData) => {
+    const response = await apiClient.post('/hospital/billing', billData);
+    return response.data;
   },
 
   updateBillStatus: async (id, status, paymentMethod, paymentReference) => {
@@ -1186,6 +1207,29 @@ const hospitalService = {
       responseType: 'blob',
       timeout: 60000,
     });
+    return response.data;
+  },
+
+  // ICU Cleaning Task APIs
+  getIcuCleaningTasks: async (status = '') => {
+    let url = '/hospital/icu/cleaning';
+    if (status) url += `?status=${encodeURIComponent(status)}`;
+    const response = await apiClient.get(url);
+    return response.data;
+  },
+
+  createIcuCleaningTask: async (taskData) => {
+    const response = await apiClient.post('/hospital/icu/cleaning', taskData);
+    return response.data;
+  },
+
+  updateIcuCleaningTaskStatus: async (taskId, status) => {
+    const response = await apiClient.put(`/hospital/icu/cleaning/${taskId}/status`, { status });
+    return response.data;
+  },
+
+  deleteIcuCleaningTask: async (taskId) => {
+    const response = await apiClient.delete(`/hospital/icu/cleaning/${taskId}`);
     return response.data;
   },
 };

@@ -58,9 +58,12 @@ public class WardService {
         if (inchargeNurseProfileId != null) {
             com.hms.entity.NurseProfile p = nurseProfileRepository.findById(inchargeNurseProfileId)
                     .orElseThrow(() -> new IllegalArgumentException("Nurse not found"));
-            if (!hospitalId.equals(p.getHospitalId()) || !Boolean.TRUE.equals(p.getIsActive())
-                    || !Boolean.TRUE.equals(p.getIsIncharge())) {
-                throw new IllegalArgumentException("Target must be an active Nurse Incharge in this hospital");
+            if (!hospitalId.equals(p.getHospitalId()) || !Boolean.TRUE.equals(p.getIsActive())) {
+                throw new IllegalArgumentException("Target must be an active Nurse in this hospital");
+            }
+            if (!Boolean.TRUE.equals(p.getIsIncharge())) {
+                p.setIsIncharge(true);
+                nurseProfileRepository.save(p);
             }
         }
         ward.setInchargeNurseId(inchargeNurseProfileId);
@@ -144,26 +147,12 @@ public class WardService {
     }
 
     /**
-     * Wards eligible for IPD admission/bed selection. A ward with no Available bed is always
-     * hidden (a bed awaiting cleaning or under maintenance does not count).
-     *
-     * The "ward must have a Nurse Incharge" rule is a NURSING rule, so it is only enforced when
-     * that module is on. A hospital with IPD but without NURSING has no nurses at all, so it can
-     * never assign an incharge — applying the rule unconditionally filtered out every ward and
-     * made admission impossible: the ward dropdown simply came back empty.
-     *
-     * Admin ward management still uses {@link #getAllWards()}, so every ward stays visible there
-     * for incharge assignment.
+     * Wards eligible for IPD admission/bed selection. Returns all wards for the hospital.
      */
     public List<WardResponse> getWardsForAdmission() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
-        boolean nursingEnabled = hasNursingModule();
-
         return wardRepository.findByHospitalId(hospitalId)
                 .stream()
-                .filter(w -> !nursingEnabled || w.getInchargeNurseId() != null)
-                .filter(w -> bedRepository.findByWardIdAndHospitalId(w.getWardId(), hospitalId).stream()
-                        .anyMatch(b -> com.hms.entity.BedStatus.AVAILABLE.equalsIgnoreCase(b.getStatus())))
                 .map(this::toResponse).collect(Collectors.toList());
     }
 

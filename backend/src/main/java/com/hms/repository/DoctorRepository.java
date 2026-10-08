@@ -50,7 +50,9 @@ public interface DoctorRepository extends JpaRepository<Doctor, Long> {
     Optional<Doctor> findByIdAndHospitalIdAndIsActiveTrue(Long id, Long hospitalId);
 
     Optional<Doctor> findByPublicIdAndHospitalIdAndIsActiveTrue(String publicId, Long hospitalId);
-
+    Optional<Doctor> findByPublicIdAndHospitalId(String publicId, Long hospitalId);
+    Optional<Doctor> findByIdAndHospitalId(Long id, Long hospitalId);
+    List<Doctor> findByHospitalIdAndIsActiveFalseOrderByCreatedAtDesc(Long hospitalId);
     /**
      * Find a doctor by email and hospital ID
      * Used to check if doctor email already exists in the hospital

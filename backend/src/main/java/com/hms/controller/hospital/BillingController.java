@@ -58,29 +58,32 @@ public class BillingController {
             throw new org.springframework.security.access.AccessDeniedException("Invalid hospital context");
         }
 
+        // HOSPITAL_ADMIN always has full access to billing
+        if ("HOSPITAL_ADMIN".equalsIgnoreCase(role) || "ROLE_HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
+            return;
+        }
+
         // Fetch settings
         com.hms.entity.HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(hospitalId)
-                .orElseGet(() -> {
-                    Hospital hospital = hospitalRepository.findById(hospitalId)
-                            .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
-                    com.hms.entity.HospitalSetting newSettings = new com.hms.entity.HospitalSetting();
-                    newSettings.setHospital(hospital);
-                    return hospitalSettingRepository.save(newSettings);
-                });
+                .orElse(null);
+
+        String handler = (settings != null && settings.getBillingHandler() != null && !settings.getBillingHandler().isBlank())
+                ? settings.getBillingHandler()
+                : "BOTH";
 
         // Enforce settings
         if ("ROLE_DOCTOR".equalsIgnoreCase(role) || DOCTOR_ROLE.equalsIgnoreCase(role)) {
-            if (!DOCTOR_ROLE.equalsIgnoreCase(settings.getBillingHandler()) && 
-                !"BOTH".equalsIgnoreCase(settings.getBillingHandler()) &&
-                !"SOLO".equalsIgnoreCase(settings.getReceptionMode())) {
+            if (!DOCTOR_ROLE.equalsIgnoreCase(handler) && 
+                !"BOTH".equalsIgnoreCase(handler) &&
+                !(settings != null && "SOLO".equalsIgnoreCase(settings.getReceptionMode()))) {
                 throw new org.springframework.security.access.AccessDeniedException("Billing management is restricted to receptionists.");
             }
         } else if ("ROLE_RECEPTIONIST".equalsIgnoreCase(role) || "RECEPTIONIST".equalsIgnoreCase(role)) {
-            if (!"RECEPTIONIST".equalsIgnoreCase(settings.getBillingHandler()) && 
-                !"BOTH".equalsIgnoreCase(settings.getBillingHandler())) {
+            if (!"RECEPTIONIST".equalsIgnoreCase(handler) && 
+                !"BOTH".equalsIgnoreCase(handler)) {
                 throw new org.springframework.security.access.AccessDeniedException("Billing management is restricted to doctors.");
             }
-            if ("SOLO".equalsIgnoreCase(settings.getReceptionMode())) {
+            if (settings != null && "SOLO".equalsIgnoreCase(settings.getReceptionMode())) {
                 throw new org.springframework.security.access.AccessDeniedException("Receptionist access is restricted under Solo Doctor mode.");
             }
         }
@@ -621,6 +624,53 @@ public class BillingController {
             mapped.add(asMap);
         }
         return ResponseEntity.ok(mapped);
+    }
+
+    public static class CreateBillRequest {
+        public Long patientId;
+        public Long doctorId;
+        public String billingType;
+        public BigDecimal amount;
+        public String description;
+        public String paymentStatus;
+        public String paymentMethod;
+        public String paymentReference;
+        public java.util.List<CreateBillItemDto> items;
+    }
+
+    public static class CreateBillItemDto {
+        public String description;
+        public BigDecimal amount;
+    }
+
+    @PostMapping
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
+    public ResponseEntity<?> createBill(@RequestBody CreateBillRequest req) {
+        validateBillingAccess();
+        if (req.patientId == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Patient ID is required"));
+        }
+        java.util.List<BillingItem> items = new java.util.ArrayList<>();
+        if (req.items != null) {
+            for (CreateBillItemDto itemDto : req.items) {
+                BillingItem item = new BillingItem();
+                item.setDescription(itemDto.description);
+                item.setAmount(itemDto.amount != null ? itemDto.amount : BigDecimal.ZERO);
+                items.add(item);
+            }
+        }
+        Billing created = billingService.createManualBill(
+                req.patientId,
+                req.doctorId,
+                req.billingType,
+                req.amount,
+                req.description,
+                req.paymentStatus,
+                req.paymentMethod,
+                req.paymentReference,
+                items
+        );
+        return ResponseEntity.ok(created);
     }
 }
 

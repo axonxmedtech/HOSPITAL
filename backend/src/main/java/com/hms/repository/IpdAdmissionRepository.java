@@ -22,4 +22,5 @@ public interface IpdAdmissionRepository extends JpaRepository<IpdAdmission, Long
     java.util.List<IpdAdmission> findByPatientIdOrderByAdmissionDatetimeDesc(Long patientId);
     java.util.List<IpdAdmission> findByHospitalIdAndStatusIn(Long hospitalId, java.util.Collection<String> statuses);
     java.util.List<IpdAdmission> findByHospitalIdAndAdmissionDatetimeBetween(Long hospitalId, java.time.LocalDateTime start, java.time.LocalDateTime end);
+    java.util.Optional<IpdAdmission> findByHospitalIdAndPatientIdAndStatus(Long hospitalId, Long patientId, String status);
 }

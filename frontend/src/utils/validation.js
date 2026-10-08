@@ -18,8 +18,9 @@ export const validators = {
 
   phone: (value) => {
     if (!value) return null;
-    const phoneRegex = /^\d{10}$/;
-    return phoneRegex.test(value) ? null : 'Phone number must be exactly 10 digits';
+    const digits = String(value).replace(/\D/g, '');
+    const cleanDigits = (digits.length > 10 && digits.startsWith('91')) ? digits.slice(-10) : digits;
+    return cleanDigits.length === 10 ? null : 'Phone number must be exactly 10 digits';
   },
 
   password: (value) => {
@@ -61,8 +62,8 @@ export const validators = {
 
   name: (value) => {
     if (!value) return null;
-    const nameRegex = /^[a-zA-Z\s]+$/;
-    if (!nameRegex.test(value)) return 'Name must contain only letters and spaces';
+    const nameRegex = /^[a-zA-Z\s.'-]+$/;
+    if (!nameRegex.test(value)) return 'Name must contain only letters, spaces, dots, and hyphens';
     if (value.trim().length < 2) return 'Name must be at least 2 characters long';
     return null;
   },

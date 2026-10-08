@@ -82,6 +82,7 @@ import PrintPaymentSettingsCard from './PrintPaymentSettingsCard';
 import TimeSlotsView from './TimeSlotsView';
 import VitalsSettingsCard from './VitalsSettingsCard';
 import WardsAndBeds from './WardsAndBeds';
+import IcuDashboardView from './IcuDashboardView';
 /**
  * HospitalAdminDashboard - Hospital Admin dashboard
  *
@@ -129,6 +130,8 @@ const HospitalAdminDashboard = () => {
   const [nurseTasks, setNurseTasks] = useState([]);
   const [createTaskModal, setCreateTaskModal] = useState(false);
   const [pharmacists, setPharmacists] = useState([]);
+  const [doctorSubView, setDoctorSubView] = useState('Active');
+  const [deletedDoctors, setDeletedDoctors] = useState([]);
   const [otIncharges, setOtIncharges] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [billing, setBilling] = useState([]);
@@ -389,6 +392,7 @@ const HospitalAdminDashboard = () => {
     opdDateFilter,
     appointmentsViewFilter,
     pharmacyRefreshKey,
+    doctorSubView,
   ]);
 
   // Periodic background polling replaced with WebSocket real-time sync
@@ -1065,15 +1069,23 @@ const HospitalAdminDashboard = () => {
             setTotalElements(data.length);
           }
         } else if (activeTab === 'doctors') {
-          const data = await hospitalService.getDoctors(searchTerm, page, pageSize);
-          if (data.content) {
-            setDoctors(data.content);
-            setTotalPages(data.totalPages);
-            setTotalElements(data.totalElements);
+          if (doctorSubView === 'Deleted') {
+            const data = await hospitalService.getDeletedDoctors();
+            const deletedList = Array.isArray(data) ? data : (data?.content || []);
+            setDeletedDoctors(deletedList);
+            setTotalPages(data?.totalPages || 1);
+            setTotalElements(data?.totalElements || deletedList.length);
           } else {
-            setDoctors(data);
-            setTotalPages(1);
-            setTotalElements(data.length);
+            const data = await hospitalService.getDoctors(searchTerm, page, pageSize);
+            if (data.content) {
+              setDoctors(data.content);
+              setTotalPages(data.totalPages);
+              setTotalElements(data.totalElements);
+            } else {
+              setDoctors(data);
+              setTotalPages(1);
+              setTotalElements(data.length);
+            }
           }
         } else if (activeTab === 'receptionists') {
           const data = await hospitalService.getReceptionists(searchTerm, page, pageSize);
@@ -1316,7 +1328,7 @@ const HospitalAdminDashboard = () => {
   const handleDeleteDoctor = (id) => {
     openConfirmation(
       'Delete Doctor',
-      'Are you sure you want to delete this doctor? This action cannot be undone.',
+      'Are you sure you want to delete this doctor? Data will be preserved and can be recovered.',
       async (reason) => {
         try {
           await hospitalService.deleteDoctor(id, reason);
@@ -1328,6 +1340,24 @@ const HospitalAdminDashboard = () => {
       },
       true, // Require reason
       'Why are you deleting this doctor?'
+    );
+  };
+
+  const handleRestoreDoctor = (doctor) => {
+    const docId = doctor.publicId || doctor.id;
+    openConfirmation(
+      'Restore Doctor',
+      `Are you sure you want to restore Dr. ${doctor.name}?`,
+      async () => {
+        try {
+          await hospitalService.restoreDoctor(docId);
+          success('Doctor restored successfully');
+          loadData();
+        } catch (err) {
+          toastError(err?.response?.data?.error || 'Failed to restore doctor');
+        }
+      },
+      false
     );
   };
 
@@ -1907,6 +1937,7 @@ const HospitalAdminDashboard = () => {
     { id: 'opd', label: 'OPD', icon: null, requiredModule: 'OPD' },
     { id: 'ipd', label: 'IPD', icon: null, requiredModule: 'IPD' },
     { id: 'wards', label: 'Wards & Beds', icon: null, requiredModule: 'IPD' },
+    { id: 'icu', label: 'ICU', icon: null, requiredModule: null },,
     { id: 'ot', label: 'Operation Theatre', icon: null, requiredModule: 'OT' },
     { id: 'pathology', label: 'Pathology', icon: null, requiredModule: 'PATHOLOGY' },
     // Pharmacy & inventory
@@ -2011,11 +2042,11 @@ const HospitalAdminDashboard = () => {
   // single item, so it stays a plain top-level link instead of a
   // one-item dropdown (see groupedSidebarTabs below).
   const SIDEBAR_GROUPS = [
-    {
-      id: 'group-patient-management',
-      label: 'Patient Management',
-      tabIds: ['patients', 'appointments', 'opd', 'ipd', 'ot', 'pathology'],
-    },
+   {
+  id: 'group-patient-management',
+  label: 'Patient Management',
+  tabIds: ['patients', 'appointments', 'opd', 'ipd', 'icu', 'ot', 'pathology'],
+},
     { id: 'group-rooms', label: 'Rooms', tabIds: ['wards'] },
     {
       id: 'group-staff',
@@ -2739,11 +2770,14 @@ const HospitalAdminDashboard = () => {
                     ? () => setIsAdminOpdModalOpen(true)
                     : activeTab === 'nurse-tasks'
                       ? () => setCreateTaskModal(true)
-                      : activeTab !== 'billing' &&
+                      : activeTab === 'doctors' && doctorSubView === 'Deleted'
+                        ? null
+                        : activeTab !== 'billing' &&
                           activeTab !== 'audit-logs' &&
                           activeTab !== 'fees' &&
                           activeTab !== 'settings' &&
                           activeTab !== 'ot' &&
+                          activeTab !== 'icu' &&
                           activeTab !== 'time-slots' &&
                           activeTab !== 'calendar' &&
                           user?.role === 'HOSPITAL_ADMIN'
@@ -2755,12 +2789,33 @@ const HospitalAdminDashboard = () => {
                     ? 'New OPD'
                     : activeTab === 'nurse-tasks'
                       ? 'New Task'
-                      : activeTab === 'fees' || activeTab === 'settings'
+                      : activeTab === 'fees' || activeTab === 'settings' || (activeTab === 'doctors' && doctorSubView === 'Deleted')
                         ? ''
                         : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'nurses' ? 'Nurse' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'ot-incharges' ? 'OT Incharge' : activeTab === 'appointments' ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`
                 }
                 filter={
-                  activeTab === 'patients' ? (
+                  activeTab === 'doctors' && user?.role === 'HOSPITAL_ADMIN' ? (
+                    <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 h-[38px] items-center">
+                      {['Active', 'Deleted'].map((subView) => (
+                        <button
+                          key={subView}
+                          type="button"
+                          onClick={() => {
+                            setDoctorSubView(subView);
+                            setPage(0);
+                            setSearchInput('');
+                          }}
+                          className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${
+                            doctorSubView === subView
+                              ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
+                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                          }`}
+                        >
+                          {subView === 'Active' ? 'Active Doctors' : 'Deleted Doctors'}
+                        </button>
+                      ))}
+                    </div>
+                  ) : activeTab === 'patients' ? (
                     <div className="flex items-center gap-2">
                       <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 h-[38px] items-center">
                         {['All', 'Date'].map((view) => (
@@ -3000,7 +3055,23 @@ const HospitalAdminDashboard = () => {
                     ))}
 
                   {activeTab === 'doctors' &&
-                    (doctors.length > 0 ? (
+                    (doctorSubView === 'Deleted' ? (
+                      deletedDoctors.length > 0 ? (
+                        <DeletedDoctorsTable
+                          doctors={deletedDoctors}
+                          onRestore={handleRestoreDoctor}
+                          onViewDetails={(doc) => handleViewStaffDetails(doc, 'doctor')}
+                          startIndex={page * pageSize}
+                          pagination={pagination}
+                        />
+                      ) : (
+                        <EmptyState
+                          icon={null}
+                          title="No Deleted Doctors"
+                          message="There are no soft-deleted doctors in this hospital."
+                        />
+                      )
+                    ) : doctors.length > 0 ? (
                       <DoctorsTable
                         doctors={doctors}
                         isAdmin={user?.role === 'HOSPITAL_ADMIN'}
@@ -5148,6 +5219,7 @@ const HospitalAdminDashboard = () => {
                     message="No IPD admissions found for this hospital."
                   />
                 ))}
+              {activeTab === 'icu' && <IcuDashboardView />}
               {activeTab === 'audit-logs' && (
                 <div className="space-y-6">
                   {renderBranchFilterBar()}
@@ -7131,6 +7203,85 @@ const DoctorsTable = ({
           }),
         ]
       : []),
+  ];
+
+  return <DataTable data={doctors} columns={columns} pagination={pagination} />;
+};
+
+// Deleted Doctors Table Component
+const DeletedDoctorsTable = ({
+  doctors,
+  onRestore,
+  onViewDetails,
+  startIndex = 0,
+  pagination,
+}) => {
+  const columnHelper = createColumnHelper();
+
+  const columns = [
+    columnHelper.display({
+      id: 'sno',
+      header: 'S.No.',
+      cell: (info) => startIndex + info.row.index + 1,
+    }),
+    columnHelper.accessor((row) => row.customId || row.id, {
+      id: 'id',
+      header: 'ID',
+      cell: (info) => <span title="Serial Number">{info.getValue()}</span>,
+    }),
+    columnHelper.accessor('name', {
+      header: 'Name',
+      cell: (info) => (
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-gray-900">{info.getValue()}</span>
+          <span className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded-full font-medium">Deleted</span>
+        </div>
+      ),
+    }),
+    columnHelper.accessor('specialization', {
+      header: 'Specialization',
+    }),
+    columnHelper.accessor('phone', {
+      header: 'Phone',
+    }),
+    columnHelper.accessor('email', {
+      header: 'Email',
+    }),
+    columnHelper.accessor('createdAt', {
+      header: 'Created Date',
+      cell: (info) => {
+        const val = info.getValue();
+        if (!val) return '-';
+        return new Date(val).toLocaleDateString();
+      },
+    }),
+    columnHelper.display({
+      id: 'actions',
+      header: () => <div className="text-right">Actions</div>,
+      cell: (info) => (
+        <div className="text-right flex items-center justify-end gap-2">
+          {onViewDetails && (
+            <button
+              type="button"
+              onClick={() => onViewDetails(info.row.original)}
+              className="px-2.5 py-1 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+            >
+              Details
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => onRestore(info.row.original)}
+            className="px-3 py-1 text-xs font-semibold text-white bg-green-600 hover:bg-green-700 rounded-md shadow-sm transition-colors flex items-center gap-1"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Restore
+          </button>
+        </div>
+      ),
+    }),
   ];
 
   return <DataTable data={doctors} columns={columns} pagination={pagination} />;
