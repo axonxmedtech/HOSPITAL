@@ -81,6 +81,8 @@ vi.mock('../services/hospitalService', () => ({
     getPrescriptionPresets: vi.fn().mockResolvedValue([]),
     getNotePresets: vi.fn().mockResolvedValue([]),
     getConsultationNotePresets: vi.fn().mockResolvedValue([]),
+    getHospitalOperationsSettings: vi.fn().mockResolvedValue({ defaultConsultationLanguage: 'EN' }),
+    getConsultationStatements: vi.fn().mockResolvedValue([]),
     getPatientConsultationDetails: vi.fn().mockResolvedValue({
       patient: { name: 'Ravi Kumar', age: 46 },
       opdHistory: [],
@@ -146,6 +148,10 @@ describe('ConsultationModal — submission', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     hospitalService.getInventoryMedicines.mockResolvedValue([]);
+    hospitalService.getHospitalOperationsSettings.mockResolvedValue({
+      defaultConsultationLanguage: 'EN',
+    });
+    hospitalService.getConsultationStatements.mockResolvedValue([]);
     hospitalService.submitConsultation.mockResolvedValue({ message: 'ok' });
   });
 
