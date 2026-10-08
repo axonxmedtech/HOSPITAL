@@ -307,6 +307,32 @@ const platformService = {
     });
     return response.data;
   },
+
+  getStatements: async (hospitalType = 'HOSPITAL') => {
+    const response = await apiClient.get('/platform/statements', { params: { hospitalType } });
+    return response.data;
+  },
+
+  createStatement: async (data, hospitalType = 'HOSPITAL') => {
+    const response = await apiClient.post('/platform/statements', data, {
+      params: { hospitalType },
+    });
+    return response.data;
+  },
+
+  updateStatement: async (id, data, hospitalType = 'HOSPITAL') => {
+    const response = await apiClient.put(`/platform/statements/${id}`, data, {
+      params: { hospitalType },
+    });
+    return response.data;
+  },
+
+  deleteStatement: async (id, hospitalType = 'HOSPITAL') => {
+    const response = await apiClient.delete(`/platform/statements/${id}`, {
+      params: { hospitalType },
+    });
+    return response.data;
+  },
 };
 
 export default platformService;

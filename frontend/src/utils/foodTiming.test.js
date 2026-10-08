@@ -69,12 +69,14 @@ describe('food timing applicability', () => {
 });
 
 describe('food timing translations', () => {
-  it('translates BEFORE_FOOD and AFTER_FOOD to Marathi and Hindi', () => {
-    expect(getFoodTimingTranslation('BEFORE_FOOD', 'mr')).toBe('जेवणापूर्वी');
-    expect(getFoodTimingTranslation('AFTER_FOOD', 'mr')).toBe('जेवणानंतर');
+  it('translates BEFORE_FOOD and AFTER_FOOD to bilingual Marathi and Hindi', () => {
+    expect(getFoodTimingTranslation('BEFORE_FOOD', 'mr')).toBe('Before Food / जेवणापूर्वी');
+    expect(getFoodTimingTranslation('AFTER_FOOD', 'mr')).toBe('After Food / जेवणानंतर');
+    expect(getFoodTimingTranslation('BEFORE_FOOD', 'EN_MR')).toBe('Before Food / जेवणापूर्वी');
 
-    expect(getFoodTimingTranslation('BEFORE_FOOD', 'hi')).toBe('भोजन से पहले');
-    expect(getFoodTimingTranslation('AFTER_FOOD', 'hi')).toBe('भोजन के बाद');
+    expect(getFoodTimingTranslation('BEFORE_FOOD', 'hi')).toBe('Before Food / भोजन से पहले');
+    expect(getFoodTimingTranslation('AFTER_FOOD', 'hi')).toBe('After Food / भोजन के बाद');
+    expect(getFoodTimingTranslation('BEFORE_FOOD', 'EN_HI')).toBe('Before Food / भोजन से पहले');
 
     expect(getFoodTimingTranslation('BEFORE_FOOD', 'en')).toBe('Before Food');
     expect(getFoodTimingTranslation('AFTER_FOOD', 'en')).toBe('After Food');

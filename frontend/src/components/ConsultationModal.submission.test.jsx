@@ -1,6 +1,8 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import hospitalService from '../services/hospitalService';
+import ConsultationModal from './ConsultationModal';
 
 // headlessui's combobox measures itself when it closes; jsdom has no ResizeObserver, and the
 // resulting unhandled error leaks across tests in this file.
@@ -87,9 +89,6 @@ vi.mock('../services/hospitalService', () => ({
     searchMedicines: vi.fn().mockResolvedValue([]),
   },
 }));
-
-import hospitalService from '../services/hospitalService';
-import ConsultationModal from './ConsultationModal';
 
 /**
  * What the doctor's last click actually sends, and what they see when it fails.
@@ -216,6 +215,9 @@ describe('ConsultationModal — submission', () => {
   });
 
   it('sends foodTiming when selected and returns selected printLanguage to onSuccess', async () => {
+    hospitalService.getHospitalOperationsSettings.mockResolvedValue({
+      defaultConsultationLanguage: 'EN_MR',
+    });
     const user = userEvent.setup();
     const onSuccess = vi.fn();
     open(onSuccess);
@@ -227,17 +229,16 @@ describe('ConsultationModal — submission', () => {
       foodTiming: 'AFTER_FOOD',
     });
 
-    // Pick Marathi print language
-    await user.click(screen.getByRole('button', { name: 'मराठी' }));
     await submit(user);
 
     await waitFor(() => expect(hospitalService.submitConsultation).toHaveBeenCalled());
     const payload = payloadOf();
     expect(payload.prescription[0].foodTiming).toBe('AFTER_FOOD');
+    expect(payload.consultationLanguage).toBe('EN_MR');
     expect(onSuccess).toHaveBeenCalledWith(
       expect.objectContaining({
         message: 'ok',
-        printLanguage: 'mr',
+        printLanguage: 'EN_MR',
       })
     );
   });

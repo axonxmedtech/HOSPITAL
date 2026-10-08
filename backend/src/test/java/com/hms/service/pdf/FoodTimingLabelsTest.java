@@ -13,26 +13,35 @@ class FoodTimingLabelsTest {
     void englishLabelsMatchExactStrings() {
         assertThat(FoodTimingLabels.getLabel("BEFORE_FOOD", "en")).isEqualTo("Before Food");
         assertThat(FoodTimingLabels.getLabel("AFTER_FOOD", "en")).isEqualTo("After Food");
+        assertThat(FoodTimingLabels.getLabel("WITH_FOOD", "en")).isEqualTo("With Food");
     }
 
     @Test
-    void marathiLabelsMatchExactStrings() {
-        assertThat(FoodTimingLabels.getLabel("BEFORE_FOOD", "mr")).isEqualTo("जेवणापूर्वी");
-        assertThat(FoodTimingLabels.getLabel("AFTER_FOOD", "mr")).isEqualTo("जेवणानंतर");
+    void marathiBilingualLabelsMatchExactStrings() {
+        assertThat(FoodTimingLabels.getLabel("BEFORE_FOOD", "mr")).isEqualTo("Before Food / जेवणापूर्वी");
+        assertThat(FoodTimingLabels.getLabel("AFTER_FOOD", "mr")).isEqualTo("After Food / जेवणानंतर");
+        assertThat(FoodTimingLabels.getLabel("WITH_FOOD", "mr")).isEqualTo("With Food / जेवणासोबत");
+
+        // EN_MR mode should be identical
+        assertThat(FoodTimingLabels.getLabel("BEFORE_FOOD", "EN_MR")).isEqualTo("Before Food / जेवणापूर्वी");
+        assertThat(FoodTimingLabels.getLabel("AFTER_FOOD", "EN_MR")).isEqualTo("After Food / जेवणानंतर");
+        assertThat(FoodTimingLabels.getLabel("WITH_FOOD", "EN_MR")).isEqualTo("With Food / जेवणासोबत");
     }
 
     @Test
-    void hindiLabelsMatchExactStrings() {
-        assertThat(FoodTimingLabels.getLabel("BEFORE_FOOD", "hi")).isEqualTo("भोजन से पहले");
-        assertThat(FoodTimingLabels.getLabel("AFTER_FOOD", "hi")).isEqualTo("भोजन के बाद");
+    void hindiBilingualLabelsMatchExactStrings() {
+        assertThat(FoodTimingLabels.getLabel("BEFORE_FOOD", "hi")).isEqualTo("Before Food / भोजन से पहले");
+        assertThat(FoodTimingLabels.getLabel("AFTER_FOOD", "hi")).isEqualTo("After Food / भोजन के बाद");
+        assertThat(FoodTimingLabels.getLabel("WITH_FOOD", "hi")).isEqualTo("With Food / भोजन के साथ");
+
+        // EN_HI mode should be identical
+        assertThat(FoodTimingLabels.getLabel("BEFORE_FOOD", "EN_HI")).isEqualTo("Before Food / भोजन से पहले");
+        assertThat(FoodTimingLabels.getLabel("AFTER_FOOD", "EN_HI")).isEqualTo("After Food / भोजन के बाद");
+        assertThat(FoodTimingLabels.getLabel("WITH_FOOD", "EN_HI")).isEqualTo("With Food / भोजन के साथ");
     }
 
     @Test
-    void withFoodAndNotSpecifiedBehavior() {
-        assertThat(FoodTimingLabels.getLabel("WITH_FOOD", "en")).isEqualTo("With food");
-        assertThat(FoodTimingLabels.getLabel("WITH_FOOD", "mr")).isEqualTo("With food");
-        assertThat(FoodTimingLabels.getLabel("WITH_FOOD", "hi")).isEqualTo("With food");
-
+    void notSpecifiedReturnsNull() {
         assertThat(FoodTimingLabels.getLabel("NOT_SPECIFIED", "en")).isNull();
         assertThat(FoodTimingLabels.getLabel("NOT_SPECIFIED", "mr")).isNull();
         assertThat(FoodTimingLabels.getLabel("NOT_SPECIFIED", "hi")).isNull();

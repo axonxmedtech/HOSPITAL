@@ -67,6 +67,9 @@ public class HospitalSettingDTO {
     // FIRST or LAST. FIRST charges consultation + case-paper at OPD entry.
     private String billPaymentTiming = "LAST";
 
+    // Default consultation print language: EN, EN_MR, or EN_HI
+    private String defaultConsultationLanguage = "EN";
+
     public HospitalSettingDTO(String receptionMode, String billingHandler) {
         this.receptionMode = receptionMode;
         this.billingHandler = billingHandler;

@@ -166,7 +166,13 @@ public class DatabaseMigrationRunner {
         ensureIcuStayTable();          // ICU Phase 3
         migrateIcuWardsAndStays();
         ensurePatientDuplicatePhoneAckColumns(); // Patient duplicate prevention (Phase A)
-
+        
+        // Bilingual consultation instructions & statements
+        addColumnIfMissing("hospital_settings", "default_consultation_language", "VARCHAR(10) NOT NULL DEFAULT 'EN'");
+        addColumnIfMissing("medical_records", "consultation_language", "VARCHAR(10) NOT NULL DEFAULT 'EN'");
+        addColumnIfMissing("consultation_note_presets", "marathi_text", "VARCHAR(500) NULL");
+        addColumnIfMissing("consultation_note_presets", "hindi_text", "VARCHAR(500) NULL");
+        ensureConsultationStatementsTable();
     }
 
     /**
@@ -3116,6 +3122,54 @@ public class DatabaseMigrationRunner {
         ensureIcuWardsTable();
         backfillExistingIcuWards();
         backfillIcuStaysForCurrentOccupants();
+    }
+
+    private void ensureConsultationStatementsTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'consultation_statements'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE consultation_statements (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  hospital_type VARCHAR(20) NOT NULL DEFAULT 'ALL'," +
+                    "  category VARCHAR(30) NOT NULL," +
+                    "  english_text VARCHAR(500) NOT NULL," +
+                    "  marathi_text VARCHAR(500) NOT NULL," +
+                    "  hindi_text VARCHAR(500) NOT NULL," +
+                    "  display_order INT NOT NULL DEFAULT 0," +
+                    "  is_active TINYINT(1) NOT NULL DEFAULT 1," +
+                    "  created_at DATETIME(6) NOT NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  INDEX idx_stmt_type_cat (hospital_type, category)" +
+                    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+                );
+                log.info("DB migration applied: consultation_statements table created");
+
+                // Seed initial statements
+                String seedSql = "INSERT INTO consultation_statements (hospital_type, category, english_text, marathi_text, hindi_text, display_order, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, NOW(6))";
+                // Medicine Instructions
+                jdbcTemplate.update(seedSql, "ALL", "MEDICINE_INSTRUCTION", "Take with water", "पाण्यासोबत घ्या", "पानी के साथ लें", 1);
+                jdbcTemplate.update(seedSql, "ALL", "MEDICINE_INSTRUCTION", "At bedtime", "झोपण्यापूर्वी घ्या", "सोते समय लें", 2);
+                jdbcTemplate.update(seedSql, "ALL", "MEDICINE_INSTRUCTION", "In the morning", "सकाळी घ्या", "सुबह लें", 3);
+                jdbcTemplate.update(seedSql, "ALL", "MEDICINE_INSTRUCTION", "Apply externally", "फक्त बाह्य वापरासाठी", "केवल बाहरी उपयोग के लिए", 4);
+                jdbcTemplate.update(seedSql, "ALL", "MEDICINE_INSTRUCTION", "Before sleep", "झोपण्यापूर्वी", "सोने से पहले", 5);
+                jdbcTemplate.update(seedSql, "ALL", "MEDICINE_INSTRUCTION", "Take on an empty stomach", "उपाशीपोटी घ्या", "खाली पेट लें", 6);
+                jdbcTemplate.update(seedSql, "ALL", "MEDICINE_INSTRUCTION", "Chew properly before swallowing", "गिळण्यापूर्वी नीट चावून घ्या", "निगलने से पहले ठीक से चबाएं", 7);
+                // Doctor Advice
+                jdbcTemplate.update(seedSql, "ALL", "DOCTOR_ADVICE", "Drink more water.", "जास्त पाणी प्या.", "अधिक पानी पिएं।", 1);
+                jdbcTemplate.update(seedSql, "ALL", "DOCTOR_ADVICE", "Avoid oily food.", "तेलकट पदार्थ खाऊ नका.", "तैलीय भोजन से बचें।", 2);
+                jdbcTemplate.update(seedSql, "ALL", "DOCTOR_ADVICE", "Take adequate rest.", "पुरेशी विश्रांती घ्या.", "पर्याप्त आराम करें।", 3);
+                jdbcTemplate.update(seedSql, "ALL", "DOCTOR_ADVICE", "Avoid spicy food for 7 days.", "७ दिवस तिखट पदार्थ टाळा.", "७ दिनों तक मसालेदार भोजन से बचें।", 4);
+                jdbcTemplate.update(seedSql, "ALL", "DOCTOR_ADVICE", "Walk 30 minutes daily.", "दररोज ३० मिनिटे चाला.", "प्रतिदिन ३० मिनट टहलें।", 5);
+                log.info("DB migration applied: consultation_statements initial seeds inserted");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (consultation_statements): {}", e.getMessage());
+        }
     }
 
 }

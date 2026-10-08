@@ -1,12 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import apiClient from './apiService';
+import platformService from './platformService';
 
 vi.mock('./apiService', () => ({
   default: { get: vi.fn() },
   API_BASE_URL: 'http://localhost:8080',
 }));
-
-import apiClient from './apiService';
-import platformService from './platformService';
 
 /**
  * SA-3 — the abort signal has to reach axios.
@@ -60,16 +59,17 @@ describe('platformService request cancellation', () => {
    */
   it('a superseded request rejects instead of delivering stale data', async () => {
     // Stand-in for axios' own signal handling.
-    apiClient.get.mockImplementation((_url, config) =>
-      new Promise((resolve, reject) => {
-        const timer = setTimeout(() => resolve({ data: { content: [{ name: 'STALE' }] } }), 50);
-        config?.signal?.addEventListener('abort', () => {
-          clearTimeout(timer);
-          const err = new Error('canceled');
-          err.name = 'CanceledError';
-          reject(err);
-        });
-      })
+    apiClient.get.mockImplementation(
+      (_url, config) =>
+        new Promise((resolve, reject) => {
+          const timer = setTimeout(() => resolve({ data: { content: [{ name: 'STALE' }] } }), 50);
+          config?.signal?.addEventListener('abort', () => {
+            clearTimeout(timer);
+            const err = new Error('canceled');
+            err.name = 'CanceledError';
+            reject(err);
+          });
+        })
     );
 
     const stale = new AbortController();

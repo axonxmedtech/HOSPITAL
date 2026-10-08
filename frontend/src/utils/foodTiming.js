@@ -56,20 +56,32 @@ export const FOOD_TIMING_TRANSLATIONS = {
   en: {
     BEFORE_FOOD: 'Before Food',
     AFTER_FOOD: 'After Food',
+    WITH_FOOD: 'With Food',
   },
   mr: {
-    BEFORE_FOOD: 'जेवणापूर्वी',
-    AFTER_FOOD: 'जेवणानंतर',
+    BEFORE_FOOD: 'Before Food / जेवणापूर्वी',
+    AFTER_FOOD: 'After Food / जेवणानंतर',
+    WITH_FOOD: 'With Food / जेवणासोबत',
   },
   hi: {
-    BEFORE_FOOD: 'भोजन से पहले',
-    AFTER_FOOD: 'भोजन के बाद',
+    BEFORE_FOOD: 'Before Food / भोजन से पहले',
+    AFTER_FOOD: 'After Food / भोजन के बाद',
+    WITH_FOOD: 'With Food / भोजन के साथ',
   },
+};
+
+export const normalizeLanguageMode = (lang = 'en') => {
+  if (!lang) return 'en';
+  const l = String(lang).trim().toLowerCase().replace('-', '_');
+  if (l === 'mr' || l === 'en_mr') return 'mr';
+  if (l === 'hi' || l === 'en_hi') return 'hi';
+  return 'en';
 };
 
 export const getFoodTimingTranslation = (timing, lang = 'en') => {
   if (!timing || timing === 'NOT_SPECIFIED') return null;
-  const langTable = FOOD_TIMING_TRANSLATIONS[lang] || FOOD_TIMING_TRANSLATIONS.en;
+  const normalized = normalizeLanguageMode(lang);
+  const langTable = FOOD_TIMING_TRANSLATIONS[normalized] || FOOD_TIMING_TRANSLATIONS.en;
   return langTable[timing] || LABELS[timing] || String(timing);
 };
 

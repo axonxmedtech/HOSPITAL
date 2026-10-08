@@ -15,7 +15,7 @@ const NotePresetsManager = ({
   // (defaults preserve the original Quick Notes wording).
   title = 'Quick Notes',
   noun = 'quick note',
-  placeholder = 'e.g. Avoid oily food',
+  placeholder = 'Search platform notes or enter new note...',
   description = 'Common phrases that appear as one-click buttons under Treatment Notes during a consultation.',
 }) => {
   const nounCap = noun.charAt(0).toUpperCase() + noun.slice(1);
@@ -24,6 +24,8 @@ const NotePresetsManager = ({
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newText, setNewText] = useState('');
+  const [platformStatements, setPlatformStatements] = useState([]);
+  const [selectedSuggestion, setSelectedSuggestion] = useState(null);
   // '' = shared (all doctors); a doctor id = private to that doctor. Admin-only.
   const [newDoctorId, setNewDoctorId] = useState('');
   const [adding, setAdding] = useState(false);
@@ -37,12 +39,12 @@ const NotePresetsManager = ({
     try {
       const data = await hospitalService.getConsultationNotePresets(fieldType);
       setPresets(data || []);
-    } catch (err) {
+    } catch {
       toastError(`Failed to load ${noun}s`);
     } finally {
       setLoading(false);
     }
-  }, [fieldType, toastError]);
+  }, [fieldType, noun, toastError]);
 
   useEffect(() => {
     loadPresets();
@@ -55,6 +57,22 @@ const NotePresetsManager = ({
     return () => globalThis.removeEventListener('hms:presets-updated', handler);
   }, [loadPresets]);
 
+  // Load platform master statements for suggestions
+  useEffect(() => {
+    const category =
+      fieldType === 'SYMPTOMS'
+        ? 'SYMPTOMS'
+        : fieldType === 'DIAGNOSIS'
+          ? 'DIAGNOSIS'
+          : 'DOCTOR_ADVICE';
+    if (typeof hospitalService?.getConsultationStatements === 'function') {
+      hospitalService
+        .getConsultationStatements(category)
+        .then((data) => setPlatformStatements(Array.isArray(data) ? data : []))
+        .catch(() => {});
+    }
+  }, [fieldType]);
+
   // Admin assigns notes to specific doctors, so it needs the doctor list.
   useEffect(() => {
     if (!isAdmin) return;
@@ -66,19 +84,37 @@ const NotePresetsManager = ({
       });
   }, [isAdmin]);
 
+  const handleSelectSuggestion = (stmt) => {
+    setNewText(stmt.englishText || '');
+    setSelectedSuggestion(stmt);
+  };
+
   const handleAdd = async (e) => {
     e.preventDefault();
     if (!newText.trim()) return;
     const assignment = isAdmin ? { doctorId: newDoctorId === '' ? null : Number(newDoctorId) } : {};
+
+    // Check selected suggestion or auto-match from platform statements
+    const match =
+      selectedSuggestion ||
+      platformStatements.find(
+        (s) => s.englishText?.trim().toLowerCase() === newText.trim().toLowerCase()
+      );
+    const translationPayload = match
+      ? { marathiText: match.marathiText || null, hindiText: match.hindiText || null }
+      : {};
+
     setAdding(true);
     try {
       const created = await hospitalService.createConsultationNotePreset({
         fieldType,
         text: newText.trim(),
+        ...translationPayload,
         ...assignment,
       });
       setPresets((prev) => [...prev, created]);
       setNewText('');
+      setSelectedSuggestion(null);
       setNewDoctorId('');
       success(`${nounCap} added`);
     } catch (err) {
@@ -107,7 +143,7 @@ const NotePresetsManager = ({
       setPresets((prev) => prev.map((p) => (p.id === id ? updated : p)));
       setEditingId(null);
       success(`${nounCap} updated`);
-    } catch (err) {
+    } catch {
       toastError(`Failed to update ${noun}`);
     }
   };
@@ -122,7 +158,7 @@ const NotePresetsManager = ({
       await hospitalService.deleteConsultationNotePreset(id);
       setPresets((prev) => prev.filter((p) => p.id !== id));
       success(`${nounCap} deleted`);
-    } catch (err) {
+    } catch {
       toastError(`Failed to delete ${noun}`);
     }
   };
@@ -142,7 +178,7 @@ const NotePresetsManager = ({
       next[index] = updatedB;
       next[targetIndex] = updatedA;
       setPresets(next);
-    } catch (err) {
+    } catch {
       toastError(`Failed to reorder ${noun}s`);
       // One of the two PUTs may have already succeeded, leaving the
       // server's displayOrder out of sync with what's shown locally —
@@ -151,6 +187,22 @@ const NotePresetsManager = ({
     }
   };
 
+  const availableStatements = platformStatements.filter(
+    (stmt) =>
+      !presets.some((p) => p.text?.trim().toLowerCase() === stmt.englishText?.trim().toLowerCase())
+  );
+
+  const filteredSuggestions = newText.trim()
+    ? availableStatements.filter((stmt) => {
+        const q = newText.trim().toLowerCase();
+        return (
+          stmt.englishText?.toLowerCase().includes(q) ||
+          stmt.marathiText?.toLowerCase().includes(q) ||
+          stmt.hindiText?.toLowerCase().includes(q)
+        );
+      })
+    : availableStatements.slice(0, 15);
+
   return (
     <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
       <div>
@@ -158,11 +210,64 @@ const NotePresetsManager = ({
         <p className="text-xs text-gray-500">{description}</p>
       </div>
 
+      {filteredSuggestions.length > 0 && (
+        <div className="p-3 bg-teal-50/70 border border-dashed border-teal-300 rounded-xl space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-teal-900 flex items-center gap-1.5">
+              <span>💡</span> Platform Master Notes ({availableStatements.length} available):
+            </span>
+            <span className="text-[11px] text-teal-700">
+              {newText.trim()
+                ? `Found ${filteredSuggestions.length} matching`
+                : 'Click to select note with translations'}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+            {filteredSuggestions.map((stmt) => {
+              const isSelected =
+                selectedSuggestion?.id === stmt.id ||
+                newText.trim().toLowerCase() === stmt.englishText?.trim().toLowerCase();
+              return (
+                <button
+                  key={stmt.id}
+                  type="button"
+                  onClick={() => handleSelectSuggestion(stmt)}
+                  className={`px-2.5 py-1 text-xs rounded-lg border text-left transition flex items-center gap-1.5 ${
+                    isSelected
+                      ? 'bg-teal-600 text-white border-teal-600 shadow-sm font-medium'
+                      : 'bg-white text-gray-800 border-teal-200 hover:bg-teal-100 hover:border-teal-300'
+                  }`}
+                  title={`Marathi: ${stmt.marathiText || '-'} | Hindi: ${stmt.hindiText || '-'}`}
+                >
+                  <span>{stmt.englishText}</span>
+                  {(stmt.marathiText || stmt.hindiText) && (
+                    <span
+                      className={`text-[10px] px-1 py-0.2 rounded font-normal ${
+                        isSelected ? 'bg-teal-700 text-teal-100' : 'bg-teal-100 text-teal-800'
+                      }`}
+                    >
+                      Bilingual
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleAdd} className="flex gap-2">
         <input
           type="text"
           value={newText}
-          onChange={(e) => setNewText(e.target.value)}
+          onChange={(e) => {
+            const val = e.target.value;
+            setNewText(val);
+            const match = platformStatements.find(
+              (s) => s.englishText?.trim().toLowerCase() === val.trim().toLowerCase()
+            );
+            setSelectedSuggestion(match || null);
+          }}
           placeholder={placeholder}
           maxLength={255}
           className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
@@ -247,8 +352,16 @@ const NotePresetsManager = ({
                   )}
                 </div>
               ) : (
-                <span className="flex-1 text-sm text-gray-800 flex items-center gap-2">
-                  {preset.text}
+                <span className="flex-1 text-sm text-gray-800 flex items-center gap-2 flex-wrap">
+                  <span>{preset.text}</span>
+                  {(preset.marathiText || preset.hindiText) && (
+                    <span
+                      className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200"
+                      title={`Marathi: ${preset.marathiText || '-'} | Hindi: ${preset.hindiText || '-'}`}
+                    >
+                      Bilingual
+                    </span>
+                  )}
                   {isAdmin && (
                     <span
                       className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${preset.doctorId ? 'bg-indigo-50 text-indigo-700' : 'bg-gray-100 text-gray-500'}`}

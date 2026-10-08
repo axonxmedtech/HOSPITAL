@@ -29,4 +29,10 @@ public class ConsultationNotePresetDTO {
     // doctorName is populated on read for the admin view; null when shared.
     private Long doctorId;
     private String doctorName;
+    private String marathiText;
+    private String hindiText;
+
+    public ConsultationNotePresetDTO(Long id, String fieldType, String text, Integer displayOrder, Long doctorId, String doctorName) {
+        this(id, fieldType, text, displayOrder, doctorId, doctorName, null, null);
+    }
 }

@@ -52,6 +52,9 @@ public class DoctorService {
     private SecurityContextHelper securityHelper;
 
     @Autowired
+    private com.hms.repository.HospitalSettingRepository hospitalSettingRepository;
+
+    @Autowired
     private com.hms.service.AuditLogService auditLogService;
 
     @Autowired
@@ -491,28 +494,51 @@ public class DoctorService {
             }
         }
 
-        // Resolve doctor id: prefer appointment.doctorId, otherwise map current user to Doctor entity
+        // Resolve doctor id: prefer appointment.doctorId, then OPD doctor, then authenticated doctor, then active hospital doctors
         Long resolvedDoctorId = null;
-        if (appointment != null) {
+        if (appointment != null && appointment.getDoctorId() != null) {
             resolvedDoctorId = appointment.getDoctorId();
-        } else {
+        } else if (request.getOpdId() != null) {
+            try {
+                var existingOpdOpt = opdRepository.findById(request.getOpdId());
+                if (existingOpdOpt.isPresent() && existingOpdOpt.get().getDoctor() != null) {
+                    resolvedDoctorId = existingOpdOpt.get().getDoctor().getId();
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (resolvedDoctorId == null) {
             try {
                 java.util.Optional<com.hms.entity.Doctor> dopt = doctorRepository.findByEmailAndHospitalId(securityHelper.getCurrentUserEmail(), hospitalId);
                 if (dopt.isPresent()) {
                     resolvedDoctorId = dopt.get().getId();
-                } else {
-                    throw new ResourceNotFoundException("Doctor not found");
                 }
-            } catch (Exception e) {
-                throw new ResourceNotFoundException("Doctor not found");
-            }
+            } catch (Exception ignored) {}
         }
 
-        if (resolvedDoctorId != null) {
-            java.util.Optional<com.hms.entity.Doctor> docOpt = doctorRepository.findByIdOrUserId(resolvedDoctorId, userRepository);
-            if (docOpt.isPresent()) {
-                resolvedDoctorId = docOpt.get().getId();
-            }
+        if (resolvedDoctorId == null) {
+            try {
+                Long currentUserId = securityHelper.getCurrentUserId();
+                if (currentUserId != null) {
+                    var docOpt = doctorRepository.findByIdOrUserId(currentUserId, userRepository);
+                    if (docOpt.isPresent()) {
+                        resolvedDoctorId = docOpt.get().getId();
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (resolvedDoctorId == null) {
+            try {
+                var activeDocs = doctorRepository.findByHospitalIdAndIsActiveTrue(hospitalId);
+                if (activeDocs != null && !activeDocs.isEmpty()) {
+                    resolvedDoctorId = activeDocs.get(0).getId();
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (resolvedDoctorId == null) {
+            throw new ResourceNotFoundException("No active doctor found for consultation");
         }
 
         // Create OPD if it's an appointment consultation
@@ -554,18 +580,47 @@ public class DoctorService {
         }
 
 
-        // 1. Create Medical Record
-        com.hms.entity.MedicalRecord record = new com.hms.entity.MedicalRecord();
-        record.setHospitalId(hospitalId);
-        record.setPatientId(patient.getId());
+        // 1. Create or Update Medical Record (prevent duplicate key violation on unique opd_id / appointment_id)
+        com.hms.entity.MedicalRecord record = null;
+        if (opd != null && opd.getId() != null) {
+            record = medicalRecordRepository.findByOpdId(opd.getId()).orElse(null);
+        }
+        if (record == null && appointment != null && appointment.getId() != null) {
+            record = medicalRecordRepository.findByAppointmentId(appointment.getId()).orElse(null);
+        }
+        if (record == null) {
+            record = new com.hms.entity.MedicalRecord();
+            record.setHospitalId(hospitalId);
+            record.setPatientId(patient.getId());
+            record.setAppointmentId(appointment != null ? appointment.getId() : null);
+            record.setOpdId(opd != null ? opd.getId() : null);
+        }
         record.setDoctorId(resolvedDoctorId);
-        record.setAppointmentId(appointment != null ? appointment.getId() : null);
-        record.setOpdId(opd != null ? opd.getId() : null);
         record.setSymptoms(request.getSymptoms());
         record.setDiagnosis(request.getDiagnosis());
         record.setTreatmentNotes(request.getTreatmentNotes());
         record.setFollowUpDate(request.getFollowUpDate());
         record.setFollowUpInstructions(request.getFollowUpInstructions());
+        String consultLang = request.getConsultationLanguage();
+        if (consultLang == null || consultLang.trim().isEmpty() || "EN".equalsIgnoreCase(consultLang.trim())) {
+            try {
+                if (hospitalSettingRepository != null) {
+                    String defaultLang = hospitalSettingRepository.findByHospital_Id(hospitalId)
+                            .map(com.hms.entity.HospitalSetting::getDefaultConsultationLanguage)
+                            .orElse(null);
+                    if (defaultLang != null && !defaultLang.isBlank()) {
+                        consultLang = defaultLang;
+                    }
+                }
+            } catch (Exception e) {
+                logger.warn("Could not load default consultation language for hospital {}", hospitalId, e);
+            }
+        }
+        if (consultLang != null && !consultLang.trim().isEmpty()) {
+            record.setConsultationLanguage(com.hms.service.pdf.PatientInstructionFormatter.normalizeMode(consultLang));
+        } else {
+            record.setConsultationLanguage("EN");
+        }
         // A follow-up starts open. Left null when no date was given, so a consultation with no
         // follow-up never appears in anyone's due list.
         record.setFollowUpStatus(request.getFollowUpDate() != null
@@ -692,10 +747,10 @@ public class DoctorService {
         try {
             com.hms.entity.Billing bill = null;
             if (appointment != null) {
-                bill = billingRepository.findByAppointmentId(appointment.getId()).orElse(null);
+                bill = billingRepository.findFirstByAppointmentIdOrderByIdDesc(appointment.getId()).orElse(null);
             }
             if (bill == null && opdIdToUse != null) {
-                bill = billingRepository.findByOpdId(opdIdToUse).orElse(null);
+                bill = billingRepository.findFirstByOpdIdOrderByIdDesc(opdIdToUse).orElse(null);
             }
             if (bill == null) {
                 // Always use OPD bill flow: create itemized bill (case paper + consultation)

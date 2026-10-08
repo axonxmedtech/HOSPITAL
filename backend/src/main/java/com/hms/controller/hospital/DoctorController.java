@@ -104,35 +104,44 @@ public class DoctorController {
     @PostMapping("/consultation")
     @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> submitConsultation(@jakarta.validation.Valid @RequestBody com.hms.dto.ConsultationRequest request) {
-        com.hms.entity.Opd opd = doctorService.submitConsultation(request);
-        java.util.Map<String, Object> response = new java.util.HashMap<>();
-        response.put("message", "Consultation submitted successfully");
-        if (opd != null) {
-            response.put("opdId", opd.getId());
-            
-            // Return a clean map representation of OPD to prevent lazy initialization exception during Jackson serialization
-            java.util.Map<String, Object> opdMap = new java.util.HashMap<>();
-            opdMap.put("id", opd.getId());
-            opdMap.put("caseId", opd.getCaseId());
-            opdMap.put("problem", opd.getProblem());
-            opdMap.put("status", opd.getStatus());
-            response.put("opd", opdMap);
+        try {
+            com.hms.entity.Opd opd = doctorService.submitConsultation(request);
+            java.util.Map<String, Object> response = new java.util.HashMap<>();
+            response.put("message", "Consultation submitted successfully");
+            if (opd != null) {
+                response.put("opdId", opd.getId());
+                
+                // Return a clean map representation of OPD to prevent lazy initialization exception during Jackson serialization
+                java.util.Map<String, Object> opdMap = new java.util.HashMap<>();
+                opdMap.put("id", opd.getId());
+                opdMap.put("caseId", opd.getCaseId());
+                opdMap.put("problem", opd.getProblem());
+                opdMap.put("status", opd.getStatus());
+                response.put("opd", opdMap);
 
-            // Fetch generated bill ID (by opdId or by appointmentId fallback)
-            java.util.Optional<com.hms.entity.Billing> billOpt = billingRepository.findByOpdId(opd.getId());
-            if (billOpt.isEmpty() && request.getAppointmentId() != null) {
-                billOpt = billingRepository.findByAppointmentId(request.getAppointmentId());
+                // Fetch generated bill ID (by opdId or by appointmentId fallback)
+                java.util.Optional<com.hms.entity.Billing> billOpt = billingRepository.findFirstByOpdIdOrderByIdDesc(opd.getId());
+                if (billOpt.isEmpty() && request.getAppointmentId() != null) {
+                    billOpt = billingRepository.findFirstByAppointmentIdOrderByIdDesc(request.getAppointmentId());
+                }
+                if (billOpt.isPresent()) {
+                    response.put("billId", billOpt.get().getId());
+                }
             }
-            if (billOpt.isPresent()) {
-                response.put("billId", billOpt.get().getId());
-            }
+            boolean hasPrescription = request.getPrescription() != null && !request.getPrescription().isEmpty();
+            boolean hasAdministered = (request.getAdministeredItems() != null && !request.getAdministeredItems().isEmpty())
+                    || (request.getHospitalInventoryItems() != null && !request.getHospitalInventoryItems().isEmpty());
+            response.put("hasPrescription", hasPrescription);
+            response.put("hasAdministered", hasAdministered);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException | com.hms.exception.ResourceNotFoundException | com.hms.exception.UnauthorizedException e) {
+            throw e;
+        } catch (Exception e) {
+            logger.error("Error submitting consultation", e);
+            String message = e.getMessage() != null && !e.getMessage().isBlank() ? e.getMessage() : "Failed to submit consultation";
+            return ResponseEntity.status(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(com.hms.dto.ApiResponse.error(message));
         }
-        boolean hasPrescription = request.getPrescription() != null && !request.getPrescription().isEmpty();
-        boolean hasAdministered = (request.getAdministeredItems() != null && !request.getAdministeredItems().isEmpty())
-                || (request.getHospitalInventoryItems() != null && !request.getHospitalInventoryItems().isEmpty());
-        response.put("hasPrescription", hasPrescription);
-        response.put("hasAdministered", hasAdministered);
-        return ResponseEntity.ok(response);
     }
 
 

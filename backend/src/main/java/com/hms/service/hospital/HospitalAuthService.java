@@ -655,6 +655,7 @@ public class HospitalAuthService {
         dto.setPrintPrescription(s.getPrintPrescription() == null ? Boolean.TRUE : s.getPrintPrescription());
         dto.setPrintInClinic(s.getPrintInClinic() == null ? Boolean.TRUE : s.getPrintInClinic());
         dto.setBillPaymentTiming(s.getBillPaymentTiming() == null ? "LAST" : s.getBillPaymentTiming());
+        dto.setDefaultConsultationLanguage(s.getDefaultConsultationLanguage() == null ? "EN" : s.getDefaultConsultationLanguage());
         return dto;
     }
 
@@ -689,6 +690,9 @@ public class HospitalAuthService {
                 throw new IllegalArgumentException("billPaymentTiming must be FIRST or LAST");
             }
             settings.setBillPaymentTiming(t);
+        }
+        if (dto.getDefaultConsultationLanguage() != null && !dto.getDefaultConsultationLanguage().isBlank()) {
+            settings.setDefaultConsultationLanguage(com.hms.service.pdf.PatientInstructionFormatter.normalizeMode(dto.getDefaultConsultationLanguage()));
         }
         hospitalSettingRepository.save(settings);
 

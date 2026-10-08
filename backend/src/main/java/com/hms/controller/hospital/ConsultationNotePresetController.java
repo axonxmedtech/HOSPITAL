@@ -29,7 +29,7 @@ public class ConsultationNotePresetController {
 
     private ConsultationNotePresetDTO toDto(ConsultationNotePreset p) {
         return new ConsultationNotePresetDTO(p.getId(), p.getFieldType(), p.getText(), p.getDisplayOrder(),
-                p.getDoctorId(), doctorNameOrNull(p.getDoctorId()));
+                p.getDoctorId(), doctorNameOrNull(p.getDoctorId()), p.getMarathiText(), p.getHindiText());
     }
 
     @GetMapping
@@ -45,7 +45,8 @@ public class ConsultationNotePresetController {
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR')")
     public ResponseEntity<?> createPreset(@Valid @RequestBody ConsultationNotePresetDTO dto) {
         try {
-            ConsultationNotePreset saved = presetService.createPreset(dto.getFieldType(), dto.getText(), dto.getDoctorId());
+            ConsultationNotePreset saved = presetService.createPreset(
+                    dto.getFieldType(), dto.getText(), dto.getDoctorId(), dto.getMarathiText(), dto.getHindiText());
             return ResponseEntity.ok(toDto(saved));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
@@ -56,7 +57,8 @@ public class ConsultationNotePresetController {
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR')")
     public ResponseEntity<?> updatePreset(@PathVariable Long id, @RequestBody ConsultationNotePresetDTO dto) {
         try {
-            ConsultationNotePreset saved = presetService.updatePreset(id, dto.getText(), dto.getDisplayOrder(), dto.getDoctorId());
+            ConsultationNotePreset saved = presetService.updatePreset(
+                    id, dto.getText(), dto.getDisplayOrder(), dto.getDoctorId(), dto.getMarathiText(), dto.getHindiText());
             return ResponseEntity.ok(toDto(saved));
         } catch (RuntimeException e) {
             return com.hms.util.ApiErrors.handle(e);

@@ -155,8 +155,8 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
   };
 
   const [appliedCharges, setAppliedCharges] = useState([]);
-  const [availableCustomFees, setAvailableCustomFees] = useState([]);
-  const [standardFees, setStandardFees] = useState({ consultationFee: 0, casePaperFee: 0 });
+  const [_availableCustomFees, setAvailableCustomFees] = useState([]);
+  const [_standardFees, setStandardFees] = useState({ consultationFee: 0, casePaperFee: 0 });
 
   useEffect(() => {
     if (isOpen) {
@@ -426,7 +426,8 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     foodTiming: '',
     instructions: '',
   });
-  const [printLanguage, setPrintLanguage] = useState('en');
+  const [printLanguage, setPrintLanguage] = useState('EN');
+  const [consultationStatements, setConsultationStatements] = useState([]);
   // Text typed into the catalogue field that has not been resolved to a medicine. Typing alone
   // names nothing, so this is the difference between an empty field and a doctor who believes
   // they have prescribed something.
@@ -474,7 +475,25 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         foodTiming: '',
         instructions: '',
       });
-      setPrintLanguage('en');
+      setPrintLanguage('EN');
+      if (typeof hospitalService?.getHospitalOperationsSettings === 'function') {
+        hospitalService
+          .getHospitalOperationsSettings()
+          .then((s) => {
+            if (s?.defaultConsultationLanguage) {
+              setPrintLanguage(s.defaultConsultationLanguage);
+            }
+          })
+          .catch(() => {});
+      }
+      if (typeof hospitalService?.getConsultationStatements === 'function') {
+        hospitalService
+          .getConsultationStatements()
+          .then((stmts) => {
+            setConsultationStatements(Array.isArray(stmts) ? stmts : []);
+          })
+          .catch(() => {});
+      }
       setUnresolvedMedicineText('');
       setSearchQuery('');
       setHospitalInvSearch('');
@@ -485,7 +504,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
       setHospitalInvDropdown(false);
       setShowSuggestions(false);
     }
-  }, [isOpen, patient?.id, patient?.publicId, appointment?.id, appointment?.patientId, opd?.id]);
+  }, [isOpen, patient?.id, patient?.publicId, appointment?.id, appointment?.patientId, opd]);
 
   const { success, error: toastError } = useToast();
 
@@ -512,7 +531,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
       }
     };
     fetchPatientDetails();
-  }, [isOpen, appointment?.patientId, patient?.publicId, patient?.id, opd?.id]);
+  }, [isOpen, appointment?.patientId, patient?.publicId, patient?.id, opd]);
 
   if (!isOpen || (!appointment && !patient)) return null;
 
@@ -713,6 +732,12 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     // Prepare payload; include selected lab tests if any
     const payload = { ...formData };
     if (!payload.labRequired) payload.labTests = [];
+    if (!payload.followUpRequired || !payload.followUpDate) {
+      payload.followUpDate = null;
+    }
+    if (!payload.followUpInstructions?.trim()) {
+      payload.followUpInstructions = null;
+    }
     payload.administeredItems = administeredList.map((item) => ({
       medicineId: item.medicineId,
       medicineName: item.medicineName,
@@ -731,6 +756,12 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
       serviceId: item.serviceId,
       quantity: item.qty,
     }));
+    payload.consultationLanguage =
+      printLanguage?.toUpperCase() === 'MR' || printLanguage?.toUpperCase() === 'EN_MR'
+        ? 'EN_MR'
+        : printLanguage?.toUpperCase() === 'HI' || printLanguage?.toUpperCase() === 'EN_HI'
+          ? 'EN_HI'
+          : 'EN';
 
     console.log('Submitting Consultation Data:', JSON.stringify(payload, null, 2));
 
@@ -1873,6 +1904,34 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                         }
                         className="col-span-2 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500"
                       />
+                      {consultationStatements.some(
+                        (s) => s.category === 'MEDICINE_INSTRUCTION'
+                      ) && (
+                        <div className="col-span-2 flex flex-wrap items-center gap-1.5 -mt-1">
+                          <span className="text-[11px] text-gray-500 font-medium">Quick:</span>
+                          {consultationStatements
+                            .filter((s) => s.category === 'MEDICINE_INSTRUCTION')
+                            .slice(0, 5)
+                            .map((s) => (
+                              <button
+                                key={s.id}
+                                type="button"
+                                onClick={() =>
+                                  setNewMedicine((prev) => ({
+                                    ...prev,
+                                    instructions: prev.instructions
+                                      ? `${prev.instructions}, ${s.englishText}`
+                                      : s.englishText,
+                                  }))
+                                }
+                                className="px-2 py-0.5 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded transition border border-gray-200"
+                                title={`${s.marathiText} / ${s.hindiText}`}
+                              >
+                                + {s.englishText}
+                              </button>
+                            ))}
+                        </div>
+                      )}
                     </div>
                     <div className="mt-3 flex gap-2">
                       <button
@@ -1899,28 +1958,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
             </div>
 
             {/* Footer Actions */}
-            <div className="p-6 border-t border-gray-200 bg-gray-50 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-semibold text-gray-500 mr-1">Print Language:</span>
-                {[
-                  { code: 'en', label: 'English' },
-                  { code: 'mr', label: 'मराठी' },
-                  { code: 'hi', label: 'हिंदी' },
-                ].map(({ code, label }) => (
-                  <button
-                    key={code}
-                    type="button"
-                    onClick={() => setPrintLanguage(code)}
-                    className={`px-2.5 py-1 text-xs font-medium rounded-md border transition ${
-                      printLanguage === code
-                        ? 'bg-teal-600 text-white border-teal-600 shadow-sm'
-                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+            <div className="p-6 border-t border-gray-200 bg-gray-50 flex flex-wrap items-center justify-end gap-3">
               <div className="flex items-center space-x-3">
                 <button
                   type="button"
