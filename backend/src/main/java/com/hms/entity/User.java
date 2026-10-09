@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
@@ -137,6 +138,7 @@ public class User {
      * method for why.
      */
     @Column(name = "token_version", nullable = false)
+    @ColumnDefault("0") // same DEFAULT as V25: inserts that omit the column (e.g. a rolled-back build) still work
     private Integer tokenVersion = 0;
 
     /**
