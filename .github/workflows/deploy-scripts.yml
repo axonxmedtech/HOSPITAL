@@ -6,6 +6,7 @@ on:
   push:
     paths:
       - 'scripts/deploy/**'
+      - '.github/workflows/db-backup.yml'
       - '.github/workflows/_deploy.yml'
       - '.github/workflows/deploy-staging.yml'
       - '.github/workflows/deploy-prod.yml'
@@ -14,6 +15,7 @@ on:
   pull_request:
     paths:
       - 'scripts/deploy/**'
+      - '.github/workflows/db-backup.yml'
       - '.github/workflows/_deploy.yml'
       - '.github/workflows/deploy-staging.yml'
       - '.github/workflows/deploy-prod.yml'
@@ -36,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Shellcheck deploy scripts
-        run: shellcheck -S warning scripts/deploy/await-release.sh scripts/deploy/rollback.sh scripts/deploy/test-await-release.sh scripts/deploy/validate-config.sh scripts/deploy/test-validate-config.sh scripts/deploy/resolve-health-port.sh scripts/deploy/test-resolve-health-port.sh scripts/deploy/redact-log.sh scripts/deploy/test-redact-log.sh
+        run: shellcheck -S warning scripts/deploy/await-release.sh scripts/deploy/rollback.sh scripts/deploy/test-await-release.sh scripts/deploy/validate-config.sh scripts/deploy/test-validate-config.sh scripts/deploy/resolve-health-port.sh scripts/deploy/test-resolve-health-port.sh scripts/deploy/redact-log.sh scripts/deploy/test-redact-log.sh scripts/deploy/check-deploy-ref.sh scripts/deploy/test-check-deploy-ref.sh
       - name: Run await-release.sh scenario tests
         run: bash scripts/deploy/test-await-release.sh
       - name: Health-port validation and no-fallback guard
@@ -45,3 +47,5 @@ jobs:
         run: bash scripts/deploy/test-resolve-health-port.sh
       - name: Deployment log redaction
         run: bash scripts/deploy/test-redact-log.sh
+      - name: Deploy branch guard and environment-scoped deploy key
+        run: bash scripts/deploy/test-check-deploy-ref.sh

@@ -44,9 +44,14 @@ on:
         type: boolean
         default: false
     secrets:
-      ssh_key:
-        required: true
-      ssh_user:
+      # The deploy key and user are ENVIRONMENT secrets of the Staging / Production / Production
+      # Backups environments. Callers never pass them: on a job that declares `environment:`, the
+      # environment's secret is the one used. They are declared here only so the secrets context
+      # is typed. A repository-level copy must not exist -- every branch's workflows could read it,
+      # which would bypass the Production approval and deployment-branch rules.
+      DEPLOY_SSH_KEY:
+        required: false
+      DEPLOY_SSH_USER:
         required: false
       slack_webhook:
         required: false
@@ -71,6 +76,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # tags/history for version derivation
+
+      # ── Refuse a run from a branch that may not deploy here (before anything else) ──
+      # Production only from main; a deploy only from the branch it deploys. Catches a manual
+      # dispatch on the wrong branch. The environment's deployment-branch rule enforces the same
+      # thing in GitHub, where a branch cannot edit it.
+      - name: Check the run may deploy to this environment
+        env:
+          ENV_NAME: ${{ inputs.environment }}
+          DEPLOY_BRANCH: ${{ inputs.git_branch }}
+        run: bash scripts/deploy/check-deploy-ref.sh "$ENV_NAME" "$GITHUB_REF" "$DEPLOY_BRANCH"
 
       # ── Deployment header ────────────────────────────────────────────────
       - name: Write deployment header
@@ -101,7 +116,7 @@ jobs:
       - name: Validate deployment configuration
         env:
           HMS_SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
-          HMS_SSH_KEY: ${{ secrets.ssh_key }}
+          HMS_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           HMS_REPO_PATH: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
           HMS_SERVICE: ${{ inputs.service_name || vars.SERVICE_NAME }}
           HMS_BRANCH: ${{ inputs.git_branch || vars.BRANCH_NAME }}
@@ -148,10 +163,10 @@ jobs:
         id: prev
         continue-on-error: true
         env:
-          SSH_KEY: ${{ secrets.ssh_key }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
-          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
+          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.DEPLOY_SSH_USER || 'deploy' }}
           REPO: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
         run: |
           echo "$SSH_KEY" > /tmp/deploy_key && chmod 600 /tmp/deploy_key
@@ -195,8 +210,8 @@ jobs:
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
-          username: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
-          key: ${{ secrets.ssh_key }}
+          username: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.DEPLOY_SSH_USER || 'deploy' }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
           timeout: 60s
           command_timeout: 5m
@@ -242,10 +257,10 @@ jobs:
       # ("operation was canceled"). Now a stall aborts in <=5 min and retries.
       - name: Copy Deployment Package via SCP
         env:
-          SSH_KEY: ${{ secrets.ssh_key }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
-          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
+          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.DEPLOY_SSH_USER || 'deploy' }}
           TARGET: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
         run: |
           echo "$SSH_KEY" > /tmp/deploy_key
@@ -277,10 +292,10 @@ jobs:
       - name: Pre-deploy database backup
         if: inputs.environment == 'Production'
         env:
-          SSH_KEY: ${{ secrets.ssh_key }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
-          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
+          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.DEPLOY_SSH_USER || 'deploy' }}
           REPO: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
         run: |
           # pipefail is REQUIRED here: `rc=$?` after a pipeline reads tee's status, not ssh's, so
@@ -308,8 +323,8 @@ jobs:
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
-          username: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
-          key: ${{ secrets.ssh_key }}
+          username: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.DEPLOY_SSH_USER || 'deploy' }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
           timeout: 60s
           # Verification may take up to 300s (+30s stabilisation), and a rollback as long again.
@@ -428,10 +443,10 @@ jobs:
         if: success()
         continue-on-error: true
         env:
-          SSH_KEY: ${{ secrets.ssh_key }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
-          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
+          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.DEPLOY_SSH_USER || 'deploy' }}
           REPO: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
           HPORT: ${{ steps.hport.outputs.port }}
           APP_URL: ${{ inputs.app_url }}
@@ -483,10 +498,10 @@ jobs:
         if: always()
         continue-on-error: true
         env:
-          SSH_KEY: ${{ secrets.ssh_key }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
-          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
+          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.DEPLOY_SSH_USER || 'deploy' }}
           REPO: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
         run: |
           [ -f deployment-logs/deployment-manifest.json ] || exit 0
@@ -504,10 +519,10 @@ jobs:
       - name: Collect service logs
         if: always()
         env:
-          SSH_KEY: ${{ secrets.ssh_key }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
-          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
+          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.DEPLOY_SSH_USER || 'deploy' }}
         run: |
           mkdir -p deployment-logs
 

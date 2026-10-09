@@ -2,8 +2,11 @@
 # Production Deployment — Hospital Management System
 # ────────────────────────────────────────────
 #
-# Triggers only on push to the main branch.
-# Runs the full CI/CD verification pipeline and deploys to Production (Approval Required).
+# Triggers on push to main, or a manual run -- which is refused unless it is ON main (branch-guard
+# below, and the Production environment's deployment-branch rule, which allows only main).
+# Runs the full CI/CD verification pipeline and deploys to Production. The deploy job waits for a
+# required reviewer of the Production environment; the SSH key is a Production environment secret,
+# released only to that approved job.
 #
 # ────────────────────────────────────────────
 
@@ -23,8 +26,19 @@ permissions:
   contents: read
 
 jobs:
+  # ── Branch guard — a manual run on any branch other than main stops here ──
+  branch-guard:
+    name: Production branch guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refuse any ref but main
+        run: bash scripts/deploy/check-deploy-ref.sh Production "$GITHUB_REF" main
+
   # ── Validate — fast fail-fast gate (commits, lint, format) ───────────────
   validate:
+    needs: [branch-guard]
     uses: ./.github/workflows/_validate.yml
     with:
       node-version: ${{ vars.NODE_VERSION || '22' }}
@@ -32,6 +46,7 @@ jobs:
   # ── Check secrets presence — gates jobs needing keys (like Sonar) ─────────
   check-secrets:
     name: Check secrets presence
+    needs: [branch-guard]
     runs-on: ubuntu-latest
     outputs:
       has_sonar_token: ${{ steps.check.outputs.has_sonar_token }}
@@ -237,9 +252,10 @@ jobs:
   # ── Production pre-deploy review — summary + risk shown BEFORE approval ─────
   production-preflight:
     name: Production — Pre-Deploy Review
-    needs: [build-frontend, build-backend, security, sonar]
+    needs: [branch-guard, build-frontend, build-backend, security, sonar]
     if: >
       always() &&
+      needs.branch-guard.result == 'success' &&
       needs.build-frontend.result == 'success' &&
       needs.build-backend.result == 'success' &&
       needs.security.result == 'success' &&
@@ -250,15 +266,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Validate production deploy credentials present
-        # Host / repo path / service name / app URL live in the "Production" GitHub Environment
-        # (vars.HOST, vars.DEPLOY_PATH, ...) and are resolved + validated by _deploy.yml, which
-        # runs *inside* that environment. This pre-approval review job has no environment scope,
-        # so it can only read repository-level secrets — here we just confirm the deploy key is
-        # present. The host/URL are checked at deploy time in the environment context.
-        env:
-          HMS_SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-        run: bash scripts/deploy/validate-config.sh HMS_SSH_KEY
+      # No credential check here: the deploy key is a Production ENVIRONMENT secret, which this
+      # pre-approval job (no environment scope) cannot read -- by design. _deploy.yml validates the
+      # key, host, path and health port inside the environment, before anything on the server changes.
       - name: Deployment & risk summary
         run: |
           VERSION=$(git describe --tags --always 2>/dev/null || echo "${GITHUB_SHA::7}")
@@ -290,9 +300,19 @@ jobs:
   # ── Deploy — Production ────────────────────────────────────────────────────
   deploy-production:
     name: Deploy — Production
-    needs: [build-frontend, build-backend, security, db-migrations, sonar, production-preflight]
+    needs:
+      [
+        branch-guard,
+        build-frontend,
+        build-backend,
+        security,
+        db-migrations,
+        sonar,
+        production-preflight,
+      ]
     if: >
       always() &&
+      needs.branch-guard.result == 'success' &&
       needs.build-frontend.result == 'success' &&
       needs.build-backend.result == 'success' &&
       needs.security.result == 'success' &&
@@ -316,6 +336,6 @@ jobs:
       enable_rollback: true
       notify_slack: true
     secrets:
-      ssh_key: ${{ secrets.SSH_PRIVATE_KEY }}
-      ssh_user: ${{ secrets.SSH_USERNAME }}
+      # DEPLOY_SSH_KEY / DEPLOY_SSH_USER are not passed: _deploy.yml reads them from the Production
+      # environment, after approval.
       slack_webhook: ${{ secrets.PRODUCTION_SLACK_WEBHOOK }}
