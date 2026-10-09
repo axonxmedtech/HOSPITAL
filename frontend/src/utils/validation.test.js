@@ -73,7 +73,7 @@ describe('validators.number & positiveNumber', () => {
 describe('validators.name & text', () => {
   it('name allows letters/spaces, rejects digits and too-short', () => {
     expect(validators.name('John Doe')).toBeNull();
-    expect(validators.name('John3')).toBe('Name must contain only letters and spaces');
+    expect(validators.name('John3')).toBe('Name must contain only letters, spaces, dots, and hyphens');
     expect(validators.name('J')).toBe('Name must be at least 2 characters long');
     expect(validators.name('')).toBeNull();
   });

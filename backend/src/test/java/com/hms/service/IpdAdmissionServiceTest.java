@@ -68,7 +68,9 @@ class IpdAdmissionServiceTest {
     void admitFromOpd_withOccupiedBed_throwsRuntimeException() {
         Opd opd = new Opd();
         opd.setId(1L);
-        opd.setPatient(new Patient());
+        Patient patient1 = new Patient();
+        patient1.setId(5L);
+        opd.setPatient(patient1);
 
         when(opdRepository.findById(1L)).thenReturn(Optional.of(opd));
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
