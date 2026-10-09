@@ -29,14 +29,24 @@ jobs:
     name: Backup ${{ github.event.inputs.environment || 'Production' }} DB
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # The SSH key is an environment secret. Production backups use "Production Backups", NOT
+    # "Production": the latter has required reviewers, which would hold every scheduled backup for
+    # approval. "Production Backups" has no reviewers but allows only main, so the key is released
+    # to main's (reviewed) workflows and never to another branch. Schedules always run on main.
+    environment:
+      name: ${{ github.event.inputs.environment == 'Staging' && 'Staging' || 'Production Backups' }}
     steps:
       # Pin to SHA in production: https://github.com/actions/checkout/releases
       - uses: actions/checkout@v4
 
-      # This job intentionally has NO `environment:` scope — an environment with required
-      # reviewers would make every scheduled backup sit waiting for manual approval. That
-      # means environment-scoped variables (vars.HOST in "Production") are unreadable here,
-      # so the host must come from a REPOSITORY-level variable. See the fallback chain below.
+      - name: Check the run may act on this environment
+        env:
+          ENV_NAME: ${{ github.event.inputs.environment || 'Production' }}
+        run: bash scripts/deploy/check-deploy-ref.sh "$ENV_NAME" "$GITHUB_REF"
+
+      # "Production Backups" defines no host variables, so the production host comes from the
+      # REPOSITORY-level variable (PRODUCTION_SSH_HOST). Staging resolves vars.HOST from its own
+      # environment. See the fallback chain below.
       - name: Resolve environment
         id: env
         run: |
@@ -60,15 +70,15 @@ jobs:
       - name: Validate configuration
         env:
           HMS_HOST: ${{ steps.env.outputs.host }}
-          HMS_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          HMS_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: bash scripts/deploy/validate-config.sh HMS_HOST HMS_KEY
 
       - name: Run backup on VPS (dump stays on server)
         env:
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           SSH_HOST: ${{ steps.env.outputs.host }}
           SSH_PORT: ${{ steps.env.outputs.port }}
-          SSH_USER: ${{ secrets.SSH_USERNAME || 'deploy' }}
+          SSH_USER: ${{ secrets.DEPLOY_SSH_USER || 'deploy' }}
           REPO: ${{ steps.env.outputs.repo_path }}
           ENV_LABEL: ${{ steps.env.outputs.label }}
         run: |

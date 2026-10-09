@@ -4,7 +4,9 @@ name: Rollback Deployment
 # on the VPS (../rollback_backup), restarts the service, and re-verifies health — then records a
 # rollback report + manifest for the audit trail. Manual only; never runs automatically.
 #
-# Production rollback reuses the Production Environment's approval gate (reviewers must approve).
+# Production rollback reuses the Production Environment's approval gate (reviewers must approve),
+# and runs only from main: the guard step below, and the environment's deployment-branch rule.
+# The SSH key is an environment secret, so it reaches this job only after that gate.
 # Shares the `deploy-<env>` concurrency group so a rollback can't race an in-flight deploy.
 
 on:
@@ -37,6 +39,11 @@ jobs:
     steps:
       # Pin to SHA in production: https://github.com/actions/checkout/releases
       - uses: actions/checkout@v4
+
+      - name: Check the run may act on this environment
+        env:
+          ENV_NAME: ${{ inputs.environment }}
+        run: bash scripts/deploy/check-deploy-ref.sh "$ENV_NAME" "$GITHUB_REF"
 
       # This job DOES run inside the target GitHub Environment (see `environment:` above), so
       # environment-scoped vars are readable. The host lives there as `vars.HOST`; the
@@ -74,7 +81,7 @@ jobs:
       - name: Validate configuration
         env:
           HMS_HOST: ${{ steps.env.outputs.host }}
-          HMS_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          HMS_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           # No fallback: the rollback must verify the same service the deploy did.
           HMS_HEALTH_PORT: ${{ steps.hport.outputs.port }}
         run: bash scripts/deploy/validate-config.sh HMS_HOST HMS_KEY HMS_HEALTH_PORT:port
@@ -82,10 +89,10 @@ jobs:
       - name: Execute rollback on VPS
         id: run
         env:
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           SSH_HOST: ${{ steps.env.outputs.host }}
           SSH_PORT: ${{ steps.env.outputs.port }}
-          SSH_USER: ${{ secrets.SSH_USERNAME || 'deploy' }}
+          SSH_USER: ${{ secrets.DEPLOY_SSH_USER || 'deploy' }}
           REPO: ${{ steps.env.outputs.repo_path }}
           SERVICE: ${{ steps.env.outputs.service }}
           HPORT: ${{ steps.hport.outputs.port }}
