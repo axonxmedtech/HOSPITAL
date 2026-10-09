@@ -851,6 +851,7 @@ CREATE TABLE `users` (
   `password` varchar(255) NOT NULL,
   `public_id` varchar(255) NOT NULL,
   `role` varchar(20) NOT NULL,
+  `token_version` int NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_6dotkott2kjsp8vw4d0m25fb7` (`email`),
   UNIQUE KEY `UK_s24bux761rbgowsl7a4b386ba` (`public_id`)
