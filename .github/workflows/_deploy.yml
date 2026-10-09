@@ -43,18 +43,12 @@ on:
       notify_slack:
         type: boolean
         default: false
-    secrets:
-      # The deploy key and user are ENVIRONMENT secrets of the Staging / Production / Production
-      # Backups environments. Callers never pass them: on a job that declares `environment:`, the
-      # environment's secret is the one used. They are declared here only so the secrets context
-      # is typed. A repository-level copy must not exist -- every branch's workflows could read it,
-      # which would bypass the Production approval and deployment-branch rules.
-      DEPLOY_SSH_KEY:
-        required: false
-      DEPLOY_SSH_USER:
-        required: false
-      slack_webhook:
-        required: false
+    # No `secrets:` section, on purpose. The deploy key and user (DEPLOY_SSH_KEY, DEPLOY_SSH_USER)
+    # are ENVIRONMENT secrets of Staging / Production, read by the deploy job below, which declares
+    # `environment:`. Callers use `secrets: inherit`. Declaring them here made them workflow_call
+    # inputs: nothing passes them, so they arrived EMPTY and hid the environment's values (staging
+    # run 37947902662). A repository-level copy must not exist -- every branch's workflows could
+    # read it, bypassing the Production approval and deployment-branch rules.
 
 jobs:
   deploy:
@@ -114,6 +108,7 @@ jobs:
 
       # ── Fail fast if required configuration is missing (never prints values) ──
       - name: Validate deployment configuration
+        id: validate
         env:
           HMS_SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           HMS_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -495,7 +490,9 @@ jobs:
 
       # ── Archive manifest into VPS deployment history (best-effort) ────────
       - name: Archive manifest to deployment history
-        if: always()
+        # Only with a validated key and host: never log in to the server with an empty key (it
+        # fills the auth log with failures and can get the runner banned).
+        if: always() && steps.validate.outcome == 'success'
         continue-on-error: true
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -517,7 +514,7 @@ jobs:
 
       # ── Collect service logs ─────────────────────────────────────────────
       - name: Collect service logs
-        if: always()
+        if: always() && steps.validate.outcome == 'success'
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
@@ -581,7 +578,7 @@ jobs:
             ICON=":warning:"
           fi
           if [ "$STATUS" = "success" ]; then COLOR="good"; else COLOR="danger"; fi
-          WEBHOOK="${{ secrets.slack_webhook }}"
+          WEBHOOK="${{ secrets.PRODUCTION_SLACK_WEBHOOK }}"
           if [ -n "$WEBHOOK" ]; then
             curl -sSf -X POST "$WEBHOOK" \
               -H "Content-Type: application/json" \

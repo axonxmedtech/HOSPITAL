@@ -335,7 +335,6 @@ jobs:
       app_url: ${{ vars.PRODUCTION_APP_URL }}
       enable_rollback: true
       notify_slack: true
-    secrets:
-      # DEPLOY_SSH_KEY / DEPLOY_SSH_USER are not passed: _deploy.yml reads them from the Production
-      # environment, after approval.
-      slack_webhook: ${{ secrets.PRODUCTION_SLACK_WEBHOOK }}
+    # inherit: _deploy.yml's job runs in the Production environment and reads DEPLOY_SSH_KEY /
+    # DEPLOY_SSH_USER from it, after approval; PRODUCTION_SLACK_WEBHOOK comes through by name.
+    secrets: inherit

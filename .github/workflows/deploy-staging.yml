@@ -265,8 +265,9 @@ jobs:
       app_url: ${{ vars.STAGING_APP_URL }}
       enable_rollback: true
       notify_slack: false
-    # No secrets passed: _deploy.yml reads DEPLOY_SSH_KEY / DEPLOY_SSH_USER from the Staging
-    # environment, which releases them only to the branches that environment allows.
+    # inherit: _deploy.yml's job runs in the Staging environment and reads DEPLOY_SSH_KEY /
+    # DEPLOY_SSH_USER from it; the environment releases them only to the branches it allows.
+    secrets: inherit
 
   # ── Staging smoke tests — post-deploy verification against the live site ───
   staging-smoke:

@@ -75,6 +75,37 @@ expect "every job holding the deploy key has an environment and a ref check" 0 $
 grep -q 'check-deploy-ref.sh Production' "$WF/deploy-prod.yml"
 expect "deploy-prod.yml refuses non-main refs before building" 0 $?
 
+# The reusable deploy workflow must receive the ENVIRONMENT's deploy key. Declaring DEPLOY_SSH_* under
+# on.workflow_call.secrets turned them into caller inputs that nobody passes: they arrived empty and hid
+# the environment's values (staging run 37947902662, "missing required configuration: HMS_SSH_KEY").
+python3 - "$WF" > "$OUT" 2>&1 <<'PY'
+import glob, os, sys, yaml
+wf = sys.argv[1]
+bad = []
+deploy = yaml.safe_load(open(os.path.join(wf, "_deploy.yml")))
+on = deploy.get("on", deploy.get(True)) or {}                  # PyYAML reads the key `on` as True
+declared = ((on.get("workflow_call") or {}).get("secrets") or {})
+for name in declared:
+    if name.upper().startswith("DEPLOY_SSH"):
+        bad.append(f"_deploy.yml declares {name} as a workflow_call secret (it would shadow the environment secret)")
+for path in sorted(glob.glob(os.path.join(wf, "*.yml"))):
+    doc = yaml.safe_load(open(path)) or {}
+    for name, job in (doc.get("jobs") or {}).items():
+        if str(job.get("uses", "")).endswith("/_deploy.yml") and job.get("secrets") != "inherit":
+            bad.append(f"{os.path.basename(path)}:{name} calls _deploy.yml without `secrets: inherit`")
+for name, job in (deploy.get("jobs") or {}).items():
+    for step in job.get("steps") or []:
+        text = yaml.safe_dump(step)
+        cond = str(step.get("if", ""))
+        if "DEPLOY_SSH_KEY" in text and "always()" in cond and "steps.validate.outcome == 'success'" not in cond:
+            bad.append(f"_deploy.yml step '{step.get('name')}' uses the key under always() without a validated configuration")
+    if not any(st.get("id") == "validate" for st in job.get("steps") or []):
+        bad.append(f"_deploy.yml:{name} has no step with id 'validate'")
+print("\n".join(bad))
+sys.exit(1 if bad else 0)
+PY
+expect "reusable deploy reads the environment's key (no shadowing, callers inherit, no unvalidated SSH)" 0 $?
+
 echo ""
 echo "check-deploy-ref: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
