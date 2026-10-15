@@ -244,4 +244,247 @@ class PublicIdBackfillRunnerTest {
 
         assertThat(secondDuration).as("Idempotent second run on 1,000 records must complete rapidly").isLessThan(2000);
     }
+
+    @Test
+    void concurrentUpdateDuringBackfill_doesNotOverwriteConcurrentPatientEdits() throws Exception {
+        Hospital hospital = new Hospital();
+        hospital.setName("Concurrency Test Hospital");
+        hospital.setPublicId("hsp-conc-" + System.nanoTime());
+        hospital.setCustomId("HSP" + (1000 + (int) (Math.random() * 9000)));
+        hospital = hospitalRepository.saveAndFlush(hospital);
+
+        // 1. Patient created with missing publicId and customId
+        Patient patient = new Patient();
+        patient.setHospitalId(hospital.getId());
+        patient.setName("Initial Patient Name");
+        patient.setPhone("1111111111");
+        patient.setGender("FEMALE");
+        patient.setPublicId(null);
+        patient.setCustomId(null);
+        patient = patientRepository.saveAndFlush(patient);
+
+        final Long patientId = patient.getId();
+
+        // 2. Concurrently (simulated before/during backfill), an out-of-band edit updates patient details
+        transactionTemplate.execute(status -> {
+            entityManager.createQuery(
+                    "UPDATE Patient p SET p.name = 'Updated Patient Name', p.phone = '9999999999' WHERE p.id = :id")
+                    .setParameter("id", patientId)
+                    .executeUpdate();
+            return null;
+        });
+
+        // 3. Runner executes backfill
+        runner.run();
+
+        // 4. Assert: publicId and customId were populated, but concurrent name and phone edits were PRESERVED!
+        Patient refreshed = patientRepository.findById(patientId).orElseThrow();
+        assertThat(refreshed.getPublicId()).isNotNull().isNotBlank();
+        assertThat(refreshed.getCustomId()).startsWith("PAT");
+        assertThat(refreshed.getName()).as("Concurrent edit to name must NOT be overwritten").isEqualTo("Updated Patient Name");
+        assertThat(refreshed.getPhone()).as("Concurrent edit to phone must NOT be overwritten").isEqualTo("9999999999");
+    }
+
+    @Test
+    void concurrentIdentifierUpdate_isNotOverwrittenByConditionalUpdate() throws Exception {
+        Hospital hospital = new Hospital();
+        hospital.setName("Conc Ident Hospital");
+        hospital.setPublicId("hsp-conc-id-" + System.nanoTime());
+        hospital.setCustomId("HSP" + (1000 + (int) (Math.random() * 9000)));
+        hospital = hospitalRepository.saveAndFlush(hospital);
+
+        Patient patient = new Patient();
+        patient.setHospitalId(hospital.getId());
+        patient.setName("Patient With Concurrent ID");
+        patient.setPhone("2222222222");
+        patient.setGender("MALE");
+        patient.setPublicId(null);
+        patient.setCustomId(null);
+        patient = patientRepository.saveAndFlush(patient);
+
+        final Long patientId = patient.getId();
+        final String concurrentPublicId = "concurrent-uuid-" + System.nanoTime();
+
+        // Another transaction assigns publicId right before backfill
+        transactionTemplate.execute(status -> {
+            entityManager.createQuery("UPDATE Patient p SET p.publicId = :pubId WHERE p.id = :id")
+                    .setParameter("pubId", concurrentPublicId)
+                    .setParameter("id", patientId)
+                    .executeUpdate();
+            return null;
+        });
+
+        runner.run();
+
+        Patient refreshed = patientRepository.findById(patientId).orElseThrow();
+        assertThat(refreshed.getPublicId()).isEqualTo(concurrentPublicId);
+        assertThat(refreshed.getCustomId()).startsWith("PAT");
+    }
+
+    @Test
+    void blankAndWhitespaceHandling_forAppointmentsBillingAndAuditLogs() throws Exception {
+        Hospital hospital = new Hospital();
+        hospital.setName("Blank ID Hospital");
+        hospital.setPublicId("hsp-blank-" + System.nanoTime());
+        hospital.setCustomId("HSP" + (1000 + (int) (Math.random() * 9000)));
+        hospital = hospitalRepository.saveAndFlush(hospital);
+
+        Patient patient = new Patient();
+        patient.setHospitalId(hospital.getId());
+        patient.setName("Patient Blank Test");
+        patient.setPhone("3333333333");
+        patient.setGender("MALE");
+        patient.setPublicId("patient-uuid-111");
+        patient.setCustomId("PAT111");
+        patient = patientRepository.saveAndFlush(patient);
+
+        Doctor doctor = new Doctor();
+        doctor.setHospitalId(hospital.getId());
+        doctor.setName("Dr. Blank Test");
+        doctor.setSpecialization("General");
+        doctor.setPhone("4444444444");
+        doctor.setEmail("dr.blank" + System.nanoTime() + "@test.test");
+        doctor.setPublicId("doc-uuid-222");
+        doctor.setCustomId("DOC222");
+        doctor = doctorRepository.saveAndFlush(doctor);
+
+        // Appointment with empty string publicId and whitespace customId
+        Appointment apt = new Appointment();
+        apt.setHospitalId(hospital.getId());
+        apt.setPatientId(patient.getId());
+        apt.setDoctorId(doctor.getId());
+        apt.setAppointmentDate(java.time.LocalDate.now());
+        apt.setAppointmentTime(java.time.LocalTime.of(10, 0));
+        apt.setStatus("SCHEDULED");
+        apt.setPublicId("");
+        apt.setCustomId("   ");
+        apt = appointmentRepository.saveAndFlush(apt);
+
+        // Billing with "null" string publicId and empty customId
+        Billing bill = new Billing();
+        bill.setHospitalId(hospital.getId());
+        bill.setPatientId(patient.getId());
+        bill.setDoctorId(doctor.getId());
+        bill.setAmount(new BigDecimal("150.00"));
+        bill.setPaymentStatus("PENDING");
+        bill.setBillingType("OPD");
+        bill.setPublicId("null");
+        bill.setCustomId("");
+        bill = billingRepository.saveAndFlush(bill);
+
+        // AuditLog with whitespace publicId
+        AuditLog audit = new AuditLog();
+        audit.setAction("BLANK_TEST");
+        audit.setDetails("Blank Audit Details");
+        audit.setPerformedBy("admin@test.test");
+        audit.setHospitalId(hospital.getId());
+        audit.setPublicId("   ");
+        audit = auditLogRepository.saveAndFlush(audit);
+
+        runner.run();
+
+        Appointment refreshedApt = appointmentRepository.findById(apt.getId()).orElseThrow();
+        assertThat(refreshedApt.getPublicId()).isNotBlank().isNotEqualTo("").isNotEqualTo("   ");
+        assertThat(refreshedApt.getCustomId()).startsWith("APT").isNotEqualTo("   ");
+
+        Billing refreshedBill = billingRepository.findById(bill.getId()).orElseThrow();
+        assertThat(refreshedBill.getPublicId()).isNotBlank().isNotEqualTo("null").isNotEqualTo("");
+        assertThat(refreshedBill.getCustomId()).startsWith("BIL");
+
+        AuditLog refreshedAudit = auditLogRepository.findById(audit.getId()).orElseThrow();
+        assertThat(refreshedAudit.getPublicId()).isNotBlank().isNotEqualTo("   ");
+    }
+
+    @Test
+    void interruptedBatch_resumesCleanlyWithoutDataLossOrDuplication() throws Exception {
+        Hospital hospital = new Hospital();
+        hospital.setName("Interrupted Batch Hospital");
+        hospital.setPublicId("hsp-batch-" + System.nanoTime());
+        hospital.setCustomId("HSP" + (1000 + (int) (Math.random() * 9000)));
+        final Hospital h = hospitalRepository.saveAndFlush(hospital);
+
+        // Seed 300 patients across 2 batches (batch size is 250)
+        transactionTemplate.execute(status -> {
+            for (int i = 0; i < 300; i++) {
+                Patient p = new Patient();
+                p.setHospitalId(h.getId());
+                p.setName("Batch Patient " + i);
+                p.setPhone("7" + String.format("%09d", i));
+                p.setGender("FEMALE");
+                p.setPublicId(null);
+                p.setCustomId(null);
+                entityManager.persist(p);
+            }
+            entityManager.flush();
+            entityManager.clear();
+            return null;
+        });
+
+        // Run first backfill
+        runner.run();
+
+        // Verify all 300 are backfilled
+        Long unassigned = entityManager.createQuery(
+                "SELECT COUNT(p) FROM Patient p WHERE p.hospitalId = :hid AND (p.publicId IS NULL OR TRIM(p.publicId) = '' OR p.customId IS NULL)",
+                Long.class)
+                .setParameter("hid", h.getId())
+                .getSingleResult();
+        assertThat(unassigned).isEqualTo(0L);
+
+        // Add 50 new patients with missing IDs (simulating data added before resume/second run)
+        transactionTemplate.execute(status -> {
+            for (int i = 300; i < 350; i++) {
+                Patient p = new Patient();
+                p.setHospitalId(h.getId());
+                p.setName("Batch Patient " + i);
+                p.setPhone("7" + String.format("%09d", i));
+                p.setGender("FEMALE");
+                p.setPublicId(null);
+                p.setCustomId(null);
+                entityManager.persist(p);
+            }
+            entityManager.flush();
+            entityManager.clear();
+            return null;
+        });
+
+        // Run runner again (resuming and completing remaining records)
+        runner.run();
+
+        Long remainingUnassigned = entityManager.createQuery(
+                "SELECT COUNT(p) FROM Patient p WHERE p.hospitalId = :hid AND (p.publicId IS NULL OR TRIM(p.publicId) = '' OR p.customId IS NULL)",
+                Long.class)
+                .setParameter("hid", h.getId())
+                .getSingleResult();
+        assertThat(remainingUnassigned).isEqualTo(0L);
+    }
+
+    @Test
+    void repeatedStartup_isStrictlyIdempotent() throws Exception {
+        Hospital hospital = new Hospital();
+        hospital.setName("Idempotency Hospital");
+        hospital.setPublicId(null);
+        hospital.setCustomId(null);
+        hospital = hospitalRepository.saveAndFlush(hospital);
+
+        // Run 1
+        runner.run();
+        Hospital h1 = hospitalRepository.findById(hospital.getId()).orElseThrow();
+        String pubId1 = h1.getPublicId();
+        String custId1 = h1.getCustomId();
+        assertThat(pubId1).isNotBlank();
+        assertThat(custId1).isNotBlank();
+
+        // Run 2
+        runner.run();
+        Hospital h2 = hospitalRepository.findById(hospital.getId()).orElseThrow();
+        assertThat(h2.getPublicId()).isEqualTo(pubId1);
+        assertThat(h2.getCustomId()).isEqualTo(custId1);
+
+        // Run 3
+        runner.run();
+        Hospital h3 = hospitalRepository.findById(hospital.getId()).orElseThrow();
+        assertThat(h3.getPublicId()).isEqualTo(pubId1);
+        assertThat(h3.getCustomId()).isEqualTo(custId1);
+    }
 }

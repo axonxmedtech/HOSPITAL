@@ -274,6 +274,7 @@
                 </execution>
             </executions>
             <configuration>
+                <dotGitDirectory>${project.basedir}/../.git</dotGitDirectory>
                 <failOnNoGitDirectory>false</failOnNoGitDirectory>
                 <failOnUnableToExtractRepoInfo>false</failOnUnableToExtractRepoInfo>
                 <generateGitPropertiesFile>true</generateGitPropertiesFile>

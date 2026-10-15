@@ -35,7 +35,6 @@
     "axios": "^1.13.2",
     "classnames": "^2.5.1",
     "date-fns": "^4.1.0",
-    "hms-dev-platform": "file:..",
     "papaparse": "5.7.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",

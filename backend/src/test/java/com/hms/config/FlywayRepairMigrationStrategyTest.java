@@ -1,6 +1,8 @@
 package com.hms.config;
 
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.ErrorCode;
+import org.flywaydb.core.api.ErrorDetails;
 import org.flywaydb.core.api.FlywayException;
 import org.flywaydb.core.api.exception.FlywayValidateException;
 import org.flywaydb.core.api.output.RepairResult;
@@ -51,7 +53,9 @@ class FlywayRepairMigrationStrategyTest {
         ReflectionTestUtils.setField(strategy, "repairOnStartup", false);
 
         Flyway flyway = mock(Flyway.class);
-        when(flyway.migrate()).thenThrow(new FlywayValidateException(null, "Migration checksum mismatch for V24"));
+        when(flyway.migrate()).thenThrow(new FlywayValidateException(
+                new ErrorDetails(ErrorCode.CHECKSUM_MISMATCH, "Migration checksum mismatch for V24"),
+                "Migration checksum mismatch for V24"));
 
         FlywayMigrationStrategy migrationStrategy = strategy.safeFlywayMigrationStrategy();
 
@@ -88,8 +92,8 @@ class FlywayRepairMigrationStrategyTest {
 
         Flyway flyway = mock(Flyway.class);
         RepairResult repairResult = new RepairResult("dummy-version", "dummy-db");
-        repairResult.migrationsRemoved = List.of(new RepairOutput("V24", "Failed row"));
-        repairResult.migrationsAligned = List.of(new RepairOutput("V24", "Checksum aligned"));
+        repairResult.migrationsRemoved = List.of(new RepairOutput("V24", "Failed row", "db/migration/V24.sql"));
+        repairResult.migrationsAligned = List.of(new RepairOutput("V24", "Checksum aligned", "db/migration/V24.sql"));
         when(flyway.repair()).thenReturn(repairResult);
 
         FlywayMigrationStrategy migrationStrategy = strategy.safeFlywayMigrationStrategy();

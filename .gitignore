@@ -37,6 +37,8 @@ frontend/.env.local
 # backend
 backend/.env
 backend/.env.local
+backend/scratch/
+backend/BOOT-INF/
 
 DOC's/
 
