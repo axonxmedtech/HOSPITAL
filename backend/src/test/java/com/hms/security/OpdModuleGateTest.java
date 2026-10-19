@@ -96,12 +96,18 @@ class OpdModuleGateTest {
     }
 
     @Test
-    void clinicAndPharmacySessionsAreUnaffected_becauseTheAspectSkipsThoseTenantTypes() {
+    void clinicIsModuleGatedAndStandalonePharmacySkips() {
         Method create = ModuleGateHarness.handler(OpdController.class, "createOpd");
-        // A clinic legitimately runs OPD through the /clinic/opd alias; it is never module-gated.
+        // A clinic holding OPD runs OPD normally through the /clinic/opd alias.
+        h.tenant(HospitalType.CLINIC, WITH_OPD);
+        assertThatCode(() -> check(create)).doesNotThrowAnyException();
+
+        // A clinic lacking OPD is now module-gated and denied.
         h.tenant(HospitalType.CLINIC, WITHOUT_OPD);
-        assertThatCode(() -> check(create))
-                .as("adding the annotation must not 403 a clinic tenant").doesNotThrowAnyException();
+        assertThatThrownBy(() -> check(create))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("OPD");
+
         // The /pharmacy/opd alias exists only because of the frontend namespace rewrite. A pharmacy
         // tenant can never hold OPD, and the skip is what keeps the annotation harmless for it.
         h.tenant(HospitalType.PHARMACY, WITHOUT_OPD);

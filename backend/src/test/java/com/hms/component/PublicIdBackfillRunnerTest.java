@@ -12,8 +12,15 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -30,6 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest
 @ActiveProfiles("test")
+@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.BEFORE_CLASS)
 class PublicIdBackfillRunnerTest {
 
     @Autowired
@@ -68,6 +76,9 @@ class PublicIdBackfillRunnerTest {
             entityManager.createQuery("DELETE FROM AuditLog").executeUpdate();
             entityManager.createQuery("DELETE FROM Billing").executeUpdate();
             entityManager.createQuery("DELETE FROM Appointment").executeUpdate();
+            entityManager.createQuery("DELETE FROM QueueEntry").executeUpdate();
+            entityManager.createQuery("DELETE FROM Prescription").executeUpdate();
+            entityManager.createQuery("DELETE FROM Opd").executeUpdate();
             entityManager.createQuery("DELETE FROM Patient").executeUpdate();
             entityManager.createQuery("DELETE FROM Doctor").executeUpdate();
             entityManager.createQuery("DELETE FROM User WHERE email NOT LIKE '%@%'").executeUpdate();
@@ -486,5 +497,223 @@ class PublicIdBackfillRunnerTest {
         Hospital h3 = hospitalRepository.findById(hospital.getId()).orElseThrow();
         assertThat(h3.getPublicId()).isEqualTo(pubId1);
         assertThat(h3.getCustomId()).isEqualTo(custId1);
+    }
+
+    @Test
+    void hospitalPublicIdAllocator_cannotCollideWithHistoricalIds_andConformsToExpectedFormat() throws Exception {
+        // 1. Seed historical hospitals with pre-existing IDs
+        List<String> historicalPublicIds = List.of(
+                "hist-hsp-00000000-0000-0000-0000-000000000001",
+                "hist-hsp-00000000-0000-0000-0000-000000000002",
+                "hist-hsp-00000000-0000-0000-0000-000000000003"
+        );
+        List<String> historicalCustomIds = List.of("HSP9001", "CLN9002", "PHR9003");
+
+        for (int i = 0; i < historicalPublicIds.size(); i++) {
+            Hospital h = new Hospital();
+            h.setName("Historical Facility " + i);
+            h.setPublicId(historicalPublicIds.get(i));
+            h.setCustomId(historicalCustomIds.get(i));
+            h.setType(i == 1 ? HospitalType.CLINIC : (i == 2 ? HospitalType.PHARMACY : HospitalType.HOSPITAL));
+            hospitalRepository.saveAndFlush(h);
+        }
+
+        // 2. Create multiple hospitals with missing publicId and customId across all types
+        List<Long> newHospitalIds = new ArrayList<>();
+        HospitalType[] types = {HospitalType.HOSPITAL, HospitalType.CLINIC, HospitalType.PHARMACY};
+        for (int i = 0; i < 30; i++) {
+            Hospital h = new Hospital();
+            h.setName("New Facility " + i);
+            h.setType(types[i % types.length]);
+            h.setCustomId("TMP-" + i + "-" + System.nanoTime());
+            h = hospitalRepository.saveAndFlush(h);
+            Long hid = h.getId();
+            transactionTemplate.execute(status -> {
+                entityManager.createQuery("UPDATE Hospital SET customId = null WHERE id = :id")
+                        .setParameter("id", hid)
+                        .executeUpdate();
+                return null;
+            });
+            newHospitalIds.add(hid);
+        }
+
+        // 3. Execute backfill
+        runner.run();
+
+        // 4. Validate all allocated IDs
+        Set<String> seenPublicIds = new HashSet<>(historicalPublicIds);
+        String uuidV4Regex = "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
+
+        for (Long hid : newHospitalIds) {
+            Hospital h = hospitalRepository.findById(hid).orElseThrow();
+            String allocatedPublicId = h.getPublicId();
+            String allocatedCustomId = h.getCustomId();
+
+            // Expected UUID v4 format
+            assertThat(allocatedPublicId)
+                    .as("Allocated hospital public ID must conform to UUID v4 format")
+                    .matches(uuidV4Regex);
+
+            // Zero collision with historical IDs or other allocated IDs
+            assertThat(historicalPublicIds)
+                    .as("Allocated public ID must never collide with historical IDs")
+                    .doesNotContain(allocatedPublicId);
+
+            assertThat(seenPublicIds.add(allocatedPublicId))
+                    .as("Allocated public ID must be strictly unique (no collision)")
+                    .isTrue();
+
+            // Custom ID format matches tenant type
+            if (h.getType() == HospitalType.CLINIC) {
+                assertThat(allocatedCustomId).matches("^CLN\\d{4}$");
+            } else if (h.getType() == HospitalType.PHARMACY) {
+                assertThat(allocatedCustomId).matches("^PHR\\d{4}$");
+            } else {
+                assertThat(allocatedCustomId).matches("^HSP\\d{4}$");
+            }
+        }
+
+        // 5. Historical hospitals must be completely untouched
+        for (int i = 0; i < historicalPublicIds.size(); i++) {
+            Hospital hist = hospitalRepository.findByPublicId(historicalPublicIds.get(i)).orElseThrow();
+            assertThat(hist.getCustomId()).isEqualTo(historicalCustomIds.get(i));
+        }
+    }
+
+    @Test
+    void realConcurrentTransactions_multiThreadedExecution_guaranteesDataIntegrityWithoutDeadlocks() throws Exception {
+        Hospital hospital = new Hospital();
+        hospital.setName("MultiThreaded Concurrency Hospital");
+        hospital.setPublicId("hsp-mt-" + System.nanoTime());
+        hospital.setCustomId("HSP" + (1000 + (int) (Math.random() * 9000)));
+        final Hospital h = hospitalRepository.saveAndFlush(hospital);
+
+        // Pre-create 100 patients with missing publicId and customId
+        List<Long> seededIds = new ArrayList<>();
+        transactionTemplate.execute(status -> {
+            for (int i = 0; i < 100; i++) {
+                Patient p = new Patient();
+                p.setHospitalId(h.getId());
+                p.setName("Initial Patient " + i);
+                p.setPhone("5" + String.format("%09d", i));
+                p.setGender("FEMALE");
+                p.setPublicId(null);
+                p.setCustomId(null);
+                entityManager.persist(p);
+                seededIds.add(p.getId());
+            }
+            entityManager.flush();
+            entityManager.clear();
+            return null;
+        });
+
+        ExecutorService executor = Executors.newFixedThreadPool(4);
+        CountDownLatch startGate = new CountDownLatch(1);
+        CountDownLatch doneGate = new CountDownLatch(4);
+        List<Throwable> errors = new CopyOnWriteArrayList<>();
+
+        // Thread 1: Backfill runner
+        executor.submit(() -> {
+            try {
+                startGate.await();
+                runner.run();
+            } catch (Throwable t) {
+                errors.add(t);
+            } finally {
+                doneGate.countDown();
+            }
+        });
+
+        // Thread 2: Concurrent business updates to existing patients (e.g. updating names)
+        executor.submit(() -> {
+            try {
+                startGate.await();
+                for (int i = 0; i < 20; i++) {
+                    Long targetId = seededIds.get(i);
+                    transactionTemplate.execute(status -> {
+                        entityManager.createQuery(
+                                "UPDATE Patient p SET p.name = :name WHERE p.id = :id")
+                                .setParameter("name", "Concurrently Updated " + targetId)
+                                .setParameter("id", targetId)
+                                .executeUpdate();
+                        return null;
+                    });
+                    Thread.sleep(5);
+                }
+            } catch (Throwable t) {
+                errors.add(t);
+            } finally {
+                doneGate.countDown();
+            }
+        });
+
+        // Thread 3: Concurrently insert new patients with and without IDs
+        executor.submit(() -> {
+            try {
+                startGate.await();
+                for (int i = 100; i < 120; i++) {
+                    final int idx = i;
+                    transactionTemplate.execute(status -> {
+                        Patient p = new Patient();
+                        p.setHospitalId(h.getId());
+                        p.setName("Concurrent Insert " + idx);
+                        p.setPhone("6" + String.format("%09d", idx));
+                        p.setGender("MALE");
+                        if (idx % 2 == 0) {
+                            p.setPublicId("pre-assigned-" + idx);
+                            p.setCustomId("PAT" + (8000 + idx));
+                        }
+                        entityManager.persist(p);
+                        return null;
+                    });
+                    Thread.sleep(5);
+                }
+            } catch (Throwable t) {
+                errors.add(t);
+            } finally {
+                doneGate.countDown();
+            }
+        });
+
+        // Thread 4: Concurrent second backfill runner execution
+        executor.submit(() -> {
+            try {
+                startGate.await();
+                Thread.sleep(10);
+                runner.run();
+            } catch (Throwable t) {
+                errors.add(t);
+            } finally {
+                doneGate.countDown();
+            }
+        });
+
+        startGate.countDown();
+        boolean finished = doneGate.await(30, TimeUnit.SECONDS);
+        executor.shutdown();
+
+        assertThat(finished).as("All concurrent tasks must finish within 30 seconds").isTrue();
+        assertThat(errors).as("No deadlocks or transaction errors allowed").isEmpty();
+
+        // Run final sweep in case any late-inserted records in thread 3 were created after runners finished
+        runner.run();
+
+        // Verify all patients have valid, unique public IDs and custom IDs
+        List<Patient> allPatients = patientRepository.findAll();
+        Set<String> publicIds = new HashSet<>();
+        for (Patient p : allPatients) {
+            assertThat(p.getPublicId()).isNotNull().isNotBlank().isNotEqualTo("null");
+            assertThat(p.getCustomId()).isNotNull().isNotBlank().startsWith("PAT");
+            assertThat(publicIds.add(p.getPublicId()))
+                    .as("Every patient publicId must be distinct (no collisions)")
+                    .isTrue();
+        }
+
+        // Verify the concurrent name updates in Thread 2 were not overwritten by runner
+        for (int i = 0; i < 20; i++) {
+            Long targetId = seededIds.get(i);
+            Patient p = patientRepository.findById(targetId).orElseThrow();
+            assertThat(p.getName()).isEqualTo("Concurrently Updated " + targetId);
+        }
     }
 }

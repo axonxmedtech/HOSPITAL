@@ -167,4 +167,16 @@ class PlatformHospitalDeleteSqlTest {
                 "SELECT COUNT(*) FROM hospital_settings WHERE hospital_id = ?", Long.class, id))
                 .as("settings rolled back").isPositive();
     }
+
+    @org.junit.jupiter.api.AfterEach
+    void cleanUpCreatedFacilities() {
+        List<Hospital> remaining = hospitalRepository.findAll().stream()
+                .filter(h -> h.getName() != null && h.getName().startsWith("SA1SQL "))
+                .toList();
+        for (Hospital h : remaining) {
+            try {
+                service.deleteHospital(h.getPublicId());
+            } catch (Exception ignored) {}
+        }
+    }
 }
