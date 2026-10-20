@@ -102,7 +102,8 @@ public class PublicIdBackfillRunner implements CommandLineRunner {
                         case PHARMACY -> "PHR";
                         default       -> "HSP";
                     };
-                    return prefix + (1000 + RANDOM.nextInt(9000));
+                    long offset = id != null ? Math.abs(id) : RANDOM.nextInt(9000);
+                    return prefix + (1000 + (int) (offset % 9000));
                 }
         );
     }
