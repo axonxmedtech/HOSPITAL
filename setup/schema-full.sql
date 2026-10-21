@@ -2253,3 +2253,36 @@ CREATE TABLE IF NOT EXISTS `icu_wards` (
   KEY `idx_icu_wards_hospital` (`hospital_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+
+-- Multi-language consultation statements (English, Marathi, Hindi)
+CREATE TABLE IF NOT EXISTS `consultation_statements` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_type` varchar(20) NOT NULL DEFAULT 'ALL\,
+  `category` varchar(30) NOT NULL,
+  `english_text` varchar(500) NOT NULL,
+  `marathi_text` varchar(500) NOT NULL,
+  `hindi_text` varchar(500) NOT NULL,
+  `display_order` int NOT NULL DEFAULT 0,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `idx_stmt_type_cat` (`hospital_type`, `category`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Housekeeping and sanitization tasks for ICU/hospital vacated beds
+CREATE TABLE IF NOT EXISTS `icu_cleaning_tasks` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `ward_id` bigint DEFAULT NULL,
+  `bed_id` bigint DEFAULT NULL,
+  `ward_name` varchar(255) DEFAULT NULL,
+  `bed_number` varchar(100) DEFAULT NULL,
+  `task_description` varchar(500) NOT NULL,
+  `priority` varchar(20) NOT NULL DEFAULT 'MEDIUM\,
+  `status` varchar(20) NOT NULL DEFAULT 'PENDING\,
+  `assigned_to` varchar(255) DEFAULT NULL,
+  `created_by` varchar(255) NOT NULL,
+  `created_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `idx_icu_cleaning_hosp_status` (`hospital_id`, `status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

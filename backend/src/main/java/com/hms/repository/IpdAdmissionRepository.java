@@ -76,4 +76,6 @@ public interface IpdAdmissionRepository extends JpaRepository<IpdAdmission, Long
             @org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
             @org.springframework.data.repository.query.Param("from") java.time.LocalDateTime from,
             @org.springframework.data.repository.query.Param("toExclusive") java.time.LocalDateTime toExclusive);
+
+    java.util.Optional<IpdAdmission> findByHospitalIdAndPatientIdAndStatus(Long hospitalId, Long patientId, String status);
 }

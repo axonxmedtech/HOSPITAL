@@ -248,6 +248,7 @@ public class DatabaseMigrationRunner {
         addColumnIfMissing("consultation_note_presets", "marathi_text", "VARCHAR(500) NULL");
         addColumnIfMissing("consultation_note_presets", "hindi_text", "VARCHAR(500) NULL");
         ensureConsultationStatementsTable();
+        ensureIcuCleaningTasksTable();
     }
 
     /**
@@ -3307,6 +3308,40 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("DB migration skipped (consultation_statements): {}", e.getMessage());
+        }
+    }
+
+
+    private void ensureIcuCleaningTasksTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'icu_cleaning_tasks'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE icu_cleaning_tasks (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  ward_id BIGINT NULL," +
+                    "  bed_id BIGINT NULL," +
+                    "  ward_name VARCHAR(255) NULL," +
+                    "  bed_number VARCHAR(100) NULL," +
+                    "  task_description VARCHAR(500) NOT NULL," +
+                    "  priority VARCHAR(20) NOT NULL DEFAULT 'MEDIUM\," +
+                    "  status VARCHAR(20) NOT NULL DEFAULT 'PENDING\," +
+                    "  assigned_to VARCHAR(255) NULL," +
+                    "  created_by VARCHAR(255) NOT NULL," +
+                    "  created_at DATETIME(6) NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  INDEX idx_icu_cleaning_hosp_status (hospital_id, status)" +
+                    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+                );
+                log.info("DB migration applied: icu_cleaning_tasks table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (icu_cleaning_tasks): {}", e.getMessage());
         }
     }
 
