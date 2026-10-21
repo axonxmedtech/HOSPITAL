@@ -787,7 +787,7 @@ const IpdDetails = () => {
               </div>
 
               {/* Sub-tabs — same set the nurse sees; form tabs respect Files & Access. */}
-              <div className="mt-4 border-b border-gray-200 flex gap-1 overflow-x-auto">
+              <div className="mt-4 border-b border-gray-200 flex gap-1 overflow-x-auto overflow-y-hidden">
                 {tabs.map((t) => (
                   <button
                     key={t.id}
@@ -2320,7 +2320,7 @@ const IpdDetails = () => {
 
               {billModal.isOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
-                  <div className="bg-white rounded-lg w-full max-w-2xl p-6">
+                  <div className="bg-white rounded-lg w-full max-w-lg max-h-[80vh] flex flex-col p-6">
                     <h3 className="text-lg font-semibold mb-3">IPD Bill</h3>
                     {billModal.loading ? (
                       <SkeletonFormCard fields={3} />
@@ -2339,7 +2339,7 @@ const IpdDetails = () => {
                         </div>
                         <div className="mb-3">
                           <h4 className="font-medium">Items</h4>
-                          <ul className="mt-2 space-y-2">
+                          <ul className="mt-2 space-y-2 max-h-48 overflow-y-auto pr-2">
                             {billModal.bill.items.map((it, i) => (
                               <li key={i} className="flex justify-between border p-2 rounded">
                                 <div>{it.description}</div>
