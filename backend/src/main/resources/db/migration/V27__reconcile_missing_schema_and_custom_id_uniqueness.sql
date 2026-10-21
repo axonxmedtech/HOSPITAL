@@ -265,16 +265,18 @@ CREATE TABLE IF NOT EXISTS icu_infusion_rate (
   public_id VARCHAR(255) NOT NULL,
   hospital_id BIGINT NOT NULL,
   icu_infusion_id BIGINT NOT NULL,
-  rate_ml_hr DECIMAL(8,2) NOT NULL,
+  rate_value DECIMAL(12,3) NOT NULL,
+  rate_unit VARCHAR(20) NOT NULL,
   effective_from DATETIME(6) NOT NULL,
-  reason VARCHAR(255) NULL,
   recorded_by_user_id BIGINT NULL,
   performed_by_nurse_id BIGINT NULL,
+  supersedes_rate_id BIGINT NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at DATETIME(6) NOT NULL,
   PRIMARY KEY (id),
   UNIQUE KEY uk_icu_inf_rate_public_id (public_id),
-  KEY idx_icu_inf_rate_span (icu_infusion_id, effective_from)
+  KEY idx_icu_inf_rate_infusion (icu_infusion_id),
+  KEY idx_icu_inf_rate_effective (icu_infusion_id, effective_from)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS icu_io_entry (
@@ -298,3 +300,67 @@ CREATE TABLE IF NOT EXISTS icu_io_entry (
   KEY idx_icu_io_admission (ipd_admission_id),
   KEY idx_icu_io_hospital (hospital_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 5. Missing Entity Columns Reconciled for Strict Schema Validation
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- consultation_note_presets
+SET @exist_cnp_marathi := (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'consultation_note_presets' AND COLUMN_NAME = 'marathi_text');
+SET @sql_cnp_marathi := IF(@exist_cnp_marathi = 0,
+    'ALTER TABLE consultation_note_presets ADD COLUMN marathi_text VARCHAR(500) NULL', 'DO 0');
+PREPARE stmt_cnp_marathi FROM @sql_cnp_marathi;
+EXECUTE stmt_cnp_marathi;
+DEALLOCATE PREPARE stmt_cnp_marathi;
+
+SET @exist_cnp_hindi := (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'consultation_note_presets' AND COLUMN_NAME = 'hindi_text');
+SET @sql_cnp_hindi := IF(@exist_cnp_hindi = 0,
+    'ALTER TABLE consultation_note_presets ADD COLUMN hindi_text VARCHAR(500) NULL', 'DO 0');
+PREPARE stmt_cnp_hindi FROM @sql_cnp_hindi;
+EXECUTE stmt_cnp_hindi;
+DEALLOCATE PREPARE stmt_cnp_hindi;
+
+-- hospital_settings
+SET @exist_hs_lang := (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'hospital_settings' AND COLUMN_NAME = 'default_consultation_language');
+SET @sql_hs_lang := IF(@exist_hs_lang = 0,
+    'ALTER TABLE hospital_settings ADD COLUMN default_consultation_language VARCHAR(10) NOT NULL DEFAULT ''EN''', 'DO 0');
+PREPARE stmt_hs_lang FROM @sql_hs_lang;
+EXECUTE stmt_hs_lang;
+DEALLOCATE PREPARE stmt_hs_lang;
+
+-- medical_records
+SET @exist_mr_lang := (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'medical_records' AND COLUMN_NAME = 'consultation_language');
+SET @sql_mr_lang := IF(@exist_mr_lang = 0,
+    'ALTER TABLE medical_records ADD COLUMN consultation_language VARCHAR(10) NOT NULL DEFAULT ''EN''', 'DO 0');
+PREPARE stmt_mr_lang FROM @sql_mr_lang;
+EXECUTE stmt_mr_lang;
+DEALLOCATE PREPARE stmt_mr_lang;
+
+-- medicine_purchase
+SET @exist_mp_batch := (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'medicine_purchase' AND COLUMN_NAME = 'batch_number');
+SET @sql_mp_batch := IF(@exist_mp_batch = 0,
+    'ALTER TABLE medicine_purchase ADD COLUMN batch_number VARCHAR(100) NULL', 'DO 0');
+PREPARE stmt_mp_batch FROM @sql_mp_batch;
+EXECUTE stmt_mp_batch;
+DEALLOCATE PREPARE stmt_mp_batch;
+
+-- vitals_records
+SET @exist_vr_map := (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vitals_records' AND COLUMN_NAME = 'map_mmhg');
+SET @sql_vr_map := IF(@exist_vr_map = 0,
+    'ALTER TABLE vitals_records ADD COLUMN map_mmhg INT NULL, ADD COLUMN cvp_cmh2o INT NULL, ADD COLUMN urine_output_ml INT NULL, ADD COLUMN gcs_eye INT NULL, ADD COLUMN gcs_verbal INT NULL, ADD COLUMN gcs_motor INT NULL, ADD COLUMN gcs_total INT NULL, ADD COLUMN supersedes_vitals_id BIGINT NULL', 'DO 0');
+PREPARE stmt_vr_map FROM @sql_vr_map;
+EXECUTE stmt_vr_map;
+DEALLOCATE PREPARE stmt_vr_map;

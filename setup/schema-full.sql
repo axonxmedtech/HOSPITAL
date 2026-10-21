@@ -374,6 +374,7 @@ CREATE TABLE `medical_records` (
   `actioned_opd_id` bigint DEFAULT NULL,
   `actioned_by_user_id` bigint DEFAULT NULL,
   `actioned_at` datetime(6) DEFAULT NULL,
+  `consultation_language` varchar(10) NOT NULL DEFAULT 'EN',
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_4elkgkxl6vd0j1p95r174acix` (`public_id`),
   UNIQUE KEY `UK_2nyonrbplqq716buy7u4ghmt8` (`appointment_id`),
@@ -1095,6 +1096,7 @@ CREATE TABLE `hospital_settings` (
   `print_in_clinic` tinyint(1) NOT NULL DEFAULT 1,
   -- FIRST = charge consultation + case-paper at OPD entry; LAST = current flow.
   `bill_payment_timing` varchar(10) NOT NULL DEFAULT 'LAST',
+  `default_consultation_language` varchar(10) NOT NULL DEFAULT 'EN',
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_hospital_settings_hospital_id` (`hospital_id`),
   CONSTRAINT `FK_hospital_settings_hospital_id` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`)
@@ -1111,6 +1113,8 @@ CREATE TABLE `consultation_note_presets` (
   `field_type` varchar(30) NOT NULL,
   `text` varchar(255) NOT NULL,
   `display_order` int NOT NULL DEFAULT '0',
+  `marathi_text` varchar(500) DEFAULT NULL,
+  `hindi_text` varchar(500) DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT '1',
   `created_at` datetime(6) NOT NULL,
   PRIMARY KEY (`id`),
@@ -2288,3 +2292,27 @@ CREATE TABLE IF NOT EXISTS `icu_cleaning_tasks` (
   PRIMARY KEY (`id`),
   INDEX `idx_icu_cleaning_hosp_status` (`hospital_id`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Table structure for table `medicine_purchase`
+--
+
+DROP TABLE IF EXISTS `medicine_purchase`;
+CREATE TABLE `medicine_purchase` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `quantity` int NOT NULL,
+  `unit_price` double DEFAULT NULL,
+  `expiry_date` date DEFAULT NULL,
+  `batch_number` varchar(100) DEFAULT NULL,
+  `min_stock_level` int DEFAULT 10,
+  `type` varchar(255) DEFAULT NULL,
+  `default_dosage` varchar(255) DEFAULT NULL,
+  `default_frequency` varchar(255) DEFAULT NULL,
+  `default_duration` varchar(255) DEFAULT NULL,
+  `manufacturer` varchar(255) DEFAULT NULL,
+  `hospital_id` bigint NOT NULL,
+  `purchase_date` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_medicine_purchase_hospital` (`hospital_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

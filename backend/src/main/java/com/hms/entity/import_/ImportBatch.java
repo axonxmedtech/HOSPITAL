@@ -44,7 +44,7 @@ public class ImportBatch {
     private String mappingJson;
 
     /** Hospital-scoped fingerprint of the uploaded bytes; the exact-file retry guard. */
-    @Column(name = "file_sha256", nullable = false, length = 64)
+    @Column(name = "file_sha256", nullable = false, columnDefinition = "CHAR(64)")
     private String fileSha256;
 
     @Enumerated(EnumType.STRING)
