@@ -2355,7 +2355,7 @@ public class DatabaseMigrationRunner {
                         "  public_id VARCHAR(255) NOT NULL," +
                         "  hospital_id BIGINT NOT NULL," +
                         "  name VARCHAR(100) NOT NULL," +
-                        "  status VARCHAR(20) NOT NULL DEFAULT 'AVAILABLE'," +
+                    "  status VARCHAR(20) NOT NULL DEFAULT 'PENDING'," +
                         "  current_surgery_id BIGINT NULL," +
                         "  turnover_minutes INT NOT NULL DEFAULT 15," +
                         "  source_ward_id BIGINT NULL," +
@@ -3329,8 +3329,8 @@ public class DatabaseMigrationRunner {
                     "  ward_name VARCHAR(255) NULL," +
                     "  bed_number VARCHAR(100) NULL," +
                     "  task_description VARCHAR(500) NOT NULL," +
-                    "  priority VARCHAR(20) NOT NULL DEFAULT 'MEDIUM\," +
-                    "  status VARCHAR(20) NOT NULL DEFAULT 'PENDING\," +
+                    "  priority VARCHAR(20) NOT NULL DEFAULT 'MEDIUM'," +
+                    "  status VARCHAR(20) NOT NULL DEFAULT 'PENDING'," +
                     "  assigned_to VARCHAR(255) NULL," +
                     "  created_by VARCHAR(255) NOT NULL," +
                     "  created_at DATETIME(6) NULL," +

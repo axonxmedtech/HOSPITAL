@@ -5,7 +5,7 @@ import com.hms.entity.Bed;
 import com.hms.exception.ResourceNotFoundException;
 import com.hms.exception.UnauthorizedException;
 import com.hms.repository.BedRepository;
-import com.hms.security.SecurityHelper;
+import com.hms.security.SecurityContextHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,9 +16,9 @@ import java.util.stream.Collectors;
 public class BedService {
 
     private final BedRepository bedRepository;
-    private final SecurityHelper securityHelper;
+    private final SecurityContextHelper securityHelper;
 
-    public BedService(BedRepository bedRepository, SecurityHelper securityHelper) {
+    public BedService(BedRepository bedRepository, SecurityContextHelper securityHelper) {
         this.bedRepository = bedRepository;
         this.securityHelper = securityHelper;
     }
