@@ -56,6 +56,7 @@ class ClinicPharmacyIsolationTest {
             "BedController",
             "BillingController",
             "ConsultationNotePresetController",
+            "ConsultationStatementController",
             "DoctorController",
             "FaqController",
             "FormAccessController",

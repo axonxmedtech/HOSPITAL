@@ -610,9 +610,11 @@ const hospitalService = {
   /**
    * Download Prescription PDF
    */
-  downloadPrescription: async (appointmentId) => {
+  downloadPrescription: async (appointmentId, lang) => {
+    const params = lang ? { lang } : {};
     return apiClient
       .get(`/hospital/doctors/prescription/${appointmentId}/pdf`, {
+        params,
         responseType: 'blob',
         timeout: 60000,
       })
@@ -715,16 +717,20 @@ const hospitalService = {
     return response.data;
   },
 
-  downloadCasePaper: async (opdId) => {
+  downloadCasePaper: async (opdId, lang) => {
+    const params = lang ? { lang } : {};
     const response = await apiClient.get(`/hospital/opd/${opdId}/pdf`, {
+      params,
       responseType: 'blob',
       timeout: 60000,
     });
     return response.data;
   },
 
-  downloadPrescriptionByOpd: async (opdId) => {
+  downloadPrescriptionByOpd: async (opdId, lang) => {
+    const params = lang ? { lang } : {};
     const response = await apiClient.get(`/hospital/doctors/prescription/opd/${opdId}/pdf`, {
+      params,
       responseType: 'blob',
       timeout: 60000,
     });
@@ -1328,6 +1334,14 @@ const hospitalService = {
       responseType: 'blob',
       timeout: 60000,
     });
+    return response.data;
+  },
+
+  getConsultationStatements: async (category = '', query = '') => {
+    const params = {};
+    if (category) params.category = category;
+    if (query) params.query = query;
+    const response = await apiClient.get('/hospital/consultation-statements', { params });
     return response.data;
   },
 };

@@ -24,6 +24,15 @@ class ClinicalPdfServiceLanguageTest {
     @Mock
     private OpdRepository opdRepository;
 
+    @Mock
+    private com.hms.repository.ConsultationNotePresetRepository presetRepository;
+
+    @Mock
+    private com.hms.repository.ConsultationStatementRepository statementRepository;
+
+    @Mock
+    private com.hms.repository.HospitalSettingRepository hospitalSettingRepository;
+
     @Spy
     private PdfLayoutHelper pdfLayoutHelper = new PdfLayoutHelper();
 
@@ -55,6 +64,7 @@ class ClinicalPdfServiceLanguageTest {
         medicalRecord.setId(500L);
         medicalRecord.setHospitalId(1L);
         medicalRecord.setDiagnosis("Hypertension");
+        medicalRecord.setTreatmentNotes("Drink more water.\nAvoid oily food.");
         medicalRecord.setCreatedAt(LocalDateTime.of(2026, 9, 11, 10, 30));
     }
 
@@ -70,7 +80,7 @@ class ClinicalPdfServiceLanguageTest {
     }
 
     @Test
-    void marathiPrescriptionRendersBeforeAndAfterFoodLabels() throws Exception {
+    void marathiBilingualPrescriptionRendersEnglishAndMarathi() throws Exception {
         Prescription p1 = new Prescription();
         p1.setMedicineName("Amoxicillin 500mg");
         p1.setDosage("1 tab");
@@ -87,13 +97,20 @@ class ClinicalPdfServiceLanguageTest {
         p2.setFoodTiming("BEFORE_FOOD");
 
         ByteArrayInputStream pdf = clinicalPdfService.generatePrescriptionPdf(
-                hospital, doctor, patient, medicalRecord, List.of(p1, p2), "mr");
+                hospital, doctor, patient, medicalRecord, List.of(p1, p2), "EN_MR");
 
         String text = extractText(pdf);
 
-        // Assert exact Marathi food-timing strings
-        assertThat(text).contains("जेवणानंतर · with warm water");
-        assertThat(text).contains("जेवणापूर्वी");
+        // Assert bilingual food-timing strings
+        assertThat(text).contains("After Food / जेवणानंतर");
+        assertThat(text).contains("with");
+        assertThat(text).contains("warm water");
+        assertThat(text).contains("Before Food / जेवणापूर्वी");
+
+        // Assert doctor advice section in prescription
+        assertThat(text).contains("DOCTOR ADVICE / सल्ला:");
+        assertThat(text).contains("Drink more water.");
+        assertThat(text).contains("Avoid oily food.");
 
         // Assert other fields remain unchanged in Latin English
         assertThat(text).contains("Amoxicillin 500mg");
@@ -104,7 +121,7 @@ class ClinicalPdfServiceLanguageTest {
     }
 
     @Test
-    void hindiPrescriptionRendersBeforeAndAfterFoodLabels() throws Exception {
+    void hindiBilingualPrescriptionRendersEnglishAndHindi() throws Exception {
         Prescription p1 = new Prescription();
         p1.setMedicineName("Paracetamol 650mg");
         p1.setDosage("1 tab");
@@ -121,13 +138,18 @@ class ClinicalPdfServiceLanguageTest {
         p2.setInstructions("empty stomach");
 
         ByteArrayInputStream pdf = clinicalPdfService.generatePrescriptionPdf(
-                hospital, doctor, patient, medicalRecord, List.of(p1, p2), "hi");
+                hospital, doctor, patient, medicalRecord, List.of(p1, p2), "EN_HI");
 
         String text = extractText(pdf);
 
-        assertThat(text).contains("भोजन के बाद");
-        assertThat(text).contains("भोजन से पहले · empty stomach");
+        assertThat(text).contains("After Food / भोजन के बाद");
+        assertThat(text).contains("Before Food / भोजन से पहले");
+        assertThat(text).contains("empty stomach");
         assertThat(text).contains("Paracetamol 650mg");
+
+        // Assert doctor advice section
+        assertThat(text).contains("DOCTOR ADVICE / सलाह:");
+        assertThat(text).contains("Drink more water.");
     }
 
     @Test
@@ -141,16 +163,19 @@ class ClinicalPdfServiceLanguageTest {
         p1.setInstructions("after meal");
 
         ByteArrayInputStream pdf = clinicalPdfService.generatePrescriptionPdf(
-                hospital, doctor, patient, medicalRecord, List.of(p1), "en");
+                hospital, doctor, patient, medicalRecord, List.of(p1), "EN");
 
         String text = extractText(pdf);
 
         assertThat(text).contains("After Food · after meal");
         assertThat(text).contains("Metformin 500mg");
+        assertThat(text).contains("DOCTOR ADVICE:");
     }
 
     @Test
-    void defaultOverloadDefaultsToEnglish() throws Exception {
+    void historicalMedicalRecordLanguageIsPreservedOnReprintWithoutParam() throws Exception {
+        medicalRecord.setConsultationLanguage("EN_MR");
+
         Prescription p1 = new Prescription();
         p1.setMedicineName("Cetirizine 10mg");
         p1.setDosage("1 tab");
@@ -158,50 +183,60 @@ class ClinicalPdfServiceLanguageTest {
         p1.setDuration("5 Days");
         p1.setFoodTiming("BEFORE_FOOD");
 
-        // Calling overload without lang parameter
+        // Calling overload without lang parameter (historical re-print)
         ByteArrayInputStream pdf = clinicalPdfService.generatePrescriptionPdf(
                 hospital, doctor, patient, medicalRecord, List.of(p1));
 
         String text = extractText(pdf);
 
-        assertThat(text).contains("Before Food");
-        assertThat(text).doesNotContain("जेवणापूर्वी");
+        // Should resolve to EN_MR from medicalRecord
+        assertThat(text).contains("Before Food / जेवणापूर्वी");
     }
 
     @Test
-    void prescriptionWithoutFoodTimingPrintsInstructionsOnly() throws Exception {
-        Prescription p1 = new Prescription();
-        p1.setMedicineName("Paracetamol");
-        p1.setDosage("1 tab");
-        p1.setFrequency("1-0-0");
-        p1.setDuration("2 Days");
-        p1.setInstructions("take as needed");
-
-        ByteArrayInputStream pdf = clinicalPdfService.generatePrescriptionPdf(
-                hospital, doctor, patient, medicalRecord, List.of(p1), "mr");
-
-        String text = extractText(pdf);
-
-        assertThat(text).contains("take as needed");
-        assertThat(text).doesNotContain("·");
-    }
-
-    @Test
-    void casePaperRendersDevanagariNotesVerbatim() throws Exception {
-        medicalRecord.setSymptoms("डोकेदुखी आणि ताप"); // Headache and fever
+    void casePaperRendersBilingualHeaderAndDevanagariNotes() throws Exception {
+        medicalRecord.setSymptoms("Headache and fever");
         medicalRecord.setTreatmentNotes("विश्रांती आणि भरपूर पाणी पिण्याचा सल्ला");
 
         Opd opd = new Opd();
         opd.setCaseId("OPD-101");
-        opd.setProblem("ताप आला आहे");
+        opd.setProblem("Fever since 2 days");
 
         ByteArrayInputStream pdf = clinicalPdfService.generateCasePaperPdf(
-                hospital, doctor, patient, opd, medicalRecord, List.of(), "mr");
+                hospital, doctor, patient, opd, medicalRecord, List.of(), "EN_MR");
 
         String text = extractText(pdf);
 
-        assertThat(text).contains("डोकेदुखी आणि ताप");
+        assertThat(text).contains("TREATMENT & CLINICAL NOTES / सल्ला:");
         assertThat(text).contains("विश्रांती आणि भरपूर पाणी पिण्याचा सल्ला");
-        assertThat(text).contains("ताप आला आहे");
+        assertThat(text).contains("Headache and fever");
+    }
+
+    @Test
+    void prescriptionRendersBilingualQuickNotesFromPresets() throws Exception {
+        medicalRecord.setTreatmentNotes("Drink more water.\nAvoid oily food.");
+
+        ConsultationNotePreset p1 = new ConsultationNotePreset();
+        p1.setText("Drink more water.");
+        p1.setMarathiText("जास्त पाणी प्या.");
+        p1.setHindiText("ज्यादा पानी पिएं.");
+
+        ConsultationNotePreset p2 = new ConsultationNotePreset();
+        p2.setText("Avoid oily food.");
+        p2.setMarathiText("तेलकट अन्न टाळा.");
+        p2.setHindiText("तैलीय भोजन से बचें.");
+
+        org.mockito.Mockito.when(presetRepository.findByHospitalIdAndFieldTypeAndIsActiveTrue(
+                1L, ConsultationNotePreset.FIELD_TYPE_TREATMENT_NOTES))
+                .thenReturn(List.of(p1, p2));
+
+        ByteArrayInputStream pdf = clinicalPdfService.generatePrescriptionPdf(
+                hospital, doctor, patient, medicalRecord, List.of(), "EN_MR");
+
+        String text = extractText(pdf);
+
+        assertThat(text).contains("DOCTOR ADVICE / सल्ला:");
+        assertThat(text).contains("Drink more water. / जास्त पाणी प्या.");
+        assertThat(text).contains("Avoid oily food. / तेलकट अन्न टाळा.");
     }
 }

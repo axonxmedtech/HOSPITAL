@@ -10,6 +10,7 @@ import PageHeader from '../../components/PageHeader';
 import PlansTab from '../../components/PlansTab';
 import PlatformInventoryItemsTab from '../../components/PlatformInventoryItemsTab';
 import PlatformMedicinesTab from '../../components/PlatformMedicinesTab';
+import PlatformStatementsTab from '../../components/PlatformStatementsTab';
 import ProfileModal from '../../components/ProfileModal';
 import Sidebar from '../../components/Sidebar';
 import { SkeletonTable, SkeletonDashboard } from '../../components/Skeleton';
@@ -288,7 +289,7 @@ const PlatformDashboard = () => {
     } else if (subtab === 'faqs') {
       loadFaqs();
     }
-  }, [activeTab]);
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // BUG-015: default size uses PLATFORM_PAGE_SIZE constant
   // BUG-014: AbortController cancels in-flight request on re-invocation
@@ -688,7 +689,7 @@ const PlatformDashboard = () => {
     setResetPwModal({ isOpen: true, hospitalId: id });
   };
 
-  const handleUserResetPassword = (id) => {
+  const _handleUserResetPassword = (id) => {
     openConfirmation(
       'Reset User Password',
       'Are you sure you want to reset the password for this user?',
@@ -701,7 +702,7 @@ const PlatformDashboard = () => {
             password: data.password,
           });
           success('Password reset successfully');
-        } catch (err) {
+        } catch {
           setError('Failed to reset password');
         }
       }
@@ -720,6 +721,7 @@ const PlatformDashboard = () => {
       subItems: [
         { id: 'hospital:hospitals', label: 'Hospitals' },
         { id: 'hospital:inventory_items', label: 'Inventory Items' },
+        { id: 'hospital:statements', label: 'Patient Instructions' },
         { id: 'hospital:plans', label: 'Plans' },
         { id: 'hospital:tickets', label: 'Tickets' },
         { id: 'hospital:faqs', label: 'FAQs' },
@@ -733,6 +735,7 @@ const PlatformDashboard = () => {
       subItems: [
         { id: 'clinic:clinics', label: 'Clinics' },
         { id: 'clinic:inventory_items', label: 'Inventory Items' },
+        { id: 'clinic:statements', label: 'Patient Instructions' },
         { id: 'clinic:plans', label: 'Plans' },
         { id: 'clinic:tickets', label: 'Tickets' },
         { id: 'clinic:faqs', label: 'FAQs' },
@@ -745,6 +748,7 @@ const PlatformDashboard = () => {
       isExpanded: !!expandedGroups['pharmacy'],
       subItems: [
         { id: 'pharmacy:pharmacies', label: 'Pharmacies' },
+        { id: 'pharmacy:statements', label: 'Patient Instructions' },
         { id: 'pharmacy:plans', label: 'Plans' },
         { id: 'pharmacy:tickets', label: 'Tickets' },
         { id: 'pharmacy:faqs', label: 'FAQs' },
@@ -823,6 +827,8 @@ const PlatformDashboard = () => {
                   subtitle = 'Manage the central unified global medicine catalog directory.';
                 else if (subtab === 'inventory_items')
                   subtitle = 'Manage the central unified global hospital inventory item directory.';
+                else if (subtab === 'statements')
+                  subtitle = 'Manage bilingual consultation instructions and doctor advice.';
                 else if (subtab === 'tickets')
                   subtitle = 'View and resolve support tickets submitted by hospital admins.';
                 else if (isFaqTab)
@@ -1046,6 +1052,13 @@ const PlatformDashboard = () => {
                 <PlatformInventoryItemsTab hospitalType={hospitalType} />
               )
             );
+          })()}
+
+          {/* Statements / Patient Instructions Tab */}
+          {(() => {
+            const subtab = activeTab.split(':')[1];
+            const hospitalType = getCurrentHospitalType();
+            return subtab === 'statements' && <PlatformStatementsTab hospitalType={hospitalType} />;
           })()}
 
           {/* Content Sections */}
@@ -2273,7 +2286,7 @@ const PasswordResetModal = ({ email, password, onClose }) => {
 // SuperAdminProfileModal Component
 const SuperAdminProfileModal = ({ user, onClose }) => {
   const [name, setName] = useState(user?.name || 'Super Admin');
-  const [phone, setPhone] = useState(user?.phone || '');
+  const phone = user?.phone || '';
   const [showPwSection, setShowPwSection] = useState(false);
   const [currentPw, setCurrentPw] = useState('');
   const [newPw, setNewPw] = useState('');
@@ -3251,7 +3264,7 @@ const AuditLogsTable = ({ auditLogs }) => {
 };
 
 // Users Table Component
-const UsersTable = ({ users, userPage, onResetPassword, loadUsers }) => {
+const _UsersTable = ({ users, userPage, onResetPassword, loadUsers }) => {
   const columnHelper = createColumnHelper();
 
   const columns = [

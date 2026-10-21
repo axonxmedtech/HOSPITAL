@@ -36,6 +36,7 @@ public final class ControllerModules {
                 "PatientController", "DoctorController", "ReceptionistController",
                 "HospitalAuthController", "HospitalAuditController", "HospitalTicketController",
                 "FaqController", "ConsultationNotePresetController", "PrescriptionPresetController",
+                "ConsultationStatementController",
                 // The admin's own front page. Its optional analytics are gated block by block
                 // inside the response, so the endpoint itself belongs to every hospital.
                 "HospitalDashboardController",
@@ -72,7 +73,6 @@ public final class ControllerModules {
                 "SurgeryExecutionController", "RecoveryController", "OtRoomController",
                 "OtPolicyController", "OtPermissionController", "OtInchargeController");
 
-        // Critical care. Hospital-only and never aliased to /clinic or /pharmacy.
         // Critical care. Hospital-only and never aliased to /clinic or /pharmacy. ICU clinical
         // records sit here rather than under CLINICAL_RECORDS: ICU is separately sellable, so a
         // hospital with IPD but without ICU must not reach them through ordinary record access.
@@ -104,6 +104,7 @@ public final class ControllerModules {
             "PlatformAuthController", "PlatformHospitalController", "PlatformPlanController",
             "PlatformUserController", "PlatformTicketController", "PlatformFaqController",
             "PlatformMedicineController", "PlatformInventoryItemController", "PlatformAuditController",
+            "PlatformStatementController",
             "HealthController");
 
     /** The module this controller belongs to, or null if it has not been declared. */
