@@ -62,7 +62,7 @@ trap 'rm -f "$CNF"' EXIT
 
 echo "[restore] $SRC → database '$TARGET' (scratch)"
 mysql --defaults-extra-file="$CNF" -e "CREATE DATABASE IF NOT EXISTS \`$TARGET\`;"
-zcat "$SRC" | grep -viE '^\s*(CREATE DATABASE|USE )' | mysql --defaults-extra-file="$CNF" "$TARGET"
+gzip -dc "$SRC" | grep -viE '^\s*(CREATE DATABASE|USE )' | mysql --defaults-extra-file="$CNF" "$TARGET"
 
 # ── Restore validation ─────────────────────────────────────────────────────
 TABLES=$(mysql --defaults-extra-file="$CNF" -N -e \

@@ -304,6 +304,9 @@ public class IpdAdmissionService {
             bill.setAmount(bedPrice);
             bill.setDescription("Bed Price");
             bill.setPaymentStatus("PENDING");
+            if (billingService != null) {
+                billingService.ensureBillingCustomId(bill);
+            }
             Billing savedBill = billingRepository.save(bill);
 
             // Create billing item for bed price

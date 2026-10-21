@@ -11,6 +11,11 @@ import java.util.List;
 
 @Repository
 public interface BillingRepository extends JpaRepository<Billing, Long> {
+    boolean existsByHospitalIdAndCustomId(Long hospitalId, String customId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT MAX(b.id) FROM Billing b WHERE b.hospitalId = :hospitalId")
+    Long findMaxIdByHospitalId(@org.springframework.data.repository.query.Param("hospitalId") Long hospitalId);
+
 
     /**
      * Tenant-scoped, row-locked read of one bill.

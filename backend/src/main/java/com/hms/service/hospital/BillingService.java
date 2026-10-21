@@ -122,6 +122,7 @@ public class BillingService {
                 logger.warn("Could not resolve related opdId for appointment {}", appointment.getId(), e);
             }
 
+            ensureBillingCustomId(bill);
             Billing saved = billingRepository.save(bill);
 
             // Itemised breakdown, so the receipt matches the walk-in OPD bill.
@@ -226,7 +227,8 @@ public class BillingService {
             bill.setPaymentReference(paymentReference);
         }
 
-        Billing saved = billingRepository.save(bill);
+        ensureBillingCustomId(bill);
+            Billing saved = billingRepository.save(bill);
 
         // Create audit log
         try {
@@ -355,7 +357,8 @@ public class BillingService {
         try {
             bill.setMarkedPaidBy(securityHelper.getCurrentUserRole() + " (" + securityHelper.getCurrentUserEmail() + ")");
         } catch (Exception ignored) { /* best-effort attribution only */ }
-        Billing saved = billingRepository.save(bill);
+        ensureBillingCustomId(bill);
+            Billing saved = billingRepository.save(bill);
 
         // The ledger row is the RECORD OF THE MONEY, not a nice-to-have mirror — everything
         // downstream derives from it: the bill's status (recalculateTotal), the "Received"/
@@ -421,7 +424,8 @@ public class BillingService {
         bill.setPaymentStatus("PENDING");
         bill.setAppointmentId(null);
 
-        Billing saved = billingRepository.save(bill);
+        ensureBillingCustomId(bill);
+            Billing saved = billingRepository.save(bill);
 
         // Create billing items for breakdown
         com.hms.entity.BillingItem item1 = new com.hms.entity.BillingItem();
@@ -613,7 +617,8 @@ public class BillingService {
             } catch (Exception ignored) {}
         }
 
-        Billing saved = billingRepository.save(bill);
+        ensureBillingCustomId(bill);
+            Billing saved = billingRepository.save(bill);
 
         BigDecimal itemTotal = BigDecimal.ZERO;
         if (items != null && !items.isEmpty()) {
@@ -650,5 +655,34 @@ public class BillingService {
         logger.info("Created manual bill {} for patient {} with amount {}", saved.getId(), patientId, saved.getAmount());
         return saved;
     }
-}
 
+    /**
+     * Allocate a collision-safe, sequential custom ID for a bill in the given hospital.
+     * Preserves existing custom IDs (e.g. BIL3100) and ensures uniqueness.
+     */
+    public synchronized String allocateBillingCustomId(Long hospitalId) {
+        long base = 1001;
+        Long maxId = billingRepository.findMaxIdByHospitalId(hospitalId);
+        if (maxId != null && maxId > 0) {
+            base = Math.max(1001, maxId + 1000);
+        }
+        String candidate = "BIL" + base;
+        while (billingRepository.existsByHospitalIdAndCustomId(hospitalId, candidate)) {
+            base++;
+            candidate = "BIL" + base;
+        }
+        return candidate;
+    }
+
+    public void ensureBillingCustomId(Billing bill) {
+        if (bill.getHospitalId() == null) {
+            return;
+        }
+        if (bill.getCustomId() == null || bill.getCustomId().isBlank()) {
+            bill.setCustomId(allocateBillingCustomId(bill.getHospitalId()));
+        } else if (bill.getId() == null && billingRepository.existsByHospitalIdAndCustomId(bill.getHospitalId(), bill.getCustomId())) {
+            bill.setCustomId(allocateBillingCustomId(bill.getHospitalId()));
+        }
+    }
+
+}

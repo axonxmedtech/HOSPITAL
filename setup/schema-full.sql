@@ -118,7 +118,8 @@ CREATE TABLE `billing` (
   `payment_status` varchar(20) NOT NULL,
   `public_id` varchar(255) NOT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `UK_873yunoi4d9gm43g5bu8ltm9k` (`public_id`)
+  UNIQUE KEY `UK_873yunoi4d9gm43g5bu8ltm9k` (`public_id`),
+  UNIQUE KEY `uk_billing_hospital_custom_id` (`hospital_id`,`custom_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -569,7 +570,8 @@ CREATE TABLE `patients` (
   `active_phone_key` varchar(15) GENERATED ALWAYS AS (case when ((`is_active` = 1) and (`phone` is not null) and (`phone` <> _utf8mb4'') and ((`duplicate_phone_ack_for` is null) or (`duplicate_phone_ack_for` <> `phone`))) then `phone` end) VIRTUAL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_8isyrjl9ji56k5uv4cgp9p2q6` (`public_id`),
-  UNIQUE KEY `uq_patient_active_phone` (`hospital_id`,`active_phone_key`)
+  UNIQUE KEY `uq_patient_active_phone` (`hospital_id`,`active_phone_key`),
+  UNIQUE KEY `uk_patient_hospital_custom_id` (`hospital_id`,`custom_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

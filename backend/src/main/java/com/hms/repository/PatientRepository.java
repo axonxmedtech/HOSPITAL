@@ -22,6 +22,10 @@ import java.util.Optional;
  */
 @Repository
 public interface PatientRepository extends JpaRepository<Patient, Long> {
+    boolean existsByHospitalIdAndCustomId(Long hospitalId, String customId);
+
+    boolean existsByHospitalIdAndCustomIdAndIdNot(Long hospitalId, String customId, Long id);
+
 
         long countByHospitalId(Long hospitalId);
 
