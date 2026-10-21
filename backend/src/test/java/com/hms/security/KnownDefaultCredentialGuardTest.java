@@ -72,6 +72,27 @@ class KnownDefaultCredentialGuardTest {
     }
 
     @Test
+    void productionRefusesActiveDefaultSuperAdmin_namingProductionProfileAndEmail() {
+        activeSuperAdmins(credential(KnownDefaultCredentials.DEVELOPMENT_SUPER_ADMIN_EMAIL, DEFAULT_HASH));
+
+        assertThatThrownBy(() -> guard("production").verify())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(KnownDefaultCredentials.DEVELOPMENT_SUPER_ADMIN_EMAIL)
+                .hasMessageContaining("[production]")
+                .satisfies(e -> assertThat(e.getMessage())
+                        .doesNotContain(KnownDefaultCredentials.DEVELOPMENT_SUPER_ADMIN_PASSWORD)
+                        .doesNotContain(DEFAULT_HASH)
+                        .doesNotContain("$2a$"));
+    }
+
+    @Test
+    void deactivatingTheDefaultAccount_allowsProductionStartup() {
+        activeSuperAdmins(credential("active-superadmin@example.com", ROTATED_HASH));
+
+        assertThatCode(() -> guard("production").verify()).doesNotThrowAnyException();
+    }
+
+    @Test
     void onlyTheExposedAccountsAreNamed() {
         activeSuperAdmins(credential("rotated@example.com", ROTATED_HASH),
                 credential("legacy@example.com", DEFAULT_HASH));

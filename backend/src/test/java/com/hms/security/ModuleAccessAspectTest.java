@@ -170,13 +170,23 @@ class ModuleAccessAspectTest {
     }
 
     /**
-     * F16 regression: CLINIC cannot be granted HOSPITAL_INVENTORY, yet it shares
-     * HospitalInventoryController. Enforcing here would 403 it permanently.
+     * CLINIC tenants are now module-gated as well as HOSPITAL. Lacking the module throws 403.
      */
     @Test
-    void clinicSession_isNeverModuleGated() throws Exception {
+    void clinicSession_isModuleGated_deniedWhenLackingModule() throws Exception {
         hospitalRowIs(HospitalType.CLINIC, List.of("OPD"));
         authenticate(7L, HospitalType.CLINIC.name(), List.of("OPD"));
+        JoinPoint jp = joinPointFor(new ClassGatedController(), "handler");
+
+        assertThatThrownBy(() -> aspect.checkModuleAccess(jp))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("OT");
+    }
+
+    @Test
+    void clinicSession_isModuleGated_allowedWhenHoldingModule() throws Exception {
+        hospitalRowIs(HospitalType.CLINIC, List.of("OPD", "OT"));
+        authenticate(7L, HospitalType.CLINIC.name(), List.of("OPD", "OT"));
         JoinPoint jp = joinPointFor(new ClassGatedController(), "handler");
 
         assertThatCode(() -> aspect.checkModuleAccess(jp)).doesNotThrowAnyException();

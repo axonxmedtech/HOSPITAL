@@ -71,13 +71,13 @@ class ImportSchemaFoundationIT {
     @BeforeAll
     void applyMigrationsVerbatim() throws Exception {
         dropImportTables();
-        for (String file : List.of("V22__create_import_batches.sql", "V23__create_patient_import_links.sql", "V24__add_import_batch_active_uniqueness.sql")) {
+        for (String file : List.of("V22__create_import_batches.sql", "V23__create_patient_import_links.sql", "V24__add_import_batch_active_uniqueness.sql", "V26__reconcile_import_batch_active_marker.sql")) {
             for (String statement : statementsOf(file)) {
                 jdbc.execute(statement);
             }
         }
         // Idempotency: staging can arrive here with the tables already present (see V12/V13).
-        for (String file : List.of("V22__create_import_batches.sql", "V23__create_patient_import_links.sql", "V24__add_import_batch_active_uniqueness.sql")) {
+        for (String file : List.of("V22__create_import_batches.sql", "V23__create_patient_import_links.sql", "V24__add_import_batch_active_uniqueness.sql", "V26__reconcile_import_batch_active_marker.sql")) {
             for (String statement : statementsOf(file)) {
                 jdbc.execute(statement);
             }

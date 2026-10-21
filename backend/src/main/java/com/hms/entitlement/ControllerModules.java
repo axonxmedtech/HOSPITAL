@@ -36,7 +36,6 @@ public final class ControllerModules {
                 "PatientController", "DoctorController", "ReceptionistController",
                 "HospitalAuthController", "HospitalAuditController", "HospitalTicketController",
                 "FaqController", "ConsultationNotePresetController", "PrescriptionPresetController",
-                "PharmacistController",
                 // The admin's own front page. Its optional analytics are gated block by block
                 // inside the response, so the endpoint itself belongs to every hospital.
                 "HospitalDashboardController",
@@ -88,7 +87,8 @@ public final class ControllerModules {
         put(EntitlementRegistry.PHARMACY,
                 "PharmacyController", "PharmacySaleController", "PurchaseController",
                 "InventoryController", "MedicineMasterController", "SupplierController",
-                "ManufacturerController", "MedicineCategoryController", "PharmacyReportsController");
+                "ManufacturerController", "MedicineCategoryController", "PharmacyReportsController",
+                "PharmacistController");
         put(EntitlementRegistry.PHARMACY_BRANCH, "PharmacyBranchController");
 
         put(EntitlementRegistry.MEDICAL_INVENTORY, "MedicineController");

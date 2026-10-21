@@ -38,6 +38,7 @@ class ProductionProfileConfigTest {
         assertThat(env.getProperty("spring.flyway.validate-on-migrate")).isEqualTo("true");
         assertThat(env.getProperty("spring.flyway.out-of-order")).isEqualTo("false");
         assertThat(env.getProperty("spring.flyway.clean-disabled")).isEqualTo("true");
+        assertThat(env.getProperty("hms.flyway.repair-on-startup")).isEqualTo("false");
         // Additive reconciliation after Flyway, as documented in application-prod.properties
         // (HIBERNATE_DDL_AUTO can override it; it is not set in tests).
         assertThat(env.getProperty("spring.jpa.hibernate.ddl-auto")).isEqualTo("update");
@@ -67,6 +68,7 @@ class ProductionProfileConfigTest {
             Environment env = ctx.getEnvironment();
             assertThat(env.getActiveProfiles()).containsExactly("staging");
             assertThat(env.getProperty("spring.flyway.enabled")).isEqualTo("true");   // from application-staging
+            assertThat(env.getProperty("hms.flyway.repair-on-startup")).isEqualTo("false");
             assertThat(env.getProperty("logging.level.root")).isNotEqualTo("WARN");   // prod-only setting absent
         }
     }

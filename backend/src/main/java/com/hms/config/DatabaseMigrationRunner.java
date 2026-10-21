@@ -62,7 +62,7 @@ public class DatabaseMigrationRunner {
         required.put("icu_wards", List.of("id", "hospital_id", "ward_id"));
         required.put("icu_stay", List.of("id", "hospital_id", "ipd_admission_id", "status", "active_marker"));
         required.put("vitals_records", List.of("gcs_eye", "gcs_verbal", "gcs_motor", "gcs_total",
-                "map_mmhg", "urine_output_ml", "supersedes_vitals_id"));
+                "map_mmhg", "cvp_cmh2o", "urine_output_ml", "supersedes_vitals_id"));
         return java.util.Collections.unmodifiableMap(required);
     }
 
@@ -81,6 +81,7 @@ public class DatabaseMigrationRunner {
             startupState.complete();
         } else {
             startupState.fail(missing);
+            throw new IllegalStateException("Mandatory schema missing at startup: " + missing);
         }
     }
 
@@ -117,7 +118,7 @@ public class DatabaseMigrationRunner {
         ensureInventoryServicesTables(); // NEW
         ensureHospitalSettingsBarcodeEnabled(); // NEW — pharmacy barcode toggle
         ensurePlanMultiOutletColumns(); // NEW — pharmacy multi-outlet plan support
-        dropLegacyNotNullNoDefaultColumns(); // NEW — remove NOT-NULL-no-default landmines
+        preserveAndRelaxLegacyNotNullColumns(); // NEW — relax NOT-NULL-no-default while preserving historical data
         ensureMedicineMasterManufacturerName(); // NEW — free-text manufacturer from purchase
         ensurePharmacyBranchSupport(); // NEW — Multi Pharmacy branches
         ensurePharmacyDataBranchColumns(); // NEW — branch_id on pharmacy data tables
@@ -1349,32 +1350,95 @@ public class DatabaseMigrationRunner {
     }
 
     /**
-     * Drop orphaned columns that are NOT NULL with no default and no longer mapped by
-     * any entity (hospital_settings.shift_mode, users.is_trainer). Hibernate omits them
-     * on INSERT, so MySQL rejects every insert on those tables (error 1364), breaking
-     * hospital/clinic/pharmacy onboarding and user creation. The canonical schema has
-     * no such columns — this realigns older databases with it.
+     * Realign orphaned legacy columns that were historically defined as NOT NULL without a default
+     * and are no longer mapped by active JPA entities (hospital_settings.shift_mode, users.is_trainer,
+     * doctors.is_anaesthetist).
+     *
+     * In accordance with AxonX HMS data safety policy:
+     * 1. Historical clinical, user, and configuration values are NEVER deleted or dropped.
+     * 2. The column constraint is dynamically and idempotently modified to NULL DEFAULT NULL
+     *    (preserving its existing data type and any existing default).
+     * 3. This resolves MySQL error 1364 on new Hibernate INSERTs without destroying historical records.
      */
-    private void dropLegacyNotNullNoDefaultColumns() {
+    private void preserveAndRelaxLegacyNotNullColumns() {
         String[][] orphanColumns = {
             {"hospital_settings", "shift_mode"},
             {"users", "is_trainer"},
             {"doctors", "is_anaesthetist"},
         };
+        boolean isH2 = false;
+        try (java.sql.Connection conn = jdbcTemplate.getDataSource().getConnection()) {
+            java.sql.DatabaseMetaData meta = conn.getMetaData();
+            String productName = meta.getDatabaseProductName();
+            isH2 = productName != null && productName.toLowerCase().contains("h2");
+        } catch (Exception e) {
+            log.debug("Could not inspect database product name: {}", e.getMessage());
+        }
+
         for (String[] tc : orphanColumns) {
             String table = tc[0], column = tc[1];
             try {
-                Integer count = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM information_schema.COLUMNS " +
-                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
-                    Integer.class, table, column
-                );
-                if (count != null && count > 0) {
-                    jdbcTemplate.execute("ALTER TABLE `" + table + "` DROP COLUMN `" + column + "`");
-                    log.info("DB migration applied: dropped legacy {}.{} column", table, column);
+                if (isH2) {
+                    List<Map<String, Object>> cols = jdbcTemplate.queryForList(
+                        "SELECT IS_NULLABLE FROM information_schema.COLUMNS " +
+                        "WHERE UPPER(TABLE_NAME) = ? AND UPPER(COLUMN_NAME) = ?",
+                        table.toUpperCase(), column.toUpperCase()
+                    );
+                    if (!cols.isEmpty()) {
+                        String isNullable = String.valueOf(cols.get(0).get("IS_NULLABLE"));
+                        if ("NO".equalsIgnoreCase(isNullable)) {
+                            jdbcTemplate.execute("ALTER TABLE " + table + " ALTER COLUMN " + column + " SET NULL");
+                            log.info("DB migration applied (H2): relaxed legacy {}.{} constraint to NULLABLE", table, column);
+                        }
+                    }
+                } else {
+                    List<Map<String, Object>> cols = jdbcTemplate.queryForList(
+                        "SELECT DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, CHARACTER_SET_NAME, COLLATION_NAME " +
+                        "FROM information_schema.COLUMNS " +
+                        "WHERE TABLE_SCHEMA = DATABASE() AND LOWER(TABLE_NAME) = ? AND LOWER(COLUMN_NAME) = ?",
+                        table.toLowerCase(), column.toLowerCase()
+                    );
+                    if (!cols.isEmpty()) {
+                        Map<String, Object> colInfo = cols.get(0);
+                        String isNullable = String.valueOf(colInfo.get("IS_NULLABLE"));
+                        if ("NO".equalsIgnoreCase(isNullable)) {
+                            String colType = String.valueOf(colInfo.get("COLUMN_TYPE"));
+                            String dataType = colInfo.get("DATA_TYPE") != null ? String.valueOf(colInfo.get("DATA_TYPE")).toLowerCase() : "";
+                            Object charSet = colInfo.get("CHARACTER_SET_NAME");
+                            Object collation = colInfo.get("COLLATION_NAME");
+                            Object defVal = colInfo.get("COLUMN_DEFAULT");
+
+                            StringBuilder ddl = new StringBuilder();
+                            ddl.append("ALTER TABLE `").append(table).append("` MODIFY COLUMN `").append(column).append("` ").append(colType);
+
+                            if (charSet != null && !"null".equalsIgnoreCase(charSet.toString())) {
+                                ddl.append(" CHARACTER SET ").append(charSet);
+                            }
+                            if (collation != null && !"null".equalsIgnoreCase(collation.toString())) {
+                                ddl.append(" COLLATE ").append(collation);
+                            }
+
+                            ddl.append(" NULL");
+
+                            if (defVal != null && !"null".equalsIgnoreCase(defVal.toString())) {
+                                String valStr = defVal.toString();
+                                boolean isStringType = dataType.contains("char") || dataType.contains("text") || dataType.contains("enum") || dataType.contains("set");
+                                if (isStringType && !valStr.startsWith("'")) {
+                                    ddl.append(" DEFAULT '").append(valStr.replace("'", "''")).append("'");
+                                } else {
+                                    ddl.append(" DEFAULT ").append(valStr);
+                                }
+                            } else {
+                                ddl.append(" DEFAULT NULL");
+                            }
+
+                            jdbcTemplate.execute(ddl.toString());
+                            log.info("DB migration applied: relaxed legacy {}.{} constraint to NULL (historical data, type, charset, and collation preserved)", table, column);
+                        }
+                    }
                 }
             } catch (Exception e) {
-                log.warn("DB migration skipped (drop {}.{}): {}", table, column, e.getMessage());
+                log.warn("DB migration skipped (relax {}.{}): {}", table, column, e.getMessage());
             }
         }
     }

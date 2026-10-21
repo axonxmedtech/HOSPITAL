@@ -116,9 +116,11 @@ describe('ReceptionistDashboard — APPOINTMENTS disabled', () => {
     });
     expect(hospitalService.getAppointmentStats).not.toHaveBeenCalled();
     expect(hospitalService.getAppointments).not.toHaveBeenCalled();
-    expect(screen.getByText("Today's Follow-Ups")).toBeInTheDocument();
-    expect(screen.getByText('Asha Rao')).toBeInTheDocument();
-    expect(screen.getByText('Queue')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("Today's Follow-Ups")).toBeInTheDocument();
+      expect(screen.getByText('Asha Rao')).toBeInTheDocument();
+      expect(screen.getByText('Queue')).toBeInTheDocument();
+    });
   });
 
   it('does not report a load failure to the user', async () => {
@@ -167,7 +169,11 @@ describe('ReceptionistDashboard — APPOINTMENTS enabled', () => {
 
   it('renders appointment and follow-up operational panels together', async () => {
     hospitalService.getAppointmentStats.mockResolvedValue({ today: 4, pending: 2, total: 9 });
-    hospitalService.getAppointments.mockResolvedValue({ content: [], totalPages: 1, totalElements: 0 });
+    hospitalService.getAppointments.mockResolvedValue({
+      content: [],
+      totalPages: 1,
+      totalElements: 0,
+    });
 
     await renderDashboard(['OPD', 'IPD', 'BILLING', 'APPOINTMENTS']);
 
