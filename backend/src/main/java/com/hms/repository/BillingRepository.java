@@ -13,6 +13,12 @@ import java.util.List;
 public interface BillingRepository extends JpaRepository<Billing, Long> {
     boolean existsByHospitalIdAndCustomId(Long hospitalId, String customId);
 
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query("UPDATE Billing b SET b.customId = :customId WHERE b.id = :id AND b.hospitalId = :hospitalId")
+    int updateCustomId(@org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
+                       @org.springframework.data.repository.query.Param("id") Long id,
+                       @org.springframework.data.repository.query.Param("customId") String customId);
+
     @org.springframework.data.jpa.repository.Query("SELECT MAX(b.id) FROM Billing b WHERE b.hospitalId = :hospitalId")
     Long findMaxIdByHospitalId(@org.springframework.data.repository.query.Param("hospitalId") Long hospitalId);
 

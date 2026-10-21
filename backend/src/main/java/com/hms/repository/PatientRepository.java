@@ -24,6 +24,15 @@ import java.util.Optional;
 public interface PatientRepository extends JpaRepository<Patient, Long> {
     boolean existsByHospitalIdAndCustomId(Long hospitalId, String customId);
 
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query("UPDATE Patient p SET p.customId = :customId WHERE p.id = :id AND p.hospitalId = :hospitalId")
+    int updateCustomId(@org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
+                       @org.springframework.data.repository.query.Param("id") Long id,
+                       @org.springframework.data.repository.query.Param("customId") String customId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT MAX(p.id) FROM Patient p WHERE p.hospitalId = :hospitalId")
+    Long findMaxIdByHospitalId(@org.springframework.data.repository.query.Param("hospitalId") Long hospitalId);
+
     boolean existsByHospitalIdAndCustomIdAndIdNot(Long hospitalId, String customId, Long id);
 
 
