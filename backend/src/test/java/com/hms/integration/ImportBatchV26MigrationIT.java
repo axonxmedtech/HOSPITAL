@@ -206,4 +206,114 @@ class ImportBatchV26MigrationIT {
                 .hasMessageContaining("ERROR_V26_TABLE_IMPORT_BATCHES_DOES_NOT_EXIST_CORRUPT_SCHEMA");
         exec("DROP TABLE IF EXISTS users");
     }
+
+    @Test
+    void incorrectExpression_reconcilesToCorrectExpressionAndUniqueIndex() throws SQLException {
+        createBaseImportBatchesTable();
+        // Seed with an incorrect generation expression (e.g. only matching 'FAILED')
+        exec("ALTER TABLE import_batches ADD COLUMN active_marker TINYINT GENERATED ALWAYS AS (CASE WHEN status = 'FAILED' THEN 1 END) VIRTUAL");
+        exec("ALTER TABLE import_batches ADD UNIQUE KEY uk_import_batch_active (hospital_id, file_sha256, active_marker)");
+        exec("INSERT INTO import_batches (public_id, hospital_id, entity_type, file_sha256, status) " +
+                "VALUES ('b1', 10, 'PATIENT', 'sha_1', 'COMPLETED')");
+
+        // Before migration, COMPLETED evaluated to NULL under the wrong expression
+        try (Connection c = connect(); Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery("SELECT active_marker FROM import_batches WHERE public_id = 'b1'")) {
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getObject("active_marker")).isNull();
+        }
+
+        migrate();
+
+        // After migration, expression is reconciled and COMPLETED evaluates to 1
+        try (Connection c = connect(); Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery(
+                     "SELECT GENERATION_EXPRESSION, EXTRA FROM information_schema.COLUMNS " +
+                     "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'import_batches' AND COLUMN_NAME = 'active_marker'")) {
+            assertThat(rs.next()).isTrue();
+            String expr = rs.getString("GENERATION_EXPRESSION");
+            assertThat(expr).contains("RUNNING").contains("COMPLETED").contains("PARTIAL");
+            assertThat(rs.getString("EXTRA")).contains("VIRTUAL GENERATED");
+        }
+
+        try (Connection c = connect(); Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery("SELECT active_marker FROM import_batches WHERE public_id = 'b1'")) {
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getInt("active_marker")).isEqualTo(1);
+        }
+    }
+
+    @Test
+    void incorrectIndex_sameNamedNonUnique_reconcilesToUniqueIndex() throws SQLException {
+        createBaseImportBatchesTable();
+        exec("ALTER TABLE import_batches ADD COLUMN active_marker TINYINT GENERATED ALWAYS AS (CASE WHEN status IN ('RUNNING','COMPLETED','PARTIAL') THEN 1 END) VIRTUAL");
+        // Create an index with the expected name uk_import_batch_active, but NON-UNIQUE and wrong columns
+        exec("ALTER TABLE import_batches ADD INDEX uk_import_batch_active (hospital_id, file_sha256)");
+
+        migrate();
+
+        // Verify index is now UNIQUE and has all 3 required columns
+        try (Connection c = connect(); Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery(
+                     "SELECT COLUMN_NAME, NON_UNIQUE FROM information_schema.STATISTICS " +
+                     "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'import_batches' AND INDEX_NAME = 'uk_import_batch_active' " +
+                     "ORDER BY SEQ_IN_INDEX")) {
+            List<String> cols = new ArrayList<>();
+            while (rs.next()) {
+                assertThat(rs.getInt("NON_UNIQUE")).isEqualTo(0); // must be UNIQUE
+                cols.add(rs.getString("COLUMN_NAME"));
+            }
+            assertThat(cols).containsExactly("hospital_id", "file_sha256", "active_marker");
+        }
+    }
+
+    @Test
+    void incorrectIndex_wrongColumnOrder_reconcilesToCorrectOrder() throws SQLException {
+        createBaseImportBatchesTable();
+        exec("ALTER TABLE import_batches ADD COLUMN active_marker TINYINT GENERATED ALWAYS AS (CASE WHEN status IN ('RUNNING','COMPLETED','PARTIAL') THEN 1 END) VIRTUAL");
+        // Create unique index with wrong column order (active_marker first)
+        exec("ALTER TABLE import_batches ADD UNIQUE KEY uk_import_batch_active (active_marker, hospital_id, file_sha256)");
+
+        migrate();
+
+        // Verify index order is reconciled
+        try (Connection c = connect(); Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery(
+                     "SELECT COLUMN_NAME, SEQ_IN_INDEX FROM information_schema.STATISTICS " +
+                     "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'import_batches' AND INDEX_NAME = 'uk_import_batch_active' " +
+                     "ORDER BY SEQ_IN_INDEX")) {
+            List<String> cols = new ArrayList<>();
+            while (rs.next()) {
+                cols.add(rs.getString("COLUMN_NAME"));
+            }
+            assertThat(cols).containsExactly("hospital_id", "file_sha256", "active_marker");
+        }
+    }
+
+    @Test
+    void interruptedMigration_canBeRerunSafely() throws SQLException {
+        createBaseImportBatchesTable();
+        // Simulate a state where active_marker exists as legacy column, but no index exists yet (interrupted)
+        exec("ALTER TABLE import_batches ADD COLUMN active_marker TINYINT NULL");
+        exec("INSERT INTO import_batches (public_id, hospital_id, entity_type, file_sha256, status, active_marker) " +
+                "VALUES ('b1', 10, 'PATIENT', 'sha_1', 'COMPLETED', 1)");
+
+        migrate();
+
+        // Insert another active row for a DIFFERENT file
+        exec("INSERT INTO import_batches (public_id, hospital_id, entity_type, file_sha256, status) " +
+                "VALUES ('b2', 10, 'PATIENT', 'sha_2', 'RUNNING')");
+
+        // Rerun migration (idempotent recovery)
+        migrate();
+
+        // Verify uniqueness is enforced: inserting a DUPLICATE active batch for sha_1 must fail at the database level
+        try (Connection c = connect(); Statement s = c.createStatement()) {
+            assertThatThrownBy(() -> s.execute(
+                    "INSERT INTO import_batches (public_id, hospital_id, entity_type, file_sha256, status) " +
+                    "VALUES ('b3', 10, 'PATIENT', 'sha_1', 'RUNNING')"))
+                    .isInstanceOf(SQLException.class)
+                    .hasMessageContaining("uk_import_batch_active");
+        }
+    }
 }

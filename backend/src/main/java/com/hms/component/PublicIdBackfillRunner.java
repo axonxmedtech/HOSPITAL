@@ -12,7 +12,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.security.SecureRandom;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -23,6 +25,12 @@ import java.util.UUID;
  *   <li><b>Bounded Memory (No OOM):</b> Cursor-based batched queries ({@value #BATCH_SIZE} rows/chunk).
  *       Selects only primitive/scalar fields (id, publicId, customId), avoiding entity graph inflation
  *       and respecting the 512 MB production heap ceiling.</li>
+ *   <li><b>Collision-Safe Unique ID Allocation:</b> Allocates readable custom IDs based on entity primary
+ *       key without modulo wraparound (e.g. ID 1 -> HSP1001, ID 9001 -> HSP10001). Pre-checks candidate
+ *       uniqueness against database records and tracks allocated IDs across the run.</li>
+ *   <li><b>Database-Enforced Uniqueness & Safe Retries:</b> Enforces database unique constraints.
+ *       Handles concurrent allocations, pre-existing arbitrary IDs, and races via per-record retry loops
+ *       in isolated transactions so startup never aborts due to avoidable collisions.</li>
  *   <li><b>Zero Concurrency Overwrites:</b> Eliminates {@code entityManager.merge(detachedEntity)}.
  *       Employs narrowly-scoped, conditional {@code UPDATE} statements directly targeting only
  *       {@code publicId} and {@code customId} columns. Concurrent edits to patient demographics,
@@ -30,13 +38,11 @@ import java.util.UUID;
  *   <li><b>Targeted Filtering:</b> Queries ONLY records where {@code publicId} or {@code customId}
  *       is missing, empty, or whitespace. Once backfilled, startup executes one fast query per table
  *       returning 0 rows in milliseconds.</li>
- *   <li><b>Strict Idempotency & Concurrency Safety:</b> Conditional predicate in UPDATE ensures
- *       that concurrent identifier updates in flight are preserved without collision.</li>
  *   <li><b>Correct Blank ID Handling:</b> Null, empty string, whitespace, and literal string "null"
  *       identifiers are cleanly repaired across hospitals, users, doctors, patients, appointments,
  *       billings, and audit logs.</li>
- *   <li><b>Safe Transactions & Interrupted Batch Resumption:</b> Each batch commits in its own
- *       transaction boundary. Interrupted runs cleanly resume at the first incomplete record.</li>
+ *   <li><b>Safe Transactions & Interrupted Batch Resumption:</b> Cursor advances by primary key {@code id}.
+ *       Interrupted runs cleanly resume at the first incomplete record.</li>
  * </ul>
  */
 @Component
@@ -45,6 +51,7 @@ public class PublicIdBackfillRunner implements CommandLineRunner {
     private static final Logger log = LoggerFactory.getLogger(PublicIdBackfillRunner.class);
 
     public static final int BATCH_SIZE = 250;
+    private static final int MAX_ALLOCATION_RETRIES = 10;
     private static final SecureRandom RANDOM = new SecureRandom();
 
     @PersistenceContext
@@ -66,12 +73,14 @@ public class PublicIdBackfillRunner implements CommandLineRunner {
         log.info("PublicIdBackfillRunner: starting bounded ID backfill check...");
         long totalStart = System.currentTimeMillis();
 
-        int hospitals = backfillHospitals();
-        int users = backfillUsers();
-        int doctors = backfillDoctors();
-        int patients = backfillPatients();
-        int appointments = backfillAppointments();
-        int billings = backfillBillings();
+        Set<String> allocatedCustomIds = new HashSet<>();
+
+        int hospitals = backfillHospitals(allocatedCustomIds);
+        int users = backfillUsers(allocatedCustomIds);
+        int doctors = backfillDoctors(allocatedCustomIds);
+        int patients = backfillPatients(allocatedCustomIds);
+        int appointments = backfillAppointments(allocatedCustomIds);
+        int billings = backfillBillings(allocatedCustomIds);
         int auditLogs = backfillAuditLogs();
 
         long elapsed = System.currentTimeMillis() - totalStart;
@@ -90,25 +99,24 @@ public class PublicIdBackfillRunner implements CommandLineRunner {
         return s == null || s.trim().isEmpty() || "null".equalsIgnoreCase(s.trim());
     }
 
-    private int backfillHospitals() {
+    private int backfillHospitals(Set<String> allocatedCustomIds) {
         return backfillEntityWithCustomId(
                 "Hospital",
                 "e.type",
                 "e.publicId IS NULL OR TRIM(e.publicId) = '' OR e.publicId = 'null' OR e.customId IS NULL OR TRIM(e.customId) = '' OR e.customId = 'null'",
                 (id, extra) -> {
                     HospitalType type = extra instanceof HospitalType ? (HospitalType) extra : HospitalType.HOSPITAL;
-                    String prefix = switch (type != null ? type : HospitalType.HOSPITAL) {
+                    return switch (type != null ? type : HospitalType.HOSPITAL) {
                         case CLINIC   -> "CLN";
                         case PHARMACY -> "PHR";
                         default       -> "HSP";
                     };
-                    long offset = id != null ? Math.abs(id) : RANDOM.nextInt(9000);
-                    return prefix + (1000 + (int) (offset % 9000));
-                }
+                },
+                allocatedCustomIds
         );
     }
 
-    private int backfillUsers() {
+    private int backfillUsers(Set<String> allocatedCustomIds) {
         return backfillEntityWithCustomId(
                 "User",
                 "e.role",
@@ -118,52 +126,52 @@ public class PublicIdBackfillRunner implements CommandLineRunner {
                     if ("RECEPTIONIST".equals(role) || "NURSE".equals(role)) {
                         return null;
                     }
-                    String prefix = "USR";
-                    if ("HOSPITAL_ADMIN".equals(role)) {
-                        prefix = "ADM";
-                    } else if ("DOCTOR".equals(role)) {
-                        prefix = "DOC";
-                    } else if ("SUPER_ADMIN".equals(role)) {
-                        prefix = "SUP";
-                    }
-                    return prefix + (1000 + RANDOM.nextInt(9000));
-                }
+                    if ("HOSPITAL_ADMIN".equals(role)) return "ADM";
+                    if ("DOCTOR".equals(role)) return "DOC";
+                    if ("SUPER_ADMIN".equals(role)) return "SUP";
+                    return "USR";
+                },
+                allocatedCustomIds
         );
     }
 
-    private int backfillDoctors() {
+    private int backfillDoctors(Set<String> allocatedCustomIds) {
         return backfillEntityWithCustomId(
                 "Doctor",
                 null,
                 "e.publicId IS NULL OR TRIM(e.publicId) = '' OR e.publicId = 'null' OR e.customId IS NULL OR TRIM(e.customId) = '' OR e.customId = 'null'",
-                (id, extra) -> "DOC" + (id != null ? id : (1000 + RANDOM.nextInt(9000)))
+                (id, extra) -> "DOC",
+                allocatedCustomIds
         );
     }
 
-    private int backfillPatients() {
+    private int backfillPatients(Set<String> allocatedCustomIds) {
         return backfillEntityWithCustomId(
                 "Patient",
                 null,
                 "e.publicId IS NULL OR TRIM(e.publicId) = '' OR e.publicId = 'null' OR e.customId IS NULL OR TRIM(e.customId) = '' OR e.customId = 'null'",
-                (id, extra) -> "PAT" + (id != null ? id : (1000 + RANDOM.nextInt(9000)))
+                (id, extra) -> "PAT",
+                allocatedCustomIds
         );
     }
 
-    private int backfillAppointments() {
+    private int backfillAppointments(Set<String> allocatedCustomIds) {
         return backfillEntityWithCustomId(
                 "Appointment",
                 null,
                 "e.publicId IS NULL OR TRIM(e.publicId) = '' OR e.publicId = 'null' OR e.customId IS NULL OR TRIM(e.customId) = '' OR e.customId = 'null'",
-                (id, extra) -> "APT" + (1000 + RANDOM.nextInt(9000))
+                (id, extra) -> "APT",
+                allocatedCustomIds
         );
     }
 
-    private int backfillBillings() {
+    private int backfillBillings(Set<String> allocatedCustomIds) {
         return backfillEntityWithCustomId(
                 "Billing",
                 null,
                 "e.publicId IS NULL OR TRIM(e.publicId) = '' OR e.publicId = 'null' OR e.customId IS NULL OR TRIM(e.customId) = '' OR e.customId = 'null'",
-                (id, extra) -> "BIL" + (1000 + RANDOM.nextInt(9000))
+                (id, extra) -> "BIL",
+                allocatedCustomIds
         );
     }
 
@@ -198,31 +206,18 @@ public class PublicIdBackfillRunner implements CommandLineRunner {
                 }
                 lastId = batchMaxId;
 
-                Integer updatedInBatch = transactionTemplate.execute(status -> {
-                    int count = 0;
-                    for (Object[] row : batch) {
-                        Long id = (Long) row[0];
-                        String existingPublicId = (String) row[1];
+                for (Object[] row : batch) {
+                    Long id = (Long) row[0];
+                    String existingPublicId = (String) row[1];
 
-                        if (isBlank(existingPublicId)) {
-                            int r = entityManager.createQuery(
-                                    "UPDATE AuditLog e SET e.publicId = :pubId " +
-                                    "WHERE e.id = :id AND (e.publicId IS NULL OR TRIM(e.publicId) = '' OR e.publicId = 'null')")
-                                    .setParameter("pubId", UUID.randomUUID().toString())
-                                    .setParameter("id", id)
-                                    .executeUpdate();
-                            if (r > 0) {
-                                count++;
-                            }
+                    if (isBlank(existingPublicId)) {
+                        boolean updated = updatePublicIdWithRetry("AuditLog", id);
+                        if (updated) {
+                            totalUpdated++;
                         }
                     }
-                    entityManager.clear();
-                    return count;
-                });
-
-                if (updatedInBatch != null) {
-                    totalUpdated += updatedInBatch;
                 }
+                entityManager.clear();
             }
 
             long duration = System.currentTimeMillis() - startTime;
@@ -241,25 +236,19 @@ public class PublicIdBackfillRunner implements CommandLineRunner {
     }
 
     @FunctionalInterface
-    private interface CustomIdGenerator {
-        String generate(Long id, Object extra);
+    private interface PrefixResolver {
+        String resolvePrefix(Long id, Object extra);
     }
 
     /**
      * Executes batched ID-windowed queries to find and backfill records with missing public/custom IDs.
-     *
-     * <p>Concurrency Safety Guarantee:
-     * <ul>
-     *   <li>Does NOT load or merge detached entity objects into the persistence context.</li>
-     *   <li>Executes targeted, conditional {@code UPDATE} queries strictly on the primary key and missing ID columns.</li>
-     *   <li>Concurrent changes to other columns (such as patient names, phone numbers, notes) remain untouched.</li>
-     * </ul>
      */
     private int backfillEntityWithCustomId(
             String entityName,
             String extraSelect,
             String missingCondition,
-            CustomIdGenerator customIdGenerator) {
+            PrefixResolver prefixResolver,
+            Set<String> allocatedCustomIds) {
 
         long lastId = 0L;
         int totalUpdated = 0;
@@ -292,57 +281,39 @@ public class PublicIdBackfillRunner implements CommandLineRunner {
                 }
                 lastId = batchMaxId;
 
-                Integer updatedInBatch = transactionTemplate.execute(status -> {
-                    int count = 0;
-                    for (Object[] row : batch) {
-                        Long id = (Long) row[0];
-                        String existingPublicId = (String) row[1];
-                        String existingCustomId = (String) row[2];
-                        Object extra = extraSelect != null && row.length > 3 ? row[3] : null;
+                for (Object[] row : batch) {
+                    Long id = (Long) row[0];
+                    String existingPublicId = (String) row[1];
+                    String existingCustomId = (String) row[2];
+                    Object extra = extraSelect != null && row.length > 3 ? row[3] : null;
 
-                        boolean needPublicId = isBlank(existingPublicId);
-                        boolean needCustomId = isBlank(existingCustomId);
+                    boolean needPublicId = isBlank(existingPublicId);
+                    boolean needCustomId = isBlank(existingCustomId);
 
-                        boolean recordUpdated = false;
+                    boolean recordUpdated = false;
 
-                        if (needPublicId) {
-                            int r = entityManager.createQuery(
-                                    "UPDATE " + entityName + " e SET e.publicId = :pubId " +
-                                    "WHERE e.id = :id AND (e.publicId IS NULL OR TRIM(e.publicId) = '' OR e.publicId = 'null')")
-                                    .setParameter("pubId", UUID.randomUUID().toString())
-                                    .setParameter("id", id)
-                                    .executeUpdate();
-                            if (r > 0) {
+                    if (needPublicId) {
+                        boolean pubOk = updatePublicIdWithRetry(entityName, id);
+                        if (pubOk) {
+                            recordUpdated = true;
+                        }
+                    }
+
+                    if (needCustomId && prefixResolver != null) {
+                        String prefix = prefixResolver.resolvePrefix(id, extra);
+                        if (prefix != null) {
+                            boolean custOk = updateCustomIdWithRetry(entityName, id, prefix, allocatedCustomIds);
+                            if (custOk) {
                                 recordUpdated = true;
                             }
                         }
-
-                        if (needCustomId && customIdGenerator != null) {
-                            String newCustomId = customIdGenerator.generate(id, extra);
-                            if (newCustomId != null) {
-                                int r = entityManager.createQuery(
-                                        "UPDATE " + entityName + " e SET e.customId = :custId " +
-                                        "WHERE e.id = :id AND (e.customId IS NULL OR TRIM(e.customId) = '' OR e.customId = 'null')")
-                                        .setParameter("custId", newCustomId)
-                                        .setParameter("id", id)
-                                        .executeUpdate();
-                                if (r > 0) {
-                                    recordUpdated = true;
-                                }
-                            }
-                        }
-
-                        if (recordUpdated) {
-                            count++;
-                        }
                     }
-                    entityManager.clear();
-                    return count;
-                });
 
-                if (updatedInBatch != null) {
-                    totalUpdated += updatedInBatch;
+                    if (recordUpdated) {
+                        totalUpdated++;
+                    }
                 }
+                entityManager.clear();
             }
 
             long duration = System.currentTimeMillis() - startTime;
@@ -358,5 +329,107 @@ public class PublicIdBackfillRunner implements CommandLineRunner {
                     entityName, lastId, e.getMessage(), e);
             throw e;
         }
+    }
+
+    /**
+     * Allocates a collision-safe, unique custom ID for an entity.
+     * Starts with prefix + (1000 + entityId) and checks both in-memory allocated set
+     * and the database. If a collision is found (e.g. from existing arbitrary IDs),
+     * it probes sequentially until a genuinely unique identifier is secured.
+     */
+    private String allocateUniqueCustomId(
+            String entityName, String prefix, Long id, Set<String> allocatedCustomIds, long attemptOffset) {
+        long baseNum = id != null ? Math.abs(id) : (1000L + RANDOM.nextInt(90000));
+        long candidateNum = 1000L + baseNum + attemptOffset;
+        String candidate = prefix + candidateNum;
+
+        long probe = 0;
+        while (allocatedCustomIds.contains(candidate) || isCustomIdTakenInDb(entityName, candidate)) {
+            probe++;
+            candidate = prefix + (candidateNum + probe);
+        }
+
+        allocatedCustomIds.add(candidate);
+        return candidate;
+    }
+
+    private boolean isCustomIdTakenInDb(String entityName, String customId) {
+        try {
+            Long count = entityManager.createQuery(
+                    "SELECT COUNT(e) FROM " + entityName + " e WHERE e.customId = :cid", Long.class)
+                    .setParameter("cid", customId)
+                    .getSingleResult();
+            return count != null && count > 0;
+        } catch (Exception e) {
+            log.warn("PublicIdBackfillRunner [{}]: error checking customId uniqueness for '{}': {}",
+                    entityName, customId, e.getMessage());
+            return true; // Fail closed by assuming taken to advance candidate
+        }
+    }
+
+    /**
+     * Updates customId with transaction isolation and collision retries.
+     * If a concurrent insertion causes a unique key constraint violation, the failed transaction
+     * rolls back cleanly and the method retries with the next unique candidate, guaranteeing
+     * that startup does not abort due to avoidable collisions.
+     */
+    private boolean updateCustomIdWithRetry(
+            String entityName, Long id, String prefix, Set<String> allocatedCustomIds) {
+        for (int attempt = 0; attempt < MAX_ALLOCATION_RETRIES; attempt++) {
+            final String candidate = allocateUniqueCustomId(entityName, prefix, id, allocatedCustomIds, attempt);
+            try {
+                Boolean success = transactionTemplate.execute(status -> {
+                    int r = entityManager.createQuery(
+                            "UPDATE " + entityName + " e SET e.customId = :custId " +
+                            "WHERE e.id = :id AND (e.customId IS NULL OR TRIM(e.customId) = '' OR e.customId = 'null')")
+                            .setParameter("custId", candidate)
+                            .setParameter("id", id)
+                            .executeUpdate();
+                    return r > 0;
+                });
+                if (Boolean.TRUE.equals(success)) {
+                    return true;
+                } else {
+                    // Another thread/process already backfilled or populated this record's customId
+                    return false;
+                }
+            } catch (Exception e) {
+                log.warn("PublicIdBackfillRunner [{}]: collision or error assigning customId '{}' to ID {}, retrying attempt {}/{}: {}",
+                        entityName, candidate, id, attempt + 1, MAX_ALLOCATION_RETRIES, e.getMessage());
+                allocatedCustomIds.add(candidate); // Mark candidate as consumed
+            }
+        }
+        log.error("PublicIdBackfillRunner [{}]: failed to allocate unique customId for ID {} after {} attempts",
+                entityName, id, MAX_ALLOCATION_RETRIES);
+        return false;
+    }
+
+    /**
+     * Updates publicId with isolated transaction and retry handling.
+     */
+    private boolean updatePublicIdWithRetry(String entityName, Long id) {
+        for (int attempt = 0; attempt < MAX_ALLOCATION_RETRIES; attempt++) {
+            final String pubId = UUID.randomUUID().toString();
+            try {
+                Boolean success = transactionTemplate.execute(status -> {
+                    int r = entityManager.createQuery(
+                            "UPDATE " + entityName + " e SET e.publicId = :pubId " +
+                            "WHERE e.id = :id AND (e.publicId IS NULL OR TRIM(e.publicId) = '' OR e.publicId = 'null')")
+                            .setParameter("pubId", pubId)
+                            .setParameter("id", id)
+                            .executeUpdate();
+                    return r > 0;
+                });
+                if (Boolean.TRUE.equals(success)) {
+                    return true;
+                } else {
+                    return false;
+                }
+            } catch (Exception e) {
+                log.warn("PublicIdBackfillRunner [{}]: error assigning publicId to ID {}, retrying: {}",
+                        entityName, id, e.getMessage());
+            }
+        }
+        return false;
     }
 }

@@ -139,11 +139,7 @@ public class LocalVpsClinicalDocumentStorage implements ClinicalDocumentStorage 
             Files.createDirectories(configured);
             // Canonical from here on, so containment is compared against real locations rather
             // than the spelling of a path.
-            try {
-                this.storageRoot = configured.toRealPath();
-            } catch (java.nio.file.AccessDeniedException e) {
-                this.storageRoot = configured.toAbsolutePath().normalize();
-            }
+            this.storageRoot = configured.toRealPath();
             restrictPermissions(storageRoot);
         } catch (IOException e) {
             throw new IllegalStateException(

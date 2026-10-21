@@ -563,13 +563,13 @@ class PublicIdBackfillRunnerTest {
                     .as("Allocated public ID must be strictly unique (no collision)")
                     .isTrue();
 
-            // Custom ID format matches tenant type
+            // Custom ID format matches tenant type (4 or more digits to prevent modulo collision when id >= 9000)
             if (h.getType() == HospitalType.CLINIC) {
-                assertThat(allocatedCustomId).matches("^CLN\\d{4}$");
+                assertThat(allocatedCustomId).matches("^CLN\\d{4,}$");
             } else if (h.getType() == HospitalType.PHARMACY) {
-                assertThat(allocatedCustomId).matches("^PHR\\d{4}$");
+                assertThat(allocatedCustomId).matches("^PHR\\d{4,}$");
             } else {
-                assertThat(allocatedCustomId).matches("^HSP\\d{4}$");
+                assertThat(allocatedCustomId).matches("^HSP\\d{4,}$");
             }
         }
 
@@ -716,4 +716,178 @@ class PublicIdBackfillRunnerTest {
             assertThat(p.getName()).isEqualTo("Concurrently Updated " + targetId);
         }
     }
+
+    /**
+     * Regression test for Codex finding R01:
+     * Hospital ID 1 and ID 9001 must NEVER collide (previous code used modulo 9000 which caused both to map to HSP1001).
+     */
+    @Test
+    void hospitalCustomIdCollision_id1AndId9001_allocateDistinctUniqueIds() throws Exception {
+        transactionTemplate.execute(status -> {
+            entityManager.createNativeQuery("DELETE FROM hospitals WHERE id IN (1, 9001)").executeUpdate();
+            entityManager.createNativeQuery(
+                    "INSERT INTO hospitals (id, name, public_id, custom_id, is_active, is_single_doctor, type, subscription_status, created_at) " +
+                    "VALUES (1, 'Hospital One', 'pub-h1-test', NULL, true, false, 'HOSPITAL', 'ACTIVE', CURRENT_TIMESTAMP)")
+                    .executeUpdate();
+            entityManager.createNativeQuery(
+                    "INSERT INTO hospitals (id, name, public_id, custom_id, is_active, is_single_doctor, type, subscription_status, created_at) " +
+                    "VALUES (9001, 'Hospital Nine Thousand One', 'pub-h9001-test', NULL, true, false, 'HOSPITAL', 'ACTIVE', CURRENT_TIMESTAMP)")
+                    .executeUpdate();
+            return null;
+        });
+
+        runner.run();
+
+        Hospital h1 = hospitalRepository.findById(1L).orElseThrow();
+        Hospital h9001 = hospitalRepository.findById(9001L).orElseThrow();
+
+        assertThat(h1.getCustomId()).isEqualTo("HSP1001");
+        assertThat(h9001.getCustomId()).isEqualTo("HSP10001");
+        assertThat(h1.getCustomId()).isNotEqualTo(h9001.getCustomId());
+    }
+
+    /**
+     * Regression test for R01:
+     * When an arbitrary existing custom ID (e.g. HSP1501) already exists in the database,
+     * backfilling an entity that would have naturally targeted HSP1501 must advance to the
+     * next free candidate (e.g. HSP1502) without failing or corrupting the existing ID.
+     */
+    @Test
+    void hospitalCustomId_withExistingArbitraryCustomId_findsNextAvailableWithoutFailing() throws Exception {
+        transactionTemplate.execute(status -> {
+            entityManager.createNativeQuery("DELETE FROM hospitals WHERE id IN (500, 501)").executeUpdate();
+            // Existing hospital already has HSP1501
+            entityManager.createNativeQuery(
+                    "INSERT INTO hospitals (id, name, public_id, custom_id, is_active, is_single_doctor, type, subscription_status, created_at) " +
+                    "VALUES (500, 'Pre-existing Custom Hospital', 'pub-h-existing', 'HSP1501', true, false, 'HOSPITAL', 'ACTIVE', CURRENT_TIMESTAMP)")
+                    .executeUpdate();
+            // New hospital with id 501 whose natural candidate is HSP1501
+            entityManager.createNativeQuery(
+                    "INSERT INTO hospitals (id, name, public_id, custom_id, is_active, is_single_doctor, type, subscription_status, created_at) " +
+                    "VALUES (501, 'Hospital 501 Missing ID', 'pub-h501-test', NULL, true, false, 'HOSPITAL', 'ACTIVE', CURRENT_TIMESTAMP)")
+                    .executeUpdate();
+            return null;
+        });
+
+        runner.run();
+
+        Hospital existing = hospitalRepository.findById(500L).orElseThrow();
+        Hospital backfilled = hospitalRepository.findById(501L).orElseThrow();
+
+        assertThat(existing.getCustomId()).as("Existing custom ID must be preserved verbatim").isEqualTo("HSP1501");
+        assertThat(backfilled.getCustomId()).as("Must allocate next unique candidate without collision").isEqualTo("HSP1502");
+        assertThat(existing.getCustomId()).isNotEqualTo(backfilled.getCustomId());
+    }
+
+    /**
+     * Regression test for R01:
+     * Review similar ID allocation across User, Appointment, and Billing.
+     * All must allocate valid, collision-free, uniquely prefixed custom IDs.
+     */
+    @Test
+    void similarEntities_usersAppointmentsBillings_allocateUniqueCustomIdsWithoutCollisions() throws Exception {
+        Hospital hospital = new Hospital();
+        hospital.setName("Test Tenant Hospital");
+        hospital.setPublicId("hsp-test-tenant-pub");
+        hospital.setIsActive(true);
+        hospital = hospitalRepository.saveAndFlush(hospital);
+        final Long hId = hospital.getId();
+
+        transactionTemplate.execute(status -> {
+            // Seed users with null customId
+            User admin = new User();
+            admin.setName("Admin User");
+            admin.setEmail("admin-backfill-test@axonx.com");
+            admin.setPassword("hashed");
+            admin.setRole("HOSPITAL_ADMIN");
+            admin.setHospitalId(hId);
+            admin.setIsActive(true);
+            admin.setPublicId("admin-pub-1");
+            admin.setCustomId(null);
+            entityManager.persist(admin);
+
+            User docUser = new User();
+            docUser.setName("Doctor User");
+            docUser.setEmail("doc-backfill-test@axonx.com");
+            docUser.setPassword("hashed");
+            docUser.setRole("DOCTOR");
+            docUser.setHospitalId(hId);
+            docUser.setIsActive(true);
+            docUser.setPublicId("doc-pub-1");
+            docUser.setCustomId(null);
+            entityManager.persist(docUser);
+
+            // Seed appointments with null customId
+            Appointment appt1 = new Appointment();
+            appt1.setHospitalId(hId);
+            appt1.setPatientId(1L);
+            appt1.setDoctorId(1L);
+            appt1.setAppointmentDate(java.time.LocalDate.now());
+            appt1.setAppointmentTime(java.time.LocalTime.of(10, 0));
+            appt1.setStatus("SCHEDULED");
+            appt1.setIsActive(true);
+            appt1.setPublicId("appt-pub-1");
+            appt1.setCustomId(null);
+            entityManager.persist(appt1);
+
+            Appointment appt2 = new Appointment();
+            appt2.setHospitalId(hId);
+            appt2.setPatientId(1L);
+            appt2.setDoctorId(1L);
+            appt2.setAppointmentDate(java.time.LocalDate.now());
+            appt2.setAppointmentTime(java.time.LocalTime.of(11, 0));
+            appt2.setStatus("SCHEDULED");
+            appt2.setIsActive(true);
+            appt2.setPublicId("appt-pub-2");
+            appt2.setCustomId(null);
+            entityManager.persist(appt2);
+
+            // Seed billings with null customId
+            Billing bill1 = new Billing();
+            bill1.setHospitalId(hId);
+            bill1.setPatientId(1L);
+            bill1.setDoctorId(1L);
+            bill1.setPublicId("bill-pub-1");
+            bill1.setCustomId(null);
+            bill1.setAmount(BigDecimal.valueOf(150.00));
+            entityManager.persist(bill1);
+
+            Billing bill2 = new Billing();
+            bill2.setHospitalId(hId);
+            bill2.setPatientId(1L);
+            bill2.setDoctorId(1L);
+            bill2.setPublicId("bill-pub-2");
+            bill2.setCustomId(null);
+            bill2.setAmount(BigDecimal.valueOf(300.00));
+            entityManager.persist(bill2);
+
+            return null;
+        });
+
+        runner.run();
+
+        // Verify users
+        User admin = userRepository.findByEmail("admin-backfill-test@axonx.com").orElseThrow();
+        User doc = userRepository.findByEmail("doc-backfill-test@axonx.com").orElseThrow();
+        assertThat(admin.getCustomId()).isNotNull().startsWith("ADM");
+        assertThat(doc.getCustomId()).isNotNull().startsWith("DOC");
+        assertThat(admin.getCustomId()).isNotEqualTo(doc.getCustomId());
+
+        // Verify appointments
+        List<Appointment> appts = appointmentRepository.findAll();
+        Set<String> apptCustomIds = new HashSet<>();
+        for (Appointment a : appts) {
+            assertThat(a.getCustomId()).isNotNull().startsWith("APT");
+            assertThat(apptCustomIds.add(a.getCustomId())).as("Appointment custom IDs must be unique").isTrue();
+        }
+
+        // Verify billings
+        List<Billing> bills = billingRepository.findAll();
+        Set<String> billCustomIds = new HashSet<>();
+        for (Billing b : bills) {
+            assertThat(b.getCustomId()).isNotNull().startsWith("BIL");
+            assertThat(billCustomIds.add(b.getCustomId())).as("Billing custom IDs must be unique").isTrue();
+        }
+    }
 }
+
