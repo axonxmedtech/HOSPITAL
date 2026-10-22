@@ -1,7 +1,5 @@
 package com.hms.config;
 
-import java.nio.charset.StandardCharsets;
-import java.util.HexFormat;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -11,6 +9,30 @@ final class LegacyColumnDdl {
     private static final Pattern INTEGER_TYPE = Pattern.compile(
             "^(tinyint|smallint|mediumint|int|bigint)(?:\\(([0-9]{1,3})\\))?( unsigned)?$");
     private static final Pattern CHARACTER_TYPE = Pattern.compile("^(varchar|char)\\(([0-9]{1,5})\\)$");
+
+    private static final Map<String, String> CHARSETS = Map.of(
+            "utf8mb4", "utf8mb4", "utf8mb3", "utf8mb3", "utf8", "utf8",
+            "latin1", "latin1", "ascii", "ascii");
+    private static final Map<String, String> COLLATIONS = Map.ofEntries(
+            Map.entry("utf8mb4_0900_ai_ci", "utf8mb4_0900_ai_ci"),
+            Map.entry("utf8mb4_0900_as_cs", "utf8mb4_0900_as_cs"),
+            Map.entry("utf8mb4_0900_bin", "utf8mb4_0900_bin"),
+            Map.entry("utf8mb4_general_ci", "utf8mb4_general_ci"),
+            Map.entry("utf8mb4_unicode_ci", "utf8mb4_unicode_ci"),
+            Map.entry("utf8mb4_unicode_520_ci", "utf8mb4_unicode_520_ci"),
+            Map.entry("utf8mb4_bin", "utf8mb4_bin"),
+            Map.entry("utf8mb3_general_ci", "utf8mb3_general_ci"),
+            Map.entry("utf8mb3_unicode_ci", "utf8mb3_unicode_ci"),
+            Map.entry("utf8mb3_bin", "utf8mb3_bin"),
+            Map.entry("utf8_general_ci", "utf8_general_ci"),
+            Map.entry("utf8_unicode_ci", "utf8_unicode_ci"),
+            Map.entry("utf8_bin", "utf8_bin"),
+            Map.entry("latin1_swedish_ci", "latin1_swedish_ci"),
+            Map.entry("latin1_general_ci", "latin1_general_ci"),
+            Map.entry("latin1_general_cs", "latin1_general_cs"),
+            Map.entry("latin1_bin", "latin1_bin"),
+            Map.entry("ascii_general_ci", "ascii_general_ci"),
+            Map.entry("ascii_bin", "ascii_bin"));
 
     private LegacyColumnDdl() {}
 
@@ -27,19 +49,11 @@ final class LegacyColumnDdl {
         StringBuilder ddl = new StringBuilder(target).append(type(metadata.get("COLUMN_TYPE")));
         Object charset = metadata.get("CHARACTER_SET_NAME");
         Object collation = metadata.get("COLLATION_NAME");
-        if (charset != null) ddl.append(" CHARACTER SET ").append(identifier(charset));
-        if (collation != null) ddl.append(" COLLATE ").append(identifier(collation));
-        ddl.append(" NULL DEFAULT ");
-        Object defaultValue = metadata.get("COLUMN_DEFAULT");
-        if (defaultValue == null) {
-            ddl.append("NULL");
-        } else {
-            // MySQL does not support a parameter marker in ALTER ... DEFAULT. Encode the
-            // value as bytes, not SQL text: quotes/backslashes/expressions cannot become code.
-            // Conversion from UTF-8 preserves the value even for a latin1 target column.
-            String hex = HexFormat.of().formatHex(defaultValue.toString().getBytes(StandardCharsets.UTF_8));
-            ddl.append("(CONVERT(X'").append(hex).append("' USING utf8mb4))");
-        }
+        if (charset != null) ddl.append(" CHARACTER SET ").append(catalogToken(CHARSETS, charset));
+        if (collation != null) ddl.append(" COLLATE ").append(catalogToken(COLLATIONS, collation));
+        // Identifier/type fragments come only from constant catalogs or parsed integers.
+        // The default is supplied separately through JDBC, never copied into SQL text.
+        ddl.append(" NULL DEFAULT ?");
         return ddl.toString();
     }
 
@@ -68,11 +82,11 @@ final class LegacyColumnDdl {
         throw new IllegalArgumentException("Unsupported legacy type; schema review required");
     }
 
-    private static String identifier(Object value) {
-        String text = value.toString();
-        if (!text.matches("[a-zA-Z0-9_]{1,64}")) {
-            throw new IllegalArgumentException("Invalid legacy charset/collation identifier");
+    private static String catalogToken(Map<String, String> catalog, Object value) {
+        String token = catalog.get(value.toString());
+        if (token == null) {
+            throw new IllegalArgumentException("Unsupported legacy charset/collation; schema review required");
         }
-        return text;
+        return token;
     }
 }

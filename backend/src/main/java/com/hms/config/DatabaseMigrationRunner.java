@@ -1409,7 +1409,8 @@ public class DatabaseMigrationRunner {
                         Map<String, Object> colInfo = cols.get(0);
                         String isNullable = String.valueOf(colInfo.get("IS_NULLABLE"));
                         if ("NO".equalsIgnoreCase(isNullable)) {
-                            jdbcTemplate.execute(LegacyColumnDdl.nullableColumn(table, column, colInfo));
+                            jdbcTemplate.update(LegacyColumnDdl.nullableColumn(table, column, colInfo),
+                                    colInfo.get("COLUMN_DEFAULT"));
                             log.info("DB migration applied: relaxed legacy {}.{} constraint to NULL (historical data, type, charset, and collation preserved)", table, column);
                         }
                     }

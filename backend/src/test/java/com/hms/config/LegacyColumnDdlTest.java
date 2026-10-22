@@ -3,9 +3,7 @@ package com.hms.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
-import java.util.HexFormat;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -26,7 +24,7 @@ class LegacyColumnDdlTest {
         m.put("COLUMN_DEFAULT", hostile);
         String ddl = LegacyColumnDdl.nullableColumn("hospital_settings", "shift_mode", m);
         assertThat(ddl).doesNotContain(hostile, "DROP TABLE");
-        assertThat(ddl).contains("CONVERT(X'" + HexFormat.of().formatHex(hostile.getBytes(StandardCharsets.UTF_8)));
+        assertThat(ddl).endsWith("NULL DEFAULT ?");
         assertThat(ddl).contains("VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL");
     }
 
@@ -58,11 +56,11 @@ class LegacyColumnDdlTest {
     }
 
     @Test
-    void nullAndLiteralNullDefaultsRemainDistinct() {
+    void defaultsAreAlwaysBoundOutsideTheStatementText() {
         Map<String, Object> m = metadata();
-        assertThat(LegacyColumnDdl.nullableColumn("hospital_settings", "shift_mode", m)).endsWith("DEFAULT NULL");
+        assertThat(LegacyColumnDdl.nullableColumn("hospital_settings", "shift_mode", m)).endsWith("DEFAULT ?");
         m.put("COLUMN_DEFAULT", "null");
         assertThat(LegacyColumnDdl.nullableColumn("hospital_settings", "shift_mode", m))
-                .endsWith("DEFAULT (CONVERT(X'6e756c6c' USING utf8mb4))");
+                .endsWith("DEFAULT ?");
     }
 }
