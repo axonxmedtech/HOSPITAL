@@ -140,6 +140,15 @@ public class IpdAdmissionService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found in context");
 
+        // Enforce selection in the shared service so every admission entry point fails closed.
+        if ((opdId != null && opdId <= 0) || (directPatientId != null && directPatientId <= 0)
+                || (directDoctorId != null && directDoctorId <= 0)) {
+            throw new IllegalArgumentException("Patient, OPD and doctor IDs must be positive");
+        }
+        if (opdId == null && directPatientId == null) {
+            throw new IllegalArgumentException("Please select a patient or OPD to admit");
+        }
+
         // IPD numbers are globally unique today. Lock one durable global hospital row before
         // reading MAX+1 so admissions from different tenants cannot allocate the same number.
         hospitalRepository.findGlobalIpdNumberLock()
@@ -156,27 +165,26 @@ public class IpdAdmissionService {
                 throw new ConflictException("OPD is already admitted to IPD");
             }
             patient = opd.getPatient();
-            if (patient != null) {
-                patient = patientRepository.findByIdAndHospitalIdForUpdate(patient.getId(), hospitalId)
-                        .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
+            if (patient == null) {
+                throw new IllegalArgumentException("Selected OPD has no patient");
             }
+            if (directPatientId != null && !directPatientId.equals(patient.getId())) {
+                throw new IllegalArgumentException("Selected patient does not match the selected OPD");
+            }
+            patient = patientRepository.findByIdAndHospitalIdForUpdate(patient.getId(), hospitalId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
             if (doctorId == null && opd.getDoctor() != null) {
                 doctorId = opd.getDoctor().getId();
             }
         }
 
         Long patientId = patient != null ? patient.getId() : directPatientId;
-        if (patientId == null) {
-            java.util.List<com.hms.entity.Patient> patients = patientRepository.findByHospitalIdAndIsActiveTrue(hospitalId);
-            if (patients != null && !patients.isEmpty()) {
-                patientId = patients.get(0).getId();
-                patient = patients.get(0);
-            } else {
-                throw new IllegalArgumentException("Please select a patient to admit");
-            }
-        } else if (patient == null) {
+        if (patient == null) {
             patient = patientRepository.findByIdAndHospitalIdForUpdate(patientId, hospitalId)
                     .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
+        }
+        if (!Boolean.TRUE.equals(patient.getIsActive())) {
+            throw new IllegalArgumentException("Selected patient is inactive");
         }
 
         if (doctorId == null) {
@@ -184,6 +192,13 @@ public class IpdAdmissionService {
             if (doctors != null && !doctors.isEmpty()) {
                 doctorId = doctors.get(0).getId();
             }
+        }
+
+        // Validate explicit, OPD-derived and default doctors alike before any persistence.
+        // Missing and foreign doctors have the same response to avoid tenant disclosure.
+        if (doctorId != null && doctorRepository
+                .findByIdAndHospitalIdAndIsActiveTrue(doctorId, hospitalId).isEmpty()) {
+            throw new ResourceNotFoundException("Doctor not found");
         }
 
         if (ipdAdmissionRepository.existsByHospitalIdAndPatientIdAndStatusIn(hospitalId, patient.getId(),
