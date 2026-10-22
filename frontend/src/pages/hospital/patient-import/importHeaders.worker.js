@@ -28,10 +28,10 @@ function parseCsvHeaders(text) {
   return headers.filter((h) => h.length > 0);
 }
 
-async function readZipEntries(buffer) {
+export async function readZipEntries(buffer) {
   const bytes = new Uint8Array(buffer);
   const view = new DataView(buffer);
-  const entries = {};
+  const entries = new Map();
 
   let eocdOffset = -1;
   for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) {
@@ -63,7 +63,7 @@ async function readZipEntries(buffer) {
     const dataOffset = localHeaderOffset + 30 + localFileNameLen + localExtraLen;
     const compressedData = bytes.subarray(dataOffset, dataOffset + compressedSize);
 
-    entries[name] = async () => {
+    entries.set(name, async () => {
       if (compression === 0) {
         return new TextDecoder().decode(compressedData);
       }
@@ -76,7 +76,7 @@ async function readZipEntries(buffer) {
         return new TextDecoder().decode(decompressedBuffer);
       }
       return '';
-    };
+    });
 
     p += 46 + fileNameLen + extraLen + commentLen;
   }
@@ -87,8 +87,8 @@ async function parseXlsxHeaders(buffer) {
   const zip = await readZipEntries(buffer);
 
   const sharedStrings = [];
-  if (zip['xl/sharedStrings.xml']) {
-    const xml = await zip['xl/sharedStrings.xml']();
+  if (zip.get('xl/sharedStrings.xml')) {
+    const xml = await zip.get('xl/sharedStrings.xml')();
     const matches = xml.matchAll(/<si>(.*?)<\/si>/gs);
     for (const match of matches) {
       const textMatches = [...match[1].matchAll(/<t[^>]*>(.*?)<\/t>/gs)];
@@ -97,16 +97,16 @@ async function parseXlsxHeaders(buffer) {
   }
 
   const sheets = [];
-  if (zip['xl/workbook.xml']) {
-    const wbXml = await zip['xl/workbook.xml']();
+  if (zip.get('xl/workbook.xml')) {
+    const wbXml = await zip.get('xl/workbook.xml')();
     const sheetMatches = wbXml.matchAll(/<sheet\s+[^>]*name="([^"]+)"[^>]*sheetId="([^"]+)"/g);
     let idx = 1;
     for (const match of sheetMatches) {
       const sheetName = match[1];
       const sheetFile = `xl/worksheets/sheet${idx}.xml`;
       const headers = [];
-      if (zip[sheetFile]) {
-        const sheetXml = await zip[sheetFile]();
+      if (zip.get(sheetFile)) {
+        const sheetXml = await zip.get(sheetFile)();
         const firstRowMatch = sheetXml.match(/<row[^>]*>(.*?)<\/row>/s);
         if (firstRowMatch) {
           const cellMatches = firstRowMatch[1].matchAll(

@@ -1,4 +1,7 @@
 -- Flyway V26: Reconcile import_batches active_marker and uniqueness invariant.
+-- flyway:safety-ack: Release owner approved scoped replacement of an invalid derived marker/index on 2026-10-22.
+-- See docs/release/PR51_V26_SAFETY.md for preconditions and recovery; no business rows are deleted.
+-- This candidate changes the V26 checksum: STOP if an environment already recorded an earlier V26; never repair history.
 --
 -- Safety and Invariant Rules:
 -- 1. Fail closed if duplicate active import batches exist (status IN ('RUNNING','COMPLETED','PARTIAL')).
@@ -54,9 +57,26 @@ SET @col_is_valid := (
       AND EXTRA LIKE '%VIRTUAL%'
       AND EXTRA LIKE '%GENERATED%'
       AND EXTRA NOT LIKE '%STORED%'
-      AND GENERATION_EXPRESSION LIKE '%RUNNING%'
-      AND GENERATION_EXPRESSION LIKE '%COMPLETED%'
-      AND GENERATION_EXPRESSION LIKE '%PARTIAL%'
+      AND COLUMN_TYPE NOT LIKE '%unsigned%'
+      -- Compare complete MySQL-8 canonical expressions, including literal boundaries.
+      -- Do not strip whitespace/quotes inside literals: 'RUN NING' is not 'RUNNING'.
+      -- MySQL reports charset introducers and, depending on version, escaped quotes.
+      AND EXISTS (
+          SELECT 1 FROM (
+              SELECT '_utf8mb4' AS introducer UNION ALL SELECT '_utf8mb3'
+              UNION ALL SELECT '_utf8' UNION ALL SELECT '_latin1'
+              UNION ALL SELECT '_ascii' UNION ALL SELECT ''
+          ) cs CROSS JOIN (
+              SELECT CONCAT(CHAR(92), CHAR(39)) AS literal_quote
+              UNION ALL SELECT CHAR(39)
+          ) q
+          WHERE BINARY GENERATION_EXPRESSION = BINARY CONCAT(
+              '(case when (`status` in (',
+              cs.introducer, q.literal_quote, 'RUNNING', q.literal_quote, ',',
+              cs.introducer, q.literal_quote, 'COMPLETED', q.literal_quote, ',',
+              cs.introducer, q.literal_quote, 'PARTIAL', q.literal_quote,
+              ')) then 1 end)')
+      )
 );
 
 -- Inspect if any index named uk_import_batch_active exists
@@ -108,6 +128,9 @@ SET @idx_is_valid_now := (
         GROUP BY INDEX_NAME
         HAVING col_count = 3
            AND max_non_unique = 0
+           AND SUM(SUB_PART IS NOT NULL) = 0
+           AND SUM(EXPRESSION IS NOT NULL) = 0
+           AND SUM(COLLATION <> 'A') = 0
            AND col_list = 'hospital_id,file_sha256,active_marker'
     ) _valid_idx
 );
@@ -136,9 +159,26 @@ SET @final_col_valid := (
       AND EXTRA LIKE '%VIRTUAL%'
       AND EXTRA LIKE '%GENERATED%'
       AND EXTRA NOT LIKE '%STORED%'
-      AND GENERATION_EXPRESSION LIKE '%RUNNING%'
-      AND GENERATION_EXPRESSION LIKE '%COMPLETED%'
-      AND GENERATION_EXPRESSION LIKE '%PARTIAL%'
+      AND COLUMN_TYPE NOT LIKE '%unsigned%'
+      -- Compare complete MySQL-8 canonical expressions, including literal boundaries.
+      -- Do not strip whitespace/quotes inside literals: 'RUN NING' is not 'RUNNING'.
+      -- MySQL reports charset introducers and, depending on version, escaped quotes.
+      AND EXISTS (
+          SELECT 1 FROM (
+              SELECT '_utf8mb4' AS introducer UNION ALL SELECT '_utf8mb3'
+              UNION ALL SELECT '_utf8' UNION ALL SELECT '_latin1'
+              UNION ALL SELECT '_ascii' UNION ALL SELECT ''
+          ) cs CROSS JOIN (
+              SELECT CONCAT(CHAR(92), CHAR(39)) AS literal_quote
+              UNION ALL SELECT CHAR(39)
+          ) q
+          WHERE BINARY GENERATION_EXPRESSION = BINARY CONCAT(
+              '(case when (`status` in (',
+              cs.introducer, q.literal_quote, 'RUNNING', q.literal_quote, ',',
+              cs.introducer, q.literal_quote, 'COMPLETED', q.literal_quote, ',',
+              cs.introducer, q.literal_quote, 'PARTIAL', q.literal_quote,
+              ')) then 1 end)')
+      )
 );
 
 SET @final_idx_valid := (
@@ -154,6 +194,9 @@ SET @final_idx_valid := (
         GROUP BY INDEX_NAME
         HAVING col_count = 3
            AND max_non_unique = 0
+           AND SUM(SUB_PART IS NOT NULL) = 0
+           AND SUM(EXPRESSION IS NOT NULL) = 0
+           AND SUM(COLLATION <> 'A') = 0
            AND col_list = 'hospital_id,file_sha256,active_marker'
     ) _final_valid_idx
 );

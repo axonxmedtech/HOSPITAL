@@ -1400,7 +1400,7 @@ public class DatabaseMigrationRunner {
                     }
                 } else {
                     List<Map<String, Object>> cols = jdbcTemplate.queryForList(
-                        "SELECT DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, CHARACTER_SET_NAME, COLLATION_NAME " +
+                        "SELECT DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, CHARACTER_SET_NAME, COLLATION_NAME, EXTRA " +
                         "FROM information_schema.COLUMNS " +
                         "WHERE TABLE_SCHEMA = DATABASE() AND LOWER(TABLE_NAME) = ? AND LOWER(COLUMN_NAME) = ?",
                         table.toLowerCase(), column.toLowerCase()
@@ -1409,37 +1409,7 @@ public class DatabaseMigrationRunner {
                         Map<String, Object> colInfo = cols.get(0);
                         String isNullable = String.valueOf(colInfo.get("IS_NULLABLE"));
                         if ("NO".equalsIgnoreCase(isNullable)) {
-                            String colType = String.valueOf(colInfo.get("COLUMN_TYPE"));
-                            String dataType = colInfo.get("DATA_TYPE") != null ? String.valueOf(colInfo.get("DATA_TYPE")).toLowerCase() : "";
-                            Object charSet = colInfo.get("CHARACTER_SET_NAME");
-                            Object collation = colInfo.get("COLLATION_NAME");
-                            Object defVal = colInfo.get("COLUMN_DEFAULT");
-
-                            StringBuilder ddl = new StringBuilder();
-                            ddl.append("ALTER TABLE `").append(table).append("` MODIFY COLUMN `").append(column).append("` ").append(colType);
-
-                            if (charSet != null && !"null".equalsIgnoreCase(charSet.toString())) {
-                                ddl.append(" CHARACTER SET ").append(charSet);
-                            }
-                            if (collation != null && !"null".equalsIgnoreCase(collation.toString())) {
-                                ddl.append(" COLLATE ").append(collation);
-                            }
-
-                            ddl.append(" NULL");
-
-                            if (defVal != null && !"null".equalsIgnoreCase(defVal.toString())) {
-                                String valStr = defVal.toString();
-                                boolean isStringType = dataType.contains("char") || dataType.contains("text") || dataType.contains("enum") || dataType.contains("set");
-                                if (isStringType && !valStr.startsWith("'")) {
-                                    ddl.append(" DEFAULT '").append(valStr.replace("'", "''")).append("'");
-                                } else {
-                                    ddl.append(" DEFAULT ").append(valStr);
-                                }
-                            } else {
-                                ddl.append(" DEFAULT NULL");
-                            }
-
-                            jdbcTemplate.execute(ddl.toString());
+                            jdbcTemplate.execute(LegacyColumnDdl.nullableColumn(table, column, colInfo));
                             log.info("DB migration applied: relaxed legacy {}.{} constraint to NULL (historical data, type, charset, and collation preserved)", table, column);
                         }
                     }

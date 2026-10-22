@@ -93,7 +93,8 @@ class ImportBatchV26MigrationIT {
                 .dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())
                 .locations("classpath:db/migration")
                 .baselineOnMigrate(true)
-                .baselineVersion("25") // baselined at V25 so only V26 runs
+                .baselineVersion("25")
+                .target("26") // isolate this test from later migrations requiring the full application schema
                 .load()
                 .migrate();
     }
@@ -316,4 +317,39 @@ class ImportBatchV26MigrationIT {
                     .hasMessageContaining("uk_import_batch_active");
         }
     }
+    @Test
+    void invertedExpressionContainingEveryStatus_isReconciledAndEnforcesUniqueness() throws SQLException {
+        createBaseImportBatchesTable();
+        exec("ALTER TABLE import_batches ADD COLUMN active_marker TINYINT GENERATED ALWAYS AS " +
+                "(CASE WHEN status NOT IN ('RUNNING','COMPLETED','PARTIAL') THEN 1 END) VIRTUAL");
+        exec("ALTER TABLE import_batches ADD UNIQUE KEY uk_import_batch_active (hospital_id,file_sha256,active_marker)");
+        exec("INSERT INTO import_batches(public_id,hospital_id,entity_type,file_sha256,status) " +
+                "VALUES('inverted-1',10,'PATIENT','same-file','COMPLETED')");
+        migrate();
+        try (Connection c = connect(); Statement statement = c.createStatement()) {
+            try (ResultSet rows = statement.executeQuery("SELECT active_marker FROM import_batches WHERE public_id='inverted-1'")) {
+                assertThat(rows.next()).isTrue();
+                assertThat(rows.getInt(1)).isEqualTo(1);
+            }
+            assertThatThrownBy(() -> statement.execute("INSERT INTO import_batches(public_id,hospital_id,entity_type,file_sha256,status) " +
+                    "VALUES('inverted-2',10,'PATIENT','same-file','RUNNING')"))
+                    .isInstanceOf(SQLException.class).hasMessageContaining("uk_import_batch_active");
+        }
+    }
+
+    @Test
+    void misleadingWhitespaceInStatusLiteral_isNotTreatedAsNormalization() throws SQLException {
+        createBaseImportBatchesTable();
+        exec("ALTER TABLE import_batches ADD COLUMN active_marker TINYINT GENERATED ALWAYS AS " +
+                "(CASE WHEN status IN ('RUN NING','COMPLETED','PARTIAL') THEN 1 END) VIRTUAL");
+        exec("INSERT INTO import_batches(public_id,hospital_id,entity_type,file_sha256,status) " +
+                "VALUES('whitespace-1',10,'PATIENT','file-1','RUNNING')");
+        migrate();
+        try (Connection c = connect(); Statement statement = c.createStatement();
+             ResultSet rows = statement.executeQuery("SELECT active_marker FROM import_batches WHERE public_id='whitespace-1'")) {
+            assertThat(rows.next()).isTrue();
+            assertThat(rows.getInt(1)).isEqualTo(1);
+        }
+    }
+
 }
