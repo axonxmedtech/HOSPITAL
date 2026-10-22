@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 import { useToast } from '../context/ToastContext';
 import hospitalService from '../services/hospitalService';
 import wardService from '../services/wardService';
 
 const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) => {
+  const formId = useId();
   const [wards, setWards] = useState([]);
   const [selectedWard, setSelectedWard] = useState(null);
   const [beds, setBeds] = useState([]);
@@ -59,7 +60,7 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
         console.error('Failed to load admission options', err);
       }
     };
-    loadData();
+    loadData().catch((err) => console.error('Failed to load admission options', err));
     setPrimaryDiagnosis(initialDiagnosis || opd?.problem || '');
   }, [isOpen, opd, initialDiagnosis]);
 
@@ -80,7 +81,7 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
         console.error('Failed to load beds', err);
       }
     };
-    loadBeds();
+    loadBeds().catch((err) => console.error('Failed to load beds', err));
   }, [selectedWard]);
 
   // Auto-select ward if only one is available
@@ -151,8 +152,14 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
           {/* Patient Selector (if direct admission without OPD) */}
           {!opd ? (
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Select Patient *</label>
+              <label
+                htmlFor={`${formId}-patient`}
+                className="block text-xs font-semibold text-gray-700 mb-1"
+              >
+                Select Patient *
+              </label>
               <select
+                id={`${formId}-patient`}
                 className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none"
                 value={selectedPatientId || ''}
                 onChange={(e) => setSelectedPatientId(Number(e.target.value))}
@@ -174,8 +181,14 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
           {/* Doctor Selector */}
           {!opd && (
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Attending Doctor (Optional)</label>
+              <label
+                htmlFor={`${formId}-doctor`}
+                className="block text-xs font-semibold text-gray-700 mb-1"
+              >
+                Attending Doctor (Optional)
+              </label>
               <select
+                id={`${formId}-doctor`}
                 className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none"
                 value={selectedDoctorId || ''}
                 onChange={(e) => setSelectedDoctorId(Number(e.target.value))}
@@ -192,7 +205,12 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
 
           {/* Ward Selector */}
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">Ward *</label>
+            <label
+              htmlFor={`${formId}-ward`}
+              className="block text-xs font-semibold text-gray-700 mb-1"
+            >
+              Ward *
+            </label>
             {wards && wards.length === 1 ? (
               <div className="w-full px-3 py-2 bg-gray-50 border border-gray-200 text-gray-800 rounded-xl text-sm font-semibold flex items-center justify-between">
                 <span>{wards[0].wardName}</span>
@@ -202,6 +220,7 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
               </div>
             ) : (
               <select
+                id={`${formId}-ward`}
                 className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none"
                 value={selectedWard || ''}
                 onChange={(e) => setSelectedWard(Number(e.target.value))}
@@ -218,10 +237,18 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
 
           {/* Bed Selector */}
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">Available Bed *</label>
+            <label
+              htmlFor={`${formId}-bed`}
+              className="block text-xs font-semibold text-gray-700 mb-1"
+            >
+              Available Bed *
+            </label>
             {selectedWard && (!beds || beds.length === 0) ? (
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center justify-between">
-                <span>⚠️ No available beds in this ward. Use &quot;Wards & Beds&quot; tab to free up or add a bed.</span>
+                <span>
+                  ⚠️ No available beds in this ward. Use &quot;Wards & Beds&quot; tab to free up or
+                  add a bed.
+                </span>
               </div>
             ) : beds && beds.length === 1 ? (
               <div className="w-full px-3 py-2 bg-gray-50 border border-gray-200 text-gray-800 rounded-xl text-sm font-semibold flex items-center justify-between">
@@ -234,6 +261,7 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
               </div>
             ) : (
               <select
+                id={`${formId}-bed`}
                 className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none"
                 value={selectedBed || ''}
                 onChange={(e) => setSelectedBed(Number(e.target.value))}
@@ -250,8 +278,14 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
 
           {/* Admission Type */}
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">Admission Type</label>
+            <label
+              htmlFor={`${formId}-type`}
+              className="block text-xs font-semibold text-gray-700 mb-1"
+            >
+              Admission Type
+            </label>
             <select
+              id={`${formId}-type`}
               className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none"
               value={admissionType}
               onChange={(e) => setAdmissionType(e.target.value)}
@@ -263,8 +297,14 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
 
           {/* Primary Diagnosis */}
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">Primary Diagnosis / Condition</label>
+            <label
+              htmlFor={`${formId}-diagnosis`}
+              className="block text-xs font-semibold text-gray-700 mb-1"
+            >
+              Primary Diagnosis / Condition
+            </label>
             <textarea
+              id={`${formId}-diagnosis`}
               className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none"
               rows={3}
               placeholder="e.g. Acute Respiratory Distress, Post-Op Monitoring..."
