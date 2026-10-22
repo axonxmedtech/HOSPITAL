@@ -88,6 +88,34 @@ class KnownDefaultCredentialGuardDatabaseTest {
     }
 
     @Test
+    void productionGuard_acceptsRotatedActiveAdminAndInactiveLegacyDefault() {
+        MockEnvironment prod = new MockEnvironment();
+        prod.setActiveProfiles("production");
+        KnownDefaultCredentialGuard prodGuard = new KnownDefaultCredentialGuard(userRepository, passwordEncoder, prod);
+
+        superAdmin("guard-prod-rotated-" + System.nanoTime() + "@t.test", "A-rotated-Passw0rd!", true);
+        superAdmin("guard-prod-legacy-" + System.nanoTime() + "@t.test",
+                KnownDefaultCredentials.DEVELOPMENT_SUPER_ADMIN_PASSWORD, false);
+
+        assertThatCode(prodGuard::verify).doesNotThrowAnyException();
+    }
+
+    @Test
+    void productionGuard_refusesActiveLegacyDefaultAccount() {
+        MockEnvironment prod = new MockEnvironment();
+        prod.setActiveProfiles("production");
+        KnownDefaultCredentialGuard prodGuard = new KnownDefaultCredentialGuard(userRepository, passwordEncoder, prod);
+
+        User legacy = superAdmin("guard-prod-legacy-" + System.nanoTime() + "@t.test",
+                KnownDefaultCredentials.DEVELOPMENT_SUPER_ADMIN_PASSWORD, true);
+
+        assertThatThrownBy(prodGuard::verify)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(legacy.getEmail())
+                .hasMessageContaining("[production]");
+    }
+
+    @Test
     void noSuperAdminAtAll_starts() {
         assertThatCode(stagingGuard::verify).doesNotThrowAnyException();
     }

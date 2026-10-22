@@ -93,28 +93,37 @@ jobs:
         if: always()
         run: |
           python3 - <<'EOF'
-          import glob, sys, xml.etree.ElementTree as ET
+          import os, sys, xml.etree.ElementTree as ET
 
-          required = [
-              "com.hms.integration.IpdConcurrencyIT",
-              "com.hms.integration.IcuBackfillIT",
-              "com.hms.integration.IcuFreshInstallIT",
-              "com.hms.service.hospital.HospitalDashboardServiceIT",
-              "com.hms.service.hospital.PharmacySaleTimestampIT",
-              "com.hms.service.hospital.IstDateBoundaryIT",
-              "com.hms.integration.PatientDuplicatePhoneConcurrencyIT",
-              "com.hms.integration.ImportSchemaFoundationIT",
-              "com.hms.integration.ImportedPatientWriterIT",
-              "com.hms.integration.ImportEngineIT",
-          ]
+          # Scoped test source directory
+          test_dir = "src/test/java" if os.path.isdir("src/test/java") else "backend/src/test/java"
+          if not os.path.isdir(test_dir):
+              print(f"Error: test directory not found: {test_dir}")
+              sys.exit(1)
+
+          # Dynamically discover all concrete *IT.java classes
+          required = []
+          for root, _, files in os.walk(test_dir):
+              for f in sorted(files):
+                  if f.endswith("IT.java"):
+                      full_path = os.path.join(root, f)
+                      with open(full_path, "r", encoding="utf-8") as src:
+                          if "abstract class" in src.read():
+                              continue
+                      cls_name = os.path.relpath(full_path, test_dir).replace(os.sep, ".")[:-5]
+                      required.append(cls_name)
 
           seen, problems = {}, []
-          for path in glob.glob("target/failsafe-reports/TEST-*.xml"):
-              s = ET.parse(path).getroot()
-              seen[s.get("name")] = (
-                  int(s.get("tests", 0)), int(s.get("skipped", 0)),
-                  int(s.get("failures", 0)), int(s.get("errors", 0)),
-              )
+          report_dirs = [d for d in ["target/failsafe-reports", "backend/target/failsafe-reports"] if os.path.isdir(d)]
+          for rdir in report_dirs:
+              for f in os.listdir(rdir):
+                  if f.startswith("TEST-") and f.endswith(".xml"):
+                      path = os.path.join(rdir, f)
+                      s = ET.parse(path).getroot()
+                      seen[s.get("name")] = (
+                          int(s.get("tests", 0)), int(s.get("skipped", 0)),
+                          int(s.get("failures", 0)), int(s.get("errors", 0)),
+                      )
 
           for cls in required:
               if cls not in seen:
@@ -135,7 +144,7 @@ jobs:
               for p in problems:
                   print(f"  - {p}")
               sys.exit(1)
-          print("\nAll required integration tests executed and passed.")
+          print(f"\nAll {len(required)} required integration tests executed and passed.")
           EOF
 
       - name: Upload Failsafe (integration) results

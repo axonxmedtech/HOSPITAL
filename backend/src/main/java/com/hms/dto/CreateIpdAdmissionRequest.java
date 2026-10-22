@@ -9,6 +9,8 @@ import com.hms.validation.NoEmoji;
 @Data
 public class CreateIpdAdmissionRequest {
     private Long opdId; // source OPD id
+    private Long patientId; // Direct patient id
+    private Long doctorId; // Direct doctor id
     private Long wardId;
     private Long bedId;
 

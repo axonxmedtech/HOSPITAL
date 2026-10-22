@@ -44,7 +44,7 @@ public class ImportBatch {
     private String mappingJson;
 
     /** Hospital-scoped fingerprint of the uploaded bytes; the exact-file retry guard. */
-    @Column(name = "file_sha256", nullable = false, length = 64)
+    @Column(name = "file_sha256", nullable = false, columnDefinition = "CHAR(64)")
     private String fileSha256;
 
     @Enumerated(EnumType.STRING)
@@ -90,14 +90,25 @@ public class ImportBatch {
     @Column(name = "undone_at")
     private LocalDateTime undoneAt;
 
-    /**
-     * Database-derived (V24): 1 while the batch is RUNNING, COMPLETED or PARTIAL, NULL otherwise,
-     * so that {@code uk_import_batch_active (hospital_id, file_sha256, active_marker)} allows at
-     * most one live batch per file per hospital while FAILED and UNDONE stay retryable. Never
-     * written by the application.
+    /*
+     * Database-derived (Flyway V24): 'active_marker' is a MySQL virtual generated column:
+     *   TINYINT GENERATED ALWAYS AS (CASE WHEN status IN ('RUNNING','COMPLETED','PARTIAL') THEN 1 END) VIRTUAL
+     * backing the database uniqueness index:
+     *   UNIQUE KEY uk_import_batch_active (hospital_id, file_sha256, active_marker)
+     *
+     * It allows at most one live batch per file per hospital while FAILED and UNDONE stay retryable.
+     * The application never reads or writes this column directly.
+     *
+     * Exactly like 'active_phone_key' in Patient (Flyway V21), this column is deliberately NOT mapped
+     * as an entity field. If mapped (even with insertable=false, updatable=false), Hibernate's
+     * ddl-auto=update compares Java Integer (Types.INTEGER) to MySQL TINYINT (Types.TINYINT) and attempts:
+     *   ALTER TABLE import_batches MODIFY COLUMN active_marker INTEGER;
+     * which MySQL 8 rejects with ER_UNSUPPORTED_ACTION (MySQL error 3106: "Changing the STORED status
+     * is not supported for generated columns").
+     *
+     * Leaving it unmapped allows MySQL to compute the virtual column on INSERT/UPDATE while Hibernate
+     * schema updates cleanly ignore it without producing conflicting DDL.
      */
-    @Column(name = "active_marker", insertable = false, updatable = false)
-    private Integer activeMarker;
 
     @PrePersist
     public void prePersist() {

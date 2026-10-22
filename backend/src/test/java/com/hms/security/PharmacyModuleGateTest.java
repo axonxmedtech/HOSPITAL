@@ -135,9 +135,49 @@ class PharmacyModuleGateTest {
     }
 
     @Test
-    void aClinicWithTheModuleWithdrawnIsAlsoUnaffected() {
-        h.tenant(HospitalType.CLINIC, List.of());
-        Method m = ModuleGateHarness.handler(PharmacyController.class, "dispenseMedicine");
-        assertThatCode(() -> check(m, PharmacyController.class)).doesNotThrowAnyException();
+    void aClinicWithoutThePharmacyModuleCannotDispenseOrRestock() {
+        for (String name : EMBEDDED_MUTATIONS) {
+            Method m = ModuleGateHarness.handler(PharmacyController.class, name);
+
+            h.tenant(HospitalType.CLINIC, WITHOUT_PHARMACY);
+            assertThatThrownBy(() -> check(m, PharmacyController.class))
+                    .as("%s must be denied for clinic without the PHARMACY module", name)
+                    .isInstanceOf(AccessDeniedException.class)
+                    .hasMessageContaining("PHARMACY");
+        }
+    }
+
+    @Test
+    void aClinicWithoutThePharmacyModuleIsAlsoLockedOutOfTheErpSurface() {
+        Method sale = ModuleGateHarness.handler(
+                com.hms.controller.pharmacy.PharmacySaleController.class, "createSale");
+        h.tenant(HospitalType.CLINIC, WITHOUT_PHARMACY);
+        assertThatThrownBy(() -> check(sale, com.hms.controller.pharmacy.PharmacySaleController.class))
+                .as("ERP sale must be denied for clinic without PHARMACY module")
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("PHARMACY");
+    }
+
+    @Test
+    void clinicAndHospitalWithoutPharmacyModule_cannotAccessPharmacistController() {
+        Method create = ModuleGateHarness.handler(
+                com.hms.controller.hospital.PharmacistController.class, "createPharmacist");
+
+        // Clinic without PHARMACY is denied
+        h.tenant(HospitalType.CLINIC, WITHOUT_PHARMACY);
+        assertThatThrownBy(() -> check(create, com.hms.controller.hospital.PharmacistController.class))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("PHARMACY");
+
+        // Hospital without PHARMACY is denied
+        h.tenant(HospitalType.HOSPITAL, WITHOUT_PHARMACY);
+        assertThatThrownBy(() -> check(create, com.hms.controller.hospital.PharmacistController.class))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("PHARMACY");
+
+        // Hospital with PHARMACY passes
+        h.tenant(HospitalType.HOSPITAL, WITH_PHARMACY);
+        assertThatCode(() -> check(create, com.hms.controller.hospital.PharmacistController.class))
+                .doesNotThrowAnyException();
     }
 }

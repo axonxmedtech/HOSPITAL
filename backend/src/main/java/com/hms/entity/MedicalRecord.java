@@ -128,6 +128,12 @@ public class MedicalRecord {
     @Column(name = "administered_items_json", length = 3000)
     private String administeredItemsJson;
 
+    /**
+     * Stored language mode for this consultation printout: EN, EN_MR, or EN_HI.
+     */
+    @Column(name = "consultation_language", length = 10)
+    private String consultationLanguage = "EN";
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

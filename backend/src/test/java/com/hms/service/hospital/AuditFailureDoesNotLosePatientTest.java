@@ -42,6 +42,7 @@ class AuditFailureDoesNotLosePatientTest {
     private static final long MINE = 4242L;
     private static final String PHONE = "9812345678";
 
+    @jakarta.persistence.PersistenceContext jakarta.persistence.EntityManager em;
     @Autowired PatientService patientService;
     @Autowired PatientRepository patientRepository;
     @Autowired TransactionTemplate transactionTemplate;
@@ -51,6 +52,11 @@ class AuditFailureDoesNotLosePatientTest {
 
     @BeforeEach
     void setUp() {
+        transactionTemplate.executeWithoutResult(s -> {
+            if (em.find(com.hms.entity.Hospital.class, MINE) == null) {
+                em.createNativeQuery("INSERT INTO hospitals(id,name,public_id,custom_id,is_active,is_single_doctor,type,subscription_status,created_at) VALUES(4242,'SYNTHETIC','audit-fixture-hospital','AUDIT-FIXTURE',true,false,'HOSPITAL','ACTIVE',CURRENT_TIMESTAMP)").executeUpdate();
+            }
+        });
         when(securityHelper.getCurrentHospitalId()).thenReturn(MINE);
         when(securityHelper.getCurrentUserEmail()).thenReturn("reception@hospital.test");
         when(securityHelper.getCurrentUserRole()).thenReturn("RECEPTIONIST");

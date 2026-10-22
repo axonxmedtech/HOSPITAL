@@ -25,11 +25,8 @@ import java.util.List;
  * parameter inside an `||` expression ("inconsistent binding"), so the
  * annotation is resolved from the JoinPoint: method first, then the class.
  *
- * Scope: HOSPITAL tenants only. Clinic and Pharmacy have never had module
- * enforcement, and three controllers they share with Hospital
- * (AppointmentController, HospitalFeeController, HospitalInventoryController)
- * are gated on modules their plan types cannot even be granted -- enforcing
- * here would permanently 403 them.
+ * Scope: HOSPITAL and CLINIC tenants. Standalone PHARMACY tenants bypass
+ * module gating because pharmacy ERP is their entire product rather than an optional module.
  *
  * Trust boundary: the tenant id comes from the authenticated principal, and
  * EVERYTHING else -- the tenant type that decides whether this gate runs at all,
@@ -74,10 +71,12 @@ public class ModuleAccessAspect {
         Hospital hospital = hospitalRepository.findById(details.getHospitalId())
                 .orElseThrow(() -> new AccessDeniedException("Access Denied: tenant is unavailable."));
 
-        // Only HOSPITAL tenants are module-gated (see class javadoc). A row with no type is read
-        // as HOSPITAL -- the stricter reading, and the same default FacilityAccessAspect applies.
+        // Only HOSPITAL and CLINIC tenants are module-gated (see class javadoc). Standalone PHARMACY
+        // tenants bypass module gating because pharmacy ERP is their entire product.
+        // A row with no type is read as HOSPITAL -- the stricter reading, and the same default
+        // FacilityAccessAspect applies.
         HospitalType type = hospital.getType() == null ? HospitalType.HOSPITAL : hospital.getType();
-        if (type != HospitalType.HOSPITAL) {
+        if (type != HospitalType.HOSPITAL && type != HospitalType.CLINIC) {
             return;
         }
 
@@ -87,7 +86,7 @@ public class ModuleAccessAspect {
             // 403, not 401: the session is valid, the plan simply lacks this module. A 401
             // makes the frontend interceptor clear the token and bounce the user to /login.
             throw new AccessDeniedException(
-                    "Access Denied: Module '" + requiredModule + "' is not enabled for your hospital.");
+                    "Access Denied: Module '" + requiredModule + "' is not enabled for your facility.");
         }
     }
 

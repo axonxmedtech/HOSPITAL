@@ -47,6 +47,16 @@ class EntitlementRegistryTest {
     }
 
     @Test
+    void existingAppliedPlansPreserveModulesWithoutSilentModification() {
+        assertThat(EntitlementRegistry.isSellable(HospitalType.CLINIC, EntitlementRegistry.PHARMACY)).isTrue();
+        assertThat(EntitlementRegistry.isSellable(HospitalType.HOSPITAL, EntitlementRegistry.PHARMACY)).isTrue();
+        assertThat(EntitlementRegistry.isSellable(HospitalType.PHARMACY, EntitlementRegistry.PHARMACY)).isTrue();
+
+        assertThat(EntitlementRegistry.normalizeAppliedPlanModules(HospitalType.CLINIC, List.of("OPD", "PHARMACY")))
+                .containsExactly("OPD", "PHARMACY");
+    }
+
+    @Test
     void onlyMultiPharmacyResolvesBranchCapability() {
         assertThat(EntitlementRegistry.resolve(List.of(EntitlementRegistry.TIER_MULTI_PHARMACY)))
                 .contains(EntitlementRegistry.PHARMACY_BRANCH);

@@ -11,6 +11,17 @@ import java.util.List;
 
 @Repository
 public interface BillingRepository extends JpaRepository<Billing, Long> {
+    boolean existsByHospitalIdAndCustomId(Long hospitalId, String customId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query("UPDATE Billing b SET b.customId = :customId WHERE b.id = :id AND b.hospitalId = :hospitalId")
+    int updateCustomId(@org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
+                       @org.springframework.data.repository.query.Param("id") Long id,
+                       @org.springframework.data.repository.query.Param("customId") String customId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT MAX(b.id) FROM Billing b WHERE b.hospitalId = :hospitalId")
+    Long findMaxIdByHospitalId(@org.springframework.data.repository.query.Param("hospitalId") Long hospitalId);
+
 
     /**
      * Tenant-scoped, row-locked read of one bill.
@@ -81,6 +92,10 @@ public interface BillingRepository extends JpaRepository<Billing, Long> {
     java.util.Optional<Billing> findByAppointmentId(Long appointmentId);
 
     java.util.Optional<Billing> findByOpdId(Long opdId);
+
+    java.util.Optional<Billing> findFirstByAppointmentIdOrderByIdDesc(Long appointmentId);
+
+    java.util.Optional<Billing> findFirstByOpdIdOrderByIdDesc(Long opdId);
 
     java.util.List<Billing> findByHospitalIdAndCreatedAtAfter(Long hospitalId, java.time.LocalDateTime createdAt);
 }

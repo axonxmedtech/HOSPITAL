@@ -56,6 +56,7 @@ class PatientRegistrationNumberTest {
 
     @BeforeEach
     void setUp() {
+        em.createNativeQuery("INSERT INTO hospitals(id,name,public_id,custom_id,is_active,is_single_doctor,type,subscription_status,created_at) VALUES(1,'SYNTHETIC','fixture-hospital','FIXTURE',true,false,'HOSPITAL','ACTIVE',CURRENT_TIMESTAMP)").executeUpdate();
         when(securityHelper.getCurrentHospitalId()).thenReturn(MINE);
         when(securityHelper.getCurrentUserEmail()).thenReturn("reception@hospital.test");
     }

@@ -62,7 +62,7 @@ public class DatabaseMigrationRunner {
         required.put("icu_wards", List.of("id", "hospital_id", "ward_id"));
         required.put("icu_stay", List.of("id", "hospital_id", "ipd_admission_id", "status", "active_marker"));
         required.put("vitals_records", List.of("gcs_eye", "gcs_verbal", "gcs_motor", "gcs_total",
-                "map_mmhg", "urine_output_ml", "supersedes_vitals_id"));
+                "map_mmhg", "cvp_cmh2o", "urine_output_ml", "supersedes_vitals_id"));
         return java.util.Collections.unmodifiableMap(required);
     }
 
@@ -81,6 +81,7 @@ public class DatabaseMigrationRunner {
             startupState.complete();
         } else {
             startupState.fail(missing);
+            throw new IllegalStateException("Mandatory schema missing at startup: " + missing);
         }
     }
 
@@ -117,7 +118,7 @@ public class DatabaseMigrationRunner {
         ensureInventoryServicesTables(); // NEW
         ensureHospitalSettingsBarcodeEnabled(); // NEW — pharmacy barcode toggle
         ensurePlanMultiOutletColumns(); // NEW — pharmacy multi-outlet plan support
-        dropLegacyNotNullNoDefaultColumns(); // NEW — remove NOT-NULL-no-default landmines
+        preserveAndRelaxLegacyNotNullColumns(); // NEW — relax NOT-NULL-no-default while preserving historical data
         ensureMedicineMasterManufacturerName(); // NEW — free-text manufacturer from purchase
         ensurePharmacyBranchSupport(); // NEW — Multi Pharmacy branches
         ensurePharmacyDataBranchColumns(); // NEW — branch_id on pharmacy data tables
@@ -240,7 +241,14 @@ public class DatabaseMigrationRunner {
         ensureIcuStayTable();          // ICU Phase 3
         migrateIcuWardsAndStays();
         ensurePatientDuplicatePhoneAckColumns(); // Patient duplicate prevention (Phase A)
-
+        
+        // Bilingual consultation instructions & statements
+        addColumnIfMissing("hospital_settings", "default_consultation_language", "VARCHAR(10) NOT NULL DEFAULT 'EN'");
+        addColumnIfMissing("medical_records", "consultation_language", "VARCHAR(10) NOT NULL DEFAULT 'EN'");
+        addColumnIfMissing("consultation_note_presets", "marathi_text", "VARCHAR(500) NULL");
+        addColumnIfMissing("consultation_note_presets", "hindi_text", "VARCHAR(500) NULL");
+        ensureConsultationStatementsTable();
+        ensureIcuCleaningTasksTable();
     }
 
     /**
@@ -1349,32 +1357,66 @@ public class DatabaseMigrationRunner {
     }
 
     /**
-     * Drop orphaned columns that are NOT NULL with no default and no longer mapped by
-     * any entity (hospital_settings.shift_mode, users.is_trainer). Hibernate omits them
-     * on INSERT, so MySQL rejects every insert on those tables (error 1364), breaking
-     * hospital/clinic/pharmacy onboarding and user creation. The canonical schema has
-     * no such columns — this realigns older databases with it.
+     * Realign orphaned legacy columns that were historically defined as NOT NULL without a default
+     * and are no longer mapped by active JPA entities (hospital_settings.shift_mode, users.is_trainer,
+     * doctors.is_anaesthetist).
+     *
+     * In accordance with AxonX HMS data safety policy:
+     * 1. Historical clinical, user, and configuration values are NEVER deleted or dropped.
+     * 2. The column constraint is dynamically and idempotently modified to NULL DEFAULT NULL
+     *    (preserving its existing data type and any existing default).
+     * 3. This resolves MySQL error 1364 on new Hibernate INSERTs without destroying historical records.
      */
-    private void dropLegacyNotNullNoDefaultColumns() {
+    private void preserveAndRelaxLegacyNotNullColumns() {
         String[][] orphanColumns = {
             {"hospital_settings", "shift_mode"},
             {"users", "is_trainer"},
             {"doctors", "is_anaesthetist"},
         };
+        boolean isH2 = false;
+        try (java.sql.Connection conn = jdbcTemplate.getDataSource().getConnection()) {
+            java.sql.DatabaseMetaData meta = conn.getMetaData();
+            String productName = meta.getDatabaseProductName();
+            isH2 = productName != null && productName.toLowerCase().contains("h2");
+        } catch (Exception e) {
+            log.debug("Could not inspect database product name: {}", e.getMessage());
+        }
+
         for (String[] tc : orphanColumns) {
             String table = tc[0], column = tc[1];
             try {
-                Integer count = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM information_schema.COLUMNS " +
-                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
-                    Integer.class, table, column
-                );
-                if (count != null && count > 0) {
-                    jdbcTemplate.execute("ALTER TABLE `" + table + "` DROP COLUMN `" + column + "`");
-                    log.info("DB migration applied: dropped legacy {}.{} column", table, column);
+                if (isH2) {
+                    List<Map<String, Object>> cols = jdbcTemplate.queryForList(
+                        "SELECT IS_NULLABLE FROM information_schema.COLUMNS " +
+                        "WHERE UPPER(TABLE_NAME) = ? AND UPPER(COLUMN_NAME) = ?",
+                        table.toUpperCase(), column.toUpperCase()
+                    );
+                    if (!cols.isEmpty()) {
+                        String isNullable = String.valueOf(cols.get(0).get("IS_NULLABLE"));
+                        if ("NO".equalsIgnoreCase(isNullable)) {
+                            jdbcTemplate.execute("ALTER TABLE " + table + " ALTER COLUMN " + column + " SET NULL");
+                            log.info("DB migration applied (H2): relaxed legacy {}.{} constraint to NULLABLE", table, column);
+                        }
+                    }
+                } else {
+                    List<Map<String, Object>> cols = jdbcTemplate.queryForList(
+                        "SELECT DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, CHARACTER_SET_NAME, COLLATION_NAME, EXTRA " +
+                        "FROM information_schema.COLUMNS " +
+                        "WHERE TABLE_SCHEMA = DATABASE() AND LOWER(TABLE_NAME) = ? AND LOWER(COLUMN_NAME) = ?",
+                        table.toLowerCase(), column.toLowerCase()
+                    );
+                    if (!cols.isEmpty()) {
+                        Map<String, Object> colInfo = cols.get(0);
+                        String isNullable = String.valueOf(colInfo.get("IS_NULLABLE"));
+                        if ("NO".equalsIgnoreCase(isNullable)) {
+                            jdbcTemplate.update(LegacyColumnDdl.nullableColumn(table, column, colInfo),
+                                    colInfo.get("COLUMN_DEFAULT"));
+                            log.info("DB migration applied: relaxed legacy {}.{} constraint to NULL (historical data, type, charset, and collation preserved)", table, column);
+                        }
+                    }
                 }
             } catch (Exception e) {
-                log.warn("DB migration skipped (drop {}.{}): {}", table, column, e.getMessage());
+                log.warn("DB migration skipped (relax {}.{}): {}", table, column, e.getMessage());
             }
         }
     }
@@ -2284,7 +2326,7 @@ public class DatabaseMigrationRunner {
                         "  public_id VARCHAR(255) NOT NULL," +
                         "  hospital_id BIGINT NOT NULL," +
                         "  name VARCHAR(100) NOT NULL," +
-                        "  status VARCHAR(20) NOT NULL DEFAULT 'AVAILABLE'," +
+                    "  status VARCHAR(20) NOT NULL DEFAULT 'PENDING'," +
                         "  current_surgery_id BIGINT NULL," +
                         "  turnover_minutes INT NOT NULL DEFAULT 15," +
                         "  source_ward_id BIGINT NULL," +
@@ -3190,6 +3232,88 @@ public class DatabaseMigrationRunner {
         ensureIcuWardsTable();
         backfillExistingIcuWards();
         backfillIcuStaysForCurrentOccupants();
+    }
+
+    private void ensureConsultationStatementsTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'consultation_statements'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE consultation_statements (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  hospital_type VARCHAR(20) NOT NULL DEFAULT 'ALL'," +
+                    "  category VARCHAR(30) NOT NULL," +
+                    "  english_text VARCHAR(500) NOT NULL," +
+                    "  marathi_text VARCHAR(500) NOT NULL," +
+                    "  hindi_text VARCHAR(500) NOT NULL," +
+                    "  display_order INT NOT NULL DEFAULT 0," +
+                    "  is_active TINYINT(1) NOT NULL DEFAULT 1," +
+                    "  created_at DATETIME(6) NOT NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  INDEX idx_stmt_type_cat (hospital_type, category)" +
+                    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+                );
+                log.info("DB migration applied: consultation_statements table created");
+
+                // Seed initial statements
+                String seedSql = "INSERT INTO consultation_statements (hospital_type, category, english_text, marathi_text, hindi_text, display_order, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, NOW(6))";
+                // Medicine Instructions
+                jdbcTemplate.update(seedSql, "ALL", "MEDICINE_INSTRUCTION", "Take with water", "पाण्यासोबत घ्या", "पानी के साथ लें", 1);
+                jdbcTemplate.update(seedSql, "ALL", "MEDICINE_INSTRUCTION", "At bedtime", "झोपण्यापूर्वी घ्या", "सोते समय लें", 2);
+                jdbcTemplate.update(seedSql, "ALL", "MEDICINE_INSTRUCTION", "In the morning", "सकाळी घ्या", "सुबह लें", 3);
+                jdbcTemplate.update(seedSql, "ALL", "MEDICINE_INSTRUCTION", "Apply externally", "फक्त बाह्य वापरासाठी", "केवल बाहरी उपयोग के लिए", 4);
+                jdbcTemplate.update(seedSql, "ALL", "MEDICINE_INSTRUCTION", "Before sleep", "झोपण्यापूर्वी", "सोने से पहले", 5);
+                jdbcTemplate.update(seedSql, "ALL", "MEDICINE_INSTRUCTION", "Take on an empty stomach", "उपाशीपोटी घ्या", "खाली पेट लें", 6);
+                jdbcTemplate.update(seedSql, "ALL", "MEDICINE_INSTRUCTION", "Chew properly before swallowing", "गिळण्यापूर्वी नीट चावून घ्या", "निगलने से पहले ठीक से चबाएं", 7);
+                // Doctor Advice
+                jdbcTemplate.update(seedSql, "ALL", "DOCTOR_ADVICE", "Drink more water.", "जास्त पाणी प्या.", "अधिक पानी पिएं।", 1);
+                jdbcTemplate.update(seedSql, "ALL", "DOCTOR_ADVICE", "Avoid oily food.", "तेलकट पदार्थ खाऊ नका.", "तैलीय भोजन से बचें।", 2);
+                jdbcTemplate.update(seedSql, "ALL", "DOCTOR_ADVICE", "Take adequate rest.", "पुरेशी विश्रांती घ्या.", "पर्याप्त आराम करें।", 3);
+                jdbcTemplate.update(seedSql, "ALL", "DOCTOR_ADVICE", "Avoid spicy food for 7 days.", "७ दिवस तिखट पदार्थ टाळा.", "७ दिनों तक मसालेदार भोजन से बचें।", 4);
+                jdbcTemplate.update(seedSql, "ALL", "DOCTOR_ADVICE", "Walk 30 minutes daily.", "दररोज ३० मिनिटे चाला.", "प्रतिदिन ३० मिनट टहलें।", 5);
+                log.info("DB migration applied: consultation_statements initial seeds inserted");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (consultation_statements): {}", e.getMessage());
+        }
+    }
+
+
+    private void ensureIcuCleaningTasksTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'icu_cleaning_tasks'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE icu_cleaning_tasks (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  ward_id BIGINT NULL," +
+                    "  bed_id BIGINT NULL," +
+                    "  ward_name VARCHAR(255) NULL," +
+                    "  bed_number VARCHAR(100) NULL," +
+                    "  task_description VARCHAR(500) NOT NULL," +
+                    "  priority VARCHAR(20) NOT NULL DEFAULT 'MEDIUM'," +
+                    "  status VARCHAR(20) NOT NULL DEFAULT 'PENDING'," +
+                    "  assigned_to VARCHAR(255) NULL," +
+                    "  created_by VARCHAR(255) NOT NULL," +
+                    "  created_at DATETIME(6) NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  INDEX idx_icu_cleaning_hosp_status (hospital_id, status)" +
+                    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+                );
+                log.info("DB migration applied: icu_cleaning_tasks table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (icu_cleaning_tasks): {}", e.getMessage());
+        }
     }
 
 }

@@ -42,6 +42,7 @@ class ModuleAccessTenantTypeTrustTest {
 
     /** A plan WITHOUT the OT module, so an enforced gate must deny. */
     private static final List<String> NO_OT = List.of("OPD", "BILLING");
+    private static final List<String> WITH_OT = List.of("OPD", "BILLING", "OT");
 
     ModuleAccessTenantTypeTrustTest() {
         ReflectionTestUtils.setField(aspect, "hospitalRepository", hospitalRepository);
@@ -119,15 +120,15 @@ class ModuleAccessTenantTypeTrustTest {
                 .isInstanceOf(AccessDeniedException.class);
     }
 
-    // ── Non-hospital tenant types keep their existing intentional skip ─────────
+    // ── Non-hospital tenant types ─────────
 
     @Test
-    void aClinicIsSkipped_evenWhenItsTokenClaimsHospital() {
+    void aClinicIsEnforced_evenWhenItsTokenClaimsHospital() {
         row(HospitalType.CLINIC, NO_OT);
         tokenClaims(HospitalType.HOSPITAL.name(), NO_OT);
-        assertThatCode(this::invoke)
-                .as("the clinic skip is existing product policy and the row is what establishes it")
-                .doesNotThrowAnyException();
+        assertThatThrownBy(this::invoke)
+                .as("clinics are module-gated and lack OT")
+                .isInstanceOf(AccessDeniedException.class);
     }
 
     @Test
@@ -141,11 +142,11 @@ class ModuleAccessTenantTypeTrustTest {
 
     @Test
     void aTypeCorrectionTakesEffectOnTheNextRequest_withoutANewToken() {
-        row(HospitalType.CLINIC, NO_OT);
-        tokenClaims(HospitalType.CLINIC.name(), NO_OT);
+        row(HospitalType.CLINIC, WITH_OT);
+        tokenClaims(HospitalType.CLINIC.name(), WITH_OT);
         assertThatCode(this::invoke).doesNotThrowAnyException();
 
-        // The row is corrected to HOSPITAL. The principal, and its CLINIC claim, are untouched.
+        // The row is corrected to HOSPITAL with NO_OT. The principal, and its CLINIC claim, are untouched.
         row(HospitalType.HOSPITAL, NO_OT);
         assertThatThrownBy(this::invoke)
                 .as("the same session must follow the current row, exactly as module revocation does")

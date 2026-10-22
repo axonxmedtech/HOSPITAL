@@ -201,4 +201,17 @@ class PlatformHospitalDeleteTest {
         assertThatThrownBy(() -> service.deleteHospital("no-such-public-id"))
                 .isInstanceOf(com.hms.exception.ResourceNotFoundException.class);
     }
+
+    @org.junit.jupiter.api.AfterEach
+    void cleanUpCreatedFacilities() {
+        List<Hospital> remaining = hospitalRepository.findAll().stream()
+                .filter(h -> h.getName() != null && h.getName().startsWith("SA1 "))
+                .toList();
+        for (Hospital h : remaining) {
+            try {
+                service.deleteHospital(h.getPublicId());
+            } catch (Exception ignored) {}
+        }
+        jdbc.execute("DELETE FROM medicine_list WHERE name LIKE 'SA1-Catalogue-%'");
+    }
 }

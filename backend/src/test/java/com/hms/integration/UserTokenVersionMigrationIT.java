@@ -77,6 +77,7 @@ class UserTokenVersionMigrationIT {
                 .locations("classpath:db/migration")
                 .baselineOnMigrate(true)
                 .baselineVersion("24")   // everything up to V24 is already applied; only V25 runs
+                .target("25")
                 .load()
                 .migrate();
     }

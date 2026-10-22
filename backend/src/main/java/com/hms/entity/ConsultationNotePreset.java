@@ -44,6 +44,12 @@ public class ConsultationNotePreset {
     @Column(name = "text", nullable = false, length = 255)
     private String text;
 
+    @Column(name = "marathi_text", length = 500)
+    private String marathiText;
+
+    @Column(name = "hindi_text", length = 500)
+    private String hindiText;
+
     @Column(name = "display_order", nullable = false)
     private Integer displayOrder = 0;
 

@@ -578,6 +578,25 @@ class LocalVpsClinicalDocumentStorageTest {
                 PosixFilePermission.GROUP_EXECUTE, PosixFilePermission.OTHERS_EXECUTE);
     }
 
+    /** If canonicalization or permission resolution fails, initialization must fail closed rather than falling back to lexical paths. */
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void canonicalizationFailureFailsInitializationSafely() throws Exception {
+        Path inaccessible = Files.createDirectory(root.resolve("inaccessible"));
+        if (inaccessible.getFileSystem().supportedFileAttributeViews().contains("posix")) {
+            Files.setPosixFilePermissions(inaccessible, Set.of());
+            try {
+                var badStorage = new LocalVpsClinicalDocumentStorage(inaccessible.resolve("sub").toString(), new MockEnvironment());
+                assertThatThrownBy(badStorage::initialise)
+                        .isInstanceOf(IllegalStateException.class)
+                        .hasMessageContaining("could not be prepared");
+            } finally {
+                Files.setPosixFilePermissions(inaccessible, Set.of(
+                        PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE, PosixFilePermission.OWNER_EXECUTE));
+            }
+        }
+    }
+
     private static Path rootOf(LocalVpsClinicalDocumentStorage storage) {
         return (Path) org.springframework.test.util.ReflectionTestUtils.getField(storage, "storageRoot");
     }

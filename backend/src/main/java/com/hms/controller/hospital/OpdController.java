@@ -203,13 +203,24 @@ public class OpdController {
         boolean incPrescription = printSettings == null || !Boolean.FALSE.equals(printSettings.getPrintPrescription());
         boolean incInClinic     = printSettings == null || !Boolean.FALSE.equals(printSettings.getPrintInClinic());
 
+        // Resolve consultation language: explicit param overrides, else fallback to medical record's stored language, then hospital setting
+        String effectiveLang = lang;
+        if ((effectiveLang == null || effectiveLang.isBlank() || "en".equalsIgnoreCase(effectiveLang))
+                && medicalRecord != null && medicalRecord.getConsultationLanguage() != null && !medicalRecord.getConsultationLanguage().isBlank()) {
+            effectiveLang = medicalRecord.getConsultationLanguage();
+        }
+        if ((effectiveLang == null || effectiveLang.isBlank() || "en".equalsIgnoreCase(effectiveLang))
+                && printSettings != null && printSettings.getDefaultConsultationLanguage() != null && !printSettings.getDefaultConsultationLanguage().isBlank()) {
+            effectiveLang = printSettings.getDefaultConsultationLanguage();
+        }
+
         java.util.List<byte[]> parts = new java.util.ArrayList<>();
         try {
             // 1. Case paper — with lab tests + follow-up.
             if (incCasePaper) {
                 java.util.List<com.hms.entity.LabOrder> labOrders = medicalRecord != null
                         ? labOrderRepository.findByMedicalRecordId(medicalRecord.getId()) : java.util.List.of();
-                parts.add(pdfService.generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord, labOrders, lang)
+                parts.add(pdfService.generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord, labOrders, effectiveLang)
                         .readAllBytes());
             }
 
@@ -232,7 +243,7 @@ public class OpdController {
                                 .orElse(null);
                     }
                     parts.add(pdfService.generatePrescriptionPdf(hospital, rxDoctor, patient, medicalRecord,
-                            prescriptions, lang).readAllBytes());
+                            prescriptions, effectiveLang).readAllBytes());
                 }
             }
 

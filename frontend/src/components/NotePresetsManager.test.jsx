@@ -1,5 +1,7 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import hospitalService from '../services/hospitalService';
+import NotePresetsManager from './NotePresetsManager';
 
 // Mock the toast context and API service the component depends on.
 vi.mock('../context/ToastContext', () => ({
@@ -13,11 +15,9 @@ vi.mock('../services/hospitalService', () => ({
     updateConsultationNotePreset: vi.fn(),
     deleteConsultationNotePreset: vi.fn(),
     getDoctors: vi.fn(),
+    getConsultationStatements: vi.fn(),
   },
 }));
-
-import hospitalService from '../services/hospitalService';
-import NotePresetsManager from './NotePresetsManager';
 
 describe('NotePresetsManager', () => {
   beforeEach(() => {
@@ -27,6 +27,7 @@ describe('NotePresetsManager', () => {
       { id: 2, text: 'Drink water', displayOrder: 1 },
     ]);
     hospitalService.getDoctors.mockResolvedValue({ content: [{ id: 7, name: 'Dr House' }] });
+    hospitalService.getConsultationStatements.mockResolvedValue([]);
   });
 
   it('loads and renders existing quick notes for the field type', async () => {
@@ -45,7 +46,7 @@ describe('NotePresetsManager', () => {
     render(<NotePresetsManager fieldType="TREATMENT_NOTES" />);
     await screen.findByText('Avoid oily food');
 
-    fireEvent.change(screen.getByPlaceholderText(/Avoid oily food/i), {
+    fireEvent.change(screen.getByPlaceholderText(/Search platform notes|Avoid oily food/i), {
       target: { value: 'Rest well' },
     });
     fireEvent.click(screen.getByRole('button', { name: /add/i }));
@@ -53,6 +54,46 @@ describe('NotePresetsManager', () => {
     await waitFor(() =>
       expect(hospitalService.createConsultationNotePreset).toHaveBeenCalledWith(
         expect.objectContaining({ fieldType: 'TREATMENT_NOTES', text: 'Rest well' })
+      )
+    );
+  });
+
+  it('renders platform suggestions and auto-populates translation when selected', async () => {
+    hospitalService.getConsultationStatements.mockResolvedValue([
+      {
+        id: 99,
+        englishText: 'Take complete rest',
+        marathiText: 'पूर्ण विश्रांती घ्या.',
+        hindiText: 'पूरा आराम करें.',
+      },
+    ]);
+    render(<NotePresetsManager fieldType="TREATMENT_NOTES" />);
+    await screen.findByText('Avoid oily food');
+
+    expect(await screen.findByText('Take complete rest')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Take complete rest'));
+
+    expect(screen.getByPlaceholderText(/Search platform notes|Avoid oily food/i)).toHaveValue(
+      'Take complete rest'
+    );
+
+    hospitalService.createConsultationNotePreset.mockResolvedValue({
+      id: 4,
+      text: 'Take complete rest',
+      marathiText: 'पूर्ण विश्रांती घ्या.',
+      hindiText: 'पूरा आराम करें.',
+      displayOrder: 2,
+    });
+    fireEvent.click(screen.getByRole('button', { name: /add/i }));
+
+    await waitFor(() =>
+      expect(hospitalService.createConsultationNotePreset).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fieldType: 'TREATMENT_NOTES',
+          text: 'Take complete rest',
+          marathiText: 'पूर्ण विश्रांती घ्या.',
+          hindiText: 'पूरा आराम करें.',
+        })
       )
     );
   });

@@ -23,4 +23,6 @@ public interface ConsultationNotePresetRepository extends JpaRepository<Consulta
 
     Optional<ConsultationNotePreset> findByIdAndHospitalId(Long id, Long hospitalId);
     Optional<ConsultationNotePreset> findByIdAndHospitalIdAndDoctorId(Long id, Long hospitalId, Long doctorId);
+
+    List<ConsultationNotePreset> findByHospitalIdAndFieldTypeAndIsActiveTrue(Long hospitalId, String fieldType);
 }

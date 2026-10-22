@@ -52,7 +52,7 @@ public class IpdAdmissionController {
     private IpdAdmission admitWithIpdNumberRetry(CreateIpdAdmissionRequest req) {
         for (int attempt = 1; ; attempt++) {
             try {
-                return ipdAdmissionService.admitFromOpd(req.getOpdId(), req.getWardId(),
+                return ipdAdmissionService.admitFromOpd(req.getOpdId(), req.getPatientId(), req.getDoctorId(), req.getWardId(),
                         req.getBedId(), req.getAdmissionType(), req.getPrimaryDiagnosis());
             } catch (org.springframework.dao.DataIntegrityViolationException e) {
                 // Only an IPD-number clash is safe to retry. Re-running the admission for any

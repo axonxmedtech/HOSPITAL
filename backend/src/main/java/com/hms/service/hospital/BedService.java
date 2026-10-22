@@ -2,12 +2,12 @@ package com.hms.service.hospital;
 
 import com.hms.dto.BedResponse;
 import com.hms.entity.Bed;
-import com.hms.repository.BedRepository;
-import com.hms.security.SecurityContextHelper;
-
 import com.hms.exception.ResourceNotFoundException;
 import com.hms.exception.UnauthorizedException;
+import com.hms.repository.BedRepository;
+import com.hms.security.SecurityContextHelper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -23,22 +23,48 @@ public class BedService {
         this.securityHelper = securityHelper;
     }
 
+    @Transactional
+    public BedResponse updateStatus(Long bedId, String status) {
+        return updateStatus(bedId, status, false);
+    }
+
+    @Transactional
+    public BedResponse updateStatus(Long bedId, String status, boolean systemInitiated) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        Bed b = bedRepository.findById(bedId).orElseThrow(() -> new ResourceNotFoundException("Bed not found"));
+        if (b.getHospitalId() == null || !b.getHospitalId().equals(hospitalId)) throw new UnauthorizedException("Access denied");
+
+        b.setStatus(status.toLowerCase());
+        Bed saved = bedRepository.save(b);
+        BedResponse r = new BedResponse();
+        r.setBedId(saved.getBedId());
+        r.setBedCode(saved.getBedCode());
+        r.setStatus(saved.getStatus());
+        return r;
+    }
+
     public List<BedResponse> getAvailableBeds(Long wardId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         List<Bed> list;
         if (wardId != null) {
             list = bedRepository.findByWardIdAndHospitalId(wardId, hospitalId);
-            list = list.stream().filter(b -> "available".equals(b.getStatus())).collect(Collectors.toList());
         } else {
-            list = bedRepository.findByHospitalIdAndStatus(hospitalId, "available");
+            list = bedRepository.findByHospitalId(hospitalId);
         }
-        return list.stream().map(b -> {
-            BedResponse br = new BedResponse();
-            br.setBedId(b.getBedId());
-            br.setBedCode(b.getBedCode());
-            br.setStatus(b.getStatus());
-            return br;
-        }).collect(Collectors.toList());
+        return list.stream()
+                .filter(b -> b.getStatus() != null && b.getStatus().equalsIgnoreCase("available"))
+                .map(b -> {
+                    BedResponse br = new BedResponse();
+                    br.setBedId(b.getBedId());
+                    br.setBedCode(b.getBedCode());
+                    br.setStatus(b.getStatus());
+                    return br;
+                }).collect(Collectors.toList());
     }
 
+    private boolean isValidStatus(String s) {
+        if (s == null) return false;
+        String lower = s.toLowerCase();
+        return "available".equals(lower) || "occupied".equals(lower) || "maintenance".equals(lower) || "cleaning".equals(lower);
+    }
 }

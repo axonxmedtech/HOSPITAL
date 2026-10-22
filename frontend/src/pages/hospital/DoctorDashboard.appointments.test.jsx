@@ -88,7 +88,7 @@ describe('DoctorDashboard — APPOINTMENTS disabled', () => {
 
     await waitFor(() => expect(hospitalService.getTodaysFollowUps).toHaveBeenCalled());
     expect(hospitalService.getDoctorQueue).toHaveBeenCalled();
-    expect(screen.getByText('Asha Rao')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Asha Rao')).toBeInTheDocument());
   });
 
   it('hides the Appointments navigation entry', async () => {

@@ -42,7 +42,7 @@ class DatabaseMigrationRunnerReadinessTest {
         jdbc.execute("CREATE TABLE icu_stay (id BIGINT, hospital_id BIGINT, ipd_admission_id BIGINT,"
                 + " status VARCHAR(10), active_marker BIGINT)");
         jdbc.execute("CREATE TABLE vitals_records (id BIGINT, gcs_eye INT, gcs_verbal INT, gcs_motor INT,"
-                + " gcs_total INT, map_mmhg INT, urine_output_ml INT, supersedes_vitals_id BIGINT)");
+                + " gcs_total INT, map_mmhg INT, cvp_cmh2o INT, urine_output_ml INT, supersedes_vitals_id BIGINT)");
     }
 
     @Test
@@ -65,25 +65,42 @@ class DatabaseMigrationRunnerReadinessTest {
     }
 
     @Test
-    void aMissingRequiredTable_isNotReady() {
+    void aMissingRequiredTable_failsClosedAndAbortsStartup() {
         createRequiredSchema();
         jdbc.execute("DROP TABLE icu_stay");
 
-        runner.runMigrations();
+        assertThatThrownBy(runner::runMigrations)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("icu_stay");
 
         assertThat(state.health().getStatus()).isEqualTo(Status.DOWN);
         assertThat(runner.missingRequiredSchema()).singleElement().asString().contains("icu_stay");
     }
 
     @Test
-    void aMissingRequiredColumn_isNotReady() {
+    void aMissingRequiredColumn_failsClosedAndAbortsStartup() {
         createRequiredSchema();
         jdbc.execute("ALTER TABLE vitals_records DROP COLUMN gcs_total");
 
-        runner.runMigrations();
+        assertThatThrownBy(runner::runMigrations)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("vitals_records");
 
         assertThat(state.health().getStatus()).isEqualTo(Status.DOWN);
         assertThat(runner.missingRequiredSchema()).singleElement().asString().contains("vitals_records");
+    }
+
+    @Test
+    void missingCvpCmh2o_failsClosedAndAbortsStartup() {
+        createRequiredSchema();
+        jdbc.execute("ALTER TABLE vitals_records DROP COLUMN cvp_cmh2o");
+
+        assertThatThrownBy(runner::runMigrations)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("cvp_cmh2o");
+
+        assertThat(state.health().getStatus()).isEqualTo(Status.DOWN);
+        assertThat(runner.missingRequiredSchema()).singleElement().asString().contains("cvp_cmh2o");
     }
 
     @Test
@@ -107,5 +124,47 @@ class DatabaseMigrationRunnerReadinessTest {
                 .containsExactly("icu_wards", "icu_stay", "vitals_records")
                 .doesNotContain("icu_alert_threshold", "icu_infusion", "icu_ventilator_setting",
                         "surgery_anaesthesia_clearances", "surgery_emergency_overrides");
+    }
+
+    @Test
+    void databaseTemporarilyUnavailable_abortsStartupAndReadinessStaysDown() {
+        doThrow(new org.springframework.jdbc.CannotGetJdbcConnectionException("Connection refused"))
+                .when(runner).runAllSteps();
+
+        assertThatThrownBy(runner::runMigrations)
+                .isInstanceOf(org.springframework.jdbc.CannotGetJdbcConnectionException.class);
+
+        assertThat(state.health().getStatus()).isEqualTo(Status.DOWN);
+        assertThat(state.phase()).isEqualTo(StartupInitializationState.Phase.FAILED);
+    }
+
+    @Test
+    void partialMigrationState_failsClosedAndKeepsReadinessDown() {
+        // Table exists but only partially created (missing urine_output_ml and cvp_cmh2o)
+        jdbc.execute("CREATE TABLE icu_wards (id BIGINT, hospital_id BIGINT, ward_id BIGINT)");
+        jdbc.execute("CREATE TABLE icu_stay (id BIGINT, hospital_id BIGINT, ipd_admission_id BIGINT, status VARCHAR(10), active_marker BIGINT)");
+        jdbc.execute("CREATE TABLE vitals_records (id BIGINT, gcs_eye INT, gcs_verbal INT, gcs_motor INT, gcs_total INT, map_mmhg INT)");
+
+        assertThatThrownBy(runner::runMigrations)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("vitals_records");
+
+        assertThat(state.health().getStatus()).isEqualTo(Status.DOWN);
+        assertThat(runner.missingRequiredSchema()).anyMatch(s -> s.contains("cvp_cmh2o") || s.contains("urine_output_ml"));
+    }
+
+    @Test
+    void repeatedApplicationStartup_isIdempotentAndRemainsReady() {
+        createRequiredSchema();
+
+        // First startup
+        runner.runMigrations();
+        assertThat(state.health().getStatus()).isEqualTo(Status.UP);
+        assertThat(state.phase()).isEqualTo(StartupInitializationState.Phase.COMPLETE);
+
+        // Second startup rehearsal against same schema
+        runner.runMigrations();
+        assertThat(state.health().getStatus()).isEqualTo(Status.UP);
+        assertThat(state.phase()).isEqualTo(StartupInitializationState.Phase.COMPLETE);
     }
 }

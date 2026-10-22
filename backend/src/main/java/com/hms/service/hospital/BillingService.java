@@ -27,6 +27,8 @@ public class BillingService {
 
     private static final Logger logger = LoggerFactory.getLogger(BillingService.class);
 
+    @Autowired private TenantCustomIdAllocator customIdAllocator;
+
     @Autowired
     private BillingRepository billingRepository;
 
@@ -122,7 +124,7 @@ public class BillingService {
                 logger.warn("Could not resolve related opdId for appointment {}", appointment.getId(), e);
             }
 
-            Billing saved = billingRepository.save(bill);
+            Billing saved = saveBillWithCollisionRetry(bill);
 
             // Itemised breakdown, so the receipt matches the walk-in OPD bill.
             try {
@@ -226,7 +228,7 @@ public class BillingService {
             bill.setPaymentReference(paymentReference);
         }
 
-        Billing saved = billingRepository.save(bill);
+        Billing saved = saveBillWithCollisionRetry(bill);
 
         // Create audit log
         try {
@@ -355,7 +357,7 @@ public class BillingService {
         try {
             bill.setMarkedPaidBy(securityHelper.getCurrentUserRole() + " (" + securityHelper.getCurrentUserEmail() + ")");
         } catch (Exception ignored) { /* best-effort attribution only */ }
-        Billing saved = billingRepository.save(bill);
+        Billing saved = saveBillWithCollisionRetry(bill);
 
         // The ledger row is the RECORD OF THE MONEY, not a nice-to-have mirror — everything
         // downstream derives from it: the bill's status (recalculateTotal), the "Received"/
@@ -385,6 +387,7 @@ public class BillingService {
      * @param patientId Patient id
      * @param doctorId Doctor id
      */
+    @Transactional
     public com.hms.entity.Billing createOpdBill(Long opdId, Long patientId, Long doctorId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Hospital hospital = hospitalRepository.findById(hospitalId)
@@ -421,7 +424,7 @@ public class BillingService {
         bill.setPaymentStatus("PENDING");
         bill.setAppointmentId(null);
 
-        Billing saved = billingRepository.save(bill);
+        Billing saved = saveBillWithCollisionRetry(bill);
 
         // Create billing items for breakdown
         com.hms.entity.BillingItem item1 = new com.hms.entity.BillingItem();
@@ -585,5 +588,88 @@ public class BillingService {
         else if (paid.compareTo(BigDecimal.ZERO) > 0) bill.setPaymentStatus("PARTIAL");
         else                                      bill.setPaymentStatus("PENDING");
     }
-}
 
+    @Transactional
+    public Billing createManualBill(Long patientId, Long doctorId, String billingType, BigDecimal amount, String description, String paymentStatus, String paymentMethod, String paymentReference, java.util.List<com.hms.entity.BillingItem> items) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        validateBillingAccess(hospitalId);
+
+        Billing bill = new Billing();
+        bill.setHospitalId(hospitalId);
+        bill.setPatientId(patientId);
+        bill.setDoctorId(doctorId != null ? doctorId : 0L);
+        bill.setBillingType(billingType != null && !billingType.isEmpty() ? billingType : "GENERAL");
+        bill.setAmount(amount != null ? amount : BigDecimal.ZERO);
+        bill.setDescription(description != null && !description.isEmpty() ? description : "Manual Bill");
+
+        String status = "PAID".equalsIgnoreCase(paymentStatus) ? "PAID" : "PENDING";
+        bill.setPaymentStatus(status);
+        if (paymentMethod != null && !paymentMethod.isEmpty()) {
+            bill.setPaymentMethod(paymentMethod);
+        }
+        if (paymentReference != null && !paymentReference.isEmpty()) {
+            bill.setPaymentReference(paymentReference);
+        }
+        if ("PAID".equals(status)) {
+            try {
+                bill.setMarkedPaidBy(securityHelper.getCurrentUserRole() + " (" + securityHelper.getCurrentUserEmail() + ")");
+            } catch (Exception ignored) {}
+        }
+
+        Billing saved = saveBillWithCollisionRetry(bill);
+
+        BigDecimal itemTotal = BigDecimal.ZERO;
+        if (items != null && !items.isEmpty()) {
+            for (com.hms.entity.BillingItem item : items) {
+                item.setBillingId(saved.getId());
+                item.setHospitalId(hospitalId);
+                billingItemRepository.save(item);
+                if (item.getAmount() != null) {
+                    itemTotal = itemTotal.add(item.getAmount());
+                }
+            }
+            if (itemTotal.compareTo(BigDecimal.ZERO) > 0) {
+                saved.setAmount(itemTotal);
+                saved = billingRepository.save(saved);
+            }
+        }
+
+        if ("PAID".equals(status)) {
+            com.hms.entity.BillingPayment payment = new com.hms.entity.BillingPayment();
+            payment.setBillingId(saved.getId());
+            payment.setHospitalId(hospitalId);
+            payment.setAmount(saved.getAmount());
+            payment.setMode(paymentMethod != null ? paymentMethod : "CASH");
+            payment.setReference(paymentReference);
+            billingPaymentRepository.save(payment);
+        }
+
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after manual bill creation", e);
+        }
+
+        logger.info("Created manual bill {} for patient {} with amount {}", saved.getId(), patientId, saved.getAmount());
+        return saved;
+    }
+
+    /** Historical entry point: allocate and save in the caller's atomic transaction. */
+    @Transactional
+    public Billing saveBillWithCollisionRetry(Billing bill) {
+        ensureBillingCustomId(bill);
+        return billingRepository.save(bill);
+    }
+
+    public String allocateBillingCustomId(Long hospitalId) {
+        return customIdAllocator.allocateBilling(hospitalId);
+    }
+
+    public void ensureBillingCustomId(Billing bill) {
+        if (bill.getHospitalId() == null) throw new IllegalArgumentException("Hospital is required");
+        if (bill.getCustomId() == null || bill.getCustomId().isBlank()) {
+            bill.setCustomId(allocateBillingCustomId(bill.getHospitalId()));
+        }
+        // Preserve assigned numbers; database uniqueness rejects supplied collisions.
+    }
+}

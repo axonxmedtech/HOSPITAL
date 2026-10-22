@@ -24,6 +24,7 @@ public class ConsultationRequest {
     /** Optional. Absent on every consultation recorded before this field existed. */
     private String followUpInstructions;
     private Boolean ipdAdmitRecommended;
+    private String consultationLanguage;
 
     @Valid
     private List<PrescriptionItem> prescription;

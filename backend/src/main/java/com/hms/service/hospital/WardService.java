@@ -120,14 +120,14 @@ public class WardService {
     }
 
     /**
-     * Wards eligible for IPD admission/bed selection. A ward with no Available bed is always
+     * Wards eligible for IPD/ICU admission/bed selection. A ward with no Available bed is always
      * hidden (a bed awaiting cleaning or under maintenance does not count). Nursing assignment
      * metadata must not hide an otherwise usable ward from the admission workflow.
      */
     public List<WardResponse> getWardsForAdmission() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
-        return wardRepository.findGeneralWardsByHospitalId(hospitalId)
+        return wardRepository.findByHospitalId(hospitalId)
                 .stream()
                 .filter(w -> bedRepository.findByWardIdAndHospitalId(w.getWardId(), hospitalId).stream()
                         .anyMatch(b -> com.hms.entity.BedStatus.AVAILABLE.equalsIgnoreCase(b.getStatus())))

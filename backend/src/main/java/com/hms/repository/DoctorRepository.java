@@ -40,6 +40,8 @@ public interface DoctorRepository extends JpaRepository<Doctor, Long> {
 
     List<Doctor> findByHospitalIdAndIsActiveTrueOrderByCreatedAtDesc(Long hospitalId);
 
+    List<Doctor> findByHospitalIdAndIsActiveTrue(Long hospitalId);
+
     /**
      * Find an active doctor by ID and hospital ID
      * Ensures multi-tenant isolation - doctor must belong to the hospital
@@ -58,7 +60,9 @@ public interface DoctorRepository extends JpaRepository<Doctor, Long> {
     List<Doctor> findByHospitalIdAndIdIn(Long hospitalId, java.util.Collection<Long> ids);
 
     Optional<Doctor> findByPublicIdAndHospitalIdAndIsActiveTrue(String publicId, Long hospitalId);
-
+    Optional<Doctor> findByPublicIdAndHospitalId(String publicId, Long hospitalId);
+    Optional<Doctor> findByIdAndHospitalId(Long id, Long hospitalId);
+    List<Doctor> findByHospitalIdAndIsActiveFalseOrderByCreatedAtDesc(Long hospitalId);
     /**
      * Find a doctor by email and hospital ID
      * Used to check if doctor email already exists in the hospital

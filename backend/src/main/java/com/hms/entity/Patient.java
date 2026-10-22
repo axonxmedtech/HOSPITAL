@@ -22,7 +22,9 @@ import java.time.Period;
  * @version Phase-1
  */
 @Entity
-@Table(name = "patients")
+@Table(name = "patients", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_patient_hospital_custom_id", columnNames = {"hospital_id", "custom_id"})
+})
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

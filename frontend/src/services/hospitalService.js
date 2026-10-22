@@ -169,6 +169,22 @@ const hospitalService = {
   },
 
   /**
+   * Get deleted doctors for current hospital
+   */
+  getDeletedDoctors: async () => {
+    const response = await apiClient.get('/hospital/doctors/deleted');
+    return response.data;
+  },
+
+  /**
+   * Restore doctor
+   */
+  restoreDoctor: async (id) => {
+    const response = await apiClient.post(`/hospital/doctors/${id}/restore`);
+    return response.data;
+  },
+
+  /**
    * Reset doctor password
    */
   resetDoctorPassword: async (id, newPassword) => {
@@ -610,9 +626,11 @@ const hospitalService = {
   /**
    * Download Prescription PDF
    */
-  downloadPrescription: async (appointmentId) => {
+  downloadPrescription: async (appointmentId, lang) => {
+    const params = lang ? { lang } : {};
     return apiClient
       .get(`/hospital/doctors/prescription/${appointmentId}/pdf`, {
+        params,
         responseType: 'blob',
         timeout: 60000,
       })
@@ -626,6 +644,11 @@ const hospitalService = {
     if (status) url += `&status=${encodeURIComponent(status)}`;
     const response = await apiClient.get(url);
     return response.data; // Returns Page object with { content: [...], totalElements: ..., totalPages: ... }
+  },
+
+  createBill: async (billData) => {
+    const response = await apiClient.post('/hospital/billing', billData);
+    return response.data;
   },
 
   updateBillStatus: async (id, status, paymentMethod, paymentReference) => {
@@ -715,16 +738,20 @@ const hospitalService = {
     return response.data;
   },
 
-  downloadCasePaper: async (opdId) => {
+  downloadCasePaper: async (opdId, lang) => {
+    const params = lang ? { lang } : {};
     const response = await apiClient.get(`/hospital/opd/${opdId}/pdf`, {
+      params,
       responseType: 'blob',
       timeout: 60000,
     });
     return response.data;
   },
 
-  downloadPrescriptionByOpd: async (opdId) => {
+  downloadPrescriptionByOpd: async (opdId, lang) => {
+    const params = lang ? { lang } : {};
     const response = await apiClient.get(`/hospital/doctors/prescription/opd/${opdId}/pdf`, {
+      params,
       responseType: 'blob',
       timeout: 60000,
     });
@@ -1328,6 +1355,37 @@ const hospitalService = {
       responseType: 'blob',
       timeout: 60000,
     });
+    return response.data;
+  },
+
+  getConsultationStatements: async (category = '', query = '') => {
+    const params = {};
+    if (category) params.category = category;
+    if (query) params.query = query;
+    const response = await apiClient.get('/hospital/consultation-statements', { params });
+    return response.data;
+  },
+
+  // ICU Cleaning Task APIs
+  getIcuCleaningTasks: async (status = '') => {
+    let url = '/hospital/icu/cleaning';
+    if (status) url += `?status=${encodeURIComponent(status)}`;
+    const response = await apiClient.get(url);
+    return response.data;
+  },
+
+  createIcuCleaningTask: async (taskData) => {
+    const response = await apiClient.post('/hospital/icu/cleaning', taskData);
+    return response.data;
+  },
+
+  updateIcuCleaningTaskStatus: async (taskId, status) => {
+    const response = await apiClient.put(`/hospital/icu/cleaning/${taskId}/status`, { status });
+    return response.data;
+  },
+
+  deleteIcuCleaningTask: async (taskId) => {
+    const response = await apiClient.delete(`/hospital/icu/cleaning/${taskId}`);
     return response.data;
   },
 };

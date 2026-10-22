@@ -69,6 +69,10 @@ public class HospitalSetting {
     @Column(name = "bill_payment_timing", nullable = false, length = 10)
     private String billPaymentTiming = "LAST";
 
+    // Default consultation print language: EN, EN_MR, or EN_HI
+    @Column(name = "default_consultation_language", nullable = false, length = 10)
+    private String defaultConsultationLanguage = "EN";
+
     public Boolean getOtInchargeEnabled() {
         return otInchargeEnabled;
     }

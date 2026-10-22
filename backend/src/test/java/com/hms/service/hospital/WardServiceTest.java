@@ -130,12 +130,15 @@ class WardServiceTest {
         ward.setInchargeNurseId(null);
         Bed available = new Bed();
         available.setStatus("available");
-        when(wardRepository.findGeneralWardsByHospitalId(7L)).thenReturn(List.of(ward));
+        when(wardRepository.findByHospitalId(7L)).thenReturn(List.of(ward));
         when(bedRepository.findByWardIdAndHospitalId(3L, 7L)).thenReturn(List.of(available));
 
         List<WardResponse> wards = service.getWardsForAdmission();
 
         assertThat(wards).extracting(WardResponse::getWardId).containsExactly(3L);
+        verify(wardRepository).findByHospitalId(7L);
+        verify(bedRepository).findByWardIdAndHospitalId(3L, 7L);
+        verify(wardRepository, never()).findGeneralWardsByHospitalId(any());
     }
 
     @Test
@@ -209,4 +212,16 @@ class WardServiceTest {
 
         assertThat(resp.getWardName()).isEqualTo("Ward-3-Renamed");
     }
+    @Test
+    void admissionWardWithOnlyCleaningOrOccupiedBedsIsExcluded() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        Ward ward = savedWard(3L, "General", 2);
+        Bed cleaning = new Bed();cleaning.setStatus("cleaning");
+        Bed occupied = new Bed();occupied.setStatus("occupied");
+        when(wardRepository.findByHospitalId(7L)).thenReturn(List.of(ward));
+        when(bedRepository.findByWardIdAndHospitalId(3L,7L)).thenReturn(List.of(cleaning,occupied));
+        assertThat(service.getWardsForAdmission()).isEmpty();
+        verify(bedRepository).findByWardIdAndHospitalId(3L,7L);
+    }
+
 }

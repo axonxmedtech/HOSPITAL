@@ -118,7 +118,8 @@ CREATE TABLE `billing` (
   `payment_status` varchar(20) NOT NULL,
   `public_id` varchar(255) NOT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `UK_873yunoi4d9gm43g5bu8ltm9k` (`public_id`)
+  UNIQUE KEY `UK_873yunoi4d9gm43g5bu8ltm9k` (`public_id`),
+  UNIQUE KEY `uk_billing_hospital_custom_id` (`hospital_id`,`custom_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -373,6 +374,7 @@ CREATE TABLE `medical_records` (
   `actioned_opd_id` bigint DEFAULT NULL,
   `actioned_by_user_id` bigint DEFAULT NULL,
   `actioned_at` datetime(6) DEFAULT NULL,
+  `consultation_language` varchar(10) NOT NULL DEFAULT 'EN',
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_4elkgkxl6vd0j1p95r174acix` (`public_id`),
   UNIQUE KEY `UK_2nyonrbplqq716buy7u4ghmt8` (`appointment_id`),
@@ -569,7 +571,8 @@ CREATE TABLE `patients` (
   `active_phone_key` varchar(15) GENERATED ALWAYS AS (case when ((`is_active` = 1) and (`phone` is not null) and (`phone` <> _utf8mb4'') and ((`duplicate_phone_ack_for` is null) or (`duplicate_phone_ack_for` <> `phone`))) then `phone` end) VIRTUAL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_8isyrjl9ji56k5uv4cgp9p2q6` (`public_id`),
-  UNIQUE KEY `uq_patient_active_phone` (`hospital_id`,`active_phone_key`)
+  UNIQUE KEY `uq_patient_active_phone` (`hospital_id`,`active_phone_key`),
+  UNIQUE KEY `uk_patient_hospital_custom_id` (`hospital_id`,`custom_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1093,6 +1096,7 @@ CREATE TABLE `hospital_settings` (
   `print_in_clinic` tinyint(1) NOT NULL DEFAULT 1,
   -- FIRST = charge consultation + case-paper at OPD entry; LAST = current flow.
   `bill_payment_timing` varchar(10) NOT NULL DEFAULT 'LAST',
+  `default_consultation_language` varchar(10) NOT NULL DEFAULT 'EN',
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_hospital_settings_hospital_id` (`hospital_id`),
   CONSTRAINT `FK_hospital_settings_hospital_id` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`)
@@ -1109,6 +1113,8 @@ CREATE TABLE `consultation_note_presets` (
   `field_type` varchar(30) NOT NULL,
   `text` varchar(255) NOT NULL,
   `display_order` int NOT NULL DEFAULT '0',
+  `marathi_text` varchar(500) DEFAULT NULL,
+  `hindi_text` varchar(500) DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT '1',
   `created_at` datetime(6) NOT NULL,
   PRIMARY KEY (`id`),
@@ -2253,3 +2259,60 @@ CREATE TABLE IF NOT EXISTS `icu_wards` (
   KEY `idx_icu_wards_hospital` (`hospital_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+
+-- Multi-language consultation statements (English, Marathi, Hindi)
+CREATE TABLE IF NOT EXISTS `consultation_statements` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_type` varchar(20) NOT NULL DEFAULT 'ALL\,
+  `category` varchar(30) NOT NULL,
+  `english_text` varchar(500) NOT NULL,
+  `marathi_text` varchar(500) NOT NULL,
+  `hindi_text` varchar(500) NOT NULL,
+  `display_order` int NOT NULL DEFAULT 0,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `idx_stmt_type_cat` (`hospital_type`, `category`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Housekeeping and sanitization tasks for ICU/hospital vacated beds
+CREATE TABLE IF NOT EXISTS `icu_cleaning_tasks` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `ward_id` bigint DEFAULT NULL,
+  `bed_id` bigint DEFAULT NULL,
+  `ward_name` varchar(255) DEFAULT NULL,
+  `bed_number` varchar(100) DEFAULT NULL,
+  `task_description` varchar(500) NOT NULL,
+  `priority` varchar(20) NOT NULL DEFAULT 'MEDIUM\,
+  `status` varchar(20) NOT NULL DEFAULT 'PENDING\,
+  `assigned_to` varchar(255) DEFAULT NULL,
+  `created_by` varchar(255) NOT NULL,
+  `created_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `idx_icu_cleaning_hosp_status` (`hospital_id`, `status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Table structure for table `medicine_purchase`
+--
+
+DROP TABLE IF EXISTS `medicine_purchase`;
+CREATE TABLE `medicine_purchase` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `quantity` int NOT NULL,
+  `unit_price` double DEFAULT NULL,
+  `expiry_date` date DEFAULT NULL,
+  `batch_number` varchar(100) DEFAULT NULL,
+  `min_stock_level` int DEFAULT 10,
+  `type` varchar(255) DEFAULT NULL,
+  `default_dosage` varchar(255) DEFAULT NULL,
+  `default_frequency` varchar(255) DEFAULT NULL,
+  `default_duration` varchar(255) DEFAULT NULL,
+  `manufacturer` varchar(255) DEFAULT NULL,
+  `hospital_id` bigint NOT NULL,
+  `purchase_date` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_medicine_purchase_hospital` (`hospital_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

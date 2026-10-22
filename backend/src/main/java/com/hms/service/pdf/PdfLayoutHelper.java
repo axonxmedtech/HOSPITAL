@@ -33,6 +33,8 @@ public class PdfLayoutHelper {
 
     protected static BaseFont UNICODE_BASE_FONT;
     public static final Font UNICODE_NORMAL_FONT;
+    public static final Font UNICODE_BOLD_FONT;
+    public static final Font UNICODE_NAVY_BOLD_FONT;
 
     static {
         BaseFont bf = null;
@@ -62,6 +64,12 @@ public class PdfLayoutHelper {
         UNICODE_NORMAL_FONT = (bf != null)
                 ? new Font(bf, 10, Font.NORMAL, Color.BLACK)
                 : FontFactory.getFont(FontFactory.HELVETICA, 10, Font.NORMAL, Color.BLACK);
+        UNICODE_BOLD_FONT = (bf != null)
+                ? new Font(bf, 10, Font.BOLD, Color.BLACK)
+                : FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Font.BOLD, Color.BLACK);
+        UNICODE_NAVY_BOLD_FONT = (bf != null)
+                ? new Font(bf, 10, Font.BOLD, NAVY_BLUE)
+                : FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Font.BOLD, NAVY_BLUE);
     }
 
     // Helper: build a dynamic list of charge rows from billing items + medicines
