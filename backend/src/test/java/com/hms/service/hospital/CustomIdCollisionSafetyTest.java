@@ -55,6 +55,7 @@ class CustomIdCollisionSafetyTest {
 
     @BeforeEach
     void setUp() {
+        em.createNativeQuery("INSERT INTO hospitals(id,name,public_id,custom_id,is_active,is_single_doctor,type,subscription_status,created_at) VALUES(1,'SYNTHETIC','collision-fixture','COLLISION-FIXTURE',true,false,'HOSPITAL','ACTIVE',CURRENT_TIMESTAMP)").executeUpdate();
         when(securityHelper.getCurrentHospitalId()).thenReturn(MINE);
         when(securityHelper.getCurrentUserEmail()).thenReturn("admin@hospital.test");
         when(securityHelper.getCurrentUserRole()).thenReturn("ADMIN");
@@ -124,5 +125,21 @@ class CustomIdCollisionSafetyTest {
         assertThat(saved.getCustomId()).isNotNull();
         assertThat(saved.getCustomId()).isNotEqualTo("BIL1001");
         assertThat(saved.getCustomId()).startsWith("BIL");
+    }
+    @Test
+    void patientAndBillCreationParticipateInCallerRollback() {
+        Patient p = new Patient();p.setHospitalId(MINE);p.setName("SYNTHETIC");
+        p.setPhone("9000000033");p.setGender("OTHER");p.setDateOfBirth(LocalDate.of(1990,1,1));
+        Patient created=patientRegistrar.persistNewPatient(p);
+        Billing bill=new Billing();bill.setHospitalId(MINE);bill.setPatientId(created.getId());
+        bill.setDoctorId(1L);bill.setAmount(BigDecimal.ONE);bill.setBillingType("OPD");bill.setPaymentStatus("PENDING");
+        Billing createdBill=billingService.saveBillWithCollisionRetry(bill);
+        em.flush();Long patientId=created.getId();Long billId=createdBill.getId();
+        assertThat(em.contains(created)).isTrue();
+        org.springframework.test.context.transaction.TestTransaction.flagForRollback();
+        org.springframework.test.context.transaction.TestTransaction.end();
+        org.springframework.test.context.transaction.TestTransaction.start();
+        assertThat(patientRepository.findById(patientId)).isEmpty();
+        assertThat(billingRepository.findById(billId)).isEmpty();
     }
 }

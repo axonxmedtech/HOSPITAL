@@ -38,6 +38,11 @@ class BillingServiceTest {
     @Mock com.hms.repository.WardRepository wardRepository;
     @Mock com.hms.repository.MedicalRecordRepository medicalRecordRepository;
 
+    @Mock com.hms.service.hospital.TenantCustomIdAllocator customIdAllocator;
+    @org.junit.jupiter.api.BeforeEach
+    void allocation() {
+        lenient().when(customIdAllocator.allocateBilling(anyLong())).thenReturn("BIL1001");
+    }
     @InjectMocks BillingService billingService;
 
     // -----------------------------------------------------------------------

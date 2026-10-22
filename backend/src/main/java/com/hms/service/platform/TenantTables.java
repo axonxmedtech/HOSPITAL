@@ -282,6 +282,8 @@ public final class TenantTables {
         retain("hospital_modules", Ownership.DIRECT);
         retain("wards", Ownership.DIRECT);
         retain("icu_wards", Ownership.DIRECT);
+        // Bed cleaning history has direct tenant ownership and an infection-control audit role.
+        retain("icu_cleaning_tasks", Ownership.DIRECT);
         retain("beds", Ownership.DIRECT);
 
         // The facility row. Retained under an ARCHIVE lifecycle, removed under a hard delete.

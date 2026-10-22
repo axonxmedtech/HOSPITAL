@@ -165,4 +165,14 @@ class TenantTablesFenceTest {
                 .as("SA-7a must not delete clinical, financial, HR or audit history")
                 .doesNotContainAnyElementsOf(mustNotBePurged);
     }
+    @Test
+    void icuCleaningTasksRetainDirectTenantOwnershipAndCannotBePurged() {
+        TenantTable t=TenantTables.get("icu_cleaning_tasks");
+        assertThat(t.ownership()).isEqualTo(TenantTables.Ownership.DIRECT);
+        assertThat(t.retention()).isEqualTo(Retention.RETAIN_DECISION_REQUIRED);
+        assertThat(t.where()).isEqualTo("hospital_id = ?");
+        assertThat(t.binds()).isEqualTo(1);
+        assertThat(TenantTables.purgeSafeInOrder()).doesNotContain(t);
+    }
+
 }

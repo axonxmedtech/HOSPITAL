@@ -27,10 +27,7 @@ public class BillingService {
 
     private static final Logger logger = LoggerFactory.getLogger(BillingService.class);
 
-    private static final int MAX_CUSTOM_ID_RETRIES = 10;
-
-    @Autowired(required = false)
-    private org.springframework.transaction.PlatformTransactionManager transactionManager;
+    @Autowired private TenantCustomIdAllocator customIdAllocator;
 
     @Autowired
     private BillingRepository billingRepository;
@@ -390,6 +387,7 @@ public class BillingService {
      * @param patientId Patient id
      * @param doctorId Doctor id
      */
+    @Transactional
     public com.hms.entity.Billing createOpdBill(Long opdId, Long patientId, Long doctorId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Hospital hospital = hospitalRepository.findById(hospitalId)
@@ -656,130 +654,22 @@ public class BillingService {
         return saved;
     }
 
-    /**
-     * Save a bill with bounded retry in a fresh transaction to safely handle
-     * custom-ID collisions against the database uniqueness constraint (uk_billing_hospital_custom_id).
-     */
+    /** Historical entry point: allocate and save in the caller's atomic transaction. */
+    @Transactional
     public Billing saveBillWithCollisionRetry(Billing bill) {
-        if (bill.getId() != null) {
-            ensureBillingCustomId(bill);
-            return billingRepository.save(bill);
-        }
-
-        final Long resolvedHospitalId = bill.getHospitalId() != null 
-                ? bill.getHospitalId() 
-                : securityHelper.getCurrentHospitalId();
-        bill.setHospitalId(resolvedHospitalId);
-        final Long hospitalId = resolvedHospitalId;
-
-        if (transactionManager == null) {
-            ensureBillingCustomId(bill);
-            return billingRepository.save(bill);
-        }
-
-        org.springframework.transaction.support.TransactionTemplate txTemplate =
-                new org.springframework.transaction.support.TransactionTemplate(transactionManager);
-        txTemplate.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-
-        // Step 1: Save the bill row with null customId first in a dedicated transaction
-        Billing saved = txTemplate.execute(status -> {
-            bill.setCustomId(null);
-            return billingRepository.saveAndFlush(bill);
-        });
-
-        if (saved == null || saved.getId() == null) {
-            throw new IllegalStateException("Failed to persist billing entity");
-        }
-
-        final Long billId = saved.getId();
-
-        // Check if an explicit non-colliding custom ID was requested
-        if (bill.getCustomId() != null && !bill.getCustomId().isBlank()) {
-            final String requested = bill.getCustomId();
-            if (!billingRepository.existsByHospitalIdAndCustomId(hospitalId, requested)) {
-                try {
-                    Boolean success = txTemplate.execute(status -> {
-                        int updated = billingRepository.updateCustomId(hospitalId, billId, requested);
-                        return updated > 0;
-                    });
-                    if (Boolean.TRUE.equals(success)) {
-                        saved.setCustomId(requested);
-                        return saved;
-                    }
-                } catch (org.springframework.dao.DataIntegrityViolationException e) {
-                    logger.warn("Requested custom ID {} collided for bill {} (hospital {}), falling back to auto-allocation",
-                            requested, billId, hospitalId);
-                }
-            }
-        }
-
-        long base = 1001;
-        Long maxId = billingRepository.findMaxIdByHospitalId(hospitalId);
-        if (maxId != null && maxId > 0) {
-            base = Math.max(1001, maxId + 1000);
-        }
-
-        String assignedCustomId = null;
-        for (int attempt = 1; attempt <= MAX_CUSTOM_ID_RETRIES; attempt++) {
-            String candidate = "BIL" + base;
-            while (billingRepository.existsByHospitalIdAndCustomId(hospitalId, candidate)) {
-                base++;
-                candidate = "BIL" + base;
-            }
-
-            final String candidateToTry = candidate;
-            try {
-                Boolean success = txTemplate.execute(status -> {
-                    int updated = billingRepository.updateCustomId(hospitalId, billId, candidateToTry);
-                    return updated > 0;
-                });
-
-                if (Boolean.TRUE.equals(success)) {
-                    assignedCustomId = candidateToTry;
-                    break;
-                }
-            } catch (org.springframework.dao.DataIntegrityViolationException e) {
-                logger.warn("Custom ID collision on {} for bill {} (hospital {}), retrying (attempt {}/{})",
-                        candidateToTry, billId, hospitalId, attempt, MAX_CUSTOM_ID_RETRIES);
-                base++;
-            }
-        }
-
-        if (assignedCustomId == null) {
-            throw new IllegalStateException("Failed to assign unique billing custom ID after " + MAX_CUSTOM_ID_RETRIES + " attempts");
-        }
-
-        saved.setCustomId(assignedCustomId);
-        return saved;
+        ensureBillingCustomId(bill);
+        return billingRepository.save(bill);
     }
 
-    /**
-     * Allocate a collision-safe, sequential custom ID for a bill in the given hospital.
-     * Preserves existing custom IDs (e.g. BIL3100) and ensures uniqueness.
-     */
-    public synchronized String allocateBillingCustomId(Long hospitalId) {
-        long base = 1001;
-        Long maxId = billingRepository.findMaxIdByHospitalId(hospitalId);
-        if (maxId != null && maxId > 0) {
-            base = Math.max(1001, maxId + 1000);
-        }
-        String candidate = "BIL" + base;
-        while (billingRepository.existsByHospitalIdAndCustomId(hospitalId, candidate)) {
-            base++;
-            candidate = "BIL" + base;
-        }
-        return candidate;
+    public String allocateBillingCustomId(Long hospitalId) {
+        return customIdAllocator.allocateBilling(hospitalId);
     }
 
     public void ensureBillingCustomId(Billing bill) {
-        if (bill.getHospitalId() == null) {
-            return;
-        }
+        if (bill.getHospitalId() == null) throw new IllegalArgumentException("Hospital is required");
         if (bill.getCustomId() == null || bill.getCustomId().isBlank()) {
             bill.setCustomId(allocateBillingCustomId(bill.getHospitalId()));
-        } else if (bill.getId() == null && billingRepository.existsByHospitalIdAndCustomId(bill.getHospitalId(), bill.getCustomId())) {
-            bill.setCustomId(allocateBillingCustomId(bill.getHospitalId()));
         }
+        // Preserve assigned numbers; database uniqueness rejects supplied collisions.
     }
-
 }

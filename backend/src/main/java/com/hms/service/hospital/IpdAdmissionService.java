@@ -1208,7 +1208,7 @@ public class IpdAdmissionService {
 
             java.math.BigDecimal balance = total.subtract(paid);
             if (balance.compareTo(java.math.BigDecimal.ZERO) > 0) {
-                logger.info("IPD {} discharged with outstanding balance of ₹{}", ipdId, balance);
+                throw new IllegalArgumentException("Outstanding balance must be settled before discharge");
             }
         }
 
