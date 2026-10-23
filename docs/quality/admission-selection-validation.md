@@ -25,3 +25,5 @@ mvn -f backend/pom.xml -Dit.test=AdmissionSelectionMySqlIT failsafe:integration-
 The second command requires Docker and compiled tests. Full CI runs Maven `verify`, including existing MySQL migration/concurrency tests; its explicit synthetic MySQL datasource is required for `IpdConcurrencyIT`. No live database is used.
 
 No migrations, schema changes, frontend source changes or data corrections are required. Deploy the reviewed backend through the existing controlled staging process only after CI/review approval. This PR does not activate artifacts or change running services.
+
+Sonar's maintainability gate required splitting the touched admission method. Selection, OPD closure and initial billing are private helpers under the same public admission transaction; write order, rollback, billing and bed protections are preserved. The reported cleaning-task timestamp now explicitly uses the existing runtime timezone. No quality thresholds, suppressions or test assertions changed. Post-extraction focused HTTP/service/transaction tests and all 24 MySQL admission contracts pass.

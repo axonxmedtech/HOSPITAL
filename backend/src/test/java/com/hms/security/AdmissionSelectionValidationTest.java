@@ -36,7 +36,7 @@ class AdmissionSelectionValidationTest {
     private static final List<String> MODULES = List.of("OPD", "IPD", "PHARMACY", "BILLING");
 
     private String tokenB;
-    private Long aOpdId, aWardId, aBedId, aPatientId;
+    private Long aOpdId, aPatientId;
     private Long bOpdId, bWardId, bBedId;
 
     private String uniq() { return Long.toString(System.nanoTime()); }
@@ -81,12 +81,12 @@ class AdmissionSelectionValidationTest {
     }
 
     @BeforeEach
-    void setUp() {
+    void seedSyntheticTenants() {
         long hidA = seedHospital("alpha");
         long hidB = seedHospital("bravo");
 
         long[] a = seedJourney(hidA, "alpha", "admin@alpha.com");
-        aOpdId = a[0]; aWardId = a[1]; aBedId = a[2]; aPatientId = a[3];
+        aOpdId = a[0]; aPatientId = a[3];
 
         long[] b = seedJourney(hidB, "bravo", "admin@bravo.com");
         bOpdId = b[0]; bWardId = b[1]; bBedId = b[2];
