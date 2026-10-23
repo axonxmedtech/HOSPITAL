@@ -140,51 +140,17 @@ public class IpdAdmissionService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found in context");
 
+        validateAdmissionSelectionIds(opdId, directPatientId, directDoctorId);
+
         // IPD numbers are globally unique today. Lock one durable global hospital row before
         // reading MAX+1 so admissions from different tenants cannot allocate the same number.
         hospitalRepository.findGlobalIpdNumberLock()
                 .orElseThrow(() -> new IllegalStateException("No hospital available for IPD number allocation"));
 
-        Opd opd = null;
-        com.hms.entity.Patient patient = null;
-        Long doctorId = directDoctorId;
-
-        if (opdId != null) {
-            opd = opdRepository.findByIdAndHospitalIdWithPatientAndDoctorForUpdate(opdId, hospitalId)
-                    .orElseThrow(() -> new ResourceNotFoundException("OPD not found"));
-            if (Opd.Status.IN_IPD.equals(opd.getStatus())) {
-                throw new ConflictException("OPD is already admitted to IPD");
-            }
-            patient = opd.getPatient();
-            if (patient != null) {
-                patient = patientRepository.findByIdAndHospitalIdForUpdate(patient.getId(), hospitalId)
-                        .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
-            }
-            if (doctorId == null && opd.getDoctor() != null) {
-                doctorId = opd.getDoctor().getId();
-            }
-        }
-
-        Long patientId = patient != null ? patient.getId() : directPatientId;
-        if (patientId == null) {
-            java.util.List<com.hms.entity.Patient> patients = patientRepository.findByHospitalIdAndIsActiveTrue(hospitalId);
-            if (patients != null && !patients.isEmpty()) {
-                patientId = patients.get(0).getId();
-                patient = patients.get(0);
-            } else {
-                throw new IllegalArgumentException("Please select a patient to admit");
-            }
-        } else if (patient == null) {
-            patient = patientRepository.findByIdAndHospitalIdForUpdate(patientId, hospitalId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
-        }
-
-        if (doctorId == null) {
-            java.util.List<com.hms.entity.Doctor> doctors = doctorRepository.findByHospitalIdAndIsActiveTrueOrderByCreatedAtDesc(hospitalId);
-            if (doctors != null && !doctors.isEmpty()) {
-                doctorId = doctors.get(0).getId();
-            }
-        }
+        Opd opd = resolveAdmissionOpd(opdId, hospitalId);
+        com.hms.entity.Patient patient = resolveAdmissionPatient(opd, directPatientId, hospitalId);
+        Long patientId = patient.getId();
+        Long doctorId = resolveAdmissionDoctor(opd, directDoctorId, hospitalId);
 
         if (ipdAdmissionRepository.existsByHospitalIdAndPatientIdAndStatusIn(hospitalId, patient.getId(),
                 java.util.List.of("ADMITTED", "DISCHARGE_PLANNED"))) {
@@ -255,73 +221,9 @@ public class IpdAdmissionService {
         // silently lost. With zero or multiple eligible nurses this is a no-op.
         patientAssignmentService.onAdmission(saved);
 
-        // Mark OPD as completed/closed
-        if (opd != null) {
-            try {
-                opd.setStatus(Opd.Status.IN_IPD);
-            } catch (Exception ex) {
-                // fallback if OPD uses enum type
-                opd.setStatus(Opd.Status.COMPLETED);
-            }
-            opdRepository.save(opd);
-
-            // Remove from doctor's active queue
-            try {
-                queueEntryRepository.deleteByOpdId(opd.getId());
-            } catch (Exception e) {
-                logger.warn("Failed to delete queue entry for OPD ID during IPD admission", e);
-            }
-        }
-
+        closeOpdForAdmission(opd);
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId).orElse(null);
-        boolean hasBillingModule = hospital != null && hospital.getModules() != null && hospital.getModules().contains("BILLING");
-
-        if (hasBillingModule) {
-            // Create initial IPD billing (empty / started)
-            java.math.BigDecimal bedPrice = java.math.BigDecimal.ZERO;
-            if (ward.getBedPrice() != null) {
-                bedPrice = ward.getBedPrice();
-            }
-
-            Long appointmentId = null;
-            try {
-                java.util.List<com.hms.entity.Appointment> appointments = appointmentRepository.findByPatientIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(saved.getPatientId(), hospitalId);
-                if (appointments != null && !appointments.isEmpty()) {
-                    appointmentId = appointments.get(0).getId();
-                }
-            } catch (Exception e) {
-                logger.debug("Could not resolve latest appointment for patient during IPD admission billing", e);
-            }
-
-            Billing bill = new Billing();
-            bill.setHospitalId(hospitalId);
-            bill.setPatientId(saved.getPatientId());
-            bill.setDoctorId(saved.getDoctorId());
-            bill.setIpdAdmissionId(saved.getId());
-            bill.setOpdId(opd != null ? opd.getId() : null);
-            bill.setAppointmentId(appointmentId);
-            bill.setBillingType("IPD");
-            bill.setAmount(bedPrice);
-            bill.setDescription("Bed Price");
-            bill.setPaymentStatus("PENDING");
-            Billing savedBill = null;
-            if (billingService != null) {
-                savedBill = billingService.saveBillWithCollisionRetry(bill);
-            }
-            if (savedBill == null) {
-                savedBill = billingRepository.save(bill);
-            }
-
-            // Create billing item for bed price
-            if (bedPrice != null) {
-                com.hms.entity.BillingItem item = new com.hms.entity.BillingItem();
-                item.setBillingId(savedBill.getId());
-                item.setHospitalId(hospitalId);
-                item.setDescription("Bed Price");
-                item.setAmount(bedPrice);
-                billingItemRepository.save(item);
-            }
-        }
+        createAdmissionBill(saved, opd, ward, hospitalId, hospital);
 
         logger.info("Created IPD admission {} for OPD {}", saved.getIpdNumber(), opdId);
 
@@ -346,6 +248,137 @@ public class IpdAdmissionService {
         }
 
         return saved;
+    }
+
+    private void validateAdmissionSelectionIds(Long opdId, Long patientId, Long doctorId) {
+        // Enforce selection in the shared service so every admission entry point fails closed.
+        if ((opdId != null && opdId <= 0) || (patientId != null && patientId <= 0)
+                || (doctorId != null && doctorId <= 0)) {
+            throw new IllegalArgumentException("Patient, OPD and doctor IDs must be positive");
+        }
+        if (opdId == null && patientId == null) {
+            throw new IllegalArgumentException("Please select a patient or OPD to admit");
+        }
+    }
+
+    private Opd resolveAdmissionOpd(Long opdId, Long hospitalId) {
+        if (opdId == null) return null;
+        Opd opd = opdRepository.findByIdAndHospitalIdWithPatientAndDoctorForUpdate(opdId, hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("OPD not found"));
+        if (Opd.Status.IN_IPD.equals(opd.getStatus())) {
+            throw new ConflictException("OPD is already admitted to IPD");
+        }
+        return opd;
+    }
+
+    private com.hms.entity.Patient resolveAdmissionPatient(Opd opd, Long patientId, Long hospitalId) {
+        if (opd != null) {
+            if (opd.getPatient() == null) {
+                throw new IllegalArgumentException("Selected OPD has no patient");
+            }
+            Long opdPatientId = opd.getPatient().getId();
+            if (patientId != null && !patientId.equals(opdPatientId)) {
+                throw new IllegalArgumentException("Selected patient does not match the selected OPD");
+            }
+            patientId = opdPatientId;
+        }
+        com.hms.entity.Patient patient = patientRepository.findByIdAndHospitalIdForUpdate(patientId, hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
+        if (!Boolean.TRUE.equals(patient.getIsActive())) {
+            throw new IllegalArgumentException("Selected patient is inactive");
+        }
+        return patient;
+    }
+
+    private Long resolveAdmissionDoctor(Opd opd, Long doctorId, Long hospitalId) {
+        if (doctorId == null && opd != null && opd.getDoctor() != null) {
+            doctorId = opd.getDoctor().getId();
+        }
+        if (doctorId == null) {
+            java.util.List<com.hms.entity.Doctor> doctors = doctorRepository.findByHospitalIdAndIsActiveTrueOrderByCreatedAtDesc(hospitalId);
+            if (doctors != null && !doctors.isEmpty()) {
+                doctorId = doctors.get(0).getId();
+            }
+        }
+        // Validate every source before persistence; foreign and missing doctors are indistinguishable.
+        if (doctorId != null && doctorRepository
+                .findByIdAndHospitalIdAndIsActiveTrue(doctorId, hospitalId).isEmpty()) {
+            throw new ResourceNotFoundException("Doctor not found");
+        }
+        return doctorId;
+    }
+
+    private void closeOpdForAdmission(Opd opd) {
+        // Mark OPD as completed/closed
+        if (opd != null) {
+            try {
+                opd.setStatus(Opd.Status.IN_IPD);
+            } catch (Exception ex) {
+                // fallback if OPD uses enum type
+                opd.setStatus(Opd.Status.COMPLETED);
+            }
+            opdRepository.save(opd);
+
+            // Remove from doctor's active queue
+            try {
+                queueEntryRepository.deleteByOpdId(opd.getId());
+            } catch (Exception e) {
+                logger.warn("Failed to delete queue entry for OPD ID during IPD admission", e);
+            }
+        }
+    }
+
+    private void createAdmissionBill(IpdAdmission saved, Opd opd, com.hms.entity.Ward ward,
+            Long hospitalId, com.hms.entity.Hospital hospital) {
+        boolean hasBillingModule = hospital != null && hospital.getModules() != null && hospital.getModules().contains("BILLING");
+
+        if (!hasBillingModule) {
+            return;
+        }
+        // Create initial IPD billing (empty / started)
+        java.math.BigDecimal bedPrice = java.math.BigDecimal.ZERO;
+        if (ward.getBedPrice() != null) {
+            bedPrice = ward.getBedPrice();
+        }
+
+        Long appointmentId = null;
+        try {
+            java.util.List<com.hms.entity.Appointment> appointments = appointmentRepository.findByPatientIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(saved.getPatientId(), hospitalId);
+            if (appointments != null && !appointments.isEmpty()) {
+                appointmentId = appointments.get(0).getId();
+            }
+        } catch (Exception e) {
+            logger.debug("Could not resolve latest appointment for patient during IPD admission billing", e);
+        }
+
+        Billing bill = new Billing();
+        bill.setHospitalId(hospitalId);
+        bill.setPatientId(saved.getPatientId());
+        bill.setDoctorId(saved.getDoctorId());
+        bill.setIpdAdmissionId(saved.getId());
+        bill.setOpdId(opd != null ? opd.getId() : null);
+        bill.setAppointmentId(appointmentId);
+        bill.setBillingType("IPD");
+        bill.setAmount(bedPrice);
+        bill.setDescription("Bed Price");
+        bill.setPaymentStatus("PENDING");
+        Billing savedBill = null;
+        if (billingService != null) {
+            savedBill = billingService.saveBillWithCollisionRetry(bill);
+        }
+        if (savedBill == null) {
+            savedBill = billingRepository.save(bill);
+        }
+
+        // Create billing item for bed price
+        if (bedPrice != null) {
+            com.hms.entity.BillingItem item = new com.hms.entity.BillingItem();
+            item.setBillingId(savedBill.getId());
+            item.setHospitalId(hospitalId);
+            item.setDescription("Bed Price");
+            item.setAmount(bedPrice);
+            billingItemRepository.save(item);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -1248,7 +1281,7 @@ public class IpdAdmissionService {
             task.setPriority("HIGH");
             task.setStatus("PENDING");
             task.setCreatedBy(securityHelper.getCurrentUserEmail() != null ? securityHelper.getCurrentUserEmail() : "SYSTEM");
-            task.setCreatedAt(LocalDateTime.now());
+            task.setCreatedAt(LocalDateTime.now(java.time.ZoneId.systemDefault()));
             icuCleaningTaskRepository.save(task);
         } catch (Exception e) {
             logger.warn("Failed to create ICU cleaning task during IPD discharge", e);
