@@ -222,7 +222,8 @@ public class IpdAdmissionService {
         patientAssignmentService.onAdmission(saved);
 
         closeOpdForAdmission(opd);
-        createAdmissionBill(saved, opd, ward, hospitalId);
+        com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId).orElse(null);
+        createAdmissionBill(saved, opd, ward, hospitalId, hospital);
 
         logger.info("Created IPD admission {} for OPD {}", saved.getIpdNumber(), opdId);
 
@@ -327,8 +328,8 @@ public class IpdAdmissionService {
         }
     }
 
-    private void createAdmissionBill(IpdAdmission saved, Opd opd, com.hms.entity.Ward ward, Long hospitalId) {
-        com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId).orElse(null);
+    private void createAdmissionBill(IpdAdmission saved, Opd opd, com.hms.entity.Ward ward,
+            Long hospitalId, com.hms.entity.Hospital hospital) {
         boolean hasBillingModule = hospital != null && hospital.getModules() != null && hospital.getModules().contains("BILLING");
 
         if (!hasBillingModule) {
